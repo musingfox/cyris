@@ -19,6 +19,8 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 - An LLM API key — Anthropic Claude (default) or Google Gemini
 - Obsidian vault for digest output
 - Optional: Ollama with `nomic-embed-text` for embedding-based pre-filtering
+- Optional: a Cloudflare account — only for **email-only newsletter** ingestion and
+  the promote / HTML-publish features (RSS feeds + the digest work without it)
 
 ## Setup
 
@@ -145,9 +147,18 @@ write the sink, add it to the `Deps` container, call it from `run_digest`.
 
 ### Newsletter Ingestion
 
-Most newsletters (Substack, Ghost, Squarespace) expose RSS — subscribe via Miniflux.
-Genuinely email-only newsletters route through a Cloudflare Email Worker that queues
-parsed mail in KV for `cyris run` to pull. Deploy + setup: [`workers/newsletter/README.md`](workers/newsletter/README.md).
+Two paths, depending on how the newsletter is delivered:
+
+- **RSS newsletters** (Substack, Ghost, Squarespace, and most others) — subscribe
+  via Miniflux like any other feed. No extra setup.
+- **Email-only newsletters** — require a **Cloudflare Email Worker** (needs a
+  Cloudflare account + Email Routing). It parses forwarded mail into KV for
+  `cyris run` to pull, matched to a source by `email_match`. Deploy + setup:
+  [`workers/newsletter/README.md`](workers/newsletter/README.md). A legacy local
+  webhook (`cyris email-server`) also exists but is superseded.
+
+**In short: email-only subscriptions depend on Cloudflare** (or the legacy local
+webhook); RSS newsletters do not.
 
 ### Article Lifecycle
 
