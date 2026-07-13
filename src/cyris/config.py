@@ -30,8 +30,6 @@ def _load_dotenv(env_path: Path | None = None) -> None:
 
 
 class NotifyConfig(BaseModel):
-    ntfy_topic: str = ""
-    ntfy_server: str = "https://ntfy.sh"
     discord_webhook_url: str = ""
 
 

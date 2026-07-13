@@ -7,8 +7,6 @@ timezone = "Asia/Taipei"
 digest_window_hours = 24
 
 [general.notify]
-ntfy_topic = ""                         # set a topic to enable ntfy.sh push
-ntfy_server = "https://ntfy.sh"
 discord_webhook_url = ""                # optional Discord webhook
 
 [miniflux]

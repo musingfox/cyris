@@ -116,7 +116,7 @@ Three Protocols in `service_layer/ports.py` are the clean seams:
 | **Fetch source** (input) | `FetchSource` | `MinifluxSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
 | **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient` | add an AI provider |
 | **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
-| **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md), `HtmlDigestWriter`, `publish` (Cloudflare Pages), `notify` (Discord/ntfy) | send the digest somewhere new |
+| **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md), `HtmlDigestWriter`, `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
 
 Core code (`service_layer/` + `domain/`) never changes when you swap or add an
 adapter — that is the point of the Protocol seams.
@@ -199,7 +199,7 @@ Digest output language is configurable via `[digest] output_language` (default
 | Preference learning | Claude API + Ollama embeddings |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |
 | Output | Obsidian (filesystem) |
-| Notifications | Discord webhook, ntfy.sh |
+| Notifications | Discord webhook |
 
 ## License
 

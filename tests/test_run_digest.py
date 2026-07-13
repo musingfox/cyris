@@ -110,9 +110,6 @@ def make_deps(
 
     notifications: list[str] = []
 
-    async def fake_ntfy(topic, title, message, **kwargs):
-        notifications.append(title)
-
     async def fake_discord(webhook_url, content):
         notifications.append("discord")
         if discord_contents is not None:
@@ -129,7 +126,6 @@ def make_deps(
         sync_promotions=None,
         load_cookies=lambda: None,
         log_usage=lambda content: None,
-        send_ntfy=fake_ntfy,
         send_discord=fake_discord,
         tracking=VaultConfigSource(agent_vault / "tracking.yaml") if with_tracking else None,
         event_store=EventStore(agent_vault / "events") if with_tracking else None,
@@ -184,9 +180,6 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
     assert stored[0].state == ArticleState.ACCEPTED
     assert stored[0].score == 85.0
 
-    assert "Cyris run 開始" in notifications
-    assert "Cyris run 完成" in notifications
-
 
 async def test_run_digest_no_articles(tmp_path: Path) -> None:
     source = FakeSource([])
@@ -196,7 +189,6 @@ async def test_run_digest_no_articles(tmp_path: Path) -> None:
 
     assert report.status == "no_articles"
     assert report.digest_path is None
-    assert "Cyris run 完成" in notifications
 
 
 async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> None:

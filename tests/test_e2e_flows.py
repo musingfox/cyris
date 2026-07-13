@@ -34,8 +34,6 @@ digest_window_hours = 12
 digest_schedule = ["08:00", "20:00"]
 
 [general.notify]
-ntfy_topic = ""
-ntfy_server = "https://ntfy.sh"
 discord_webhook_url = ""
 
 [miniflux]

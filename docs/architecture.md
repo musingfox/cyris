@@ -46,7 +46,7 @@ flowchart TB
         USAGE["append_usage"]
         EVT["EventStore"]
         TRKY["VaultConfigSource (tracking)"]
-        NOTI["send_discord / send_ntfy"]
+        NOTI["send_discord"]
     end
 
     subgraph EXT["External / IO"]
@@ -56,7 +56,7 @@ flowchart TB
         VAULT["Obsidian Vault"]
         CFW{{"Cloudflare Workers · KV · Pages"}}
         BROWSER["Browser cookies.sqlite"]
-        DISC{{"Discord / ntfy"}}
+        DISC{{"Discord"}}
     end
 
     CLI --> DEPS

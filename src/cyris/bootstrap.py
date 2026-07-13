@@ -12,7 +12,7 @@ from cyris.adapters.fetch.miniflux import MinifluxClient
 from cyris.adapters.fetch.miniflux_source import MinifluxSource
 from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
 from cyris.adapters.gemini_client import GeminiClient
-from cyris.adapters.notify import send_discord, send_ntfy
+from cyris.adapters.notify import send_discord
 from cyris.adapters.output.digest import DigestWriter
 from cyris.adapters.output.usage_log import append_usage
 from cyris.adapters.store import ArticleStore
@@ -51,7 +51,6 @@ class Deps:
     sync_promotions: Callable[[], int] | None
     load_cookies: Callable[[], dict[str, str] | None]
     log_usage: Callable[..., None]
-    send_ntfy: Callable[..., Any] = send_ntfy
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
     tracking: VaultConfigSource | None = None

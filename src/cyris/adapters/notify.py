@@ -1,4 +1,4 @@
-"""Notification senders: ntfy.sh and Discord webhook."""
+"""Notification sender: Discord webhook."""
 
 import logging
 
@@ -7,41 +7,6 @@ import httpx
 from cyris.domain.models import DigestContent, DigestSection
 
 logger = logging.getLogger(__name__)
-
-
-async def send_ntfy(
-    topic: str,
-    title: str,
-    message: str,
-    server: str = "https://ntfy.sh",
-    tags: str = "",
-    priority: str = "default",
-) -> None:
-    """Send a notification via ntfy.sh using JSON API.
-
-    Does nothing if topic is empty. Failures are logged but not raised.
-    """
-    if not topic:
-        return
-
-    url = f"{server.rstrip('/')}"
-    payload: dict[str, object] = {
-        "topic": topic,
-        "title": title,
-        "message": message,
-    }
-    if tags:
-        payload["tags"] = tags.split(",")
-    if priority != "default":
-        payload["priority"] = {"low": 2, "default": 3, "high": 4, "urgent": 5}.get(priority, 3)
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            logger.debug("ntfy sent: %s", title)
-    except httpx.HTTPError:
-        logger.warning("ntfy notification failed: %s", title, exc_info=True)
 
 
 def _render_section_embed(section: DigestSection) -> str:

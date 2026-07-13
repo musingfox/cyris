@@ -51,17 +51,9 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     progress = deps.on_progress
 
     tz = cfg.app.general.timezone
-    ntfy = cfg.app.general.notify
+    notify = cfg.app.general.notify
     now = now_in_timezone(tz)
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
-
-    await deps.send_ntfy(
-        ntfy.ntfy_topic,
-        "Cyris run 開始",
-        f"正在執行 {options.period} 完整流程...",
-        server=ntfy.ntfy_server,
-        tags="hourglass",
-    )
 
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
     if deps.sync_promotions is not None:
@@ -71,13 +63,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 progress(f"Synced {exported_count} promoted article(s) to vault.")
         except Exception as e:
             logger.warning("Promotion sync failed: %s", e)
-            await deps.send_ntfy(
-                ntfy.ntfy_topic,
-                "Cyris promotion sync 失敗",
-                f"無法從 Worker 同步升級文章:{e}",
-                server=ntfy.ntfy_server,
-                tags="warning",
-            )
 
     # Load cookies if enabled
     cookies = deps.load_cookies()
@@ -97,25 +82,10 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     if failed_sources:
         progress(f"WARNING: fetch failed for: {', '.join(failed_sources)}")
-        await deps.send_ntfy(
-            ntfy.ntfy_topic,
-            "Cyris 來源抓取失敗",
-            f"抓取失敗的來源:{', '.join(failed_sources)}。請檢查服務狀態與 log。",
-            server=ntfy.ntfy_server,
-            tags="warning",
-        )
 
     if not articles:
         logger.warning("No articles found in time window")
         progress("No articles found. Nothing to process.")
-        if not failed_sources:
-            await deps.send_ntfy(
-                ntfy.ntfy_topic,
-                "Cyris run 完成",
-                "沒有找到新文章。",
-                server=ntfy.ntfy_server,
-                tags="white_check_mark",
-            )
         return RunReport(status="no_articles", failed_sources=failed_sources)
 
     # Save articles to store
@@ -201,13 +171,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     if not digest_articles:
         progress("No pending articles to process.")
-        await deps.send_ntfy(
-            ntfy.ntfy_topic,
-            "Cyris run 完成",
-            "沒有待處理的文章。",
-            server=ntfy.ntfy_server,
-            tags="white_check_mark",
-        )
         return RunReport(status="no_pending", failed_sources=failed_sources)
 
     # Tracked topics integration (after score; confirm only on active+prescreen hits -> no-op else)
@@ -303,15 +266,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         updated_count = store.update_states(url_to_state, digest_date=content.date)
         logger.info("Updated states for %d articles", updated_count)
 
-    await deps.send_ntfy(
-        ntfy.ntfy_topic,
-        "Cyris run 完成",
-        f"保留 {content.articles_included}/{content.articles_received} 篇"
-        f"，費用 ${content.usage.estimated_cost:.4f}",
-        server=ntfy.ntfy_server,
-        tags="white_check_mark",
-    )
-
-    await deps.send_discord(ntfy.discord_webhook_url, content)
+    await deps.send_discord(notify.discord_webhook_url, content)
 
     return report
