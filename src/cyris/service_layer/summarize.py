@@ -5,7 +5,11 @@ from collections import defaultdict
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.service_layer.ports import LLMClient, complete_json
-from cyris.service_layer.prompts import SUMMARIZE_SYSTEM, build_summarize_prompt
+from cyris.service_layer.prompts import (
+    DEFAULT_LANGUAGE,
+    build_summarize_prompt,
+    build_summarize_system_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,8 @@ async def summarize_articles(
     usage: UsageStats | None = None,
     snippet_length: int = 1000,
     article_scores: dict[str, float] | None = None,
+    output_language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
 ) -> list[DigestSection]:
     """Summarize articles grouped by source tags.
 
@@ -53,7 +59,11 @@ async def summarize_articles(
         user_prompt = build_summarize_prompt(tag, group_articles, snippet_length=snippet_length)
 
         data = await complete_json(
-            llm, user_prompt, system=SUMMARIZE_SYSTEM, temperature=1.0, usage=usage
+            llm,
+            user_prompt,
+            system=build_summarize_system_prompt(output_language, style_prompt),
+            temperature=1.0,
+            usage=usage,
         )
 
         for section_data in data.get("sections", []):

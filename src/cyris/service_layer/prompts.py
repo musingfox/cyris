@@ -1,6 +1,30 @@
-"""Claude API prompt templates for content processing."""
+"""LLM prompt templates for content processing.
+
+User-facing output language is parameterized via the ``<output_language>``
+placeholder (substituted, not str.format, to avoid clashing with the JSON
+braces in the templates). An optional reader style prompt is appended, same
+mechanism as preference-profile injection.
+"""
 
 from cyris.domain.models import Article, PreferenceProfile
+
+DEFAULT_LANGUAGE = "繁體中文"
+
+
+def _finalize_system(
+    base: str,
+    language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
+    preference_profile: PreferenceProfile | None = None,
+) -> str:
+    """Substitute the output language and append optional style/preference blocks."""
+    out = base.replace("<output_language>", language)
+    if style_prompt.strip():
+        out += f"\n\nReader style — apply to tone and focus:\n{style_prompt.strip()}"
+    if preference_profile is not None:
+        out += f"\n\n{preference_profile.prompt_injection}"
+    return out
+
 
 FILTER_SYSTEM = """\
 You are a news editor selecting headlines for a tech-savvy professional reader. \
@@ -27,8 +51,8 @@ Respond in JSON:
   "selected": [
     {
       "id": <article id>,
-      "title": "<headline in 繁體中文, translate if needed>",
-      "summary": "<one sentence in 繁體中文>",
+      "title": "<headline in <output_language>, translate if needed>",
+      "summary": "<one sentence in <output_language>>",
       "source": "<source name>"
     }
   ],
@@ -58,8 +82,8 @@ Respond in JSON format:
 {
   "sections": [
     {
-      "heading": "<thematic heading in 繁體中文>",
-      "summary": "<3-5 sentence summary in 繁體中文>",
+      "heading": "<thematic heading in <output_language>>",
+      "summary": "<3-5 sentence summary in <output_language>>",
       "articles": [
         {"id": <article id>, "title": "<original title>", "source": "<source name>"}
       ]
@@ -105,49 +129,53 @@ def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: in
     return "\n".join(lines)
 
 
-def build_filter_system_prompt(preference_profile: PreferenceProfile | None = None) -> str:
-    """Build filter system prompt with optional preference injection.
+def build_filter_system_prompt(
+    language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
+    preference_profile: PreferenceProfile | None = None,
+) -> str:
+    """Build filter system prompt with output language, style, and preference injection."""
+    return _finalize_system(FILTER_SYSTEM, language, style_prompt, preference_profile)
 
-    Args:
-        preference_profile: Optional user preference profile to inject.
 
-    Returns:
-        System prompt string for filter-tier processing.
-    """
-    if preference_profile is None:
-        return FILTER_SYSTEM
-
-    return f"{FILTER_SYSTEM}\n\n{preference_profile.prompt_injection}"
+def build_summarize_system_prompt(
+    language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
+    preference_profile: PreferenceProfile | None = None,
+) -> str:
+    """Build summarize system prompt with output language, style, and preference injection."""
+    return _finalize_system(SUMMARIZE_SYSTEM, language, style_prompt, preference_profile)
 
 
 NEWS_CLUSTER_SYSTEM = """\
-你是一個新聞編輯，負責將相關的新聞報導聚合成主題群組。
+You are a news editor grouping related news reports into topic clusters.
 
-任務：
-1. 識別內容相關的新聞文章（例如：同一事件的不同報導、相同主題的系列新聞）
-2. 為每個群組創建一個繁體中文的主題標題
-3. 撰寫整合摘要，涵蓋該群組所有文章的關鍵資訊
-4. 保留差異性觀點和補充細節
+Task:
+1. Identify content-related news articles (e.g. different reports on the same event,
+   a series on the same topic)
+2. Create a concise, specific topic heading for each cluster
+3. Write an integrated summary covering the key information across the cluster's articles
+4. Preserve divergent viewpoints and complementary details
 
-規則：
-- 每個群組至少需要 2 篇文章
-- 單篇獨立新聞放入 unclustered_ids
-- 標題要精簡具體（10 字以內）
-- 摘要用繁體中文，2-3 句話說明事件核心
+Rules:
+- Each cluster needs at least 2 articles
+- Standalone single news items go into unclustered_ids
+- Keep headings concise and specific
+- Write every heading and summary in <output_language>; 2-3 sentences per summary
 
-輸出 JSON 格式：
+Respond in JSON:
 {
   "clusters": [
     {
-      "heading": "<繁體中文主題標題>",
-      "summary": "<2-3 句繁體中文整合摘要>",
+      "heading": "<heading in <output_language>>",
+      "summary": "<2-3 sentence summary in <output_language>>",
       "article_ids": [<id>, <id>, ...]
     }
   ],
   "unclustered_ids": [<id>, ...]
 }
 
-如果所有文章都不相關，返回 {"clusters": [], "unclustered_ids": [所有 id]}
+If no articles are related, return {"clusters": [], "unclustered_ids": [all ids]}.
 """
 
 
@@ -171,7 +199,14 @@ def build_news_cluster_prompt(articles: list[Article]) -> str:
     return "\n".join(lines)
 
 
-# --- Scoring prompts ---
+def build_news_cluster_system_prompt(
+    language: str = DEFAULT_LANGUAGE, style_prompt: str = ""
+) -> str:
+    """Build news-cluster system prompt with output language and style injection."""
+    return _finalize_system(NEWS_CLUSTER_SYSTEM, language, style_prompt)
+
+
+# --- Scoring prompts (no natural-language output; language-agnostic) ---
 
 SCORING_SYSTEM = """\
 You are an article relevance evaluator. Score each article on a 0-100 scale based on \
@@ -238,17 +273,25 @@ def build_scoring_prompt(articles: list, snippet_length: int = 1000) -> str:
 
 
 TOPIC_CONFIRM_SYSTEM = """\
-你是嚴格的新聞編輯。僅當文章內容與追蹤主題有實質語意關聯時才列入（嚴格排除純字面巧合）。
-輸出 JSON:
+You are a strict news editor. Include an article only if it is substantively and \
+semantically related to a tracked topic (strictly exclude coincidental keyword matches).
+Respond in JSON:
 {
   "matches": [
-    {"id": <original_id>, "topic": "<精確主題名稱>",
-     "note": "<繁體中文單句，約60字內，描述對主題的關鍵點或更新>"}
+    {"id": <original_id>, "topic": "<exact topic name>",
+     "note": "<one sentence in <output_language>, ~60 chars: the topic's key point/update>"}
   ]
 }
-若無匹配則 "matches": [] 。
-note 必須為繁體中文單句。
+If nothing matches, return "matches": [].
+The note must be a single sentence in <output_language>.
 """
+
+
+def build_topic_confirm_system_prompt(
+    language: str = DEFAULT_LANGUAGE, style_prompt: str = ""
+) -> str:
+    """Build topic-confirm system prompt with output language and style injection."""
+    return _finalize_system(TOPIC_CONFIRM_SYSTEM, language, style_prompt)
 
 
 def build_topic_confirm_prompt(topics: list[str], candidates: list) -> str:
@@ -259,9 +302,10 @@ def build_topic_confirm_prompt(topics: list[str], candidates: list) -> str:
     if not candidates:
         return ""
     lines = [
-        "追蹤主題: " + ", ".join(topics),
+        "Tracked topics: " + ", ".join(topics),
         "",
-        "判斷以下文章是否語意相關上述任一主題 (僅實質相關，非字面):",
+        "Decide which of the following articles are semantically related to any topic "
+        "above (substantive relation only, not literal keyword overlap):",
         "",
     ]
     for c in candidates:

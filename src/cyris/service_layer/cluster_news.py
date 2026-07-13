@@ -4,7 +4,11 @@ import logging
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.service_layer.ports import LLMClient, complete_json
-from cyris.service_layer.prompts import NEWS_CLUSTER_SYSTEM, build_news_cluster_prompt
+from cyris.service_layer.prompts import (
+    DEFAULT_LANGUAGE,
+    build_news_cluster_prompt,
+    build_news_cluster_system_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,8 @@ async def cluster_news(
     llm: LLMClient,
     usage: UsageStats | None = None,
     article_scores: dict[str, float] | None = None,
+    output_language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
 ) -> tuple[list[DigestSection], list[Article]]:
     """Cluster related news articles using the LLM.
 
@@ -56,7 +62,11 @@ async def cluster_news(
         user_prompt = build_news_cluster_prompt(articles)
 
         result = await complete_json(
-            llm, user_prompt, system=NEWS_CLUSTER_SYSTEM, temperature=1.0, usage=usage
+            llm,
+            user_prompt,
+            system=build_news_cluster_system_prompt(output_language, style_prompt),
+            temperature=1.0,
+            usage=usage,
         )
 
         clusters = result.get("clusters", [])

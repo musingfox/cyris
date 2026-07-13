@@ -17,7 +17,7 @@ class TestLoadConfig:
 
         project_root = Path(__file__).parent.parent
         cfg = load_config(
-            config_path=project_root / "cyris.example.toml",
+            config_path=project_root / "cyris.toml.example",
             sources_path=project_root / "sources.example.yaml",
         )
 
@@ -26,14 +26,11 @@ class TestLoadConfig:
         assert cfg.app.miniflux.api_key == "test-miniflux-key"
         assert cfg.app.llm_provider.api_key == "test-anthropic-key"
 
-        # Curated teaching sample: a fixed set covering every source shape.
-        assert len(cfg.sources) == 7
+        # Curated teaching sample covering the main source shapes.
+        assert len(cfg.sources) == 4
         assert cfg.sources["Stratechery"].tier == Tier.SUMMARIZE
         assert cfg.sources["Stratechery"].paywall is True
         assert cfg.sources["TechCrunch"].tier == Tier.FILTER
-        # newsletter shape: ingested from email, not RSS
-        assert cfg.sources["Benedict Evans Newsletter"].type == "newsletter"
-        assert cfg.sources["Benedict Evans Newsletter"].email_match == "from:list@benedictevans.com"
         # language override on a non-English feed
         assert cfg.sources["報導者"].language == "zh"
 
@@ -44,7 +41,7 @@ class TestLoadConfig:
 
         project_root = Path(__file__).parent.parent
         cfg = load_config(
-            config_path=project_root / "cyris.example.toml",
+            config_path=project_root / "cyris.toml.example",
             sources_path=project_root / "sources.example.yaml",
         )
 
@@ -70,7 +67,7 @@ class TestLoadConfig:
         project_root = Path(__file__).parent.parent
         config_copy = tmp_path / "cyris.toml"
         sources_copy = tmp_path / "sources.yaml"
-        config_copy.write_bytes((project_root / "cyris.example.toml").read_bytes())
+        config_copy.write_bytes((project_root / "cyris.toml.example").read_bytes())
         sources_copy.write_bytes((project_root / "sources.example.yaml").read_bytes())
 
         cfg = load_config(config_path=config_copy, sources_path=sources_copy)

@@ -23,6 +23,8 @@ model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider 
 [digest]
 max_articles_per_digest = 200           # cap fed into the pipeline
 max_articles_per_digest_output = 15     # cap shown in the digest note
+output_language = "繁體中文"             # language for digest headlines/summaries (e.g. "English")
+style_prompt = ""                       # optional: your tone/focus, injected into the prompts
 
 [obsidian]
 user_vault_path = "~/Documents/ObsidianVault"

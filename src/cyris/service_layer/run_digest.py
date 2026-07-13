@@ -216,7 +216,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 if prescreen:
                     stored_cands = [a for a in pending_articles if a.url in prescreen]
                     matches, c_usage = await confirm_topic_matches(
-                        stored_cands, prescreen, deps.llm
+                        stored_cands,
+                        prescreen,
+                        deps.llm,
+                        output_language=cfg.app.digest.output_language,
+                        style_prompt=cfg.app.digest.style_prompt,
                     )
                     total_usage.add(c_usage.input_tokens, c_usage.output_tokens)
                     if matches:
@@ -244,6 +248,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
         filter_snippet_length=cfg.app.digest.filter_snippet_length,
         score_threshold=cfg.app.routing.summarize_score_threshold,
+        output_language=cfg.app.digest.output_language,
+        style_prompt=cfg.app.digest.style_prompt,
     )
     result = await digest_pipeline.process(
         digest_articles,

@@ -38,12 +38,16 @@ class DigestPipeline:
         summarize_snippet_length: int = 1000,
         filter_snippet_length: int = 500,
         score_threshold: int = 70,
+        output_language: str = "繁體中文",
+        style_prompt: str = "",
     ) -> None:
         self._llm = llm
         self.max_digest_output = max_digest_output
         self.summarize_snippet_length = summarize_snippet_length
         self.filter_snippet_length = filter_snippet_length
         self.score_threshold = score_threshold
+        self.output_language = output_language
+        self.style_prompt = style_prompt
         self.preference_profile = preference_profile
         self.embedding_store = embedding_store
 
@@ -116,6 +120,8 @@ class DigestPipeline:
                 self._llm,
                 usage=usage,
                 article_scores=article_scores,
+                output_language=self.output_language,
+                style_prompt=self.style_prompt,
             )
 
         # Merge unclustered news back into general filter pool
@@ -129,6 +135,8 @@ class DigestPipeline:
             embedding_store=self.embedding_store,
             article_scores=article_scores,
             filter_snippet_length=self.filter_snippet_length,
+            output_language=self.output_language,
+            style_prompt=self.style_prompt,
         )
 
         # Split summarize tier by score threshold
@@ -149,6 +157,8 @@ class DigestPipeline:
             usage=usage,
             snippet_length=self.summarize_snippet_length,
             article_scores=article_scores,
+            output_language=self.output_language,
+            style_prompt=self.style_prompt,
         )
 
         # Build attention sections for low-score articles

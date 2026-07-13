@@ -14,12 +14,24 @@ from cyris.service_layer.prompts import build_filter_system_prompt
 
 
 class TestBuildFilterSystemPrompt:
-    def test_without_profile_returns_original(self):
-        """Return original FILTER_SYSTEM without profile."""
+    def test_without_profile_substitutes_default_language(self):
+        """Without profile, returns the base prompt with default language substituted."""
         from cyris.service_layer.prompts import FILTER_SYSTEM
 
-        result = build_filter_system_prompt(None)
-        assert result == FILTER_SYSTEM
+        result = build_filter_system_prompt()
+        assert result == FILTER_SYSTEM.replace("<output_language>", "繁體中文")
+        assert "<output_language>" not in result
+
+    def test_language_is_substituted(self):
+        """A custom output language replaces the placeholder."""
+        result = build_filter_system_prompt(language="English")
+        assert "English" in result
+        assert "<output_language>" not in result
+
+    def test_style_prompt_is_appended(self):
+        """A style prompt is injected into the system prompt."""
+        result = build_filter_system_prompt(style_prompt="Be concise and skeptical.")
+        assert "Be concise and skeptical." in result
 
     def test_with_profile_appends_injection(self):
         """Append prompt injection when profile provided."""
@@ -34,11 +46,11 @@ class TestBuildFilterSystemPrompt:
             prompt_injection="User prefers enterprise AI and major funding rounds.",
         )
 
-        result = build_filter_system_prompt(profile)
+        result = build_filter_system_prompt(preference_profile=profile)
 
-        assert FILTER_SYSTEM in result
+        base = FILTER_SYSTEM.replace("<output_language>", "繁體中文")
+        assert result.startswith(base)
         assert "User prefers enterprise AI" in result
-        assert result.startswith(FILTER_SYSTEM)
 
 
 class TestFilterArticlesWithoutLearning:

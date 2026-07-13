@@ -14,8 +14,9 @@ from cyris.adapters.store.events import EventFile, TimelineEntry
 from cyris.domain.models import DigestItem, DigestSection, StoredArticle, UsageStats
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
-    TOPIC_CONFIRM_SYSTEM,
+    DEFAULT_LANGUAGE,
     build_topic_confirm_prompt,
+    build_topic_confirm_system_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ async def confirm_topic_matches(
     candidates: list[StoredArticle],
     prescreen_hits: dict[str, list[str]],
     llm: LLMClient,
+    output_language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
 ) -> tuple[list[TopicMatch], UsageStats]:
     """LLM batch semantic confirm of prescreen hits.
 
@@ -58,7 +61,12 @@ async def confirm_topic_matches(
         topics = sorted({t for ts in prescreen_hits.values() for t in ts})
         user_prompt = build_topic_confirm_prompt(topics, batch)
         try:
-            data = await complete_json(llm, user_prompt, system=TOPIC_CONFIRM_SYSTEM, usage=usage)
+            data = await complete_json(
+                llm,
+                user_prompt,
+                system=build_topic_confirm_system_prompt(output_language, style_prompt),
+                usage=usage,
+            )
         except Exception as exc:
             raise ValueError(f"topic confirm failed to parse JSON: {exc}") from exc
 

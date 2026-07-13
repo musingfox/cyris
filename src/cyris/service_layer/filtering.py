@@ -6,7 +6,11 @@ import httpx
 
 from cyris.domain.models import Article, DigestItem, EmbeddingStore, PreferenceProfile, UsageStats
 from cyris.service_layer.ports import LLMClient, complete_json
-from cyris.service_layer.prompts import build_filter_prompt, build_filter_system_prompt
+from cyris.service_layer.prompts import (
+    DEFAULT_LANGUAGE,
+    build_filter_prompt,
+    build_filter_system_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,8 @@ async def filter_articles(
     similarity_threshold: float = 0.6,
     article_scores: dict[str, float] | None = None,
     filter_snippet_length: int = 500,
+    output_language: str = DEFAULT_LANGUAGE,
+    style_prompt: str = "",
 ) -> list[DigestItem]:
     """Send filter-tier articles to Claude for headline extraction.
 
@@ -82,7 +88,7 @@ async def filter_articles(
     logger.info("Filtering %d articles through Claude", len(articles_to_process))
 
     user_prompt = build_filter_prompt(articles_to_process, snippet_length=filter_snippet_length)
-    system_prompt = build_filter_system_prompt(preference_profile)
+    system_prompt = build_filter_system_prompt(output_language, style_prompt, preference_profile)
 
     data = await complete_json(llm, user_prompt, system=system_prompt, temperature=1.0, usage=usage)
 

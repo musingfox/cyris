@@ -138,7 +138,7 @@ Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw 
 - pytest with `pytest-asyncio` (auto mode) for async tests
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
 - Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`
-- Digest output is in 繁體中文 (Traditional Chinese) section headings with mixed-language content
+- Digest output language is configurable via `[digest] output_language` (default 繁體中文); prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers
 - Mock patching: always patch where the function is **used**, not where it is **defined** (e.g. patch `cyris.service_layer.run_digest.now_in_timezone`, not `cyris.utils.timezone.now_in_timezone`)
 - LLM calls in tests: inject `FakeLLM` (tests/fakes.py) instead of patching the Anthropic SDK; only CLI-level e2e tests patch the single adapter point `cyris.adapters.anthropic_client.anthropic.AsyncAnthropic`

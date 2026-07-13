@@ -172,7 +172,8 @@ Conventions:
 - **Style**: ruff (line length 100); Pydantic v2 for all models and config.
 - **Commits**: keep them atomic; lint + tests green before a PR.
 
-Digest output uses 繁體中文 section headings with mixed-language content.
+Digest output language is configurable via `[digest] output_language` (default
+繁體中文); `[digest] style_prompt` injects a custom tone/focus into the prompts.
 
 ## Tech Stack
 
