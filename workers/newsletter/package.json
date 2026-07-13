@@ -1,0 +1,7 @@
+{
+  "name": "cyris-newsletter",
+  "private": true,
+  "dependencies": {
+    "postal-mime": "^2.4.4"
+  }
+}

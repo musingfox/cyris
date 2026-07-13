@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+cookie*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime config (copy from *.example)
+cyris.toml
+sources.yaml
+
+# Agent vault runtime data
+agent-vault/daily/
+agent-vault/articles/
+agent-vault/html/
+agent-vault/usage.jsonl
+agent-vault/tracking.yaml
+
+# Docker deployment host output (CYRIS_VAULT_HOST_PATH default)
+/vault/
+
+# Claude Code
+.claude/settings.local.json
+.claude/*.local.md
+
+# Obsidian PM
+.obsidian-pm.yaml
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/

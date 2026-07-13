@@ -1,0 +1,48 @@
+# Cyris Configuration
+# Copy to cyris.toml and fill in your values.
+
+[general]
+digest_schedule = ["08:00", "20:00"]
+timezone = "Asia/Taipei"
+
+[general.notify]
+ntfy_topic = ""
+ntfy_server = "https://ntfy.sh"
+
+[miniflux]
+url = "http://localhost:8080"
+# API key via env: CYRIS_MINIFLUX_API_KEY
+
+[claude]
+model = "claude-sonnet-4-6"
+max_articles_per_digest = 200
+
+[obsidian]
+user_vault_path = "~/Documents/ObsidianVault"
+digest_folder = "Digests"
+
+[agent_vault]
+path = "./agent-vault"
+
+[readwise]
+# Token via env: CYRIS_READWISE_TOKEN
+
+[paywall]
+use_browser_cookies = true
+browser = "chrome"
+cookie_domains = [
+  "stratechery.com",
+  "theinformation.com",
+]
+
+[html_output]
+enabled = false
+output_dir = "agent-vault/html"
+
+[promote]
+# Cloudflare Worker receiving promote-button clicks from the HTML digest
+worker_url = ""
+# Publish HTML digests to Cloudflare Pages after each run
+publish_enabled = false
+pages_project = ""
+# Token via env: CYRIS_PROMOTE_TOKEN

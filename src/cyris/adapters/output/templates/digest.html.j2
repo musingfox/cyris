@@ -1,0 +1,825 @@
+{% macro promote_btn(item) -%}
+{% if promote_enabled and item.urls %}<button class="promote-btn" data-url="{{ item.urls[0] }}" title="加入待讀佇列">+ 深讀</button>{% endif %}
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYRIS // {{ date }} · {{ period }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+    <style>
+        :root {
+            --bg: #07070a;
+            --bg-elev: #0d0d12;
+            --surface: #11111a;
+            --surface-2: #161622;
+            --border: #1f1f2e;
+            --border-strong: #2a2a40;
+            --text: #ebebf2;
+            --text-dim: #8a8aa0;
+            --text-faint: #56566e;
+            --accent: #c6ff3d;
+            --accent-dim: #8aa829;
+            --warn: #ff5b8a;
+            --info: #4ad6ff;
+            --grid: rgba(198, 255, 61, 0.035);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Geist', system-ui, sans-serif;
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(198, 255, 61, 0.08), transparent 70%),
+                linear-gradient(var(--grid) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+            background-size: 100% 100%, 32px 32px, 32px 32px;
+            background-attachment: fixed;
+            color: var(--text);
+            font-size: 16px;
+            line-height: 1.65;
+            font-feature-settings: "ss01", "ss02", "cv11";
+            min-height: 100vh;
+            padding: 24px 16px 80px;
+        }
+
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        /* === MASTHEAD === */
+        .masthead {
+            position: relative;
+            padding: 28px 0 24px;
+            margin-bottom: 48px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .masthead::after {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; bottom: -1px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent);
+            opacity: 0.45;
+        }
+
+        .mast-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            box-shadow:
+                0 0 0 4px rgba(198, 255, 61, 0.12),
+                0 0 24px rgba(198, 255, 61, 0.5);
+            animation: pulse 2.4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .brand-name {
+            font-family: 'Geist Mono', monospace;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+
+        .brand-name strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .meta-strip {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+            text-transform: uppercase;
+            display: flex;
+            gap: 18px;
+            align-items: center;
+        }
+
+        .meta-strip span.live::before {
+            content: "●";
+            color: var(--accent);
+            margin-right: 6px;
+            animation: pulse 2.4s ease-in-out infinite;
+        }
+
+        .headline-block {
+            margin-top: 36px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 280px;
+            gap: 48px;
+            align-items: end;
+        }
+
+        .issue-title {
+            font-family: 'Instrument Serif', 'Geist', serif;
+            font-weight: 400;
+            font-size: clamp(56px, 9vw, 120px);
+            line-height: 0.92;
+            letter-spacing: -0.04em;
+            color: var(--text);
+        }
+
+        .issue-title em {
+            font-style: italic;
+            color: var(--accent);
+            font-feature-settings: "ss01";
+        }
+
+        .stats-card {
+            border: 1px solid var(--border);
+            background: var(--surface);
+            padding: 18px 20px;
+            font-family: 'Geist Mono', monospace;
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .stats-card .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px dashed var(--border);
+        }
+
+        .stats-card .row:last-child { border-bottom: none; }
+
+        .stats-card .label {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+        }
+
+        .stats-card .value {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .stats-card .value.hl { color: var(--accent); }
+
+        /* === SECTION HEADERS === */
+        .section {
+            margin-bottom: 64px;
+            scroll-margin-top: 24px;
+        }
+
+        .section-tag {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            color: var(--text-faint);
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
+
+        .section-tag::before {
+            content: "";
+            width: 24px;
+            height: 1px;
+            background: var(--accent);
+        }
+
+        .section-tag .id {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .section-heading {
+            font-family: 'Geist', sans-serif;
+            font-size: clamp(28px, 3.5vw, 40px);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            line-height: 1.05;
+            margin-bottom: 28px;
+            color: var(--text);
+        }
+
+        .section-description {
+            color: var(--text-dim);
+            font-size: 15px;
+            margin-bottom: 24px;
+            max-width: 70ch;
+        }
+
+        /* === LEAD STORY === */
+        .lead-story {
+            position: relative;
+            border: 1px solid var(--border);
+            background: linear-gradient(180deg, var(--surface) 0%, var(--bg-elev) 100%);
+            padding: 40px 44px;
+            margin-bottom: 56px;
+            overflow: hidden;
+        }
+
+        .lead-story::before {
+            content: "TOP STORY";
+            position: absolute;
+            top: 20px;
+            right: 28px;
+            font-family: 'Geist Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 0.22em;
+            color: var(--accent);
+            border: 1px solid var(--accent-dim);
+            padding: 4px 10px;
+            background: rgba(198, 255, 61, 0.05);
+        }
+
+        .lead-story::after {
+            content: "";
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: var(--accent);
+            box-shadow: 0 0 24px var(--accent);
+        }
+
+        .lead-story h2 {
+            font-family: 'Geist', sans-serif;
+            font-size: clamp(32px, 4vw, 52px);
+            font-weight: 600;
+            line-height: 1.05;
+            letter-spacing: -0.025em;
+            margin-bottom: 20px;
+            max-width: 24ch;
+        }
+
+        .lead-story h2 a {
+            color: var(--text);
+            text-decoration: none;
+            background: none;
+            border: none;
+            transition: color 0.2s;
+        }
+
+        .lead-story h2 a:hover { color: var(--accent); }
+
+        .lead-story .summary {
+            font-size: 17px;
+            line-height: 1.7;
+            color: var(--text);
+            max-width: 70ch;
+            margin-bottom: 28px;
+        }
+
+        .lead-story .meta {
+            font-family: 'Geist Mono', monospace;
+            font-size: 12px;
+            color: var(--text-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            align-items: center;
+            padding-top: 20px;
+            border-top: 1px dashed var(--border-strong);
+        }
+
+        /* === FEATURED GRID === */
+        .featured-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+            gap: 1px;
+            background: var(--border);
+            margin-bottom: 56px;
+            border: 1px solid var(--border);
+        }
+
+        .featured-item {
+            background: var(--bg-elev);
+            padding: 28px;
+            transition: background 0.2s;
+            position: relative;
+        }
+
+        .featured-item:hover {
+            background: var(--surface);
+        }
+
+        .featured-item h3 {
+            font-family: 'Geist', sans-serif;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.015em;
+            line-height: 1.2;
+            margin-bottom: 12px;
+        }
+
+        .featured-item h3 a {
+            color: var(--text);
+            border: none;
+            background: none;
+        }
+
+        .featured-item h3 a:hover { color: var(--accent); }
+
+        .featured-item .summary {
+            font-size: 15px;
+            line-height: 1.65;
+            color: var(--text-dim);
+            margin-bottom: 18px;
+        }
+
+        .featured-item .meta {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            color: var(--text-faint);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+
+        /* === SCORE / META PILLS === */
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid var(--border-strong);
+            padding: 2px 8px;
+            background: var(--surface-2);
+            color: var(--text-dim);
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+        }
+
+        .pill.score {
+            border-color: var(--accent-dim);
+            color: var(--accent);
+            background: rgba(198, 255, 61, 0.06);
+        }
+
+        .source-tag {
+            color: var(--text-dim);
+        }
+
+        /* === NEWS CLUSTERS === */
+        .news-cluster {
+            border-left: 2px solid var(--border-strong);
+            padding: 18px 0 18px 22px;
+            margin-bottom: 20px;
+            transition: border-color 0.2s;
+        }
+
+        .news-cluster:hover {
+            border-left-color: var(--accent);
+        }
+
+        .news-cluster h4 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin-bottom: 10px;
+            color: var(--text);
+        }
+
+        .news-cluster .summary {
+            font-size: 15px;
+            color: var(--text-dim);
+            line-height: 1.65;
+        }
+
+        /* === ARTICLE ITEM (Thematic) === */
+        .thematic-block {
+            margin-bottom: 36px;
+        }
+
+        .thematic-block h3 {
+            font-family: 'Geist', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.015em;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            color: var(--text);
+        }
+
+        .thematic-block h3::before {
+            content: "▸";
+            color: var(--accent);
+            font-size: 14px;
+        }
+
+        .article-item {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .article-item:last-child { border-bottom: none; }
+
+        .article-item h4 {
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1.35;
+            margin-bottom: 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .article-item h4 a {
+            color: var(--text);
+            border: none;
+            background: none;
+        }
+
+        .article-item h4 a:hover { color: var(--accent); }
+
+        .article-item .summary {
+            font-size: 15px;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+            line-height: 1.65;
+        }
+
+        .article-item .meta {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            color: var(--text-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* === ATTENTION (2-col) === */
+        .attention-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 24px;
+        }
+
+        .attention-item {
+            padding: 16px 18px;
+            background: var(--bg-elev);
+            border: 1px solid var(--border);
+            transition: border-color 0.2s;
+        }
+
+        .attention-item:hover { border-color: var(--border-strong); }
+
+        .attention-item h5 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.005em;
+        }
+
+        .attention-item h5 a {
+            color: var(--text);
+            border: none;
+            background: none;
+        }
+
+        .attention-item h5 a:hover { color: var(--accent); }
+
+        .attention-item .snippet {
+            font-size: 13px;
+            color: var(--text-dim);
+            line-height: 1.55;
+            margin-bottom: 10px;
+        }
+
+        .attention-item .meta {
+            font-family: 'Geist Mono', monospace;
+            font-size: 10px;
+            color: var(--text-faint);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        /* === HEADLINES (compact terminal-list) === */
+        .headlines-compact {
+            border: 1px solid var(--border);
+            background: var(--bg-elev);
+            padding: 4px 0;
+        }
+
+        .headline-item {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+            padding: 10px 22px;
+            font-size: 14px;
+            line-height: 1.5;
+            border-bottom: 1px dashed var(--border);
+            transition: background 0.15s;
+        }
+
+        .headline-item:hover { background: var(--surface); }
+        .headline-item:last-child { border-bottom: none; }
+
+        .headline-item .idx {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            color: var(--accent-dim);
+            min-width: 36px;
+            letter-spacing: 0.05em;
+        }
+
+        .headline-item .text { flex: 1; color: var(--text); }
+
+        .headline-item .text a {
+            color: inherit;
+            border: none;
+            background: none;
+        }
+
+        .headline-item .text a:hover { color: var(--accent); }
+
+        /* === FOOTER === */
+        .footer {
+            margin-top: 80px;
+            padding-top: 32px;
+            border-top: 1px solid var(--border);
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            color: var(--text-faint);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 18px;
+            align-items: center;
+        }
+
+        .footer a {
+            color: var(--text-dim);
+            border: none;
+            background: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover { color: var(--accent); }
+
+        /* === GENERIC LINK === */
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            background: none;
+            border: none;
+        }
+
+        a:hover { color: var(--text); }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 880px) {
+            body { padding: 16px 12px 60px; }
+            .headline-block { grid-template-columns: 1fr; gap: 24px; }
+            .stats-card { max-width: 100%; }
+            .lead-story { padding: 28px 24px; }
+            .lead-story::before { top: 14px; right: 16px; font-size: 9px; }
+            .featured-grid { grid-template-columns: 1fr; }
+            .attention-list { grid-template-columns: 1fr; }
+            .section { margin-bottom: 48px; }
+            .meta-strip { gap: 12px; font-size: 10px; }
+        }
+        .promote-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid var(--border-strong);
+            padding: 2px 8px;
+            background: var(--surface-2);
+            color: var(--text-dim);
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+        }
+        .promote-btn:hover { color: var(--text); }
+        .promote-btn.done { color: var(--accent, #7fd18c); pointer-events: none; }
+        .promote-btn.error { color: #e06c75; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="masthead">
+            <div class="mast-row">
+                <div class="brand">
+                    <div class="brand-mark"></div>
+                    <div class="brand-name"><strong>CYRIS</strong> // Daily Digest</div>
+                </div>
+                <div class="meta-strip">
+                    <span class="live">Live</span>
+                    <span>{{ date }}</span>
+                    <span>{{ period | upper }}</span>
+                </div>
+            </div>
+            <div class="headline-block">
+                <h1 class="issue-title">Signal<em>/</em>Noise</h1>
+                <aside class="stats-card">
+                    <div class="row">
+                        <span class="label">Sources</span>
+                        <span class="value">{{ sources_processed }}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">Received</span>
+                        <span class="value">{{ articles_received }}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">Included</span>
+                        <span class="value hl">{{ articles_included }}</span>
+                    </div>
+                    {% if triage_pending_count %}
+                    <div class="row">
+                        <span class="label">Triage</span>
+                        <span class="value">{{ triage_pending_count }} awaiting triage</span>
+                    </div>
+                    {% endif %}
+                </aside>
+            </div>
+        </header>
+
+        <main>
+            {% if lead_story %}
+            <article class="lead-story">
+                <h2>
+                    {% if lead_story.urls %}<a href="{{ lead_story.urls[0] }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
+                </h2>
+                <p class="summary">{{ lead_story.summary }}</p>
+                <div class="meta">
+                    {% if lead_story.score %}<span class="pill score">Score: {{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
+                    <span class="source-tag">Source: {{ lead_story.sources | join(' · ') }}</span>
+                    {% if lead_story.urls %}<a href="{{ lead_story.urls[0] }}" target="_blank" rel="noopener">Read more →</a>{% endif %}
+                    {{ promote_btn(lead_story) }}
+                </div>
+            </article>
+            {% endif %}
+
+            {% if featured_articles %}
+            <section class="section">
+                <div class="section-tag"><span class="id">02</span><span>Featured</span></div>
+                <div class="featured-grid">
+                    {% for item in featured_articles %}
+                    <article class="featured-item">
+                        <h3>{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
+                        <p class="summary">{{ item.summary }}</p>
+                        <div class="meta">
+                            {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
+                            {% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {{ promote_btn(item) }}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if news_clusters %}
+            <section class="section">
+                <div class="section-tag"><span class="id">03</span><span>News Clusters</span></div>
+                <h2 class="section-heading">News Clusters</h2>
+                {% for cluster in news_clusters %}
+                <div class="news-cluster">
+                    <h4>{{ cluster.heading }}</h4>
+                    {% for item in cluster.items %}
+                    <div class="summary">{{ item.summary }}</div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if thematic_summaries %}
+            <section class="section">
+                <div class="section-tag"><span class="id">04</span><span>Thematic Summaries</span></div>
+                <h2 class="section-heading">Thematic Summaries</h2>
+                {% for sec in thematic_summaries %}
+                <div class="thematic-block">
+                    <h3>{{ sec.heading }}</h3>
+                    {% if sec.description %}<p class="section-description">{{ sec.description }}</p>{% endif %}
+                    {% for item in sec.items %}
+                    <article class="article-item">
+                        <h4>{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
+                        <p class="summary">{{ item.summary }}</p>
+                        <div class="meta">
+                            {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
+                            {% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {{ promote_btn(item) }}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if attention_sections %}
+            <section class="section">
+                <div class="section-tag"><span class="id">05</span><span>Attention</span></div>
+                <h2 class="section-heading">Attention</h2>
+                {% for sec in attention_sections %}
+                <div class="thematic-block">
+                    <h3>{{ sec.heading }}</h3>
+                    {% if sec.description %}<p class="section-description">{{ sec.description }}</p>{% endif %}
+                    <div class="attention-list">
+                        {% for item in sec.items %}
+                        <article class="attention-item">
+                            <h5>{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h5>
+                            <p class="snippet">{{ item.summary }}</p>
+                            <div class="meta">{{ item.sources | join(' · ') }} {{ promote_btn(item) }}</div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if filtered_headlines %}
+            <section class="section">
+                <div class="section-tag"><span class="id">06</span><span>Headlines</span></div>
+                <h2 class="section-heading">Headlines</h2>
+                <div class="headlines-compact">
+                    {% for item in filtered_headlines %}
+                    <div class="headline-item">
+                        <span class="idx">{{ "%03d" | format(loop.index) }}</span>
+                        <span class="text">{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</span>
+                        {{ promote_btn(item) }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+        </main>
+
+        <footer class="footer">
+            <div>// Generated by Cyris &middot; {{ usage.total_tokens }} tokens &middot; {{ usage.api_calls }} api calls</div>
+            <div><a href="index.html">View archive →</a></div>
+        </footer>
+    </div>
+    {% if promote_enabled %}
+    <script>
+    const PROMOTE_URL = {{ promote_worker_url | tojson }};
+    const PROMOTE_TOKEN = {{ promote_token | tojson }};
+    const DIGEST_DATE = {{ date | tojson }};
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.promote-btn');
+        if (!btn) return;
+        btn.disabled = true;
+        try {
+            const res = await fetch(PROMOTE_URL + '/promote', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + PROMOTE_TOKEN,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: btn.dataset.url, digest_date: DIGEST_DATE }),
+            });
+            if (!res.ok) throw new Error(res.status);
+            btn.classList.remove('error');
+            btn.classList.add('done');
+            btn.textContent = '✓ 已加入';
+        } catch {
+            btn.classList.add('error');
+            btn.textContent = '✗ 重試';
+            btn.disabled = false;
+        }
+    });
+    </script>
+    {% endif %}
+</body>
+</html>

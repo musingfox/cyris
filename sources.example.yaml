@@ -1,0 +1,63 @@
+# Source Configuration
+# Each source defines an RSS feed or newsletter with its processing tier.
+#
+# Tiers:
+#   filter    - High-volume general news. Most articles discarded; only significant headlines kept.
+#   summarize - High-quality sources. Each article gets a paragraph summary.
+#
+# Copy this file to sources.yaml and customize with your own feeds.
+# The entries below are a representative sample covering every source shape:
+# summarize/filter tiers, a paywalled feed, a newsletter matched by email,
+# and language overrides for non-English sources.
+
+defaults:
+  tier: filter
+  language: auto  # auto-detect, or force: zh, en, ja
+
+sources:
+  # --- Summarize tier: high-quality, read every issue ---
+
+  - name: "Stratechery"
+    url: "https://stratechery.com/feed/"
+    tier: summarize
+    tags: [tech, business-strategy]
+    paywall: true  # fetch full text via browser cookies (see cyris.toml [paywall])
+
+  - name: "Benedict Evans Newsletter"
+    type: newsletter  # ingested from email, not RSS
+    email_match: "from:list@benedictevans.com"
+    tier: summarize
+    tags: [tech, trends]
+
+  - name: "ByteByteGo Newsletter"
+    url: "https://blog.bytebytego.com/feed"
+    tier: summarize
+    tags: [tech, system-design]
+
+  - name: "區塊勢"
+    url: "https://www.blocktrend.today/feed"
+    tier: summarize
+    tags: [crypto, tech]
+    language: zh  # override auto-detect for reliably-Chinese feeds
+
+  # --- Filter tier: high-volume, heavy filtering ---
+
+  - name: "TechCrunch"
+    url: "https://techcrunch.com/feed/"
+    tier: filter
+    tags: [tech, startup]
+
+  - name: "The Verge"
+    url: "https://www.theverge.com/rss/index.xml"
+    tier: filter
+    tags: [tech, consumer]
+
+  - name: "報導者"
+    url: "https://www.twreporter.org/a/rss2.xml"
+    tier: filter
+    tags: [news, investigative]
+    language: zh
+
+# Feed title → source name overrides, for when a feed's <title> doesn't match `name`.
+aliases:
+  "Stratechery by Ben Thompson": "Stratechery"

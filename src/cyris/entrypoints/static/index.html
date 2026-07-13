@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Cyris Triage</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Cyris Triage</h1>
+    <div id="counter"></div>
+  </header>
+
+  <nav id="filter-tabs">
+    <button class="tab active" data-state="pending">Pending <span class="badge" id="count-pending">-</span></button>
+    <button class="tab" data-state="accepted">Accepted <span class="badge" id="count-accepted">-</span></button>
+    <button class="tab" data-state="rejected">Rejected <span class="badge" id="count-rejected">-</span></button>
+    <button class="tab" data-state="all">All <span class="badge" id="count-all">-</span></button>
+  </nav>
+
+  <main id="deck"></main>
+
+  <div id="empty-state" class="hidden">
+    <p>No pending articles</p>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <div id="undo-toast" class="hidden">
+    <span id="undo-message"></span>
+    <button id="undo-button">Undo</button>
+  </div>
+
+  <footer id="swipe-footer">
+    <span class="hint">&larr; reject</span>
+    <span class="hint">accept &rarr;</span>
+  </footer>
+
+  <footer id="history-footer" class="hidden">
+    <button id="prev-btn" class="nav-btn">&larr; Previous</button>
+    <span class="read-only-hint">Use arrow keys to navigate</span>
+    <button id="next-btn" class="nav-btn">Next &rarr;</button>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

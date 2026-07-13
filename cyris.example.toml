@@ -1,0 +1,40 @@
+# Cyris Configuration
+# Copy to cyris.toml and fill in your values.
+
+[general]
+digest_schedule = ["08:00", "20:00"]
+timezone = "Asia/Taipei"
+
+[general.notify]
+ntfy_topic = ""  # Set a topic name to enable ntfy.sh notifications
+ntfy_server = "https://ntfy.sh"
+
+[miniflux]
+url = "http://localhost:8080"
+# API key via env: CYRIS_MINIFLUX_API_KEY
+
+[llm_provider]
+# provider: "anthropic" (default, key via ANTHROPIC_API_KEY) or "gemini" (key via GEMINI_API_KEY)
+# provider = "gemini" pairs with e.g. model = "gemini-2.5-flash"
+model = "claude-sonnet-4-6"
+
+[digest]
+max_articles_per_digest = 200
+
+[obsidian]
+user_vault_path = "~/Documents/ObsidianVault"
+digest_folder = "Digests"
+
+[agent_vault]
+path = "./agent-vault"
+
+[readwise]
+# Token via env: CYRIS_READWISE_TOKEN
+
+[paywall]
+use_browser_cookies = true
+browser = "chrome"
+cookie_domains = [
+  "stratechery.com",
+  "theinformation.com",
+]

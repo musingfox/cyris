@@ -1,0 +1,7 @@
+name = "cyris-promote"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+kv_namespaces = [
+  { binding = "PROMOTIONS", id = "3d0c23d0e8434434b5fb2d105ec145b6" }
+]

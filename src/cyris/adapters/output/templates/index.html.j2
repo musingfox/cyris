@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYRIS // Archive</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+    <style>
+        :root {
+            --bg: #07070a;
+            --bg-elev: #0d0d12;
+            --surface: #11111a;
+            --border: #1f1f2e;
+            --border-strong: #2a2a40;
+            --text: #ebebf2;
+            --text-dim: #8a8aa0;
+            --text-faint: #56566e;
+            --accent: #c6ff3d;
+            --accent-dim: #8aa829;
+            --grid: rgba(198, 255, 61, 0.035);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Geist', system-ui, sans-serif;
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(198, 255, 61, 0.08), transparent 70%),
+                linear-gradient(var(--grid) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+            background-size: 100% 100%, 32px 32px, 32px 32px;
+            background-attachment: fixed;
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 24px 16px 80px;
+        }
+
+        .container { max-width: 960px; margin: 0 auto; }
+
+        .masthead {
+            padding: 28px 0 24px;
+            margin-bottom: 56px;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        .masthead::after {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; bottom: -1px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent);
+            opacity: 0.45;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 32px;
+        }
+
+        .brand-mark {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            box-shadow: 0 0 0 4px rgba(198, 255, 61, 0.12), 0 0 24px rgba(198, 255, 61, 0.5);
+            animation: pulse 2.4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .brand-name {
+            font-family: 'Geist Mono', monospace;
+            font-size: 13px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+
+        .brand-name strong { color: var(--text); font-weight: 600; }
+
+        h1 {
+            font-family: 'Instrument Serif', serif;
+            font-weight: 400;
+            font-size: clamp(56px, 9vw, 110px);
+            line-height: 0.95;
+            letter-spacing: -0.04em;
+        }
+
+        h1 em {
+            font-style: italic;
+            color: var(--accent);
+        }
+
+        .subtitle {
+            margin-top: 18px;
+            font-family: 'Geist Mono', monospace;
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            color: var(--text-faint);
+            text-transform: uppercase;
+        }
+
+        .digest-list {
+            list-style: none;
+            border: 1px solid var(--border);
+            background: var(--bg-elev);
+        }
+
+        .digest-item {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+
+        .digest-item:last-child { border-bottom: none; }
+
+        .digest-item:hover { background: var(--surface); }
+
+        .digest-item a {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 24px;
+            padding: 20px 28px;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .digest-date {
+            font-family: 'Geist Mono', monospace;
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .digest-period {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--text-faint);
+            justify-self: start;
+        }
+
+        .digest-arrow {
+            font-family: 'Geist Mono', monospace;
+            font-size: 14px;
+            color: var(--text-faint);
+            transition: color 0.15s, transform 0.15s;
+        }
+
+        .digest-item:hover .digest-arrow {
+            color: var(--accent);
+            transform: translateX(4px);
+        }
+
+        .empty-message {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-dim);
+            border: 1px dashed var(--border-strong);
+            font-family: 'Geist Mono', monospace;
+            font-size: 13px;
+            letter-spacing: 0.04em;
+        }
+
+        .empty-message code {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            color: var(--accent);
+        }
+
+        .footer {
+            margin-top: 56px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 720px) {
+            .digest-item a {
+                grid-template-columns: 1fr auto;
+                gap: 8px 16px;
+                padding: 16px 18px;
+            }
+            .digest-period { grid-column: 1; }
+            .digest-arrow { grid-column: 2; grid-row: 1 / span 2; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="masthead">
+            <div class="brand">
+                <div class="brand-mark"></div>
+                <div class="brand-name"><strong>CYRIS</strong> // Archive</div>
+            </div>
+            <h1>Digest <em>Archive</em></h1>
+            <div class="subtitle">All past issues · sorted newest first</div>
+        </header>
+
+        {% if digests %}
+        <ul class="digest-list">
+            {% for digest in digests %}
+            <li class="digest-item">
+                <a href="{{ digest.filename }}">
+                    <span class="digest-date">{{ digest.date }}</span>
+                    <span class="digest-period">{{ digest.period }}</span>
+                    <span class="digest-arrow">→</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-message">
+            No digests yet. Run <code>cyris run</code> or <code>cyris digest</code> to generate your first digest.
+        </div>
+        {% endif %}
+
+        <div class="footer">// CYRIS &middot; local-first information agent</div>
+    </div>
+</body>
+</html>

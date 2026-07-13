@@ -1,0 +1,140 @@
+"""Tests for data models."""
+
+from datetime import UTC, datetime
+
+import pytest
+from pydantic import ValidationError
+
+from cyris.domain.models import Article, DigestContent, SourceConfig, Tier
+
+
+class TestTier:
+    def test_filter_value(self):
+        assert Tier.FILTER == "filter"
+
+    def test_summarize_value(self):
+        assert Tier.SUMMARIZE == "summarize"
+
+    def test_invalid_tier(self):
+        with pytest.raises(ValueError):
+            Tier("invalid")
+
+
+class TestArticle:
+    def test_valid_article(self):
+        article = Article(
+            id=1,
+            title="Test Article",
+            url="https://example.com/article",
+            content="Article content here",
+            published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
+            source_name="TechCrunch",
+            source_tier=Tier.FILTER,
+        )
+        assert article.id == 1
+        assert article.source_tier == Tier.FILTER
+        assert article.source_tags == []
+        assert article.author is None
+
+    def test_article_with_all_fields(self):
+        article = Article(
+            id=2,
+            title="Full Article",
+            url="https://example.com/full",
+            content="Full content",
+            author="Jane Doe",
+            published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
+            source_name="Stratechery",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech", "strategy"],
+        )
+        assert article.author == "Jane Doe"
+        assert article.source_tags == ["tech", "strategy"]
+
+    def test_article_missing_required_field(self):
+        with pytest.raises(ValidationError):
+            Article(
+                id=1,
+                title="Missing URL",
+                content="Content",
+                published_at=datetime.now(tz=UTC),
+                source_name="Test",
+                source_tier=Tier.FILTER,
+            )
+
+
+class TestSourceConfig:
+    def test_defaults(self):
+        source = SourceConfig(name="Test Source")
+        assert source.tier == Tier.FILTER
+        assert source.type == "rss"
+        assert source.language == "auto"
+        assert source.tags == []
+        assert source.paywall is False
+
+    def test_summarize_source(self):
+        source = SourceConfig(
+            name="Stratechery",
+            url="https://stratechery.com/feed/",
+            tier=Tier.SUMMARIZE,
+            paywall=True,
+        )
+        assert source.tier == Tier.SUMMARIZE
+        assert source.paywall is True
+
+
+class TestDigestContent:
+    def test_minimal_digest(self):
+        digest = DigestContent(
+            date="2026-03-17",
+            period="morning",
+            sources_processed=10,
+            articles_received=50,
+            articles_included=5,
+        )
+        assert digest.thematic_summaries == []
+        assert digest.attention_sections == []
+        assert digest.filtered_headlines == []
+        assert digest.tracked_updates is None
+
+    def test_full_digest(self, sample_digest_content):
+        assert sample_digest_content.articles_included == 3
+        assert len(sample_digest_content.thematic_summaries) == 1
+        assert len(sample_digest_content.filtered_headlines) == 2
+
+    def test_attention_sections_default(self):
+        digest = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=5,
+            articles_received=20,
+            articles_included=10,
+        )
+        assert digest.attention_sections == []
+
+    def test_attention_sections_explicit(self):
+        from cyris.domain.models import DigestItem, DigestSection
+
+        sections = [
+            DigestSection(
+                heading="tech",
+                items=[
+                    DigestItem(
+                        title="Article 1",
+                        summary="",
+                        sources=["TechNews"],
+                        urls=["https://example.com/1"],
+                    )
+                ],
+            )
+        ]
+        digest = DigestContent(
+            date="2026-04-10",
+            period="evening",
+            sources_processed=3,
+            articles_received=15,
+            articles_included=5,
+            attention_sections=sections,
+        )
+        assert len(digest.attention_sections) == 1
+        assert digest.attention_sections[0].heading == "tech"

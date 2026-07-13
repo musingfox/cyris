@@ -1,0 +1,20 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+# secrets & per-user config (injected via compose env / volume mount)
+.env
+cyris.toml
+sources.yaml
+tracking.yaml
+# runtime data (volume-mounted)
+agent-vault
+vault
+# not needed in image
+tests
+docs
+workers
+*.md
+!PRD.md

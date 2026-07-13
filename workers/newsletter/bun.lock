@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "cyris-newsletter",
+      "dependencies": {
+        "postal-mime": "^2.4.4",
+      },
+    },
+  },
+  "packages": {
+    "postal-mime": ["postal-mime@2.7.5", "", {}, "sha512-GNEXKvWFQnbgO5NlrGzVa0FmWzBZ24PersAWErttSg1Hjpf0ATxTwS5DOMGaOpTG6bUh5cTr7xi0jAD942wCJA=="],
+  }
+}
