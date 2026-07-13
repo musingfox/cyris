@@ -38,6 +38,31 @@ cp .env.example .env               # add API keys
 uv run cyris run                   # full pipeline (fetch → score → digest)
 ```
 
+### Miniflux quickstart (first run)
+
+cyris fetches from Miniflux, so you need a running instance and an API key before
+`cyris run` has anything to pull. The compose file bundles Miniflux + Postgres — start
+just those two and leave cyris on the host:
+
+```bash
+docker compose up -d db miniflux    # Miniflux UI → http://localhost:8085
+```
+
+1. Open http://localhost:8085 and log in with `admin` / `cyris2026`
+   (set by `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `docker-compose.yml` — change them
+   before exposing the port).
+2. **Settings → API Keys → Create a new API key**, copy the token.
+3. Add feeds: **Feeds → Add subscription** (paste an RSS URL). These are what cyris
+   ingests.
+4. Wire cyris to Miniflux:
+   - `.env`: `CYRIS_MINIFLUX_API_KEY=<the token from step 2>`
+   - `cyris.toml`: set `[miniflux] url = "http://localhost:8085"` (the host port; the
+     `8080` in the example is the in-container port).
+
+Then `uv run cyris run` fetches from those feeds. (Running the *full* stack in Docker
+instead — see [Docker Deployment](#docker-deployment) — wires the URL automatically via
+`CYRIS_MINIFLUX_URL=http://miniflux:8080`, so you only do steps 1–3.)
+
 ## Docker Deployment
 
 Run the full stack (Miniflux + cyris) in containers — no macOS/launchd dependency:
