@@ -85,26 +85,56 @@ cyris articles clean          Delete old rejected articles
 
 ## Architecture
 
+Clean architecture — dependencies point inward, all IO lives at the edges:
+
 ```
-Miniflux / Newsletters
-        │
-        ▼
-   Fetch & Store ─── article_store (JSON, dedup by URL)
-        │
-        ▼
-   AI Scoring ────── Claude API rates article relevance
-        │
-   ┌────┴─────┐
-   ▼          ▼
-Digest     Triage UI
-Pipeline   (swipe web UI)
-   │
-   ▼
-Obsidian Markdown ── user vault digest note
-   │
-   ▼
-Learn Loop ───────── feedback → preference profile + embeddings
+entrypoints/     CLI + web servers (parse args, call a use case)
+    │
+service_layer/   use cases + Protocols (ports.py)   ← business logic
+    │
+domain/          pure models & rules (no IO)
+    ▲
+adapters/        concrete IO implementing the Protocols
+    │
+bootstrap.py     composition root: wires adapters into a Deps container
 ```
+
+Pipeline: **Fetch → Store → Score → Process → Output**.
+`service_layer/run_digest.py` orchestrates it; the CLI only parses args and
+calls it via `bootstrap.build_deps`. See
+[`docs/architecture.md`](docs/architecture.md) for the full core↔adapter diagram.
+
+### Adapters — the extension points
+
+Everything pluggable lives in `adapters/`, wired in `bootstrap.build_deps()`.
+Three Protocols in `service_layer/ports.py` are the clean seams:
+
+| Kind | Protocol | Existing implementations | Add one to… |
+|------|----------|--------------------------|-------------|
+| **Fetch source** (input) | `FetchSource` | `MinifluxSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
+| **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient` | add an AI provider |
+| **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
+| **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md), `HtmlDigestWriter`, `publish` (Cloudflare Pages), `notify` (Discord/ntfy) | send the digest somewhere new |
+
+Core code (`service_layer/` + `domain/`) never changes when you swap or add an
+adapter — that is the point of the Protocol seams.
+
+#### Example: add a fetch source
+
+```python
+# 1. implement the FetchSource Protocol (service_layer/ports.py)
+class MySource:
+    async def fetch_articles(self, after, before, sources,
+                             aliases=None, limit=200, cookies=None) -> list[Article]: ...
+    async def mark_as_read(self, article_ids) -> None: ...   # no-op if unsupported
+    async def health_check(self) -> bool: ...
+
+# 2. register it in bootstrap.build_deps()
+fetch_sources.append(MySource(...))
+```
+
+The pipeline picks it up automatically. An **output sink** is the same shape:
+write the sink, add it to the `Deps` container, call it from `run_digest`.
 
 ### Source Tiers
 
@@ -125,13 +155,24 @@ parsed mail in KV for `cyris run` to pull. Deploy + setup: [`workers/newsletter/
 pending → scored → routed → accepted / rejected / awaiting_triage
 ```
 
-## Development
+## Contributing
 
 ```bash
-uv run ruff check src/ tests/    # lint
-uv run ruff format src/ tests/   # format
-uv run pytest                    # test (480 tests)
+uv sync --dev
+uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/   # lint
+uv run pytest                                                             # tests
 ```
+
+Conventions:
+- **Adapters**: new IO goes in `adapters/` behind a Protocol (see above), never
+  in `service_layer/` or `domain/`.
+- **Tests**: inject `FakeLLM` (`tests/fakes.py`) instead of patching the SDK;
+  patch where a symbol is *used*, not defined; give external resource names
+  unique per-test suffixes.
+- **Style**: ruff (line length 100); Pydantic v2 for all models and config.
+- **Commits**: keep them atomic; lint + tests green before a PR.
+
+Digest output uses 繁體中文 section headings with mixed-language content.
 
 ## Tech Stack
 

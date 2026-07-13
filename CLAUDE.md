@@ -96,6 +96,17 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 6. `adapters/output/digest.py` renders the final Obsidian markdown note; `domain/selection.py` layers featured articles by score
 7. `service_layer/learning.py` turns triage/digest feedback into a preference profile + embedding centroid
 
+### Adapter Extension Points
+
+All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or swapping IO, work at these seams — never touch `service_layer/` or `domain/`:
+
+- **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `mark_as_read` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `MinifluxSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource`.
+- **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`.
+- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` satisfies it structurally (no explicit inheritance).
+- **Output sinks** — `DigestWriter`, `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
+
+`ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map: `docs/architecture.md`.
+
 ### CLI Commands
 
 | Command | Description |
