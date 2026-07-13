@@ -1,21 +1,28 @@
-# Cyris Configuration
-# Copy to cyris.toml and fill in your values.
+# Cyris configuration — copy to cyris.toml and fill in your values.
+# Secrets (API keys, tokens) come from the environment / .env, never here.
 
 [general]
-digest_schedule = ["08:00", "20:00"]
+digest_schedule = ["08:00", "20:00"]   # local clock times to run the digest
 timezone = "Asia/Taipei"
+digest_window_hours = 24
 
 [general.notify]
-ntfy_topic = ""
+ntfy_topic = ""                         # set a topic to enable ntfy.sh push
 ntfy_server = "https://ntfy.sh"
+discord_webhook_url = ""                # optional Discord webhook
 
 [miniflux]
 url = "http://localhost:8080"
 # API key via env: CYRIS_MINIFLUX_API_KEY
 
-[claude]
-model = "claude-sonnet-4-6"
-max_articles_per_digest = 200
+[llm_provider]
+# "anthropic" (key via ANTHROPIC_API_KEY) or "gemini" (key via GEMINI_API_KEY)
+provider = "anthropic"
+model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider = "gemini"
+
+[digest]
+max_articles_per_digest = 200           # cap fed into the pipeline
+max_articles_per_digest_output = 15     # cap shown in the digest note
 
 [obsidian]
 user_vault_path = "~/Documents/ObsidianVault"
@@ -24,25 +31,28 @@ digest_folder = "Digests"
 [agent_vault]
 path = "./agent-vault"
 
-[readwise]
-# Token via env: CYRIS_READWISE_TOKEN
+[routing]
+score_threshold = 70                    # featured-article cutoff (0-100)
+summarize_score_threshold = 70
 
 [paywall]
-use_browser_cookies = true
-browser = "chrome"
-cookie_domains = [
-  "stratechery.com",
-  "theinformation.com",
-]
+# Extract paywalled full text using your browser's cookies (local only, no cloud).
+use_browser_cookies = false
+browser = "chrome"                      # chrome | firefox | edge | safari | zen
+cookie_domains = []                     # e.g. ["example.com"]
 
 [html_output]
 enabled = false
 output_dir = "agent-vault/html"
 
 [promote]
-# Cloudflare Worker receiving promote-button clicks from the HTML digest
+# Optional Cloudflare Worker for promote-button clicks (see workers/promote/).
 worker_url = ""
-# Publish HTML digests to Cloudflare Pages after each run
-publish_enabled = false
+publish_enabled = false                 # publish HTML digest to Cloudflare Pages
 pages_project = ""
 # Token via env: CYRIS_PROMOTE_TOKEN
+
+[newsletter]
+# Optional Cloudflare email-ingestion Worker (see workers/newsletter/).
+worker_url = ""
+# Token via env: CYRIS_NEWSLETTER_TOKEN

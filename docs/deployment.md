@@ -77,23 +77,23 @@
 
 ### 阻擋別人跑起來（硬傷，必補）
 
-| 缺口 | 位置 | 修法 |
+| 缺口 | 修法 | 狀態 |
 |------|------|------|
-| 無 LICENSE | README 寫 "Private project" | 選一個授權（MIT/Apache-2.0）|
-| 寫死個人 vault 路徑 | `config.py:117` `~/Documents/ObsidianVault` | 預設改成 repo 內相對路徑或必填 |
-| 預設綁特定付費網域 | `cyris.example.toml`（stratechery/theinformation）| 範本清空成佔位 |
-| 排程綁 macOS | `schedule/launchd.py` | 部署改用 docker/cron，launchd 降級為 macOS 選配 |
-| cookie 綁 macOS 路徑 | `cookies.py:61`（Zen sqlite）| 參數化 / 標為選配（cookie 本次暫緩）|
-| 重複範本命名混亂 | `cyris.example.toml` 與 `cyris.toml.example` | 統一成一個，對齊 README |
-| 硬依賴自架 Miniflux + 個人 worker URL | README Requirements | 文件化為選配，B 方向下 Miniflux 可退場 |
+| 無 LICENSE | AGPL-3.0-or-later + README notice + pyproject metadata | ✅ |
+| 預設綁特定付費網域 | 範本 `cookie_domains = []` 佔位 | ✅ |
+| 重複範本命名混亂 | 統一為 `cyris.toml.example`（修正 `[claude]`→`[llm_provider]`+`[digest]`，去個人化） | ✅ |
+| 排程綁 macOS | Docker 走 supercronic；launchd 留 macOS 選配 | ✅ |
+| 寫死個人 vault 路徑 | `CYRIS_VAULT_PATH` env override；預設仍 `~/Documents/ObsidianVault` | ◐ 部分 |
+| cookie 綁 macOS 路徑（`cookies.py:61`） | 標為選配；容器內自動跳過 | ◐ 暫緩 |
+| 硬依賴自架 Miniflux + 個人 worker URL | README 標選配 | ◐ |
 
 ### 專案品質（開源慣例，應補）
 
-| 缺口 | 現況 | 修法 |
+| 缺口 | 修法 | 狀態 |
 |------|------|------|
-| 無 CI | 只有本地 `.githooks/pre-commit`（`CLAUDECODE=1` 時 skip） | `.github/workflows` 跑 ruff + pytest（已有 ~480 測試，涵蓋佳） |
-| 無 CONTRIBUTING / issue·PR template | 無 `.github/` | 補基本模板 |
-| 缺人類向架構文檔 | `CLAUDE.md` 是給 AI 的、`PRD.md` 是規格 | 本檔 + 一份 ARCHITECTURE.md |
+| 無 CI | `.github/workflows/ci.yml`：ruff check + format + pytest | ✅ |
+| 缺人類向架構文檔 | README 架構+adapter 段 + `docs/architecture.md` | ✅ |
+| 無 CONTRIBUTING / issue·PR template | README Contributing 段（獨立模板未補） | ◐ |
 
 **好消息**：`.env` / `cyris.toml` / `sources.yaml` 皆已 gitignore，個人信箱與 worker URL 未入庫；範本檔（`.env.example`、`sources.example.yaml`、`tracking.example.yaml`）大致齊全；測試涵蓋佳。**核心程式是乾淨的，缺的主要是「去個人化預設 + 部署去 macOS 化 + 開源慣例檔」。**
 
