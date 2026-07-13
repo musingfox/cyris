@@ -5,6 +5,7 @@ description = "AI-powered information digest agent"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
+authors = [{ name = "musingfox" }]
 classifiers = [
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
@@ -29,6 +30,9 @@ paywall = [
 
 [project.scripts]
 cyris = "cyris.entrypoints.cli:app"
+
+[project.urls]
+Repository = "https://github.com/musingfox/cyris"
 
 [build-system]
 requires = ["hatchling"]

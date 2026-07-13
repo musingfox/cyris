@@ -26,7 +26,7 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 
 ```bash
 # Clone and install
-git clone <repo-url> && cd cyris
+git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
 
 # Configure

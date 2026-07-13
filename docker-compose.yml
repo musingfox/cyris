@@ -7,18 +7,18 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgres://miniflux:secret@db/miniflux?sslmode=disable
+      - DATABASE_URL=postgres://miniflux:${POSTGRES_PASSWORD:-secret}@db/miniflux?sslmode=disable
       - RUN_MIGRATIONS=1
       - CREATE_ADMIN=1
       - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=cyris2026
+      - ADMIN_PASSWORD=${MINIFLUX_ADMIN_PASSWORD:-cyris2026}
     restart: unless-stopped
 
   db:
     image: postgres:17-alpine
     environment:
       - POSTGRES_USER=miniflux
-      - POSTGRES_PASSWORD=secret
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
       - POSTGRES_DB=miniflux
     volumes:
       - miniflux-db:/var/lib/postgresql/data
