@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS (via Miniflux) and newsletters, processes them through Claude API with tier-based filtering/summarization, and outputs Obsidian markdown digest notes. See `PRD.md` for full product spec.
+Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS (via Miniflux) and newsletters, processes them through an LLM (Anthropic Claude or Google Gemini) with tier-based filtering/summarization, and outputs Obsidian markdown digest notes.
 
 ## Commands
 

@@ -1,9 +1,10 @@
-# 架構：Core ↔ Adapter 串接
+# Architecture: Core ↔ Adapter Wiring
 
-> 為 dockerize / 上雲決策而畫。凸顯哪些邊界有 Protocol（乾淨可抽換）、哪些是直接注入（上雲要動）。
-> 串接真相來源：`bootstrap.py`（誰注入誰）+ `service_layer/ports.py`（邊界契約）。
+> Drawn for the dockerize / cloud decision. Highlights which boundaries have a Protocol
+> (clean to swap) and which are direct injections (need work to move to the cloud).
+> Source of truth: `bootstrap.py` (who injects what) + `service_layer/ports.py` (boundary contracts).
 
-## 串接圖
+## Wiring diagram
 
 ```mermaid
 flowchart TB
@@ -14,18 +15,18 @@ flowchart TB
     end
 
     subgraph ROOT["Composition Root · bootstrap.py"]
-        DEPS["build_deps → Deps 容器"]
+        DEPS["build_deps → Deps container"]
     end
 
     subgraph CORE["Core · service_layer + domain"]
-        RUN["run_digest 主編排"]
+        RUN["run_digest orchestrator"]
         UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · learning · triage"]
-        DOM["domain 純邏輯: selection 分層選文 · models"]
+        DOM["domain (pure logic): selection · models"]
         RUN --> UC
         RUN --> DOM
     end
 
-    subgraph PORTS["Ports · Protocols（真正 IO 邊界）"]
+    subgraph PORTS["Ports · Protocols (real IO boundaries)"]
         P1["LLMClient"]
         P2["ArticleRepository"]
         P3["FetchSource"]
@@ -51,37 +52,37 @@ flowchart TB
     subgraph EXT["External / IO"]
         MFSVC[("Miniflux + Postgres")]
         API(("Claude / Gemini API"))
-        FS["本機檔案系統"]
+        FS["Local filesystem"]
         VAULT["Obsidian Vault"]
         CFW{{"Cloudflare Workers · KV · Pages"}}
-        BROWSER["瀏覽器 cookies.sqlite"]
+        BROWSER["Browser cookies.sqlite"]
         DISC{{"Discord / ntfy"}}
     end
 
     CLI --> DEPS
     TRI --> DEPS
     WH --> DEPS
-    DEPS -. 注入 .-> CORE
+    DEPS -. inject .-> CORE
 
     UC -->|Protocol| P3
     UC -->|Protocol| P1
     RUN -->|Protocol| P2
 
-    P1 -. 實作 .-> LLM
-    P2 -. 實作 .-> STORE
-    P3 -. 實作 .-> MF
-    P3 -. 實作 .-> NLA
-    P3 -. 實作 .-> CFNL
+    P1 -. impl .-> LLM
+    P2 -. impl .-> STORE
+    P3 -. impl .-> MF
+    P3 -. impl .-> NLA
+    P3 -. impl .-> CFNL
 
-    RUN -->|直接注入·無 Protocol| WRITER
-    RUN -->|直接注入·無 Protocol| HTML
-    RUN -->|直接注入·無 Protocol| PUB
-    RUN -->|直接注入·無 Protocol| SYNC
-    RUN -->|直接注入·無 Protocol| USAGE
-    RUN -->|直接注入·無 Protocol| EVT
-    RUN -->|直接注入·無 Protocol| TRKY
-    RUN -->|直接注入·無 Protocol| NOTI
-    UC -->|直接注入| COOK
+    RUN -->|direct inject · no Protocol| WRITER
+    RUN -->|direct inject · no Protocol| HTML
+    RUN -->|direct inject · no Protocol| PUB
+    RUN -->|direct inject · no Protocol| SYNC
+    RUN -->|direct inject · no Protocol| USAGE
+    RUN -->|direct inject · no Protocol| EVT
+    RUN -->|direct inject · no Protocol| TRKY
+    RUN -->|direct inject · no Protocol| NOTI
+    UC -->|direct inject| COOK
 
     LLM --> API
     STORE --> FS
@@ -108,31 +109,38 @@ flowchart TB
     class CFNL,PUB,SYNC,CFW cloud;
 ```
 
-**圖例**：🟢 Protocol 邊界（抽換乾淨）　🟠 直接注入的本機檔案 sink（上雲要動、無 Protocol 保護）　🔴 本機/macOS 硬綁　🔵 已雲端
+**Legend**: 🟢 Protocol boundary (clean to swap)　🟠 directly-injected local-file sink (needs work to move to the cloud, no Protocol)　🔴 local/macOS-bound　🔵 already cloud
 
-## 關鍵：兩種串接方式
+## Key: two wiring strengths
 
-`bootstrap.build_deps()` 把所有 adapter 塞進 `Deps` 容器注入 core。但 core 取用它們有**兩種強度**：
+`bootstrap.build_deps()` packs every adapter into the `Deps` container and injects it into
+the core. But the core consumes them at **two strengths**:
 
-| 串接方式 | 對象 | 抽換難度 |
-|----------|------|----------|
-| **經 Protocol**（`ports.py`）| `LLMClient`、`ArticleRepository`（ArticleStore 結構化滿足）、`FetchSource` | **低**——換實作不動 core，契約已定 |
-| **直接注入具體實作**（無 Protocol）| DigestWriter、HtmlDigestWriter、publish、sync_promotions、EventStore、tracking、append_usage、cookies、notify | **中**——core 直接呼叫，換後端需先抽 Protocol 或改實作 |
+| Wiring | Targets | Swap difficulty |
+|--------|---------|-----------------|
+| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository` (ArticleStore satisfies it structurally), `FetchSource` | **Low** — swapping the implementation doesn't touch the core; the contract is fixed |
+| **Direct concrete injection** (no Protocol) | DigestWriter, HtmlDigestWriter, publish, sync_promotions, EventStore, tracking, append_usage, cookies, notify | **Medium** — the core calls them directly; swapping the backend first needs a Protocol or an implementation change |
 
-`ports.py` 註解點明設計意圖：「Only genuine IO boundaries get a Protocol；single-implementation components are injected directly.」——目前這些 sink 只有一種實作，所以沒抽 Protocol。上雲要加第二種實作（R2/D1）時，這是第一個要補的邊界。
+The `ports.py` comment states the design intent: "Only genuine IO boundaries get a Protocol;
+single-implementation components are injected directly." These sinks currently have a single
+implementation, so no Protocol was extracted. When the cloud move needs a second implementation
+(R2/D1), this is the first boundary to add.
 
-## Dockerize / 上雲抽換點對照
+## Dockerize / cloud swap-point map
 
-| 元件 | 現況 | Dockerize（本地） | 上雲（Cloudflare） |
-|------|------|-------------------|--------------------|
-| ArticleStore 🟠 | JSON @ 本機 | volume mount，不改 | 抽 Protocol → R2/D1 實作 |
-| EventStore / usage / tracking 🟠 | 檔案 | volume mount，不改 | 同上，換 R2/D1 |
-| DigestWriter 🟠 | 寫 Obsidian vault | vault volume mount | 停用（改 HtmlDigestWriter→R2/Pages）|
-| LLMClient 🟢 | Anthropic/Gemini | 不改 | 不改（本來就雲端）|
-| FetchSource · Miniflux 🔴 | 自架 Docker | compose 已有 | 退場，cyris 自抓 RSS |
-| FetchSource · CloudflareNewsletter 🔵 | Worker+KV | 不改 | 不改 |
-| load_cookies 🔴 | 讀瀏覽器 sqlite | mount 宿主 cookie（暫緩）| 失去自動保鮮（暫緩）|
-| publish / sync_promotions 🔵 | Cloudflare | 不改 | 不改 |
-| 排程 | launchd | cron | Workers Cron Trigger |
+| Component | Current | Dockerize (local) | Cloud (Cloudflare) |
+|-----------|---------|-------------------|--------------------|
+| ArticleStore 🟠 | JSON @ local | volume mount, unchanged | extract Protocol → R2/D1 impl |
+| EventStore / usage / tracking 🟠 | files | volume mount, unchanged | same, swap to R2/D1 |
+| DigestWriter 🟠 | writes Obsidian vault | vault volume mount | disable (use HtmlDigestWriter → R2/Pages) |
+| LLMClient 🟢 | Anthropic/Gemini | unchanged | unchanged (already cloud) |
+| FetchSource · Miniflux 🔴 | self-hosted Docker | already in compose | retire, cyris fetches RSS itself |
+| FetchSource · CloudflareNewsletter 🔵 | Worker+KV | unchanged | unchanged |
+| load_cookies 🔴 | reads browser sqlite | mount host cookies (deferred) | loses auto-freshness (deferred) |
+| publish / sync_promotions 🔵 | Cloudflare | unchanged | unchanged |
+| Scheduling | launchd | cron | Workers Cron Trigger |
 
-**結論**：core（service_layer + domain）在三種部署下**完全不動**。所有變化都收斂在 adapter 層——這正是 Protocol + composition root 設計的紅利。Dockerize 只需 volume mount（🟠 全部原地）；上雲才需要把 🟠 抽 Protocol 換 R2/D1。
+**Conclusion**: the core (`service_layer` + `domain`) **never changes** across all three
+deployments. Every change is confined to the adapter layer — that is the payoff of the
+Protocol + composition-root design. Dockerize needs only volume mounts (🟠 all stay put);
+only the cloud move needs to extract Protocols for 🟠 and swap to R2/D1.

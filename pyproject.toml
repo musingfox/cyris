@@ -2,7 +2,7 @@
 name = "cyris"
 version = "0.1.0"
 description = "AI-powered information digest agent"
-readme = "PRD.md"
+readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 classifiers = [

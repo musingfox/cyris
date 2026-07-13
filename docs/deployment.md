@@ -1,104 +1,104 @@
-# 部署方向評估：完全本地 vs Cloudflare 化
+# Deployment Direction Assessment: Fully Local vs. Cloudflare
 
-> 狀態：評估中。cookie 保鮮暫不納入（見文末「暫緩項」）。
+> Status: under evaluation. Cookie freshness is out of scope for now (see "Deferred items" at the end).
 
-## 現況（起點）
+## Current State (Starting Point)
 
-- `cyris` pipeline 目前以 **本機 Python + macOS launchd** 執行（`src/cyris/schedule/launchd.py`）。
-- `docker-compose.yml` **只容器化了 Miniflux + Postgres**，cyris 本身沒進容器。
-- 持久狀態全在本機檔案，由 `bootstrap.py` 以 `agent_vault.path` 為根**集中注入**（storage port 乾淨，易抽換）。
-- 付費源 cookie 由本機讀瀏覽器活 DB（`adapters/cookies.py`），靠日常上網自動保鮮。
+- The `cyris` pipeline currently runs on **local Python + macOS launchd** (`src/cyris/schedule/launchd.py`).
+- `docker-compose.yml` **only containerizes Miniflux + Postgres**; cyris itself is not containerized.
+- All persistent state lives in local files, **centrally injected** by `bootstrap.py` rooted at `agent_vault.path` (the storage port is clean and easy to swap).
+- Paid-source cookies are read from the browser's live DB on the local machine (`adapters/cookies.py`), staying fresh automatically through everyday browsing.
 
-**關鍵：兩個方向的公因數 = 先把 cyris 本身容器化。** 同一個 docker image，A 丟進 compose、B 丟進 Cloudflare Container。這一步只做一次。
+**Key point: the common factor across both directions = containerize cyris itself first.** With the same Docker image, direction A drops it into compose and direction B drops it into a Cloudflare Container. This step is done only once.
 
 ---
 
-## 方案 A：完全本地部署（去 macOS 綁定）
+## Option A: Fully Local Deployment (Remove macOS Coupling)
 
-目標：任何人在任意 Linux/機器上 `docker compose up` 就能跑，不綁 macOS、不綁本機 Python 環境。
+Goal: anyone can run it on any Linux box with `docker compose up`, with no macOS coupling and no dependency on a local Python environment.
 
-| 面向 | 現況 | 改造 |
+| Aspect | Current | Change |
 |------|------|------|
-| 運算 | 本機 `cyris run` | 新增 `cyris` service 進 compose |
-| 排程 | launchd（macOS 專屬）| 宿主 crontab 呼叫 `docker compose run cyris run`，或容器內 cron |
-| 持久化 | 本機檔案 | **不動**，volume mount 進容器 |
-| 輸出 | Obsidian vault 檔案 | **不動**，vault 目錄 volume mount |
-| Miniflux | compose 已有 | 不動 |
-| 設定 | `.env` / `*.toml` | 不動，mount 進容器 |
+| Compute | Local `cyris run` | Add a `cyris` service to compose |
+| Scheduling | launchd (macOS-only) | Host crontab calling `docker compose run cyris run`, or in-container cron |
+| Persistence | Local files | **Unchanged**, volume-mounted into the container |
+| Output | Obsidian vault files | **Unchanged**, vault directory volume-mounted |
+| Miniflux | Already in compose | Unchanged |
+| Config | `.env` / `*.toml` | Unchanged, mounted into the container |
 
-**改動量：小。** storage/輸出全不用改，只是把運算搬進容器、排程換 cron。
-**優勢**：完全離線可跑、隱私最好、無雲端費用、付費源 cookie 之後可用 mount 宿主 cookie 解決。
-**代價**：需要一台常開的機器；「外出看 digest」要另接（Pages/Tailscale）。
+**Change size: small.** Storage and output need no changes; you only move compute into a container and swap scheduling for cron.
+**Advantages**: fully runnable offline, best privacy, no cloud costs; paid-source cookies can later be handled by mounting host cookies.
+**Cost**: requires an always-on machine; "reading the digest while out" needs a separate hookup (Pages/Tailscale).
 
 ---
 
-## 方案 B：Cloudflare 化（暫不處理 cookie）
+## Option B: Cloudflare (Cookies Not Handled Yet)
 
-目標：無本機、全雲端。付費 US$5/mo 等級。
+Goal: no local machine, fully cloud-based. Around the US$5/mo tier.
 
-| 面向 | 現況 | 改造 |
+| Aspect | Current | Change |
 |------|------|------|
-| 運算 | 本機 `cyris run` | 同一 Python image → **Cloudflare Container**，Worker `scheduled` 觸發 `container.start()` |
-| 排程 | launchd | **Workers Cron Triggers** |
-| 持久化 | 本機檔案 | 換 storage port → **R2**（JSON blob 直搬）或 D1（要 query 去重才上） |
-| 設定/secret | `.env` | Workers Secrets + container envVars |
-| LLM | Anthropic API | 不變（本來就雲端） |
-| Embeddings | Ollama 本機 | 換 API（Workers AI 內建 embedding，或 Voyage）— 唯一換 provider 的點 |
-| 輸出 | Obsidian markdown | R2/Pages HTML（不寫回 Obsidian） |
-| 標記想讀 | — | 現有 promote KV 迴圈 |
-| **Miniflux** | compose | **痛點**：Container 無持久磁碟，CF 上跑 Miniflux+Postgres 不自然。建議砍掉，讓 cyris 直接抓 RSS + D1 存已讀狀態 |
+| Compute | Local `cyris run` | Same Python image → **Cloudflare Container**, Worker `scheduled` triggers `container.start()` |
+| Scheduling | launchd | **Workers Cron Triggers** |
+| Persistence | Local files | Swap the storage port → **R2** (move JSON blobs as-is) or D1 (only if dedup needs querying) |
+| Config/secrets | `.env` | Workers Secrets + container envVars |
+| LLM | Anthropic API | Unchanged (already cloud-based) |
+| Embeddings | Local Ollama | Switch to an API (Workers AI built-in embedding, or Voyage) — the only provider swap |
+| Output | Obsidian markdown | R2/Pages HTML (no write-back to Obsidian) |
+| Mark-to-read | — | Existing promote KV loop |
+| **Miniflux** | compose | **Pain point**: Containers have no persistent disk, so running Miniflux+Postgres on CF is unnatural. Recommend dropping it and letting cyris fetch RSS directly + store read state in D1 |
 
-**改動量：中。** Container 讓 Python **原地上雲、不用重寫成 TypeScript**（先前「必須重寫」的評估已過時）。真正的工是：storage port 換 R2/D1、docker 化、薄 Worker cron wrapper、embedding 換 provider、Miniflux 退場。
-**優勢**：無本機、外出隨時可看、維運交給 CF。
-**代價**：付費源 cookie 失去自動保鮮（本次暫緩）；Miniflux 要退場。
+**Change size: medium.** Containers let the Python **move to the cloud in place, without a TypeScript rewrite** (the earlier "must rewrite" assessment is now outdated). The real work is: swap the storage port to R2/D1, dockerize, add a thin Worker cron wrapper, switch the embedding provider, and retire Miniflux.
+**Advantages**: no local machine, readable anytime while out, operations handed off to CF.
+**Cost**: paid-source cookies lose automatic freshness (deferred this round); Miniflux must be retired.
 
 ---
 
-## 差異總表
+## Comparison Table
 
-| | A 完全本地 | B Cloudflare |
+| | A Fully Local | B Cloudflare |
 |---|---|---|
-| 需常開機器 | 是 | 否 |
-| 月費（不含 Claude API） | $0 | ~US$5 |
-| 改動量 | 小（不動 storage） | 中（換 storage port + docker + worker） |
-| 語言重寫 | 無 | **無**（Container 跑 Python） |
-| 外出看 digest | 要另接 | 原生 |
-| 付費源 cookie | 可 mount 宿主解決 | **失去自動保鮮**（暫緩） |
-| Miniflux | 保留 | 退場，cyris 自抓 RSS |
-| 隱私/離線 | 最佳 | 依賴 CF |
+| Always-on machine needed | Yes | No |
+| Monthly cost (excl. Claude API) | $0 | ~US$5 |
+| Change size | Small (storage untouched) | Medium (swap storage port + docker + worker) |
+| Language rewrite | None | **None** (Container runs Python) |
+| Reading digest while out | Separate hookup needed | Native |
+| Paid-source cookies | Solvable by mounting host | **Lose automatic freshness** (deferred) |
+| Miniflux | Kept | Retired, cyris fetches RSS itself |
+| Privacy/offline | Best | Depends on CF |
 
-**建議**：兩者不互斥。先做公因數（docker 化 cyris）→ 落地 A（可攜、可開源的預設部署）→ 想要無本機時，同一 image 疊 B。
-
----
-
-## 開源就緒缺口
-
-要變成可推廣的開源專案，缺口分兩類。
-
-### 阻擋別人跑起來（硬傷，必補）
-
-| 缺口 | 修法 | 狀態 |
-|------|------|------|
-| 無 LICENSE | AGPL-3.0-or-later + README notice + pyproject metadata | ✅ |
-| 預設綁特定付費網域 | 範本 `cookie_domains = []` 佔位 | ✅ |
-| 重複範本命名混亂 | 統一為 `cyris.toml.example`（修正 `[claude]`→`[llm_provider]`+`[digest]`，去個人化） | ✅ |
-| 排程綁 macOS | Docker 走 supercronic；launchd 留 macOS 選配 | ✅ |
-| 寫死個人 vault 路徑 | `CYRIS_VAULT_PATH` env override；預設仍 `~/Documents/ObsidianVault` | ◐ 部分 |
-| cookie 綁 macOS 路徑（`cookies.py:61`） | 標為選配；容器內自動跳過 | ◐ 暫緩 |
-| 硬依賴自架 Miniflux + 個人 worker URL | README 標選配 | ◐ |
-
-### 專案品質（開源慣例，應補）
-
-| 缺口 | 修法 | 狀態 |
-|------|------|------|
-| 無 CI | `.github/workflows/ci.yml`：ruff check + format + pytest | ✅ |
-| 缺人類向架構文檔 | README 架構+adapter 段 + `docs/architecture.md` | ✅ |
-| 無 CONTRIBUTING / issue·PR template | README Contributing 段（獨立模板未補） | ◐ |
-
-**好消息**：`.env` / `cyris.toml` / `sources.yaml` 皆已 gitignore，個人信箱與 worker URL 未入庫；範本檔（`.env.example`、`sources.example.yaml`、`tracking.example.yaml`）大致齊全；測試涵蓋佳。**核心程式是乾淨的，缺的主要是「去個人化預設 + 部署去 macOS 化 + 開源慣例檔」。**
+**Recommendation**: the two are not mutually exclusive. Do the common factor first (dockerize cyris) → land A (a portable, open-source-ready default deployment) → when you want no local machine, layer B on the same image.
 
 ---
 
-## 暫緩項
+## Open-Source Readiness Gaps
 
-- **付費源 cookie 保鮮（全雲端）**：本次不處理。全無本機時失去瀏覽器自動續期，未來選項：付費源盡量走 newsletter email（已有 worker，不需 cookie）> 手動更新 KV > 不做 headless 自動登入。
+To become a shippable open-source project, the gaps fall into two categories.
+
+### Blockers Preventing Others From Running It (Hard Blockers, Must Fix)
+
+| Gap | Fix | Status |
+|------|------|------|
+| No LICENSE | AGPL-3.0-or-later + README notice + pyproject metadata | ✅ |
+| Defaults bound to a specific paid domain | Template `cookie_domains = []` placeholder | ✅ |
+| Confusing duplicate template naming | Unify to `cyris.toml.example` (fix `[claude]`→`[llm_provider]`+`[digest]`, de-personalize) | ✅ |
+| Scheduling bound to macOS | Docker uses supercronic; launchd kept as a macOS option | ✅ |
+| Hardcoded personal vault path | `CYRIS_VAULT_PATH` env override; default still `~/Documents/ObsidianVault` | ◐ Partial |
+| Cookies bound to macOS paths (`cookies.py:61`) | Marked optional; auto-skipped inside the container | ◐ Deferred |
+| Hard dependency on self-hosted Miniflux + personal worker URL | Marked optional in README | ◐ |
+
+### Project Quality (Open-Source Conventions, Should Fix)
+
+| Gap | Fix | Status |
+|------|------|------|
+| No CI | `.github/workflows/ci.yml`: ruff check + format + pytest | ✅ |
+| Missing human-facing architecture docs | README architecture + adapter section + `docs/architecture.md` | ✅ |
+| No CONTRIBUTING / issue·PR template | README Contributing section (standalone templates not yet added) | ◐ |
+
+**Good news**: `.env` / `cyris.toml` / `sources.yaml` are all gitignored, so personal email and worker URLs never entered the repo; the template files (`.env.example`, `sources.example.yaml`, `tracking.example.yaml`) are largely complete; test coverage is good. **The core code is clean; what's missing is mainly "de-personalized defaults + de-macOS-ing the deployment + open-source convention files".**
+
+---
+
+## Deferred Items
+
+- **Paid-source cookie freshness (fully cloud)**: not handled this round. With no local machine at all, you lose automatic browser-based renewal. Future options: route paid sources through newsletter email wherever possible (a worker already exists, no cookies needed) > manually update KV > skip headless auto-login.

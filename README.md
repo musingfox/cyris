@@ -16,7 +16,7 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 - Python 3.12+
 - [uv](https://github.com/astral-sh/uv) package manager
 - [Miniflux](https://miniflux.app/) RSS aggregator (Docker)
-- Anthropic API key (Claude Sonnet for batch processing)
+- An LLM API key — Anthropic Claude (default) or Google Gemini
 - Obsidian vault for digest output
 - Optional: Ollama with `nomic-embed-text` for embedding-based pre-filtering
 
@@ -181,7 +181,7 @@ Digest output uses 繁體中文 section headings with mixed-language content.
 | Language | Python 3.12+ |
 | Package manager | uv |
 | RSS aggregator | Miniflux (Docker) |
-| AI processing | Claude API (Sonnet) |
+| AI processing | Anthropic Claude or Google Gemini |
 | Full-text extraction | trafilatura |
 | Paywall handling | browser cookies (Zen/Chrome/Firefox) + httpx |
 | Preference learning | Claude API + Ollama embeddings |

@@ -23,22 +23,16 @@ sources:
     tags: [tech, business-strategy]
     paywall: true  # fetch full text via browser cookies (see cyris.toml [paywall])
 
-  - name: "Benedict Evans Newsletter"
-    type: newsletter  # ingested from email, not RSS
-    email_match: "from:list@benedictevans.com"
-    tier: summarize
-    tags: [tech, trends]
-
   - name: "ByteByteGo Newsletter"
     url: "https://blog.bytebytego.com/feed"
     tier: summarize
-    tags: [tech, system-design]
+    tags: [programming, system-design]
 
-  - name: "區塊勢"
-    url: "https://www.blocktrend.today/feed"
+  - name: "報導者"
+    url: "https://www.twreporter.org/a/rss2.xml"
     tier: summarize
-    tags: [crypto, tech]
-    language: zh  # override auto-detect for reliably-Chinese feeds
+    tags: [news, investigative]
+    language: zh
 
   # --- Filter tier: high-volume, heavy filtering ---
 
@@ -47,16 +41,6 @@ sources:
     tier: filter
     tags: [tech, startup]
 
-  - name: "The Verge"
-    url: "https://www.theverge.com/rss/index.xml"
-    tier: filter
-    tags: [tech, consumer]
-
-  - name: "報導者"
-    url: "https://www.twreporter.org/a/rss2.xml"
-    tier: filter
-    tags: [news, investigative]
-    language: zh
 
 # Feed title → source name overrides, for when a feed's <title> doesn't match `name`.
 aliases:
