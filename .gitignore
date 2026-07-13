@@ -46,7 +46,8 @@ agent-vault/tracking.yaml
 .claude/settings.local.json
 .claude/*.local.md
 
-# Obsidian PM
+# Obsidian PM (local obw:pm config — per-developer, not shipped)
+.obsidian.yaml
 .obsidian-pm.yaml
 
 # Test / coverage
