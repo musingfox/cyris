@@ -37,7 +37,7 @@ def filter_news(articles: list[Article]) -> tuple[list[Article], list[Article]]:
 
 async def cluster_news(
     articles: list[Article],
-    llm: LLMClient,
+    llm: LLMClient | None,
     usage: UsageStats | None = None,
     article_scores: dict[str, float] | None = None,
     output_language: str = DEFAULT_LANGUAGE,
@@ -57,6 +57,8 @@ async def cluster_news(
     """
     if not articles:
         return [], []
+    if llm is None:
+        return [], articles  # no clustering without an LLM; leave all unclustered
 
     try:
         user_prompt = build_news_cluster_prompt(articles)

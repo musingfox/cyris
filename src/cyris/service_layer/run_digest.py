@@ -154,7 +154,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             continue
         scorable.append(a)
 
-    total_usage = UsageStats(model=cfg.app.llm_provider.model)
+    total_usage = UsageStats(model=cfg.app.llm_provider.model or "none")
 
     # Load learning data if enabled
     preference_profile = None
@@ -172,17 +172,22 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         if embedding_store:
             logger.info("Loaded embedding centroid (sample_count=%d)", embedding_store.sample_count)
 
-    if scorable:
+    if scorable and deps.llm is not None:
         progress(f"Scoring {len(scorable)} articles...")
-        usage = await score_in_batches(
-            scorable,
-            deps.llm,
-            preference_profile=preference_profile,
-            snippet_length=cfg.app.digest.scoring_snippet_length,
-            progress=progress,
-            persist=None if options.dry_run else store.update_scores,
-        )
-        total_usage.add(usage.input_tokens, usage.output_tokens)
+        try:
+            usage = await score_in_batches(
+                scorable,
+                deps.llm,
+                preference_profile=preference_profile,
+                snippet_length=cfg.app.digest.scoring_snippet_length,
+                progress=progress,
+                persist=None if options.dry_run else store.update_scores,
+            )
+            total_usage.add(usage.input_tokens, usage.output_tokens)
+        except Exception:
+            logger.warning("Scoring failed; continuing without scores", exc_info=True)
+    elif scorable:
+        logger.info("No LLM configured; skipping scoring for %d articles", len(scorable))
 
     # Reload pending articles after scoring
     pending_articles = store.load_by_time_range(
@@ -207,7 +212,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     # Tracked topics integration (after score; confirm only on active+prescreen hits -> no-op else)
     tracked_updates = None
-    if deps.tracking is not None:
+    if deps.tracking is not None and deps.llm is not None:
         try:
             topics = await deps.tracking.load_topics()
             active = [t for t in topics if t.status == "active"]

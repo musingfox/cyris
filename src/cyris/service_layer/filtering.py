@@ -5,6 +5,7 @@ import logging
 import httpx
 
 from cyris.domain.models import Article, DigestItem, EmbeddingStore, PreferenceProfile, UsageStats
+from cyris.service_layer.degrade import headlines_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     DEFAULT_LANGUAGE,
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 async def filter_articles(
     articles: list[Article],
-    llm: LLMClient,
+    llm: LLMClient | None,
     usage: UsageStats | None = None,
     preference_profile: PreferenceProfile | None = None,
     embedding_store: EmbeddingStore | None = None,
@@ -85,12 +86,23 @@ async def filter_articles(
         logger.info("No articles passed embedding pre-filter")
         return []
 
-    logger.info("Filtering %d articles through Claude", len(articles_to_process))
+    # Degraded mode: no LLM → keep the pre-filtered articles as plain excerpts
+    if llm is None:
+        logger.warning("No LLM configured; filter tier falls back to excerpt headlines")
+        return headlines_from_articles(articles_to_process, article_scores)
+
+    logger.info("Filtering %d articles through the LLM", len(articles_to_process))
 
     user_prompt = build_filter_prompt(articles_to_process, snippet_length=filter_snippet_length)
     system_prompt = build_filter_system_prompt(output_language, style_prompt, preference_profile)
 
-    data = await complete_json(llm, user_prompt, system=system_prompt, temperature=1.0, usage=usage)
+    try:
+        data = await complete_json(
+            llm, user_prompt, system=system_prompt, temperature=1.0, usage=usage
+        )
+    except Exception:
+        logger.warning("Filter LLM call failed; falling back to excerpt headlines", exc_info=True)
+        return headlines_from_articles(articles_to_process, article_scores)
 
     # Build lookup for source URLs
     article_map = {a.id: a for a in articles_to_process}

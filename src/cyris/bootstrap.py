@@ -20,11 +20,21 @@ from cyris.adapters.store.event_store import EventStore
 from cyris.config import Config, LLMProviderConfig, VaultConfigSource
 from cyris.service_layer.ports import FetchSource, LLMClient
 
+_DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-6", "gemini": "gemini-2.5-flash"}
 
-def build_llm(cfg: LLMProviderConfig) -> LLMClient:
+
+def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
+    """Build the LLM client, or None when no provider/key is configured.
+
+    None puts the pipeline in degraded mode: LLM steps are skipped and the
+    digest falls back to plain excerpts.
+    """
+    if not cfg.provider or not cfg.api_key:
+        return None
+    model = cfg.model or _DEFAULT_MODELS[cfg.provider]
     if cfg.provider == "gemini":
-        return GeminiClient(cfg.api_key, cfg.model)
-    return AnthropicClient(cfg.api_key, cfg.model)
+        return GeminiClient(cfg.api_key, model)
+    return AnthropicClient(cfg.api_key, model)
 
 
 @dataclass(frozen=True)
@@ -33,7 +43,7 @@ class Deps:
 
     cfg: Config
     store: ArticleStore
-    llm: LLMClient
+    llm: LLMClient | None  # None ⇒ degraded (excerpt-only) mode
     fetch_sources: list[FetchSource]
     writer: DigestWriter
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled

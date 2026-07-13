@@ -92,8 +92,10 @@ class MinifluxConfig(BaseModel):
 
 
 class LLMProviderConfig(BaseModel):
-    provider: Literal["anthropic", "gemini"] = "anthropic"
-    model: str = "claude-sonnet-4-6"
+    # No default provider — the user opts in explicitly. Unset ⇒ degraded
+    # (excerpt-only) mode instead of silently defaulting to one vendor.
+    provider: Literal["anthropic", "gemini"] | None = None
+    model: str = ""  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     api_key: str = ""
 
     @property
@@ -102,7 +104,7 @@ class LLMProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def inject_api_key(self) -> "LLMProviderConfig":
-        if not self.api_key:
+        if self.provider and not self.api_key:
             self.api_key = os.environ.get(self.api_key_env_var, "")
         return self
 
@@ -214,11 +216,16 @@ class Config(BaseModel):
     aliases: dict[str, str] = Field(default_factory=dict)
 
     def validate_required_keys(self) -> None:
-        """Raise ValueError if required API keys are missing."""
+        """Raise ValueError if required API keys are missing.
+
+        The LLM is optional: with no provider configured the pipeline runs in
+        degraded (excerpt-only) mode, so only a provider that IS set but is
+        missing its key counts as an error.
+        """
         missing = []
         if not self.app.miniflux.api_key:
             missing.append("CYRIS_MINIFLUX_API_KEY")
-        if not self.app.llm_provider.api_key:
+        if self.app.llm_provider.provider and not self.app.llm_provider.api_key:
             missing.append(self.app.llm_provider.api_key_env_var)
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")

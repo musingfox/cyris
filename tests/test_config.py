@@ -208,15 +208,15 @@ class TestDigestConfigSnippetLength:
 
 
 class TestLLMProvider:
-    def test_provider_defaults_to_anthropic(self, monkeypatch):
-        """LLMProviderConfig defaults to the anthropic provider and ANTHROPIC_API_KEY."""
+    def test_provider_defaults_to_none(self, monkeypatch):
+        """No provider by default ⇒ degraded mode, not a silent vendor default."""
         from cyris.config import LLMProviderConfig
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
         monkeypatch.setenv("GEMINI_API_KEY", "g-key")
         config = LLMProviderConfig()
-        assert config.provider == "anthropic"
-        assert config.api_key == "a-key"
+        assert config.provider is None
+        assert config.api_key == ""  # no key injected without a chosen provider
 
     def test_gemini_provider_reads_gemini_key(self, monkeypatch):
         """provider=gemini injects GEMINI_API_KEY instead of ANTHROPIC_API_KEY."""
@@ -264,8 +264,11 @@ class TestLLMProvider:
         assert isinstance(gemini, GeminiClient)
         assert gemini.model == "gemini-2.5-flash"
 
-        claude = build_llm(LLMProviderConfig(api_key="k"))
+        claude = build_llm(LLMProviderConfig(provider="anthropic", api_key="k"))
         assert isinstance(claude, AnthropicClient)
+
+        # No provider ⇒ None (degraded mode)
+        assert build_llm(LLMProviderConfig()) is None
 
 
 class TestVaultTrackingProtocol:

@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
+from cyris.service_layer.degrade import excerpt_sections_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     DEFAULT_LANGUAGE,
@@ -25,7 +26,7 @@ def _group_by_tags(articles: list[Article]) -> dict[str, list[Article]]:
 
 async def summarize_articles(
     articles: list[Article],
-    llm: LLMClient,
+    llm: LLMClient | None,
     usage: UsageStats | None = None,
     snippet_length: int = 1000,
     article_scores: dict[str, float] | None = None,
@@ -49,6 +50,11 @@ async def summarize_articles(
     if not articles:
         return []
 
+    # Degraded mode: no LLM → one plain excerpt per article, grouped by tag
+    if llm is None:
+        logger.warning("No LLM configured; summarize tier falls back to excerpts")
+        return excerpt_sections_from_articles(articles, article_scores)
+
     groups = _group_by_tags(articles)
     logger.info("Summarizing %d articles in %d tag groups", len(articles), len(groups))
 
@@ -58,13 +64,20 @@ async def summarize_articles(
     for tag, group_articles in groups.items():
         user_prompt = build_summarize_prompt(tag, group_articles, snippet_length=snippet_length)
 
-        data = await complete_json(
-            llm,
-            user_prompt,
-            system=build_summarize_system_prompt(output_language, style_prompt),
-            temperature=1.0,
-            usage=usage,
-        )
+        try:
+            data = await complete_json(
+                llm,
+                user_prompt,
+                system=build_summarize_system_prompt(output_language, style_prompt),
+                temperature=1.0,
+                usage=usage,
+            )
+        except Exception:
+            logger.warning(
+                "Summarize LLM call failed for tag '%s'; excerpt fallback", tag, exc_info=True
+            )
+            sections.extend(excerpt_sections_from_articles(group_articles, article_scores))
+            continue
 
         for section_data in data.get("sections", []):
             items = []
