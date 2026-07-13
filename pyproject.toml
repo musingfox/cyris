@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "AI-powered information digest agent"
 readme = "PRD.md"
 requires-python = ">=3.12"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
 dependencies = [
     "aiohttp>=3.10",
     "anthropic>=0.52",

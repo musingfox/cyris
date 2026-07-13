@@ -150,4 +150,9 @@ uv run pytest                    # test (480 tests)
 
 ## License
 
-Private project.
+[AGPL-3.0-or-later](LICENSE) © 2026 musingfox
+
+Self-host, use, and modify cyris freely. If you run a modified version as a
+network service, the AGPL requires you to offer users its source. For use
+outside AGPL terms (e.g. a closed-source/commercial deployment), contact the
+author about a commercial license.
