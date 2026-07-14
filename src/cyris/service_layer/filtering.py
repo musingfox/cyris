@@ -2,9 +2,7 @@
 
 import logging
 
-import httpx
-
-from cyris.domain.models import Article, DigestItem, EmbeddingStore, PreferenceProfile, UsageStats
+from cyris.domain.models import Article, DigestItem, PreferenceProfile, UsageStats
 from cyris.service_layer.degrade import headlines_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
@@ -21,9 +19,6 @@ async def filter_articles(
     llm: LLMClient | None,
     usage: UsageStats | None = None,
     preference_profile: PreferenceProfile | None = None,
-    embedding_store: EmbeddingStore | None = None,
-    ollama_url: str = "http://localhost:11434",
-    similarity_threshold: float = 0.6,
     article_scores: dict[str, float] | None = None,
     filter_snippet_length: int = 500,
     output_language: str = DEFAULT_LANGUAGE,
@@ -39,9 +34,6 @@ async def filter_articles(
         llm: LLM client.
         usage: Optional UsageStats to accumulate token counts.
         preference_profile: Optional user preference profile for prompt injection.
-        embedding_store: Optional embedding centroid for similarity pre-filtering.
-        ollama_url: Ollama API base URL for embedding generation.
-        similarity_threshold: Minimum cosine similarity to pass pre-filter.
 
     Returns:
         Noteworthy headlines as DigestItems.
@@ -49,44 +41,9 @@ async def filter_articles(
     if not articles:
         return []
 
-    # Apply embedding pre-filter if available
     articles_to_process = articles
-    if embedding_store is not None:
-        try:
-            from cyris.learn.embeddings import cosine_similarity, generate_embeddings_batch
 
-            logger.info("Generating embeddings for %d articles", len(articles))
-            article_texts = [f"{a.title}\n{a.content[:500]}" for a in articles]
-            article_embeddings = await generate_embeddings_batch(article_texts, ollama_url)
-
-            # Filter by similarity
-            passed = []
-            rejected_count = 0
-            for article, embedding in zip(articles, article_embeddings, strict=False):
-                similarity = cosine_similarity(embedding, embedding_store.centroid)
-                if similarity >= similarity_threshold:
-                    passed.append(article)
-                else:
-                    rejected_count += 1
-
-            logger.info(
-                "Embedding pre-filter: %d passed, %d rejected (threshold=%.2f)",
-                len(passed),
-                rejected_count,
-                similarity_threshold,
-            )
-            articles_to_process = passed
-
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.warning("Ollama API unavailable, skipping embedding pre-filter: %s", e)
-        except Exception as e:
-            logger.warning("Embedding pre-filter failed, using all articles: %s", e)
-
-    if not articles_to_process:
-        logger.info("No articles passed embedding pre-filter")
-        return []
-
-    # Degraded mode: no LLM → keep the pre-filtered articles as plain excerpts
+    # Degraded mode: no LLM → keep the articles as plain excerpts
     if llm is None:
         logger.warning("No LLM configured; filter tier falls back to excerpt headlines")
         return headlines_from_articles(articles_to_process, article_scores)

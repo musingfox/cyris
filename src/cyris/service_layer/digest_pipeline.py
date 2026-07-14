@@ -5,7 +5,6 @@ import logging
 from cyris.domain.models import (
     Article,
     DigestContent,
-    EmbeddingStore,
     PreferenceProfile,
     ProcessResult,
     SourceConfig,
@@ -25,15 +24,14 @@ logger = logging.getLogger(__name__)
 class DigestPipeline:
     """Stage-based pipeline for digest articles.
 
-    Learning data (preference profile, embedding centroid) is loaded by the
-    caller and injected — the pipeline itself does no IO beyond LLM calls.
+    Learning data (preference profile) is loaded by the caller and injected —
+    the pipeline itself does no IO beyond LLM calls.
     """
 
     def __init__(
         self,
         llm: LLMClient,
         preference_profile: PreferenceProfile | None = None,
-        embedding_store: EmbeddingStore | None = None,
         max_digest_output: int = 15,
         summarize_snippet_length: int = 1000,
         filter_snippet_length: int = 500,
@@ -49,7 +47,6 @@ class DigestPipeline:
         self.output_language = output_language
         self.style_prompt = style_prompt
         self.preference_profile = preference_profile
-        self.embedding_store = embedding_store
 
     async def process(
         self,
@@ -132,7 +129,6 @@ class DigestPipeline:
             self._llm,
             usage=usage,
             preference_profile=self.preference_profile,
-            embedding_store=self.embedding_store,
             article_scores=article_scores,
             filter_snippet_length=self.filter_snippet_length,
             output_language=self.output_language,

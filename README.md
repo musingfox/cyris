@@ -18,7 +18,6 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 - [Miniflux](https://miniflux.app/) RSS aggregator (Docker)
 - An LLM API key — Anthropic Claude (default) or Google Gemini
 - Obsidian vault for digest output
-- Optional: Ollama with `nomic-embed-text` for embedding-based pre-filtering
 - Optional: a Cloudflare account — only for **email-only newsletter** ingestion and
   the promote / HTML-publish features (RSS feeds + the digest work without it)
 
@@ -221,7 +220,7 @@ Digest output language is configurable via `[digest] output_language` (default
 | AI processing | Anthropic Claude or Google Gemini |
 | Full-text extraction | trafilatura |
 | Paywall handling | browser cookies (Zen/Chrome/Firefox) + httpx |
-| Preference learning | Claude API + Ollama embeddings |
+| Preference learning | Claude API |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |
 | Output | Obsidian (filesystem) |
 | Notifications | Discord webhook |

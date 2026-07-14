@@ -132,14 +132,6 @@ class PreferenceProfile(BaseModel):
     prompt_injection: str
 
 
-class EmbeddingStore(BaseModel):
-    """Persistent storage for embedding centroid."""
-
-    centroid: list[float]
-    sample_count: int
-    last_updated: str
-
-
 class ArticleState(StrEnum):
     """Article lifecycle state in persistent storage."""
 

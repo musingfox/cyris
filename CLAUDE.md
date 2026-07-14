@@ -74,7 +74,7 @@ src/cyris/
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
 │   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/
 │   └── webhook_server.py    # Email webhook receiver for newsletter ingestion
-├── learn/            # Preference learning helpers (profile, embeddings, feedback parsing)
+├── learn/            # Preference learning helpers (profile, feedback parsing)
 ├── schedule/         # macOS launchd plist management
 └── utils/            # timezone helpers (cross-cutting)
 
@@ -94,7 +94,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/digest.py` renders the final Obsidian markdown note; `domain/selection.py` layers featured articles by score
-7. `service_layer/learning.py` turns triage/digest feedback into a preference profile + embedding centroid
+7. `service_layer/learning.py` turns triage/digest feedback into a preference profile
 
 ### Adapter Extension Points
 
@@ -112,7 +112,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest |
-| `cyris learn` | Analyze digest feedback, generate preference profile + embeddings |
+| `cyris learn` | Analyze digest feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
 | `cyris promote-sync` | Pull deep-read promotions from the Worker to the vault (no fetch/LLM) |
 | `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
@@ -128,7 +128,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/learning/` holds preference profile and embedding centroid. `agent-vault/events/` holds persistent event timeline files (tracked in git). `agent-vault/tracking.yaml` holds tracked interest topics (gitignored).
+Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/learning/` holds the preference profile. `agent-vault/events/` holds persistent event timeline files (tracked in git). `agent-vault/tracking.yaml` holds tracked interest topics (gitignored).
 
 ## Conventions
 

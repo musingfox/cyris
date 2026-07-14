@@ -128,19 +128,14 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     # Load learning data if enabled
     preference_profile = None
-    embedding_store = None
     if options.enable_learning:
-        from cyris.learn.embeddings import load_embedding_store
         from cyris.learn.profile import load_latest_profile
 
         preference_profile = load_latest_profile(cfg.app.agent_vault.path)
-        embedding_store = load_embedding_store(cfg.app.agent_vault.path)
         if preference_profile:
             logger.info(
                 "Loaded preference profile (sample_size=%d)", preference_profile.sample_size
             )
-        if embedding_store:
-            logger.info("Loaded embedding centroid (sample_count=%d)", embedding_store.sample_count)
 
     if scorable and deps.llm is not None:
         progress(f"Scoring {len(scorable)} articles...")
@@ -211,7 +206,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     digest_pipeline = DigestPipeline(
         deps.llm,
         preference_profile=preference_profile,
-        embedding_store=embedding_store,
         max_digest_output=cfg.app.digest.max_articles_per_digest_output,
         summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
         filter_snippet_length=cfg.app.digest.filter_snippet_length,

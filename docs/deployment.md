@@ -43,12 +43,11 @@ Goal: no local machine, fully cloud-based. Around the US$5/mo tier.
 | Persistence | Local files | Swap the storage port → **R2** (move JSON blobs as-is) or D1 (only if dedup needs querying) |
 | Config/secrets | `.env` | Workers Secrets + container envVars |
 | LLM | Anthropic API | Unchanged (already cloud-based) |
-| Embeddings | Local Ollama | Switch to an API (Workers AI built-in embedding, or Voyage) — the only provider swap |
 | Output | Obsidian markdown | R2/Pages HTML (no write-back to Obsidian) |
 | Mark-to-read | — | Existing promote KV loop |
 | **Miniflux** | compose | **Pain point**: Containers have no persistent disk, so running Miniflux+Postgres on CF is unnatural. Recommend dropping it and letting cyris fetch RSS directly + store read state in D1 |
 
-**Change size: medium.** Containers let the Python **move to the cloud in place, without a TypeScript rewrite** (the earlier "must rewrite" assessment is now outdated). The real work is: swap the storage port to R2/D1, dockerize, add a thin Worker cron wrapper, switch the embedding provider, and retire Miniflux.
+**Change size: medium.** Containers let the Python **move to the cloud in place, without a TypeScript rewrite** (the earlier "must rewrite" assessment is now outdated). The real work is: swap the storage port to R2/D1, dockerize, add a thin Worker cron wrapper, and retire Miniflux.
 **Advantages**: no local machine, readable anytime while out, operations handed off to CF.
 **Cost**: paid-source cookies lose automatic freshness (deferred this round); Miniflux must be retired.
 
