@@ -65,10 +65,6 @@ class RoutingConfig(BaseModel):
     summarize_score_threshold: int = Field(default=70, ge=0, le=100)
 
 
-class ExperimentalConfig(BaseModel):
-    dual_pipeline: bool = False
-
-
 class GeneralConfig(BaseModel):
     digest_schedule: list[str] = Field(default_factory=lambda: ["08:00", "20:00"])
     timezone: str = "Asia/Taipei"
@@ -196,7 +192,6 @@ class AppConfig(BaseModel):
     paywall: PaywallConfig = Field(default_factory=PaywallConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
-    experimental: ExperimentalConfig = Field(default_factory=ExperimentalConfig)
     html_output: HtmlOutputConfig = Field(default_factory=HtmlOutputConfig)
     promote: PromoteConfig = Field(default_factory=PromoteConfig)
     newsletter: NewsletterConfig = Field(default_factory=NewsletterConfig)

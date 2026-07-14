@@ -30,9 +30,9 @@ git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
 
 # Configure
-cp cyris.toml.example cyris.toml   # edit API endpoints, vault paths
-cp .env.example .env               # add API keys
-# edit sources.yaml                # define RSS/newsletter sources
+cp cyris.toml.example cyris.toml           # edit API endpoints, vault paths
+cp .env.example .env                       # add API keys
+cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
 
 # Run
 uv run cyris run                   # full pipeline (fetch → score → digest)
@@ -188,7 +188,7 @@ webhook); RSS newsletters do not.
 ### Article Lifecycle
 
 ```
-pending → scored → routed → accepted / rejected / awaiting_triage
+pending → accepted / rejected / awaiting_triage
 ```
 
 ## Contributing

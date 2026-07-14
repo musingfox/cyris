@@ -27,10 +27,14 @@ class TestLoadConfig:
         assert cfg.app.llm_provider.api_key == "test-anthropic-key"
 
         # Curated teaching sample covering the main source shapes.
-        assert len(cfg.sources) == 4
+        assert len(cfg.sources) == 5
         assert cfg.sources["Stratechery"].tier == Tier.SUMMARIZE
         assert cfg.sources["Stratechery"].paywall is True
         assert cfg.sources["TechCrunch"].tier == Tier.FILTER
+        # email-only newsletter shape: no url, matched by From: header
+        assert cfg.sources["Some Email Newsletter"].type == "newsletter"
+        assert cfg.sources["Some Email Newsletter"].url is None
+        assert cfg.sources["Some Email Newsletter"].email_match == "from:newsletter@example.com"
         # language override on a non-English feed
         assert cfg.sources["報導者"].language == "zh"
 
@@ -129,22 +133,6 @@ class TestRoutingConfig:
 
         with pytest.raises(ValidationError):
             RoutingConfig(summarize_score_threshold=-5)
-
-
-class TestExperimentalConfig:
-    def test_experimental_config_default(self):
-        """ExperimentalConfig default dual_pipeline is False."""
-        from cyris.config import ExperimentalConfig
-
-        config = ExperimentalConfig()
-        assert config.dual_pipeline is False
-
-    def test_experimental_config_explicit(self):
-        """ExperimentalConfig accepts explicit dual_pipeline value."""
-        from cyris.config import ExperimentalConfig
-
-        config = ExperimentalConfig(dual_pipeline=True)
-        assert config.dual_pipeline is True
 
 
 class TestDigestConfigSnippetLength:

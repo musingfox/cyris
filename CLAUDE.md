@@ -65,7 +65,7 @@ src/cyris/
 │   ├── store/               # ArticleStore (JSON, dedup by URL) + event store/schema
 │   ├── fetch/               # Miniflux client/source, newsletter archive + Cloudflare-worker sources, extractor, email parser
 │   ├── output/              # DigestWriter, HTML digest, article export, publish, usage log
-│   ├── notify.py            # Discord and ntfy.sh notifications
+│   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   ├── tracking_yaml.py     # tracking.yaml load/upsert
 │   ├── cookies.py           # Browser cookie extraction (Zen/Chrome/Firefox)

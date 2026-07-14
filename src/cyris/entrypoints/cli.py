@@ -56,8 +56,7 @@ def run(
 
     try:
         cfg = load_config(config_path, sources_path)
-        if not dry_run:
-            cfg.validate_required_keys()
+        cfg.validate_required_keys()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e

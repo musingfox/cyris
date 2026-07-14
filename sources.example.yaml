@@ -41,6 +41,15 @@ sources:
     tier: filter
     tags: [tech, startup]
 
+  # --- Email-only newsletter (no RSS): ingested via the Cloudflare newsletter Worker ---
+  # `type: newsletter` + `email_match` instead of a url; needs the [newsletter] Worker
+  # configured in cyris.toml (see docs). Matches incoming mail by From: header.
+  - name: "Some Email Newsletter"
+    type: newsletter
+    email_match: "from:newsletter@example.com"
+    tier: summarize
+    tags: [newsletter]
+
 
 # Feed title → source name overrides, for when a feed's <title> doesn't match `name`.
 aliases:

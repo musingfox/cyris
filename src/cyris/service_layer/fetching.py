@@ -48,8 +48,16 @@ async def fetch_all_articles(
             # Deduplicate by URL (last source wins)
             for article in articles:
                 by_url[article.url] = article
-        except Exception:
-            logger.warning("Failed to fetch from source %s", type(source).__name__, exc_info=True)
+        except Exception as e:
+            # ponytail: log the message, not the stack — this failure is handled (the
+            # source is skipped and the pipeline degrades gracefully). A leaked traceback
+            # makes a handled skip look fatal. Run with --verbose for the stack.
+            logger.warning(
+                "Failed to fetch from source %s: %s (check its URL/credentials)",
+                type(source).__name__,
+                e,
+                exc_info=logger.isEnabledFor(logging.DEBUG),
+            )
             failed_sources.append(type(source).__name__)
             continue
 
