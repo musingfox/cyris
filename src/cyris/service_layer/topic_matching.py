@@ -3,16 +3,23 @@
 Prescreen (domain) -> confirm -> assemble tracked + record events (per contracts).
 """
 
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 from datetime import date
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from cyris.adapters.store.event_store import EventStore
-from cyris.adapters.store.events import EventFile, TimelineEntry
+from cyris.domain.events import EventFile, TimelineEntry
 from cyris.domain.models import DigestItem, DigestSection, StoredArticle, UsageStats
 from cyris.service_layer.ports import LLMClient, complete_json
+
+if TYPE_CHECKING:
+    # EventStore is a single-impl store injected at runtime; imported only for type hints
+    # so the service layer keeps no runtime dependency on adapters/.
+    from cyris.adapters.store.event_store import EventStore
 from cyris.service_layer.prompts import (
     DEFAULT_LANGUAGE,
     build_topic_confirm_prompt,

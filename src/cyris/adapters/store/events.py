@@ -1,4 +1,4 @@
-"""Event file Pydantic schema and markdown parse/render (PRD schema, pyyaml frontmatter)."""
+"""Event markdown parse/render (pyyaml frontmatter). Models live in domain/events.py."""
 
 from __future__ import annotations
 
@@ -8,29 +8,10 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+# Re-exported so existing importers of this module keep working; canonical defs in domain.
+from cyris.domain.events import EventFile, TimelineEntry
 
-class TimelineEntry(BaseModel):
-    """Single timeline entry with date and text."""
-
-    entry_date: date
-    text: str
-
-
-class EventFile(BaseModel):
-    """Structured event from/to PRD markdown format. Strict: unknown keys/sections error."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    title: str
-    created: date
-    last_updated: date
-    tags: list[str] = Field(default_factory=list)
-    status: Literal["active", "inactive"]
-    summary: str = ""
-    timeline: list[TimelineEntry] = Field(default_factory=list)
-    key_entities: list[str] = Field(default_factory=list)
-    source_references: list[str] = Field(default_factory=list)
-
+__all__ = ["EventFile", "TimelineEntry", "parse_event", "render_event"]
 
 KNOWN_SECTIONS = {"## Summary", "## Timeline", "## Key Entities", "## Source References"}
 

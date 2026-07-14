@@ -1,12 +1,19 @@
 """Triage digest feedback to accept/reject articles."""
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from cyris.adapters.output.article_export import ArticleExporter
-from cyris.adapters.store.article_store import ArticleStore
 from cyris.domain.models import FeedbackData, TriageResult
 from cyris.learn.feedback import parse_digest_feedback
+from cyris.service_layer.ports import ArticleRepository
+
+if TYPE_CHECKING:
+    # Single-impl output sink injected at runtime (no Protocol, per ports.py doctrine);
+    # imported only for type hints so the service layer keeps no runtime adapters/ import.
+    from cyris.adapters.output.article_export import ArticleExporter
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +63,12 @@ def scan_digests(
     return feedback_list
 
 
-def process_feedback(feedback_list: list[FeedbackData], store: ArticleStore) -> TriageResult:
+def process_feedback(feedback_list: list[FeedbackData], store: ArticleRepository) -> TriageResult:
     """Process feedback to accept articles marked for deep read.
 
     Args:
         feedback_list: List of FeedbackData from digests.
-        store: ArticleStore to update.
+        store: ArticleRepository to update.
 
     Returns:
         TriageResult with accepted_count, skipped_count, accepted_urls.
@@ -101,7 +108,7 @@ def process_feedback(feedback_list: list[FeedbackData], store: ArticleStore) -> 
 
 
 def export_accepted(
-    store: ArticleStore,
+    store: ArticleRepository,
     exporter: ArticleExporter,
     user_vault_path: Path,
     accepted_urls: list[str],
@@ -110,7 +117,7 @@ def export_accepted(
     """Export newly accepted articles to user vault.
 
     Args:
-        store: ArticleStore to query.
+        store: ArticleRepository to query.
         exporter: ArticleExporter for writing markdown.
         user_vault_path: Destination vault path.
         accepted_urls: URLs of articles to export (from this triage run).
