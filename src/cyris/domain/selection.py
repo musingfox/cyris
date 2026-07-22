@@ -188,6 +188,7 @@ def select_digest_articles(content: DigestContent, max_items: int = 15) -> Diges
         + _count_section_items(selected_summaries)
         + _count_section_items(selected_attention)
         + len(selected_headlines)
+        + _count_section_items(content.fan_sections)  # fan passthrough, never capped
     )
 
     logger.info(

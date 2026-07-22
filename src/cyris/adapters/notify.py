@@ -84,6 +84,22 @@ def build_discord_embeds(content: DigestContent, digest_url: str = "") -> list[d
         if text:
             embeds.append({"title": "📰 新聞聚合", "description": text[:4096], "color": 0xFEE75C})
 
+    # --- Fan sections (followed groups — own channel) ---
+    if content.fan_sections:
+        lines = []
+        for section in content.fan_sections:
+            lines.append(f"### {section.heading}")
+            for item in section.items:
+                title_part = (
+                    f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
+                )
+                summary_str = f" — {item.summary}" if item.summary else ""
+                lines.append(f"- {title_part}{summary_str}")
+            lines.append("")
+        text = "\n".join(lines).strip()
+        if text:
+            embeds.append({"title": "📣 追蹤動態", "description": text[:4096], "color": 0xEB459E})
+
     # --- Thematic summaries ---
     if content.thematic_summaries:
         lines = []

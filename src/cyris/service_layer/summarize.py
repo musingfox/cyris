@@ -117,6 +117,43 @@ def _strip_html_snippet(html: str, max_len: int = 80) -> str:
     return text
 
 
+def build_fan_sections(articles: list[Article]) -> list[DigestSection]:
+    """Build fan-tier sections grouped by source (no AI, never discarded).
+
+    Each followed group/newsletter becomes one section; items carry a short
+    non-LLM excerpt so updates from tracked groups keep their own channel and
+    aren't washed out by the knowledge sections.
+
+    Args:
+        articles: Fan-tier articles to group by source.
+
+    Returns:
+        One DigestSection per source, items in feed order.
+    """
+    if not articles:
+        return []
+
+    groups: dict[str, list[Article]] = {}
+    for article in articles:
+        groups.setdefault(article.source_name, []).append(article)
+
+    sections = []
+    for source_name, group in groups.items():
+        items = [
+            DigestItem(
+                title=article.title,
+                summary=_strip_html_snippet(article.content) if article.content else "",
+                sources=[article.source_name],
+                urls=[article.url],
+            )
+            for article in group
+        ]
+        sections.append(DigestSection(heading=source_name, items=items))
+
+    logger.info("Built %d fan sections from %d articles", len(sections), len(articles))
+    return sections
+
+
 def build_attention_sections(
     articles: list[Article],
     article_scores: dict[str, float] | None = None,

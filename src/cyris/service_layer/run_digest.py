@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cyris.domain.models import ArticleState, UsageStats
+from cyris.domain.models import ArticleState, Tier, UsageStats
 from cyris.domain.selection import layer_by_score
 from cyris.domain.tracking import keyword_prescreen
 from cyris.domain.triage import RejectReason
@@ -118,6 +118,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     scorable = []
     for a in pending_articles:
+        if a.source_tier == Tier.FAN:  # fan tier is never scored
+            continue
         if "news" in a.source_tags:
             continue
         if not options.force and a.score is not None:

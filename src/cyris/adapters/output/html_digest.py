@@ -79,6 +79,7 @@ class HtmlDigestWriter:
             lead_story=lead_story,
             featured_articles=featured_articles,
             news_clusters=content.news_clusters,
+            fan_sections=content.fan_sections,
             thematic_summaries=content.thematic_summaries,
             attention_sections=content.attention_sections,
             filtered_headlines=content.filtered_headlines,

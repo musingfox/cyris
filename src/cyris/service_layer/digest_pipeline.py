@@ -15,7 +15,11 @@ from cyris.domain.selection import select_digest_articles, split_summarize_tier_
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
-from cyris.service_layer.summarize import build_attention_sections, summarize_articles
+from cyris.service_layer.summarize import (
+    build_attention_sections,
+    build_fan_sections,
+    summarize_articles,
+)
 from cyris.utils.timezone import now_in_timezone
 
 logger = logging.getLogger(__name__)
@@ -89,12 +93,14 @@ class DigestPipeline:
 
         filter_tier = [a for a in articles if a.source_tier == Tier.FILTER]
         summarize_tier = [a for a in articles if a.source_tier == Tier.SUMMARIZE]
+        fan_tier = [a for a in articles if a.source_tier == Tier.FAN]
 
         logger.info(
-            "Processing %d articles: %d filter, %d summarize",
+            "Processing %d articles: %d filter, %d summarize, %d fan",
             len(articles),
             len(filter_tier),
             len(summarize_tier),
+            len(fan_tier),
         )
 
         usage = UsageStats(model=self._llm.model if self._llm else "none")
@@ -160,11 +166,15 @@ class DigestPipeline:
         # Build attention sections for low-score articles
         attention = build_attention_sections(low_score_articles, article_scores)
 
+        # Fan tier: passthrough, grouped by source, never scored/filtered/summarized
+        fan_sections = build_fan_sections(fan_tier)
+
         total_included = (
             len(filtered)
             + sum(len(s.items) for s in summaries)
             + sum(len(a.items) for a in attention)
             + sum(len(c.items) for c in news_clusters)
+            + sum(len(f.items) for f in fan_sections)
         )
 
         logger.info(
@@ -192,7 +202,10 @@ class DigestPipeline:
         # Summarize tier: all articles are accepted (all get summarized)
         summarize_urls = {a.url for a in summarize_tier}
 
-        accepted_urls = list(accepted_filter_urls | summarize_urls)
+        # Fan tier: all accepted (passthrough, never discarded)
+        fan_urls = {a.url for a in fan_tier}
+
+        accepted_urls = list(accepted_filter_urls | summarize_urls | fan_urls)
         rejected_urls = list(rejected_filter_urls)
 
         content = DigestContent(
@@ -206,6 +219,7 @@ class DigestPipeline:
             thematic_summaries=summaries,
             attention_sections=attention,
             filtered_headlines=filtered,
+            fan_sections=fan_sections,
         )
 
         content = select_digest_articles(content, max_items=self.max_digest_output)

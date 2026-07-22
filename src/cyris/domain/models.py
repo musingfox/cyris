@@ -11,6 +11,7 @@ class Tier(StrEnum):
 
     FILTER = "filter"
     SUMMARIZE = "summarize"
+    FAN = "fan"  # followed groups/newsletters: passthrough, never scored/filtered/summarized
 
 
 class SourceConfig(BaseModel):
@@ -99,6 +100,7 @@ class DigestContent(BaseModel):
     thematic_summaries: list[DigestSection] = Field(default_factory=list)
     attention_sections: list[DigestSection] = Field(default_factory=list)
     filtered_headlines: list[DigestItem] = Field(default_factory=list)
+    fan_sections: list[DigestSection] = Field(default_factory=list)
     triage_pending_count: int | None = None
 
 

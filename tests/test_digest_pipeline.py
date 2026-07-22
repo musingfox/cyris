@@ -72,6 +72,42 @@ class TestDigestPipeline:
         assert "https://stratechery.com/2026/03/16/weekly-trends" in result.accepted_urls
         assert "https://reuters.com/2026/03/16/tsmc-arizona" in result.rejected_urls
 
+    async def test_fan_tier_passthrough(self, pipeline, sample_sources):
+        """Fan-tier articles bypass LLM, group by source, and are never discarded."""
+        fan_articles = [
+            Article(
+                id=90,
+                title="社團週報 #12",
+                url="https://group.example/12",
+                content="<p>本週活動整理與公告內容……</p>",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="某社團電子報",
+                source_tier=Tier.FAN,
+            ),
+            Article(
+                id=91,
+                title="社團週報 #13",
+                url="https://group.example/13",
+                content="下週活動預告",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="某社團電子報",
+                source_tier=Tier.FAN,
+            ),
+        ]
+
+        # No filter/summarize mocks needed — fan tier never reaches the LLM path.
+        result = await pipeline.process(fan_articles, sample_sources, period="morning")
+
+        assert len(result.content.fan_sections) == 1  # grouped by the single source
+        section = result.content.fan_sections[0]
+        assert section.heading == "某社團電子報"
+        assert len(section.items) == 2
+        assert section.items[0].summary == "本週活動整理與公告內容……"  # HTML-stripped excerpt
+        # Both fan URLs accepted, none rejected
+        assert set(result.accepted_urls) == {"https://group.example/12", "https://group.example/13"}
+        assert result.rejected_urls == []
+        assert result.content.articles_included == 2
+
     async def test_process_no_articles(self, pipeline, sample_sources):
         result = await pipeline.process([], sample_sources, period="evening")
 

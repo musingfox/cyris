@@ -69,6 +69,17 @@ class DigestWriter:
             parts.append("---")
             parts.append("")
 
+        # Fan sections (followed groups/newsletters — own passthrough channel)
+        if content.fan_sections:
+            parts.append("## 追蹤動態")
+            parts.append("")
+            parts.append("> 你追蹤的團體／電子報更新")
+            parts.append("")
+            for section in content.fan_sections:
+                parts.append(self._render_fan_section(section))
+            parts.append("---")
+            parts.append("")
+
         # Thematic summaries
         if content.thematic_summaries:
             parts.append("## 主題摘要")
@@ -177,6 +188,16 @@ class DigestWriter:
             lines.append(f"- {title_part}{summary_str}{source_str}")
             lines.append("  - [ ] deep-read")
 
+        lines.append("")
+        return "\n".join(lines)
+
+    def _render_fan_section(self, section: DigestSection) -> str:
+        """Render a fan section: source heading + title/link/excerpt per item (no AI)."""
+        lines = [f"### {section.heading}"]
+        for item in section.items:
+            title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
+            summary_str = f" — {item.summary}" if item.summary else ""
+            lines.append(f"- {title_part}{summary_str}")
         lines.append("")
         return "\n".join(lines)
 

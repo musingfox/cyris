@@ -722,6 +722,28 @@
             </section>
             {% endif %}
 
+            {% if fan_sections %}
+            <section class="section">
+                <div class="section-tag"><span class="id">◆</span><span>Following</span></div>
+                <h2 class="section-heading">追蹤動態</h2>
+                {% for sec in fan_sections %}
+                <div class="thematic-block">
+                    <h3>{{ sec.heading }}</h3>
+                    {% for item in sec.items %}
+                    <article class="article-item">
+                        <h4>{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
+                        {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
+                        <div class="meta">
+                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
+                            {% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
             {% if thematic_summaries %}
             <section class="section">
                 <div class="section-tag"><span class="id">04</span><span>Thematic Summaries</span></div>
