@@ -54,3 +54,6 @@ agent-vault/tracking.yaml
 .coverage
 htmlcov/
 .pytest_cache/
+
+# JS deps for the defuddle shim
+node_modules/

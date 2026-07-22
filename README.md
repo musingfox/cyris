@@ -27,6 +27,7 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 # Clone and install
 git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
+bun install    # optional: full-text markdown export for promoted articles (defuddle)
 
 # Configure
 cp cyris.toml.example cyris.toml           # edit API endpoints, vault paths

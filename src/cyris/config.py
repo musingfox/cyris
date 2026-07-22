@@ -163,6 +163,7 @@ class PromoteConfig(BaseModel):
     publish_enabled: bool = False
     pages_project: str = ""
     token: str = ""
+    bun_path: str = "~/.bun/bin/bun"  # runs the defuddle shim for full-text export
 
     @model_validator(mode="after")
     def inject_token(self) -> "PromoteConfig":

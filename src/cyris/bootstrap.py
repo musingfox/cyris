@@ -99,6 +99,7 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
             cfg.app.promote.token,
             store,
             cfg.app.obsidian.user_vault_path,
+            bun_path=cfg.app.promote.bun_path,
         )
 
     def load_cookies() -> dict[str, str] | None:

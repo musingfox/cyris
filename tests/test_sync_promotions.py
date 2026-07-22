@@ -79,6 +79,7 @@ def test_sync_exports_and_acks(store, vault):
         patch(
             "cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})
         ) as post,
+        patch("cyris.adapters.promotions.fetch_full_markdown", return_value=None),
     ):
         exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
 
@@ -88,6 +89,29 @@ def test_sync_exports_and_acks(store, vault):
     [article] = store.get_by_urls(["https://example.com/stored"])
     assert article.state == ArticleState.ACCEPTED
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/stored"]}
+
+
+def test_sync_exports_full_text_markdown(store, vault):
+    """When defuddle extraction succeeds, the exported note carries the clean markdown."""
+    payload = [{"url": "https://example.com/stored"}]
+    with (
+        patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
+        patch("cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})),
+        patch(
+            "cyris.adapters.promotions.fetch_full_markdown",
+            return_value="Clean **markdown** body",
+        ) as fetch_md,
+    ):
+        exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
+
+    assert exported == 1
+    fetch_md.assert_called_once_with(
+        "https://example.com/stored", "Full text here", "~/.bun/bin/bun"
+    )
+    [note] = (vault / "Reading").glob("*.md")
+    text = note.read_text()
+    assert "Clean **markdown** body" in text
+    assert "Full text here" not in text
 
 
 def test_sync_missing_url_acks_without_export(store, vault):
@@ -122,6 +146,7 @@ def test_sync_export_failure_skips_ack(store, tmp_path):
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
         patch("cyris.adapters.promotions.httpx.post") as post,
+        patch("cyris.adapters.promotions.fetch_full_markdown", return_value=None),
         pytest.raises(ValueError),
     ):
         sync_promotions(WORKER_URL, TOKEN, store, missing_vault)
