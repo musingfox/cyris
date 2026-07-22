@@ -1,7 +1,7 @@
 ---
 title: Claude / Anthropic
 created: 2026-07-15
-last_updated: 2026-07-21
+last_updated: 2026-07-23
 tags: []
 status: active
 ---
@@ -14,6 +14,7 @@ status: active
 - **2026-07-17**: 1Password 推出適用於 Claude 的全新瀏覽器整合功能，允許該聊天機器人安全地存取用戶儲存的密碼與憑證。; Anthropic 正在推動美國各州加快人工智慧監管的立法進程。
 - **2026-07-20**: 本指南介紹如何設定備用 Mac，以讓 Anthropic 的 Claude Code 工具進行遠端控制。; 介紹了 Anthropic 的 Claude Code 工具改用以 Rust 編寫的 Bun 運作。
 - **2026-07-21**: 報導指出 Anthropic 的 Claude Fable 模型成功為數學難題「雅可比猜想」提出了一個反例。; 法院正式批准 Anthropic 達成的 15 億美元版權和解協議，但未解決 AI 訓練版權的根本爭議。; 文章探討前沿 AI 實驗室的經濟學，並分析 Anthropic 面臨的潛在營運困境與未來發展。
+- **2026-07-23**: AMD 與 Anthropic 達成高達 50 億美元的 AI 基礎設施合作協議以擴展運算力。; 市場傳出 Anthropic 與 Physical Intelligence 的收購謠言，引發社群熱議。
 
 ## Key Entities
 
@@ -27,3 +28,4 @@ status: active
 - https://simonwillison.net/2026/Jul/19/claude-code-in-bun-in-rust/
 - https://xcancel.com/__alpoge__/status/2079028340955197566
 - https://techcrunch.com/2026/07/20/anthropics-landmark-1-5b-copyright-settlement-is-approved/
+- https://www.theverge.com/ai-artificial-intelligence/969285/amd-anthropic-ai-infrastructure-deal
