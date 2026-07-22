@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -48,12 +49,27 @@ def _strip_leading_title_headings(markdown: str, title: str) -> str:
     return "\n".join(lines[boundary:]).lstrip("\n")
 
 
+def _resolve_bun(bun_path: str) -> str | None:
+    """Resolve the bun binary: configured path first, then PATH lookup.
+
+    The configured default targets a host install (~/.bun/bin/bun); in a
+    container bun ships on PATH instead, so which() keeps both working.
+    """
+    candidate = Path(bun_path).expanduser()
+    if candidate.exists():
+        return str(candidate)
+    return shutil.which("bun")
+
+
 def extract_markdown(html: str, url: str, bun_path: str = DEFAULT_BUN_PATH) -> str | None:
     """Run the defuddle shim over html; return cleaned markdown, or None on failure."""
-    bun = Path(bun_path).expanduser()
+    bun = _resolve_bun(bun_path)
+    if bun is None:
+        logger.warning("bun not found (%s or PATH); skipping defuddle extraction", bun_path)
+        return None
     try:
         proc = subprocess.run(
-            [str(bun), str(SHIM_PATH), url],
+            [bun, str(SHIM_PATH), url],
             input=html.encode(),
             capture_output=True,
             timeout=TIMEOUT_SECONDS,

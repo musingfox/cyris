@@ -29,7 +29,9 @@ WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH"
 
 # deps layer — cached unless manifest/lock change
-COPY pyproject.toml uv.lock PRD.md ./
+COPY pyproject.toml uv.lock README.md LICENSE package.json bun.lock ./
+# JS deps for the defuddle full-text extraction shim
+RUN bun install --frozen-lockfile
 COPY src ./src
 RUN uv sync --frozen --no-dev
 

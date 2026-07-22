@@ -1,5 +1,6 @@
 .git
 .venv
+node_modules
 __pycache__
 *.pyc
 .pytest_cache
@@ -17,4 +18,4 @@ tests
 docs
 workers
 *.md
-!PRD.md
+!README.md

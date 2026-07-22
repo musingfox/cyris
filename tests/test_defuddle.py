@@ -59,7 +59,20 @@ class TestExtractMarkdown:
         assert extract_markdown("<html/>", "https://x.test/a", bun) is None
 
     def test_missing_binary_returns_none(self, tmp_path):
-        assert extract_markdown("<html/>", "https://x.test/a", str(tmp_path / "no-bun")) is None
+        with patch("cyris.adapters.fetch.defuddle.shutil.which", return_value=None):
+            assert (
+                extract_markdown("<html/>", "https://x.test/a", str(tmp_path / "no-bun")) is None
+            )
+
+    def test_missing_configured_path_falls_back_to_path_lookup(self, tmp_path):
+        payload_file = tmp_path / "payload.json"
+        payload_file.write_text(json.dumps({"title": "", "content": "body"}))
+        bun_on_path = _fake_bun(tmp_path, f"cat > /dev/null; cat {payload_file}")
+
+        with patch("cyris.adapters.fetch.defuddle.shutil.which", return_value=bun_on_path):
+            assert extract_markdown("<html/>", "https://x.test/a", str(tmp_path / "no-bun")) == (
+                "body"
+            )
 
 
 class TestFetchFullMarkdown:
