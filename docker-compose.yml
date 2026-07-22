@@ -42,9 +42,8 @@ services:
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
       - ${CYRIS_VAULT_HOST_PATH:-./vault}:/vault
-      - cyris-data:/data/agent-vault
+      - ./agent-vault:/data/agent-vault
     restart: unless-stopped
 
 volumes:
   miniflux-db:
-  cyris-data:
