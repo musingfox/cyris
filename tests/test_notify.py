@@ -212,6 +212,24 @@ class TestDiscordEmbeds:
         for embed in embeds:
             assert embed["title"] != "📰 新聞聚合"
 
+    def test_digest_url_adds_online_link_to_stats(self):
+        """A digest_url renders a '線上完整版' link in the stats embed."""
+        content = DigestContent(
+            date="2026-07-15",
+            period="morning",
+            sources_processed=1,
+            articles_received=3,
+            articles_included=1,
+        )
+        url = "https://cyris-digest.pages.dev/2026-07-15-morning"
+
+        without = build_discord_embeds(content)
+        assert not any(url in e["description"] for e in without)
+
+        with_link = build_discord_embeds(content, digest_url=url)
+        stats = with_link[-1]  # stats embed is always last
+        assert f"[線上完整版]({url})" in stats["description"]
+
     def test_filtered_headlines_with_links(self):
         """Filtered headlines include clickable links and truncated summaries."""
         content = DigestContent(

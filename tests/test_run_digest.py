@@ -110,7 +110,7 @@ def make_deps(
 
     notifications: list[str] = []
 
-    async def fake_discord(webhook_url, content):
+    async def fake_discord(webhook_url, content, digest_url=""):
         notifications.append("discord")
         if discord_contents is not None:
             discord_contents.append(content)

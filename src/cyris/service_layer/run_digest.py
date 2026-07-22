@@ -233,6 +233,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     deps.log_usage(content)
 
     report = RunReport(status="ok", failed_sources=failed_sources)
+    digest_url = ""  # online (Cloudflare Pages) URL, set after a successful publish
     if options.dry_run:
         report.rendered = deps.writer.render(content)
     else:
@@ -245,8 +246,12 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 report.html_path = deps.html_writer.write(content)
                 progress(f"HTML digest written to {report.html_path}")
 
-                if deps.publish is not None:
-                    deps.publish()
+                if deps.publish is not None and deps.publish() and cfg.app.promote.pages_project:
+                    # Cloudflare Pages serves the extensionless clean URL.
+                    digest_url = (
+                        f"https://{cfg.app.promote.pages_project}.pages.dev/"
+                        f"{content.date}-{content.period}"
+                    )
             except Exception as e:
                 logger.error("Failed to write HTML digest: %s", e)
 
@@ -260,6 +265,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         updated_count = store.update_states(url_to_state, digest_date=content.date)
         logger.info("Updated states for %d articles", updated_count)
 
-    await deps.send_discord(notify.discord_webhook_url, content)
+    await deps.send_discord(notify.discord_webhook_url, content, digest_url=digest_url)
 
     return report

@@ -39,7 +39,7 @@ def _render_section_embed(section: DigestSection) -> str:
     return "\n".join(lines)
 
 
-def build_discord_embeds(content: DigestContent) -> list[dict]:
+def build_discord_embeds(content: DigestContent, digest_url: str = "") -> list[dict]:
     """Build Discord embed objects from DigestContent.
 
     Returns a list of embed dicts ready for the Discord webhook payload.
@@ -128,7 +128,10 @@ def build_discord_embeds(content: DigestContent) -> list[dict]:
         if content.articles_received > 0
         else "N/A"
     )
-    stats_lines = [
+    stats_lines = []
+    if digest_url:
+        stats_lines.append(f"📖 [線上完整版]({digest_url})")
+    stats_lines += [
         f"📊 來源 **{content.sources_processed}** 個",
         f"📥 文章 **{content.articles_received}** 篇",
         f"✅ 保留 **{content.articles_included}** 篇（{pct}）",
@@ -150,15 +153,18 @@ def build_discord_embeds(content: DigestContent) -> list[dict]:
 async def send_discord(
     webhook_url: str,
     content: DigestContent,
+    digest_url: str = "",
 ) -> None:
     """Send digest content to Discord via webhook.
 
     Does nothing if webhook_url is empty. Failures are logged but not raised.
+    When digest_url is set, a link to the online (Cloudflare Pages) digest is
+    included in the stats embed.
     """
     if not webhook_url:
         return
 
-    embeds = build_discord_embeds(content)
+    embeds = build_discord_embeds(content, digest_url)
     payload = {"embeds": embeds}
 
     try:
