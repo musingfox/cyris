@@ -120,10 +120,6 @@ class DigestWriter:
             parts.append(f"- 預估費用：${u.estimated_cost:.4f}")
         parts.append("")
 
-        # Usage guide
-        parts.append(self._render_usage_guide())
-        parts.append("")
-
         # Triage section
         if content.triage_pending_count is not None and content.triage_pending_count > 0:
             parts.append("---")
@@ -167,8 +163,6 @@ class DigestWriter:
             event_refs = [i.event_ref for i in section.items if i.event_ref]
             if event_refs:
                 lines.append(f" · [[{event_refs[0]}]]")
-
-            lines.append("- [ ] deep-read")
         lines.append("")
         return "\n".join(lines)
 
@@ -186,7 +180,6 @@ class DigestWriter:
             source_str = f" ({', '.join(item.sources)})" if item.sources else ""
             summary_str = f" — {item.summary}" if item.summary else ""
             lines.append(f"- {title_part}{summary_str}{source_str}")
-            lines.append("  - [ ] deep-read")
 
         lines.append("")
         return "\n".join(lines)
@@ -210,7 +203,6 @@ class DigestWriter:
             summary_str = f" — {item.summary}" if item.summary else ""
             ref_str = f" · [[{item.event_ref}]]" if item.event_ref else ""
             lines.append(f"- {title_part}{summary_str}{source_str}{ref_str}")
-            lines.append("  - [ ] deep-read")
         lines.append("")
         return "\n".join(lines)
 
@@ -232,14 +224,6 @@ class DigestWriter:
                     summary = summary[:80] + "…"
                 lines.append(f">   {summary}")
 
-        return "\n".join(lines)
-
-    def _render_usage_guide(self) -> str:
-        """Render usage guide collapsible callout explaining deep-read workflow."""
-        lines = [
-            "> [!tip]- 使用說明",
-            "> 勾選 **deep-read** 後，執行 `cyris articles triage` 匯出至 Reading 資料夾。",
-        ]
         return "\n".join(lines)
 
     def _digest_path(self, content: DigestContent) -> Path:

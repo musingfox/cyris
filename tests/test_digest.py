@@ -44,12 +44,11 @@ class TestDigestWriter:
         ) in md
         assert ">   Phase 2 因人力問題延後" in md
 
-    def test_render_contains_checkboxes(self, writer, sample_digest_content):
-        """Contract 1: only deep-read checkbox, no track checkbox."""
+    def test_render_has_no_checkboxes(self, writer, sample_digest_content):
+        """Promote loop replaced digest checkboxes: no deep-read/track markers."""
         md = writer.render(sample_digest_content)
-        assert "- [ ] deep-read" in md
+        assert "deep-read" not in md
         assert "- [ ] track" not in md
-        assert "track" not in md
 
     def test_render_contains_statistics(self, writer, sample_digest_content):
         md = writer.render(sample_digest_content)
@@ -345,27 +344,13 @@ class TestDigestWriter:
         between = md[callout_idx:stats_idx]
         assert "---" not in between
 
-    def test_usage_guide_present(self, writer, sample_digest_content):
-        """Contract 2: usage guide section present with deep-read explanation."""
+    def test_no_usage_guide(self, writer, sample_digest_content):
+        """Promote loop replaced the deep-read workflow: no usage guide callout."""
         md = writer.render(sample_digest_content)
-        assert "> [!tip]- 使用說明" in md
-        assert "deep-read" in md
-        assert "cyris articles triage" in md
-        assert "Reading" in md
+        assert "> [!tip]- 使用說明" not in md
 
-    def test_usage_guide_ordering(self, writer, sample_digest_content):
-        """Contract 3: usage guide appears after statistics and before triage."""
-        md = writer.render(sample_digest_content)
-        stats_idx = md.find("## 統計")
-        usage_idx = md.find("> [!tip]- 使用說明")
-
-        # Statistics should appear before usage guide
-        assert stats_idx != -1
-        assert usage_idx != -1
-        assert stats_idx < usage_idx
-
-    def test_usage_guide_ordering_with_triage(self, writer):
-        """Contract 3: usage guide appears between statistics and triage section."""
+    def test_triage_section_after_statistics(self, writer):
+        """Triage section appears after statistics."""
         from cyris.domain.models import DigestContent
 
         content = DigestContent(
@@ -379,14 +364,11 @@ class TestDigestWriter:
 
         md = writer.render(content)
         stats_idx = md.find("## 統計")
-        usage_idx = md.find("> [!tip]- 使用說明")
         triage_idx = md.find("## 待瀏覽")
 
-        # Verify order: statistics < usage guide < triage
         assert stats_idx != -1
-        assert usage_idx != -1
         assert triage_idx != -1
-        assert stats_idx < usage_idx < triage_idx
+        assert stats_idx < triage_idx
 
     def test_render_tracked_updates_multi_item(self, writer):
         """TrackedMarkdownRendering T1: multi-item per-item (title+link+summary+source+ref)."""
@@ -425,7 +407,6 @@ class TestDigestWriter:
         assert "## 追蹤主題更新" in md
         assert "- **[t1](u1)** — n1 (S1) · [[台積電]]" in md
         assert "- **[t2](u2)** — n2 (S2) · [[AI 監管]]" in md
-        assert "  - [ ] deep-read" in md
 
     def test_render_tracked_updates_single_item(self, writer):
         """TrackedMarkdownRendering T2: single item still uses per-item form starting '- **['."""

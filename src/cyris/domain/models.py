@@ -104,25 +104,6 @@ class DigestContent(BaseModel):
     triage_pending_count: int | None = None
 
 
-class ArticleFeedback(BaseModel):
-    """User feedback on a single article from digest."""
-
-    title: str
-    source: str
-    url: str | None = None
-    deep_read: bool = False
-    track: bool = False
-
-
-class FeedbackData(BaseModel):
-    """Parsed feedback from a single digest."""
-
-    digest_date: str
-    digest_period: str
-    articles: list[ArticleFeedback]
-    liked_count: int
-
-
 class PreferenceProfile(BaseModel):
     """User preference profile generated from feedback history."""
 
@@ -210,15 +191,6 @@ class ProcessResult(BaseModel):
     content: DigestContent
     accepted_urls: list[str]
     rejected_urls: list[str]
-
-
-class TriageResult(BaseModel):
-    """Result of triaging digests to accept/reject articles."""
-
-    accepted_count: int
-    rejected_count: int = 0
-    skipped_count: int
-    accepted_urls: list[str]
 
 
 class TriageFeedbackData(BaseModel):

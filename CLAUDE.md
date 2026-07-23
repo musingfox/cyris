@@ -50,14 +50,13 @@ src/cyris/
 ├── service_layer/    # Use cases and business services
 │   ├── ports.py             # Protocols: LLMClient, ArticleRepository, FetchSource + complete_json
 │   ├── run_digest.py        # Use case: full pipeline run (fetch→store→score→digest→output)
-│   ├── learning.py          # Use case: learn preferences from triage/digest feedback
+│   ├── learning.py          # Use case: learn preferences from triage feedback
 │   ├── digest_pipeline.py   # DigestPipeline: tier-based digest processing
 │   ├── scoring.py           # AI article scoring (score_in_batches shared loop)
 │   ├── filtering.py         # Filter tier: batch headline extraction (<10% pass)
 │   ├── summarize.py         # Summarize tier: per-group thematic summaries
 │   ├── cluster_news.py      # News clustering for news-tagged filter-tier articles
 │   ├── fetching.py          # fetch_all_articles across FetchSources with dedup
-│   ├── triage.py            # Digest feedback scanning and triage processing
 │   ├── prompts.py           # Claude API prompt templates
 │   └── parse.py             # AI response JSON extraction
 ├── adapters/         # Concrete IO implementations
@@ -74,7 +73,7 @@ src/cyris/
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
 │   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/
 │   └── webhook_server.py    # Email webhook receiver for newsletter ingestion
-├── learn/            # Preference learning helpers (profile, feedback parsing)
+├── learn/            # Preference learning helpers (profile, triage feedback)
 ├── schedule/         # macOS launchd plist management
 └── utils/            # timezone helpers (cross-cutting)
 
@@ -94,7 +93,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/digest.py` renders the final Obsidian markdown note; `domain/selection.py` layers featured articles by score
-7. `service_layer/learning.py` turns triage/digest feedback into a preference profile
+7. `service_layer/learning.py` turns triage feedback into a preference profile
 
 ### Adapter Extension Points
 
@@ -112,12 +111,12 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest |
-| `cyris learn` | Analyze digest feedback, generate preference profile |
+| `cyris learn` | Analyze triage feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
 | `cyris promote-sync` | Pull deep-read promotions from the Worker to the vault (no fetch/LLM) |
 | `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
 | `cyris triage-ui` | Start swipe-based web UI for article classification |
-| `cyris articles list\|accept\|reject\|export\|clean\|score\|triage` | Article store management |
+| `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |
 
 ### Configuration Files
 
