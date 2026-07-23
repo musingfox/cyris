@@ -1,5 +1,7 @@
 # Cyris schedule — supercronic fires at container-local clock (TZ set in compose).
-# digest: 08:00 & 20:00
-0 8,20 * * * cyris run --config /app/cyris.toml --sources /app/sources.yaml
+# digest: 08:00 & 20:00 (--period is required: the CLI defaults to morning,
+# which made the 20:00 run overwrite the morning note)
+0 8 * * * cyris run --period morning --config /app/cyris.toml --sources /app/sources.yaml
+0 20 * * * cyris run --period evening --config /app/cyris.toml --sources /app/sources.yaml
 # promote-sync: hourly
 0 * * * * cyris promote-sync --config /app/cyris.toml --sources /app/sources.yaml
