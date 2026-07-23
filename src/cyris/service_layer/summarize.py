@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
-from cyris.service_layer.degrade import excerpt_sections_from_articles
+from cyris.service_layer.degrade import excerpt, excerpt_sections_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     DEFAULT_LANGUAGE,
@@ -106,17 +106,6 @@ async def summarize_articles(
     return sections
 
 
-def _strip_html_snippet(html: str, max_len: int = 80) -> str:
-    """Strip HTML tags and return a plain text snippet."""
-    import re
-
-    text = re.sub(r"<[^>]+>", "", html)
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > max_len:
-        text = text[:max_len] + "…"
-    return text
-
-
 def build_fan_sections(articles: list[Article]) -> list[DigestSection]:
     """Build fan-tier sections grouped by source (no AI, never discarded).
 
@@ -142,7 +131,7 @@ def build_fan_sections(articles: list[Article]) -> list[DigestSection]:
         items = [
             DigestItem(
                 title=article.title,
-                summary=_strip_html_snippet(article.content) if article.content else "",
+                summary=excerpt(article.content, 80) if article.content else "",
                 sources=[article.source_name],
                 urls=[article.url],
             )
@@ -180,7 +169,7 @@ def build_attention_sections(
         items = []
         for article in group_articles:
             score = article_scores.get(article.url) if article_scores else None
-            snippet = _strip_html_snippet(article.content) if article.content else ""
+            snippet = excerpt(article.content, 80) if article.content else ""
             items.append(
                 DigestItem(
                     title=article.title,

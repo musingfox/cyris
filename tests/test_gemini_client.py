@@ -40,7 +40,11 @@ async def test_complete_parses_text_and_usage():
     body = json.loads(request.content)
     assert body["contents"] == [{"parts": [{"text": "Tell me a joke."}]}]
     assert body["system_instruction"] == {"parts": [{"text": "Be brief."}]}
-    assert body["generationConfig"] == {"maxOutputTokens": 100, "temperature": 0.5}
+    assert body["generationConfig"] == {
+        "maxOutputTokens": 100,
+        "responseMimeType": "application/json",
+        "temperature": 0.5,
+    }
 
 
 async def test_complete_omits_optional_fields():
@@ -51,7 +55,10 @@ async def test_complete_omits_optional_fields():
 
     body = json.loads(route.calls[0].request.content)
     assert "system_instruction" not in body
-    assert body["generationConfig"] == {"maxOutputTokens": 4096}
+    assert body["generationConfig"] == {
+        "maxOutputTokens": 4096,
+        "responseMimeType": "application/json",
+    }
 
 
 async def test_retries_on_503_then_succeeds():

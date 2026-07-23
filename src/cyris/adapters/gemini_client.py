@@ -34,7 +34,12 @@ class GeminiClient:
         max_tokens: int = 4096,
         temperature: float | None = None,
     ) -> LLMResponse:
-        generation_config: dict = {"maxOutputTokens": max_tokens}
+        # Every cyris LLM call expects JSON (complete_json); JSON mode stops Gemini
+        # from emitting markdown fences or unescaped quotes that break parsing.
+        generation_config: dict = {
+            "maxOutputTokens": max_tokens,
+            "responseMimeType": "application/json",
+        }
         if temperature is not None:
             generation_config["temperature"] = temperature
         body: dict = {

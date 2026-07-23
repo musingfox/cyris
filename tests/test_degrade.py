@@ -34,6 +34,11 @@ def test_excerpt_truncates_long_and_keeps_short():
     assert excerpt("") == ""
 
 
+def test_excerpt_strips_html_and_decodes_entities():
+    html_content = '<figure> <img alt="pic"> </figure><p>Google&#39;s cloud &amp; AI</p>'
+    assert excerpt(html_content) == "Google's cloud & AI"
+
+
 def test_headlines_keep_every_article_with_excerpt():
     items = headlines_from_articles([_article(1), _article(2)])
     assert len(items) == 2  # nothing dropped without an LLM

@@ -6,7 +6,9 @@ always complete; LLM steps fall back to plain excerpts here instead of crashing.
 Future embedding / RAG judgement can slot in as a smarter fallback than excerpts.
 """
 
+import html
 import logging
+import re
 from collections import defaultdict
 
 from cyris.domain.models import Article, DigestItem, DigestSection
@@ -15,8 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 def excerpt(content: str, length: int = 200) -> str:
-    """Plain-text excerpt from the start of the content — the no-LLM stand-in for a summary."""
-    text = " ".join((content or "").split())
+    """Plain-text excerpt from the start of the content — the no-LLM stand-in for a summary.
+
+    Feed content is raw HTML; strip tags and decode entities so fallbacks
+    never leak markup into the digest.
+    """
+    text = re.sub(r"<[^>]+>", " ", content or "")
+    text = " ".join(html.unescape(text).split())
     if len(text) <= length:
         return text
     return text[:length].rstrip() + "…"

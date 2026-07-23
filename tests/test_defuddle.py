@@ -60,9 +60,7 @@ class TestExtractMarkdown:
 
     def test_missing_binary_returns_none(self, tmp_path):
         with patch("cyris.adapters.fetch.defuddle.shutil.which", return_value=None):
-            assert (
-                extract_markdown("<html/>", "https://x.test/a", str(tmp_path / "no-bun")) is None
-            )
+            assert extract_markdown("<html/>", "https://x.test/a", str(tmp_path / "no-bun")) is None
 
     def test_missing_configured_path_falls_back_to_path_lookup(self, tmp_path):
         payload_file = tmp_path / "payload.json"
