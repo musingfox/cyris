@@ -56,7 +56,7 @@ async def test_complete_omits_optional_fields():
     body = json.loads(route.calls[0].request.content)
     assert "system_instruction" not in body
     assert body["generationConfig"] == {
-        "maxOutputTokens": 4096,
+        "maxOutputTokens": 16384,
         "responseMimeType": "application/json",
     }
 

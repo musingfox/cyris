@@ -31,7 +31,7 @@ class GeminiClient:
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         temperature: float | None = None,
     ) -> LLMResponse:
         # Every cyris LLM call expects JSON (complete_json); JSON mode stops Gemini

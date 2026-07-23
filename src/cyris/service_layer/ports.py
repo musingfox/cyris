@@ -29,7 +29,7 @@ class LLMClient(Protocol):
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         temperature: float | None = None,
     ) -> LLMResponse: ...
 
@@ -98,7 +98,7 @@ async def complete_json(
     prompt: str,
     *,
     system: str | None = None,
-    max_tokens: int = 4096,
+    max_tokens: int = 16384,
     temperature: float | None = None,
     usage: UsageStats | None = None,
 ) -> dict:
