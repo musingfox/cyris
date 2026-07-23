@@ -29,7 +29,7 @@ class FakeLLM:
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 16384,
+        max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> LLMResponse:
         self.calls.append(

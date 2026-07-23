@@ -4,6 +4,10 @@ import anthropic
 
 from cyris.service_layer.ports import LLMResponse
 
+# Safe cap across Claude models (cyris runs without extended thinking, so
+# real JSON outputs stay far below this); Opus tops out at 32k output.
+_MAX_OUTPUT_TOKENS = 16384
+
 
 class AnthropicClient:
     def __init__(
@@ -23,7 +27,7 @@ class AnthropicClient:
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 16384,
+        max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> LLMResponse:
         kwargs: dict = {}
@@ -33,7 +37,7 @@ class AnthropicClient:
             kwargs["temperature"] = temperature
         message = await self._client.messages.create(
             model=self.model,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens or _MAX_OUTPUT_TOKENS,
             messages=[{"role": "user", "content": prompt}],
             **kwargs,
         )

@@ -29,7 +29,7 @@ class LLMClient(Protocol):
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 16384,
+        max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> LLMResponse: ...
 
@@ -98,11 +98,15 @@ async def complete_json(
     prompt: str,
     *,
     system: str | None = None,
-    max_tokens: int = 16384,
+    max_tokens: int | None = None,
     temperature: float | None = None,
     usage: UsageStats | None = None,
 ) -> dict:
-    """Call the LLM and parse a JSON object from its response, accumulating usage."""
+    """Call the LLM and parse a JSON object from its response, accumulating usage.
+
+    max_tokens=None lets each adapter default to its provider's output limit —
+    thinking tokens count against the cap, so callers should not guess a number.
+    """
     response = await llm.complete(
         prompt, system=system, max_tokens=max_tokens, temperature=temperature
     )

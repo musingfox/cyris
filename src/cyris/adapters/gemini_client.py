@@ -8,6 +8,9 @@ from cyris.service_layer.ports import LLMResponse
 
 _BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _RETRYABLE_STATUS = (429, 500, 502, 503)
+# Documented output token limit for gemini-3.x flash; thinking tokens count
+# against maxOutputTokens, so anything lower risks truncated JSON.
+_MAX_OUTPUT_TOKENS = 65536
 
 
 class GeminiClient:
@@ -31,13 +34,13 @@ class GeminiClient:
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 16384,
+        max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> LLMResponse:
         # Every cyris LLM call expects JSON (complete_json); JSON mode stops Gemini
         # from emitting markdown fences or unescaped quotes that break parsing.
         generation_config: dict = {
-            "maxOutputTokens": max_tokens,
+            "maxOutputTokens": max_tokens or _MAX_OUTPUT_TOKENS,
             "responseMimeType": "application/json",
         }
         if temperature is not None:
