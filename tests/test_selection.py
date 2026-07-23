@@ -61,7 +61,7 @@ class TestSelectDigestArticles:
         assert len(result.filtered_headlines) == 3
         assert result.articles_included == 11
 
-    def test_priority_fill_clusters_first(self):
+    def test_priority_fill_summaries_first(self):
         content = _base_content(
             news_clusters=_make_sections([5, 5], "news"),
             thematic_summaries=_make_sections([3], "theme"),
@@ -74,13 +74,30 @@ class TestSelectDigestArticles:
         cluster_count = sum(len(s.items) for s in result.news_clusters)
         summary_count = sum(len(s.items) for s in result.thematic_summaries)
         attention_count = sum(len(s.items) for s in result.attention_sections)
-        assert cluster_count == 10
         assert summary_count == 3
+        assert cluster_count == 10
         assert attention_count == 2
         assert len(result.filtered_headlines) == 0
         assert result.articles_included == 15
 
-    def test_clusters_exceed_cap(self):
+    def test_heavy_news_day_keeps_summaries(self):
+        """Clusters alone exceed the cap: summaries survive, clusters get truncated."""
+        content = _base_content(
+            news_clusters=_make_sections([10, 10], "news"),
+            thematic_summaries=_make_sections([5], "theme"),
+            filtered_headlines=_make_items(5, "headline"),
+            articles_included=30,
+        )
+        result = select_digest_articles(content, max_items=15)
+
+        cluster_count = sum(len(s.items) for s in result.news_clusters)
+        summary_count = sum(len(s.items) for s in result.thematic_summaries)
+        assert summary_count == 5
+        assert cluster_count == 10
+        assert result.filtered_headlines == []
+        assert result.articles_included == 15
+
+    def test_clusters_exceed_remaining(self):
         content = _base_content(
             news_clusters=_make_sections([8, 8], "news"),
             thematic_summaries=_make_sections([3], "theme"),
@@ -90,12 +107,13 @@ class TestSelectDigestArticles:
         result = select_digest_articles(content, max_items=15)
 
         cluster_count = sum(len(s.items) for s in result.news_clusters)
-        assert cluster_count == 15
-        assert result.thematic_summaries == []
+        summary_count = sum(len(s.items) for s in result.thematic_summaries)
+        assert summary_count == 3
+        assert cluster_count == 12
         assert result.filtered_headlines == []
         assert result.articles_included == 15
 
-    def test_summaries_fill_after_clusters(self):
+    def test_summaries_alone_fill_cap(self):
         content = _base_content(
             news_clusters=_make_sections([2], "news"),
             thematic_summaries=_make_sections([5, 5, 5], "theme"),
@@ -106,8 +124,8 @@ class TestSelectDigestArticles:
 
         cluster_count = sum(len(s.items) for s in result.news_clusters)
         summary_count = sum(len(s.items) for s in result.thematic_summaries)
-        assert cluster_count == 2
-        assert summary_count == 13
+        assert summary_count == 15
+        assert cluster_count == 0
         assert result.filtered_headlines == []
         assert result.articles_included == 15
 

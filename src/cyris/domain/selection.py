@@ -133,8 +133,10 @@ def _truncate_sections(sections: list[DigestSection], max_items: int) -> list[Di
 def select_digest_articles(content: DigestContent, max_items: int = 15) -> DigestContent:
     """Apply priority fill to limit total digest articles.
 
-    Priority order: news_clusters → thematic_summaries → attention_sections → filtered_headlines.
+    Priority order: thematic_summaries → news_clusters → attention_sections → filtered_headlines.
     Each category fills completely before the next gets remaining slots.
+    Summaries lead: the knowledge channel (summarize tier, inherently small) must
+    never be crowded out of the digest by a heavy news day.
 
     Args:
         content: Full processed digest content.
@@ -145,24 +147,24 @@ def select_digest_articles(content: DigestContent, max_items: int = 15) -> Diges
     """
     remaining = max_items
 
-    # Priority 1: news clusters
-    news_count = _count_section_items(content.news_clusters)
-    if news_count <= remaining:
-        selected_clusters = list(content.news_clusters)
-        remaining -= news_count
-    else:
-        selected_clusters = _truncate_sections(content.news_clusters, remaining)
-        remaining = 0
-
-    # Priority 2: thematic summaries
+    # Priority 1: thematic summaries
     summary_count = _count_section_items(content.thematic_summaries)
-    if remaining == 0:
-        selected_summaries = []
-    elif summary_count <= remaining:
+    if summary_count <= remaining:
         selected_summaries = list(content.thematic_summaries)
         remaining -= summary_count
     else:
         selected_summaries = _truncate_sections(content.thematic_summaries, remaining)
+        remaining = 0
+
+    # Priority 2: news clusters
+    news_count = _count_section_items(content.news_clusters)
+    if remaining == 0:
+        selected_clusters = []
+    elif news_count <= remaining:
+        selected_clusters = list(content.news_clusters)
+        remaining -= news_count
+    else:
+        selected_clusters = _truncate_sections(content.news_clusters, remaining)
         remaining = 0
 
     # Priority 3: attention sections
