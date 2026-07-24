@@ -1,7 +1,7 @@
 ---
 title: Claude / Anthropic
 created: 2026-07-15
-last_updated: 2026-07-23
+last_updated: 2026-07-24
 tags: []
 status: active
 ---
@@ -14,7 +14,8 @@ status: active
 - **2026-07-17**: 1Password 推出適用於 Claude 的全新瀏覽器整合功能，允許該聊天機器人安全地存取用戶儲存的密碼與憑證。; Anthropic 正在推動美國各州加快人工智慧監管的立法進程。
 - **2026-07-20**: 本指南介紹如何設定備用 Mac，以讓 Anthropic 的 Claude Code 工具進行遠端控制。; 介紹了 Anthropic 的 Claude Code 工具改用以 Rust 編寫的 Bun 運作。
 - **2026-07-21**: 報導指出 Anthropic 的 Claude Fable 模型成功為數學難題「雅可比猜想」提出了一個反例。; 法院正式批准 Anthropic 達成的 15 億美元版權和解協議，但未解決 AI 訓練版權的根本爭議。; 文章探討前沿 AI 實驗室的經濟學，並分析 Anthropic 面臨的潛在營運困境與未來發展。
-- **2026-07-23**: AMD 與 Anthropic 達成高達 50 億美元的 AI 基礎設施合作協議以擴展運算力。; 市場傳出 Anthropic 與 Physical Intelligence 的收購謠言，引發社群熱議。
+- **2026-07-23**: AMD 與 Anthropic 達成高達 50 億美元的 AI 基礎設施合作協議以擴展運算力。; 市場傳出 Anthropic 與 Physical Intelligence 的收購謠言，引發社群熱議。; 白宮指控中國月之暗面蒸餾Anthropic的模型，引發美國財政部威脅實施制裁。; 投資機構Menlo Ventures分析Anthropic營收爆發性成長的背後關鍵因素。; 超微宣布將對AI新創公司Anthropic投資高達50億美元，並達成晶片合作協議。; 專家分析指出，Kimi K3 模型的強大性能並非單純透過提煉 Anthropic 的 Fable 模型而來。
+- **2026-07-24**: Anthropic 為 Claude 語音模式推出升級模型，支援安排會議與撰寫郵件等功能。; Anthropic 宣佈將 Claude 語音模式拓展支援至 Opus 和 Sonnet 模型。; OpenAI 與 Anthropic 共同針對開放權重 AI 模型帶來的商業與競爭風險提出警告。
 
 ## Key Entities
 
@@ -29,3 +30,6 @@ status: active
 - https://xcancel.com/__alpoge__/status/2079028340955197566
 - https://techcrunch.com/2026/07/20/anthropics-landmark-1-5b-copyright-settlement-is-approved/
 - https://www.theverge.com/ai-artificial-intelligence/969285/amd-anthropic-ai-infrastructure-deal
+- https://techcrunch.com/2026/07/22/treasury-threatens-sanctions-after-white-house-claims-moonshot-distilled-anthropics-fable/
+- https://techcrunch.com/2026/07/23/experts-say-exploiting-anthropics-fable-isnt-how-kimi-k3-got-so-good/
+- https://techcrunch.com/2026/07/23/anthropic-updates-claude-voice-mode-with-more-capable-models/
