@@ -69,3 +69,48 @@ class TestFetchNewsletterArticles:
             articles = await fetch_newsletter_articles(parsed, source, mock_client)
 
         assert len(articles) == 0
+
+
+class TestFanTierBodyArticle:
+    @pytest.fixture
+    def fan_source(self):
+        return SourceConfig(name="粉虱通訊", tier=Tier.FAN, tags=["music", "culture"])
+
+    @pytest.mark.asyncio
+    async def test_fan_email_body_becomes_one_article(self, fan_source):
+        parsed = ParsedNewsletter(
+            source_name="粉虱通訊",
+            subject="粉虱通訊 No. 28",
+            from_email="sorryyouth@166558258.mailchimpapp.com",
+            date=datetime(2026, 7, 24),
+            links=["https://mailchi.mp/abc/no-28", "https://example.com/song"],
+            html_content="<p>本期開場白，內容從略&#8230;</p>",
+            text_content="本期開場白，內容從略……",
+        )
+        with patch("cyris.adapters.fetch.newsletter.extract_full_text") as mock_extract:
+            articles = await fetch_newsletter_articles(parsed, fan_source, AsyncMock())
+
+        mock_extract.assert_not_called()
+        assert len(articles) == 1
+        article = articles[0]
+        assert article.title == "粉虱通訊 No. 28"
+        assert article.url == "https://mailchi.mp/abc/no-28"
+        assert article.content == "本期開場白，內容從略……"
+        assert article.source_tier == Tier.FAN
+
+    @pytest.mark.asyncio
+    async def test_fan_email_without_text_part_strips_html(self, fan_source):
+        parsed = ParsedNewsletter(
+            source_name="粉虱通訊",
+            subject="粉虱通訊 No. 29",
+            from_email="sorryyouth@166558258.mailchimpapp.com",
+            date=datetime(2026, 8, 1),
+            links=[],
+            html_content="<div><p>Hello &amp; goodbye</p></div>",
+            text_content="",
+        )
+        articles = await fetch_newsletter_articles(parsed, fan_source, AsyncMock())
+
+        assert len(articles) == 1
+        assert articles[0].content == "Hello & goodbye"
+        assert articles[0].url.startswith("newsletter:")
