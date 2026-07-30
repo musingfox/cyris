@@ -100,7 +100,7 @@ See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs
 cyris run                     Full pipeline: fetch, score, digest
 cyris learn                   Update preference profile from digest feedback
 cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
-cyris promote-sync            Pull deep-read promotions from the Worker to the vault
+cyris promote-sync            Pull digest votes from the Worker (deep-read votes also export to the vault)
 cyris email-server            Legacy local email webhook (see workers/newsletter for the Cloudflare path)
 cyris triage-ui               Start swipe-based triage web UI
 cyris articles list           List articles in store

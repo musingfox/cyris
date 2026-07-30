@@ -78,7 +78,7 @@ src/cyris/
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
-├── promote/          # Promote-button clicks: KV queue, cyris pulls (adapters/promotions.py)
+├── promote/          # Digest vote clicks (up/down/deep): KV queue, cyris pulls (adapters/promotions.py)
 └── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
                       #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
 ```
@@ -113,7 +113,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris run` | Full pipeline: fetch → store → score → digest |
 | `cyris learn` | Analyze triage feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
-| `cyris promote-sync` | Pull deep-read promotions from the Worker to the vault (no fetch/LLM) |
+| `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up/deep accept, deep also exports to the vault (no fetch/LLM) |
 | `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
 | `cyris triage-ui` | Start swipe-based web UI for article classification |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |
@@ -136,7 +136,7 @@ Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw 
 - Pydantic v2 for all data models and config validation
 - pytest with `pytest-asyncio` (auto mode) for async tests
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
-- Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`
+- Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows feed `cyris learn`
 - Digest output language is configurable via `[digest] output_language` (default 繁體中文); prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers
 - Mock patching: always patch where the function is **used**, not where it is **defined** (e.g. patch `cyris.service_layer.run_digest.now_in_timezone`, not `cyris.utils.timezone.now_in_timezone`)
