@@ -35,9 +35,12 @@ def collect_triage_feedback(
     accepted_in_range = []
     rejected_in_range = []
 
+    # Only triaged_at-stamped articles are human labels; the rest are the
+    # pipeline's own verdicts, and learning from those is a self-reinforcing loop.
     for article in all_accepted:
-        # Use triaged_at if available, otherwise fall back to first_seen_at
-        timestamp = article.triaged_at if article.triaged_at else article.first_seen_at
+        if article.triaged_at is None:
+            continue
+        timestamp = article.triaged_at
         # Ensure timezone-aware comparison
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
@@ -45,7 +48,9 @@ def collect_triage_feedback(
             accepted_in_range.append(article)
 
     for article in all_rejected:
-        timestamp = article.triaged_at if article.triaged_at else article.first_seen_at
+        if article.triaged_at is None:
+            continue
+        timestamp = article.triaged_at
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
         if timestamp >= cutoff:

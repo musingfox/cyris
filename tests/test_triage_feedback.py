@@ -144,8 +144,8 @@ class TestCollectTriageFeedback:
         assert feedback.accepted_count == 3
         assert all("within" in a.url for a in feedback.accepted_articles)
 
-    def test_fallback_to_first_seen(self, tmp_path: Path):
-        """Use first_seen_at when triaged_at is None."""
+    def test_ignores_untriaged(self, tmp_path: Path):
+        """Articles without triaged_at are pipeline verdicts, not human feedback."""
         store = ArticleStore(tmp_path)
         now = datetime.now(UTC)
 
@@ -169,9 +169,8 @@ class TestCollectTriageFeedback:
         today_path = store._partition_path(now)
         store._save_partition(today_path, articles)
 
-        # Should use first_seen_at for filtering
-        feedback = collect_triage_feedback(store, days=14)
-        assert feedback.accepted_count == 3
+        with pytest.raises(ValueError, match="Insufficient triage feedback"):
+            collect_triage_feedback(store, days=14)
 
     def test_mixed_states(self, tmp_path: Path):
         """Only collect ACCEPTED and REJECTED, ignore PENDING and AWAITING_TRIAGE."""
