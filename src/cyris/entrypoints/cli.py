@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -450,6 +451,9 @@ def articles_accept(
             updated += 1
             accepted_urls.append(url)
 
+    if accepted_urls:
+        store.update_triage_timestamp(accepted_urls, datetime.now(UTC))
+
     typer.echo(f"Accepted {updated} article(s).")
 
     # Export to vault if configured and articles were accepted
@@ -488,6 +492,8 @@ def articles_reject(
     store = ArticleStore(cfg.app.agent_vault.path)
 
     updated = store.reject(urls, reason=reason)
+    if updated:
+        store.update_triage_timestamp(urls, datetime.now(UTC))
 
     typer.echo(f"Rejected {updated} article(s).")
 
