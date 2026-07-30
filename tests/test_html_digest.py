@@ -33,6 +33,44 @@ def test_render_with_featured_article(sample_digest_content):
     assert "<style>" in html
 
 
+def test_render_escapes_feed_controlled_fields(sample_digest_content):
+    """Feed-supplied titles and URLs must not be able to add attributes or tags.
+
+    The templates are named *.html.j2, so select_autoescape's extension match left
+    them unescaped until `default=True` was added.
+    """
+    from html.parser import HTMLParser
+
+    sample_digest_content.featured_articles = [
+        DigestSection(
+            heading="Featured",
+            items=[
+                DigestItem(
+                    title="<img src=x onerror=alert(1)>",
+                    summary="S",
+                    sources=["Src"],
+                    urls=['https://evil.test/?q=1" onclick="alert(2)'],
+                )
+            ],
+        )
+    ]
+
+    html = HtmlDigestWriter(Path("/tmp/html-escape-test"), "https://w.test", "tok").render(
+        sample_digest_content
+    )
+
+    injected: list[str] = []
+
+    class Collector(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag == "img":
+                injected.append("img")
+            injected.extend(k for k, _ in attrs if k.startswith("on"))
+
+    Collector().feed(html)
+    assert injected == []
+
+
 def test_render_empty_sections(tmp_path):
     """C1 Test 2: Empty digest renders valid HTML without sections."""
     content = DigestContent(
