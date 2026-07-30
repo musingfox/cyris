@@ -1,6 +1,7 @@
 """Pull promote-button clicks from the Cloudflare Worker into the local store."""
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from cyris.adapters.fetch.defuddle import DEFAULT_BUN_PATH, fetch_full_markdown
 from cyris.adapters.output.article_export import ArticleExporter
 from cyris.adapters.store import ArticleStore
+from cyris.domain.triage import RejectReason
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,8 @@ TIMEOUT_SECONDS = 15
 
 class PromotedArticle(BaseModel):
     url: str
+    # "deep" (default, also what vote-less legacy payloads mean), "up" or "down".
+    vote: str = "deep"
     digest_date: str | None = None
     ts: str | None = None
 
@@ -59,7 +63,12 @@ def sync_promotions(
     folder: str = "Reading",
     bun_path: str = DEFAULT_BUN_PATH,
 ) -> int:
-    """Pull promotions, mark articles accepted, export to vault, then ACK.
+    """Pull votes, apply them to the store, export deep-read picks, then ACK.
+
+    Votes carry the only human-labelled signal in the pipeline, so every
+    voted article gets a ``triaged_at`` stamp that tells it apart from the
+    digest run's own accept/reject verdicts. A "down" vote rejects, "up"
+    and "deep" accept, and only "deep" exports to the vault.
 
     Before export each article is re-fetched and cleaned to full-text
     markdown via defuddle; on failure the stored feed content is exported
@@ -78,19 +87,27 @@ def sync_promotions(
         return 0
 
     urls = [p.url for p in promotions]
+    vote_by_url = {p.url: p.vote for p in promotions}
     found = store.get_by_urls(urls)
 
     missing = set(urls) - {a.url for a in found}
     for url in missing:
         logger.warning("Promoted URL not in store, acking anyway: %s", url)
 
-    for article in found:
-        store.accept([article.url])
+    rejected = [a.url for a in found if vote_by_url[a.url] == "down"]
+    accepted = [a.url for a in found if vote_by_url[a.url] != "down"]
+    if rejected:
+        store.reject(rejected, reason=RejectReason.MANUAL_TRIAGE)
+    if accepted:
+        store.accept(accepted)
+    if found:
+        store.update_triage_timestamp([a.url for a in found], datetime.now(UTC))
 
     exported: list[Path] = []
-    if found:
+    to_export = [a for a in found if vote_by_url[a.url] == "deep"]
+    if to_export:
         display = []
-        for article in found:
+        for article in to_export:
             markdown = fetch_full_markdown(article.url, article.content, bun_path)
             display.append(
                 article.model_copy(update={"content": markdown}) if markdown else article
@@ -98,5 +115,10 @@ def sync_promotions(
         exported = ArticleExporter().export_to_vault(display, vault_path, folder=folder)
 
     ack_promotions(worker_url, token, urls)
-    logger.info("Synced %d promotion(s), exported %d article(s)", len(urls), len(exported))
+    logger.info(
+        "Synced %d vote(s) (%d down), exported %d article(s)",
+        len(urls),
+        len(rejected),
+        len(exported),
+    )
     return len(exported)

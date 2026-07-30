@@ -1,5 +1,6 @@
-{% macro promote_btn(item) -%}
-{% if promote_enabled and item.urls %}<button class="promote-btn" data-url="{{ item.urls[0] }}" title="加入待讀佇列">+ 深讀</button>{% endif %}
+{#- compact drops the wide 深讀 button so the dense headline rows keep their title width -#}
+{% macro promote_btn(item, compact=false) -%}
+{% if promote_enabled and item.urls %}<span class="vote-group" data-url="{{ item.urls[0] }}"><button class="promote-btn" data-vote="up" title="想看">👍</button><button class="promote-btn" data-vote="down" title="不想看">👎</button>{% if not compact %}<button class="promote-btn" data-vote="deep" title="加入待讀佇列">+ 深讀</button>{% endif %}</span>{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -628,8 +629,10 @@
             cursor: pointer;
         }
         .promote-btn:hover { color: var(--text); }
-        .promote-btn.done { color: var(--accent, #7fd18c); pointer-events: none; }
-        .promote-btn.error { color: #e06c75; }
+        .promote-btn.done { color: var(--accent, #7fd18c); border-color: var(--accent, #7fd18c); }
+        /* border + background, not just color: the 👍/👎 buttons are bare emoji, which ignore it */
+        .promote-btn.error { color: #e06c75; border-color: #e06c75; background: rgba(224, 108, 117, 0.14); }
+        .vote-group { display: inline-flex; gap: 4px; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -800,7 +803,7 @@
                     <div class="headline-item">
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
                         <span class="text">{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</span>
-                        {{ promote_btn(item) }}
+                        {{ promote_btn(item, compact=true) }}
                     </div>
                     {% endfor %}
                 </div>
@@ -818,9 +821,30 @@
     const PROMOTE_URL = {{ promote_worker_url | tojson }};
     const PROMOTE_TOKEN = {{ promote_token | tojson }};
     const DIGEST_DATE = {{ date | tojson }};
+    // The page is static with no read-back endpoint, so votes are echoed from localStorage.
+    const VOTES_KEY = 'cyris-votes';
+    // Corrupt storage, or a browser blocking it, must not take the click handler down with it.
+    let votes = {};
+    try { votes = JSON.parse(localStorage.getItem(VOTES_KEY) || '{}'); } catch { votes = {}; }
+
+    function paint(group, vote) {
+        // Compact rows render no deep button; 👍 is the same polarity, so show that instead.
+        const shown = group.querySelector('[data-vote="' + vote + '"]') ? vote : 'up';
+        for (const b of group.querySelectorAll('.promote-btn')) {
+            b.classList.toggle('done', b.dataset.vote === shown);
+            b.classList.remove('error');
+        }
+    }
+    for (const group of document.querySelectorAll('.vote-group')) {
+        if (votes[group.dataset.url]) paint(group, votes[group.dataset.url]);
+    }
+
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.promote-btn');
         if (!btn) return;
+        const group = btn.closest('.vote-group');
+        const url = group.dataset.url;
+        const vote = btn.dataset.vote;
         btn.disabled = true;
         try {
             const res = await fetch(PROMOTE_URL + '/promote', {
@@ -829,15 +853,16 @@
                     'Authorization': 'Bearer ' + PROMOTE_TOKEN,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ url: btn.dataset.url, digest_date: DIGEST_DATE }),
+                body: JSON.stringify({ url: url, vote: vote, digest_date: DIGEST_DATE }),
             });
             if (!res.ok) throw new Error(res.status);
-            btn.classList.remove('error');
-            btn.classList.add('done');
-            btn.textContent = '✓ 已加入';
+            votes[url] = vote;
+            // The server already took the vote; a full quota must not show it as failed.
+            try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
+            paint(group, vote);
         } catch {
             btn.classList.add('error');
-            btn.textContent = '✗ 重試';
+        } finally {
             btn.disabled = false;
         }
     });

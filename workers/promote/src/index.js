@@ -4,6 +4,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
+const VOTES = new Set(["up", "down", "deep"]);
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -32,11 +34,16 @@ export default {
     if (request.method === "POST" && pathname === "/promote") {
       const body = await request.json().catch(() => null);
       if (!body?.url) return json({ error: "missing url" }, 400);
+      // Older published digests send no vote; they only ever meant "deep read".
+      const vote = body.vote ?? "deep";
+      if (!VOTES.has(vote)) return json({ error: "bad vote" }, 400);
+      // Same key per URL, so a re-vote overwrites the previous one.
       const key = `promote:${await sha256(body.url)}`;
       await env.PROMOTIONS.put(
         key,
         JSON.stringify({
           url: body.url,
+          vote,
           digest_date: body.digest_date ?? null,
           ts: new Date().toISOString(),
         })
