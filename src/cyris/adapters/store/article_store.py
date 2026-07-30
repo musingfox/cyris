@@ -148,6 +148,8 @@ class ArticleStore:
 
             for article in articles:
                 if article.url in url_to_state:
+                    if article.triaged_at is not None:
+                        continue  # a human vote outranks the pipeline's verdict
                     state, reason = url_to_state[article.url]
                     article.state = state
                     article.digest_date = digest_date
@@ -332,6 +334,10 @@ class ArticleStore:
                     article.state = state
                     article.digest_date = today_str
                     article.rejection_reason = reason
+                    if state == ArticleState.PENDING:
+                        # Undoing a triage drops the human stamp too, otherwise the
+                        # update_states guard would keep the row from ever being judged.
+                        article.triaged_at = None
                     modified = True
                     break
 

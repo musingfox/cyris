@@ -184,6 +184,31 @@ class TestRejectArticle:
         assert "https://example.com/3" not in urls
 
 
+class TestTriageStamps:
+    """triaged_at is what separates a human label from the pipeline's own verdict."""
+
+    async def test_accept_and_reject_stamp_triaged_at(
+        self, client: TestClient, store_with_articles: ArticleStore
+    ) -> None:
+        await client.post("/api/articles/accept", json={"url": "https://example.com/1"})
+        await client.post("/api/articles/reject", json={"url": "https://example.com/3"})
+
+        [accepted] = store_with_articles.get_by_urls(["https://example.com/1"])
+        [rejected] = store_with_articles.get_by_urls(["https://example.com/3"])
+        assert accepted.triaged_at is not None
+        assert rejected.triaged_at is not None
+
+    async def test_undo_clears_the_stamp(
+        self, client: TestClient, store_with_articles: ArticleStore
+    ) -> None:
+        await client.post("/api/articles/reject", json={"url": "https://example.com/3"})
+        await client.post("/api/articles/undo", json={"url": "https://example.com/3"})
+
+        [article] = store_with_articles.get_by_urls(["https://example.com/3"])
+        assert article.state == ArticleState.PENDING
+        assert article.triaged_at is None
+
+
 class TestIndexPage:
     async def test_index_serves_html(self, client: TestClient) -> None:
         resp = await client.get("/")

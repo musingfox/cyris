@@ -330,6 +330,47 @@ def test_stored_article_to_article() -> None:
     assert article.source_tags == stored.source_tags
 
 
+def test_update_states_preserves_human_votes(
+    store: ArticleStore, sample_articles: list[Article]
+) -> None:
+    """A triaged_at stamp marks a human vote, which a re-run must not overwrite."""
+    now = datetime.now(UTC)
+    store.save([sample_articles[0]], now=now)
+    store.reject(["https://example.com/1"], reason="manual_triage")
+    store.update_triage_timestamp(["https://example.com/1"], now)
+
+    updated = store.update_states(
+        {"https://example.com/1": (ArticleState.ACCEPTED, None)},
+        digest_date="2026-03-30",
+    )
+
+    assert updated == 0
+    [article] = store.get_by_urls(["https://example.com/1"])
+    assert article.state == ArticleState.REJECTED
+
+
+def test_reset_to_pending_clears_triage_stamp(
+    store: ArticleStore, sample_articles: list[Article]
+) -> None:
+    """Undo must drop triaged_at, or the update_states guard strands the row as PENDING."""
+    now = datetime.now(UTC)
+    store.save([sample_articles[0]], now=now)
+    store.reject(["https://example.com/1"], reason="manual_triage")
+    store.update_triage_timestamp(["https://example.com/1"], now)
+
+    assert store.reset_to_pending("https://example.com/1")
+
+    [article] = store.get_by_urls(["https://example.com/1"])
+    assert article.triaged_at is None
+    assert (
+        store.update_states(
+            {"https://example.com/1": (ArticleState.ACCEPTED, None)},
+            digest_date="2026-03-30",
+        )
+        == 1
+    )
+
+
 def test_update_states_invalid_date_format(store: ArticleStore) -> None:
     """update_states should raise ValueError for bad digest_date format."""
     with pytest.raises(ValueError, match="Invalid digest_date format"):

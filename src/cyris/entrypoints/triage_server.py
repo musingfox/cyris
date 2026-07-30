@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -158,6 +159,7 @@ class TriageServer:
         updated = self._store.accept([url])
         if not updated:
             return web.json_response({"ok": False, "error": "article not found"}, status=404)
+        self._store.update_triage_timestamp([url], datetime.now(UTC))
 
         # Try to export if vault_path is configured
         exported = False
@@ -201,6 +203,7 @@ class TriageServer:
         updated = self._store.reject([url], reason=RejectReason.MANUAL_TRIAGE)
         if not updated:
             return web.json_response({"ok": False, "error": "article not found"}, status=404)
+        self._store.update_triage_timestamp([url], datetime.now(UTC))
 
         # Try to mark as read in Miniflux
         marked_read = False
