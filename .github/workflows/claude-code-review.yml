@@ -1,0 +1,52 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # review 要貼 PR/inline comment，read 會讓它靜靜跑完卻貼不出東西
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The code-review plugin was dropped on purpose: it fans the review out
+          # to sub-agents, then ends its turn waiting for them ("I'll wait for the
+          # four review agents to finish") — in a headless run the session ends
+          # there and nothing is ever posted. Inline review, one session instead.
+          prompt: |
+            Review pull request #${{ github.event.pull_request.number }} of ${{ github.repository }}.
+
+            Read the diff with `gh pr diff`, and open the surrounding files when the
+            diff alone is not enough to judge correctness. Report only things worth
+            the author's time: correctness bugs, data loss, security issues, and
+            anything that fails silently. Skip style nits.
+
+            Post the result yourself before you finish:
+            - inline comments on the specific lines, via the inline-comment tool
+            - exactly one summary comment via `gh pr comment`
+            Say so in the summary if you found nothing worth raising.
+
+            Do the review in this session — do not delegate to sub-agents, and do
+            not end your turn waiting on anything.
+          # An allow-list REPLACES the defaults, so everything the review needs has
+          # to be here — including Read/Grep/Glob. Task is deliberately absent so
+          # the run cannot fan out to sub-agents it would then wait on. Note that
+          # Bash prefix patterns do not match redirects, so the prompt asks for
+          # plain `gh pr diff` rather than `gh pr diff > file`.
+          claude_args: |
+            --allowedTools "Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
