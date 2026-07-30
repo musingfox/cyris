@@ -6,6 +6,9 @@ on:
 
 jobs:
   claude-review:
+    # Fork PRs never receive secrets, so this job could only ever fail there —
+    # skip it rather than leave a red X on every outside contribution.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
