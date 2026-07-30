@@ -32,7 +32,10 @@ class HtmlDigestWriter:
         template_dir = Path(__file__).parent / "templates"
         self.env = Environment(
             loader=FileSystemLoader(template_dir),
-            autoescape=select_autoescape(["html", "xml"]),
+            # default=True matters: select_autoescape matches on the template's own
+            # extension, and these are named *.html.j2, so the .j2 suffix left every
+            # template unescaped — feed-controlled titles and URLs went out raw.
+            autoescape=select_autoescape(["html", "xml"], default=True),
         )
 
     def render(self, content: DigestContent) -> str:
