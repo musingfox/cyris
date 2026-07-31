@@ -1,7 +1,8 @@
 """Email newsletter parsing utilities."""
 
 import logging
-from datetime import datetime
+from contextlib import suppress
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -64,10 +65,18 @@ def parse_newsletter(payload: dict, source_name: str) -> ParsedNewsletter:
 
     # Parse date from headers
     date_str = (payload.get("headers") or {}).get("Date", "")
-    try:
-        date = parsedate_to_datetime(date_str)
-    except Exception:
-        date = datetime.now()
+    date = None
+    if date_str:
+        with suppress(Exception):
+            date = parsedate_to_datetime(date_str)
+        if date is None:
+            with suppress(Exception):
+                ds = date_str
+                if ds.upper().endswith("Z"):
+                    ds = ds[:-1] + "+00:00"
+                date = datetime.fromisoformat(ds)
+    if date is None or getattr(date, "tzinfo", None) is None:
+        date = datetime.now(UTC) if date is None else date.replace(tzinfo=UTC)
 
     return ParsedNewsletter(
         source_name=source_name,

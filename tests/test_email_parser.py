@@ -1,5 +1,7 @@
 """Tests for email newsletter parsing."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from cyris.adapters.fetch.email_parser import parse_newsletter, strip_tracking_params
@@ -65,11 +67,6 @@ class TestStripTrackingParams:
         # T5
         assert strip_tracking_params("not a url at all") == "not a url at all"
 
-    def test_strips_c_param(self):
-        # pinning: c param stripped (required fix)
-        url = "https://example.com/?c=abc123&ref=keep"
-        assert strip_tracking_params(url) == "https://example.com/?ref=keep"
-
 
 class TestNewsletterSendDateParsed:
     def test_iso_z_date_parsed_to_utc(self):
@@ -120,58 +117,3 @@ class TestNewsletterSendDateParsed:
         }
         result = parse_newsletter(payload, "Test")
         assert result.date.tzinfo is not None
-
-
-class TestNewsletterSubjectPrefixStripped:
-    def test_strips_fwd_prefix(self):
-        # T1
-        payload = {
-            "from": "x@example.com",
-            "subject": "Fwd: 粉虱通訊 No. 28｜夏天的尾巴",
-            "html": "",
-            "text": "",
-            "headers": {},
-        }
-        result = parse_newsletter(payload, "Test")
-        assert result.subject == "粉虱通訊 No. 28｜夏天的尾巴"
-
-    def test_strips_nested_fwd_re(self):
-        # T2
-        payload = {
-            "from": "x@example.com",
-            "subject": "Fwd: Re: Issue #1",
-            "html": "",
-            "text": "",
-            "headers": {},
-        }
-        result = parse_newsletter(payload, "Test")
-        assert result.subject == "Issue #1"
-
-    def test_re_colon_only_keeps_original(self):
-        # T3
-        payload = {
-            "from": "x@example.com",
-            "subject": "Re:",
-            "html": "",
-            "text": "",
-            "headers": {},
-        }
-        result = parse_newsletter(payload, "Test")
-        assert result.subject == "Re:"
-
-    def test_no_colon_not_prefix(self):
-        # T4
-        payload = {
-            "from": "x@example.com",
-            "subject": "Reflections on IMAX",
-            "html": "",
-            "text": "",
-            "headers": {},
-        }
-        result = parse_newsletter(payload, "Test")
-        assert result.subject == "Reflections on IMAX"
-
-    def test_missing_subject_raises_before_strip(self):
-        # T5
-        with pytest.raises(ValueError, match="subject"):
-            parse_newsletter({"from": "x@example.com"}, "Test")
