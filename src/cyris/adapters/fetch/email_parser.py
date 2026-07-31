@@ -1,6 +1,7 @@
 """Email newsletter parsing utilities."""
 
 import logging
+import re
 from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -59,6 +60,17 @@ def parse_newsletter(payload: dict, source_name: str) -> ParsedNewsletter:
         raise ValueError("Missing required field: subject")
     if not from_email:
         raise ValueError("Missing required field: from")
+
+    # Strip common forward/reply prefixes (repeated, case-insens). If strip leaves empty, keep orig.
+    # tolerate leading/trailing ws; support Chinese 轉寄:/回覆: from Gmail
+    original = subject
+    cleaned = re.sub(
+        r"^\s*(?:(?:Re|Fwd|Fw|RE|FW|FWD|轉寄|回覆)[:：]\s*)+",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    ).strip()
+    subject = cleaned if cleaned else original
 
     html_content = payload.get("html", "")
     text_content = payload.get("text", "")
