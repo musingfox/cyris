@@ -52,9 +52,8 @@ async def test_valid_request(server_and_callback):
     }
 
     with patch(
-        "cyris.entrypoints.webhook_server.fetch_newsletter_articles",
-        new_callable=AsyncMock,
-        return_value=[],
+        "cyris.entrypoints.webhook_server.newsletter_article",
+        return_value=None,
     ):
         resp = await client.post(
             "/webhook/email", json=payload, headers={"X-Webhook-Secret": "test-secret"}

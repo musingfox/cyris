@@ -13,7 +13,6 @@ import httpx
 
 from cyris.adapters.fetch.email_parser import parse_newsletter
 from cyris.adapters.fetch.newsletter import fetch_newsletter_articles
-from cyris.adapters.http_client import HttpClient
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -87,31 +86,26 @@ class CloudflareNewsletterSource:
 
         articles: list[Article] = []
         processed_ids: list[str] = []
-        async with HttpClient() as client:
-            for item in queued:
-                processed_ids.append(item["id"])
-                source = self._match_source(item.get("from", ""), sources) or self._match_forwarded(
-                    item, sources
-                )
-                if source is None:
-                    logger.info("Newsletter from unknown sender skipped: %s", item.get("from"))
-                    continue
-                payload = {
-                    "from": item.get("from", ""),
-                    "subject": item.get("subject", ""),
-                    "html": item.get("html", ""),
-                    "text": item.get("text", ""),
-                    "headers": {"Date": item.get("date", "")},
-                }
-                try:
-                    parsed = parse_newsletter(payload, source.name)
-                    articles.extend(
-                        await fetch_newsletter_articles(parsed, source, client, cookies=cookies)
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to process newsletter from %s", source.name, exc_info=True
-                    )
+        for item in queued:
+            processed_ids.append(item["id"])
+            source = self._match_source(item.get("from", ""), sources) or self._match_forwarded(
+                item, sources
+            )
+            if source is None:
+                logger.info("Newsletter from unknown sender skipped: %s", item.get("from"))
+                continue
+            payload = {
+                "from": item.get("from", ""),
+                "subject": item.get("subject", ""),
+                "html": item.get("html", ""),
+                "text": item.get("text", ""),
+                "headers": {"Date": item.get("date", "")},
+            }
+            try:
+                parsed = parse_newsletter(payload, source.name)
+                articles.extend(fetch_newsletter_articles(parsed, source))
+            except Exception:
+                logger.warning("Failed to process newsletter from %s", source.name, exc_info=True)
 
         self._ack(processed_ids)
         logger.info("Pulled %d newsletter(s), produced %d article(s)", len(queued), len(articles))

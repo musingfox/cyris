@@ -7,8 +7,7 @@ from collections.abc import Awaitable, Callable
 from aiohttp import web
 
 from cyris.adapters.fetch.email_parser import parse_newsletter
-from cyris.adapters.fetch.newsletter import fetch_newsletter_articles
-from cyris.adapters.http_client import HttpClient
+from cyris.adapters.fetch.newsletter import newsletter_article
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,6 @@ class EmailWebhookServer:
         webhook_secret: str,
         sources: dict[str, SourceConfig],
         on_received: Callable[[list[Article]], Awaitable[None]],
-        paywall_cookies: dict[str, str] | None = None,
     ):
         self._host = host
         self._port = port
@@ -33,7 +31,6 @@ class EmailWebhookServer:
         self._secret = webhook_secret
         self._sources = sources
         self._on_received = on_received
-        self._cookies = paywall_cookies
         self._app = web.Application()
         self._app.router.add_post(path, self._handle_webhook)
         self._runner: web.AppRunner | None = None
@@ -64,10 +61,8 @@ class EmailWebhookServer:
 
         try:
             parsed = parse_newsletter(payload, source.name)
-            async with HttpClient() as client:
-                articles = await fetch_newsletter_articles(
-                    parsed, source, client, cookies=self._cookies
-                )
+            article = newsletter_article(parsed, source)
+            articles = [article] if article is not None else []
             await self._on_received(articles)
             return web.Response(status=200, text=f"Processed {len(articles)} articles")
         except Exception:

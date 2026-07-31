@@ -49,7 +49,8 @@ async def test_matched_sender_acked():
     after, before = _now()
     articles = await src.fetch_articles(after, before, _source())
 
-    assert articles == []  # no links -> no articles, but flow completed
+    assert len(articles) == 1  # body becomes the one article
+    assert articles[0].url.startswith("newsletter:")
     assert ack.called
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:abc"]}
 
@@ -73,7 +74,7 @@ async def test_unknown_sender_skipped_but_acked():
     after, before = _now()
     articles = await src.fetch_articles(after, before, _source())
 
-    assert articles == []
+    assert articles == []  # unknown sender still skipped
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:xyz"]}
 
 

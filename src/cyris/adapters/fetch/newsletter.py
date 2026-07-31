@@ -1,85 +1,76 @@
-"""Newsletter article fetching."""
+"""Newsletter article fetching.
+
+Now one email == one article; content is the email body (text preferred, else stripped html).
+No network, no per-link expansion, fetch is sync.
+"""
 
 import hashlib
 import html
 import logging
 import re
+from urllib.parse import urlsplit
 
 from cyris.adapters.fetch.email_parser import ParsedNewsletter, strip_tracking_params
-from cyris.adapters.fetch.extractor import extract_full_text
-from cyris.adapters.http_client import HttpClient
-from cyris.domain.models import Article, SourceConfig, Tier
+from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
 
 
-def _generate_article_id(source_name: str, url: str) -> str:
-    """Generate deterministic article ID from source name and URL."""
-    return hashlib.sha256(f"{source_name}{url}".encode()).hexdigest()
+def _generate_article_id(source_name: str, key: str) -> str:
+    """Generate deterministic article ID from source name and (subject or url)."""
+    return hashlib.sha256(f"{source_name}{key}".encode()).hexdigest()
 
 
-def _body_article(parsed: ParsedNewsletter, source: SourceConfig) -> Article:
-    """The email body as a single Article.
+def _find_newsletter_view_url(html: str) -> str | None:
+    """Find public view link by hostname only (mailchi.mp or campaign-archive).
 
-    Fan newsletters ARE the content: the essay lives in the mail itself, and
-    Mailchimp wraps every link in list-manage tracking URLs that the link
-    filter drops — so link-chasing yields nothing.
+    Critical: parse .hostname of the href itself, never 'foo in href' substring.
+    This prevents using a track/click wrapper (which has encoded target mailchi url)
+    as the canonical url, which would leak the e= tracking param into published digest.
+    """
+    if not html:
+        return None
+    # extract hrefs (stdlib re sufficient for controlled newsletter html)
+    hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', html, re.I)
+    for href in hrefs:
+        try:
+            host = (urlsplit(href).hostname or "").lower()
+            if re.fullmatch(r"(.+\.)?mailchi\.mp", host) or re.fullmatch(
+                r"(.+\.)?campaign-archive\d*\.com", host
+            ):
+                return strip_tracking_params(href)
+        except Exception:
+            continue
+    return None
+
+
+def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Article | None:
+    """Return the email body as the Article for this newsletter issue.
+
+    0 or 1 article. Content from text_content or unescaped html.
+    If html has clean public view link (by hostname), use it (stripped);
+    else synthetic newsletter:ID url. Empty body -> None + WARNING (singular per D5).
     """
     article_id = _generate_article_id(source.name, parsed.subject)
-    # Mailchimp's "view in browser" link is the issue's canonical web URL;
-    # fall back to a synthetic unique URL so store dedup stays per-issue.
-    web_view = next(
-        (link for link in parsed.links if "mailchi.mp" in link or "campaign-archive" in link),
-        None,
-    )
-    if web_view:
-        web_view = strip_tracking_params(web_view)
-    content = parsed.text_content.strip() or " ".join(
+    view_url = _find_newsletter_view_url(parsed.html_content)
+    raw = parsed.text_content.strip() or " ".join(
         html.unescape(re.sub(r"<[^>]+>", " ", parsed.html_content)).split()
     )
+    content = raw.strip()
+    if not content:
+        logger.warning(
+            "Empty newsletter body for subject=%s from source=%s; skipping ingest",
+            parsed.subject,
+            source.name,
+        )
+        return None
     return Article(
         id=article_id,
         title=parsed.subject,
-        url=web_view or f"newsletter:{article_id}",
+        url=view_url or f"newsletter:{article_id}",
         content=content,
         published_at=parsed.date,
         source_name=source.name,
         source_tier=source.tier,
         source_tags=source.tags,
     )
-
-
-async def fetch_newsletter_articles(
-    parsed: ParsedNewsletter,
-    source: SourceConfig,
-    http_client: HttpClient,
-    cookies: dict[str, str] | None = None,
-) -> list[Article]:
-    """Fetch full text for each link in newsletter and return as Articles.
-
-    Fan tier skips link fetching entirely: the email body becomes one Article.
-    """
-    if source.tier == Tier.FAN:
-        return [_body_article(parsed, source)]
-    articles = []
-    for url in parsed.links:
-        try:
-            extracted = await extract_full_text(url, http_client, cookies=cookies)
-            if not extracted.content:
-                logger.debug("No content extracted from %s, skipping", url)
-                continue
-            article = Article(
-                id=_generate_article_id(source.name, url),
-                title=extracted.title or parsed.subject,
-                url=url,
-                content=extracted.content,
-                author=extracted.author,
-                published_at=parsed.date,
-                source_name=source.name,
-                source_tier=source.tier,
-                source_tags=source.tags,
-            )
-            articles.append(article)
-        except Exception:
-            logger.error("Failed to fetch article from %s", url, exc_info=True)
-    return articles
