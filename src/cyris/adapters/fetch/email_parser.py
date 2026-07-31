@@ -5,10 +5,40 @@ import re
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+def strip_tracking_params(url: str) -> str:
+    """Strip tracking query params (utm_*, e, fbclid etc) from newsletter URLs.
+
+    Non-URL or unparsable input returned verbatim (no exception). Only ? kept if other
+    params remain; trailing ? removed when empty.
+    """
+    if not url or not isinstance(url, str):
+        return url
+    try:
+        p = urlparse(url)
+        if not p.scheme or not p.netloc:
+            return url
+        # keep params that are not tracking
+        tracking = {"e", "c", "fbclid", "gclid", "mc_cid", "mc_eid"}
+        qsl = [
+            (k, v)
+            for k, v in parse_qsl(p.query, keep_blank_values=True)
+            if not (k.startswith("utm_") or k in tracking)
+        ]
+        new_query = urlencode(qsl, doseq=True)
+        new_p = p._replace(query=new_query)
+        cleaned = urlunparse(new_p)
+        if not new_query and cleaned.endswith("?"):
+            cleaned = cleaned[:-1]
+        return cleaned
+    except Exception:
+        return url
 
 
 class ParsedNewsletter(BaseModel):

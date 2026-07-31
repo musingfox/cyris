@@ -5,7 +5,7 @@ import html
 import logging
 import re
 
-from cyris.adapters.fetch.email_parser import ParsedNewsletter
+from cyris.adapters.fetch.email_parser import ParsedNewsletter, strip_tracking_params
 from cyris.adapters.fetch.extractor import extract_full_text
 from cyris.adapters.http_client import HttpClient
 from cyris.domain.models import Article, SourceConfig, Tier
@@ -32,6 +32,8 @@ def _body_article(parsed: ParsedNewsletter, source: SourceConfig) -> Article:
         (link for link in parsed.links if "mailchi.mp" in link or "campaign-archive" in link),
         None,
     )
+    if web_view:
+        web_view = strip_tracking_params(web_view)
     content = parsed.text_content.strip() or " ".join(
         html.unescape(re.sub(r"<[^>]+>", " ", parsed.html_content)).split()
     )
