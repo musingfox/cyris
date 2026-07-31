@@ -108,3 +108,138 @@ async def test_empty_queue_no_ack():
     after, before = _now()
     assert await src.fetch_articles(after, before, _source()) == []
     assert not ack.called
+
+
+def test_is_private_reply_detects_direct_re():
+    # T1
+    assert CloudflareNewsletterSource._is_private_reply({"subject": "Re: 關於上一期的問題"}) is True
+
+
+def test_is_private_reply_detects_fwd_of_re():
+    # T2
+    assert CloudflareNewsletterSource._is_private_reply({"subject": "Fwd: Re: 曼報 #67"}) is True
+
+
+def test_is_private_reply_ignores_fwd_of_original():
+    # T3
+    assert (
+        CloudflareNewsletterSource._is_private_reply({"subject": "Fwd: 粉虱通訊 No. 28"}) is False
+    )
+
+
+def test_is_private_reply_normal_subject_false():
+    # T4
+    assert (
+        CloudflareNewsletterSource._is_private_reply({"subject": "曼報 #67｜IMAX：稀缺的代價"})
+        is False
+    )
+
+
+def test_is_private_reply_detects_fw_re():
+    # pinning: Fw: Re: judged as private reply
+    assert CloudflareNewsletterSource._is_private_reply({"subject": "Fw: Re: 關於問題"}) is True
+
+
+def test_is_private_reply_detects_repeated_fwd_re():
+    # pinning: repeated Fwd: Fwd: Re: judged private
+    assert (
+        CloudflareNewsletterSource._is_private_reply({"subject": "Fwd: Fwd: Re: 曼報 #67"}) is True
+    )
+
+
+def test_is_private_reply_detects_chinese_reply():
+    # pinning: 回覆: judged as private reply
+    assert CloudflareNewsletterSource._is_private_reply({"subject": "回覆: 你的問題"}) is True
+
+
+def test_is_private_reply_returns_false_for_non_string_subject():
+    # pinning: non-str/ missing subject -> False (no AttributeError)
+    assert CloudflareNewsletterSource._is_private_reply({"subject": 123}) is False
+    assert CloudflareNewsletterSource._is_private_reply({"subject": None}) is False
+    assert CloudflareNewsletterSource._is_private_reply({}) is False
+    assert CloudflareNewsletterSource._is_private_reply({"subject": ["bad"]}) is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_private_reply_not_ingested_but_acked():
+    # T5
+    item = {
+        "id": "nl:reply",
+        "from": "list@benedictevans.com",
+        "subject": "Re: 你的問題",
+        "html": "<p>好的</p>",
+        "text": "好的",
+        "date": "2026-07-30T02:00:00Z",
+    }
+    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
+
+    src = CloudflareNewsletterSource(WORKER, "tok")
+    after, before = _now()
+    articles = await src.fetch_articles(after, before, _source())
+    assert articles == []
+    assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:reply"]}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_non_string_subject_does_not_raise_and_still_acks():
+    # pinning: non-str subject (e.g. int) -> _is_private safe False,
+    # parse raises inside try (caught), no escape, ACK happens
+    item = {
+        "id": "nl:badsubj",
+        "from": "list@benedictevans.com",
+        "subject": 12345,  # non-str
+        "html": "<p>foo</p>",
+        "text": "foo",
+        "date": "2026-07-30T02:00:00Z",
+    }
+    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
+
+    src = CloudflareNewsletterSource(WORKER, "tok")
+    after, before = _now()
+    # call must not raise to outer (would skip ack)
+    articles = await src.fetch_articles(after, before, _source())
+    assert articles == []
+    assert ack.called
+    assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:badsubj"]}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_malformed_item_missing_id_does_not_crash_batch_acks_goods():
+    """Malformed missing 'id' in batch: goods still produce articles + get ACKed."""
+    good = {
+        "id": "nl:good1",
+        "from": "list@benedictevans.com",
+        "subject": "Weekly #1",
+        "html": "<p>body1</p>",
+        "text": "body1",
+        "date": "2026-07-13T00:00:00Z",
+    }
+    bad = {  # missing id -> would have crashed on item["id"]
+        "from": "list@benedictevans.com",
+        "subject": "Bad no id",
+        "html": "<p/>",
+        "text": "",
+        "date": "2026-07-13T00:00:00Z",
+    }
+    good2 = {
+        "id": "nl:good2",
+        "from": "list@benedictevans.com",
+        "subject": "Weekly #2",
+        "html": "<p>body2</p>",
+        "text": "body2",
+        "date": "2026-07-13T00:00:00Z",
+    }
+    queued = [good, bad, good2]
+    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=queued))
+    ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200))
+    source = CloudflareNewsletterSource(WORKER, "tok")
+    articles = await source.fetch_articles(*_now(), sources=_source())
+    assert len(articles) == 2
+    assert articles[0].title == "Weekly #1"
+    assert articles[1].title == "Weekly #2"
+    assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:good1", "nl:good2"]}

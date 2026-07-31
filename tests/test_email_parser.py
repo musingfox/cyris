@@ -67,6 +67,11 @@ class TestStripTrackingParams:
         # T5
         assert strip_tracking_params("not a url at all") == "not a url at all"
 
+    def test_strips_c_param(self):
+        # pinning: c param stripped (required fix)
+        url = "https://example.com/?c=abc123&ref=keep"
+        assert strip_tracking_params(url) == "https://example.com/?ref=keep"
+
 
 class TestNewsletterSendDateParsed:
     def test_iso_z_date_parsed_to_utc(self):

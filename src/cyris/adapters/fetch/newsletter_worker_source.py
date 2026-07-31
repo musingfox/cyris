@@ -7,12 +7,13 @@ linked articles -> POST /ack. Sender is matched to a source via `email_match`.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 
 import httpx
 
 from cyris.adapters.fetch.email_parser import parse_newsletter
-from cyris.adapters.fetch.newsletter import fetch_newsletter_articles
+from cyris.adapters.fetch.newsletter import newsletter_article
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,21 @@ class CloudflareNewsletterSource:
                 return source
         return None
 
+    @staticmethod
+    def _is_private_reply(item: dict) -> bool:
+        """Private reply (or Fwd of reply) -> ACK but no ingest. Normal Fwd of issue ok."""
+        subject = item.get("subject")
+        if not isinstance(subject, str):
+            return False
+        subject = subject.strip()
+        if not subject:
+            return False
+        # support Fw:Re, Fwd:Fwd:Re, 回覆:; tolerate ws
+        # (non-str guarded to prevent escape ex from _is_private)
+        return bool(
+            re.match(r"^(?:(?:Fwd?|Fw|轉寄)[:：]\s*)*(?:Re|回覆)[:：]\s*", subject, re.IGNORECASE)
+        )
+
     async def fetch_articles(
         self,
         after: datetime,
@@ -87,25 +103,37 @@ class CloudflareNewsletterSource:
         articles: list[Article] = []
         processed_ids: list[str] = []
         for item in queued:
-            processed_ids.append(item["id"])
-            source = self._match_source(item.get("from", ""), sources) or self._match_forwarded(
-                item, sources
-            )
-            if source is None:
-                logger.info("Newsletter from unknown sender skipped: %s", item.get("from"))
-                continue
-            payload = {
-                "from": item.get("from", ""),
-                "subject": item.get("subject", ""),
-                "html": item.get("html", ""),
-                "text": item.get("text", ""),
-                "headers": {"Date": item.get("date", "")},
-            }
+            item_id = item.get("id")
+            if item_id is not None:
+                processed_ids.append(item_id)
             try:
+                source = self._match_source(item.get("from", ""), sources) or self._match_forwarded(
+                    item, sources
+                )
+                if source is None:
+                    logger.info("Newsletter from unknown sender skipped: %s", item.get("from"))
+                    continue
+                if self._is_private_reply(item):
+                    # private reply (or fwd of reply): do not ingest, but acked to avoid pileup
+                    continue
+                payload = {
+                    "from": item.get("from", ""),
+                    "subject": item.get("subject", ""),
+                    "html": item.get("html", ""),
+                    "text": item.get("text", ""),
+                    "headers": {"Date": item.get("date", "")},
+                }
                 parsed = parse_newsletter(payload, source.name)
-                articles.extend(fetch_newsletter_articles(parsed, source))
+                art = newsletter_article(parsed, source)
+                if art is not None:
+                    articles.append(art)
             except Exception:
-                logger.warning("Failed to process newsletter from %s", source.name, exc_info=True)
+                logger.warning(
+                    "Failed to process newsletter item id=%s from=%s",
+                    item_id,
+                    item.get("from"),
+                    exc_info=True,
+                )
 
         self._ack(processed_ids)
         logger.info("Pulled %d newsletter(s), produced %d article(s)", len(queued), len(articles))
