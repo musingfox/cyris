@@ -87,15 +87,20 @@ These decide the shape of the work, so they are settled before any code moves.
 
 None of this needs the cloud, and all of it is wrong to carry forward.
 
-- [ ] **Raise `max_articles_per_digest`.** It is 200 and truncated on both 2026-08-07 runs.
-      The buffer's entire benefit is more articles inside the 24h window, and this throws
-      them away — until it changes, the buffer is paid for and not used. ~400 costs about
-      US$0.20 → US$0.35 per run in LLM spend.
+- [ ] **Raise `max_articles_per_digest`.** It is 200 and truncates on every run. The
+      buffer's entire benefit is more articles inside the 24h window, and the cap throws
+      them away: on 2026-08-08 08:00 Miniflux returned exactly 200 (capped) and the buffer
+      156, but the union was **203** — the buffer contributed 3 net articles because the
+      cap had already saturated the pool. Until this changes the buffer is paid for and
+      unused. ~400 costs about US$0.20 → US$0.35 per run in LLM spend.
 - [ ] **Move the 9 Substack sources to the email path.** Substack rate-limits Cloudflare's
       egress (HTTP 429 on 4–5 feeds per poll). Most of them send email, and the newsletter
       Worker already handles that. This is a routing fix, not a retry-tuning problem.
-- [ ] **Run `workers/rss/compare.py` over a full day** and close the gap against Miniflux.
-      Miniflux cannot be retired without this receipt.
+- [ ] **Close the remaining buffer gap.** First clean comparison, 2026-08-08 over 24h:
+      Miniflux 234 URLs, buffer 205, 191 shared. Near parity, and the buffer already finds
+      14 that Miniflux misses (12 Wired). The deficit is 42 中央社 articles across three
+      feeds — those are the highest-volume sources, so an hourly poll is the suspect.
+      Miniflux cannot be retired until that is explained.
 - [ ] **Retire `MinifluxSource`** once the comparison is clean. This is what frees the plan
       from needing Postgres anywhere.
 
