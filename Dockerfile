@@ -7,6 +7,10 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 
+# Bake wrangler into the image so a digest-time deploy needs no network fetch;
+# without this the first publish after every container recreate downloads it.
+RUN bunx wrangler --version
+
 # supercronic: container-aware cron — logs to stdout, respects TZ + inherits env vars
 ARG TARGETARCH
 ARG SUPERCRONIC_VERSION=v0.2.47
