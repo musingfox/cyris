@@ -56,3 +56,10 @@ pages_project = ""
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).
 worker_url = ""
 # Token via env: CYRIS_NEWSLETTER_TOKEN
+
+[rss]
+# Optional Cloudflare feed-buffer Worker (see workers/rss/). Polls feeds hourly
+# into D1 so the 24h window sees more than a feed snapshot holds; runs alongside
+# Miniflux (fetch_all_articles dedups by URL).
+worker_url = ""
+# Token via env: CYRIS_RSS_TOKEN

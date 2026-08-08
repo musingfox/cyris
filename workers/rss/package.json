@@ -1,0 +1,14 @@
+{
+  "name": "cyris-rss",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fast-xml-parser": "^5.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.js'"
+  }
+}

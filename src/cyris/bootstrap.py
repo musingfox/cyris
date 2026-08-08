@@ -71,6 +71,12 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
             CloudflareNewsletterSource(cfg.app.newsletter.worker_url, cfg.app.newsletter.token)
         )
 
+    # Opt-in while Miniflux stays up: both run, and fetch_all_articles dedups by URL.
+    if cfg.app.rss.worker_url and cfg.app.rss.token:
+        from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
+
+        fetch_sources.append(CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token))
+
     html_writer = None
     publish = None
     if cfg.app.html_output.enabled:

@@ -79,8 +79,10 @@ src/cyris/
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
-└── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
-                      #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
+├── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
+│                     #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
+└── rss/              # Hourly feed buffer: cron polls sources.yaml feeds → D1, cyris pulls
+                      #   (adapters/fetch/rss_worker_source.py). Needs Workers Paid.
 ```
 
 ### Key Data Flow

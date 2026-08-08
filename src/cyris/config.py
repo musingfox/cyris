@@ -182,6 +182,19 @@ class NewsletterConfig(BaseModel):
         return self
 
 
+class RssConfig(BaseModel):
+    """Cloudflare RSS Worker — hourly feed buffer read in place of Miniflux."""
+
+    worker_url: str = ""
+    token: str = ""
+
+    @model_validator(mode="after")
+    def inject_token(self) -> "RssConfig":
+        if not self.token:
+            self.token = os.environ.get("CYRIS_RSS_TOKEN", "")
+        return self
+
+
 class AppConfig(BaseModel):
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     miniflux: MinifluxConfig = Field(default_factory=MinifluxConfig)
@@ -195,6 +208,7 @@ class AppConfig(BaseModel):
     html_output: HtmlOutputConfig = Field(default_factory=HtmlOutputConfig)
     promote: PromoteConfig = Field(default_factory=PromoteConfig)
     newsletter: NewsletterConfig = Field(default_factory=NewsletterConfig)
+    rss: RssConfig = Field(default_factory=RssConfig)
 
 
 class SourcesConfig(BaseModel):

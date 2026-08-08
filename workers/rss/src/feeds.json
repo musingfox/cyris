@@ -1,0 +1,206 @@
+[
+  {
+    "name": "Stratechery",
+    "url": "https://stratechery.com/feed/"
+  },
+  {
+    "name": "Benedict Evans",
+    "url": "https://www.ben-evans.com/benedictevans?format=rss"
+  },
+  {
+    "name": "ByteByteGo Newsletter",
+    "url": "https://blog.bytebytego.com/feed"
+  },
+  {
+    "name": "Vincent's Substack",
+    "url": "https://vincentcwyu.substack.com/feed"
+  },
+  {
+    "name": "區塊勢",
+    "url": "https://www.blocktrend.today/feed"
+  },
+  {
+    "name": "書不起",
+    "url": "https://blog.chiukaun.com/feed"
+  },
+  {
+    "name": "Mitchell Hashimoto",
+    "url": "https://mitchellh.com/feed.xml"
+  },
+  {
+    "name": "Maggie Appleton",
+    "url": "https://maggieappleton.com/rss.xml"
+  },
+  {
+    "name": "Sam Altman",
+    "url": "https://blog.samaltman.com/posts.atom"
+  },
+  {
+    "name": "Ernest Chiang",
+    "url": "https://www.ernestchiang.com/zh/index.xml"
+  },
+  {
+    "name": "James Shore",
+    "url": "https://www.jamesshore.com/v2/feed"
+  },
+  {
+    "name": "Tidy First",
+    "url": "https://newsletter.kentbeck.com/feed"
+  },
+  {
+    "name": "Readwise Blog",
+    "url": "https://blog.readwise.io/rss/"
+  },
+  {
+    "name": "Pin 起來！",
+    "url": "https://pinchlime.com/atom.xml"
+  },
+  {
+    "name": "PJ Wu",
+    "url": "https://world.hey.com/mimir/feed.atom"
+  },
+  {
+    "name": "brucehsu",
+    "url": "https://bruceh.su/feed.xml"
+  },
+  {
+    "name": "Linear Blog",
+    "url": "https://linear.app/rss/blog.json"
+  },
+  {
+    "name": "Citations Needed",
+    "url": "https://feeds.libsyn.com/102225/rss"
+  },
+  {
+    "name": "Wisereads",
+    "url": "https://wise.readwise.io/feed/"
+  },
+  {
+    "name": "Slack Engineering",
+    "url": "https://slack.engineering/feed/"
+  },
+  {
+    "name": "The Cloudflare Blog",
+    "url": "https://blog.cloudflare.com/rss/"
+  },
+  {
+    "name": "A Smart Bear",
+    "url": "https://blog.asmartbear.com/feed"
+  },
+  {
+    "name": "The Managers' Guide",
+    "url": "https://the.managers.guide/rss/"
+  },
+  {
+    "name": "ExplainThis 全端開發雙週報",
+    "url": "https://explainthis.substack.com/feed"
+  },
+  {
+    "name": "TMTB",
+    "url": "https://tmtb.substack.com/feed"
+  },
+  {
+    "name": "Ben's Bites",
+    "url": "https://bensbites.substack.com/feed"
+  },
+  {
+    "name": "NoCode 工作術",
+    "url": "https://notimenocode.substack.com/feed"
+  },
+  {
+    "name": "Product Growth",
+    "url": "https://aakashgupta.substack.com/feed"
+  },
+  {
+    "name": "龍貓大王通信",
+    "url": "https://totoroforestnews.substack.com/feed"
+  },
+  {
+    "name": "斑馬通信",
+    "url": "https://zebraletter.substack.com/feed"
+  },
+  {
+    "name": "無用之用",
+    "url": "https://masterofnonewithsunnyc.substack.com/feed"
+  },
+  {
+    "name": "TechCrunch",
+    "url": "https://techcrunch.com/feed/"
+  },
+  {
+    "name": "The Verge",
+    "url": "https://www.theverge.com/rss/index.xml"
+  },
+  {
+    "name": "報導者",
+    "url": "https://www.twreporter.org/a/rss2.xml"
+  },
+  {
+    "name": "中央社即時新聞 國內政治",
+    "url": "https://feeds.feedburner.com/rsscna/politics"
+  },
+  {
+    "name": "中央社即時新聞 財經新聞",
+    "url": "https://feeds.feedburner.com/rsscna/finance"
+  },
+  {
+    "name": "中央社即時新聞 國際焦點",
+    "url": "https://feeds.feedburner.com/rsscna/intworld"
+  },
+  {
+    "name": "中央社即時新聞 科技新聞",
+    "url": "https://feeds.feedburner.com/rsscna/technology"
+  },
+  {
+    "name": "大人學",
+    "url": "https://feeds.feedburner.com/darencademy/GwRT"
+  },
+  {
+    "name": "The GitHub Blog",
+    "url": "https://github.blog/feed/"
+  },
+  {
+    "name": "Taiwan Publisher Group",
+    "url": "https://publishergroup.tw/rss/"
+  },
+  {
+    "name": "Collab Fund",
+    "url": "https://feeds.feedburner.com/collabfund"
+  },
+  {
+    "name": "DQ 地球圖輯隊",
+    "url": "https://dq-api.azurewebsites.net/f-system/get-rss"
+  },
+  {
+    "name": "Anthropic News",
+    "url": "https://rss-hub-lovat-kappa.vercel.app/anthropic/news"
+  },
+  {
+    "name": "37signals Dev",
+    "url": "https://dev.37signals.com/feed/posts.xml"
+  },
+  {
+    "name": "3Blue1Brown",
+    "url": "https://rss-hub-lovat-kappa.vercel.app/youtube/channel/UCYO_jab_esuFRV4b17AJtAw"
+  },
+  {
+    "name": "安德魯的部落格",
+    "url": "https://columns.chicken-house.net/feed.xml"
+  },
+  {
+    "name": "Hacker News Best",
+    "url": "https://hnrss.org/best"
+  },
+  {
+    "name": "Ars Technica",
+    "url": "https://feeds.arstechnica.com/arstechnica/index"
+  },
+  {
+    "name": "Wired",
+    "url": "https://www.wired.com/feed/rss"
+  },
+  {
+    "name": "MIT Technology Review",
+    "url": "https://www.technologyreview.com/feed/"
+  }
+]

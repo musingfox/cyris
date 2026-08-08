@@ -1,0 +1,18 @@
+name = "cyris-rss"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Hourly poll. Feed snapshots only hold ~2-4h of high-volume sources, so the
+# 24h digest window needs an accumulated buffer, not a fetch at digest time.
+[triggers]
+crons = ["0 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cyris-rss"
+database_id = "0948e71f-2374-4e4e-8f30-44890139011b"
+
+# Requires Workers Paid. On Free the scheduled handler died with "Exceeded CPU
+# Limit" on every tick — parsing ~50 feeds of XML is far past what Free allows.
+[limits]
+cpu_ms = 300000
