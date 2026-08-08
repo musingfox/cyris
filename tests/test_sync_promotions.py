@@ -47,13 +47,6 @@ def store(tmp_path) -> ArticleStore:
     return s
 
 
-@pytest.fixture
-def vault(tmp_path):
-    vault_path = tmp_path / "vault"
-    vault_path.mkdir()
-    return vault_path
-
-
 def test_pull_promotions_parses_response():
     payload = [{"url": "https://example.com/a", "digest_date": "2026-07-10", "ts": "t"}]
     with patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)) as get:
@@ -73,50 +66,38 @@ def test_pull_promotions_raises_on_error():
         pull_promotions(WORKER_URL, TOKEN)
 
 
-def test_sync_exports_and_acks(store, vault):
+def test_sync_accepts_and_acks(store):
     payload = [{"url": "https://example.com/stored", "digest_date": "2026-07-10"}]
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
         patch(
             "cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})
         ) as post,
-        patch("cyris.adapters.promotions.fetch_full_markdown", return_value=None),
     ):
-        exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
+        synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert exported == 1
-    assert (vault / "Reading").exists()
-    assert len(list((vault / "Reading").glob("*.md"))) == 1
+    assert synced == 1
     [article] = store.get_by_urls(["https://example.com/stored"])
     assert article.state == ArticleState.ACCEPTED
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/stored"]}
 
 
-def test_sync_exports_full_text_markdown(store, vault):
-    """When defuddle extraction succeeds, the exported note carries the clean markdown."""
-    payload = [{"url": "https://example.com/stored"}]
+def test_sync_legacy_deep_vote_accepts(store):
+    """Digests published before the 深讀 button was dropped are still live and still send it."""
+    payload = [{"url": "https://example.com/stored", "vote": "deep"}]
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
         patch("cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})),
-        patch(
-            "cyris.adapters.promotions.fetch_full_markdown",
-            return_value="Clean **markdown** body",
-        ) as fetch_md,
     ):
-        exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
+        synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert exported == 1
-    fetch_md.assert_called_once_with(
-        "https://example.com/stored", "Full text here", "~/.bun/bin/bun"
-    )
-    [note] = (vault / "Reading").glob("*.md")
-    text = note.read_text()
-    assert "Clean **markdown** body" in text
-    assert "Full text here" not in text
+    assert synced == 1
+    [article] = store.get_by_urls(["https://example.com/stored"])
+    assert article.state == ArticleState.ACCEPTED
 
 
-def test_sync_routes_votes(store, vault):
-    """up accepts without exporting, down rejects, and both are stamped as human labels."""
+def test_sync_routes_votes(store):
+    """up accepts, down rejects, and both are stamped as human labels."""
     store.save(
         [
             Article(
@@ -137,13 +118,10 @@ def test_sync_routes_votes(store, vault):
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
         patch("cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})),
-        patch("cyris.adapters.promotions.fetch_full_markdown") as fetch_md,
     ):
-        exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
+        synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert exported == 0
-    assert not (vault / "Reading").exists()
-    fetch_md.assert_not_called()
+    assert synced == 2
 
     [up] = store.get_by_urls(["https://example.com/stored"])
     [down] = store.get_by_urls(["https://example.com/nope"])
@@ -152,7 +130,7 @@ def test_sync_routes_votes(store, vault):
     assert up.triaged_at is not None and down.triaged_at is not None
 
 
-def test_sync_missing_url_acks_without_export(store, vault):
+def test_sync_missing_url_acks_anyway(store):
     payload = [{"url": "https://example.com/unknown"}]
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
@@ -160,14 +138,13 @@ def test_sync_missing_url_acks_without_export(store, vault):
             "cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})
         ) as post,
     ):
-        exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
+        synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert exported == 0
-    assert not (vault / "Reading").exists()
+    assert synced == 1
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/unknown"]}
 
 
-def test_voted_articles_reach_learning_but_pipeline_verdicts_do_not(store, vault):
+def test_voted_articles_reach_learning_but_pipeline_verdicts_do_not(store):
     """The whole point of the buttons: a vote becomes a label, a pipeline verdict does not."""
     store.save(
         [
@@ -193,33 +170,19 @@ def test_voted_articles_reach_learning_but_pipeline_verdicts_do_not(store, vault
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
         patch("cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})),
     ):
-        sync_promotions(WORKER_URL, TOKEN, store, vault)
+        sync_promotions(WORKER_URL, TOKEN, store)
 
     feedback = collect_triage_feedback(store, days=14, min_triaged=1)
     assert [a.url for a in feedback.accepted_articles] == ["https://example.com/stored"]
     assert feedback.rejected_articles == []
 
 
-def test_sync_empty_queue_skips_ack(store, vault):
+def test_sync_empty_queue_skips_ack(store):
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response([])),
         patch("cyris.adapters.promotions.httpx.post") as post,
     ):
-        exported = sync_promotions(WORKER_URL, TOKEN, store, vault)
+        synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert exported == 0
-    post.assert_not_called()
-
-
-def test_sync_export_failure_skips_ack(store, tmp_path):
-    payload = [{"url": "https://example.com/stored"}]
-    missing_vault = tmp_path / "no-such-vault"
-    with (
-        patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
-        patch("cyris.adapters.promotions.httpx.post") as post,
-        patch("cyris.adapters.promotions.fetch_full_markdown", return_value=None),
-        pytest.raises(ValueError),
-    ):
-        sync_promotions(WORKER_URL, TOKEN, store, missing_vault)
-
+    assert synced == 0
     post.assert_not_called()

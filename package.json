@@ -1,8 +1,0 @@
-{
-  "private": true,
-  "description": "JS dependencies for the defuddle full-text extraction shim (src/cyris/adapters/fetch/defuddle_extract.mjs)",
-  "dependencies": {
-    "defuddle": "^0.19.1",
-    "linkedom": "^0.18.11"
-  }
-}

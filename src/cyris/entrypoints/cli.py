@@ -102,7 +102,7 @@ def promote_sync(
         raise typer.Exit(1)
 
     count = deps.sync_promotions()
-    typer.echo(f"Synced {count} promoted article(s) to vault.")
+    typer.echo(f"Synced {count} digest vote(s).")
 
 
 @app.command("learn")

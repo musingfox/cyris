@@ -1,6 +1,5 @@
-{#- compact drops the wide 深讀 button so the dense headline rows keep their title width -#}
-{% macro promote_btn(item, compact=false) -%}
-{% if promote_enabled and item.urls %}<span class="vote-group" data-url="{{ item.urls[0] }}"><button class="promote-btn" data-vote="up" title="想看">👍</button><button class="promote-btn" data-vote="down" title="不想看">👎</button>{% if not compact %}<button class="promote-btn" data-vote="deep" title="加入待讀佇列">+ 深讀</button>{% endif %}</span>{% endif %}
+{% macro promote_btn(item) -%}
+{% if promote_enabled and item.urls %}<span class="vote-group" data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="想看">👍</button><button class="promote-btn" data-vote="down" title="不想看">👎</button></span>{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -417,6 +416,8 @@
             line-height: 1.65;
         }
 
+        .news-cluster .meta { margin-top: 10px; }
+
         /* === ARTICLE ITEM (Thematic) === */
         .thematic-block {
             margin-bottom: 36px;
@@ -520,6 +521,7 @@
             margin-bottom: 10px;
         }
 
+        .news-cluster .meta,
         .attention-item .meta {
             font-family: 'Geist Mono', monospace;
             font-size: 10px;
@@ -719,6 +721,12 @@
                     <h4>{{ cluster.heading }}</h4>
                     {% for item in cluster.items %}
                     <div class="summary">{{ item.summary }}</div>
+                    {#- The vote is on the topic, so one group per cluster; the links stay per article.
+                        sources and urls are appended in lockstep by cluster_news, hence the shared index. -#}
+                    <div class="meta">
+                        {%- for url in item.urls %}<a href="{{ url }}" target="_blank" rel="noopener">{{ item.sources[loop.index0] if loop.index0 < item.sources | length else url }}</a>{{ ' · ' if not loop.last }}{% endfor %}
+                        {{ promote_btn(item) }}
+                    </div>
                     {% endfor %}
                 </div>
                 {% endfor %}
@@ -739,6 +747,7 @@
                         <div class="meta">
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
                             {% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {{ promote_btn(item) }}
                         </div>
                     </article>
                     {% endfor %}
@@ -803,7 +812,7 @@
                     <div class="headline-item">
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
                         <span class="text">{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</span>
-                        {{ promote_btn(item, compact=true) }}
+                        {{ promote_btn(item) }}
                     </div>
                     {% endfor %}
                 </div>
@@ -828,35 +837,39 @@
     try { votes = JSON.parse(localStorage.getItem(VOTES_KEY) || '{}'); } catch { votes = {}; }
 
     function paint(group, vote) {
-        // Compact rows render no deep button; 👍 is the same polarity, so show that instead.
+        // Votes stored before the deep-read button was dropped have no button to paint; up is the same polarity.
         const shown = group.querySelector('[data-vote="' + vote + '"]') ? vote : 'up';
         for (const b of group.querySelectorAll('.promote-btn')) {
             b.classList.toggle('done', b.dataset.vote === shown);
             b.classList.remove('error');
         }
     }
+    // A news cluster is one vote-group over every article in it, so urls is a list.
+    const groupUrls = (group) => JSON.parse(group.dataset.urls);
+
     for (const group of document.querySelectorAll('.vote-group')) {
-        if (votes[group.dataset.url]) paint(group, votes[group.dataset.url]);
+        const key = groupUrls(group)[0];
+        if (votes[key]) paint(group, votes[key]);
     }
 
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.promote-btn');
         if (!btn) return;
         const group = btn.closest('.vote-group');
-        const url = group.dataset.url;
+        const urls = groupUrls(group);
         const vote = btn.dataset.vote;
         btn.disabled = true;
         try {
-            const res = await fetch(PROMOTE_URL + '/promote', {
+            const results = await Promise.all(urls.map((u) => fetch(PROMOTE_URL + '/promote', {
                 method: 'POST',
                 headers: {
                     'Authorization': 'Bearer ' + PROMOTE_TOKEN,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ url: url, vote: vote, digest_date: DIGEST_DATE }),
-            });
-            if (!res.ok) throw new Error(res.status);
-            votes[url] = vote;
+                body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
+            })));
+            if (results.some((r) => !r.ok)) throw new Error('promote failed');
+            votes[urls[0]] = vote;
             // The server already took the vote; a full quota must not show it as failed.
             try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
             paint(group, vote);

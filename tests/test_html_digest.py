@@ -49,7 +49,8 @@ def test_render_escapes_feed_controlled_fields(sample_digest_content):
                     title="<img src=x onerror=alert(1)>",
                     summary="S",
                     sources=["Src"],
-                    urls=['https://evil.test/?q=1" onclick="alert(2)'],
+                    # Both quote styles: href is double-quoted, data-urls single-quoted.
+                    urls=["https://evil.test/?q=1\" onclick=\"alert(2)&x=' onmouseover='alert(3)"],
                 )
             ],
         )
@@ -446,3 +447,49 @@ def test_all_sections_render(tmp_path):
     assert "Headlines" in html
     assert "Headline 1" in html
     assert "5 awaiting triage" in html
+
+
+def test_promote_buttons_on_every_section(tmp_path):
+    """Every rendered item is votable, and a cluster's vote carries all its articles."""
+    item = lambda n: DigestItem(  # noqa: E731
+        title=f"Item {n}", summary="s", sources=["Src"], urls=[f"https://x.com/{n}"]
+    )
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        featured_articles=[DigestSection(heading="Top", items=[item(1), item(2)])],
+        news_clusters=[
+            DigestSection(
+                heading="Tech",
+                items=[
+                    DigestItem(
+                        title="Cluster",
+                        summary="s",
+                        sources=["A", "B"],
+                        urls=["https://na.com", "https://nb.com"],
+                    )
+                ],
+            )
+        ],
+        fan_sections=[DigestSection(heading="Fan", items=[item(3)])],
+        thematic_summaries=[DigestSection(heading="Theme", items=[item(4)])],
+        attention_sections=[DigestSection(heading="Watch", items=[item(5)])],
+        filtered_headlines=[item(6)],
+    )
+
+    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    html = writer.render(content)
+
+    # lead + featured + cluster + fan + thematic + attention + headline
+    assert html.count('class="vote-group"') == 7
+    assert 'data-urls=\'["https://na.com", "https://nb.com"]\'' in html
+    # The deep-read queue is gone: Obsidian Clipper covers saving, cyris only filters.
+    assert "深讀" not in html
+    assert 'data-vote="deep"' not in html
+    # Every article in the cluster stays individually openable.
+    assert '<a href="https://na.com" target="_blank" rel="noopener">A</a>' in html
+    assert '<a href="https://nb.com" target="_blank" rel="noopener">B</a>' in html

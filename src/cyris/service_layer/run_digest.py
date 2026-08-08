@@ -58,9 +58,9 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
     if deps.sync_promotions is not None:
         try:
-            exported_count = await asyncio.to_thread(deps.sync_promotions)
-            if exported_count:
-                progress(f"Synced {exported_count} promoted article(s) to vault.")
+            vote_count = await asyncio.to_thread(deps.sync_promotions)
+            if vote_count:
+                progress(f"Synced {vote_count} digest vote(s).")
         except Exception as e:
             logger.warning("Promotion sync failed: %s", e)
 

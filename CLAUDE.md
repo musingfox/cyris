@@ -78,7 +78,7 @@ src/cyris/
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
-├── promote/          # Digest vote clicks (up/down/deep): KV queue, cyris pulls (adapters/promotions.py)
+├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
 └── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
                       #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
 ```
@@ -113,7 +113,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris run` | Full pipeline: fetch → store → score → digest |
 | `cyris learn` | Analyze triage feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
-| `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up/deep accept, deep also exports to the vault (no fetch/LLM) |
+| `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
 | `cyris triage-ui` | Start swipe-based web UI for article classification |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |

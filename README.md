@@ -27,7 +27,6 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 # Clone and install
 git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
-bun install    # optional: full-text markdown export for promoted articles (defuddle)
 
 # Configure
 cp cyris.toml.example cyris.toml           # edit API endpoints, vault paths
@@ -100,7 +99,7 @@ See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs
 cyris run                     Full pipeline: fetch, score, digest
 cyris learn                   Update preference profile from digest feedback
 cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
-cyris promote-sync            Pull digest votes from the Worker (deep-read votes also export to the vault)
+cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
 cyris email-server            Legacy local email webhook (see workers/newsletter for the Cloudflare path)
 cyris triage-ui               Start swipe-based triage web UI
 cyris articles list           List articles in store
