@@ -1,5 +1,13 @@
 {% macro promote_btn(item) -%}
-{% if promote_enabled and item.urls %}<span class="vote-group" data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="想看">👍</button><button class="promote-btn" data-vote="down" title="不想看">👎</button></span>{% endif %}
+{% if promote_enabled and item.urls %}<span class="vote-group" data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>{% endif %}
+{%- endmacro -%}
+{#- Sources of a news cluster: one link per article, so a busy topic renders five of
+    them and wraps into a mess on a phone. Fold past two behind a native <details>. -#}
+{% macro source_links(item) -%}
+{%- for url in item.urls %}<a href="{{ url }}" target="_blank" rel="noopener">{{ item.sources[loop.index0] if loop.index0 < item.sources | length else url }}</a>{{ ' · ' if not loop.last }}{% endfor -%}
+{%- endmacro -%}
+{% macro source_list(item) -%}
+{% if item.urls | length > 2 %}<details class="src-fold"><summary>{{ item.urls | length }} sources</summary><span class="src-list">{{ source_links(item) }}</span></details>{% else %}{{ source_links(item) }}{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -630,11 +638,27 @@
             letter-spacing: 0.04em;
             cursor: pointer;
         }
+        /* The ↑/↓ glyphs fall back to the generic monospace: Google Fonts serves no
+           unicode-range covering U+2191-2193 for Geist Mono. Fine, and the same thing
+           the ↗ link marks already do — unlike emoji they still take `color` below. */
         .promote-btn:hover { color: var(--text); }
         .promote-btn.done { color: var(--accent, #7fd18c); border-color: var(--accent, #7fd18c); }
-        /* border + background, not just color: the 👍/👎 buttons are bare emoji, which ignore it */
         .promote-btn.error { color: #e06c75; border-color: #e06c75; background: rgba(224, 108, 117, 0.14); }
         .vote-group { display: inline-flex; gap: 4px; vertical-align: middle; }
+
+        /* Folded cluster sources. inline-block keeps the vote buttons on the same row. */
+        .src-fold { display: inline-block; }
+        .src-fold > summary {
+            cursor: pointer;
+            list-style: none;
+            color: var(--text-dim);
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+        }
+        .src-fold > summary::-webkit-details-marker { display: none; }
+        .src-fold > summary::after { content: ' ▾'; }
+        .src-fold[open] > summary::after { content: ' ▴'; }
+        .src-list { display: block; padding-top: 4px; }
     </style>
 </head>
 <body>
@@ -724,7 +748,7 @@
                     {#- The vote is on the topic, so one group per cluster; the links stay per article.
                         sources and urls are appended in lockstep by cluster_news, hence the shared index. -#}
                     <div class="meta">
-                        {%- for url in item.urls %}<a href="{{ url }}" target="_blank" rel="noopener">{{ item.sources[loop.index0] if loop.index0 < item.sources | length else url }}</a>{{ ' · ' if not loop.last }}{% endfor %}
+                        {{ source_list(item) }}
                         {{ promote_btn(item) }}
                     </div>
                     {% endfor %}

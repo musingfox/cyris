@@ -493,3 +493,51 @@ def test_promote_buttons_on_every_section(tmp_path):
     # Every article in the cluster stays individually openable.
     assert '<a href="https://na.com" target="_blank" rel="noopener">A</a>' in html
     assert '<a href="https://nb.com" target="_blank" rel="noopener">B</a>' in html
+    # Two sources is not a mess; folding it would cost a tap for nothing.
+    assert "<details" not in html
+
+
+def _cluster_digest(n_sources: int) -> DigestContent:
+    return DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        news_clusters=[
+            DigestSection(
+                heading="Tech",
+                items=[
+                    DigestItem(
+                        title="Cluster",
+                        summary="s",
+                        sources=[f"S{i}" for i in range(n_sources)],
+                        urls=[f"https://n{i}.com" for i in range(n_sources)],
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_a_crowded_cluster_folds_its_sources(tmp_path):
+    """Five source links wrap into a mess on a phone, so they collapse behind a tap."""
+    html = HtmlDigestWriter(tmp_path).render(_cluster_digest(5))
+
+    assert '<details class="src-fold">' in html
+    assert "<summary>5 sources</summary>" in html
+    # Folded, not dropped — every link is still in the markup and still reachable.
+    for i in range(5):
+        assert f'<a href="https://n{i}.com" target="_blank" rel="noopener">S{i}</a>' in html
+
+
+def test_vote_buttons_use_arrows_not_emoji(tmp_path):
+    """Bare emoji ignore `color`, so .done could never tint them to the accent."""
+    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    html = writer.render(_cluster_digest(2))
+
+    assert '<button class="promote-btn" data-vote="up" title="想看">↑</button>' in html
+    assert '<button class="promote-btn" data-vote="down" title="不想看">↓</button>' in html
+    assert "👍" not in html
+    assert "👎" not in html
