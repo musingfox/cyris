@@ -88,12 +88,17 @@ These decide the shape of the work, so they are settled before any code moves.
 
 None of this needs the cloud, and all of it is wrong to carry forward.
 
-- [ ] **Raise `max_articles_per_digest`.** It is 200 and truncates on every run. The
-      buffer's entire benefit is more articles inside the 24h window, and the cap throws
-      them away: on 2026-08-08 08:00 Miniflux returned exactly 200 (capped) and the buffer
-      156, but the union was **203** — the buffer contributed 3 net articles because the
-      cap had already saturated the pool. Until this changes the buffer is paid for and
-      unused. ~400 costs about US$0.20 → US$0.35 per run in LLM spend.
+- [x] **Raise `max_articles_per_digest` 200 → 400.** Done 2026-08-08. At 200 it truncated
+      every run and threw away the buffer's whole benefit: on 08-08 08:00 Miniflux returned
+      exactly 200 (capped) and the buffer 156, but the union was **203** — the buffer
+      contributed 3 net articles because the cap had already saturated the pool.
+
+      Real daily volume is ~240 unique articles. Cost is the reason this is a decision and
+      not a default: at gemini-3.6-flash rates (US$1.50/1M in, US$7.50/1M out) the 08-08
+      morning run — 47,936 in, 7,656 out — cost **US$0.129**, i.e. ~US$7.75/mo across 60
+      runs, already more than the Cloudflare plan. 400 is estimated at ~US$0.22/run,
+      ~US$13/mo. If that ratio starts to matter, `scoring_snippet_length` (1000 chars ×
+      every article) is the input driver, and gemini-2.5-flash is 5× cheaper.
 - [x] ~~Move the 9 Substack sources to the email path.~~ **Dropped — the 429s cost nothing.**
       Substack does rate-limit Cloudflare's egress (4–6 feeds per poll, and the failing set
       rotates), but over a 7-day window the buffer holds 13 Substack articles to Miniflux's
@@ -106,14 +111,24 @@ None of this needs the cloud, and all of it is wrong to carry forward.
       here, not less. Polling is idempotent and retryable at a time we choose; email is a
       single push with no replay, so a dropped delivery is gone. Email is the right path
       only where there is no usable feed — 曼報, ieo and 粉虱通訊 already live there.
-- [ ] **Close the remaining buffer gap.** First clean comparison, 2026-08-08 over 24h:
-      Miniflux 234 URLs, buffer 205, 191 shared. Near parity, and the buffer already finds
-      14 that Miniflux misses (12 Wired). The deficit is 42 中央社 articles. Those feeds
-      are **not** failing in the poll — the buffer holds 113 中央社 rows over the same
-      window, i.e. 73% of Miniflux's 155. That is a capture rate, not an outage, so the
-      hourly tick is too slow for feeds that churn faster than their snapshot depth.
-      Fix by polling those three feeds more often, not by retrying harder. Miniflux
-      cannot be retired until the rate is ~100%.
+- [x] **Close the buffer gap.** Closed — **the buffer is a strict superset of Miniflux.**
+      Measured 2026-08-08 over the 17h since the cron outage ended: Miniflux 114 URLs,
+      buffer 116, **zero missing**.
+
+      The apparent 73% 中央社 capture rate in the 24h measurement was an artifact of
+      measuring across the outage boundary. Hour by hour, every missing article falls in
+      08-07 13:00–18:00 — while the Free-plan cron was still dying — and from 19:00 onward
+      the buffer misses nothing. The "hourly tick is too slow" reading was wrong: CNA feeds
+      hold 14–17h per snapshot, so an hourly poll cannot miss them.
+
+- [ ] **Retire `MinifluxSource`** — now unblocked, but not yet earned. The parity receipt
+      is 17 hours old, against a component whose failure mode is silent loss and which
+      went fully dark for a day this week. Keep both running and re-run `compare.py` for a
+      few more days; Miniflux costs nothing while the Mac mini is up anyway. Only phase 3
+      actually requires it gone.
+
+- [x] **Drop the TMTB source.** Its feed served one item dated 2023-08-24 — dormant for
+      three years.
 - [ ] **Retire `MinifluxSource`** once the comparison is clean. This is what frees the plan
       from needing Postgres anywhere.
 
