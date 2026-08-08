@@ -71,7 +71,8 @@ These decide the shape of the work, so they are settled before any code moves.
    (as `newsletter_worker_source.py` already does). An async adapter would push `async`
    up through every call site and straight into `service_layer/`, which is the one thing
    this plan promises not to touch. If this constraint fails, the plan needs rewriting.
-2. **The store's real surface is 15 methods, not the 9 in the Protocol.** Callers also use
+2. **The surface callers actually use is 15 methods across `ArticleStore` and
+   `EventStore`, not the 9 in the Protocol.** Callers also use
    `delete_articles`, `list_articles`, `load_events`, `mark_stale_inactive`, `save_event`
    and `update_triage_timestamp`. A replacement satisfying only the Protocol will not run.
 3. **linux/amd64 only.** The build host is arm64, so cross-building becomes part of the
@@ -98,9 +99,12 @@ None of this needs the cloud, and all of it is wrong to carry forward.
       Worker already handles that. This is a routing fix, not a retry-tuning problem.
 - [ ] **Close the remaining buffer gap.** First clean comparison, 2026-08-08 over 24h:
       Miniflux 234 URLs, buffer 205, 191 shared. Near parity, and the buffer already finds
-      14 that Miniflux misses (12 Wired). The deficit is 42 中央社 articles across three
-      feeds — those are the highest-volume sources, so an hourly poll is the suspect.
-      Miniflux cannot be retired until that is explained.
+      14 that Miniflux misses (12 Wired). The deficit is 42 中央社 articles. Those feeds
+      are **not** failing in the poll — the buffer holds 113 中央社 rows over the same
+      window, i.e. 73% of Miniflux's 155. That is a capture rate, not an outage, so the
+      hourly tick is too slow for feeds that churn faster than their snapshot depth.
+      Fix by polling those three feeds more often, not by retrying harder. Miniflux
+      cannot be retired until the rate is ~100%.
 - [ ] **Retire `MinifluxSource`** once the comparison is clean. This is what frees the plan
       from needing Postgres anywhere.
 

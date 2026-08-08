@@ -134,7 +134,8 @@ implementation, so no Protocol was extracted. When the cloud move needs a second
 | EventStore / usage / tracking 🟠 | files | volume mount, unchanged | same, swap to R2/D1 |
 | DigestWriter 🟠 | writes Obsidian vault | vault volume mount | disable (use HtmlDigestWriter → R2/Pages) |
 | LLMClient 🟢 | Anthropic/Gemini | unchanged | unchanged (already cloud) |
-| FetchSource · Miniflux 🔴 | self-hosted Docker | already in compose | retire, cyris fetches RSS itself |
+| FetchSource · Miniflux 🔴 | self-hosted Docker | already in compose | retire in favour of `workers/rss/` (cron→D1); fetching at digest time instead was measured and misses 141 of 317 — see [cloud-migration.md](cloud-migration.md) |
+| FetchSource · CloudflareRss 🔵 | Worker+D1 | unchanged | unchanged |
 | FetchSource · CloudflareNewsletter 🔵 | Worker+KV | unchanged | unchanged |
 | load_cookies 🔴 | reads browser sqlite | mount host cookies (deferred) | loses auto-freshness (deferred) |
 | publish / sync_promotions 🔵 | Cloudflare | unchanged | unchanged |
