@@ -1,6 +1,9 @@
 # Deployment Direction Assessment: Fully Local vs. Cloudflare
 
-> Status: under evaluation. Cookie freshness is out of scope for now (see "Deferred items" at the end).
+> Status: superseded for the Cloudflare direction — see [`cloud-migration.md`](cloud-migration.md).
+> Option B below is kept for the local-vs-cloud comparison, but its "drop Miniflux and let
+> cyris fetch RSS directly" recommendation was measured and is wrong: a digest-time poll
+> misses 141 of 317 articles because feeds hold only 2-4h of snapshot.
 
 ## Current State (Starting Point)
 
