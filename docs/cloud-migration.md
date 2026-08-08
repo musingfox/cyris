@@ -94,9 +94,18 @@ None of this needs the cloud, and all of it is wrong to carry forward.
       156, but the union was **203** — the buffer contributed 3 net articles because the
       cap had already saturated the pool. Until this changes the buffer is paid for and
       unused. ~400 costs about US$0.20 → US$0.35 per run in LLM spend.
-- [ ] **Move the 9 Substack sources to the email path.** Substack rate-limits Cloudflare's
-      egress (HTTP 429 on 4–5 feeds per poll). Most of them send email, and the newsletter
-      Worker already handles that. This is a routing fix, not a retry-tuning problem.
+- [x] ~~Move the 9 Substack sources to the email path.~~ **Dropped — the 429s cost nothing.**
+      Substack does rate-limit Cloudflare's egress (4–6 feeds per poll, and the failing set
+      rotates), but over a 7-day window the buffer holds 13 Substack articles to Miniflux's
+      5, with **zero missing**. The arithmetic: these feeds publish ~0.2 posts/day, the cron
+      runs 24×/day, a Substack feed's snapshot holds ~20 items (weeks of depth), and
+      retention is 8 days — so a post has dozens of chances to be picked up and needs one.
+      Content is full-length too (12k–47k chars), so email buys nothing on completeness.
+
+      Worth stating plainly because it cuts against the instinct: RSS is *more* reliable
+      here, not less. Polling is idempotent and retryable at a time we choose; email is a
+      single push with no replay, so a dropped delivery is gone. Email is the right path
+      only where there is no usable feed — 曼報, ieo and 粉虱通訊 already live there.
 - [ ] **Close the remaining buffer gap.** First clean comparison, 2026-08-08 over 24h:
       Miniflux 234 URLs, buffer 205, 191 shared. Near parity, and the buffer already finds
       14 that Miniflux misses (12 Wired). The deficit is 42 中央社 articles. Those feeds
