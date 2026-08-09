@@ -93,12 +93,20 @@ None of this needs the cloud, and all of it is wrong to carry forward.
       exactly 200 (capped) and the buffer 156, but the union was **203** — the buffer
       contributed 3 net articles because the cap had already saturated the pool.
 
-      Real daily volume is ~240 unique articles. Cost is the reason this is a decision and
-      not a default: at gemini-3.6-flash rates (US$1.50/1M in, US$7.50/1M out) the 08-08
-      morning run — 47,936 in, 7,656 out — cost **US$0.129**, i.e. ~US$7.75/mo across 60
-      runs, already more than the Cloudflare plan. 400 is estimated at ~US$0.22/run,
-      ~US$13/mo. If that ratio starts to matter, `scoring_snippet_length` (1000 chars ×
-      every article) is the input driver, and gemini-2.5-flash is 5× cheaper.
+      **It cost nothing.** The pre-change estimate of ~US$0.22/run and ~US$13/mo was
+      extrapolated from a single high run (47,936 in / 7,656 out = US$0.129) that was high
+      precisely *because* the cap had left a backlog. Measured after the change: 08-08
+      evening US$0.042, 08-09 morning US$0.045 — cost went **down**. Across all 49 logged
+      runs the average is US$0.073/run, ~US$4.38/mo at gemini-3.6-flash rates
+      (US$1.50/1M in, US$7.50/1M out).
+
+      The reason is that per-run volume is 120–170 unique articles — under both caps. Daily
+      volume swings hard with the news cycle (~240 on a weekday, ~100 at a weekend), so 200
+      bound only on busy days. At 400 the cap is a safety limit rather than a routine
+      truncation, and the LLM only ever pays for the articles that actually arrive.
+
+      If cost ever does matter, `scoring_snippet_length` (1000 chars × every article) is
+      the input driver, and gemini-2.5-flash is 5× cheaper.
 - [x] ~~Move the 9 Substack sources to the email path.~~ **Dropped — the 429s cost nothing.**
       Substack does rate-limit Cloudflare's egress (4–6 feeds per poll, and the failing set
       rotates), but over a 7-day window the buffer holds 13 Substack articles to Miniflux's
@@ -174,10 +182,16 @@ Dropped rather than migrated: `output/digest.py` (Obsidian markdown), `adapters/
 - **Paid-source cookies.** `adapters/cookies.py` reads the live browser DB; that cannot
   follow to the cloud. Only stratechery is affected, and it also sends email — so the fix
   is the same routing change as Substack, not a cookie-sync mechanism.
-- **The intermittent publish no-op.** `wrangler pages deploy` exiting 0 having deployed
-  nothing. Masked by a bounded retry and now detected by receipt; root cause unknown. The
-  phase-3 move to the REST API may remove it by removing the shell-out, but that is a
-  side effect, not a diagnosis.
+- **The intermittent publish failure.** Reproduced 2026-08-09 08:01, and the receipt check
+  caught what an exit code never would. It is **not** a no-op: wrangler printed its banner,
+  got to `Uploading... (15/16)`, and then exited 0 mid-upload without its completion line.
+  So the failure is a truncated upload that wrangler swallows into a success exit, not a
+  run that did nothing. The retry succeeded 7 seconds later.
+
+  Note the shape: 16 files in the deployment and it died on the last one. The archive grows
+  by two files a day, so the upload phase gets longer every day — worth re-checking whether
+  the failure rate tracks the file count. The phase-3 move to the REST API would replace
+  this code path entirely.
 
 ## Keeping the current system running
 
