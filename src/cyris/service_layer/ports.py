@@ -67,6 +67,15 @@ class ArticleRepository(Protocol):
 
     def reset_to_pending(self, url: str) -> bool: ...
 
+    def list_articles(
+        self,
+        state: ArticleState | list[ArticleState] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        sort_by: str = "first_seen_at",
+        descending: bool = True,
+    ) -> list[StoredArticle]: ...
+
 
 @runtime_checkable
 class FetchSource(Protocol):
@@ -90,6 +99,14 @@ class FetchSource(Protocol):
 
     async def health_check(self) -> bool:
         """Check if the source is reachable."""
+        ...
+
+
+class Embedder(Protocol):
+    """Text-to-vector boundary, for judging articles against what was voted on."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return one unit-length vector per input, in the same order."""
         ...
 
 

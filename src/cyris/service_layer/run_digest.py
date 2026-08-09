@@ -163,6 +163,25 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         state_filter=state_filter,
     )[: cfg.app.digest.max_articles_per_digest]
 
+    # Vote similarity runs over every candidate, not just the scored ones: the
+    # scorer skips news, and the class that drew the first downvote is news-tagged.
+    if cfg.app.vote_similarity.enabled and deps.embedder is not None:
+        from cyris.service_layer.vote_similarity import judge_by_votes
+
+        similarity = await judge_by_votes(
+            store,
+            deps.embedder,
+            pending_articles,
+            threshold=cfg.app.vote_similarity.threshold,
+            max_seeds=cfg.app.vote_similarity.max_seeds,
+        )
+        if similarity.suppressed_urls:
+            dropped = set(similarity.suppressed_urls)
+            pending_articles = [a for a in pending_articles if a.url not in dropped]
+            progress(f"Vote similarity suppressed {len(dropped)} article(s).")
+        elif not similarity.ran:
+            logger.info("Vote similarity skipped: %s", similarity.skipped_reason)
+
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}
     digest_articles = [a.to_article() for a in pending_articles]
 

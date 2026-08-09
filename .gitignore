@@ -38,6 +38,8 @@ agent-vault/articles/
 agent-vault/html/
 agent-vault/usage.jsonl
 agent-vault/tracking.yaml
+# vote-similarity vector cache — regenerable, and large
+agent-vault/embeddings.json
 # buffer-vs-Miniflux parity log + its launchd stdio; both go once Miniflux is retired
 agent-vault/source-parity.jsonl
 agent-vault/source-parity.out

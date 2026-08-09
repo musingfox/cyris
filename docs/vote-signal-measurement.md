@@ -97,6 +97,34 @@ was written for, and across language and source.
   behave differently, better or worse.
 - **One reader, one week, 3 clicks.** Two of the three are one cluster click.
 
+## Built, and run against the live store
+
+`cyris vote-sim` previews the effect without touching the pipeline. Over a 168h
+window, 1,238 candidates, seeded from the 3 human votes that exist:
+
+```
+WOULD SUPPRESS (12):
+  0.916  今彩539第115191期開獎
+  0.892  今彩539第115190期　頭獎3注中獎
+  0.773  威力彩第115062期　頭獎槓龜
+  0.756  大樂透第115077期　頭獎槓龜
+  …
+```
+
+The window holds 14 lottery-pattern articles, 2 of which are the seeds themselves
+(excluded — an article already ruled on must not be re-judged, or it matches its
+own seed at 1.0 and reports a decision already made). **12 of 12 recall, no false
+positives.** Lowering the threshold to 0.62 returns the same 12, so nothing
+non-lottery sits near the boundary; the live margin is wider than the calibration
+implied.
+
+Both generalisations the seeds could not have known are present: 大樂透 and 威力彩
+(the seeds are 今彩539 only) and every 「頭獎槓龜」 phrasing, which the mined regex
+misses entirely.
+
+Shipped off by default (`[vote_similarity] enabled = false`). It changes what
+reaches the digest and the threshold is calibrated on one reader's three votes.
+
 ## Consequence for the option ranking
 
 Round 1's `opt-rule-filter` ADOPT does not survive: the rule it recommends is

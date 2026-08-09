@@ -1,5 +1,6 @@
 """Composition root: wire concrete adapters into the dependency container."""
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
@@ -55,6 +56,7 @@ class Deps:
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
     tracking: VaultConfigSource | None = None
     event_store: EventStore | None = None
+    embedder: Any | None = None  # GeminiEmbedder when vote_similarity.enabled
 
 
 def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) -> Deps:
@@ -76,6 +78,18 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 
         fetch_sources.append(CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token))
+
+    # Reuses the digest's own Gemini key: the Cloudflare token carries only
+    # `account (read)` and Workers AI refuses it, so bge-m3 waits for the move.
+    embedder = None
+    if cfg.app.vote_similarity.enabled:
+        from cyris.adapters.embedding import GeminiEmbedder
+
+        embedder = GeminiEmbedder(
+            api_key=os.environ.get("GEMINI_API_KEY", ""),
+            cache_path=cfg.app.agent_vault.path / "embeddings.json",
+            model=cfg.app.vote_similarity.model,
+        )
 
     html_writer = None
     publish = None
@@ -128,4 +142,5 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         on_progress=on_progress or (lambda _msg: None),
         tracking=tracking,
         event_store=event_store,
+        embedder=embedder,
     )

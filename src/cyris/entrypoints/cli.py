@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -103,6 +104,88 @@ def promote_sync(
 
     count = deps.sync_promotions()
     typer.echo(f"Synced {count} digest vote(s).")
+
+
+@app.command("vote-sim")
+def vote_sim(
+    hours: Annotated[int, typer.Option("--hours", help="Window to judge")] = 24,
+    threshold: Annotated[
+        float | None, typer.Option("--threshold", help="Override the configured cutoff")
+    ] = None,
+    show: Annotated[int, typer.Option("--show", help="Rows to print per side")] = 15,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Preview what vote similarity would suppress, without running the pipeline.
+
+    Read-only: judges the articles already in the store for the window and prints
+    the diff, so the effect can be compared before `[vote_similarity] enabled`
+    is turned on.
+    """
+    _setup_logging(verbose)
+
+    from datetime import UTC, datetime, timedelta
+
+    from cyris.adapters.embedding import GeminiEmbedder
+    from cyris.bootstrap import build_deps
+    from cyris.config import load_config
+    from cyris.service_layer.vote_similarity import judge_by_votes
+
+    try:
+        cfg = load_config(config_path, sources_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    deps = build_deps(cfg)
+    # Built directly rather than taken from Deps: the preview must work while the
+    # feature is still switched off, which is the whole point of previewing it.
+    embedder = deps.embedder or GeminiEmbedder(
+        api_key=os.environ.get("GEMINI_API_KEY", ""),
+        cache_path=cfg.app.agent_vault.path / "embeddings.json",
+        model=cfg.app.vote_similarity.model,
+    )
+    now = datetime.now(UTC)
+    candidates = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
+
+    report = asyncio.run(
+        judge_by_votes(
+            deps.store,
+            embedder,
+            candidates,
+            threshold=threshold if threshold is not None else cfg.app.vote_similarity.threshold,
+            max_seeds=cfg.app.vote_similarity.max_seeds,
+        )
+    )
+    if not report.ran:
+        typer.echo(f"Nothing to compare: {report.skipped_reason}")
+        raise typer.Exit(1)
+
+    by_url = {a.url: a for a in candidates}
+    cut = threshold if threshold is not None else cfg.app.vote_similarity.threshold
+    typer.echo(
+        f"\n{len(candidates)} candidate(s) over {hours}h, judged against "
+        f"{report.upvote_seeds} up / {report.downvote_seeds} down seed(s) at "
+        f"threshold {cut:.2f}\n"
+    )
+    typer.echo(f"WOULD SUPPRESS ({len(report.suppressed_urls)}):")
+    for url in report.suppressed_urls[:show]:
+        v = report.verdicts[url]
+        a = by_url[url]
+        typer.echo(f"  {v.down_similarity:.3f}  [{a.source_name[:18]:18}] {a.title[:52]}")
+    if len(report.suppressed_urls) > show:
+        typer.echo(f"  ... and {len(report.suppressed_urls) - show} more")
+
+    ranked = sorted(report.verdicts.values(), key=lambda v: v.up_similarity, reverse=True)
+    typer.echo(f"\nCLOSEST TO UPVOTES (top {show}):")
+    for v in ranked[:show]:
+        a = by_url[v.url]
+        typer.echo(f"  {v.up_similarity:.3f}  [{a.source_name[:18]:18}] {a.title[:52]}")
 
 
 @app.command("learn")

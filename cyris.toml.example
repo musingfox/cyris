@@ -57,6 +57,16 @@ pages_project = ""
 worker_url = ""
 # Token via env: CYRIS_NEWSLETTER_TOKEN
 
+[vote_similarity]
+# Suppress candidates that sit close to a downvoted article. Runs over every
+# candidate, not just scored ones — the scorer skips news, and the class that
+# drew the first downvote was news-tagged. Preview with `cyris vote-sim` before
+# enabling. Embeddings reuse GEMINI_API_KEY; see docs/vote-signal-measurement.md.
+enabled = false
+threshold = 0.70      # midpoint of the measured in-class / out-of-class gap
+# model = "gemini-embedding-001"
+# max_seeds = 200
+
 [rss]
 # Optional Cloudflare feed-buffer Worker (see workers/rss/). Polls feeds hourly
 # into D1 so the 24h window sees more than a feed snapshot holds; runs alongside

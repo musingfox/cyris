@@ -182,6 +182,19 @@ class NewsletterConfig(BaseModel):
         return self
 
 
+class VoteSimilarityConfig(BaseModel):
+    """Suppress candidates that sit close to what the reader downvoted.
+
+    Off by default: it changes what reaches the digest, and the threshold was
+    calibrated on one reader's votes. See docs/vote-signal-measurement.md.
+    """
+
+    enabled: bool = False
+    threshold: float = Field(default=0.70, ge=0.0, le=1.0)
+    model: str = "gemini-embedding-001"
+    max_seeds: int = Field(default=200, ge=1)
+
+
 class RssConfig(BaseModel):
     """Cloudflare RSS Worker — hourly feed buffer read in place of Miniflux."""
 
@@ -209,6 +222,7 @@ class AppConfig(BaseModel):
     promote: PromoteConfig = Field(default_factory=PromoteConfig)
     newsletter: NewsletterConfig = Field(default_factory=NewsletterConfig)
     rss: RssConfig = Field(default_factory=RssConfig)
+    vote_similarity: VoteSimilarityConfig = Field(default_factory=VoteSimilarityConfig)
 
 
 class SourcesConfig(BaseModel):
