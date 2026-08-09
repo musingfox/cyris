@@ -8,10 +8,12 @@ per snapshot, so run this after the Worker has been polling for a full day.
 """
 
 import asyncio
+import json
 import os
 import sys
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -34,8 +36,20 @@ def report(label: str, urls: set[str], articles: list) -> None:
         print("  —")
 
 
+def append_log(path: Path, record: dict) -> None:
+    """Append one JSON line so several days of parity accumulate unattended.
+
+    Retiring Miniflux needs a run of clean days, not one good measurement — the
+    first 24h comparison looked like a 73% capture rate purely because it spanned
+    an outage. Delete this log and its launchd job once Miniflux is gone.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 async def main() -> None:
-    hours = int(sys.argv[1]) if len(sys.argv) > 1 else 24
+    hours = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 24
     cfg = load_config()
     before = datetime.now(UTC)
     after = before - timedelta(hours=hours)
@@ -62,6 +76,23 @@ async def main() -> None:
 
     report("miniflux", mf_urls - cf_urls, mf_articles)
     report("buffer", cf_urls - mf_urls, cf_articles)
+
+    if "--log" in sys.argv:
+        missing = mf_urls - cf_urls
+        record = {
+            "checked_at": before.isoformat(),
+            "hours": hours,
+            "miniflux": len(mf_urls),
+            "buffer": len(cf_urls),
+            "shared": len(mf_urls & cf_urls),
+            "missing_from_buffer": len(missing),
+            # by source, so a recurring gap names the feed instead of just a count
+            "missing_by_source": dict(
+                Counter(a.source_name for a in mf_articles if a.url in missing)
+            ),
+        }
+        append_log(cfg.app.agent_vault.path / "source-parity.jsonl", record)
+        print(f"\nlogged to {cfg.app.agent_vault.path / 'source-parity.jsonl'}")
 
 
 asyncio.run(main())

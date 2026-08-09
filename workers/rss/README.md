@@ -93,6 +93,28 @@ grouped by source. Only meaningful once the Worker has polled for a full day —
 before that the buffer is just a feed snapshot and the diff reproduces the very
 gap it exists to close.
 
+Read state is not a factor: `MinifluxSource` sends no status filter, so a run
+sees entries it already marked read and the comparison is not skewed by whether
+a digest ran in between.
+
+Add `--log` to append one JSON line to `agent-vault/source-parity.jsonl` instead
+of only printing. A launchd job runs it daily at 07:30:
+
+```bash
+launchctl print gui/$(id -u)/com.cyris.source-parity     # status
+cat agent-vault/source-parity.jsonl                      # the run of days
+```
+
+One clean day is not enough to retire Miniflux — the first 24h comparison showed
+what looked like a 73% capture rate purely because the window spanned a cron
+outage. Wait for a run of days where `missing_from_buffer` stays at ~0. Then
+delete the job, the log, and this section:
+
+```bash
+launchctl bootout gui/$(id -u)/com.cyris.source-parity
+rm ~/Library/LaunchAgents/com.cyris.source-parity.plist
+```
+
 ## Notes
 
 - URLs are stripped of `utm_*`/`fbclid`-style params before insert, mirroring

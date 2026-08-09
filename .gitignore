@@ -38,6 +38,10 @@ agent-vault/articles/
 agent-vault/html/
 agent-vault/usage.jsonl
 agent-vault/tracking.yaml
+# buffer-vs-Miniflux parity log + its launchd stdio; both go once Miniflux is retired
+agent-vault/source-parity.jsonl
+agent-vault/source-parity.out
+agent-vault/source-parity.err
 
 # Docker deployment host output (CYRIS_VAULT_HOST_PATH default)
 /vault/

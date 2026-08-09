@@ -31,14 +31,20 @@ class MinifluxClient:
         limit: int = 200,
         cookies: dict[str, str] | None = None,
     ) -> list[Article]:
-        """Fetch unread entries from Miniflux within a time window.
+        """Fetch entries from Miniflux within a time window.
+
+        Read state is not a filter here: `status` is unset by default and the param
+        is only sent when non-empty, so a digest run sees entries it has already
+        marked read. That is what makes the window, not the unread queue, the thing
+        that decides a run's input.
 
         Args:
             after: Start of time window (inclusive).
             before: End of time window (exclusive).
             sources: Source configs keyed by name, used for tier/tag lookup.
             aliases: Optional feed title → source name mappings.
-            status: Entry status filter. Defaults to "unread".
+            status: Miniflux entry status to filter on ("read"/"unread"). Empty
+                means no filter, i.e. both.
             limit: Max entries to fetch. Defaults to 200.
             cookies: Optional cookies for paywall sources.
 
