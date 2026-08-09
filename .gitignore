@@ -61,3 +61,4 @@ htmlcov/
 
 # JS deps for the defuddle shim
 node_modules/
+.spiral/
