@@ -107,6 +107,16 @@ None of this needs the cloud, and all of it is wrong to carry forward.
 
       If cost ever does matter, `scoring_snippet_length` (1000 chars × every article) is
       the input driver, and gemini-2.5-flash is 5× cheaper.
+- [x] **Vote-similarity filtering does not need the cloud.** Shipped 2026-08-09 against the
+      existing `GEMINI_API_KEY` (`adapters/embedding.py`), off by default, previewable with
+      `cyris vote-sim`. This had been assumed to be gated on Workers AI + Vectorize; it is
+      not. Verified over 168h / 1,238 candidates: 12 of 12 unvoted lottery articles
+      suppressed, no false positives, generalising to 大樂透 and 威力彩 that neither seed
+      contained. See [`vote-signal-measurement.md`](vote-signal-measurement.md).
+
+      The only thing the free tier costs is patience: back-filling the corpus hit HTTP 429
+      and needed exponential backoff. A paid Gemini key removes that for ~US$0.02/mo. The
+      *storage* ceiling (81 MB of JSON vectors) is real and is what phase 3 addresses.
 - [x] ~~Move the 9 Substack sources to the email path.~~ **Dropped — the 429s cost nothing.**
       Substack does rate-limit Cloudflare's egress (4–6 feeds per poll, and the failing set
       rotates), but over a 7-day window the buffer holds 13 Substack articles to Miniflux's
@@ -170,9 +180,21 @@ Mechanical once phase 2 lands, with no new failure modes left untested.
 | `output/html_digest.py` | 180 | write to R2 instead of disk |
 | `output/publish.py` | 78 | Pages REST API — `bunx wrangler` cannot shell out from a Worker-fronted container |
 | `output/article_export.py` | 106 | R2, or drop with the Obsidian path |
+| `adapters/embedding.py` | 105 | Workers AI `@cf/baai/bge-m3` + Vectorize — **for storage, not for price** |
 
 Plus: cross-build the amd64 image, replace supercronic with Workers Cron Triggers, and
 wire `onActivityExpired` → `stop()`.
+
+The embedding row is the one whose usual justification is wrong, so it is worth stating
+plainly. Measured token volume is ~128k/month (titles average 18.6 tokens), which prices
+at **US$0.019/mo on Gemini's paid tier and US$0.0015/mo on bge-m3** — a 12.5× ratio on a
+number small enough that it can never justify the work. What does justify it is that the
+local vector cache is a whole-file JSON rewritten on every miss and already stands at
+**81 MB**; Vectorize replaces a read pattern that loads everything, not a bill.
+
+`bge-m3` is the right target when that happens — it is multilingual (Cloudflare lists it
+under "Multi-Linguality", 60k context), which the 62%-中央社 corpus requires. The
+English-only trap is the `bge-*-en-v1.5` family, not this model.
 
 Dropped rather than migrated: `output/digest.py` (Obsidian markdown), `adapters/cookies.py`,
 `fetch/newsletter_source.py` (local maildir, superseded by the newsletter Worker).
