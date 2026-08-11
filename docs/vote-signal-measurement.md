@@ -263,6 +263,35 @@ about most of the corpus, just nowhere a vote has landed. The comparison becomes
 informative when the downvote set covers something subtler; the 統一發票千萬獎 cluster is
 the obvious candidate.
 
+So it keeps running rather than closing. `cyris embed-compare` judges a window with both
+providers and appends a line to `agent-vault/embed-parity.jsonl` (daily, launchd
+`com.cyris.embed-parity`), including the two things this measurement could not produce:
+**observed** cost and latency. 168h window, both caches warm —
+
+```
+1255 candidate(s) over 168h, 7 up / 2 down seed(s)
+  gemini      @ 0.68  suppresses 12  margin 0.6702 -> 0.744    (0 embedded, 1.5s wall)
+  workers_ai  @ 0.53  suppresses 12  margin 0.5016 -> 0.5653   (0 embedded, 0.6s wall)
+  agree on 12, disagree on 0
+```
+
+**Cost, measured.** The cold bge-m3 pass over 1,250 titles reported **37,764 input tokens
+and 40.58 neurons** — exactly the published 1,075 per 1M, and 0.4% of one day's free
+allowance. Titles run ~30 tokens each under bge-m3's tokenizer, not the 18.6 estimated
+from the Gemini side. Gemini's `batchEmbedContents` reports no usage at all, so its cost
+column stays null rather than carrying an estimate dressed as a measurement; once both
+caches are warm they embed the identical miss set, so bge-m3's token count is a valid
+volume figure for both and Gemini's cost is that × $0.15/1M.
+
+**Why `margin` is logged.** 0.68 and 0.53 are constants calibrated against *two* downvote
+seeds. As the seed set grows they drift, and by different amounts because the two cosine
+scales differ — so the first disagreement this log records could be threshold staleness
+rather than a model difference. Recording each side of the boundary (`kept_max` →
+`suppressed_min`) is what lets the two be told apart after the fact.
+
+**Closing condition:** a disagreement appears, or the downvote set grows past one obvious
+class and they still agree. Elapsed time alone does not settle it.
+
 ## Consequence for the option ranking
 
 Round 1's `opt-rule-filter` ADOPT does not survive: the rule it recommends is

@@ -116,6 +116,8 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris learn` | Analyze triage feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
+| `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
+| `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |
 | `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
 | `cyris triage-ui` | Start swipe-based web UI for article classification |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |

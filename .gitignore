@@ -38,8 +38,14 @@ agent-vault/articles/
 agent-vault/html/
 agent-vault/usage.jsonl
 agent-vault/tracking.yaml
-# vote-similarity vector cache — regenerable, and large
+# vote-similarity vector caches — regenerable, and large (one per provider: the
+# dimensionalities differ, so they cannot share a file)
 agent-vault/embeddings.json
+agent-vault/embeddings-bge-m3.json
+# gemini-vs-bge-m3 parity log + its launchd stdio; go once the provider is settled
+agent-vault/embed-parity.jsonl
+agent-vault/embed-parity.out
+agent-vault/embed-parity.err
 # buffer-vs-Miniflux parity log + its launchd stdio; both go once Miniflux is retired
 agent-vault/source-parity.jsonl
 agent-vault/source-parity.out

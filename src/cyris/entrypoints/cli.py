@@ -1,9 +1,11 @@
 """CLI entry point for Cyris."""
 
 import asyncio
+import json
 import logging
 import os
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -186,6 +188,177 @@ def vote_sim(
     for v in ranked[:show]:
         a = by_url[v.url]
         typer.echo(f"  {v.up_similarity:.3f}  [{a.source_name[:18]:18}] {a.title[:52]}")
+
+
+@app.command("embed-compare")
+def embed_compare(
+    hours: Annotated[int, typer.Option("--hours", help="Window to judge")] = 24,
+    threshold: Annotated[
+        float | None, typer.Option("--threshold", help="Gemini cutoff (default: configured)")
+    ] = None,
+    workers_threshold: Annotated[
+        float, typer.Option("--workers-threshold", help="bge-m3 cutoff; its cosines run lower")
+    ] = 0.53,
+    log: Annotated[
+        Path | None, typer.Option("--log", help="Append one JSON line per run to this file")
+    ] = None,
+    show: Annotated[int, typer.Option("--show", help="Disagreements to print")] = 15,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Judge the same window with both embedding providers and report where they differ.
+
+    The 2026-08-10 evaluation found zero disagreement across the whole store, but on a
+    single wide-margin downvote class. This keeps the comparison running on real traffic
+    and records what a one-off measurement cannot: cost and latency per provider.
+
+    Read-only. Neither result reaches the digest.
+    """
+    _setup_logging(verbose)
+
+    from datetime import UTC, datetime, timedelta
+
+    from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
+    from cyris.bootstrap import build_deps
+    from cyris.config import load_config
+    from cyris.service_layer.vote_similarity import judge_by_votes
+
+    try:
+        cfg = load_config(config_path, sources_path)  # also loads .env into the environment
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    token = os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", "")
+    if not (account and token):
+        logger.error(
+            "Needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_EMBEDDING_API_TOKEN "
+            "(the token must carry Workers AI -> Read; the wrangler one does not)."
+        )
+        raise typer.Exit(1)
+
+    deps = build_deps(cfg)
+    vault = cfg.app.agent_vault.path
+    cut = threshold if threshold is not None else cfg.app.vote_similarity.threshold
+    arms = {
+        "gemini": (
+            GeminiEmbedder(
+                api_key=os.environ.get("GEMINI_API_KEY", ""),
+                cache_path=vault / "embeddings.json",
+                model=cfg.app.vote_similarity.model,
+            ),
+            cut,
+        ),
+        "workers_ai": (
+            WorkersAIEmbedder(
+                api_token=token,
+                account_id=account,
+                # Separate file: the dimensionalities differ, so the caches cannot mix.
+                cache_path=vault / "embeddings-bge-m3.json",
+            ),
+            workers_threshold,
+        ),
+    }
+
+    now = datetime.now(UTC)
+    candidates = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
+    results = {}
+    for name, (embedder, arm_cut) in arms.items():
+        # Wall-clock, not just api_seconds: Gemini sleeps 1.5s between batches of 50
+        # where bge-m3 batches 100 with no pause, and that gap is the throughput
+        # difference the per-request timer cannot see.
+        started = time.monotonic()
+        report = asyncio.run(
+            judge_by_votes(
+                deps.store,
+                embedder,
+                candidates,
+                threshold=arm_cut,
+                max_seeds=cfg.app.vote_similarity.max_seeds,
+            )
+        )
+        elapsed = time.monotonic() - started
+        if not report.ran:
+            typer.echo(f"Nothing to compare: {report.skipped_reason}")
+            raise typer.Exit(1)
+        results[name] = (report, arm_cut, embedder.usage, elapsed)
+
+    g_report = results["gemini"][0]
+    sets = {n: set(r.suppressed_urls) for n, (r, *_) in results.items()}
+    only = {
+        "gemini_only": sorted(sets["gemini"] - sets["workers_ai"]),
+        "workers_only": sorted(sets["workers_ai"] - sets["gemini"]),
+    }
+
+    def margin(report) -> dict[str, float | None]:
+        """Where this window's boundary actually fell, per arm.
+
+        The thresholds are pinned constants calibrated against two downvote seeds. As
+        the seed set grows they drift, and by different amounts because the two cosine
+        scales differ — so the first disagreement this log records could just as easily
+        be threshold staleness as a model difference. Recording each side of the
+        boundary is what lets the two be told apart later.
+        """
+        cut_side = [v.down_similarity for v in report.verdicts.values() if v.suppressed]
+        keep_side = [v.down_similarity for v in report.verdicts.values() if not v.suppressed]
+        return {
+            "suppressed_min": round(min(cut_side), 4) if cut_side else None,
+            "kept_max": round(max(keep_side), 4) if keep_side else None,
+        }
+
+    by_url = {a.url: a for a in candidates}
+    typer.echo(
+        f"\n{len(candidates)} candidate(s) over {hours}h, "
+        f"{g_report.upvote_seeds} up / {g_report.downvote_seeds} down seed(s)\n"
+    )
+    for name, (report, arm_cut, usage, elapsed) in results.items():
+        u = usage.as_dict()
+        m = margin(report)
+        cost = f", {u['input_tokens']} tokens, {u['neurons']} neurons" if u["neurons"] else ""
+        typer.echo(
+            f"  {name:<11} @ {arm_cut:.2f}  suppresses {len(report.suppressed_urls):>3}   "
+            f"margin {m['kept_max']} -> {m['suppressed_min']}   "
+            f"({u['embedded']} embedded in {u['requests']} req, "
+            f"{elapsed:.1f}s wall / {u['api_seconds']}s api{cost})"
+        )
+    typer.echo(
+        f"\n  agree on {len(sets['gemini'] & sets['workers_ai'])}, "
+        f"disagree on {len(only['gemini_only']) + len(only['workers_only'])}"
+    )
+    for label, urls in only.items():
+        for url in urls[:show]:
+            a = by_url[url]
+            typer.echo(f"    {label:<13} [{a.source_name[:18]:18}] {a.title[:48]}")
+
+    if log:
+        row = {
+            "checked_at": now.isoformat(),
+            "hours": hours,
+            "candidates": len(candidates),
+            "seeds": {"up": g_report.upvote_seeds, "down": g_report.downvote_seeds},
+            "agree": len(sets["gemini"] & sets["workers_ai"]),
+            **only,
+            **{
+                name: {
+                    "threshold": arm_cut,
+                    "suppressed": len(report.suppressed_urls),
+                    "wall_seconds": round(elapsed, 2),
+                    **margin(report),
+                    **usage.as_dict(),
+                }
+                for name, (report, arm_cut, usage, elapsed) in results.items()
+            },
+        }
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        typer.echo(f"\nLogged to {log}")
 
 
 @app.command("learn")
