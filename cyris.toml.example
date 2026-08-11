@@ -63,7 +63,7 @@ worker_url = ""
 # drew the first downvote was news-tagged. Preview with `cyris vote-sim` before
 # enabling. Embeddings reuse GEMINI_API_KEY; see docs/vote-signal-measurement.md.
 enabled = false
-threshold = 0.70      # midpoint of the measured in-class / out-of-class gap
+threshold = 0.68      # inside the measured gap (0.673 out-of-class / 0.690 in-class)
 # model = "gemini-embedding-001"
 # max_seeds = 200
 

@@ -2,13 +2,14 @@
 
 The unit of preference here is deliberately narrower than a feed and wider than a
 single article. A downvote on a lottery draw means "this kind of article", not
-"this source" — suppressing 中央社財經 wholesale would take 1,202 unrelated
-articles with it, while the class the vote actually points at is ~69.
+"this source" — suppressing 中央社財經 wholesale would take 1,193 unrelated
+articles with it, while the class the vote actually points at is 71.
 
-Measured 2026-08-09 over the live store with gemini-embedding-001: seeded with the
-two real downvoted titles, cosine ranks the whole 69-article class above every one
-of a 900-article sample — in-class minimum 0.737 against out-of-class maximum
-0.666. DEFAULT_THRESHOLD sits in that gap. See docs/vote-signal-measurement.md.
+Re-measured 2026-08-10 with gemini-embedding-001 over the whole 5,724-article store
+(the 2026-08-09 pass sampled one source, which put the boundary in the wrong place):
+seeded with the two real downvoted titles, cosine ranks the entire 71-article class
+above everything else — in-class minimum 0.690 against out-of-class maximum 0.673.
+DEFAULT_THRESHOLD sits in that gap. See docs/vote-signal-measurement.md.
 
 ponytail: pure-stdlib dot products. ~400 candidates x a handful of seeds is a few
 million multiply-adds, which Python does in about a second. Reach for numpy only
@@ -20,10 +21,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# Midpoint of the measured gap (0.737 in-class low / 0.666 out-of-class high).
-# Sitting in the middle rather than at either edge keeps the same margin on both
-# sides, since neither bound is guaranteed to hold on unseen articles.
-DEFAULT_THRESHOLD = 0.70
+# Inside the measured gap (0.690 in-class low / 0.673 out-of-class high), leaning
+# high: the cost of the two errors is not symmetric. A false positive silently
+# deletes an article the reader might have wanted; a miss just lets one through.
+# The band is only 0.017 wide, so this is a real setting, not a round number —
+# 0.62 would suppress 18 unvoted articles, including every 統一發票千萬獎 headline.
+DEFAULT_THRESHOLD = 0.68
 
 
 def normalize(vector: list[float]) -> list[float]:

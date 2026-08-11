@@ -190,7 +190,7 @@ class VoteSimilarityConfig(BaseModel):
     """
 
     enabled: bool = False
-    threshold: float = Field(default=0.70, ge=0.0, le=1.0)
+    threshold: float = Field(default=0.68, ge=0.0, le=1.0)
     model: str = "gemini-embedding-001"
     max_seeds: int = Field(default=200, ge=1)
 

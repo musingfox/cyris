@@ -100,7 +100,8 @@ was written for, and across language and source.
 ## Built, and run against the live store
 
 `cyris vote-sim` previews the effect without touching the pipeline. Over a 168h
-window, 1,238 candidates, seeded from the 3 human votes that exist:
+window, 1,238 candidates, seeded from the 3 human votes that exist (**run at the
+0.70 default of the time**; re-run at today's 0.68 below):
 
 ```
 WOULD SUPPRESS (12):
@@ -114,9 +115,15 @@ WOULD SUPPRESS (12):
 The window holds 14 lottery-pattern articles, 2 of which are the seeds themselves
 (excluded — an article already ruled on must not be re-judged, or it matches its
 own seed at 1.0 and reports a decision already made). **12 of 12 recall, no false
-positives.** Lowering the threshold to 0.62 returns the same 12, so nothing
-non-lottery sits near the boundary; the live margin is wider than the calibration
-implied.
+positives.**
+
+> **Correction (2026-08-10).** This section originally added: *"Lowering the threshold
+> to 0.62 returns the same 12, so nothing non-lottery sits near the boundary; the live
+> margin is wider than the calibration implied."* That is true of this 168h window and
+> false in general — the window simply contained none of the near-boundary articles.
+> Over the whole 5,724-article store, **0.62 suppresses 18 unvoted articles**: the
+> entire 統一發票千萬獎 cluster (0.657–0.673) and 台股漲/跌 headlines (0.640). The real
+> gap is **0.017 wide**, not comfortable. See "Recalibration" below.
 
 Both generalisations the seeds could not have known are present: 大樂透 and 威力彩
 (the seeds are 今彩539 only) and every 「頭獎槓龜」 phrasing, which the mined regex
@@ -124,6 +131,41 @@ misses entirely.
 
 Shipped off by default (`[vote_similarity] enabled = false`). It changes what
 reaches the digest and the threshold is calibrated on one reader's three votes.
+
+## Recalibration — 2026-08-10, full corpus
+
+The 2026-08-09 pass scored inside 中央社財經 only, mirroring T2. Production
+(`judge_by_votes`) scores every pending candidate from every source, so a ceiling
+measured inside one source cannot say whether a threshold is safe. Re-measured over
+all **5,724** articles, with two lottery reports the regex misses (「大樂透頭獎9.1億元1注
+獨得」, 「大樂透頭獎連19槓」 — neither carries 第N期) folded into a **71**-item truth class:
+
+| threshold | false positives | missed lottery |
+|---|---|---|
+| 0.62 | **18** | 0 |
+| 0.65 | 8 | 0 |
+| **0.68** | **0** | **0** |
+| 0.70 (previous default) | 0 | 1 |
+| 0.72 | 0 | 2 |
+
+**The default is now 0.68.** No other source comes near the seeds — the full-corpus
+ceiling (0.673) is *lower* than the single-source one, and everything at the boundary
+is 中央社財經.
+
+Observed, not just computed: `cyris vote-sim --hours 168` at the new default suppresses
+**the same 12 items, all lottery, no false positive** — scores 0.744 to 0.916, with the
+next candidate far below. The lowered threshold changes nothing about what this window
+does; it buys margin for the two draw reports that carry no 第N期.
+
+The near-boundary set is the finding worth keeping: seven 統一發票千萬獎 titles at
+0.657–0.673 are an *adjacent* class — "someone won a large sum in a draw", not a
+lottery draw report — that the reader has never voted on. Threshold choice decides
+their fate. It has more leverage over what gets suppressed than the choice of
+embedding model does.
+
+For the third time, the regex was the thing that was wrong, not the model: the one
+item above 0.70 that the regex called non-lottery is a lottery report. The model's
+measured precision is understated, not inflated.
 
 ## Consequence for the option ranking
 
