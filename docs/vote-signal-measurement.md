@@ -167,6 +167,102 @@ For the third time, the regex was the thing that was wrong, not the model: the o
 item above 0.70 that the regex called non-lottery is a lottery report. The model's
 measured precision is understated, not inflated.
 
+## Dimensionality — 2026-08-10
+
+`gemini-embedding-001` supports `outputDimensionality` (Matryoshka). The API's 1024d
+vector equals the first 1024 dims of the 3072d vector, renormalised, at cosine
+**1.000000** — so any target dimension comes out of the existing cache with no API
+calls. Below 3072d the API returns **non-unit** vectors (norm 0.6178 at 1024d);
+`normalize` already handles it.
+
+On the class-retrieval task, 3072 / 1024 / 768 score identically (precision@69 =
+1.000, first non-lottery at rank 70, gap ≈ 0.017–0.019 with 0.68 clean at all three).
+
+Truncation is **not** free in general, though. Over 500 random seeds, top-10
+neighbourhood overlap against 3072d: 1536d **0.962**, 1024d **0.923**, 768d **0.907**;
+identical top-10 for only 65.8% / 41.2% / 31.2% of seeds. The lottery class survives
+because its margin is wide. Suppression — a thresholded, wide-margin decision — is
+safe to truncate; reranking, which was never tested, is the use case that would feel it.
+
+This also empties the case for switching to Workers AI `@cf/baai/bge-m3` on storage
+grounds (`docs/cloud-migration.md` calls it "for storage, not for price"): 768d cuts
+the cache 4× with no provider change, no re-embed, and no recalibration. Cost never
+discriminated either — Workers AI is included in both Workers plans with 10,000
+neurons/day free (≈ 9.3M bge-m3 tokens; this project uses ~0.06% of it), and Gemini's
+free tier is $0. What remains for bge-m3 is co-location once the pipeline runs on Workers
+— and only that. The data-handling difference does not apply here: Google's *free* tier
+states inputs are used to improve their products, but this project is on the **paid** tier
+(confirmed 2026-08-10), which does not, same as Workers AI.
+
+## Head-to-head: `@cf/baai/bge-m3` — 2026-08-10
+
+Same frozen corpus, same two seeds, same nearest-seed rule. 5,724 titles in 58 REST
+batches; vectors return already unit-length (measured 0.9998) at 1024d. Cost ≈ **114
+neurons** (~106k tokens × 1,075/1M) against a 10,000/day allowance.
+
+| arm | prec@69 | 1st non-lottery | in-min | out-max | gap | **relative margin** |
+|---|---|---|---|---|---|---|
+| gemini-3072 | 1.000 | 70 | 0.6897 | 0.6732 | +0.0164 | 2.4% |
+| gemini-1024 | 1.000 | 70 | 0.6660 | 0.6461 | +0.0199 | 3.0% |
+| gemini-768 | 1.000 | 70 | 0.6718 | 0.6525 | +0.0193 | 2.9% |
+| **bge-m3-1024** | 0.971 | 68 | 0.5438 | 0.5073 | **+0.0365** | **6.7%** |
+
+bge-m3 passes bars 1–3 and fails bar 4 (midpoint 0.526, outside the pre-registered
+0.65–0.75) — **which was predicted in writing before the measurement ran**. The
+recalibration that failure prices is one config value: 0.68 → **0.53**.
+
+Its 0.971 is the label artefact again: both "false positives" inside the top 69 are the
+two lottery reports the regex misses, ranked **68** and **69** — higher than Gemini places
+them. Against the corrected 71-item class bge-m3 scores **1.000**, with all 71 above
+everything else. Perfect separation, same as Gemini.
+
+Two readings point the same way on robustness. bge-m3's safe band is wider in absolute
+terms (**0.0365** vs 0.0164 — bar 5, the one cross-arm quantity that *was* pre-registered,
+though it was written as per-arm reporting), and the adjacent 統一發票千萬獎 cluster sits
+proportionally further below the boundary (**14.3%** vs 5.3%). Neither normalisation is
+clean: absolute band widths ignore that bge-m3's cosines are compressed lower across the
+board, and the ratio was not pre-registered as a cross-arm metric. **A signal, not a verdict.**
+
+They are not the same space, though. Top-10 neighbourhood overlap against gemini-3072 over
+500 random seeds is **0.482** for bge-m3 (vs 0.923 at gemini-1024), with an identical top-10
+for **0.2%** of seeds. Nothing measured on one model's neighbourhoods transfers to the other.
+
+**Verdict: stay on Gemini.** Both models solve the labelled task perfectly. bge-m3 points
+the same direction on both robustness readings and costs nothing on a plan already paid
+for — but that is one class and two seeds, and the 0.482 agreement says a margin signal
+here is not evidence of a general quality win; asserting one would repeat the overreach of
+the two earlier rounds.
+
+Every axis that could have forced a switch is now measured flat:
+
+| axis | verdict |
+|---|---|
+| price | $0.019/mo vs $0. Neither is a reason to do work. |
+| storage | solved by truncating Gemini — no provider change, no re-embed, no recalibration |
+| retrieval quality | both 1.000 on the corrected class |
+| data handling | **this project is on Gemini's paid tier** (confirmed 2026-08-10), which does not train on inputs — same as Workers AI |
+
+What is left is co-location, which only exists once the pipeline runs on Workers. **That
+future switch is de-risked**: bge-m3 clears every bar, its threshold is known (≈0.53), and
+`WorkersAIEmbedder` now exists behind `ports.Embedder`.
+
+### They also agree on every article ever stored
+
+Applying the real rule (`down_sim >= threshold and up_sim < down_sim`, seeded only from
+`triaged_at`-stamped rows) at each provider's own calibrated threshold, over all 5,724:
+
+```
+gemini-3072 @ 0.68  ->  69 suppressed
+bge-m3-1024 @ 0.53  ->  69 suppressed
+agree 69, gemini only 0, bge-m3 only 0     (disagreement rate 0.0000%)
+```
+
+Identical, article by article. They agree because the only downvote class so far is
+trivially separable for both — the 0.482 neighbourhood overlap says they *do* disagree
+about most of the corpus, just nowhere a vote has landed. The comparison becomes
+informative when the downvote set covers something subtler; the 統一發票千萬獎 cluster is
+the obvious candidate.
+
 ## Consequence for the option ranking
 
 Round 1's `opt-rule-filter` ADOPT does not survive: the rule it recommends is

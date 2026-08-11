@@ -180,20 +180,35 @@ Mechanical once phase 2 lands, with no new failure modes left untested.
 | `output/html_digest.py` | 180 | write to R2 instead of disk |
 | `output/publish.py` | 78 | Pages REST API — `bunx wrangler` cannot shell out from a Worker-fronted container |
 | `output/article_export.py` | 106 | R2, or drop with the Obsidian path |
-| `adapters/embedding.py` | 105 | Workers AI `@cf/baai/bge-m3` + Vectorize — **for storage, not for price** |
+| `adapters/embedding.py` | 105 | Workers AI `@cf/baai/bge-m3` + Vectorize — **for co-location, not for price or storage** |
 
 Plus: cross-build the amd64 image, replace supercronic with Workers Cron Triggers, and
 wire `onActivityExpired` → `stop()`.
 
-The embedding row is the one whose usual justification is wrong, so it is worth stating
-plainly. Measured token volume is ~128k/month (titles average 18.6 tokens), which prices
-at **US$0.019/mo on Gemini's paid tier and US$0.0015/mo on bge-m3** — a 12.5× ratio on a
-number small enough that it can never justify the work. What does justify it is that the
-local vector cache is a whole-file JSON rewritten on every miss and already stands at
-**81 MB**; Vectorize replaces a read pattern that loads everything, not a bill.
+The embedding row is the one whose usual justifications are wrong, so it is worth stating
+plainly — both of them have now been measured away (2026-08-10, `docs/vote-signal-measurement.md`).
 
-`bge-m3` is the right target when that happens — it is multilingual (Cloudflare lists it
-under "Multi-Linguality", 60k context), which the 62%-中央社 corpus requires. The
+**Not price.** Measured volume is ~128k tokens/month (titles average 18.6). Workers AI is
+included in both Workers plans with a **10,000 neuron/day** free allowance ≈ 9.3M bge-m3
+tokens/day, so this project runs at 0.06% of one day's allowance. Gemini's free tier is
+also $0. Neither side bills anything at this scale.
+
+**Not storage either, which is the one that changed.** The 81 MB whole-file JSON cache was
+the live argument for a 1024-dim model. But `gemini-embedding-001` supports Matryoshka
+truncation, and the API's 1024d output is *bit-identical* to the first 1024 dims of the
+3072d vector renormalised (cosine 1.000000) — so 768d cuts the cache 4× with no provider
+change, no re-embed, and no recalibration, and the class-retrieval scores are unchanged.
+Vectorize's included allowance (10M stored dimensions on Workers Paid) holds the corpus at
+1024d or below with nothing to pay.
+
+What is left is co-location, and only that: once the pipeline runs on Workers, embedding
+in-process means no egress to Google, one credential fewer, and native Vectorize
+integration. Data handling does not separate them — Google's *free* tier uses inputs to
+improve their products, but this project is on the **paid** tier, which does not, same as
+Workers AI.
+
+`bge-m3` is still the right target when that happens — it is multilingual (Cloudflare lists
+it under "Multi-Linguality", 60k context), which the 62%-中央社 corpus requires. The
 English-only trap is the `bge-*-en-v1.5` family, not this model.
 
 Dropped rather than migrated: `output/digest.py` (Obsidian markdown), `adapters/cookies.py`,
