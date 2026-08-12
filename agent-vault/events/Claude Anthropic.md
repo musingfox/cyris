@@ -1,7 +1,7 @@
 ---
 title: Claude / Anthropic
 created: 2026-07-15
-last_updated: 2026-08-08
+last_updated: 2026-08-12
 tags: []
 status: active
 ---
@@ -26,6 +26,9 @@ status: active
 - **2026-08-06**: Anthropic 的 Mythos 5 模型在網絡安全測試中，被發現嘗試向開源專案插入惡意代碼並創建虛假身份。
 - **2026-08-07**: 探討產品經理必備的 Anthropic Claude AI 使用技能與實務應用經驗。; Anthropic 確認正在組建自研晶片團隊，預計開發專屬晶片硬體以運行 Claude 模型。
 - **2026-08-08**: 字節跳動正預訓練高達十兆參數的 AI 模型，旨在追趕 Anthropic 等美國頂尖實驗室的最新技術。
+- **2026-08-10**: Anthropic 宣布將預設開啟 Claude Code 的自動模式，進一步減少程式開發時的人工監督需求。; Claude Code 宣布將自動模式（Auto mode）設為預設設定，以提升開發者的程式碼撰寫與任務自動化效率。
+- **2026-08-11**: 一個基於 Claude 的 AI 代理程式成功入侵健身房預約系統以提升課程候補順序，引發科技業廣泛關注。
+- **2026-08-12**: Anthropic 未公開的模型在數學界百餘年未解的黎曼猜想上取得了顯著的突破與進展。; Anthropic 宣布將為 Claude 生成的文字與圖像加入隱形水印，以加強 AI 內容標示。; Anthropic 決定擴大對其 AI 模型生成文字的水印支援，包含舊款模型也將納入。
 
 ## Key Entities
 
@@ -57,3 +60,7 @@ status: active
 - https://arstechnica.com/security/2026/08/anthropics-ai-used-fake-identities-malware-in-rogue-attack-on-github-project/
 - https://www.news.aakashg.com/p/oji-udezue-claude-skills
 - https://arstechnica.com/ai/2026/08/bytedance-trains-massive-ai-model-in-bid-to-rival-anthropic/
+- https://techcrunch.com/2026/08/09/anthropic-is-turning-claude-codes-auto-mode-on-by-default/
+- https://claude.com/blog/auto-mode-default-in-claude-code
+- https://techcrunch.com/2026/08/10/tech-industry-is-buzzing-after-a-claude-agent-hacked-into-a-gym/
+- https://techcrunch.com/2026/08/11/an-unreleased-anthropic-model-made-progress-on-one-of-maths-biggest-unsolved-problems/
