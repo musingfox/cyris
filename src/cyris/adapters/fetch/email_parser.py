@@ -44,17 +44,22 @@ def strip_tracking_params(url: str) -> str:
 
 def unwrap_tracking_redirect(url: str) -> str:
     """Return the target from a Mailchimp track/click URL, if present."""
-    parsed = urlparse(url)
-    hostname = parsed.hostname
-    if (
-        hostname is None
-        or (hostname != "list-manage.com" and not hostname.endswith(".list-manage.com"))
-        or parsed.path != "/track/click"
-    ):
+    if not isinstance(url, str) or not url:
         return url
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if (
+            hostname is None
+            or (hostname != "list-manage.com" and not hostname.endswith(".list-manage.com"))
+            or "/track/click" not in parsed.path
+        ):
+            return url
 
-    target = dict(parse_qsl(parsed.query, keep_blank_values=True)).get("url")
-    return strip_tracking_params(target) if target else url
+        target = dict(parse_qsl(parsed.query, keep_blank_values=True)).get("url")
+        return strip_tracking_params(target) if target else url
+    except Exception:
+        return url
 
 
 class _HrefParser(HTMLParser):
