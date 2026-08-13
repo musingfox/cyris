@@ -148,6 +148,83 @@ class TestClusterNews:
         assert usage.input_tokens == 100
         assert usage.output_tokens == 50
 
+    async def test_cluster_news_merges_reference_urls_with_store_fallback(self):
+        articles = [
+            Article(
+                id=201,
+                title="Store article",
+                url="https://store.example/a",
+                content="A",
+                published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
+                source_name="Source A",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+            ),
+            Article(
+                id=202,
+                title="Newsletter article",
+                url="newsletter:202",
+                content="B",
+                published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
+                source_name="Newsletter",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+                ref_urls=["https://ref.example/one", "https://ref.example/two"],
+            ),
+        ]
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "Mixed", "summary": "s", "article_ids": [201, 202]}], '
+            '"unclustered_ids": []}'
+        )
+
+        clusters, unclustered = await cluster_news(articles, llm)
+
+        item = clusters[0].items[0]
+        assert item.ref_urls == [
+            "https://store.example/a",
+            "https://ref.example/one",
+            "https://ref.example/two",
+        ]
+        assert item.urls == ["https://store.example/a", "newsletter:202"]
+        assert item.sources == ["Source A", "Newsletter"]
+        assert unclustered == []
+
+    async def test_cluster_news_keeps_reference_urls_empty_without_references(self):
+        articles = [
+            Article(
+                id=203,
+                title="First",
+                url="https://store.example/first",
+                content="A",
+                published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
+                source_name="Source A",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+            ),
+            Article(
+                id=204,
+                title="Second",
+                url="https://store.example/second",
+                content="B",
+                published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
+                source_name="Source B",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+            ),
+        ]
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "Plain", "summary": "s", "article_ids": [203, 204]}], '
+            '"unclustered_ids": []}'
+        )
+
+        clusters, unclustered = await cluster_news(articles, llm)
+
+        item = clusters[0].items[0]
+        assert item.ref_urls == []
+        assert item.urls == ["https://store.example/first", "https://store.example/second"]
+        assert item.sources == ["Source A", "Source B"]
+        assert unclustered == []
+
     async def test_cluster_news_no_clusters(self, sample_news_articles):
         llm = FakeLLM('{"clusters": [], "unclustered_ids": [101, 102, 103]}')
 

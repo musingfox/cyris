@@ -76,6 +76,7 @@ async def filter_articles(
                 summary=entry.get("summary", ""),
                 sources=[entry["source"]],
                 urls=[article_url] if article_url else [],
+                ref_urls=source_article.ref_urls if source_article else [],
                 score=score,
             )
         )

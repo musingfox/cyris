@@ -573,6 +573,37 @@ def test_fan_item_links_to_newsletter_references_but_votes_on_store_url(tmp_path
     assert "data-urls='[&#34;https://r1.com/a&#34;" not in html
 
 
+def test_mixed_cluster_references_render_while_votes_use_store_urls(tmp_path):
+    item = DigestItem(
+        title="Mixed cluster",
+        summary="s",
+        sources=["Source A", "Newsletter"],
+        urls=["https://store.example/a", "newsletter:202"],
+        ref_urls=[
+            "https://store.example/a",
+            "https://ref.example/one",
+            "https://ref.example/two",
+        ],
+    )
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=2,
+        articles_received=2,
+        articles_included=2,
+        usage=UsageStats(),
+        news_clusters=[DigestSection(heading="Mixed", items=[item])],
+    )
+
+    html = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t").render(
+        content
+    )
+
+    for url in item.ref_urls:
+        assert f'<a href="{url}" target="_blank" rel="noopener">' in html
+    assert 'data-urls=\'["https://store.example/a", "newsletter:202"]\'' in html
+
+
 def test_newsletter_references_render_for_every_digest_section(tmp_path):
     """Every newsletter section exposes each original article link."""
     item = DigestItem(
