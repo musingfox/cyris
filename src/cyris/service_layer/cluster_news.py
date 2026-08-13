@@ -88,6 +88,7 @@ async def cluster_news(
             items = []
             sources = []
             urls = []
+            ref_urls = []
             scores = []
 
             for aid in article_ids:
@@ -95,6 +96,13 @@ async def cluster_news(
                     a = article_map[aid]
                     sources.append(a.source_name)
                     urls.append(a.url)
+                    if a.ref_urls:
+                        if not ref_urls:
+                            ref_urls = [*urls[:-1], *a.ref_urls]
+                        else:
+                            ref_urls.extend(a.ref_urls)
+                    elif ref_urls:
+                        ref_urls.append(a.url)
                     # Mark as clustered
                     unclustered_ids.discard(aid)
                     # Collect score if available
@@ -112,6 +120,7 @@ async def cluster_news(
                         sources=sources,
                         urls=urls,
                         score=max_score,
+                        ref_urls=ref_urls,
                     )
                 )
 
