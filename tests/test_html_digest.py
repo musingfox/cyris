@@ -89,9 +89,9 @@ def test_render_empty_sections(tmp_path):
     assert "<!DOCTYPE html>" in html
     assert "<style>" in html
     # Should not contain section headings or content when empty
-    assert "News Clusters" not in html
-    assert "Thematic Summaries" not in html
-    assert "Headlines" not in html
+    assert "In Focus" not in html
+    assert "On the Radar" not in html
+    assert "The Wire" not in html
 
 
 def test_render_optional_score(tmp_path):
@@ -438,13 +438,14 @@ def test_all_sections_render(tmp_path):
     # Check all sections present
     assert "Featured Story" in html
     assert "Second Feature" in html
-    assert "News Clusters" in html
+    assert "In Focus" in html
     assert "Tech Industry" in html
-    assert "Thematic Summaries" in html
-    assert "AI Research" in html
-    assert "Attention" in html
+    # Thematic summaries render inside the Features stream, not as their own section
+    assert "Research Paper" in html
+    assert "Thematic Summaries" not in html
+    assert "On the Radar" in html
     assert "Worth Watching" in html
-    assert "Headlines" in html
+    assert "The Wire" in html
     assert "Headline 1" in html
     assert "5 awaiting triage" in html
 

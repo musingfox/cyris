@@ -52,24 +52,17 @@ class HtmlDigestWriter:
         """
         template = self.env.get_template("digest.html.j2")
 
-        # Extract lead story with fallback chain
+        # Features = every summarize-tier group with a full summary: the scored ones
+        # (already sorted by score in layer_by_score) followed by the unscored rest.
+        # Rendering them as one stream is what lets the digest drop the structurally
+        # near-empty "Thematic Summaries" section.
         lead_story: DigestItem | None = None
         featured_articles: list[DigestItem] = []
-
-        # Try to get lead from featured_articles[0].items[0]
-        if content.featured_articles and content.featured_articles[0].items:
-            lead_story = content.featured_articles[0].items[0]
-            # Remaining featured items after lead
-            featured_articles = content.featured_articles[0].items[1:]
-            # Add items from other featured sections
-            for section in content.featured_articles[1:]:
-                featured_articles.extend(section.items)
-        # Fallback to thematic_summaries if no featured
-        elif content.thematic_summaries:
-            for section in content.thematic_summaries:
-                if section.items:
-                    lead_story = section.items[0]
-                    break
+        for section in [*content.featured_articles, *content.thematic_summaries]:
+            featured_articles.extend(section.items)
+        if featured_articles:
+            lead_story = featured_articles[0]
+            featured_articles = featured_articles[1:]
 
         return template.render(
             date=content.date,
@@ -83,7 +76,6 @@ class HtmlDigestWriter:
             featured_articles=featured_articles,
             news_clusters=content.news_clusters,
             fan_sections=content.fan_sections,
-            thematic_summaries=content.thematic_summaries,
             attention_sections=content.attention_sections,
             filtered_headlines=content.filtered_headlines,
             promote_enabled=bool(self.promote_worker_url and self.promote_token),

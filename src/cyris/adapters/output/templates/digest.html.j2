@@ -718,7 +718,7 @@
 
             {% if featured_articles %}
             <section class="section">
-                <div class="section-tag"><span class="id">02</span><span>Featured</span></div>
+                <div class="section-tag"><span class="id">02</span><span>Features</span></div>
                 <div class="featured-grid">
                     {% for item in featured_articles %}
                     <article class="featured-item">
@@ -738,8 +738,8 @@
 
             {% if news_clusters %}
             <section class="section">
-                <div class="section-tag"><span class="id">03</span><span>News Clusters</span></div>
-                <h2 class="section-heading">News Clusters</h2>
+                <div class="section-tag"><span class="id">03</span><span>In Focus</span></div>
+                <h2 class="section-heading">In Focus</h2>
                 {% for cluster in news_clusters %}
                 <div class="news-cluster">
                     <h4>{{ cluster.heading }}</h4>
@@ -780,35 +780,10 @@
             </section>
             {% endif %}
 
-            {% if thematic_summaries %}
-            <section class="section">
-                <div class="section-tag"><span class="id">04</span><span>Thematic Summaries</span></div>
-                <h2 class="section-heading">Thematic Summaries</h2>
-                {% for sec in thematic_summaries %}
-                <div class="thematic-block">
-                    <h3>{{ sec.heading }}</h3>
-                    {% if sec.description %}<p class="section-description">{{ sec.description }}</p>{% endif %}
-                    {% for item in sec.items %}
-                    <article class="article-item">
-                        <h4>{% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
-                        <p class="summary">{{ item.summary }}</p>
-                        <div class="meta">
-                            {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
-                            {% if item.urls %}<a href="{{ item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
-                            {{ promote_btn(item) }}
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </section>
-            {% endif %}
-
             {% if attention_sections %}
             <section class="section">
-                <div class="section-tag"><span class="id">05</span><span>Attention</span></div>
-                <h2 class="section-heading">Attention</h2>
+                <div class="section-tag"><span class="id">04</span><span>On the Radar</span></div>
+                <h2 class="section-heading">On the Radar</h2>
                 {% for sec in attention_sections %}
                 <div class="thematic-block">
                     <h3>{{ sec.heading }}</h3>
@@ -829,8 +804,8 @@
 
             {% if filtered_headlines %}
             <section class="section">
-                <div class="section-tag"><span class="id">06</span><span>Headlines</span></div>
-                <h2 class="section-heading">Headlines</h2>
+                <div class="section-tag"><span class="id">05</span><span>The Wire</span></div>
+                <h2 class="section-heading">The Wire</h2>
                 <div class="headlines-compact">
                     {% for item in filtered_headlines %}
                     <div class="headline-item">
