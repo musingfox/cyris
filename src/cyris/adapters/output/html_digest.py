@@ -2,10 +2,16 @@
 
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from cyris.domain.models import DigestContent, DigestItem
+
+
+def _hostname(url: str) -> str:
+    """Return a URL's hostname for a compact source-link label."""
+    return urlsplit(url).hostname or url
 
 
 class HtmlDigestWriter:
@@ -37,6 +43,7 @@ class HtmlDigestWriter:
             # template unescaped — feed-controlled titles and URLs went out raw.
             autoescape=select_autoescape(["html", "xml"], default=True),
         )
+        self.env.filters["hostname"] = _hostname
 
     def render(self, content: DigestContent) -> str:
         """Transform DigestContent into complete HTML document.
