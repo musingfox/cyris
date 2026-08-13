@@ -187,3 +187,149 @@ class TestBuildAttentionSections:
 
         assert len(sections) == 1
         assert sections[0].items[0].score is None
+
+
+
+class TestDigestItemsCarryRefUrls:
+    def test_fan_item_keeps_ref_urls_without_changing_store_url(self):
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+        from cyris.service_layer.summarize import build_fan_sections
+
+        article = Article(
+            id=1,
+            title="Newsletter",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.FAN,
+            ref_urls=["https://r1.com/a"],
+        )
+
+        item = build_fan_sections([article])[0].items[0]
+
+        assert item.ref_urls == ["https://r1.com/a"]
+        assert item.urls == ["newsletter:abc"]
+
+    def test_attention_item_keeps_ref_urls_without_changing_store_url(self):
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+        from cyris.service_layer.summarize import build_attention_sections
+
+        article = Article(
+            id=1,
+            title="Article",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.SUMMARIZE,
+            ref_urls=["https://r1.com/a"],
+        )
+
+        item = build_attention_sections([article])[0].items[0]
+
+        assert item.ref_urls == ["https://r1.com/a"]
+        assert item.urls == ["newsletter:abc"]
+
+    async def test_summarized_item_keeps_ref_urls_without_changing_store_url(self):
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+
+        article = Article(
+            id=1,
+            title="Article",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.SUMMARIZE,
+            ref_urls=["https://r1.com/a"],
+        )
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Heading",
+                            "summary": "Summary",
+                            "articles": [{"id": 1, "title": "Article", "source": "Newsletter"}],
+                        }
+                    ]
+                }
+            )
+        )
+
+        item = (await summarize_articles([article], llm))[0].items[0]
+
+        assert item.ref_urls == ["https://r1.com/a"]
+        assert item.urls == ["newsletter:abc"]
+
+    def test_degraded_item_keeps_ref_urls_without_changing_store_url(self):
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+        from cyris.service_layer.degrade import excerpt_sections_from_articles
+
+        article = Article(
+            id=1,
+            title="Article",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.SUMMARIZE,
+            ref_urls=["https://r1.com/a"],
+        )
+
+        item = excerpt_sections_from_articles([article])[0].items[0]
+
+        assert item.ref_urls == ["https://r1.com/a"]
+        assert item.urls == ["newsletter:abc"]
+
+    async def test_rss_items_default_to_empty_ref_urls(self):
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+        from cyris.service_layer.degrade import excerpt_sections_from_articles
+        from cyris.service_layer.summarize import build_attention_sections, build_fan_sections
+
+        fan_article = Article(
+            id=1,
+            title="Fan",
+            url="https://example.com/fan",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Source",
+            source_tier=Tier.FAN,
+        )
+        summarize_article = fan_article.model_copy(update={"source_tier": Tier.SUMMARIZE})
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Heading",
+                            "summary": "Summary",
+                            "articles": [{"id": 1, "title": "Fan", "source": "Source"}],
+                        }
+                    ]
+                }
+            )
+        )
+
+        fan_item = build_fan_sections([fan_article])[0].items[0]
+        attention_item = build_attention_sections([summarize_article])[0].items[0]
+        summarized_item = (await summarize_articles([summarize_article], llm))[0].items[0]
+        degraded_item = excerpt_sections_from_articles([summarize_article])[0].items[0]
+
+        assert [item.ref_urls for item in (fan_item, attention_item, summarized_item, degraded_item)] == [
+            [],
+            [],
+            [],
+            [],
+        ]

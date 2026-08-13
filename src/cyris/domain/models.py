@@ -40,6 +40,8 @@ class Article(BaseModel):
     source_name: str
     source_tier: Tier
     source_tags: list[str] = Field(default_factory=list)
+    ref_urls: list[str] = Field(default_factory=list)
+
 
 
 class DigestItem(BaseModel):
@@ -52,6 +54,8 @@ class DigestItem(BaseModel):
     event_ref: str | None = None
     is_tracked_topic: bool = False
     score: float | None = None
+    ref_urls: list[str] = Field(default_factory=list)
+
 
 
 class DigestSection(BaseModel):

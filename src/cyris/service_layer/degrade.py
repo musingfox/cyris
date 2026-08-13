@@ -36,6 +36,7 @@ def _item(a: Article, scores: dict[str, float] | None) -> DigestItem:
         sources=[a.source_name],
         urls=[a.url] if a.url else [],
         score=(scores.get(a.url) if scores and a.url else None),
+        ref_urls=a.ref_urls,
     )
 
 

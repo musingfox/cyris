@@ -92,6 +92,8 @@ async def summarize_articles(
                         sources=[art_ref.get("source", "")],
                         urls=[article_url] if article_url else [],
                         score=score,
+                        ref_urls=source_article.ref_urls if source_article else [],
+
                     )
                 )
 
@@ -134,6 +136,8 @@ def build_fan_sections(articles: list[Article]) -> list[DigestSection]:
                 summary=excerpt(article.content, 80) if article.content else "",
                 sources=[article.source_name],
                 urls=[article.url],
+                ref_urls=article.ref_urls,
+
             )
             for article in group
         ]
@@ -177,6 +181,8 @@ def build_attention_sections(
                     sources=[article.source_name],
                     urls=[article.url],
                     score=score,
+                    ref_urls=article.ref_urls,
+
                 )
             )
 
