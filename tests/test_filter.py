@@ -1,9 +1,11 @@
 """Tests for filter-tier processor."""
 
 import json
+from datetime import UTC, datetime
 
 from fakes import FakeLLM
 
+from cyris.domain.models import Article, Tier
 from cyris.service_layer.filtering import filter_articles
 
 
@@ -49,3 +51,40 @@ class TestFilterArticles:
 
         assert len(llm.calls) == 1
         assert llm.calls[0]["temperature"] == 1.0
+
+    async def test_filter_item_keeps_ref_urls_without_changing_store_url(self):
+        article = Article(
+            id=101,
+            title="Newsletter",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.FILTER,
+            ref_urls=["https://r1.com/a", "https://r2.com/b"],
+        )
+        llm = FakeLLM(
+            json.dumps({"selected": [{"id": 101, "title": "Newsletter", "source": "Newsletter"}]})
+        )
+
+        item = (await filter_articles([article], llm))[0]
+
+        assert item.ref_urls == ["https://r1.com/a", "https://r2.com/b"]
+        assert item.urls == ["newsletter:abc"]
+
+    async def test_filter_item_without_ref_urls_uses_empty_list(self):
+        article = Article(
+            id=102,
+            title="RSS",
+            url="https://ex.com/2",
+            content="Content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="RSS",
+            source_tier=Tier.FILTER,
+        )
+        llm = FakeLLM(json.dumps({"selected": [{"id": 102, "title": "RSS", "source": "RSS"}]}))
+
+        item = (await filter_articles([article], llm))[0]
+
+        assert item.ref_urls == []
+        assert item.urls == ["https://ex.com/2"]
