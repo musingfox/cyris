@@ -542,3 +542,126 @@ def test_vote_buttons_use_arrows_not_emoji(tmp_path):
     assert '<button class="promote-btn" data-vote="down" title="不想看">↓</button>' in html
     assert "👍" not in html
     assert "👎" not in html
+
+
+def test_fan_item_links_to_newsletter_references_but_votes_on_store_url(tmp_path):
+    """Newsletter references are reader links; the store URL remains the vote key."""
+    item = DigestItem(
+        title="Newsletter item",
+        summary="s",
+        sources=["Newsletter"],
+        urls=["newsletter:abc"],
+        ref_urls=["https://r1.com/a", "https://r2.com/b"],
+    )
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        fan_sections=[DigestSection(heading="Fan", items=[item])],
+    )
+
+    html = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t").render(
+        content
+    )
+
+    assert '<a href="https://r1.com/a" target="_blank" rel="noopener">Newsletter item</a>' in html
+    assert '<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>' in html
+    assert "data-urls='[\"newsletter:abc\"]'" in html
+    assert "data-urls='[&#34;https://r1.com/a&#34;" not in html
+
+
+def test_newsletter_references_render_for_every_digest_section(tmp_path):
+    """Every newsletter section exposes each original article link."""
+    item = DigestItem(
+        title="Newsletter item",
+        summary="s",
+        sources=["Newsletter"],
+        urls=["newsletter:abc"],
+        ref_urls=["https://r1.com/a", "https://r2.com/b"],
+    )
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        featured_articles=[DigestSection(heading="Features", items=[item, item])],
+        fan_sections=[DigestSection(heading="Fan", items=[item])],
+        attention_sections=[DigestSection(heading="Attention", items=[item])],
+        filtered_headlines=[item],
+    )
+
+    html = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t").render(
+        content
+    )
+
+    assert html.count('<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>') == 5
+    assert html.count('<span class="source-tag">Newsletter</span>') == 3
+    assert html.count('<span class="source-tag">Source: Newsletter</span>') == 1
+    assert html.count("data-urls='[\"newsletter:abc\"]'") == 5
+    assert "data-urls='[&#34;https://r1.com/a&#34;" not in html
+
+
+def test_fan_item_without_references_keeps_its_store_url(tmp_path):
+    """Non-newsletter fan items retain their existing reader link."""
+    item = DigestItem(
+        title="Mailchimp item",
+        summary="s",
+        sources=["Newsletter"],
+        urls=["https://mailchi.mp/x"],
+        ref_urls=[],
+    )
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        fan_sections=[DigestSection(heading="Fan", items=[item])],
+    )
+
+    html = HtmlDigestWriter(tmp_path).render(content)
+
+    assert (
+        '<a href="https://mailchi.mp/x" target="_blank" rel="noopener">Mailchimp item</a>' in html
+    )
+
+
+def test_news_cluster_without_references_keeps_existing_source_markup(tmp_path):
+    """RSS cluster source links keep their existing source labels and order."""
+    html = HtmlDigestWriter(tmp_path).render(_cluster_digest(2))
+
+    assert (
+        '<a href="https://n0.com" target="_blank" rel="noopener">S0</a> · '
+        '<a href="https://n1.com" target="_blank" rel="noopener">S1</a>'
+    ) in html
+
+
+def test_fan_item_with_one_reference_keeps_existing_source_markup(tmp_path):
+    """A single original link changes the destination, not the source label."""
+    item = DigestItem(
+        title="Newsletter item",
+        summary="s",
+        sources=["Newsletter"],
+        urls=["newsletter:abc"],
+        ref_urls=["https://r1.com/a"],
+    )
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        fan_sections=[DigestSection(heading="Fan", items=[item])],
+    )
+
+    html = HtmlDigestWriter(tmp_path).render(content)
+
+    assert '<span class="source-tag">Newsletter</span>' in html
+    assert '<a href="https://r1.com/a" target="_blank" rel="noopener">r1.com</a>' not in html

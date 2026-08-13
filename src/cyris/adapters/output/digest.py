@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
@@ -134,9 +135,9 @@ class DigestWriter:
 
     def _render_section(self, section: DigestSection) -> str:
         """Render a single thematic section."""
-        # Render heading with URL if first item has urls
-        if section.items and section.items[0].urls:
-            heading = f"### [{section.heading}]({section.items[0].urls[0]})"
+        # Render heading with URL if first item has a display URL.
+        if section.items and (url := self._display_url(section.items[0])):
+            heading = f"### [{section.heading}]({url})"
         else:
             heading = f"### {section.heading}"
 
@@ -163,6 +164,9 @@ class DigestWriter:
             event_refs = [i.event_ref for i in section.items if i.event_ref]
             if event_refs:
                 lines.append(f" · [[{event_refs[0]}]]")
+            for item in section.items:
+                if ref_urls := self._reference_urls(item):
+                    lines.append(f"原文：{ref_urls}")
         lines.append("")
         return "\n".join(lines)
 
@@ -176,10 +180,12 @@ class DigestWriter:
             lines.append(section.description)
 
         for item in section.items:
-            title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
+            title_part = self._title_part(item)
             source_str = f" ({', '.join(item.sources)})" if item.sources else ""
             summary_str = f" — {item.summary}" if item.summary else ""
             lines.append(f"- {title_part}{summary_str}{source_str}")
+            if ref_urls := self._reference_urls(item):
+                lines.append(f"  - 原文：{ref_urls}")
 
         lines.append("")
         return "\n".join(lines)
@@ -188,9 +194,11 @@ class DigestWriter:
         """Render a fan section: source heading + title/link/excerpt per item (no AI)."""
         lines = [f"### {section.heading}"]
         for item in section.items:
-            title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
+            title_part = self._title_part(item)
             summary_str = f" — {item.summary}" if item.summary else ""
             lines.append(f"- {title_part}{summary_str}")
+            if ref_urls := self._reference_urls(item):
+                lines.append(f"  - 原文：{ref_urls}")
         lines.append("")
         return "\n".join(lines)
 
@@ -198,11 +206,13 @@ class DigestWriter:
         """Render tracked updates per-item (title+link, summary, source, event wiki ref)."""
         lines = []
         for item in section.items:
-            title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
+            title_part = self._title_part(item)
             source_str = f" ({', '.join(item.sources)})" if item.sources else ""
             summary_str = f" — {item.summary}" if item.summary else ""
             ref_str = f" · [[{item.event_ref}]]" if item.event_ref else ""
             lines.append(f"- {title_part}{summary_str}{source_str}{ref_str}")
+            if ref_urls := self._reference_urls(item):
+                lines.append(f"  - 原文：{ref_urls}")
         lines.append("")
         return "\n".join(lines)
 
@@ -214,8 +224,10 @@ class DigestWriter:
         for item in headlines:
             # Line 1: title with link and sources
             source_str = f" ({', '.join(item.sources)})" if item.sources else ""
-            title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
+            title_part = self._title_part(item)
             lines.append(f"> - {title_part}{source_str}")
+            if ref_urls := self._reference_urls(item):
+                lines.append(f">   原文：{ref_urls}")
 
             # Line 2: summary if present, truncated to 80 chars
             if item.summary:
@@ -225,6 +237,25 @@ class DigestWriter:
                 lines.append(f">   {summary}")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _display_url(item: DigestItem) -> str | None:
+        """Return the original article URL, falling back to the stored source URL."""
+        if item.ref_urls:
+            return item.ref_urls[0]
+        return item.urls[0] if item.urls else None
+
+    def _title_part(self, item: DigestItem) -> str:
+        """Render an item title linked to its display URL."""
+        url = self._display_url(item)
+        return f"**[{item.title}]({url})**" if url else f"**{item.title}**"
+
+    @staticmethod
+    def _reference_urls(item: DigestItem) -> str | None:
+        """Render additional original article links in extraction order."""
+        if len(item.ref_urls) < 2:
+            return None
+        return " · ".join(f"[{urlparse(url).hostname or url}]({url})" for url in item.ref_urls)
 
     def _digest_path(self, content: DigestContent) -> Path:
         """Compute the output file path for a digest."""
