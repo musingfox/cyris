@@ -9,7 +9,9 @@ RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 
 # Bake wrangler into the image so a digest-time deploy needs no network fetch;
 # without this the first publish after every container recreate downloads it.
-RUN bunx wrangler --version
+# Pinned: an unpinned build froze in 4.121.0, which exits 0 after the banner
+# without deploying (bun-silent crash); keep in sync with publish.py WRANGLER.
+RUN bunx wrangler@4.122.0 --version
 
 # supercronic: container-aware cron — logs to stdout, respects TZ + inherits env vars
 ARG TARGETARCH

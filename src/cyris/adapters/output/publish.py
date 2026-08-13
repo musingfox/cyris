@@ -8,6 +8,10 @@ logger = logging.getLogger(__name__)
 
 DEPLOY_TIMEOUT_SECONDS = 180
 DEPLOY_RECEIPT = "Deployment complete"
+# Pinned to the version baked into the image (Dockerfile). Unpinned, bunx runs
+# whatever was cached at build time — 4.121.0 exits 0 after the banner without
+# deploying, which is how the 2026-08-13 morning digest lost its link.
+WRANGLER = "wrangler@4.122.0"
 # ponytail: fixed retry count, no backoff — the observed failure is instant and
 # intermittent (wrangler exits 0 in ~2s having printed nothing), and an immediate
 # second attempt has always succeeded. Revisit if a retry is ever seen to fail too.
@@ -41,7 +45,7 @@ def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
     """One `wrangler pages deploy` invocation, verified by its own receipt."""
     cmd = [
         "bunx",
-        "wrangler",
+        WRANGLER,
         "pages",
         "deploy",
         str(html_dir),
