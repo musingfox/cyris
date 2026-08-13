@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import date
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cyris.domain.events import EventFile, TimelineEntry
 from cyris.domain.models import DigestItem, DigestSection, StoredArticle, UsageStats
@@ -40,6 +40,7 @@ class TopicMatch(BaseModel):
     topic_name: str
     note: str
     score: float | None = None
+    ref_urls: list[str] = Field(default_factory=list)
 
 
 async def confirm_topic_matches(
@@ -92,6 +93,7 @@ async def confirm_topic_matches(
                         topic_name=tname,
                         note=note,
                         score=cand.score,
+                        ref_urls=cand.ref_urls,
                     )
                 )
     return all_matches, usage

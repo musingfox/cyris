@@ -136,6 +136,24 @@ async def test_topic_match_confirmation_success():
     assert usage.api_calls == 1
 
 
+async def test_topic_match_confirmation_preserves_reference_urls():
+    cand = _mk_stored("newsletter:abc", 7, "foo").model_copy(
+        update={"ref_urls": ["https://r1.com/a"]}
+    )
+    llm = FakeLLM([json.dumps({"matches": [{"id": 7, "topic": "台積電", "note": "n"}]})])
+
+    matches, _ = await confirm_topic_matches([cand], {"newsletter:abc": ["台積電"]}, llm)
+
+    assert matches[0].url == "newsletter:abc"
+    assert matches[0].ref_urls == ["https://r1.com/a"]
+
+
+def test_topic_match_defaults_reference_urls_to_empty_list():
+    match = TopicMatch(url="u", title="t", source_name="s", topic_name="p", note="n")
+
+    assert match.ref_urls == []
+
+
 async def test_topic_match_confirmation_ignores_unknown():
     """T2: unknown id/topic in response -> silently [] ."""
     cand = _mk_stored("u1", 1, "foo")
