@@ -4,7 +4,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from cyris.adapters.fetch.email_parser import parse_newsletter, strip_tracking_params
+from cyris.adapters.fetch.email_parser import (
+    extract_ref_urls,
+    parse_newsletter,
+    strip_tracking_params,
+    unwrap_tracking_redirect,
+)
 
 
 class TestParseNewsletter:
@@ -213,3 +218,70 @@ class TestNewsletterSubjectPrefixStripped:
         }
         result = parse_newsletter(payload, "Test")
         assert result.subject == "foo bar"
+
+
+
+
+
+
+class TestExtractNewsletterRefUrls:
+    def test_extracts_unwrapped_content_links(self):
+        html = """
+        <a href="https://xx.list-manage.com/track/click?u=1&amp;id=2&amp;url=https%3A%2F%2Fexample.com%2Fa%3Futm_source%3Dnl%26e%3Ddeadbeef00">Article</a>
+        <a href="https://xx.list-manage.com/track/click?u=1&amp;id=2&amp;url=https%3A%2F%2Fwww.patreon.com%2Fposts%2Ffoo-123">Patreon</a>
+        <a href="https://mailchi.mp/newsletter/view">View online</a>
+        <a href="mailto:news@example.com">Email</a>
+        <a href="https://xx.list-manage.com/unsubscribe?u=1">Unsubscribe</a>
+        """
+        assert extract_ref_urls(html) == [
+            "https://example.com/a",
+            "https://www.patreon.com/posts/foo-123",
+        ]
+
+    def test_deduplicates_unwrapped_and_bare_links(self):
+        html = """
+        <a href="https://example.com/a">Article</a>
+        <a href="https://xx.list-manage.com/track/click?url=https%3A%2F%2Fexample.com%2Fa">Again</a>
+        """
+        assert extract_ref_urls(html) == ["https://example.com/a"]
+
+    def test_empty_html_has_no_links(self):
+        assert extract_ref_urls("") == []
+
+    def test_skips_shares_and_images(self):
+        html = """
+        <a href="https://twitter.com/intent/tweet?url=https://example.com/a">Tweet</a>
+        <a href="https://facebook.com/sharer/sharer.php?u=https://example.com/a">Share</a>
+        <a href="https://example.com/assets/article.png">Image</a>
+        """
+        assert extract_ref_urls(html) == []
+
+    def test_skips_track_click_links_without_targets(self):
+        html = "".join(
+            f'<a href="https://xx.list-manage.com/track/click?u=1&id={i}">Click</a>'
+            for i in range(25)
+        )
+        assert extract_ref_urls(html) == []
+
+
+class TestUnwrapTrackClickUrl:
+    def test_unwraps_and_cleans_tracking_params(self):
+        url = (
+            "https://xx.list-manage.com/track/click?u=1&id=2&"
+            "url=https%3A%2F%2Fexample.com%2Fpost%3Futm_source%3Dnl&e=deadbeef00"
+        )
+        result = unwrap_tracking_redirect(url)
+        assert result == "https://example.com/post"
+        assert "e=" not in result
+
+    def test_non_tracking_url_is_unchanged(self):
+        url = "https://example.com/a?x=1"
+        assert unwrap_tracking_redirect(url) == url
+
+    def test_track_click_without_target_is_unchanged(self):
+        url = "https://xx.list-manage.com/track/click?u=1&id=2"
+        assert unwrap_tracking_redirect(url) == url
+
+    def test_non_list_manage_track_click_is_unchanged(self):
+        url = "https://evil.net/track/click?url=https%3A%2F%2Fx.com"
+        assert unwrap_tracking_redirect(url) == url
