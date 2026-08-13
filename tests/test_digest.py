@@ -494,3 +494,88 @@ class TestDigestWriter:
         )
         md2 = writer.render(content2)
         assert "追蹤主題更新" not in md2
+
+    def test_fan_item_links_to_all_reference_urls(self, writer):
+        from cyris.domain.models import DigestItem, DigestSection
+
+        section = DigestSection(
+            heading="Newsletter",
+            items=[
+                DigestItem(
+                    title="No.28",
+                    summary="",
+                    sources=[],
+                    urls=["newsletter:abc"],
+                    ref_urls=["https://r1.com/a", "https://r2.com/b"],
+                )
+            ],
+        )
+
+        output = writer._render_fan_section(section)
+
+        assert "**[No.28](https://r1.com/a)**" in output
+        assert "[r1.com](https://r1.com/a)" in output
+        assert "[r2.com](https://r2.com/b)" in output
+        assert "https://r2.com/b" in output
+        assert "newsletter:abc" not in output
+
+    def test_fan_item_with_one_reference_url_has_no_reference_list(self, writer):
+        from cyris.domain.models import DigestItem, DigestSection
+
+        section = DigestSection(
+            heading="Newsletter",
+            items=[
+                DigestItem(
+                    title="No.28",
+                    summary="",
+                    sources=[],
+                    urls=["newsletter:abc"],
+                    ref_urls=["https://r1.com/a"],
+                )
+            ],
+        )
+
+        output = writer._render_fan_section(section)
+
+        assert "**[No.28](https://r1.com/a)**" in output
+        assert "原文：" not in output
+
+    def test_fan_item_without_reference_urls_keeps_store_url(self, writer):
+        from cyris.domain.models import DigestItem, DigestSection
+
+        section = DigestSection(
+            heading="Newsletter",
+            items=[
+                DigestItem(
+                    title="No.28",
+                    summary="",
+                    sources=[],
+                    urls=["https://mailchi.mp/x"],
+                    ref_urls=[],
+                )
+            ],
+        )
+
+        output = writer._render_fan_section(section)
+
+        assert "**[No.28](https://mailchi.mp/x)**" in output
+
+    def test_section_heading_links_to_first_reference_url(self, writer):
+        from cyris.domain.models import DigestItem, DigestSection
+
+        section = DigestSection(
+            heading="Newsletter",
+            items=[
+                DigestItem(
+                    title="No.28",
+                    summary="",
+                    sources=[],
+                    urls=["newsletter:abc"],
+                    ref_urls=["https://r1.com/a", "https://r2.com/b"],
+                )
+            ],
+        )
+
+        output = writer._render_section(section)
+
+        assert "### [Newsletter](https://r1.com/a)" in output
