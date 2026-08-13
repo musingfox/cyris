@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from cyris.adapters.fetch.email_parser import (
+    extract_ref_urls,
     parse_newsletter,
     strip_tracking_params,
     unwrap_tracking_redirect,
@@ -219,6 +220,48 @@ class TestNewsletterSubjectPrefixStripped:
         assert result.subject == "foo bar"
 
 
+
+
+
+
+class TestExtractNewsletterRefUrls:
+    def test_extracts_unwrapped_content_links(self):
+        html = """
+        <a href="https://xx.list-manage.com/track/click?u=1&amp;id=2&amp;url=https%3A%2F%2Fexample.com%2Fa%3Futm_source%3Dnl%26e%3Ddeadbeef00">Article</a>
+        <a href="https://xx.list-manage.com/track/click?u=1&amp;id=2&amp;url=https%3A%2F%2Fwww.patreon.com%2Fposts%2Ffoo-123">Patreon</a>
+        <a href="https://mailchi.mp/newsletter/view">View online</a>
+        <a href="mailto:news@example.com">Email</a>
+        <a href="https://xx.list-manage.com/unsubscribe?u=1">Unsubscribe</a>
+        """
+        assert extract_ref_urls(html) == [
+            "https://example.com/a",
+            "https://www.patreon.com/posts/foo-123",
+        ]
+
+    def test_deduplicates_unwrapped_and_bare_links(self):
+        html = """
+        <a href="https://example.com/a">Article</a>
+        <a href="https://xx.list-manage.com/track/click?url=https%3A%2F%2Fexample.com%2Fa">Again</a>
+        """
+        assert extract_ref_urls(html) == ["https://example.com/a"]
+
+    def test_empty_html_has_no_links(self):
+        assert extract_ref_urls("") == []
+
+    def test_skips_shares_and_images(self):
+        html = """
+        <a href="https://twitter.com/intent/tweet?url=https://example.com/a">Tweet</a>
+        <a href="https://facebook.com/sharer/sharer.php?u=https://example.com/a">Share</a>
+        <a href="https://example.com/assets/article.png">Image</a>
+        """
+        assert extract_ref_urls(html) == []
+
+    def test_skips_track_click_links_without_targets(self):
+        html = "".join(
+            f'<a href="https://xx.list-manage.com/track/click?u=1&id={i}">Click</a>'
+            for i in range(25)
+        )
+        assert extract_ref_urls(html) == []
 
 
 class TestUnwrapTrackClickUrl:

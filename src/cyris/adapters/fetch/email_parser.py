@@ -5,6 +5,7 @@ import re
 from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic import BaseModel
@@ -54,6 +55,61 @@ def unwrap_tracking_redirect(url: str) -> str:
 
     target = dict(parse_qsl(parsed.query, keep_blank_values=True)).get("url")
     return strip_tracking_params(target) if target else url
+
+
+class _HrefParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self.hrefs.extend(value for name, value in attrs if name == "href" and value)
+
+
+def extract_ref_urls(html: str) -> list[str]:
+    """Extract ordered, unique content URLs from newsletter HTML."""
+    if not html:
+        return []
+
+    parser = _HrefParser()
+    parser.feed(html)
+    ref_urls: list[str] = []
+    seen: set[str] = set()
+    image_suffixes = (".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp")
+
+    for href in parser.hrefs:
+        url = unwrap_tracking_redirect(href)
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            continue
+        hostname = parsed.hostname
+        path = parsed.path.lower()
+        if (
+            parsed.scheme not in {"http", "https"}
+            or hostname is None
+            or hostname == "mailchi.mp"
+            or hostname.endswith(".mailchi.mp")
+            or hostname == "campaign-archive.com"
+            or hostname.endswith(".campaign-archive.com")
+            or hostname == "list-manage.com"
+            or hostname.endswith(".list-manage.com")
+            or "/intent/" in path
+            or "sharer" in path
+            or path == "/share"
+            or path.startswith("/share/")
+            or "unsubscribe" in path
+            or path.endswith(image_suffixes)
+        ):
+            continue
+
+        url = strip_tracking_params(url)
+        if url not in seen:
+            seen.add(url)
+            ref_urls.append(url)
+
+    return ref_urls
 
 
 
