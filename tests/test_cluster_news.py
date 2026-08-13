@@ -189,6 +189,41 @@ class TestClusterNews:
         assert item.sources == ["Source A", "Newsletter"]
         assert unclustered == []
 
+    async def test_cluster_news_drops_synthetic_urls_from_reference_fallback(self):
+        articles = [
+            Article(
+                id=207,
+                title="Newsletter without refs",
+                url="newsletter:207",
+                content="A",
+                published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
+                source_name="Newsletter A",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+            ),
+            Article(
+                id=208,
+                title="Newsletter with refs",
+                url="newsletter:208",
+                content="B",
+                published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
+                source_name="Newsletter B",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+                ref_urls=["https://ref.example/x"],
+            ),
+        ]
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "Syn", "summary": "s", "article_ids": [207, 208]}], '
+            '"unclustered_ids": []}'
+        )
+
+        clusters, _ = await cluster_news(articles, llm)
+
+        item = clusters[0].items[0]
+        assert item.ref_urls == ["https://ref.example/x"]
+        assert item.urls == ["newsletter:207", "newsletter:208"]
+
     async def test_cluster_news_dedups_reference_urls_across_members(self):
         articles = [
             Article(

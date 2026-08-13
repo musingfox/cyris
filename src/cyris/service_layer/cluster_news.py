@@ -86,31 +86,38 @@ async def cluster_news(
 
             # Build DigestItems from cluster articles
             items = []
+            members = []
             sources = []
             urls = []
-            ref_urls = []
             scores = []
 
             for aid in article_ids:
                 if aid in article_map:
                     a = article_map[aid]
+                    members.append(a)
                     sources.append(a.source_name)
                     urls.append(a.url)
-                    if a.ref_urls:
-                        if not ref_urls:
-                            ref_urls = [*urls[:-1], *a.ref_urls]
-                        else:
-                            ref_urls.extend(a.ref_urls)
-                    elif ref_urls:
-                        ref_urls.append(a.url)
                     # Mark as clustered
                     unclustered_ids.discard(aid)
                     # Collect score if available
                     if article_scores and a.url in article_scores:
                         scores.append(article_scores[a.url])
 
-            if ref_urls:
-                ref_urls = list(dict.fromkeys(ref_urls))
+            # Merge member reference links only when at least one member has any:
+            # members without refs contribute their store URL unless it is a
+            # synthetic non-http one (e.g. "newsletter:<id>"), which is a dead link.
+            ref_urls = []
+            if any(a.ref_urls for a in members):
+                ref_urls = list(
+                    dict.fromkeys(
+                        u
+                        for a in members
+                        for u in (
+                            a.ref_urls
+                            or ([a.url] if a.url.startswith(("http://", "https://")) else [])
+                        )
+                    )
+                )
 
             if sources:
                 # Use max score from clustered articles
