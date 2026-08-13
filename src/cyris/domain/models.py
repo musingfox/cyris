@@ -43,7 +43,6 @@ class Article(BaseModel):
     ref_urls: list[str] = Field(default_factory=list)
 
 
-
 class DigestItem(BaseModel):
     """A single item in the digest output."""
 
@@ -55,7 +54,6 @@ class DigestItem(BaseModel):
     is_tracked_topic: bool = False
     score: float | None = None
     ref_urls: list[str] = Field(default_factory=list)
-
 
 
 class DigestSection(BaseModel):
@@ -166,7 +164,6 @@ class StoredArticle(BaseModel):
             source_tier=article.source_tier,
             source_tags=article.source_tags,
             ref_urls=article.ref_urls,
-
             first_seen_at=first_seen_at,
         )
 

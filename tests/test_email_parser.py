@@ -220,10 +220,6 @@ class TestNewsletterSubjectPrefixStripped:
         assert result.subject == "foo bar"
 
 
-
-
-
-
 class TestExtractNewsletterRefUrls:
     def test_extracts_unwrapped_content_links(self):
         html = """
@@ -263,6 +259,23 @@ class TestExtractNewsletterRefUrls:
         )
         assert extract_ref_urls(html) == []
 
+    def test_skips_malformed_href(self):
+        assert extract_ref_urls('<a href="http://[::1">Broken</a>') == []
+
+    def test_skips_numbered_campaign_archive_hosts(self):
+        html = '<a href="https://us9.campaign-archive1.com/?u=1">Archive</a>'
+        assert extract_ref_urls(html) == []
+
+    def test_keeps_non_share_paths_on_content_hosts(self):
+        html = """
+        <a href="https://blog.example.com/share/my-article">Article</a>
+        <a href="https://blog.example.com/articles/sharer-pattern">Another article</a>
+        """
+        assert extract_ref_urls(html) == [
+            "https://blog.example.com/share/my-article",
+            "https://blog.example.com/articles/sharer-pattern",
+        ]
+
 
 class TestUnwrapTrackClickUrl:
     def test_unwraps_and_cleans_tracking_params(self):
@@ -285,3 +298,14 @@ class TestUnwrapTrackClickUrl:
     def test_non_list_manage_track_click_is_unchanged(self):
         url = "https://evil.net/track/click?url=https%3A%2F%2Fx.com"
         assert unwrap_tracking_redirect(url) == url
+
+    @pytest.mark.parametrize("url", [123, None, "", "http://[::1"])
+    def test_returns_unparseable_inputs_unchanged(self, url):
+        assert unwrap_tracking_redirect(url) == url
+
+    def test_unwraps_track_click_with_trailing_path(self):
+        url = (
+            "https://xx.list-manage.com/track/click/?"
+            "url=https%3A%2F%2Fexample.com%2Fa%3Futm_source%3Dnl"
+        )
+        assert unwrap_tracking_redirect(url) == "https://example.com/a"

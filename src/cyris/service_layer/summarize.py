@@ -93,7 +93,6 @@ async def summarize_articles(
                         urls=[article_url] if article_url else [],
                         score=score,
                         ref_urls=source_article.ref_urls if source_article else [],
-
                     )
                 )
 
@@ -137,7 +136,6 @@ def build_fan_sections(articles: list[Article]) -> list[DigestSection]:
                 sources=[article.source_name],
                 urls=[article.url],
                 ref_urls=article.ref_urls,
-
             )
             for article in group
         ]
@@ -182,7 +180,6 @@ def build_attention_sections(
                     urls=[article.url],
                     score=score,
                     ref_urls=article.ref_urls,
-
                 )
             )
 
