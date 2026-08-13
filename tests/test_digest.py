@@ -408,6 +408,29 @@ class TestDigestWriter:
         assert "- **[t1](u1)** — n1 (S1) · [[台積電]]" in md
         assert "- **[t2](u2)** — n2 (S2) · [[AI 監管]]" in md
 
+    def test_render_tracked_updates_uses_reference_urls(self, writer):
+        from cyris.service_layer.topic_matching import TopicMatch, assemble_tracked_section
+
+        section = assemble_tracked_section(
+            [
+                TopicMatch(
+                    url="newsletter:abc",
+                    title="t",
+                    source_name="s",
+                    topic_name="p",
+                    note="n",
+                    ref_urls=["https://r1.com/a", "https://r2.com/b"],
+                )
+            ]
+        )
+        assert section is not None
+
+        output = writer._render_tracked_updates(section)
+
+        assert "**[t](https://r1.com/a)**" in output
+        assert "原文：[r1.com](https://r1.com/a) · [r2.com](https://r2.com/b)" in output
+        assert "newsletter:abc" not in output
+
     def test_render_tracked_updates_single_item(self, writer):
         """TrackedMarkdownRendering T2: single item still uses per-item form starting '- **['."""
         from cyris.domain.models import DigestContent, DigestItem, DigestSection

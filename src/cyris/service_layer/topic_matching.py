@@ -127,6 +127,7 @@ def assemble_tracked_section(
                 summary=m.note,
                 sources=[m.source_name] if m.source_name else [],
                 urls=[m.url],
+                ref_urls=m.ref_urls,
                 event_ref=ref,
                 is_tracked_topic=True,
                 score=m.score,

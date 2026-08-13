@@ -205,6 +205,25 @@ def test_tracked_section_assembly_same_topic():
     assert sec.items[1].summary == "note2"
 
 
+def test_tracked_section_assembly_preserves_reference_urls():
+    section = assemble_tracked_section(
+        [
+            TopicMatch(
+                url="newsletter:abc",
+                title="t",
+                source_name="s",
+                topic_name="p",
+                note="n",
+                ref_urls=["https://r1.com/a", "https://r2.com/b"],
+            )
+        ]
+    )
+
+    assert section is not None
+    assert section.items[0].urls == ["newsletter:abc"]
+    assert section.items[0].ref_urls == ["https://r1.com/a", "https://r2.com/b"]
+
+
 def test_tracked_section_assembly_multi_topic():
     """T2: matches across topics (first-seen order) -> heading joined by 、 ."""
     m1 = _mk_match("u1", "台積電", "n1")
