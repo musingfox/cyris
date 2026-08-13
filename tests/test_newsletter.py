@@ -127,6 +127,41 @@ class TestNewsletterBodyIsTheArticle:
         p = _make_parsed()
         assert hasattr(p, "links") is False
 
+    def test_summarize_article_carries_unwrapped_reference_urls(self, source_summarize):
+        p = _make_parsed(
+            subject="曼報 #67｜IMAX",
+            text_content="本期主文內容……（本文）",
+            html_content=(
+                '<a href="https://xx.list-manage.com/track/click?url='
+                'https%3A%2F%2Fexample.com%2Fpost%3Fe%3Dtracking">Read</a>'
+            ),
+        )
+        art = newsletter_article(p, source_summarize)
+        assert art is not None
+        assert art.ref_urls == ["https://example.com/post"]
+        assert art.url.startswith("newsletter:")
+
+    def test_view_url_is_not_a_reference_url(self, source_summarize):
+        p = _make_parsed(
+            text_content="本文",
+            html_content=(
+                '<a href="https://mailchi.mp/abc/no-28">View</a>'
+                '<a href="https://xx.list-manage.com/track/click?url='
+                'https%3A%2F%2Fexample.com%2Fa">Read</a>'
+            ),
+        )
+        art = newsletter_article(p, source_summarize)
+        assert art is not None
+        assert art.url == "https://mailchi.mp/abc/no-28"
+        assert art.ref_urls == ["https://example.com/a"]
+
+    def test_plain_text_article_has_no_reference_urls(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(text_content="本文", html_content=""), source_summarize
+        )
+        assert art is not None
+        assert art.ref_urls == []
+
     def test_always_one_article_from_body(self, source_summarize):
         # extra coverage: html only
         p = _make_parsed(text_content="", html_content="<p>only html</p>")

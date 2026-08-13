@@ -10,7 +10,7 @@ import logging
 import re
 from urllib.parse import urlsplit
 
-from cyris.adapters.fetch.email_parser import ParsedNewsletter, strip_tracking_params
+from cyris.adapters.fetch.email_parser import ParsedNewsletter, extract_ref_urls, strip_tracking_params
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -73,4 +73,5 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
         source_name=source.name,
         source_tier=source.tier,
         source_tags=source.tags,
+        ref_urls=extract_ref_urls(parsed.html_content),
     )
