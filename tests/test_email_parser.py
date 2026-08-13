@@ -220,10 +220,6 @@ class TestNewsletterSubjectPrefixStripped:
         assert result.subject == "foo bar"
 
 
-
-
-
-
 class TestExtractNewsletterRefUrls:
     def test_extracts_unwrapped_content_links(self):
         html = """
@@ -262,6 +258,23 @@ class TestExtractNewsletterRefUrls:
             for i in range(25)
         )
         assert extract_ref_urls(html) == []
+
+    def test_skips_malformed_href(self):
+        assert extract_ref_urls('<a href="http://[::1">Broken</a>') == []
+
+    def test_skips_numbered_campaign_archive_hosts(self):
+        html = '<a href="https://us9.campaign-archive1.com/?u=1">Archive</a>'
+        assert extract_ref_urls(html) == []
+
+    def test_keeps_non_share_paths_on_content_hosts(self):
+        html = """
+        <a href="https://blog.example.com/share/my-article">Article</a>
+        <a href="https://blog.example.com/articles/sharer-pattern">Another article</a>
+        """
+        assert extract_ref_urls(html) == [
+            "https://blog.example.com/share/my-article",
+            "https://blog.example.com/articles/sharer-pattern",
+        ]
 
 
 class TestUnwrapTrackClickUrl:

@@ -73,32 +73,49 @@ def extract_ref_urls(html: str) -> list[str]:
         return []
 
     parser = _HrefParser()
-    parser.feed(html)
+    with suppress(Exception):
+        parser.feed(html)
     ref_urls: list[str] = []
     seen: set[str] = set()
     image_suffixes = (".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp")
 
     for href in parser.hrefs:
-        url = unwrap_tracking_redirect(href)
+        try:
+            url = unwrap_tracking_redirect(href)
+        except Exception:
+            continue
         try:
             parsed = urlparse(url)
         except ValueError:
             continue
         hostname = parsed.hostname
+        if hostname is None:
+            continue
         path = parsed.path.lower()
+        is_campaign_archive = bool(re.search(r"(?:^|\.)campaign-archive\d*\.com$", hostname))
+        is_facebook = hostname == "facebook.com" or hostname.endswith(".facebook.com")
+        is_linkedin = hostname == "linkedin.com" or hostname.endswith(".linkedin.com")
+        is_telegram = hostname == "t.me" or hostname.endswith(".t.me")
+        is_twitter = (
+            hostname == "twitter.com"
+            or hostname.endswith(".twitter.com")
+            or hostname == "x.com"
+            or hostname.endswith(".x.com")
+        )
+        is_share = (
+            (is_facebook and "sharer" in path)
+            or (is_linkedin and (path == "/share" or path.startswith("/share/")))
+            or (is_telegram and (path == "/share" or path.startswith("/share/")))
+            or (is_twitter and "/intent/" in path)
+        )
         if (
             parsed.scheme not in {"http", "https"}
-            or hostname is None
             or hostname == "mailchi.mp"
             or hostname.endswith(".mailchi.mp")
-            or hostname == "campaign-archive.com"
-            or hostname.endswith(".campaign-archive.com")
+            or is_campaign_archive
             or hostname == "list-manage.com"
             or hostname.endswith(".list-manage.com")
-            or "/intent/" in path
-            or "sharer" in path
-            or path == "/share"
-            or path.startswith("/share/")
+            or is_share
             or "unsubscribe" in path
             or path.endswith(image_suffixes)
         ):
@@ -110,8 +127,6 @@ def extract_ref_urls(html: str) -> list[str]:
             ref_urls.append(url)
 
     return ref_urls
-
-
 
 
 class ParsedNewsletter(BaseModel):
