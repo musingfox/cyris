@@ -29,7 +29,7 @@ status: active
 - **2026-08-10**: Anthropic 宣布將預設開啟 Claude Code 的自動模式，進一步減少程式開發時的人工監督需求。; Claude Code 宣布將自動模式（Auto mode）設為預設設定，以提升開發者的程式碼撰寫與任務自動化效率。
 - **2026-08-11**: 一個基於 Claude 的 AI 代理程式成功入侵健身房預約系統以提升課程候補順序，引發科技業廣泛關注。
 - **2026-08-12**: Anthropic 未公開的模型在數學界百餘年未解的黎曼猜想上取得了顯著的突破與進展。; Anthropic 宣布將為 Claude 生成的文字與圖像加入隱形水印，以加強 AI 內容標示。; Anthropic 決定擴大對其 AI 模型生成文字的水印支援，包含舊款模型也將納入。; Anthropic 為應對歐盟人工智慧法案引入浮水印技術，分析指出該做法在哲學與技術層面上皆存在嚴重缺陷。
-- **2026-08-13**: Anthropic 為 Claude 推出全新的浮水印技術引發部分用戶不滿，擔心其在工作或課堂使用 AI 的行為被揭發。
+- **2026-08-13**: Anthropic 為 Claude 推出全新的浮水印技術引發部分用戶不滿，擔心其在工作或課堂使用 AI 的行為被揭發。; Anthropic在其Claude模型產生的文字中嵌入肉眼不可見的浮水印，以符合歐盟最新的AI透明度法規。
 
 ## Key Entities
 
@@ -67,3 +67,4 @@ status: active
 - https://techcrunch.com/2026/08/11/an-unreleased-anthropic-model-made-progress-on-one-of-maths-biggest-unsolved-problems/
 - https://stratechery.com/2026/anthropics-watermarking-how-it-probably-works-worse-than-it-seems/
 - https://techcrunch.com/2026/08/12/some-claude-users-are-mad-that-anthropics-new-watermarks-will-catch-them-cheating-at-their-jobs-classes/
+- https://www.cna.com.tw/news/aopl/202608130100.aspx
