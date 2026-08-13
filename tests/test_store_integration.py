@@ -147,3 +147,23 @@ def test_mixed_miniflux_newsletter_ids(store: ArticleStore) -> None:
     result = store.save(articles, now=now)
     assert result.saved_count == 2
     assert result.miniflux_ids == [101]  # Newsletter ID not included
+
+
+def test_store_reload_preserves_ref_urls(vault_path: Path) -> None:
+    now = datetime.now(UTC)
+    article = Article(
+        id="newsletter-abc",
+        title="Newsletter Article",
+        url="newsletter:abc",
+        content="Content",
+        published_at=now,
+        source_name="Newsletter",
+        source_tier=Tier.SUMMARIZE,
+        ref_urls=["https://example.com/a"],
+    )
+    ArticleStore(vault_path).save([article], now=now)
+
+    reloaded = ArticleStore(vault_path).get_by_urls([article.url])
+
+    assert len(reloaded) == 1
+    assert reloaded[0].ref_urls == ["https://example.com/a"]

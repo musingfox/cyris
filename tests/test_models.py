@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from cyris.domain.models import Article, DigestContent, SourceConfig, Tier
+from cyris.domain.models import Article, DigestContent, SourceConfig, StoredArticle, Tier
 
 
 class TestTier:
@@ -61,6 +61,42 @@ class TestArticle:
                 source_name="Test",
                 source_tier=Tier.FILTER,
             )
+
+
+class TestStoredArticle:
+    def test_article_roundtrip_preserves_ref_urls(self):
+        article = Article(
+            id=1,
+            title="Newsletter",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.SUMMARIZE,
+            ref_urls=["https://example.com/a"],
+        )
+
+        stored = StoredArticle.from_article(article, first_seen_at=datetime.now(UTC))
+
+        assert stored.to_article().ref_urls == ["https://example.com/a"]
+
+    def test_old_stored_article_defaults_ref_urls_to_empty_list(self):
+        article = Article(
+            id=1,
+            title="Newsletter",
+            url="newsletter:abc",
+            content="Content",
+            published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
+            source_name="Newsletter",
+            source_tier=Tier.SUMMARIZE,
+        )
+        old_data = StoredArticle.from_article(article, first_seen_at=datetime.now(UTC)).model_dump()
+        old_data.pop("ref_urls", None)
+
+        restored = StoredArticle.model_validate(old_data)
+
+        assert restored.ref_urls == []
+        assert restored.to_article().ref_urls == []
 
 
 class TestSourceConfig:

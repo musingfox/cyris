@@ -140,6 +140,8 @@ class StoredArticle(BaseModel):
     source_name: str
     source_tier: Tier
     source_tags: list[str] = Field(default_factory=list)
+    ref_urls: list[str] = Field(default_factory=list)
+
     state: ArticleState = ArticleState.PENDING
     first_seen_at: datetime
     digest_date: str | None = None
@@ -163,6 +165,8 @@ class StoredArticle(BaseModel):
             source_name=article.source_name,
             source_tier=article.source_tier,
             source_tags=article.source_tags,
+            ref_urls=article.ref_urls,
+
             first_seen_at=first_seen_at,
         )
 
@@ -178,6 +182,7 @@ class StoredArticle(BaseModel):
             source_name=self.source_name,
             source_tier=self.source_tier,
             source_tags=self.source_tags,
+            ref_urls=self.ref_urls,
         )
 
 
