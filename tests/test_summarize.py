@@ -189,7 +189,6 @@ class TestBuildAttentionSections:
         assert sections[0].items[0].score is None
 
 
-
 class TestDigestItemsCarryRefUrls:
     def test_fan_item_keeps_ref_urls_without_changing_store_url(self):
         from datetime import datetime
@@ -327,7 +326,9 @@ class TestDigestItemsCarryRefUrls:
         summarized_item = (await summarize_articles([summarize_article], llm))[0].items[0]
         degraded_item = excerpt_sections_from_articles([summarize_article])[0].items[0]
 
-        assert [item.ref_urls for item in (fan_item, attention_item, summarized_item, degraded_item)] == [
+        assert [
+            item.ref_urls for item in (fan_item, attention_item, summarized_item, degraded_item)
+        ] == [
             [],
             [],
             [],
