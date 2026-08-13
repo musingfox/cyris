@@ -72,8 +72,11 @@ class _HrefParser(HTMLParser):
             self.hrefs.extend(value for name, value in attrs if name == "href" and value)
 
 
+_MAX_REF_URLS = 5
+
+
 def extract_ref_urls(html: str) -> list[str]:
-    """Extract ordered, unique content URLs from newsletter HTML."""
+    """Extract ordered, unique content URLs from newsletter HTML (first _MAX_REF_URLS)."""
     if not html:
         return []
 
@@ -130,6 +133,10 @@ def extract_ref_urls(html: str) -> list[str]:
         if url not in seen:
             seen.add(url)
             ref_urls.append(url)
+            # ponytail: hard cap keeps link-farm newsletters from flooding the 原文 line;
+            # make it configurable only if a real source needs more
+            if len(ref_urls) >= _MAX_REF_URLS:
+                break
 
     return ref_urls
 

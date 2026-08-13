@@ -109,6 +109,9 @@ async def cluster_news(
                     if article_scores and a.url in article_scores:
                         scores.append(article_scores[a.url])
 
+            if ref_urls:
+                ref_urls = list(dict.fromkeys(ref_urls))
+
             if sources:
                 # Use max score from clustered articles
                 max_score = max(scores) if scores else None

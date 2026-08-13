@@ -189,6 +189,46 @@ class TestClusterNews:
         assert item.sources == ["Source A", "Newsletter"]
         assert unclustered == []
 
+    async def test_cluster_news_dedups_reference_urls_across_members(self):
+        articles = [
+            Article(
+                id=205,
+                title="Newsletter one",
+                url="newsletter:205",
+                content="A",
+                published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
+                source_name="Newsletter A",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+                ref_urls=["https://ref.example/shared", "https://ref.example/only-a"],
+            ),
+            Article(
+                id=206,
+                title="Newsletter two",
+                url="newsletter:206",
+                content="B",
+                published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
+                source_name="Newsletter B",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+                ref_urls=["https://ref.example/shared", "https://ref.example/only-b"],
+            ),
+        ]
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "Dup", "summary": "s", "article_ids": [205, 206]}], '
+            '"unclustered_ids": []}'
+        )
+
+        clusters, _ = await cluster_news(articles, llm)
+
+        item = clusters[0].items[0]
+        assert item.ref_urls == [
+            "https://ref.example/shared",
+            "https://ref.example/only-a",
+            "https://ref.example/only-b",
+        ]
+        assert item.urls == ["newsletter:205", "newsletter:206"]
+
     async def test_cluster_news_keeps_reference_urls_empty_without_references(self):
         articles = [
             Article(

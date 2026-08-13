@@ -276,6 +276,10 @@ class TestExtractNewsletterRefUrls:
             "https://blog.example.com/articles/sharer-pattern",
         ]
 
+    def test_caps_extracted_links_at_five(self):
+        html = "".join(f'<a href="https://example.com/post-{i}">Post {i}</a>' for i in range(8))
+        assert extract_ref_urls(html) == [f"https://example.com/post-{i}" for i in range(5)]
+
 
 class TestUnwrapTrackClickUrl:
     def test_unwraps_and_cleans_tracking_params(self):
