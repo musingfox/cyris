@@ -4,7 +4,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from cyris.adapters.fetch.email_parser import parse_newsletter, strip_tracking_params
+from cyris.adapters.fetch.email_parser import (
+    parse_newsletter,
+    strip_tracking_params,
+    unwrap_tracking_redirect,
+)
 
 
 class TestParseNewsletter:
@@ -213,3 +217,28 @@ class TestNewsletterSubjectPrefixStripped:
         }
         result = parse_newsletter(payload, "Test")
         assert result.subject == "foo bar"
+
+
+
+
+class TestUnwrapTrackClickUrl:
+    def test_unwraps_and_cleans_tracking_params(self):
+        url = (
+            "https://xx.list-manage.com/track/click?u=1&id=2&"
+            "url=https%3A%2F%2Fexample.com%2Fpost%3Futm_source%3Dnl&e=deadbeef00"
+        )
+        result = unwrap_tracking_redirect(url)
+        assert result == "https://example.com/post"
+        assert "e=" not in result
+
+    def test_non_tracking_url_is_unchanged(self):
+        url = "https://example.com/a?x=1"
+        assert unwrap_tracking_redirect(url) == url
+
+    def test_track_click_without_target_is_unchanged(self):
+        url = "https://xx.list-manage.com/track/click?u=1&id=2"
+        assert unwrap_tracking_redirect(url) == url
+
+    def test_non_list_manage_track_click_is_unchanged(self):
+        url = "https://evil.net/track/click?url=https%3A%2F%2Fx.com"
+        assert unwrap_tracking_redirect(url) == url

@@ -41,6 +41,23 @@ def strip_tracking_params(url: str) -> str:
         return url
 
 
+def unwrap_tracking_redirect(url: str) -> str:
+    """Return the target from a Mailchimp track/click URL, if present."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if (
+        hostname is None
+        or (hostname != "list-manage.com" and not hostname.endswith(".list-manage.com"))
+        or parsed.path != "/track/click"
+    ):
+        return url
+
+    target = dict(parse_qsl(parsed.query, keep_blank_values=True)).get("url")
+    return strip_tracking_params(target) if target else url
+
+
+
+
 class ParsedNewsletter(BaseModel):
     """Parsed newsletter email data."""
 
