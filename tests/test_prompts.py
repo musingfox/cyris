@@ -128,7 +128,7 @@ class TestBuildSummarizePrompt:
         prompt = build_summarize_prompt("tech", [article])
 
         assert "Topic group: tech" in prompt
-        assert "[201] (TechCrunch) Tech Article" in prompt
+        assert "[0] (TechCrunch) Tech Article" in prompt
         # Content should be truncated to 1000 chars (default)
         assert "B" * 1000 in prompt
         assert "B" * 1001 not in prompt
@@ -148,7 +148,7 @@ class TestBuildSummarizePrompt:
         prompt = build_summarize_prompt("ai", [article], snippet_length=1500)
 
         assert "Topic group: ai" in prompt
-        assert "[202] (ArXiv) AI Article" in prompt
+        assert "[0] (ArXiv) AI Article" in prompt
         # Content should be truncated to 1500 chars
         assert "C" * 1500 in prompt
         assert "C" * 1501 not in prompt

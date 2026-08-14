@@ -84,9 +84,7 @@ Respond in JSON format:
     {
       "heading": "<thematic heading in <output_language>>",
       "summary": "<3-5 sentence summary in <output_language>>",
-      "articles": [
-        {"id": <article id>, "title": "<original title>", "source": "<source name>"}
-      ]
+      "article_ids": [<article id>, ...]
     }
   ]
 }
@@ -119,8 +117,10 @@ def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: in
         snippet_length: Maximum length of content snippet to include.
     """
     lines = [f"Topic group: {tag}", ""]
-    for a in articles:
-        lines.append(f"[{a.id}] ({a.source_name}) {a.title}")
+    # Positional index as the prompt id: short ints echo back reliably, unlike
+    # the URL-string ids newsletter articles carry.
+    for i, a in enumerate(articles):
+        lines.append(f"[{i}] ({a.source_name}) {a.title}")
         # Include more content for summarize tier
         snippet = a.content[:snippet_length].replace("\n", " ").strip()
         if snippet:

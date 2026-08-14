@@ -58,8 +58,6 @@ async def summarize_articles(
     groups = _group_by_tags(articles)
     logger.info("Summarizing %d articles in %d tag groups", len(articles), len(groups))
 
-    article_map = {a.id: a for a in articles}
-
     sections = []
     for tag, group_articles in groups.items():
         user_prompt = build_summarize_prompt(tag, group_articles, snippet_length=snippet_length)
@@ -80,19 +78,31 @@ async def summarize_articles(
             continue
 
         for section_data in data.get("sections", []):
+            # Ids are group-positional indexes; everything else (title, source,
+            # url, ref_urls) comes from the local article, never the LLM echo.
+            raw_ids = section_data.get("article_ids") or [
+                ref.get("id") for ref in section_data.get("articles", [])
+            ]
             items = []
-            for art_ref in section_data.get("articles", []):
-                source_article = article_map.get(art_ref.get("id"))
-                article_url = source_article.url if source_article else ""
-                score = article_scores.get(article_url) if article_scores and article_url else None
+            for raw_id in raw_ids:
+                try:
+                    index = int(raw_id)
+                except (TypeError, ValueError):
+                    index = -1
+                if not 0 <= index < len(group_articles):
+                    logger.warning(
+                        "Summarize returned unknown article id %r for tag '%s'", raw_id, tag
+                    )
+                    continue
+                article = group_articles[index]
                 items.append(
                     DigestItem(
-                        title=art_ref.get("title", ""),
+                        title=article.title,
                         summary=section_data.get("summary", ""),
-                        sources=[art_ref.get("source", "")],
-                        urls=[article_url] if article_url else [],
-                        score=score,
-                        ref_urls=source_article.ref_urls if source_article else [],
+                        sources=[article.source_name],
+                        urls=[article.url],
+                        score=article_scores.get(article.url) if article_scores else None,
+                        ref_urls=article.ref_urls,
                     )
                 )
 

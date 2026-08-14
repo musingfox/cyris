@@ -47,13 +47,7 @@ class TestSummarizeArticles:
                         {
                             "heading": "AI 監管趨勢",
                             "summary": "歐盟 AI 法案持續推進",
-                            "articles": [
-                                {
-                                    "id": 103,
-                                    "title": "Weekly tech trends",
-                                    "source": "Stratechery",
-                                }
-                            ],
+                            "article_ids": [0],
                         }
                     ]
                 }
@@ -65,6 +59,80 @@ class TestSummarizeArticles:
         assert len(sections) == 1
         assert sections[0].heading == "AI 監管趨勢"
         assert len(sections[0].items) == 1
+
+    async def test_summarize_metadata_comes_from_local_article(self):
+        """Title/source/url come from the store article, never the LLM echo —
+        URL-string ids (newsletters) must not lose their links."""
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+
+        article = Article(
+            id="https://blog.example.com/p/a-long-slug",
+            title="Original Title",
+            url="https://blog.example.com/p/a-long-slug",
+            content="Content",
+            published_at=datetime(2026, 8, 14, tzinfo=UTC),
+            source_name="Example Newsletter",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech"],
+        )
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Heading",
+                            "summary": "Summary",
+                            "article_ids": [0],
+                        }
+                    ]
+                }
+            )
+        )
+
+        item = (await summarize_articles([article], llm, article_scores={article.url: 88.0}))[
+            0
+        ].items[0]
+
+        assert item.title == "Original Title"
+        assert item.sources == ["Example Newsletter"]
+        assert item.urls == [article.url]
+        assert item.score == 88.0
+
+    async def test_summarize_skips_unknown_ids(self):
+        """Out-of-range or non-numeric ids are dropped instead of producing linkless items."""
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Heading",
+                            "summary": "Summary",
+                            "article_ids": [5, "not-an-id"],
+                        }
+                    ]
+                }
+            )
+        )
+        from datetime import datetime
+
+        from cyris.domain.models import Article
+
+        article = Article(
+            id=1,
+            title="Article",
+            url="https://example.com/1",
+            content="Content",
+            published_at=datetime(2026, 8, 14, tzinfo=UTC),
+            source_name="Source",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech"],
+        )
+
+        sections = await summarize_articles([article], llm)
+
+        assert sections[0].items == []
 
     async def test_summarize_empty_input(self):
         sections = await summarize_articles([], FakeLLM())
@@ -256,7 +324,7 @@ class TestDigestItemsCarryRefUrls:
                         {
                             "heading": "Heading",
                             "summary": "Summary",
-                            "articles": [{"id": 1, "title": "Article", "source": "Newsletter"}],
+                            "article_ids": [0],
                         }
                     ]
                 }
@@ -314,7 +382,7 @@ class TestDigestItemsCarryRefUrls:
                         {
                             "heading": "Heading",
                             "summary": "Summary",
-                            "articles": [{"id": 1, "title": "Fan", "source": "Source"}],
+                            "article_ids": [0],
                         }
                     ]
                 }
