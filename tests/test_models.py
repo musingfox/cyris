@@ -5,7 +5,14 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from cyris.domain.models import Article, DigestContent, SourceConfig, StoredArticle, Tier
+from cyris.domain.models import (
+    Article,
+    DigestContent,
+    DigestItem,
+    SourceConfig,
+    StoredArticle,
+    Tier,
+)
 
 
 class TestTier:
@@ -174,3 +181,23 @@ class TestDigestContent:
         )
         assert len(digest.attention_sections) == 1
         assert digest.attention_sections[0].heading == "tech"
+
+
+class TestDigestItemLink:
+    def test_prefers_ref_url(self):
+        item = DigestItem(
+            title="t",
+            summary="s",
+            sources=["曼報"],
+            urls=["newsletter:abc"],
+            ref_urls=["https://example.com/a"],
+        )
+        assert item.link == "https://example.com/a"
+
+    def test_falls_back_to_store_url(self):
+        item = DigestItem(title="t", summary="s", sources=["x"], urls=["https://example.com/b"])
+        assert item.link == "https://example.com/b"
+
+    def test_synthetic_store_url_is_not_a_link(self):
+        item = DigestItem(title="t", summary="s", sources=["曼報"], urls=["newsletter:abc"])
+        assert item.link is None

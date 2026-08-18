@@ -136,7 +136,7 @@ class DigestWriter:
     def _render_section(self, section: DigestSection) -> str:
         """Render a single thematic section."""
         # Render heading with URL if first item has a display URL.
-        if section.items and (url := self._display_url(section.items[0])):
+        if section.items and (url := section.items[0].link):
             heading = f"### [{section.heading}]({url})"
         else:
             heading = f"### {section.heading}"
@@ -238,16 +238,9 @@ class DigestWriter:
 
         return "\n".join(lines)
 
-    @staticmethod
-    def _display_url(item: DigestItem) -> str | None:
-        """Return the original article URL, falling back to the stored source URL."""
-        if item.ref_urls:
-            return item.ref_urls[0]
-        return item.urls[0] if item.urls else None
-
     def _title_part(self, item: DigestItem) -> str:
         """Render an item title linked to its display URL."""
-        url = self._display_url(item)
+        url = item.link
         return f"**[{item.title}]({url})**" if url else f"**{item.title}**"
 
     @staticmethod

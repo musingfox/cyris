@@ -381,14 +381,14 @@ class TestDigestWriter:
                     title="t1",
                     summary="n1",
                     sources=["S1"],
-                    urls=["u1"],
+                    urls=["https://example.com/1"],
                     event_ref="台積電",
                 ),
                 DigestItem(
                     title="t2",
                     summary="n2",
                     sources=["S2"],
-                    urls=["u2"],
+                    urls=["https://example.com/2"],
                     event_ref="AI 監管",
                 ),
             ],
@@ -405,8 +405,8 @@ class TestDigestWriter:
         md = writer.render(content)
 
         assert "## 追蹤主題更新" in md
-        assert "- **[t1](u1)** — n1 (S1) · [[台積電]]" in md
-        assert "- **[t2](u2)** — n2 (S2) · [[AI 監管]]" in md
+        assert "- **[t1](https://example.com/1)** — n1 (S1) · [[台積電]]" in md
+        assert "- **[t2](https://example.com/2)** — n2 (S2) · [[AI 監管]]" in md
 
     def test_render_tracked_updates_uses_reference_urls(self, writer):
         from cyris.service_layer.topic_matching import TopicMatch, assemble_tracked_section
@@ -442,7 +442,7 @@ class TestDigestWriter:
                     title="t1",
                     summary="n1",
                     sources=["S1"],
-                    urls=["u1"],
+                    urls=["https://example.com/1"],
                     event_ref="ref1",
                 ),
             ],
@@ -458,7 +458,7 @@ class TestDigestWriter:
 
         md = writer.render(content)
 
-        assert "- **[t1](u1)**" in md
+        assert "- **[t1](https://example.com/1)**" in md
 
     def test_render_tracked_updates_item_without_event_ref(self, writer):
         """TrackedMarkdownRendering T3: item with event_ref=None omits ' · [[' part."""
@@ -471,7 +471,7 @@ class TestDigestWriter:
                     title="t",
                     summary="n",
                     sources=["S"],
-                    urls=["u"],
+                    urls=["https://example.com/u"],
                     event_ref=None,
                 ),
             ],
@@ -488,7 +488,7 @@ class TestDigestWriter:
         md = writer.render(content)
 
         assert " · [[" not in md
-        assert "- **[t](u)** — n (S)" in md
+        assert "- **[t](https://example.com/u)** — n (S)" in md
 
     def test_render_no_tracked_updates_header(self, writer):
         """TrackedMarkdownRendering T4: when no tracked_updates, output omits '追蹤主題更新'."""

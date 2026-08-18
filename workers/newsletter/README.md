@@ -9,7 +9,7 @@ newsletter email → cyris@<your-domain>
   → Cloudflare Email Routing rule → this Worker
        email(): postal-mime parses the mail → stores {from,subject,html,text,date} in KV
   → cyris run → GET /newsletters (Bearer) → match sender to a source (email_match)
-       → parse_newsletter + fetch_newsletter_articles expand links into Articles
+       → parse_newsletter + newsletter_article turn the email body into one Article
        → POST /ack clears the queue
 ```
 

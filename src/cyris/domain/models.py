@@ -55,6 +55,14 @@ class DigestItem(BaseModel):
     score: float | None = None
     ref_urls: list[str] = Field(default_factory=list)
 
+    @property
+    def link(self) -> str | None:
+        """First clickable link, or None. Synthetic store URLs (newsletter:<id>) are dead."""
+        return next(
+            (u for u in (*self.ref_urls, *self.urls) if u.startswith(("http://", "https://"))),
+            None,
+        )
+
 
 class DigestSection(BaseModel):
     """A thematic section containing multiple digest items."""

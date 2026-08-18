@@ -696,3 +696,25 @@ def test_fan_item_with_one_reference_keeps_existing_source_markup(tmp_path):
 
     assert '<span class="source-tag">Newsletter</span>' in html
     assert '<a href="https://r1.com/a" target="_blank" rel="noopener">r1.com</a>' not in html
+
+
+def test_synthetic_store_url_never_becomes_an_href(sample_digest_content, tmp_path):
+    """A newsletter:<id> store URL is a dead link: render the title and source unlinked."""
+    sample_digest_content.featured_articles = [
+        DigestSection(
+            heading="Featured",
+            items=[
+                DigestItem(
+                    title="曼報本期",
+                    summary="內文",
+                    sources=["曼報"],
+                    urls=["newsletter:deadbeef"],
+                )
+            ],
+        )
+    ]
+
+    html = HtmlDigestWriter(tmp_path).render(sample_digest_content)
+
+    assert "曼報本期" in html
+    assert "newsletter:deadbeef" not in html.replace("data-urls='[\"newsletter:deadbeef\"]'", "")
