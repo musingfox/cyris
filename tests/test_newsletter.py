@@ -265,3 +265,31 @@ class TestTextViewUrl:
         art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
         assert art is not None
         assert art.url.startswith("newsletter:")
+
+    def test_nav_line_picks_the_url_after_the_marker_not_the_join_link(self, source_summarize):
+        # a footer that collapses nav links onto one line: /join is identical every issue,
+        # so adopting it would dedup every later issue away
+        body = "訂閱 (https://site.com/join) | 網頁版 (https://site.com/posts/1)\n"
+        art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
+        assert art is not None
+        assert art.url == "https://site.com/posts/1"
+
+    def test_trailing_sentence_punctuation_is_not_part_of_the_url(self, source_summarize):
+        for body, expected in (
+            ("View in browser: https://example.com/posts/1.\n", "https://example.com/posts/1"),
+            ("請看網頁版：https://example.com/posts/1。\n", "https://example.com/posts/1"),
+        ):
+            art = newsletter_article(
+                _make_parsed(text_content=body, html_content=""), source_summarize
+            )
+            assert art is not None
+            assert art.url == expected
+
+    def test_mailchimp_click_wrapper_is_unwrapped(self, source_summarize):
+        body = (
+            "View in browser (https://xx.list-manage.com/track/click?url="
+            "https%3A%2F%2Fexample.com%2Fposts%2F1%3Fe%3Dtracking)\n"
+        )
+        art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
+        assert art is not None
+        assert art.url == "https://example.com/posts/1"
