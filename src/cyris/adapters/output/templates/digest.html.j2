@@ -5,7 +5,7 @@
     them and wraps into a mess on a phone. Fold past two behind a native <details>. -#}
 {% macro source_links(item) -%}
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
-{%- for url in urls %}<a href="{{ url }}" target="_blank" rel="noopener">{{ url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url }}</a>{{ ' · ' if not loop.last }}{% endfor -%}
+{%- for url in urls %}{% set label = url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url %}{% if url.startswith('http') %}<a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
 {%- endmacro -%}
 {% macro source_list(item) -%}
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
@@ -706,13 +706,13 @@
             {% if lead_story %}
             <article class="lead-story">
                 <h2>
-                    {% if lead_story.ref_urls or lead_story.urls %}<a href="{{ lead_story.ref_urls[0] if lead_story.ref_urls else lead_story.urls[0] }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
+                    {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
                 </h2>
                 <p class="summary">{{ lead_story.summary }}</p>
                 <div class="meta">
                     {% if lead_story.score %}<span class="pill score">Score: {{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
                     <span class="source-tag">Source: {{ lead_story.sources | join(' · ') }}</span>{% if lead_story.ref_urls | length > 1 %} {{ source_list(lead_story) }}{% endif %}
-                    {% if lead_story.ref_urls or lead_story.urls %}<a href="{{ lead_story.ref_urls[0] if lead_story.ref_urls else lead_story.urls[0] }}" target="_blank" rel="noopener">Read more →</a>{% endif %}
+                    {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">Read more →</a>{% endif %}
                     {{ promote_btn(lead_story) }}
                 </div>
             </article>
@@ -724,12 +724,12 @@
                 <div class="featured-grid">
                     {% for item in featured_articles %}
                     <article class="featured-item">
-                        <h3>{% if item.ref_urls or item.urls %}<a href="{{ item.ref_urls[0] if item.ref_urls else item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
+                        <h3>{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
                         <p class="summary">{{ item.summary }}</p>
                         <div class="meta">
                             {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %}
-                            {% if item.ref_urls or item.urls %}<a href="{{ item.ref_urls[0] if item.ref_urls else item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
                     </article>
@@ -768,11 +768,11 @@
                     <h3>{{ sec.heading }}</h3>
                     {% for item in sec.items %}
                     <article class="article-item">
-                        <h4>{% if item.ref_urls or item.urls %}<a href="{{ item.ref_urls[0] if item.ref_urls else item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
+                        <h4>{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
                         {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
                         <div class="meta">
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %}
-                            {% if item.ref_urls or item.urls %}<a href="{{ item.ref_urls[0] if item.ref_urls else item.urls[0] }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
                     </article>
@@ -793,7 +793,7 @@
                     <div class="attention-list">
                         {% for item in sec.items %}
                         <article class="attention-item">
-                            <h5>{% if item.ref_urls or item.urls %}<a href="{{ item.ref_urls[0] if item.ref_urls else item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h5>
+                            <h5>{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h5>
                             <p class="snippet">{{ item.summary }}</p>
                             <div class="meta"><span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %} {{ promote_btn(item) }}</div>
                         </article>
@@ -812,7 +812,7 @@
                     {% for item in filtered_headlines %}
                     <div class="headline-item">
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
-                        <span class="text">{% if item.ref_urls or item.urls %}<a href="{{ item.ref_urls[0] if item.ref_urls else item.urls[0] }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</span>
+                        <span class="text">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</span>
                         {% if item.ref_urls | length > 1 %}{{ source_list(item) }}{% endif %}
                         {{ promote_btn(item) }}
                     </div>

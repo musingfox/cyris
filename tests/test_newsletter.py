@@ -219,3 +219,49 @@ class TestNewsletterBodyIsTheArticle:
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url.startswith("newsletter:")
+
+
+# Real 曼報 text/plain bodies: the join link comes first, the web-version link second.
+MANNY_BODY = (
+    "？點擊這裡訂閱 (https://pro.manny-li.com/join) 。\n"
+    "\n"
+    "閱讀本信件有困難嗎？點擊這裡登入閱讀網頁版 "
+    "(https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv) 。\n"
+    "https://pro.manny-li.com/\n"
+    "\n"
+    "** 本期主題：電力與算力融資\n"
+)
+
+
+class TestTextViewUrl:
+    def test_labelled_web_version_link_wins_over_the_join_link(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(text_content=MANNY_BODY, html_content=""), source_summarize
+        )
+        assert art is not None
+        assert art.url == (
+            "https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv"
+        )
+
+    def test_english_marker(self, source_summarize):
+        body = "Hi.\nView in browser (https://example.com/posts/1?utm_source=x)\n"
+        art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
+        assert art is not None
+        assert art.url == "https://example.com/posts/1"
+
+    def test_html_view_url_still_wins(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(
+                text_content=MANNY_BODY,
+                html_content='<a href="https://mailchi.mp/abc/28">View</a>',
+            ),
+            source_summarize,
+        )
+        assert art is not None
+        assert art.url == "https://mailchi.mp/abc/28"
+
+    def test_no_marker_stays_synthetic(self, source_summarize):
+        body = "本文\n訂閱請點 (https://pro.manny-li.com/join)\n"
+        art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
+        assert art is not None
+        assert art.url.startswith("newsletter:")

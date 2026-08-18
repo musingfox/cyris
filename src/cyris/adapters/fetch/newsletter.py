@@ -48,15 +48,37 @@ def _find_newsletter_view_url(html: str) -> str | None:
     return None
 
 
+_VIEW_MARKERS = ("網頁版", "線上閱讀", "view in browser", "view this email", "view online")
+
+
+def _find_view_url_in_text(text: str) -> str | None:
+    """Find the web-version link in a plain-text email body.
+
+    Text/plain newsletters render anchors as "label (url)", so the canonical post URL
+    sits on the same line as its "read on the web" label. Match the label, not the
+    first URL in the body — that one is usually a subscribe/join page.
+    """
+    for line in (text or "").splitlines():
+        low = line.lower()
+        if any(marker in low for marker in _VIEW_MARKERS):
+            match = re.search(r"https?://[^\s()<>\"']+", line)
+            if match:
+                return strip_tracking_params(match.group())
+    return None
+
+
 def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Article | None:
     """Return the email body as the Article for this newsletter issue.
 
     0 or 1 article. Content from text_content or unescaped html.
-    If html has clean public view link (by hostname), use it (stripped);
-    else synthetic newsletter:ID url. Empty body -> None + WARNING (singular per D5).
+    If html has clean public view link (by hostname), use it (stripped); else the
+    labelled web-version link in the text body; else synthetic newsletter:ID url.
+    Empty body -> None + WARNING (singular per D5).
     """
     article_id = _generate_article_id(source.name, parsed.subject)
-    view_url = _find_newsletter_view_url(parsed.html_content)
+    view_url = _find_newsletter_view_url(parsed.html_content) or _find_view_url_in_text(
+        parsed.text_content
+    )
     raw = parsed.text_content.strip() or " ".join(
         html.unescape(re.sub(r"<[^>]+>", " ", parsed.html_content)).split()
     )
