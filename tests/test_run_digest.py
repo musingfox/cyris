@@ -558,4 +558,3 @@ async def test_run_digest_omits_synthetic_url_progress_when_all_http(tmp_path: P
     assert not any("newsletter" in m.lower() for m in messages)
     assert contents
     assert contents[0].synthetic_url_count == 0
-

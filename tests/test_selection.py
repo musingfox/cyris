@@ -517,4 +517,3 @@ def test_count_dead_links_ref_urls_are_clickable():
 def test_count_dead_links_empty_content():
     content = _base_content(articles_included=0)
     assert count_dead_links(content) == 0
-

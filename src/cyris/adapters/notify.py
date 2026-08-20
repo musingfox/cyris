@@ -159,9 +159,7 @@ def build_discord_embeds(
     synthetic = content.synthetic_url_count
     dead = content.dead_link_count
     if (synthetic or 0) or (dead or 0):
-        stats_lines.append(
-            f"⚠️ 電子報 {synthetic or 0} 篇未抽到原文、死連結 {dead or 0} 篇"
-        )
+        stats_lines.append(f"⚠️ 電子報 {synthetic or 0} 篇未抽到原文、死連結 {dead or 0} 篇")
     if content.usage.api_calls > 0:
         stats_lines.append(f"💰 費用 **${content.usage.estimated_cost:.4f}**")
 

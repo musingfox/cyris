@@ -403,4 +403,3 @@ class TestDiscordEmbeds:
         )
         desc = build_discord_embeds(content)[-1]["description"]
         assert "⚠️ 電子報" not in desc
-
