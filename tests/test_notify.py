@@ -230,6 +230,22 @@ class TestDiscordEmbeds:
         stats = with_link[-1]  # stats embed is always last
         assert f"[線上完整版]({url})" in stats["description"]
 
+    def test_failed_publish_is_called_out_not_silently_omitted(self):
+        """A missing link used to look like the digest simply had no online version."""
+        content = DigestContent(
+            date="2026-08-20",
+            period="morning",
+            sources_processed=1,
+            articles_received=3,
+            articles_included=1,
+        )
+
+        stats = build_discord_embeds(content, publish_failed=True)[-1]
+        assert "線上版發佈失敗" in stats["description"]
+
+        quiet = build_discord_embeds(content)[-1]
+        assert "線上版發佈失敗" not in quiet["description"]
+
     def test_filtered_headlines_with_links(self):
         """Filtered headlines include clickable links and truncated summaries."""
         content = DigestContent(

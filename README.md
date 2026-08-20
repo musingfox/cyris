@@ -88,7 +88,7 @@ the same config file works locally and in Docker):
 
 Notes:
 - Paywall cookies are unavailable in-container (no browser); paywall full-text extraction is skipped — see [`docs/deployment.md`](docs/deployment.md).
-- HTML digest publish (`bunx wrangler pages deploy`) needs `CLOUDFLARE_API_TOKEN` in `.env`.
+- HTML digest publish (`wrangler pages deploy`) needs `CLOUDFLARE_API_TOKEN` in `.env`.
 
 See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs and
 [`docs/architecture.md`](docs/architecture.md) for the core↔adapter map.

@@ -2,6 +2,7 @@
 
 import json
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -110,7 +111,7 @@ def make_deps(
 
     notifications: list[str] = []
 
-    async def fake_discord(webhook_url, content, digest_url=""):
+    async def fake_discord(webhook_url, content, digest_url="", publish_failed=False):
         notifications.append("discord")
         if discord_contents is not None:
             discord_contents.append(content)
@@ -403,3 +404,71 @@ async def test_no_topics_noop_active_but_no_match(tmp_path: Path):
     assert len(llm.calls) == 2
     text = report.rendered or (report.digest_path.read_text() if report.digest_path else "")
     assert "追蹤主題更新" not in text
+
+
+async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
+    """A dead publish must announce itself; silently dropping the link is what
+    made the missing 2026-08-18/2026-08-20 digest links look like normal runs."""
+
+    def _llm() -> FakeLLM:
+        return FakeLLM(
+            [
+                json.dumps({"scores": [{"id": 3, "score": 85, "language": "en"}]}),
+                json.dumps(
+                    {
+                        "sections": [
+                            {
+                                "heading": "AI 趨勢",
+                                "summary": "企業加速導入 AI",
+                                "articles": [
+                                    {"id": 3, "title": "Publish Path", "source": "TechSource"}
+                                ],
+                            }
+                        ]
+                    }
+                ),
+            ]
+        )
+
+    def _article() -> Article:
+        return Article(
+            id=3,
+            title="Publish Path",
+            url="https://example.com/publish",
+            content="Enterprises accelerate AI adoption.",
+            published_at=datetime.now(UTC) - timedelta(hours=1),
+            source_name="TechSource",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech"],
+        )
+
+    class StubHtmlWriter:
+        def write(self, content) -> Path:
+            path = tmp_path / f"{content.date}-{content.period}.html"
+            path.write_text("<html></html>")
+            return path
+
+    async def run_with(publish_ok: bool, run_dir: Path) -> dict:
+        deps, _ = make_deps(run_dir, _llm(), FakeSource([_article()]))
+        deps.cfg.app.promote.pages_project = "cyris-digest"
+        sent: dict = {}
+
+        async def capture(webhook_url, content, digest_url="", publish_failed=False):
+            sent["digest_url"] = digest_url
+            sent["publish_failed"] = publish_failed
+
+        deps = replace(
+            deps,
+            html_writer=StubHtmlWriter(),
+            publish=lambda _slug: publish_ok,
+            send_discord=capture,
+        )
+        await run_digest(deps, RunOptions(enable_learning=False))
+        return sent
+
+    failed = await run_with(False, tmp_path / "failed")
+    assert failed == {"digest_url": "", "publish_failed": True}
+
+    ok = await run_with(True, tmp_path / "ok")
+    assert ok["publish_failed"] is False
+    assert ok["digest_url"].startswith("https://cyris-digest.pages.dev/")

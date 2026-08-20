@@ -178,7 +178,7 @@ Mechanical once phase 2 lands, with no new failure modes left untested.
 | Adapter | Lines | Change |
 |---|---|---|
 | `output/html_digest.py` | 180 | write to R2 instead of disk |
-| `output/publish.py` | 78 | Pages REST API — `bunx wrangler` cannot shell out from a Worker-fronted container |
+| `output/publish.py` | 78 | Pages REST API — the `wrangler` CLI cannot shell out from a Worker-fronted container |
 | `output/article_export.py` | 106 | R2, or drop with the Obsidian path |
 | `adapters/embedding.py` | 105 | Workers AI `@cf/baai/bge-m3` + Vectorize — **for co-location, not for price or storage** |
 

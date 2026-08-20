@@ -48,7 +48,7 @@ class Deps:
     fetch_sources: list[FetchSource]
     writer: DigestWriter
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled
-    publish: Callable[[], bool] | None
+    publish: Callable[[str], bool] | None
     sync_promotions: Callable[[], int] | None
     load_cookies: Callable[[], dict[str, str] | None]
     log_usage: Callable[..., None]

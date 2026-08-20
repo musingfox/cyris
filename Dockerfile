@@ -1,17 +1,22 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1-slim AS bun
+# wrangler: HTML digest publish runs `wrangler pages deploy` (needs
+# CLOUDFLARE_API_TOKEN at runtime). Baked in, so a digest-time deploy fetches
+# nothing. Pinned; keep in sync with publish.py WRANGLER.
+#
+# Node, not bun: under bunx, wrangler intermittently exited 0 mid-deploy with
+# its output truncated at an arbitrary point — banner only, or partway through
+# "Uploading... (34/35)". Pinning the wrangler version (4.121.0 → 4.122.0) did
+# not stop it; the constant across every occurrence was the bun runtime, which
+# wrangler does not support. That silent no-op is what cost the 2026-08-18
+# evening and 2026-08-20 morning digests their Discord links.
+FROM node:22-slim AS wrangler
+RUN npm install -g wrangler@4.122.0
 
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# bun: HTML digest publish runs `bunx wrangler pages deploy` (needs CLOUDFLARE_API_TOKEN at runtime)
-COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
-RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
-
-# Bake wrangler into the image so a digest-time deploy needs no network fetch;
-# without this the first publish after every container recreate downloads it.
-# Pinned: an unpinned build froze in 4.121.0, which exits 0 after the banner
-# without deploying (bun-silent crash); keep in sync with publish.py WRANGLER.
-RUN bunx wrangler@4.122.0 --version
+COPY --from=wrangler /usr/local/bin/node /usr/local/bin/node
+COPY --from=wrangler /usr/local/lib/node_modules/wrangler /usr/local/lib/node_modules/wrangler
+RUN ln -s /usr/local/lib/node_modules/wrangler/bin/wrangler.js /usr/local/bin/wrangler
 
 # supercronic: container-aware cron — logs to stdout, respects TZ + inherits env vars
 ARG TARGETARCH
