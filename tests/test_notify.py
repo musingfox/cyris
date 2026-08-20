@@ -375,3 +375,32 @@ class TestDiscordEmbeds:
         embeds = build_discord_embeds(content)
         assert len(embeds) == 1
         assert embeds[0]["title"] == "早報 2026-04-10"
+
+    def test_stats_embed_link_health_line_when_counts_present(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            synthetic_url_count=2,
+            dead_link_count=1,
+        )
+        desc = build_discord_embeds(content)[-1]["description"]
+        assert "⚠️" in desc
+        assert "2" in desc
+        assert "1" in desc
+
+    def test_stats_embed_omits_link_health_when_counts_zero(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            synthetic_url_count=0,
+            dead_link_count=0,
+        )
+        desc = build_discord_embeds(content)[-1]["description"]
+        assert "⚠️ 電子報" not in desc
+
