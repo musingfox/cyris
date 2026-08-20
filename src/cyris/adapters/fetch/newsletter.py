@@ -8,13 +8,16 @@ import hashlib
 import html
 import logging
 import re
+from collections import Counter
 from contextlib import suppress
-from urllib.parse import urlsplit
+from urllib.parse import urlparse, urlsplit
 
 from cyris.adapters.fetch.email_parser import (
+    NEWSLETTER_TRACKING_PARAMS,
     ParsedNewsletter,
     _HrefParser,
     extract_ref_urls,
+    is_content_url,
     strip_tracking_params,
     unwrap_tracking_redirect,
 )
@@ -22,7 +25,7 @@ from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
 
-_NEWSLETTER_EXTRA_TRACKING = frozenset({"post_id", "media_id", "c2id"})
+_MIN_CONTENT_PATH_DEPTH = 2
 
 
 def _generate_article_id(source_name: str, key: str) -> str:
@@ -57,9 +60,10 @@ _VIEW_MARKERS = ("網頁版", "線上閱讀", "view in browser", "view this emai
 _VIEW_MARKER_RE = re.compile("|".join(re.escape(m) for m in _VIEW_MARKERS), re.I)
 _URL_RE = re.compile(r"https?://[^\s()<>\"']+")
 
+
 def _normalize_candidate(url: str) -> str:
     unwrapped = unwrap_tracking_redirect(html.unescape(url))
-    return strip_tracking_params(unwrapped, extra_params=_NEWSLETTER_EXTRA_TRACKING)
+    return strip_tracking_params(unwrapped, extra_params=NEWSLETTER_TRACKING_PARAMS)
 
 
 def harvest_url_candidates(html_content: str = "", text_content: str = "") -> list[str]:
@@ -76,6 +80,46 @@ def harvest_url_candidates(html_content: str = "", text_content: str = "") -> li
             if raw:
                 candidates.append(_normalize_candidate(raw))
     return candidates
+
+
+def _path_depth(url: str) -> int:
+    try:
+        path = urlparse(url).path
+    except ValueError:
+        return 0
+    return len([part for part in path.split("/") if part])
+
+
+def select_primary_content_url(candidates: list[str]) -> str | None:
+    """Pick the sender-owned, deepest, most frequent content URL, or None."""
+    content = [url for url in candidates if is_content_url(url)]
+    if not content:
+        return None
+
+    host_order: list[str] = []
+    host_count: Counter[str] = Counter()
+    for url in content:
+        host = (urlparse(url).hostname or "").lower()
+        host_count[host] += 1
+        if host not in host_order:
+            host_order.append(host)
+    dominant = max(host_order, key=lambda h: (host_count[h], -host_order.index(h)))
+
+    eligible = [
+        url
+        for url in content
+        if (urlparse(url).hostname or "").lower() == dominant
+        and _path_depth(url) >= _MIN_CONTENT_PATH_DEPTH
+    ]
+    if not eligible:
+        return None
+
+    freq: Counter[str] = Counter()
+    first: dict[str, int] = {}
+    for i, url in enumerate(eligible):
+        freq[url] += 1
+        first.setdefault(url, i)
+    return max(first, key=lambda u: (_path_depth(u), freq[u], -first[u]))
 
 
 def _find_view_url_in_text(text: str) -> str | None:

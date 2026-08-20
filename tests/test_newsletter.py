@@ -15,6 +15,7 @@ from cyris.adapters.fetch.newsletter import (
     _generate_article_id,
     harvest_url_candidates,
     newsletter_article,
+    select_primary_content_url,
 )
 from cyris.domain.models import SourceConfig, Tier
 
@@ -373,4 +374,72 @@ class TestHarvestUrlCandidates:
             html_content='<a href="https://a.com/p/x">1</a><b>未閉合',
             text_content="",
         ) == ["https://a.com/p/x"]
+
+
+class TestSelectPrimaryContentUrl:
+    def test_depth_outranks_frequency(self):
+        assert (
+            select_primary_content_url(
+                [
+                    "https://a.com/p/one",
+                    "https://a.com/p/one",
+                    "https://a.com/p/one",
+                    "https://a.com/blog/2026/deep",
+                ]
+            )
+            == "https://a.com/blog/2026/deep"
+        )
+
+    def test_frequency_breaks_depth_ties(self):
+        assert (
+            select_primary_content_url(
+                ["https://a.com/x/y", "https://a.com/x/y", "https://a.com/s/t"]
+            )
+            == "https://a.com/x/y"
+        )
+
+    def test_dominant_host_then_first_seen_on_ties(self):
+        assert (
+            select_primary_content_url(
+                [
+                    "https://a.com/x/y",
+                    "https://b.com/deep/er/path",
+                    "https://a.com/p/q",
+                    "https://a.com/r/s",
+                ]
+            )
+            == "https://a.com/x/y"
+        )
+
+    def test_all_shallow_paths_yield_none(self):
+        assert (
+            select_primary_content_url(
+                ["https://a.com/join", "https://a.com/join", "https://a.com/"]
+            )
+            is None
+        )
+
+    def test_esp_hosts_yield_none(self):
+        assert (
+            select_primary_content_url(
+                ["https://mailchi.mp/abc/no-28", "https://xx.list-manage.com/a/b"]
+            )
+            is None
+        )
+
+    def test_empty_candidates_yield_none(self):
+        assert select_primary_content_url([]) is None
+
+    def test_full_hostname_not_etld_plus_one(self):
+        assert (
+            select_primary_content_url(
+                [
+                    "https://www.patreon.com/ieo/posts/x/y",
+                    "https://open.patreon.com/ieo/posts/x/y",
+                    "https://www.patreon.com/settings/email/ieo",
+                    "https://www.patreon.com/ieo/posts/x/y",
+                ]
+            )
+            == "https://www.patreon.com/ieo/posts/x/y"
+        )
 
