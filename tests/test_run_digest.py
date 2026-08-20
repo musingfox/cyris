@@ -472,3 +472,52 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
     ok = await run_with(True, tmp_path / "ok")
     assert ok["publish_failed"] is False
     assert ok["digest_url"].startswith("https://cyris-digest.pages.dev/")
+
+
+def _fan_article(*, article_id: int, title: str, url: str) -> Article:
+    return Article(
+        id=article_id,
+        title=title,
+        url=url,
+        content="Newsletter body.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="NL",
+        source_tier=Tier.FAN,
+        source_tags=[],
+    )
+
+
+def _with_progress(deps: Deps) -> tuple[Deps, list[str]]:
+    messages: list[str] = []
+    return replace(deps, on_progress=messages.append), messages
+
+
+async def test_run_digest_empty_content_has_no_dead_link_progress(tmp_path: Path) -> None:
+    source = FakeSource([])
+    deps, _ = make_deps(tmp_path, FakeLLM(), source)
+    deps, messages = _with_progress(deps)
+
+    report = await run_digest(deps, RunOptions(enable_learning=False))
+
+    assert report.status == "no_articles"
+    assert not any("dead" in m.lower() for m in messages)
+
+
+async def test_run_digest_reports_dead_link_count(tmp_path: Path) -> None:
+    source = FakeSource(
+        [
+            _fan_article(article_id=1, title="Dead NL", url="newsletter:x"),
+            _fan_article(article_id=2, title="Live", url="https://a.com/1"),
+        ]
+    )
+    contents: list = []
+    deps, _ = make_deps(tmp_path, FakeLLM(), source, discord_contents=contents)
+    deps, messages = _with_progress(deps)
+
+    report = await run_digest(deps, RunOptions(enable_learning=False))
+
+    assert report.status == "ok"
+    assert any("1" in m for m in messages)
+    assert contents
+    assert contents[0].dead_link_count == 1
+

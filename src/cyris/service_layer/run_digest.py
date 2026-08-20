@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cyris.domain.models import ArticleState, Tier, UsageStats
-from cyris.domain.selection import layer_by_score
+from cyris.domain.selection import count_dead_links, layer_by_score
 from cyris.domain.tracking import keyword_prescreen
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -249,6 +249,10 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     # Layer by score to extract featured articles
     content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)
+
+    content.dead_link_count = count_dead_links(content)
+    if content.dead_link_count:
+        progress(f"This digest has {content.dead_link_count} dead link(s).")
 
     # Add scoring usage to content
     content.usage.add(total_usage.input_tokens, total_usage.output_tokens)

@@ -1,7 +1,7 @@
 """Tests for digest article selection with priority fill."""
 
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
-from cyris.domain.selection import layer_by_score, select_digest_articles
+from cyris.domain.selection import count_dead_links, layer_by_score, select_digest_articles
 
 
 def _make_items(count: int, prefix: str = "item") -> list[DigestItem]:
@@ -465,3 +465,56 @@ class TestSelectDigestArticlesWithAttention:
         assert sum(len(s.items) for s in result.attention_sections) == 8
         assert len(result.filtered_headlines) == 7
         assert result.articles_included == 15
+
+
+def _dead_item(title: str = "dead") -> DigestItem:
+    return DigestItem(
+        title=title,
+        summary="",
+        sources=["newsletter"],
+        urls=["newsletter:x"],
+        ref_urls=[],
+    )
+
+
+def test_count_dead_links_thematic_and_headline():
+    content = _base_content(
+        thematic_summaries=[
+            DigestSection(heading="theme", items=[_dead_item()]),
+        ],
+        filtered_headlines=[
+            DigestItem(
+                title="live",
+                summary="",
+                sources=["a"],
+                urls=["https://a.com/1"],
+            )
+        ],
+    )
+    assert count_dead_links(content) == 1
+
+
+def test_count_dead_links_ref_urls_are_clickable():
+    content = _base_content(
+        thematic_summaries=[
+            DigestSection(
+                heading="theme",
+                items=[
+                    DigestItem(
+                        title="item",
+                        summary="",
+                        sources=["n"],
+                        urls=["newsletter:x"],
+                        ref_urls=["https://a.com/ref"],
+                    )
+                ],
+            )
+        ],
+    )
+    assert count_dead_links(content) == 0
+
+
+def test_count_dead_links_empty_content():
+    content = _base_content(articles_included=0)
+    assert count_dead_links(content) == 0
+

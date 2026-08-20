@@ -2,7 +2,7 @@
 
 import logging
 
-from cyris.domain.models import Article, DigestContent, DigestSection
+from cyris.domain.models import Article, DigestContent, DigestItem, DigestSection
 
 logger = logging.getLogger(__name__)
 
@@ -212,3 +212,25 @@ def select_digest_articles(content: DigestContent, max_items: int = 15) -> Diges
             "articles_included": total_selected,
         }
     )
+
+
+def _iter_digest_items(content: DigestContent) -> list[DigestItem]:
+    items: list[DigestItem] = []
+    if content.tracked_updates is not None:
+        items.extend(content.tracked_updates.items)
+    for sections in (
+        content.featured_articles,
+        content.news_clusters,
+        content.thematic_summaries,
+        content.attention_sections,
+        content.fan_sections,
+    ):
+        for section in sections:
+            items.extend(section.items)
+    items.extend(content.filtered_headlines)
+    return items
+
+
+def count_dead_links(content: DigestContent) -> int:
+    """Count digest items with no clickable http(s) URL in urls or ref_urls."""
+    return sum(1 for item in _iter_digest_items(content) if item.link is None)
