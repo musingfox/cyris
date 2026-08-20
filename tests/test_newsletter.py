@@ -254,7 +254,7 @@ class TestTextViewUrl:
         assert art is not None
         assert art.url == "https://example.com/posts/1"
 
-    def test_html_view_url_still_wins(self, source_summarize):
+    def test_sender_domain_post_wins_over_esp_archive(self, source_summarize):
         art = newsletter_article(
             _make_parsed(
                 text_content=MANNY_BODY,
@@ -263,7 +263,9 @@ class TestTextViewUrl:
             source_summarize,
         )
         assert art is not None
-        assert art.url == "https://mailchi.mp/abc/28"
+        assert art.url == (
+            "https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv"
+        )
 
     def test_no_marker_stays_synthetic(self, source_summarize):
         body = "本文\n訂閱請點 (https://pro.manny-li.com/join)\n"
@@ -443,3 +445,48 @@ class TestSelectPrimaryContentUrl:
             == "https://www.patreon.com/ieo/posts/x/y"
         )
 
+
+class TestNewsletterViewUrlResolutionOrder:
+    def test_esp_archive_guard_when_no_sender_post(self):
+        html = '<a href="https://mailchi.mp/abc/28">View</a>'
+        p = _make_parsed(text_content="本期開場白……", html_content=html)
+        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        art = newsletter_article(p, src)
+        assert art is not None
+        assert art.url == "https://mailchi.mp/abc/28"
+
+    def test_language_keyword_guard_when_path_too_shallow(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(text_content="網頁版 (https://site.com/x)\n", html_content=""),
+            source_summarize,
+        )
+        assert art is not None
+        assert art.url == "https://site.com/x"
+
+    def test_synthetic_url_when_no_links(self):
+        src = SourceConfig(name="Test Newsletter", tier=Tier.SUMMARIZE, tags=[])
+        art = newsletter_article(
+            _make_parsed(
+                subject="Issue #1",
+                text_content="本文",
+                html_content="<p>no links</p>",
+                source_name="Test Newsletter",
+            ),
+            src,
+        )
+        assert art is not None
+        expected = "newsletter:" + hashlib.sha256(b"Test NewsletterIssue #1").hexdigest()
+        assert art.url == expected
+
+    def test_primary_url_strips_e_and_utm(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(
+                text_content="hello",
+                html_content='<a href="https://site.com/posts/hello?e=tok&utm_source=n">x</a>',
+            ),
+            source_summarize,
+        )
+        assert art is not None
+        assert art.url == "https://site.com/posts/hello"
+        assert "e=" not in art.url
+        assert "utm_" not in art.url
