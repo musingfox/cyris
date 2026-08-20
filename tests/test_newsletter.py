@@ -293,3 +293,42 @@ class TestTextViewUrl:
         art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
         assert art is not None
         assert art.url == "https://example.com/posts/1"
+
+
+class TestNewsletterIssueUrlUniqueness:
+    def test_adjacent_issues_keep_distinct_post_urls(self, source_summarize):
+        a = newsletter_article(
+            _make_parsed(
+                subject="Issue A",
+                text_content="訂閱 (https://s.com/join)\n網頁版 (https://s.com/posts/a)",
+            ),
+            source_summarize,
+        )
+        b = newsletter_article(
+            _make_parsed(
+                subject="Issue B",
+                text_content="訂閱 (https://s.com/join)\n網頁版 (https://s.com/posts/b)",
+            ),
+            source_summarize,
+        )
+        assert a is not None and b is not None
+        assert a.url == "https://s.com/posts/a"
+        assert b.url == "https://s.com/posts/b"
+        assert a.url != b.url
+        assert a.url != "https://s.com/join"
+        assert b.url != "https://s.com/join"
+
+    def test_join_only_issues_use_distinct_synthetic_urls(self, source_summarize):
+        a = newsletter_article(
+            _make_parsed(subject="Issue A", text_content="訂閱 (https://s.com/join)"),
+            source_summarize,
+        )
+        b = newsletter_article(
+            _make_parsed(subject="Issue B", text_content="訂閱 (https://s.com/join)"),
+            source_summarize,
+        )
+        assert a is not None and b is not None
+        assert a.url.startswith("newsletter:")
+        assert b.url.startswith("newsletter:")
+        assert a.url != b.url
+
