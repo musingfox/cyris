@@ -13,11 +13,12 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
-def strip_tracking_params(url: str) -> str:
+def strip_tracking_params(url: str, extra_params: frozenset[str] | None = None) -> str:
     """Strip tracking query params (utm_*, e, fbclid etc) from newsletter URLs.
 
     Non-URL or unparsable input returned verbatim (no exception). Only ? kept if other
-    params remain; trailing ? removed when empty.
+    params remain; trailing ? removed when empty. extra_params are stripped in addition
+    to the default set (RSS callers omit it so post_id/media_id/c2id stay).
     """
     if not url or not isinstance(url, str):
         return url
@@ -27,6 +28,8 @@ def strip_tracking_params(url: str) -> str:
             return url
         # keep params that are not tracking
         tracking = {"e", "c", "fbclid", "gclid", "mc_cid", "mc_eid"}
+        if extra_params:
+            tracking = tracking | set(extra_params)
         qsl = [
             (k, v)
             for k, v in parse_qsl(p.query, keep_blank_values=True)
@@ -74,6 +77,7 @@ class _HrefParser(HTMLParser):
 
 _MAX_REF_URLS = 5
 _IMAGE_SUFFIXES = (".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp")
+NEWSLETTER_TRACKING_PARAMS = frozenset({"post_id", "media_id", "c2id"})
 
 
 def is_content_url(url: str) -> bool:
@@ -105,7 +109,7 @@ def is_content_url(url: str) -> bool:
         or (is_telegram and (path == "/share" or path.startswith("/share/")))
         or (is_twitter and "/intent/" in path)
     )
-    if (
+    return not (
         parsed.scheme not in {"http", "https"}
         or hostname == "mailchi.mp"
         or hostname.endswith(".mailchi.mp")
@@ -115,9 +119,7 @@ def is_content_url(url: str) -> bool:
         or is_share
         or "unsubscribe" in path
         or path.endswith(_IMAGE_SUFFIXES)
-    ):
-        return False
-    return True
+    )
 
 
 def extract_ref_urls(html: str) -> list[str]:
@@ -139,7 +141,7 @@ def extract_ref_urls(html: str) -> list[str]:
         if not is_content_url(url):
             continue
 
-        url = strip_tracking_params(url)
+        url = strip_tracking_params(url, extra_params=NEWSLETTER_TRACKING_PARAMS)
         if url not in seen:
             seen.add(url)
             ref_urls.append(url)

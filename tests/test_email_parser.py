@@ -333,3 +333,35 @@ class TestIsContentUrl:
         assert (
             is_content_url("https://www.patreon.com/ieo/posts/ai-guang-tong-ye-166524353") is True
         )
+
+
+class TestStripTrackingParamsExtra:
+    def test_default_keeps_post_id(self):
+        assert (
+            strip_tracking_params("https://x.com/a/b?post_id=1&utm_source=n")
+            == "https://x.com/a/b?post_id=1"
+        )
+
+    def test_extra_post_id_is_stripped(self):
+        assert (
+            strip_tracking_params(
+                "https://x.com/a/b?post_id=1&utm_source=n",
+                extra_params=frozenset({"post_id"}),
+            )
+            == "https://x.com/a/b"
+        )
+
+    def test_extra_c2id_and_media_id_stripped_keeps_ref(self):
+        assert (
+            strip_tracking_params(
+                "https://x.com/a/b?c2id=Z&media_id=9&ref=keep",
+                extra_params=frozenset({"c2id", "media_id"}),
+            )
+            == "https://x.com/a/b?ref=keep"
+        )
+
+    def test_non_url_with_extra_params_unchanged(self):
+        assert (
+            strip_tracking_params("not a url at all", extra_params=frozenset({"post_id"}))
+            == "not a url at all"
+        )
