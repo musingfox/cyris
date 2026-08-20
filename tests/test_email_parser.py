@@ -6,6 +6,7 @@ import pytest
 
 from cyris.adapters.fetch.email_parser import (
     extract_ref_urls,
+    is_content_url,
     parse_newsletter,
     strip_tracking_params,
     unwrap_tracking_redirect,
@@ -313,3 +314,22 @@ class TestUnwrapTrackClickUrl:
             "url=https%3A%2F%2Fexample.com%2Fa%3Futm_source%3Dnl"
         )
         assert unwrap_tracking_redirect(url) == "https://example.com/a"
+
+
+class TestIsContentUrl:
+    def test_campaign_archive_is_not_content(self):
+        assert is_content_url("https://us1.campaign-archive1.com/?u=a&id=b") is False
+
+    def test_list_manage_track_click_is_not_content(self):
+        assert is_content_url("https://xx.list-manage.com/track/click?u=1") is False
+
+    def test_mailto_is_not_content(self):
+        assert is_content_url("mailto:someone@example.com") is False
+
+    def test_image_url_is_not_content(self):
+        assert is_content_url("https://cdn.example.com/logo.png") is False
+
+    def test_patreon_post_is_content(self):
+        assert (
+            is_content_url("https://www.patreon.com/ieo/posts/ai-guang-tong-ye-166524353") is True
+        )
