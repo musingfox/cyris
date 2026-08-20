@@ -8,10 +8,12 @@ import hashlib
 import html
 import logging
 import re
+from contextlib import suppress
 from urllib.parse import urlsplit
 
 from cyris.adapters.fetch.email_parser import (
     ParsedNewsletter,
+    _HrefParser,
     extract_ref_urls,
     strip_tracking_params,
     unwrap_tracking_redirect,
@@ -19,6 +21,8 @@ from cyris.adapters.fetch.email_parser import (
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
+
+_NEWSLETTER_EXTRA_TRACKING = frozenset({"post_id", "media_id", "c2id"})
 
 
 def _generate_article_id(source_name: str, key: str) -> str:
@@ -52,6 +56,26 @@ def _find_newsletter_view_url(html: str) -> str | None:
 _VIEW_MARKERS = ("網頁版", "線上閱讀", "view in browser", "view this email", "view online")
 _VIEW_MARKER_RE = re.compile("|".join(re.escape(m) for m in _VIEW_MARKERS), re.I)
 _URL_RE = re.compile(r"https?://[^\s()<>\"']+")
+
+def _normalize_candidate(url: str) -> str:
+    unwrapped = unwrap_tracking_redirect(html.unescape(url))
+    return strip_tracking_params(unwrapped, extra_params=_NEWSLETTER_EXTRA_TRACKING)
+
+
+def harvest_url_candidates(html_content: str = "", text_content: str = "") -> list[str]:
+    """Collect normalized URL candidates from HTML anchors and plain text (duplicates kept)."""
+    candidates: list[str] = []
+    if html_content:
+        parser = _HrefParser()
+        with suppress(Exception):
+            parser.feed(html_content)
+        candidates.extend(_normalize_candidate(href) for href in parser.hrefs if href)
+    if text_content:
+        for match in _URL_RE.finditer(text_content):
+            raw = match.group().rstrip(".,;:。，、")
+            if raw:
+                candidates.append(_normalize_candidate(raw))
+    return candidates
 
 
 def _find_view_url_in_text(text: str) -> str | None:

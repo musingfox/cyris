@@ -11,7 +11,11 @@ from datetime import datetime
 import pytest
 
 from cyris.adapters.fetch.email_parser import ParsedNewsletter
-from cyris.adapters.fetch.newsletter import _generate_article_id, newsletter_article
+from cyris.adapters.fetch.newsletter import (
+    _generate_article_id,
+    harvest_url_candidates,
+    newsletter_article,
+)
 from cyris.domain.models import SourceConfig, Tier
 
 
@@ -331,4 +335,42 @@ class TestNewsletterIssueUrlUniqueness:
         assert a.url.startswith("newsletter:")
         assert b.url.startswith("newsletter:")
         assert a.url != b.url
+
+
+class TestHarvestUrlCandidates:
+    def test_html_entity_decoded_and_post_id_stripped(self):
+        assert harvest_url_candidates(
+            html_content='<a href="https://a.com/p/x?utm_source=n&amp;post_id=7">t</a>',
+            text_content="",
+        ) == ["https://a.com/p/x"]
+
+    def test_labelled_url_in_text_strips_trailing_ideographic_full_stop(self):
+        assert harvest_url_candidates(
+            html_content="",
+            text_content="網頁版 (https://a.com/posts/1) 。\n",
+        ) == ["https://a.com/posts/1"]
+
+    def test_bare_url_in_text_strips_trailing_period(self):
+        assert harvest_url_candidates(
+            html_content="",
+            text_content="View in browser: https://a.com/posts/1.\n",
+        ) == ["https://a.com/posts/1"]
+
+    def test_track_click_unwrapped_and_e_stripped(self):
+        assert harvest_url_candidates(
+            html_content="",
+            text_content="https://xx.list-manage.com/track/click?url=https%3A%2F%2Fa.com%2Fposts%2F1%3Fe%3Dtok",
+        ) == ["https://a.com/posts/1"]
+
+    def test_duplicate_anchors_are_kept(self):
+        assert harvest_url_candidates(
+            html_content='<a href="https://a.com/p/x">1</a><a href="https://a.com/p/x">2</a>',
+            text_content="",
+        ) == ["https://a.com/p/x", "https://a.com/p/x"]
+
+    def test_malformed_html_still_returns_collected_anchors(self):
+        assert harvest_url_candidates(
+            html_content='<a href="https://a.com/p/x">1</a><b>未閉合',
+            text_content="",
+        ) == ["https://a.com/p/x"]
 
