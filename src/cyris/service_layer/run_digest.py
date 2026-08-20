@@ -250,6 +250,14 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     # Layer by score to extract featured articles
     content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)
 
+    content.synthetic_url_count = sum(
+        1 for a in digest_articles if a.url.startswith("newsletter:")
+    )
+    if content.synthetic_url_count:
+        progress(
+            f"{content.synthetic_url_count} newsletter article(s) fell back to a synthetic URL."
+        )
+
     content.dead_link_count = count_dead_links(content)
     if content.dead_link_count:
         progress(f"This digest has {content.dead_link_count} dead link(s).")

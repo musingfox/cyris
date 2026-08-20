@@ -521,3 +521,41 @@ async def test_run_digest_reports_dead_link_count(tmp_path: Path) -> None:
     assert contents
     assert contents[0].dead_link_count == 1
 
+
+async def test_run_digest_reports_synthetic_newsletter_url_count(tmp_path: Path) -> None:
+    source = FakeSource(
+        [
+            _fan_article(article_id=1, title="Synth", url="newsletter:abc"),
+            _fan_article(article_id=2, title="Live", url="https://example.com/a"),
+        ]
+    )
+    contents: list = []
+    deps, _ = make_deps(tmp_path, FakeLLM(), source, discord_contents=contents)
+    deps, messages = _with_progress(deps)
+
+    report = await run_digest(deps, RunOptions(enable_learning=False))
+
+    assert report.status == "ok"
+    assert any("1" in m and "newsletter" in m.lower() for m in messages)
+    assert contents
+    assert contents[0].synthetic_url_count == 1
+
+
+async def test_run_digest_omits_synthetic_url_progress_when_all_http(tmp_path: Path) -> None:
+    source = FakeSource(
+        [
+            _fan_article(article_id=1, title="A", url="https://example.com/a"),
+            _fan_article(article_id=2, title="B", url="http://example.com/b"),
+        ]
+    )
+    contents: list = []
+    deps, _ = make_deps(tmp_path, FakeLLM(), source, discord_contents=contents)
+    deps, messages = _with_progress(deps)
+
+    report = await run_digest(deps, RunOptions(enable_learning=False))
+
+    assert report.status == "ok"
+    assert not any("newsletter" in m.lower() for m in messages)
+    assert contents
+    assert contents[0].synthetic_url_count == 0
+

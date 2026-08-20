@@ -113,6 +113,7 @@ class DigestContent(BaseModel):
     fan_sections: list[DigestSection] = Field(default_factory=list)
     triage_pending_count: int | None = None
     dead_link_count: int | None = None
+    synthetic_url_count: int | None = None
 
 
 class PreferenceProfile(BaseModel):
