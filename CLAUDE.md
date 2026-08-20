@@ -31,6 +31,11 @@ uv run pytest tests/test_config.py
 
 # Run a single test function
 uv run pytest tests/test_config.py::test_function_name -v
+
+# Real newsletter extractor checks (skip if samples are absent)
+# Samples live outside the repo: $CYRIS_NEWSLETTER_FIXTURES
+# (default ~/cyris-newsletter-fixtures): manpao.text.txt, ieo.html, fenshi.html
+uv run pytest tests/test_newsletter_real_fixtures.py
 ```
 
 ## Architecture
