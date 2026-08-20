@@ -1,9 +1,18 @@
 """Tests for HTML digest rendering."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
+from cyris.domain.models import (
+    ArticleState,
+    DigestContent,
+    DigestItem,
+    DigestSection,
+    StoredArticle,
+    Tier,
+    UsageStats,
+)
 
 
 def test_render_with_featured_article(sample_digest_content):
@@ -718,3 +727,53 @@ def test_synthetic_store_url_never_becomes_an_href(sample_digest_content, tmp_pa
 
     assert "曼報本期" in html
     assert "newsletter:deadbeef" not in html.replace("data-urls='[\"newsletter:deadbeef\"]'", "")
+
+
+def _stored(title, source, state=ArticleState.PENDING, score=None):
+    now = datetime.now(UTC)
+    return StoredArticle(
+        url=f"https://example.com/{abs(hash(title))}",
+        original_id=abs(hash(title)),
+        title=title,
+        content="",
+        published_at=now,
+        source_name=source,
+        source_tier=Tier.FILTER,
+        state=state,
+        first_seen_at=now,
+        score=score,
+    )
+
+
+def test_write_raw_groups_by_source_and_escapes(tmp_path):
+    """Raw page groups articles per source and escapes feed-controlled titles."""
+    writer = HtmlDigestWriter(tmp_path)
+    articles = [
+        _stored("Kept", "Src A", state=ArticleState.ACCEPTED, score=0.9),
+        _stored("Unscored", "Src A"),
+        _stored("<script>alert(1)</script> & co", "Src B", state=ArticleState.REJECTED),
+    ]
+
+    path = writer.write_raw("2026-08-20", "morning", articles)
+    html = path.read_text(encoding="utf-8")
+
+    assert path == tmp_path / "2026-08-20-morning-raw.html"
+    assert "Src A" in html and "Src B" in html
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt; &amp; co" in html
+    # Scored article precedes the unscored one within its source group
+    assert html.index("Kept") < html.index("Unscored")
+    assert "3 articles" in html
+    assert 'href="2026-08-20-morning.html"' in html
+
+
+def test_index_skips_raw_pages(tmp_path):
+    """Archive index lists digests only — raw companions are not issues."""
+    writer = HtmlDigestWriter(tmp_path)
+    (tmp_path / "2026-08-20-morning.html").write_text("x")
+    (tmp_path / "2026-08-20-morning-raw.html").write_text("x")
+
+    index = writer.render_index(tmp_path)
+
+    assert "2026-08-20-morning.html" in index
+    assert "morning-raw" not in index

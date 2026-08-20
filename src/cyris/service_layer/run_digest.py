@@ -41,6 +41,7 @@ class RunReport:
     rendered: str | None = None  # dry-run render of the digest
     digest_path: Path | None = None
     html_path: Path | None = None
+    raw_path: Path | None = None
     failed_sources: list[str] = field(default_factory=list)
 
 
@@ -262,23 +263,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         report.digest_path = deps.writer.write(content)
         progress(f"Digest written to {report.digest_path}")
 
-        # HTML output (optional, non-blocking)
-        if deps.html_writer is not None:
-            try:
-                report.html_path = deps.html_writer.write(content)
-                progress(f"HTML digest written to {report.html_path}")
-
-                if deps.publish is not None and cfg.app.promote.pages_project:
-                    slug = f"{content.date}-{content.period}"
-                    if deps.publish(slug):
-                        # Cloudflare Pages serves the extensionless clean URL.
-                        digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
-                    else:
-                        publish_failed = True
-            except Exception as e:
-                logger.error("Failed to write HTML digest: %s", e)
-
-        # Update article states in store
+        # Update article states in store — before the raw outputs, so they show
+        # this run's verdicts rather than a store snapshot taken one step early.
         url_to_state: dict[str, tuple[ArticleState, str | None]] = {}
         for url in result.accepted_urls:
             url_to_state[url] = (ArticleState.ACCEPTED, None)
@@ -287,6 +273,44 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
         updated_count = store.update_states(url_to_state, digest_date=content.date)
         logger.info("Updated states for %d articles", updated_count)
+
+        # Everything collected in the window: uncapped, unfiltered, states included.
+        # None of this may raise: the Discord notification still has to go out.
+        collected = []
+        try:
+            collected = store.load_by_time_range(start=window_start, end=load_end)
+            report.raw_path = deps.writer.write_raw_list(content.date, content.period, collected)
+            progress(f"Raw list written to {report.raw_path}")
+        except Exception as e:
+            logger.error("Failed to write raw list: %s", e)
+
+        # HTML output (optional, non-blocking)
+        if deps.html_writer is not None:
+            try:
+                report.html_path = deps.html_writer.write(content)
+                progress(f"HTML digest written to {report.html_path}")
+            except Exception as e:
+                logger.error("Failed to write HTML digest: %s", e)
+
+            # Own try/except: a broken raw page must not cost the digest its publish.
+            if collected:
+                try:
+                    raw_html = deps.html_writer.write_raw(content.date, content.period, collected)
+                    progress(f"Raw page written to {raw_html}")
+                except Exception as e:
+                    logger.error("Failed to write raw HTML page: %s", e)
+
+            if (
+                report.html_path is not None
+                and deps.publish is not None
+                and cfg.app.promote.pages_project
+            ):
+                slug = f"{content.date}-{content.period}"
+                if deps.publish(slug):
+                    # Cloudflare Pages serves the extensionless clean URL.
+                    digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
+                else:
+                    publish_failed = True
 
     await deps.send_discord(
         notify.discord_webhook_url,

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
-from cyris.domain.models import DigestContent, DigestItem, DigestSection
+from cyris.domain.models import DigestContent, DigestItem, DigestSection, StoredArticle
 
 logger = logging.getLogger(__name__)
 
@@ -276,4 +276,25 @@ class DigestWriter:
         markdown = self.render(content)
         path.write_text(markdown, encoding="utf-8")
         logger.info("Digest written to %s", path)
+        return path
+
+    def write_raw_list(self, date: str, period: str, articles: list[StoredArticle]) -> Path:
+        """Write a flat list of every article collected in the window, next to the digest."""
+        path = self.vault_path / self.digest_folder / f"{date}-{period}-raw.md"
+        lines = [
+            f"# Raw list {date}-{period}",
+            "",
+            f"共 {len(articles)} 篇",
+            "",
+            "| state | score | source | title |",
+            "| --- | --- | --- | --- |",
+        ]
+        for a in articles:
+            score = f"{a.score:.2f}" if a.score is not None else "-"
+            title = a.title.replace("|", "\\|")
+            lines.append(f"| {a.state.value} | {score} | {a.source_name} | [{title}]({a.url}) |")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        logger.info("Raw list written to %s", path)
         return path

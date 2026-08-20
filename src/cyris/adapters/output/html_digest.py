@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from cyris.domain.models import DigestContent, DigestItem
+from cyris.domain.models import DigestContent, DigestItem, StoredArticle
 
 
 def _hostname(url: str) -> str:
@@ -144,6 +144,8 @@ class HtmlDigestWriter:
             for file_path in digest_dir.iterdir():
                 if not file_path.is_file():
                     continue
+                if file_path.name.endswith("-raw.html"):
+                    continue
                 match = digest_pattern.match(file_path.name)
                 if match:
                     date, period = match.groups()
@@ -177,3 +179,39 @@ class HtmlDigestWriter:
 
         index_path.write_text(html, encoding="utf-8")
         return index_path
+
+    def write_raw(self, date: str, period: str, articles: list[StoredArticle]) -> Path:
+        """Render every collected article, grouped by source, as a companion page.
+
+        Args:
+            date: Digest date (``YYYY-MM-DD``).
+            period: Digest period (``morning``/``evening``).
+            articles: Every article collected in the digest window.
+
+        Returns:
+            Path to the written raw page.
+        """
+        groups: dict[str, list[StoredArticle]] = {}
+        for a in articles:
+            groups.setdefault(a.source_name, []).append(a)
+
+        rendered_groups = [
+            {
+                "name": name,
+                # Highest score first; unscored articles trail the ranked ones.
+                "articles": sorted(items, key=lambda a: (a.score is None, -(a.score or 0.0))),
+            }
+            for name, items in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+        ]
+
+        html = self.env.get_template("raw.html.j2").render(
+            date=date,
+            period=period,
+            total=len(articles),
+            groups=rendered_groups,
+        )
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        file_path = self.output_dir / f"{date}-{period}-raw.html"
+        file_path.write_text(html, encoding="utf-8")
+        return file_path

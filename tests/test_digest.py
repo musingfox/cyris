@@ -1,9 +1,11 @@
 """Tests for digest writer."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from cyris.adapters.output.digest import DigestWriter
-from cyris.domain.models import DigestContent
+from cyris.domain.models import ArticleState, DigestContent, StoredArticle, Tier
 
 
 class TestDigestWriter:
@@ -602,3 +604,42 @@ class TestDigestWriter:
         output = writer._render_section(section)
 
         assert "### [Newsletter](https://r1.com/a)" in output
+
+
+def test_write_raw_list(tmp_path):
+    """Raw list lists every collected article with its state and score."""
+    now = datetime.now(UTC)
+    articles = [
+        StoredArticle(
+            url="https://example.com/a",
+            original_id=1,
+            title="Kept | piped",
+            content="",
+            published_at=now,
+            source_name="Src A",
+            source_tier=Tier.SUMMARIZE,
+            state=ArticleState.ACCEPTED,
+            first_seen_at=now,
+            score=0.8,
+        ),
+        StoredArticle(
+            url="https://example.com/b",
+            original_id=2,
+            title="Dropped",
+            content="",
+            published_at=now,
+            source_name="Src B",
+            source_tier=Tier.FILTER,
+            state=ArticleState.PENDING,
+            first_seen_at=now,
+        ),
+    ]
+
+    writer = DigestWriter(tmp_path, digest_folder="Digests")
+    path = writer.write_raw_list("2026-08-20", "morning", articles)
+
+    text = path.read_text(encoding="utf-8")
+    assert path == tmp_path / "Digests" / "2026-08-20-morning-raw.md"
+    assert "共 2 篇" in text
+    assert "| accepted | 0.80 | Src A | [Kept \\| piped](https://example.com/a) |" in text
+    assert "| pending | - | Src B | [Dropped](https://example.com/b) |" in text
