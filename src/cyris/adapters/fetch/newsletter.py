@@ -93,8 +93,14 @@ def _path_depth(url: str) -> int:
     return len([part for part in path.split("/") if part])
 
 
-def select_primary_content_url(candidates: list[str]) -> str | None:
-    """Pick the sender-owned, deepest, most frequent content URL, or None."""
+def select_primary_content_url(candidates: list[str], sender_host: str | None = None) -> str | None:
+    """Pick the sender-owned, deepest, most frequent content URL, or None.
+
+    sender_host (the source's configured homepage host) makes the sender's domain
+    known rather than inferred. Without it the most frequent host is only a guess:
+    an issue quoting one self link and three from another blog would hand that
+    blog's article to the digest as this issue's 原文.
+    """
     content = [url for url in candidates if is_content_url(url)]
     if not content:
         return None
@@ -106,7 +112,12 @@ def select_primary_content_url(candidates: list[str]) -> str | None:
         host_count[host] += 1
         if host not in host_order:
             host_order.append(host)
-    dominant = max(host_order, key=lambda h: (host_count[h], -host_order.index(h)))
+
+    sender_host = (sender_host or "").lower()
+    if sender_host and sender_host in host_count:
+        dominant = sender_host
+    else:
+        dominant = max(host_order, key=lambda h: (host_count[h], -host_order.index(h)))
 
     eligible = [
         url
@@ -154,8 +165,14 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
     Empty body -> None + WARNING (singular per D5).
     """
     article_id = _generate_article_id(source.name, parsed.subject)
+    sender_host = ""
+    if source.homepage:
+        with suppress(ValueError):
+            sender_host = urlparse(source.homepage).hostname or ""
     view_url = (
-        select_primary_content_url(harvest_url_candidates(parsed.html_content, parsed.text_content))
+        select_primary_content_url(
+            harvest_url_candidates(parsed.html_content, parsed.text_content), sender_host
+        )
         or _find_newsletter_view_url(parsed.html_content)
         or _find_view_url_in_text(parsed.text_content)
     )

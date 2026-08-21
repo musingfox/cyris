@@ -26,6 +26,9 @@ class SourceConfig(BaseModel):
     language: str = "auto"
     email_match: str | None = None
     cookie_domain: str | None = None
+    # Where this source publishes. Its host is what makes "the sender's own domain"
+    # knowable instead of guessed from link statistics.
+    homepage: str | None = None
 
 
 class Article(BaseModel):

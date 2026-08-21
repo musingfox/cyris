@@ -387,6 +387,26 @@ class TestHarvestUrlCandidates:
 
 
 class TestSelectPrimaryContentUrl:
+    def test_configured_homepage_host_beats_a_more_frequent_third_party(self):
+        candidates = [
+            "https://s.com/posts/issue-1",
+            "https://blog.acme.com/a/b",
+            "https://blog.acme.com/a/c",
+            "https://blog.acme.com/a/d",
+        ]
+        assert select_primary_content_url(candidates, "s.com") == "https://s.com/posts/issue-1"
+
+    def test_falls_back_to_frequency_when_homepage_host_is_absent(self):
+        candidates = [
+            "https://s.com/posts/issue-1",
+            "https://blog.acme.com/a/b",
+            "https://blog.acme.com/a/c",
+        ]
+        assert (
+            select_primary_content_url(candidates, "never-linked.com")
+            == "https://blog.acme.com/a/b"
+        )
+
     def test_depth_outranks_frequency(self):
         assert (
             select_primary_content_url(
