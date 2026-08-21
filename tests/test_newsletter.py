@@ -226,13 +226,15 @@ class TestNewsletterBodyIsTheArticle:
         assert art.url.startswith("newsletter:")
 
 
-# Real 曼報 text/plain bodies: the join link comes first, the web-version link second.
-MANNY_BODY = (
-    "？點擊這裡訂閱 (https://pro.manny-li.com/join) 。\n"
+# Shaped like the real text/plain bodies — join link first, web-version link
+# second, both on the sender's host — but invented. The real samples live outside
+# the repo and are exercised by tests/test_newsletter_real_fixtures.py.
+JOIN_THEN_WEB_VERSION_BODY = (
+    "？點擊這裡訂閱 (https://letter.example.com/join) 。\n"
     "\n"
     "閱讀本信件有困難嗎？點擊這裡登入閱讀網頁版 "
-    "(https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv) 。\n"
-    "https://pro.manny-li.com/\n"
+    "(https://letter.example.com/posts/power-and-compute-financing) 。\n"
+    "https://letter.example.com/\n"
     "\n"
     "** 本期主題：電力與算力融資\n"
 )
@@ -241,12 +243,10 @@ MANNY_BODY = (
 class TestTextViewUrl:
     def test_labelled_web_version_link_wins_over_the_join_link(self, source_summarize):
         art = newsletter_article(
-            _make_parsed(text_content=MANNY_BODY, html_content=""), source_summarize
+            _make_parsed(text_content=JOIN_THEN_WEB_VERSION_BODY, html_content=""), source_summarize
         )
         assert art is not None
-        assert art.url == (
-            "https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv"
-        )
+        assert art.url == ("https://letter.example.com/posts/power-and-compute-financing")
 
     def test_english_marker(self, source_summarize):
         body = "Hi.\nView in browser (https://example.com/posts/1?utm_source=x)\n"
@@ -257,18 +257,16 @@ class TestTextViewUrl:
     def test_sender_domain_post_wins_over_esp_archive(self, source_summarize):
         art = newsletter_article(
             _make_parsed(
-                text_content=MANNY_BODY,
+                text_content=JOIN_THEN_WEB_VERSION_BODY,
                 html_content='<a href="https://mailchi.mp/abc/28">View</a>',
             ),
             source_summarize,
         )
         assert art is not None
-        assert art.url == (
-            "https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv"
-        )
+        assert art.url == ("https://letter.example.com/posts/power-and-compute-financing")
 
     def test_no_marker_stays_synthetic(self, source_summarize):
-        body = "本文\n訂閱請點 (https://pro.manny-li.com/join)\n"
+        body = "本文\n訂閱請點 (https://letter.example.com/join)\n"
         art = newsletter_article(_make_parsed(text_content=body, html_content=""), source_summarize)
         assert art is not None
         assert art.url.startswith("newsletter:")
