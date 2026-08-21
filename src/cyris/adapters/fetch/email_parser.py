@@ -118,6 +118,9 @@ def is_content_url(url: str) -> bool:
         or hostname.endswith(".list-manage.com")
         or is_share
         or "unsubscribe" in path
+        # A checkout page is never the article, and its per-subscriber rid would
+        # otherwise be rendered as "原文：" and published to the public digest.
+        or "/checkout" in path
         or path.endswith(_IMAGE_SUFFIXES)
     )
 

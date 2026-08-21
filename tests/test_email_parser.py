@@ -245,6 +245,13 @@ class TestExtractNewsletterRefUrls:
     def test_empty_html_has_no_links(self):
         assert extract_ref_urls("") == []
 
+    def test_skips_checkout_pages_carrying_subscriber_tokens(self):
+        html = """
+        <a href="https://www.patreon.com/posts/real-article-123">Article</a>
+        <a href="https://www.patreon.com/checkout/ieo?rid=8675309&amp;ref_post_id=123">Join</a>
+        """
+        assert extract_ref_urls(html) == ["https://www.patreon.com/posts/real-article-123"]
+
     def test_skips_shares_and_images(self):
         html = """
         <a href="https://twitter.com/intent/tweet?url=https://example.com/a">Tweet</a>
