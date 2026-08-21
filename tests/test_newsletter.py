@@ -347,6 +347,14 @@ class TestHarvestUrlCandidates:
             text_content="",
         ) == ["https://a.com/p/x"]
 
+    def test_query_survives_a_param_named_like_a_legacy_entity(self):
+        # &section= / &times= / &copy= are legacy entities Python expands without a
+        # semicolon, so a second unescape pass would collapse the whole query.
+        assert harvest_url_candidates(
+            html_content='<a href="https://a.com/p/x?ref=y&amp;section=top">t</a>',
+            text_content="",
+        ) == ["https://a.com/p/x?ref=y&section=top"]
+
     def test_labelled_url_in_text_strips_trailing_ideographic_full_stop(self):
         assert harvest_url_candidates(
             html_content="",

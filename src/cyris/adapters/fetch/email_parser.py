@@ -120,7 +120,8 @@ def is_content_url(url: str) -> bool:
         or "unsubscribe" in path
         # A checkout page is never the article, and its per-subscriber rid would
         # otherwise be rendered as "原文：" and published to the public digest.
-        or "/checkout" in path
+        # Match the path segment, not a substring — /checkout-ux-redesign is an article.
+        or "checkout" in path.split("/")
         or path.endswith(_IMAGE_SUFFIXES)
     )
 

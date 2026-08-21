@@ -62,7 +62,10 @@ _URL_RE = re.compile(r"https?://[^\s()<>\"']+")
 
 
 def _normalize_candidate(url: str) -> str:
-    unwrapped = unwrap_tracking_redirect(html.unescape(url))
+    # No html.unescape here: HTMLParser already unescaped the attribute, and text
+    # URLs were never escaped. Running it anyway expands Python's semicolon-less
+    # legacy entities — &section=, &times=, &copy= — and mangles the query string.
+    unwrapped = unwrap_tracking_redirect(url)
     return strip_tracking_params(unwrapped, extra_params=NEWSLETTER_TRACKING_PARAMS)
 
 

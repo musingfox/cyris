@@ -252,6 +252,10 @@ class TestExtractNewsletterRefUrls:
         """
         assert extract_ref_urls(html) == ["https://www.patreon.com/posts/real-article-123"]
 
+    def test_keeps_articles_whose_slug_merely_starts_with_checkout(self):
+        html = '<a href="https://blog.example.com/checkout-ux-redesign">Article</a>'
+        assert extract_ref_urls(html) == ["https://blog.example.com/checkout-ux-redesign"]
+
     def test_skips_shares_and_images(self):
         html = """
         <a href="https://twitter.com/intent/tweet?url=https://example.com/a">Tweet</a>
