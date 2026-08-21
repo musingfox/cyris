@@ -91,9 +91,7 @@ class TestNewsletterBodyIsTheArticle:
     def test_fan_prefers_clean_mailchi_view_link(self):
         # T3
         html = '<a href="https://mailchi.mp/abc/no-28">View this email</a><p>…</p>'
-        p = _make_parsed(
-            subject="粉虱通訊 No. 28", text_content="本期開場白……", html_content=html
-        )
+        p = _make_parsed(subject="粉虱通訊 No. 28", text_content="本期開場白……", html_content=html)
         src = SourceConfig(name="粉虱通訊", tier=Tier.FAN, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
@@ -516,3 +514,67 @@ class TestNewsletterViewUrlResolutionOrder:
         assert art.url == "https://site.com/posts/hello"
         assert "e=" not in art.url
         assert "utm_" not in art.url
+
+
+class TestSourceHomepageFallback:
+    def test_homepage_fills_in_when_no_permalink_is_found(self):
+        """A source with no per-issue link still gives the reader somewhere to go."""
+        source = SourceConfig(
+            name="粉虱通訊",
+            type="newsletter",
+            homepage="https://example.com/newsletter",
+            email_match="from:list@mailchimpapp.com",
+            tier=Tier.FAN,
+        )
+        art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
+        assert art is not None
+        # the store's dedup key stays unique per issue — the homepage must not land here
+        assert art.url.startswith("newsletter:")
+        assert art.ref_urls == ["https://example.com/newsletter"]
+
+    def test_homepage_is_not_added_when_a_permalink_was_found(self):
+        source = SourceConfig(
+            name="曼報",
+            type="newsletter",
+            homepage="https://example.com/newsletter",
+            tier=Tier.SUMMARIZE,
+        )
+        art = newsletter_article(
+            _make_parsed(text_content="本期 https://site.com/posts/42"), source
+        )
+        assert art is not None
+        assert art.url == "https://site.com/posts/42"
+        assert "https://example.com/newsletter" not in art.ref_urls
+
+    def test_recipient_token_is_stripped_from_a_configured_homepage(self):
+        """A configured homepage is not exempt from the recipient-token guard."""
+        source = SourceConfig(
+            name="X",
+            type="newsletter",
+            homepage="https://example.com/n?e=TOKEN",
+            tier=Tier.SUMMARIZE,
+        )
+        art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
+        assert art is not None
+        assert art.ref_urls == ["https://example.com/n"]
+        assert "TOKEN" not in str(art.ref_urls)
+
+    def test_esp_archive_homepage_is_accepted(self):
+        """A Mailchimp-only newsletter's own site is its campaign-archive page."""
+        source = SourceConfig(
+            name="粉虱通訊",
+            type="newsletter",
+            homepage="https://us20.campaign-archive.com/home/?u=abc&id=def",
+            tier=Tier.FAN,
+        )
+        art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
+        assert art is not None
+        assert art.ref_urls == ["https://us20.campaign-archive.com/home/?u=abc&id=def"]
+
+    def test_non_http_homepage_is_refused(self):
+        source = SourceConfig(
+            name="X", type="newsletter", homepage="javascript:alert(1)", tier=Tier.SUMMARIZE
+        )
+        art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
+        assert art is not None
+        assert art.ref_urls == []

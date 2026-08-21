@@ -187,6 +187,20 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
             source.name,
         )
         return None
+    ref_urls = extract_ref_urls(parsed.html_content)
+    if view_url is None and source.homepage:
+        # This issue has no permalink of its own. Offer the publisher's site so the
+        # reader gets somewhere instead of an unlinked title — as a ref_url, never as
+        # Article.url, which is the store's dedup key: a homepage sitting there would
+        # make every later issue look like a duplicate of the first.
+        # Only the recipient-token strip applies here. is_content_url exists to judge
+        # links harvested from the mail and drops ESP hosts — but a homepage is
+        # configured by hand, and for a Mailchimp-only newsletter the publisher's site
+        # IS its campaign-archive page.
+        homepage = strip_tracking_params(source.homepage.strip())
+        if urlparse(homepage).scheme in {"http", "https"} and homepage not in ref_urls:
+            ref_urls = [*ref_urls, homepage]
+
     return Article(
         id=article_id,
         title=parsed.subject,
@@ -196,5 +210,5 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
         source_name=source.name,
         source_tier=source.tier,
         source_tags=source.tags,
-        ref_urls=extract_ref_urls(parsed.html_content),
+        ref_urls=ref_urls,
     )
