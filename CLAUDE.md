@@ -68,7 +68,7 @@ src/cyris/
 │   ├── anthropic_client.py  # AnthropicClient (implements LLMClient)
 │   ├── store/               # ArticleStore (JSON, dedup by URL) + event store/schema
 │   ├── fetch/               # Miniflux client/source, newsletter archive + Cloudflare-worker sources, extractor, email parser
-│   ├── output/              # DigestWriter, HTML digest, article export, publish, usage log
+│   ├── output/              # DigestWriter, HTML digest, raw collected-article listings, article export, publish, usage log
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   ├── tracking_yaml.py     # tracking.yaml load/upsert
@@ -100,7 +100,8 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/digest.py` renders the final Obsidian markdown note; `domain/selection.py` layers featured articles by score
-7. `service_layer/learning.py` turns triage feedback into a preference profile
+7. Alongside each digest, both writers emit a companion listing every article the window collected — uncapped and unfiltered, so what the digest dropped stays visible: `{date}-{period}-raw.md` in the vault and `{date}-{period}-raw.html` grouped by source, linked from the digest footer and deployed with the rest of the Pages directory
+8. `service_layer/learning.py` turns triage feedback into a preference profile
 
 ### Adapter Extension Points
 
@@ -130,7 +131,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 ### Configuration Files
 
 - `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[promote]`/`[newsletter]` Worker URLs)
-- `sources.yaml` — RSS/newsletter source definitions with tier, tags, and aliases; email-only sources use `type: newsletter` + `email_match: "from:..."`
+- `sources.yaml` — RSS/newsletter source definitions with tier, tags, and aliases; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` whose host identifies the sender's own domain when extracting an issue's canonical link (never used as a link itself — see below)
 - `agent-vault/tracking.yaml` — tracked topics list (name/keywords/created; gitignored, copy from tracking.example.yaml)
 - `.env` — secrets (API keys for Miniflux, Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`; Discord webhook)
 
@@ -147,6 +148,8 @@ Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw 
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
 - Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows feed `cyris learn`
 - Digest output language is configurable via `[digest] output_language` (default 繁體中文); prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
+- Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan remain only as fallbacks behind it. **Never make the extractor return a URL that repeats across issues** (a homepage, a `/join` link, an archive URL whose only per-issue param gets stripped): `ArticleStore` dedups by URL, so every later issue would be silently dropped — worse than the synthetic `newsletter:<hash>` URL, which is unique per issue by construction. Real-sample coverage lives in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
+- Link-health counters on `DigestContent` have deliberately different scopes: `synthetic_url_count` covers every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health), `dead_link_count` covers only items that reached the digest with no clickable link (what a reader hits). The Discord stats line labels each — don't "fix" them into agreement
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers
 - Mock patching: always patch where the function is **used**, not where it is **defined** (e.g. patch `cyris.service_layer.run_digest.now_in_timezone`, not `cyris.utils.timezone.now_in_timezone`)
 - LLM calls in tests: inject `FakeLLM` (tests/fakes.py) instead of patching the Anthropic SDK; only CLI-level e2e tests patch the single adapter point `cyris.adapters.anthropic_client.anthropic.AsyncAnthropic`

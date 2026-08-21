@@ -8,6 +8,8 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 - Reduces daily article volume by 80%+ through AI-powered filtering
 - Scores and routes articles: high-relevance to digest, lower to triage queue
 - Generates twice-daily Obsidian markdown digest notes with thematic summaries
+- Ships each digest with a companion listing everything the window collected, grouped by
+  source, so what the filters dropped stays inspectable instead of disappearing
 - Learns user preferences from digest feedback to improve filtering over time
 - Provides a swipe-based web UI for triaging borderline articles
 
@@ -140,7 +142,7 @@ Three Protocols in `service_layer/ports.py` are the clean seams:
 | **Fetch source** (input) | `FetchSource` | `MinifluxSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
 | **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient` | add an AI provider |
 | **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
-| **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md), `HtmlDigestWriter`, `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
+| **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md + raw list), `HtmlDigestWriter` (digest + raw page), `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
 
 Core code (`service_layer/` + `domain/`) never changes when you swap or add an
 adapter — that is the point of the Protocol seams.

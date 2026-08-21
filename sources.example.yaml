@@ -44,9 +44,16 @@ sources:
   # --- Email-only newsletter (no RSS): ingested via the Cloudflare newsletter Worker ---
   # `type: newsletter` + `email_match` instead of a url; needs the [newsletter] Worker
   # configured in cyris.toml (see docs). Matches incoming mail by From: header.
+  # `homepage` is where this newsletter publishes. Its host tells the extractor which
+  # links in the email are the sender's own, so the issue's 原文 link is picked from
+  # those rather than from whichever domain the issue happens to quote most. Optional —
+  # without it the extractor falls back to guessing the dominant host. It is not used
+  # as a link of its own: an issue with no article link stays on a synthetic URL, since
+  # a homepage repeated every issue would make the store drop later issues as duplicates.
   - name: "Some Email Newsletter"
     type: newsletter
     email_match: "from:newsletter@example.com"
+    homepage: "https://newsletter.example.com"
     tier: summarize
     tags: [newsletter]
 
