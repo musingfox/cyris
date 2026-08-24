@@ -178,7 +178,7 @@ def test_api_errors_surface_instead_of_returning_empty(monkeypatch) -> None:
     client = D1Client(account_id="a", database_id="b", api_token="c")
 
     class Response:
-        def raise_for_status(self) -> None: ...
+        status_code = 200
 
         def json(self) -> dict:
             return {"success": False, "errors": [{"message": "no such table"}]}
@@ -187,3 +187,42 @@ def test_api_errors_surface_instead_of_returning_empty(monkeypatch) -> None:
 
     with pytest.raises(D1Error, match="no such table"):
         client.query("SELECT 1")
+
+
+def test_a_rejected_statement_reports_what_d1_said(monkeypatch) -> None:
+    """D1 puts the reason in a 400's body; raise_for_status would discard it, and
+    `no such table: sources` is the difference between a fix and a guess."""
+    client = D1Client(account_id="a", database_id="b", api_token="c")
+
+    class Response:
+        status_code = 400
+
+        def json(self) -> dict:
+            return {"errors": [{"message": "no such table: sources: SQLITE_ERROR"}]}
+
+    monkeypatch.setattr(client._http, "post", lambda *a, **k: Response())
+
+    with pytest.raises(D1Error, match="no such table: sources"):
+        client.query("SELECT 1 FROM sources")
+
+
+def test_a_client_error_is_not_retried(monkeypatch) -> None:
+    """Repeating a malformed request only delays the diagnosis."""
+    client = D1Client(account_id="a", database_id="b", api_token="c")
+    calls = []
+
+    class Response:
+        status_code = 400
+
+        def json(self) -> dict:
+            return {"errors": [{"message": "bad request"}]}
+
+    def post(*_a, **_k):
+        calls.append(1)
+        return Response()
+
+    monkeypatch.setattr(client._http, "post", post)
+
+    with pytest.raises(D1Error):
+        client.query("SELECT 1")
+    assert len(calls) == 1

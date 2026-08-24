@@ -2,9 +2,25 @@
 
 from pathlib import Path
 
+import pytest
+
 from cyris.config import AppConfig, Config, LLMProviderConfig, ObsidianConfig
 from cyris.domain.models import SourceConfig, Tier
 from cyris.service_layer import doctor
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """Any D1 a check reaches for is local sqlite, never the real API.
+
+    Without this the backend="d1" cases hit api.cloudflare.com with a bogus
+    token and pay the client's full retry backoff for it.
+    """
+    from fakes import SqliteD1
+
+    db = SqliteD1()
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
+    return db
 
 
 def _config(tmp_path: Path, **app_kwargs) -> Config:
@@ -87,65 +103,59 @@ async def test_an_unwired_rss_buffer_warns_with_the_measured_cost(tmp_path: Path
     assert "95 of the 179" in check.fix
 
 
-async def test_a_dead_token_is_reported_against_what_needs_it(tmp_path: Path, monkeypatch) -> None:
-    """The failure this command exists for: an expired token nothing asks about."""
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "expired")
+async def test_a_working_account_token_is_not_called_invalid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The bug this replaced: /user/tokens/verify rejects account-owned tokens,
+    so doctor called a token invalid three lines under a check that had just
+    used it successfully."""
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "account-owned")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
     monkeypatch.setattr(
-        "cyris.adapters.cloudflare.verify_api_token", lambda _t: (False, "Invalid API Token")
+        "cyris.adapters.cloudflare.check_pages_access",
+        lambda *_a: (True, "can publish to cyris-digest"),
     )
     cfg = _config(tmp_path)
     cfg.app.promote.publish_enabled = True
+    cfg.app.promote.pages_project = "cyris-digest"
 
-    check = _by_name(await doctor.run_checks(cfg), "cloudflare token")
+    check = _by_name(await doctor.run_checks(cfg), "publishing")
+
+    assert check.status == "ok"
+
+
+async def test_a_token_without_pages_permission_says_so(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "d1-only")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setattr(
+        "cyris.adapters.cloudflare.check_pages_access",
+        lambda *_a: (False, "Authentication error"),
+    )
+    cfg = _config(tmp_path)
+    cfg.app.promote.publish_enabled = True
+    cfg.app.promote.pages_project = "cyris-digest"
+
+    check = _by_name(await doctor.run_checks(cfg), "publishing")
 
     assert check.status == "fail"
-    assert "Pages" in check.name
-    assert "Invalid API Token" in check.detail
+    assert "Pages permission" in check.fix
 
 
-async def test_an_empty_token_names_the_variable_that_supplies_it(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """Publishing reads CLOUDFLARE_API_TOKEN; telling the reader to set the D1
-    one instead sends them to fix the wrong line."""
+async def test_a_missing_publish_token_names_its_variable(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
     cfg = _config(tmp_path)
     cfg.app.promote.publish_enabled = True
 
-    check = _by_name(await doctor.run_checks(cfg), "cloudflare token")
+    check = _by_name(await doctor.run_checks(cfg), "publishing")
 
     assert check.status == "fail"
     assert "CLOUDFLARE_API_TOKEN" in check.fix
-    assert "CYRIS_D1_API_TOKEN" not in check.fix
 
 
-async def test_an_empty_d1_token_names_its_own_variable(tmp_path: Path) -> None:
-    cfg = _config(tmp_path)
-    cfg.app.store.backend = "d1"
-    cfg.app.store.api_token = ""
+async def test_publishing_disabled_is_a_skip(tmp_path: Path) -> None:
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "publishing")
 
-    check = _by_name(await doctor.run_checks(cfg), "cloudflare token")
-
-    assert "CYRIS_D1_API_TOKEN" in check.fix
-
-
-async def test_one_token_serving_two_purposes_is_verified_once(tmp_path: Path, monkeypatch) -> None:
-    calls: list[str] = []
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "shared")
-    monkeypatch.setattr(
-        "cyris.adapters.cloudflare.verify_api_token",
-        lambda token: (calls.append(token), (True, "active"))[1],
-    )
-    cfg = _config(tmp_path)
-    cfg.app.promote.publish_enabled = True
-    cfg.app.store.backend = "d1"
-    cfg.app.store.api_token = "shared"
-
-    checks = [c for c in await doctor.run_checks(cfg) if c.name.startswith("cloudflare token")]
-
-    assert len(calls) == 1
-    assert len(checks) == 1
-    assert "Pages" in checks[0].name and "D1" in checks[0].name
+    assert check.status == "skip"
 
 
 async def test_an_unreachable_store_fails_rather_than_reading_as_empty(

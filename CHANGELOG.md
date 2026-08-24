@@ -8,11 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **`cyris doctor`.** A read-only pass over sources, LLM provider, vault paths,
-  the article store, every Worker, and each Cloudflare API token — verified
-  against Cloudflare rather than assumed — with a fix line per problem and a
-  non-zero exit when something would break a run. It exists because an expired
-  `CLOUDFLARE_API_TOKEN` sat in `.env` while `wrangler pages deploy` reported it
-  as its own intermittent failure; nothing had ever asked the question directly.
+  the article store, every Worker, and whether the digest can actually be
+  published — with a fix line per problem and a non-zero exit when something
+  would break a run. Every credential is checked by asking the API it is *for*:
+  `/user/tokens/verify` answers only for user tokens and calls a working
+  account-owned token invalid, so the store check runs a real query and the
+  publish check asks the Pages API about the project.
 - **`cyris sources push` / `cyris sources list`.** Source definitions can live in
   D1, which is what makes adding a feed a write instead of an image rebuild —
   `workers/rss/` reads the same table at poll time. `sources.yaml` stays the

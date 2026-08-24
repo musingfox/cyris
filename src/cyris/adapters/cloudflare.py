@@ -4,27 +4,30 @@ from __future__ import annotations
 
 import httpx
 
-VERIFY_URL = "https://api.cloudflare.com/client/v4/user/tokens/verify"
+API_ROOT = "https://api.cloudflare.com/client/v4"
 TIMEOUT_SECONDS = 15
 
 
-def verify_api_token(token: str) -> tuple[bool, str]:
-    """Ask Cloudflare whether an API token is live. Returns (valid, message).
+def check_pages_access(account_id: str, project: str, token: str) -> tuple[bool, str]:
+    """Ask the Pages API whether this token can see the project. (ok, message).
 
-    An expired or revoked token fails the same way a wrong one does, and every
-    caller of it — `wrangler pages deploy`, the D1 store — reports that as its
-    own failure, which is how a dead token stays invisible.
+    Deliberately not `/user/tokens/verify`: that endpoint only answers for
+    *user* tokens, and rejects a perfectly good account-owned one. Asking the
+    API that publishing actually uses tests liveness and the right permission in
+    the same call, which is the question worth answering.
     """
+    if not project:
+        return False, "[promote] pages_project is empty, so there is nothing to publish to"
+
+    url = f"{API_ROOT}/accounts/{account_id}/pages/projects/{project}"
     try:
-        resp = httpx.get(
-            VERIFY_URL, headers={"Authorization": f"Bearer {token}"}, timeout=TIMEOUT_SECONDS
-        )
+        resp = httpx.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=TIMEOUT_SECONDS)
         body = resp.json()
     except (httpx.HTTPError, ValueError) as e:
-        return False, f"could not reach the Cloudflare API: {e}"
+        return False, f"could not reach the Pages API: {e}"
 
     if body.get("success"):
-        return True, str((body.get("result") or {}).get("status", "active"))
+        return True, f"can publish to {project}"
 
-    errors = body.get("errors") or [{"message": "unknown error"}]
+    errors = body.get("errors") or [{"message": f"HTTP {resp.status_code}"}]
     return False, "; ".join(str(e.get("message", e)) for e in errors)

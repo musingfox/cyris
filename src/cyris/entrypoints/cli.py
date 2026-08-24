@@ -972,6 +972,22 @@ app.add_typer(store_app, name="store")
 _ALL_ARTICLES = 1_000_000  # the store holds thousands; this means "everything"
 
 
+def _newest_by_url(articles: list) -> dict:
+    """One article per URL, the most recently seen one.
+
+    The JSON store can hold the same URL twice — its dedup scan only looks back
+    8 days, so a re-published article lands again in a later partition. D1's URL
+    primary key keeps one row, so comparing needs both sides to pick the same
+    one, or every such URL reads as a mismatch when nothing is wrong.
+    """
+    newest: dict = {}
+    for article in articles:
+        seen = newest.get(article.url)
+        if seen is None or article.first_seen_at > seen.first_seen_at:
+            newest[article.url] = article
+    return newest
+
+
 def _load_both_stores(config_path: Path, sources_path: Path):
     """Return (json_store, d1_store) regardless of which one [store] selects."""
     from cyris.adapters.store import ArticleStore
@@ -1009,7 +1025,13 @@ def store_migrate(
 
     articles = json_store.list_articles(state=None, limit=_ALL_ARTICLES)
     typer.echo(f"Read {len(articles)} articles from the local store.")
-    imported = d1_store.import_articles(articles)
+
+    # A full store is thousands of statements; without this it looks like a hang.
+    def progress(done: int, total: int) -> None:
+        if done % 50 == 0 or done == total:
+            typer.echo(f"  {done}/{total} batches")
+
+    imported = d1_store.import_articles(articles, on_progress=progress)
     typer.echo(f"Inserted {imported} into D1 ({len(articles) - imported} already there).")
 
 
@@ -1025,9 +1047,9 @@ def store_diff(
     """Compare both stores article by article. Silence means they agree."""
     json_store, d1_store = _load_both_stores(config_path, sources_path)
 
-    local = {a.url: a for a in json_store.list_articles(state=None, limit=_ALL_ARTICLES)}
-    remote = {a.url: a for a in d1_store.list_articles(state=None, limit=_ALL_ARTICLES)}
-    typer.echo(f"local: {len(local)} articles    d1: {len(remote)} articles")
+    local = _newest_by_url(json_store.list_articles(state=None, limit=_ALL_ARTICLES))
+    remote = _newest_by_url(d1_store.list_articles(state=None, limit=_ALL_ARTICLES))
+    typer.echo(f"local: {len(local)} urls    d1: {len(remote)} urls")
 
     only_local = sorted(local.keys() - remote.keys())
     only_remote = sorted(remote.keys() - local.keys())

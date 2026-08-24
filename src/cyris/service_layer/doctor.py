@@ -180,39 +180,43 @@ async def _check_workers(cfg: Config) -> list[Check]:
     return checks
 
 
-def _check_cloudflare_token(cfg: Config) -> list[Check]:
-    """Verify each distinct token once, and say what each one is for."""
-    from cyris.adapters.cloudflare import verify_api_token
+def _check_publish_token(cfg: Config) -> list[Check]:
+    """Whether the digest can actually be published.
 
-    # Purpose -> the variable that supplies it, so an empty token names the right one.
-    wanted: dict[str, list[tuple[str, str]]] = {}
-    if cfg.app.promote.publish_enabled:
-        token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
-        wanted.setdefault(token, []).append(
-            ("publishing the HTML digest to Pages", "CLOUDFLARE_API_TOKEN")
-        )
-    if cfg.app.store.is_d1:
-        wanted.setdefault(cfg.app.store.api_token, []).append(
-            ("the D1 article store", "CYRIS_D1_API_TOKEN")
-        )
+    The D1 token needs no check of its own: the article store check above runs a
+    real query through it, which proves liveness and permission together. That is
+    the standard here — ask the API the token is *for*, never a generic verify
+    endpoint, which answers only for user tokens and calls a working
+    account-owned token invalid.
+    """
+    if not cfg.app.promote.publish_enabled:
+        return [Check("publishing", "skip", "disabled — the digest stays local")]
 
-    checks = []
-    for token, purposes in wanted.items():
-        label = f"cloudflare token ({' + '.join(p for p, _ in purposes)})"
-        if not token:
-            variables = " or ".join(dict.fromkeys(var for _, var in purposes))
-            checks.append(Check(label, "fail", "not set", f"Put a token in .env as {variables}."))
-            continue
-        valid, message = verify_api_token(token)
-        checks.append(
+    from cyris.adapters.cloudflare import check_pages_access
+
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    if not token:
+        return [
             Check(
-                label,
-                "ok" if valid else "fail",
-                message,
-                "" if valid else "Create a fresh token at dash.cloudflare.com and update .env.",
+                "publishing",
+                "fail",
+                "no token",
+                "Put a Pages-capable token in .env as CLOUDFLARE_API_TOKEN.",
             )
+        ]
+    if not account_id:
+        return [Check("publishing", "fail", "CLOUDFLARE_ACCOUNT_ID is not set", "Put it in .env.")]
+
+    ok, message = check_pages_access(account_id, cfg.app.promote.pages_project, token)
+    return [
+        Check(
+            "publishing",
+            "ok" if ok else "fail",
+            message,
+            "" if ok else "The token needs the Cloudflare Pages permission at Edit level.",
         )
-    return checks
+    ]
 
 
 def _check_notifications(cfg: Config) -> Check:
@@ -230,6 +234,6 @@ async def run_checks(cfg: Config) -> list[Check]:
     """Every check, in the order a reader would want to see them."""
     checks = [_check_sources(cfg), _check_llm(cfg), *_check_paths(cfg), _check_store(cfg)]
     checks.extend(await _check_workers(cfg))
-    checks.extend(_check_cloudflare_token(cfg))
+    checks.extend(_check_publish_token(cfg))
     checks.append(_check_notifications(cfg))
     return checks

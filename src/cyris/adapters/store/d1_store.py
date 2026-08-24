@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -123,22 +124,29 @@ class D1ArticleStore:
         logger.info("Saved %d new articles to D1 (%d skipped)", saved, len(articles) - saved)
         return SaveResult(saved_count=saved, skipped_count=len(articles) - saved)
 
-    def import_articles(self, articles: list[StoredArticle]) -> int:
+    def import_articles(
+        self, articles: list[StoredArticle], on_progress: Callable[[int, int], None] | None = None
+    ) -> int:
         """Copy rows in as-is, keeping state, scores and triage stamps.
 
         `INSERT OR IGNORE`, so re-running a migration never overwrites a decision
         already made in D1 — the local file it came from may be stale by then.
+        That also makes an interrupted migration resumable: run it again and it
+        picks up where it stopped.
         """
         if not articles:
             return 0
         placeholders = "(" + ", ".join("?" * len(COLUMNS)) + ")"
+        chunks = chunk_rows([_to_row(a) for a in articles], len(COLUMNS))
         imported = 0
-        for chunk in chunk_rows([_to_row(a) for a in articles], len(COLUMNS)):
+        for done, chunk in enumerate(chunks, start=1):
             sql = (
                 f"INSERT OR IGNORE INTO stored_articles ({', '.join(COLUMNS)}) "
                 f"VALUES {', '.join(placeholders for _ in chunk)}"
             )
             imported += self._db.query(sql, [v for row in chunk for v in row]).changes
+            if on_progress:
+                on_progress(done, len(chunks))
         return imported
 
     def update_states(
