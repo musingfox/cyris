@@ -49,14 +49,9 @@ class RssSource:
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        aliases: dict[str, str] | None = None,
         limit: int = 200,
     ) -> list[Article]:
-        """Fetch every configured feed concurrently and window-filter the entries.
-
-        `aliases` is accepted for FetchSource compatibility but unused: entries are
-        keyed by the feed URL they came from, so there is no feed-title to resolve.
-        """
+        """Fetch every configured feed concurrently and window-filter the entries."""
         feeds = [s for s in sources.values() if s.url and s.type == "rss"]
         if not feeds:
             return []

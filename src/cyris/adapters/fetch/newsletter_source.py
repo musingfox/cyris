@@ -28,7 +28,6 @@ class NewsletterArchiveSource:
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        aliases: dict[str, str] | None = None,
         limit: int = 200,
     ) -> list[Article]:
         """Load newsletter articles from archive within time window.
@@ -37,7 +36,6 @@ class NewsletterArchiveSource:
             after: Start of time window (inclusive).
             before: End of time window (exclusive).
             sources: Source configs (unused for archive, kept for protocol).
-            aliases: Aliases (unused for archive, kept for protocol).
             limit: Max articles (unused for archive, kept for protocol).
 
         Returns:

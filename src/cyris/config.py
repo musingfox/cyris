@@ -218,13 +218,11 @@ class AppConfig(BaseModel):
 class SourcesConfig(BaseModel):
     defaults: dict[str, str] = Field(default_factory=dict)
     sources: list[SourceConfig] = Field(default_factory=list)
-    aliases: dict[str, str] = Field(default_factory=dict)
 
 
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
-    aliases: dict[str, str] = Field(default_factory=dict)
 
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
@@ -295,4 +293,4 @@ def load_config(
     # Key sources by name for fast lookup
     sources_dict = {s.name: s for s in sources_config.sources}
 
-    return Config(app=app_config, sources=sources_dict, aliases=sources_config.aliases)
+    return Config(app=app_config, sources=sources_dict)

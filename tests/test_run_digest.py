@@ -51,7 +51,6 @@ def make_deps(
             agent_vault=AgentVaultConfig(path=agent_vault),
         ),
         sources={},
-        aliases={},
     )
 
     notifications: list[str] = []

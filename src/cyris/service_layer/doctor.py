@@ -173,20 +173,24 @@ def _check_cloudflare_token(cfg: Config) -> list[Check]:
     """Verify each distinct token once, and say what each one is for."""
     from cyris.adapters.cloudflare import verify_api_token
 
-    wanted: dict[str, list[str]] = {}
+    # Purpose -> the variable that supplies it, so an empty token names the right one.
+    wanted: dict[str, list[tuple[str, str]]] = {}
     if cfg.app.promote.publish_enabled:
         token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
-        wanted.setdefault(token, []).append("publishing the HTML digest to Pages")
+        wanted.setdefault(token, []).append(
+            ("publishing the HTML digest to Pages", "CLOUDFLARE_API_TOKEN")
+        )
     if cfg.app.store.is_d1:
-        wanted.setdefault(cfg.app.store.api_token, []).append("the D1 article store")
+        wanted.setdefault(cfg.app.store.api_token, []).append(
+            ("the D1 article store", "CYRIS_D1_API_TOKEN")
+        )
 
     checks = []
     for token, purposes in wanted.items():
-        label = f"cloudflare token ({' + '.join(purposes)})"
+        label = f"cloudflare token ({' + '.join(p for p, _ in purposes)})"
         if not token:
-            checks.append(
-                Check(label, "fail", "not set", "Put a token in .env (CYRIS_D1_API_TOKEN).")
-            )
+            variables = " or ".join(dict.fromkeys(var for _, var in purposes))
+            checks.append(Check(label, "fail", "not set", f"Put a token in .env as {variables}."))
             continue
         valid, message = verify_api_token(token)
         checks.append(

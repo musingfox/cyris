@@ -62,7 +62,6 @@ async def test_combines_sources(rss_articles, newsletter_articles):
         after=datetime(2026, 3, 17),
         before=datetime(2026, 3, 19),
         sources={},
-        aliases={},
     )
 
     assert len(result) == 3
@@ -97,7 +96,6 @@ async def test_deduplicates_by_url(newsletter_articles):
         after=datetime(2026, 3, 17),
         before=datetime(2026, 3, 19),
         sources={},
-        aliases={},
     )
 
     # Newsletter version should win (last source wins)
@@ -112,14 +110,12 @@ async def test_passes_parameters_to_sources(rss_articles):
     mock_source.fetch_articles.return_value = rss_articles
 
     test_sources = {"test": "config"}
-    test_aliases = {"alias": "source"}
 
     await fetch_all_articles(
         fetch_sources=[mock_source],
         after=datetime(2026, 3, 17),
         before=datetime(2026, 3, 19),
         sources=test_sources,
-        aliases=test_aliases,
         limit=50,
     )
 
@@ -128,7 +124,6 @@ async def test_passes_parameters_to_sources(rss_articles):
         after=datetime(2026, 3, 17),
         before=datetime(2026, 3, 19),
         sources=test_sources,
-        aliases=test_aliases,
         limit=50,
     )
 

@@ -76,7 +76,6 @@ class CloudflareNewsletterSource:
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        aliases: dict[str, str] | None = None,
         limit: int = 200,
     ) -> list[Article]:
         """Pull queued newsletters, expand into Articles, then ACK the queue.

@@ -56,8 +56,3 @@ sources:
     homepage: "https://newsletter.example.com"
     tier: summarize
     tags: [newsletter]
-
-
-# Feed title → source name overrides, for when a feed's <title> doesn't match `name`.
-aliases:
-  "Stratechery by Ben Thompson": "Stratechery"

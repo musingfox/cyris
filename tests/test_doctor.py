@@ -85,6 +85,32 @@ async def test_a_dead_token_is_reported_against_what_needs_it(tmp_path: Path, mo
     assert "Invalid API Token" in check.detail
 
 
+async def test_an_empty_token_names_the_variable_that_supplies_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Publishing reads CLOUDFLARE_API_TOKEN; telling the reader to set the D1
+    one instead sends them to fix the wrong line."""
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    cfg = _config(tmp_path)
+    cfg.app.promote.publish_enabled = True
+
+    check = _by_name(await doctor.run_checks(cfg), "cloudflare token")
+
+    assert check.status == "fail"
+    assert "CLOUDFLARE_API_TOKEN" in check.fix
+    assert "CYRIS_D1_API_TOKEN" not in check.fix
+
+
+async def test_an_empty_d1_token_names_its_own_variable(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    cfg.app.store.api_token = ""
+
+    check = _by_name(await doctor.run_checks(cfg), "cloudflare token")
+
+    assert "CYRIS_D1_API_TOKEN" in check.fix
+
+
 async def test_one_token_serving_two_purposes_is_verified_once(tmp_path: Path, monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "shared")

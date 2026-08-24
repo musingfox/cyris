@@ -99,7 +99,6 @@ class FetchSource(Protocol):
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        aliases: dict[str, str] | None = None,
         limit: int = 200,
     ) -> list[Article]:
         """Fetch articles within a time window."""

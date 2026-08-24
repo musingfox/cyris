@@ -31,14 +31,9 @@ class CloudflareRssSource:
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        aliases: dict[str, str] | None = None,
         limit: int = 200,
     ) -> list[Article]:
-        """Read the window from D1 and map rows onto Articles.
-
-        `aliases` is accepted for FetchSource compatibility: rows already carry
-        the configured source name.
-        """
+        """Read the window from D1 and map rows onto Articles."""
         params = {
             "after": after.isoformat(),
             "before": before.isoformat(),

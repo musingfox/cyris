@@ -14,7 +14,6 @@ async def fetch_all_articles(
     after: datetime,
     before: datetime,
     sources: dict[str, SourceConfig],
-    aliases: dict[str, str] | None = None,
     limit: int = 200,
 ) -> tuple[list[Article], list[str]]:
     """Fetch articles from multiple sources, deduplicate by URL.
@@ -24,7 +23,6 @@ async def fetch_all_articles(
         after: Start of time window (inclusive).
         before: End of time window (exclusive).
         sources: Source configs keyed by name.
-        aliases: Optional feed title → source name mappings.
         limit: Max articles per source. Defaults to 200.
 
     Returns:
@@ -39,7 +37,6 @@ async def fetch_all_articles(
                 after=after,
                 before=before,
                 sources=sources,
-                aliases=aliases,
                 limit=limit,
             )
             # Deduplicate by URL (last source wins)

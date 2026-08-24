@@ -36,6 +36,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   2026-08-25 against a live direct poll: buffer 179 URLs, poll 95, **0 the poll
   saw that the buffer had not** — the buffer is a strict superset, and direct
   polling alone would have lost 84 of 179 articles to feed snapshots expiring.
+- **Source aliases.** `aliases:` in `sources.yaml` mapped a feed's `<title>` to
+  a source name, which only mattered while Miniflux served articles keyed by feed
+  title. Every remaining source names itself from `sources.yaml` directly, so the
+  whole parameter was being threaded through four adapters and read by none.
 - **`FetchSource.mark_as_read`** and `SaveResult.miniflux_ids`. Every remaining
   source implemented `mark_as_read` as a no-op — the newsletter Worker ACKs its
   queue inside `fetch_articles` — so the read state that is left lives entirely in

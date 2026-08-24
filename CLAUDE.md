@@ -130,7 +130,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 ### Configuration Files
 
 - `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[promote]`/`[newsletter]`/`[rss]` Worker URLs)
-- `sources.yaml` — RSS/newsletter source definitions with tier, tags, and aliases; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
+- `sources.yaml` — RSS/newsletter source definitions with tier and tags; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
 - `.env` — secrets (API keys for Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`, `CYRIS_RSS_TOKEN`; Discord webhook)
 
 ### Agent Vault (`agent-vault/`)

@@ -65,7 +65,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         after=window_start,
         before=now,
         sources=cfg.sources,
-        aliases=cfg.aliases,
         limit=cfg.app.digest.max_articles_per_digest,
     )
 
