@@ -126,11 +126,12 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris triage-ui` | Start swipe-based web UI for article classification |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |
 | `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends |
+| `cyris sources push\|list` | Make D1's source table match `sources.yaml`; show what it serves |
 
 ### Configuration Files
 
 - `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[promote]`/`[newsletter]`/`[rss]` Worker URLs)
-- `sources.yaml` — RSS/newsletter source definitions with tier and tags; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
+- `sources.yaml` — RSS/newsletter source definitions with tier and tags. The editable format and the fallback; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table instead, and `cyris sources push` is what fills it. An empty or unreachable table falls back to the file on both sides, so a half-migrated deployment keeps fetching; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
 - `.env` — secrets (API keys for Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`, `CYRIS_RSS_TOKEN`; Discord webhook)
 
 ### Agent Vault (`agent-vault/`)

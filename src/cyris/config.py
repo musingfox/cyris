@@ -4,6 +4,7 @@ Loads cyris.toml (app config) and sources.yaml (source definitions).
 Sensitive values are injected from environment variables.
 """
 
+import logging
 import os
 import tomllib
 from pathlib import Path
@@ -26,6 +27,9 @@ def _load_dotenv(env_path: Path | None = None) -> None:
             continue
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip())
+
+
+logger = logging.getLogger(__name__)
 
 
 class NotifyConfig(BaseModel):
@@ -223,6 +227,9 @@ class SourcesConfig(BaseModel):
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
+    # Which one won: a D1-backed deployment silently falling back to the file is
+    # exactly the kind of half-migration `cyris doctor` exists to surface.
+    sources_origin: Literal["sources.yaml", "d1"] = "sources.yaml"
 
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
@@ -293,4 +300,39 @@ def load_config(
     # Key sources by name for fast lookup
     sources_dict = {s.name: s for s in sources_config.sources}
 
-    return Config(app=app_config, sources=sources_dict)
+    from_d1 = _sources_from_d1(app_config)
+    return Config(
+        app=app_config,
+        sources=from_d1 or sources_dict,
+        sources_origin="d1" if from_d1 else "sources.yaml",
+    )
+
+
+def _sources_from_d1(app_config: AppConfig) -> dict[str, SourceConfig] | None:
+    """The `sources` table when D1 is on and populated, else None to use the file.
+
+    Deliberately falls back rather than failing: a deployment that has switched
+    the store to D1 but has not run `cyris sources push` yet must still fetch,
+    and an unreachable D1 must not silently drop every source.
+    """
+    if not app_config.store.is_d1:
+        return None
+
+    from cyris.adapters.store.d1 import D1Client
+    from cyris.adapters.store.source_store import D1SourceStore
+
+    try:
+        client = D1Client(
+            account_id=app_config.store.account_id,
+            database_id=app_config.store.database_id,
+            api_token=app_config.store.api_token,
+        )
+        sources = D1SourceStore(client).list_sources()
+    except Exception as e:  # noqa: BLE001 - any failure means "use the file"
+        logger.warning("Could not read sources from D1 (%s); using sources.yaml", e)
+        return None
+
+    if not sources:
+        logger.info("No sources in D1 yet; using sources.yaml. Run `cyris sources push`.")
+        return None
+    return sources

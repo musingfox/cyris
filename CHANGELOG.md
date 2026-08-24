@@ -13,6 +13,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   non-zero exit when something would break a run. It exists because an expired
   `CLOUDFLARE_API_TOKEN` sat in `.env` while `wrangler pages deploy` reported it
   as its own intermittent failure; nothing had ever asked the question directly.
+- **`cyris sources push` / `cyris sources list`.** Source definitions can live in
+  D1, which is what makes adding a feed a write instead of an image rebuild —
+  `workers/rss/` reads the same table at poll time. `sources.yaml` stays the
+  editable format and the fallback: an empty or unreachable table falls back to
+  the file on both sides, so a half-migrated deployment keeps fetching rather
+  than silently polling nothing.
 - **Article store on Cloudflare D1** (`[store] backend = "d1"`, off by default).
   `D1ArticleStore` implements the same contract as the JSON store over D1's HTTP
   query API, and the usage log moves into the same database. `cyris store migrate`

@@ -1053,3 +1053,78 @@ def store_diff(
             if mismatched <= 20:
                 typer.echo(f"\n{url}\n  " + "\n  ".join(differences))
     typer.echo(f"\nshared: {len(local.keys() & remote.keys())}, differing: {mismatched}")
+
+
+sources_app = typer.Typer(help="Keep source definitions in D1 so adding a feed is not a rebuild")
+app.add_typer(sources_app, name="sources")
+
+
+def _source_store(config_path: Path, sources_path: Path):
+    """Return (yaml_sources, D1SourceStore) or exit with what is missing."""
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.bootstrap import build_d1_client
+    from cyris.config import load_config
+
+    try:
+        cfg = load_config(config_path, sources_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    if not cfg.app.store.database_id or not cfg.app.store.api_token:
+        typer.echo("No D1 configured: set [store] database_id and CYRIS_D1_API_TOKEN.")
+        raise typer.Exit(1)
+
+    cfg.app.store.backend = "d1"
+    return cfg, D1SourceStore(build_d1_client(cfg))
+
+
+@sources_app.command("push")
+def sources_push(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Make D1 match sources.yaml exactly, removals included."""
+    cfg, store = _source_store(config_path, sources_path)
+
+    # load_config already prefers D1 when it has rows, so read the file directly
+    # or a push would just write D1's current contents back to itself.
+    import yaml as _yaml
+
+    from cyris.config import SourcesConfig
+
+    raw = _yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    from_file = {s.name: s for s in SourcesConfig.model_validate(raw).sources}
+
+    before = set(store.list_sources())
+    written = store.replace_all(from_file)
+    removed = sorted(before - set(from_file))
+
+    typer.echo(f"Pushed {written} sources from {sources_path}.")
+    for name in removed:
+        typer.echo(f"  removed: {name}")
+
+
+@sources_app.command("list")
+def sources_list(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Show what D1 currently serves to the pipeline and the RSS Worker."""
+    _cfg, store = _source_store(config_path, sources_path)
+
+    sources = store.list_sources()
+    if not sources:
+        typer.echo("D1 has no sources; both readers fall back to sources.yaml.")
+        return
+    for source in sources.values():
+        typer.echo(f"{source.tier.value:<10} {source.type:<11} {source.name} — {source.url or '—'}")
+    typer.echo(f"\n{len(sources)} sources in D1.")

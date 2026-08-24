@@ -51,3 +51,15 @@ CREATE TABLE IF NOT EXISTS usage_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_log_logged_at ON usage_log(logged_at);
+
+-- Source definitions, so adding a feed is a write rather than a rebuild.
+-- `sources.yaml` stays the editable format and the fallback; `cyris sources push`
+-- copies it here, and both readers (cyris and workers/rss) prefer this table when
+-- it has rows. The columns are the ones the Worker's poll query needs; everything
+-- else rides in `config` as JSON, so a new SourceConfig field costs no migration.
+CREATE TABLE IF NOT EXISTS sources (
+  name    TEXT PRIMARY KEY,
+  url     TEXT,
+  type    TEXT NOT NULL DEFAULT 'rss',
+  config  TEXT NOT NULL DEFAULT '{}'
+);

@@ -191,6 +191,34 @@ overwrites a decision already made in D1) and `cyris store diff` compares both
 backends on state, score, language, triage stamp, digest date and rejection
 reason.
 
+### Sources moved too
+
+The `sources` table landed in the same database, which is what removes phase 4's
+"adding a feed means rebuilding the image". `cyris sources push` makes it match
+`sources.yaml` exactly (a replacement, not a merge — a deleted source has to stop
+being polled), `workers/rss/` reads it at poll time, and `cyris sources list`
+shows what both readers are being served.
+
+**Both readers fall back to the file, deliberately.** An empty table means "not
+pushed yet" and an unreachable one means "use what you have": the alternative is
+a deployment that polls nothing, and a digest with no articles looks like a quiet
+news day rather than an outage. `feeds.json` keeps existing as the Worker's
+bundled fallback for the same reason. `cyris doctor` warns when the store is on
+D1 but sources still came from the file, because nothing else makes that visible.
+
+### Cutover order
+
+Nothing here switches by itself; each step is separately reversible.
+
+1. `wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql`
+   — creates `stored_articles`, `usage_log` and `sources`. Already done 2026-08-25.
+2. Put a `D1:Edit` API token in `.env` as `CYRIS_D1_API_TOKEN`.
+3. `cyris store migrate`, then `cyris store diff` — expect no differences.
+4. Set `[store] backend = "d1"`, run `cyris doctor`, then a full `cyris run`.
+5. `cyris sources push`, then `cyris sources list` to confirm the count.
+6. Redeploy `workers/rss/` so it reads the table instead of its bundle. Until this
+   step the Worker keeps polling `feeds.json`, which is correct, not broken.
+
 526 lines does not mean 526 new lines: the 8-day dedup scan currently reads eight local
 partitions per `save`, and over SQL that is one query.
 

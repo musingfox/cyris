@@ -31,6 +31,24 @@ async def test_a_clean_local_setup_has_no_failures(tmp_path: Path, monkeypatch) 
     assert [c for c in checks if c.status == "fail"] == []
 
 
+async def test_a_d1_store_with_unpushed_sources_warns(tmp_path: Path) -> None:
+    """The Worker would be polling its bundled snapshot; that is not visible anywhere else."""
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    cfg.sources_origin = "sources.yaml"
+
+    check = _by_name(await doctor.run_checks(cfg), "sources")
+
+    assert check.status == "warn"
+    assert "cyris sources push" in check.fix
+
+
+async def test_the_sources_check_names_where_they_came_from(tmp_path: Path) -> None:
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "sources")
+
+    assert "from sources.yaml" in check.detail
+
+
 async def test_no_sources_is_a_failure(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.sources = {}
