@@ -5,16 +5,22 @@ from pathlib import Path
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from fakes import SqliteD1
 
 from cyris.adapters.store.article_store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, ArticleState, Tier
 from cyris.entrypoints.triage_server import TriageServer
 
 
-@pytest.fixture
-def store_with_articles(tmp_path: Path) -> ArticleStore:
-    """Create a store with scored pending articles."""
-    store = ArticleStore(tmp_path)
+@pytest.fixture(params=["json", "d1"])
+def store_with_articles(request, tmp_path: Path):
+    """A store with scored pending articles, once per backend.
+
+    The triage UI is the knowledge gate and the only source of real-human
+    training signal, so it has to work identically on both.
+    """
+    store = ArticleStore(tmp_path) if request.param == "json" else D1ArticleStore(SqliteD1())
     now = datetime.now(UTC)
     articles = [
         Article(

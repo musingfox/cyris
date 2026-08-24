@@ -102,6 +102,33 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
     assert store.get_by_urls(["https://example.com/full"])[0] == stored
 
 
+def test_learn_reads_only_human_stamped_rows_from_d1(store: D1ArticleStore) -> None:
+    """`cyris learn` trains on triaged_at stamps; that has to survive the backend."""
+    from cyris.learn.triage_feedback import collect_triage_feedback
+
+    now = datetime.now(UTC)
+
+    def _stored(url: str, state: ArticleState, triaged: bool) -> StoredArticle:
+        article = StoredArticle.from_article(_article(url, url), first_seen_at=now)
+        article.state = state
+        article.triaged_at = now - timedelta(days=1) if triaged else None
+        return article
+
+    store.import_articles(
+        [
+            *[_stored(f"https://example.com/a{i}", ArticleState.ACCEPTED, True) for i in range(5)],
+            *[_stored(f"https://example.com/r{i}", ArticleState.REJECTED, True) for i in range(2)],
+            # Rejected by the pipeline, not by a person: must not become training signal.
+            _stored("https://example.com/pipeline", ArticleState.REJECTED, False),
+        ]
+    )
+
+    feedback = collect_triage_feedback(store, days=14)
+
+    assert feedback.accepted_count == 5
+    assert feedback.rejected_count == 2
+
+
 def test_usage_is_logged_to_the_same_database(sample_digest_content) -> None:
     db = SqliteD1()
     sample_digest_content.usage.api_calls = 3
