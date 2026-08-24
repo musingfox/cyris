@@ -777,3 +777,18 @@ def test_index_skips_raw_pages(tmp_path):
 
     assert "2026-08-20-morning.html" in index
     assert "morning-raw" not in index
+
+
+def test_write_raw_renders_vote_buttons_when_promote_configured(tmp_path):
+    """Rejected articles get up/down buttons so the raw page can pull them back."""
+    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    articles = [_stored("Dropped", "Src A", state=ArticleState.REJECTED)]
+
+    html = writer.write_raw("2026-08-20", "morning", articles).read_text(encoding="utf-8")
+
+    assert html.count('class="vote-group"') == 1
+    assert 'data-vote="up"' in html and 'data-vote="down"' in html
+    assert '"https://promote.example"' in html
+
+    plain = HtmlDigestWriter(tmp_path).write_raw("2026-08-20", "evening", articles)
+    assert 'class="vote-group"' not in plain.read_text(encoding="utf-8")

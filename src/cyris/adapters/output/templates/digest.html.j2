@@ -827,61 +827,6 @@
             <div><a href="{{ date }}-{{ period }}-raw.html">Everything collected →</a> &middot; <a href="index.html">View archive →</a></div>
         </footer>
     </div>
-    {% if promote_enabled %}
-    <script>
-    const PROMOTE_URL = {{ promote_worker_url | tojson }};
-    const PROMOTE_TOKEN = {{ promote_token | tojson }};
-    const DIGEST_DATE = {{ date | tojson }};
-    // The page is static with no read-back endpoint, so votes are echoed from localStorage.
-    const VOTES_KEY = 'cyris-votes';
-    // Corrupt storage, or a browser blocking it, must not take the click handler down with it.
-    let votes = {};
-    try { votes = JSON.parse(localStorage.getItem(VOTES_KEY) || '{}'); } catch { votes = {}; }
-
-    function paint(group, vote) {
-        // Votes stored before the deep-read button was dropped have no button to paint; up is the same polarity.
-        const shown = group.querySelector('[data-vote="' + vote + '"]') ? vote : 'up';
-        for (const b of group.querySelectorAll('.promote-btn')) {
-            b.classList.toggle('done', b.dataset.vote === shown);
-            b.classList.remove('error');
-        }
-    }
-    // A news cluster is one vote-group over every article in it, so urls is a list.
-    const groupUrls = (group) => JSON.parse(group.dataset.urls);
-
-    for (const group of document.querySelectorAll('.vote-group')) {
-        const key = groupUrls(group)[0];
-        if (votes[key]) paint(group, votes[key]);
-    }
-
-    document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.promote-btn');
-        if (!btn) return;
-        const group = btn.closest('.vote-group');
-        const urls = groupUrls(group);
-        const vote = btn.dataset.vote;
-        btn.disabled = true;
-        try {
-            const results = await Promise.all(urls.map((u) => fetch(PROMOTE_URL + '/promote', {
-                method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer ' + PROMOTE_TOKEN,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
-            })));
-            if (results.some((r) => !r.ok)) throw new Error('promote failed');
-            votes[urls[0]] = vote;
-            // The server already took the vote; a full quota must not show it as failed.
-            try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
-            paint(group, vote);
-        } catch {
-            btn.classList.add('error');
-        } finally {
-            btn.disabled = false;
-        }
-    });
-    </script>
-    {% endif %}
+    {% include "_promote_script.html.j2" %}
 </body>
 </html>

@@ -209,6 +209,9 @@ class HtmlDigestWriter:
             period=period,
             total=len(articles),
             groups=rendered_groups,
+            promote_enabled=bool(self.promote_worker_url and self.promote_token),
+            promote_worker_url=self.promote_worker_url,
+            promote_token=self.promote_token,
         )
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
