@@ -34,7 +34,7 @@ flowchart TB
 
     subgraph ADP["Adapters"]
         LLM["Anthropic / Gemini Client"]
-        STORE["ArticleStore (JSON)"]
+        STORE["ArticleStore (JSON) · D1ArticleStore"]
         RSS["RssSource (direct poll)"]
         CFRSS["CloudflareRssSource"]
         NLA["NewsletterArchiveSource"]
@@ -123,8 +123,8 @@ implementation, so no Protocol was extracted. When the cloud move needs a second
 
 | Component | Current | Dockerize (local) | Cloud (Cloudflare) |
 |-----------|---------|-------------------|--------------------|
-| ArticleStore 🟠 | JSON @ local | volume mount, unchanged | extract Protocol → R2/D1 impl |
-| usage log 🟠 | file | volume mount, unchanged | swap to D1 |
+| ArticleStore 🟢 | JSON @ local, or D1 via `[store] backend` | volume mount, unchanged | done — `store/d1_store.py` |
+| usage log 🟢 | usage.jsonl, or D1 alongside the articles | volume mount, unchanged | done — `append_usage_d1` |
 | DigestWriter 🟠 | writes Obsidian vault | vault volume mount | disable (use HtmlDigestWriter → R2/Pages) |
 | LLMClient 🟢 | Anthropic/Gemini | unchanged | unchanged (already cloud) |
 | FetchSource · Rss 🔴 | polls feeds directly | unchanged | fallback only: a digest-time poll sees each feed's current snapshot and misses 141 of 317 — see [cloud-migration.md](cloud-migration.md) |
