@@ -7,7 +7,7 @@ timezone = "Asia/Taipei"
 digest_window_hours = 24
 
 [general.notify]
-discord_webhook_url = ""                # optional Discord webhook
+discord_webhook_url = ""                # optional; falls back to CYRIS_DISCORD_WEBHOOK_URL
 
 [miniflux]
 url = "http://localhost:8080"

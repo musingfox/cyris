@@ -3,10 +3,11 @@ Pre-registered: I will report the top-20 neighbours verbatim and judge coherence
 qualitatively. No numeric adopt/reject threshold — n=2 effective clicks for the
 accepts, far below any level that could support one."""
 import glob, json, os, sys, urllib.request, numpy as np, pathlib
-KEY=next(l.split('=',1)[1].strip() for l in open('/Users/nickhuang/workspace/cyris/.env',encoding='utf-8') if l.startswith('GEMINI_API_KEY='))
+ROOT=pathlib.Path(__file__).resolve().parents[2]
+KEY=os.environ.get('GEMINI_API_KEY') or next(l.split('=',1)[1].strip() for l in open(ROOT/'.env',encoding='utf-8') if l.startswith('GEMINI_API_KEY='))
 M="gemini-embedding-001"; URL=f"https://generativelanguage.googleapis.com/v1beta/models/{M}:batchEmbedContents?key={KEY}"
 rows=[]
-for f in glob.glob('/Users/nickhuang/workspace/cyris/agent-vault/articles/*.json'):
+for f in glob.glob(str(ROOT/'agent-vault/articles/*.json')):
     d=json.load(open(f,encoding='utf-8')); rows += d if isinstance(d,list) else d.get('articles',[])
 seen=set(); arts=[]
 for r in rows:

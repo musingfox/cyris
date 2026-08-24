@@ -1,10 +1,11 @@
 """Corrected ground truth. The first run's 'lottery' regex missed 頭獎槓龜 variants,
 so T2/T3 were scored against a class definition that is itself wrong — which is
 exactly the reproducibility problem (HB-2) showing up inside my own measurement."""
-import glob, json, re, numpy as np
+import glob, json, pathlib, re, numpy as np
 
+ROOT=pathlib.Path(__file__).resolve().parents[2]
 rows=[]
-for f in glob.glob('/Users/nickhuang/workspace/cyris/agent-vault/articles/*.json'):
+for f in glob.glob(str(ROOT/'agent-vault/articles/*.json')):
     d=json.load(open(f,encoding='utf-8')); rows += d if isinstance(d,list) else d.get('articles',[])
 fin,seen=[],set()
 for r in rows:

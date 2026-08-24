@@ -22,15 +22,17 @@ T4 the decisive one: within the 台股 topic, can cosine separate ANALYSIS (want
 import glob
 import json
 import os
+import pathlib
 import re
 import sys
 import urllib.request
 
 import numpy as np
 
-KEY = next(
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+KEY = os.environ.get("GEMINI_API_KEY") or next(
     l.split("=", 1)[1].strip()
-    for l in open("/Users/nickhuang/workspace/cyris/.env", encoding="utf-8")
+    for l in open(ROOT / ".env", encoding="utf-8")
     if l.startswith("GEMINI_API_KEY=")
 )
 MODEL = "gemini-embedding-001"
@@ -48,7 +50,7 @@ ANALYSIS_MARK = ("投顧", "分析", "專家", "法人看", "解讀", "原因", 
 
 def load():
     rows = []
-    for f in glob.glob("/Users/nickhuang/workspace/cyris/agent-vault/articles/*.json"):
+    for f in glob.glob(str(ROOT / "agent-vault/articles/*.json")):
         d = json.load(open(f, encoding="utf-8"))
         rows += d if isinstance(d, list) else d.get("articles", [])
     fin, seen = [], set()

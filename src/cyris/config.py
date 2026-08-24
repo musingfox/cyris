@@ -32,6 +32,14 @@ def _load_dotenv(env_path: Path | None = None) -> None:
 class NotifyConfig(BaseModel):
     discord_webhook_url: str = ""
 
+    @model_validator(mode="after")
+    def inject_webhook_url(self) -> "NotifyConfig":
+        # A webhook URL is a credential: it must have somewhere to live other than
+        # the config file, or a deployment that only ships env has no way to set it.
+        if not self.discord_webhook_url:
+            self.discord_webhook_url = os.environ.get("CYRIS_DISCORD_WEBHOOK_URL", "")
+        return self
+
 
 class EmailConfig(BaseModel):
     webhook_host: str = "0.0.0.0"
