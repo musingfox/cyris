@@ -202,10 +202,8 @@ the publisher already offers you as a subscriber, in this order:
    terms.
 2. **The email edition.** If the paid content arrives in your inbox in full,
    route it through the newsletter path above and it becomes a normal source.
-3. **Neither.** Then read it in your browser. Server-side login (the approach
-   [wallabag](https://doc.wallabag.org/developer/paywall/) takes with per-site
-   login config) is possible in principle but is not implemented here, and would
-   mean handing your publisher credentials to a config file.
+3. **Neither.** Then read it in your browser — cyris will not log in on your
+   behalf, and there is no plan for it to.
 
 An earlier version of cyris read cookies out of the local browser's SQLite to do
 this. It was removed in 2026-08: it only worked while a logged-in desktop browser
