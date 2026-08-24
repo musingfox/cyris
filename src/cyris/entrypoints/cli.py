@@ -361,6 +361,47 @@ def embed_compare(
         typer.echo(f"\nLogged to {log}")
 
 
+@app.command("doctor")
+def doctor(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Check the configuration before a run has to prove it at 08:00."""
+    _setup_logging(verbose)
+    if not verbose:
+        # The report is the output here; a request log per check buries it.
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    from cyris.config import load_config
+    from cyris.service_layer.doctor import run_checks
+
+    try:
+        cfg = load_config(config_path, sources_path)
+    except (FileNotFoundError, ValueError) as e:
+        typer.echo(f"✗ config — {e}")
+        typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
+        raise typer.Exit(1) from e
+    typer.echo(f"✓ config — {config_path} + {sources_path}")
+
+    marks = {"ok": "✓", "warn": "!", "fail": "✗", "skip": "–"}
+    checks = asyncio.run(run_checks(cfg))
+    for check in checks:
+        typer.echo(f"{marks[check.status]} {check.name} — {check.detail}")
+        if check.fix and check.status != "ok":
+            typer.echo(f"  {check.fix}")
+
+    failed = [c for c in checks if c.status == "fail"]
+    if failed:
+        typer.echo(f"\n{len(failed)} problem(s) would break a run.")
+        raise typer.Exit(1)
+    typer.echo("\nReady to run.")
+
+
 @app.command("learn")
 def learn(
     days: Annotated[int, typer.Option(help="Number of days to scan for feedback")] = 14,

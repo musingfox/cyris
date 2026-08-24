@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`cyris doctor`.** A read-only pass over sources, LLM provider, vault paths,
+  the article store, every Worker, and each Cloudflare API token — verified
+  against Cloudflare rather than assumed — with a fix line per problem and a
+  non-zero exit when something would break a run. It exists because an expired
+  `CLOUDFLARE_API_TOKEN` sat in `.env` while `wrangler pages deploy` reported it
+  as its own intermittent failure; nothing had ever asked the question directly.
 - **Article store on Cloudflare D1** (`[store] backend = "d1"`, off by default).
   `D1ArticleStore` implements the same contract as the JSON store over D1's HTTP
   query API, and the usage log moves into the same database. `cyris store migrate`

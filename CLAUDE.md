@@ -116,6 +116,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest |
+| `cyris doctor` | Read-only config health check; exits non-zero on anything that would break a run |
 | `cyris learn` | Analyze triage feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |

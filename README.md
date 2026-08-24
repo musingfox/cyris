@@ -35,6 +35,7 @@ cp .env.example .env                       # add API keys
 cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
 
 # Run
+uv run cyris doctor                # check the config before the first run
 uv run cyris run                   # full pipeline (fetch → score → digest)
 ```
 
@@ -85,6 +86,7 @@ See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs
 ## CLI Commands
 
 ```
+cyris doctor                  Check the config; non-zero exit if a run would break
 cyris run                     Full pipeline: fetch, score, digest
 cyris learn                   Update preference profile from digest feedback
 cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
@@ -96,6 +98,8 @@ cyris articles export         Export accepted articles to vault
 cyris articles score          Score articles via AI
 cyris articles triage         Process digest feedback and export
 cyris articles clean          Delete old rejected articles
+cyris store migrate           Copy the local article store into D1
+cyris store diff              Compare the JSON and D1 stores field by field
 ```
 
 ## Architecture
