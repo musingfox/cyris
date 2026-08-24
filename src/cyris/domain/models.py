@@ -22,7 +22,6 @@ class SourceConfig(BaseModel):
     type: str = "rss"
     tier: Tier = Tier.FILTER
     tags: list[str] = Field(default_factory=list)
-    paywall: bool = False
     language: str = "auto"
     email_match: str | None = None
     cookie_domain: str | None = None

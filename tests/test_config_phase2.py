@@ -2,46 +2,7 @@
 
 import pytest
 
-from cyris.config import EmailConfig, PaywallConfig
-
-
-class TestPaywallConfig:
-    def test_valid_full(self):
-        cfg = PaywallConfig.model_validate(
-            {
-                "use_browser_cookies": True,
-                "browser": "chrome",
-                "cookie_domains": ["stratechery.com"],
-            }
-        )
-        assert cfg.use_browser_cookies is True
-        assert cfg.browser == "chrome"
-        assert cfg.cookie_domains == ["stratechery.com"]
-
-    def test_defaults(self):
-        cfg = PaywallConfig.model_validate({})
-        assert cfg.use_browser_cookies is False
-        assert cfg.browser == "chrome"
-        assert cfg.cookie_domains == []
-
-    def test_invalid_browser(self):
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            PaywallConfig.model_validate({"browser": "invalid"})
-
-    def test_paywall_config_accepts_zen(self):
-        """Test that 'zen' is a valid browser choice."""
-        cfg = PaywallConfig.model_validate(
-            {
-                "use_browser_cookies": True,
-                "browser": "zen",
-                "cookie_domains": ["x.com"],
-            }
-        )
-        assert cfg.browser == "zen"
-        assert cfg.use_browser_cookies is True
-        assert cfg.cookie_domains == ["x.com"]
+from cyris.config import EmailConfig
 
 
 class TestEmailConfig:

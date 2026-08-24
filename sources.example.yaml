@@ -21,7 +21,6 @@ sources:
     url: "https://stratechery.com/feed/"
     tier: summarize
     tags: [tech, business-strategy]
-    paywall: true  # fetch full text via browser cookies (see cyris.toml [paywall])
 
   - name: "ByteByteGo Newsletter"
     url: "https://blog.bytebytego.com/feed"

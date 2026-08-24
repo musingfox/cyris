@@ -24,7 +24,6 @@ class MinifluxSource:
         sources: dict[str, SourceConfig],
         aliases: dict[str, str] | None = None,
         limit: int = 200,
-        cookies: dict[str, str] | None = None,
     ) -> list[Article]:
         """Fetch articles from Miniflux.
 
@@ -36,7 +35,6 @@ class MinifluxSource:
             sources=sources,
             aliases=aliases,
             limit=limit,
-            cookies=cookies,
         )
 
     async def mark_as_read(self, article_ids: list[int | str]) -> None:

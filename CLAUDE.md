@@ -67,12 +67,11 @@ src/cyris/
 ├── adapters/         # Concrete IO implementations
 │   ├── anthropic_client.py  # AnthropicClient (implements LLMClient)
 │   ├── store/               # ArticleStore (JSON, dedup by URL) + event store/schema
-│   ├── fetch/               # Miniflux client/source, newsletter archive + Cloudflare-worker sources, extractor, email parser
+│   ├── fetch/               # Miniflux client/source, newsletter archive + Cloudflare-worker sources, email parser
 │   ├── output/              # DigestWriter, HTML digest, raw collected-article listings, article export, publish, usage log
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   ├── tracking_yaml.py     # tracking.yaml load/upsert
-│   ├── cookies.py           # Browser cookie extraction (Zen/Chrome/Firefox)
 │   └── http_client.py       # Shared httpx client
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)

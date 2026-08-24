@@ -10,7 +10,6 @@
 - The `cyris` pipeline currently runs on **local Python + macOS launchd** (`src/cyris/schedule/launchd.py`).
 - `docker-compose.yml` **only containerizes Miniflux + Postgres**; cyris itself is not containerized.
 - All persistent state lives in local files, **centrally injected** by `bootstrap.py` rooted at `agent_vault.path` (the storage port is clean and easy to swap).
-- Paid-source cookies are read from the browser's live DB on the local machine (`adapters/cookies.py`), staying fresh automatically through everyday browsing.
 
 **Key point: the common factor across both directions = containerize cyris itself first.** With the same Docker image, direction A drops it into compose and direction B drops it into a Cloudflare Container. This step is done only once.
 
@@ -30,7 +29,7 @@ Goal: anyone can run it on any Linux box with `docker compose up`, with no macOS
 | Config | `.env` / `*.toml` | Unchanged, mounted into the container |
 
 **Change size: small.** Storage and output need no changes; you only move compute into a container and swap scheduling for cron.
-**Advantages**: fully runnable offline, best privacy, no cloud costs; paid-source cookies can later be handled by mounting host cookies.
+**Advantages**: fully runnable offline, best privacy, no cloud costs.
 **Cost**: requires an always-on machine; "reading the digest while out" needs a separate hookup (Pages/Tailscale).
 
 ---
@@ -52,7 +51,7 @@ Goal: no local machine, fully cloud-based. Around the US$5/mo tier.
 
 **Change size: medium.** Containers let the Python **move to the cloud in place, without a TypeScript rewrite** (the earlier "must rewrite" assessment is now outdated). The real work is: swap the storage port to R2/D1, dockerize, add a thin Worker cron wrapper, and retire Miniflux.
 **Advantages**: no local machine, readable anytime while out, operations handed off to CF.
-**Cost**: paid-source cookies lose automatic freshness (deferred this round); Miniflux must be retired.
+**Cost**: Miniflux must be retired.
 
 ---
 
@@ -65,7 +64,6 @@ Goal: no local machine, fully cloud-based. Around the US$5/mo tier.
 | Change size | Small (storage untouched) | Medium (swap storage port + docker + worker) |
 | Language rewrite | None | **None** (Container runs Python) |
 | Reading digest while out | Separate hookup needed | Native |
-| Paid-source cookies | Solvable by mounting host | **Lose automatic freshness** (deferred) |
 | Miniflux | Kept | Retired, cyris fetches RSS itself |
 | Privacy/offline | Best | Depends on CF |
 
@@ -82,11 +80,9 @@ To become a shippable open-source project, the gaps fall into two categories.
 | Gap | Fix | Status |
 |------|------|------|
 | No LICENSE | AGPL-3.0-or-later + README notice + pyproject metadata | ✅ |
-| Defaults bound to a specific paid domain | Template `cookie_domains = []` placeholder | ✅ |
 | Confusing duplicate template naming | Unify to `cyris.toml.example` (fix `[claude]`→`[llm_provider]`+`[digest]`, de-personalize) | ✅ |
 | Scheduling bound to macOS | Docker uses supercronic; launchd kept as a macOS option | ✅ |
 | Hardcoded personal vault path | `CYRIS_VAULT_PATH` env override; default still `~/Documents/ObsidianVault` | ◐ Partial |
-| Cookies bound to macOS paths (`cookies.py:61`) | Marked optional; auto-skipped inside the container | ◐ Deferred |
 | Hard dependency on self-hosted Miniflux + personal worker URL | Marked optional in README | ◐ |
 
 ### Project Quality (Open-Source Conventions, Should Fix)
@@ -103,4 +99,4 @@ To become a shippable open-source project, the gaps fall into two categories.
 
 ## Deferred Items
 
-- **Paid-source cookie freshness (fully cloud)**: not handled this round. With no local machine at all, you lose automatic browser-based renewal. Future options: route paid sources through newsletter email wherever possible (a worker already exists, no cookies needed) > manually update KV > skip headless auto-login.
+- **Paywalled sources**: no longer a deployment question. The browser-cookie path was removed in 2026-08 — it only worked beside a logged-in desktop browser, and measured zero full-text captures. Paid sources now go through a subscriber RSS feed or the newsletter email path, or they are not ingested. See the README's *Paywalled Sources* section.

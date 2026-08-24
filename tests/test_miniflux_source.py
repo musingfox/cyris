@@ -33,7 +33,6 @@ async def test_fetch_articles_delegates_to_client():
         sources={},
         aliases={"alias": "source"},
         limit=100,
-        cookies={"session": "abc"},
     )
 
     assert result == expected_articles
@@ -43,7 +42,6 @@ async def test_fetch_articles_delegates_to_client():
         sources={},
         aliases={"alias": "source"},
         limit=100,
-        cookies={"session": "abc"},
     )
 
 

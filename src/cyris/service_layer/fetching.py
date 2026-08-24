@@ -16,7 +16,6 @@ async def fetch_all_articles(
     sources: dict[str, SourceConfig],
     aliases: dict[str, str] | None = None,
     limit: int = 200,
-    cookies: dict[str, str] | None = None,
 ) -> tuple[list[Article], list[str]]:
     """Fetch articles from multiple sources, deduplicate by URL.
 
@@ -27,7 +26,6 @@ async def fetch_all_articles(
         sources: Source configs keyed by name.
         aliases: Optional feed title → source name mappings.
         limit: Max articles per source. Defaults to 200.
-        cookies: Optional cookies for paywall sources.
 
     Returns:
         Tuple of (deduplicated articles — last source wins, names of sources that failed).
@@ -43,7 +41,6 @@ async def fetch_all_articles(
                 sources=sources,
                 aliases=aliases,
                 limit=limit,
-                cookies=cookies,
             )
             # Deduplicate by URL (last source wins)
             for article in articles:

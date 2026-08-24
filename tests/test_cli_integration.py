@@ -13,7 +13,7 @@ from cyris.service_layer.fetching import fetch_all_articles
 
 @pytest.mark.asyncio
 async def test_digest_uses_unified_fetcher(tmp_path):
-    """Test that unified fetcher correctly propagates cookies to miniflux client."""
+    """The unified fetcher drives every wired source, not just the first one."""
     from datetime import datetime
 
     # Create mock miniflux client
@@ -38,20 +38,13 @@ async def test_digest_uses_unified_fetcher(tmp_path):
         newsletter_archive.mkdir()
         newsletter_source = NewsletterArchiveSource(newsletter_archive)
 
-        test_cookies = {"session": "abc123"}
-
-        # Call fetch_all_articles with cookies
         result, _ = await fetch_all_articles(
             fetch_sources=[miniflux_source, newsletter_source],
             after=datetime.now(),
             before=datetime.now(),
             sources={},
             aliases={},
-            cookies=test_cookies,
         )
 
-        # Verify fetch_entries was called with cookies
         mock_fetch.assert_called_once()
-        call_kwargs = mock_fetch.call_args.kwargs
-        assert call_kwargs["cookies"] == test_cookies
         assert len(result) == 1

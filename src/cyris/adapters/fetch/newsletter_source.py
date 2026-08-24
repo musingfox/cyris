@@ -30,7 +30,6 @@ class NewsletterArchiveSource:
         sources: dict[str, SourceConfig],
         aliases: dict[str, str] | None = None,
         limit: int = 200,
-        cookies: dict[str, str] | None = None,
     ) -> list[Article]:
         """Load newsletter articles from archive within time window.
 
@@ -40,7 +39,6 @@ class NewsletterArchiveSource:
             sources: Source configs (unused for archive, kept for protocol).
             aliases: Aliases (unused for archive, kept for protocol).
             limit: Max articles (unused for archive, kept for protocol).
-            cookies: Cookies (unused for archive, kept for protocol).
 
         Returns:
             List of Article models loaded from archive files.

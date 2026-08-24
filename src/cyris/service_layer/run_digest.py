@@ -65,11 +65,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         except Exception as e:
             logger.warning("Promotion sync failed: %s", e)
 
-    # Load cookies if enabled
-    cookies = deps.load_cookies()
-    if cookies:
-        logger.info("Loaded %d cookies from %s", len(cookies), cfg.app.paywall.browser)
-
     # Fetch
     articles, failed_sources = await fetch_all_articles(
         fetch_sources=deps.fetch_sources,
@@ -78,7 +73,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         sources=cfg.sources,
         aliases=cfg.aliases,
         limit=cfg.app.digest.max_articles_per_digest,
-        cookies=cookies,
     )
 
     if failed_sources:

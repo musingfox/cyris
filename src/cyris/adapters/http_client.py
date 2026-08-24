@@ -1,10 +1,10 @@
-"""Cookie-aware HTTP client."""
+"""Shared async HTTP client."""
 
 import httpx
 
 
 class HttpClient:
-    """Async HTTP client with cookie support."""
+    """Async HTTP client with the project's shared timeout and User-Agent."""
 
     def __init__(self, timeout: int = 30):
         self._client = httpx.AsyncClient(
@@ -15,15 +15,9 @@ class HttpClient:
             },
         )
 
-    async def get(self, url: str, cookies: dict[str, str] | None = None) -> httpx.Response:
-        """Fetch URL with optional cookies."""
-        if cookies:
-            self._client.cookies = httpx.Cookies(cookies)
-        try:
-            return await self._client.get(url)
-        finally:
-            if cookies:
-                self._client.cookies.clear()
+    async def get(self, url: str) -> httpx.Response:
+        """Fetch URL."""
+        return await self._client.get(url)
 
     async def close(self) -> None:
         """Close the client."""

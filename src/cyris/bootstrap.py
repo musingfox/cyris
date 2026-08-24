@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from cyris.adapters.anthropic_client import AnthropicClient
-from cyris.adapters.cookies import load_browser_cookies
 from cyris.adapters.fetch.miniflux import MinifluxClient
 from cyris.adapters.fetch.miniflux_source import MinifluxSource
 from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
@@ -50,7 +49,6 @@ class Deps:
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled
     publish: Callable[[str], bool] | None
     sync_promotions: Callable[[], int] | None
-    load_cookies: Callable[[], dict[str, str] | None]
     log_usage: Callable[..., None]
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
@@ -120,11 +118,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
             store,
         )
 
-    def load_cookies() -> dict[str, str] | None:
-        if not cfg.app.paywall.use_browser_cookies:
-            return None
-        return load_browser_cookies(cfg.app.paywall.browser, cfg.app.paywall.cookie_domains)
-
     tracking = VaultConfigSource(cfg.app.agent_vault.path / cfg.app.agent_vault.tracking_file)
     event_store = EventStore(cfg.app.agent_vault.path / "events")
 
@@ -137,7 +130,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         html_writer=html_writer,
         publish=publish,
         sync_promotions=sync,
-        load_cookies=load_cookies,
         log_usage=partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl"),
         on_progress=on_progress or (lambda _msg: None),
         tracking=tracking,

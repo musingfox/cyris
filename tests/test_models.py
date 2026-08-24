@@ -113,17 +113,15 @@ class TestSourceConfig:
         assert source.type == "rss"
         assert source.language == "auto"
         assert source.tags == []
-        assert source.paywall is False
 
     def test_summarize_source(self):
         source = SourceConfig(
             name="Stratechery",
             url="https://stratechery.com/feed/",
             tier=Tier.SUMMARIZE,
-            paywall=True,
         )
         assert source.tier == Tier.SUMMARIZE
-        assert source.paywall is True
+        assert source.url == "https://stratechery.com/feed/"
 
 
 class TestDigestContent:

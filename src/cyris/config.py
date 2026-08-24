@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from cyris.domain.models import SourceConfig
 from cyris.domain.tracking import TrackedTopic
@@ -31,20 +31,6 @@ def _load_dotenv(env_path: Path | None = None) -> None:
 
 class NotifyConfig(BaseModel):
     discord_webhook_url: str = ""
-
-
-class PaywallConfig(BaseModel):
-    use_browser_cookies: bool = False
-    browser: str = "chrome"
-    cookie_domains: list[str] = Field(default_factory=list)
-
-    @field_validator("browser")
-    @classmethod
-    def validate_browser(cls, v: str) -> str:
-        allowed = {"chrome", "firefox", "edge", "safari", "zen"}
-        if v not in allowed:
-            raise ValueError(f"browser must be one of {allowed}")
-        return v
 
 
 class EmailConfig(BaseModel):
@@ -215,7 +201,6 @@ class AppConfig(BaseModel):
     digest: DigestConfig = Field(default_factory=DigestConfig)
     obsidian: ObsidianConfig = Field(default_factory=ObsidianConfig)
     agent_vault: AgentVaultConfig = Field(default_factory=AgentVaultConfig)
-    paywall: PaywallConfig = Field(default_factory=PaywallConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     html_output: HtmlOutputConfig = Field(default_factory=HtmlOutputConfig)

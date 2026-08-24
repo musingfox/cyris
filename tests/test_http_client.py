@@ -17,15 +17,6 @@ async def test_get_success():
 
 
 @pytest.mark.asyncio
-async def test_get_with_cookies():
-    async with respx.mock:
-        route = respx.get("https://example.com").mock(return_value=httpx.Response(200))
-        async with HttpClient() as client:
-            await client.get("https://example.com", cookies={"session": "xyz"})
-        assert route.called
-
-
-@pytest.mark.asyncio
 async def test_timeout():
     async with HttpClient(timeout=1) as client:
         # This should raise on a non-routable address

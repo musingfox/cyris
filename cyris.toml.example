@@ -35,12 +35,6 @@ path = "./agent-vault"
 score_threshold = 70                    # featured-article cutoff (0-100)
 summarize_score_threshold = 70
 
-[paywall]
-# Extract paywalled full text using your browser's cookies (local only, no cloud).
-use_browser_cookies = false
-browser = "chrome"                      # chrome | firefox | edge | safari | zen
-cookie_domains = []                     # e.g. ["example.com"]
-
 [html_output]
 enabled = false
 output_dir = "agent-vault/html"

@@ -78,7 +78,6 @@ class CloudflareNewsletterSource:
         sources: dict[str, SourceConfig],
         aliases: dict[str, str] | None = None,
         limit: int = 200,
-        cookies: dict[str, str] | None = None,
     ) -> list[Article]:
         """Pull queued newsletters, expand into Articles, then ACK the queue.
 

@@ -33,13 +33,11 @@ class CloudflareRssSource:
         sources: dict[str, SourceConfig],
         aliases: dict[str, str] | None = None,
         limit: int = 200,
-        cookies: dict[str, str] | None = None,
     ) -> list[Article]:
         """Read the window from D1 and map rows onto Articles.
 
-        `aliases` and `cookies` are accepted for FetchSource compatibility: rows
-        already carry the configured source name, and paywall extraction stays on
-        the local path (the Worker has no browser session).
+        `aliases` is accepted for FetchSource compatibility: rows already carry
+        the configured source name.
         """
         params = {
             "after": after.isoformat(),

@@ -211,14 +211,19 @@ Workers AI.
 it under "Multi-Linguality", 60k context), which the 62%-中央社 corpus requires. The
 English-only trap is the `bge-*-en-v1.5` family, not this model.
 
-Dropped rather than migrated: `output/digest.py` (Obsidian markdown), `adapters/cookies.py`,
+Dropped rather than migrated: `output/digest.py` (Obsidian markdown),
 `fetch/newsletter_source.py` (local maildir, superseded by the newsletter Worker).
+`adapters/cookies.py` was already deleted ahead of this phase — see *Unsolved* below.
 
 ## Unsolved regardless of plan or plan tier
 
-- **Paid-source cookies.** `adapters/cookies.py` reads the live browser DB; that cannot
-  follow to the cloud. Only stratechery is affected, and it also sends email — so the fix
-  is the same routing change as Substack, not a cookie-sync mechanism.
+- ~~**Paid-source cookies.**~~ **Resolved by deletion, 2026-08-24.** `adapters/cookies.py`
+  and the whole paywall path are gone: measured over August it captured zero paid articles
+  (every Stratechery Daily Update landed at ~130 chars, the feed excerpt), and the browser
+  profile it read held no session cookie at all. It also leaked a browser detail into
+  `ports.py`'s `FetchSource` signature, against this plan's promise not to touch
+  `service_layer/`. Paid sources now route through a subscriber RSS feed or newsletter
+  email, or are not ingested — see the README's *Paywalled Sources*.
 - **The intermittent publish failure.** Reproduced 2026-08-09 08:01, and the receipt check
   caught what an exit code never would. It is **not** a no-op: wrangler printed its banner,
   got to `Uploading... (15/16)`, and then exited 0 mid-upload without its completion line.

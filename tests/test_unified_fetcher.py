@@ -111,7 +111,6 @@ async def test_passes_parameters_to_sources(rss_articles):
     mock_source = AsyncMock()
     mock_source.fetch_articles.return_value = rss_articles
 
-    test_cookies = {"session": "abc123", "auth": "xyz"}
     test_sources = {"test": "config"}
     test_aliases = {"alias": "source"}
 
@@ -122,7 +121,6 @@ async def test_passes_parameters_to_sources(rss_articles):
         sources=test_sources,
         aliases=test_aliases,
         limit=50,
-        cookies=test_cookies,
     )
 
     # Verify all parameters were passed through
@@ -132,7 +130,6 @@ async def test_passes_parameters_to_sources(rss_articles):
         sources=test_sources,
         aliases=test_aliases,
         limit=50,
-        cookies=test_cookies,
     )
 
 

@@ -54,11 +54,6 @@ digest_folder = "Digests"
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
 
-[paywall]
-use_browser_cookies = false
-browser = "chrome"
-cookie_domains = []
-
 [email]
 webhook_secret = ""
 webhook_host = "0.0.0.0"

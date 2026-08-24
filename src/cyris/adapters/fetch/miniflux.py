@@ -6,7 +6,6 @@ from datetime import datetime
 
 import miniflux
 
-from cyris.adapters.fetch.extractor import extract_full_text
 from cyris.adapters.fetch.source_matcher import SourceMatcher
 from cyris.adapters.http_client import HttpClient
 from cyris.domain.models import Article, SourceConfig, Tier
@@ -29,7 +28,6 @@ class MinifluxClient:
         aliases: dict[str, str] | None = None,
         status: str = "",
         limit: int = 200,
-        cookies: dict[str, str] | None = None,
     ) -> list[Article]:
         """Fetch entries from Miniflux within a time window.
 
@@ -46,7 +44,6 @@ class MinifluxClient:
             status: Miniflux entry status to filter on ("read"/"unread"). Empty
                 means no filter, i.e. both.
             limit: Max entries to fetch. Defaults to 200.
-            cookies: Optional cookies for paywall sources.
 
         Returns:
             List of Article models mapped from Miniflux entries.
@@ -78,22 +75,7 @@ class MinifluxClient:
             feed_title = entry.get("feed", {}).get("title", "")
             source_cfg = matcher.match(feed_title)
 
-            # For paywall sources with cookies, fetch full text
             content = entry.get("content", "")
-            if source_cfg and source_cfg.paywall and cookies:
-                try:
-                    extracted = await extract_full_text(
-                        entry.get("url", ""),
-                        self._http_client,
-                        cookies=cookies,
-                    )
-                    if extracted.content:
-                        content = extracted.content
-                        logger.debug("Extracted full text for paywall source: %s", feed_title)
-                except Exception:
-                    logger.warning(
-                        "Failed to extract full text for %s", entry.get("url", ""), exc_info=True
-                    )
 
             article = Article(
                 id=entry["id"],

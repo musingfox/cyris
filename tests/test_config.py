@@ -29,7 +29,6 @@ class TestLoadConfig:
         # Curated teaching sample covering the main source shapes.
         assert len(cfg.sources) == 5
         assert cfg.sources["Stratechery"].tier == Tier.SUMMARIZE
-        assert cfg.sources["Stratechery"].paywall is True
         assert cfg.sources["TechCrunch"].tier == Tier.FILTER
         # email-only newsletter shape: no url, matched by From: header
         assert cfg.sources["Some Email Newsletter"].type == "newsletter"

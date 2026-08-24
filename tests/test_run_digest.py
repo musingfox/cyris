@@ -125,7 +125,6 @@ def make_deps(
         html_writer=None,
         publish=None,
         sync_promotions=None,
-        load_cookies=lambda: None,
         log_usage=lambda content: None,
         send_discord=fake_discord,
         tracking=VaultConfigSource(agent_vault / "tracking.yaml") if with_tracking else None,

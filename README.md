@@ -89,7 +89,6 @@ the same config file works locally and in Docker):
 | `CYRIS_AGENT_VAULT_PATH` | Persistent article store | `/data/agent-vault` (named volume) |
 
 Notes:
-- Paywall cookies are unavailable in-container (no browser); paywall full-text extraction is skipped — see [`docs/deployment.md`](docs/deployment.md).
 - HTML digest publish (`wrangler pages deploy`) needs `CLOUDFLARE_API_TOKEN` in `.env`.
 
 See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs and
@@ -153,7 +152,7 @@ adapter — that is the point of the Protocol seams.
 # 1. implement the FetchSource Protocol (service_layer/ports.py)
 class MySource:
     async def fetch_articles(self, after, before, sources,
-                             aliases=None, limit=200, cookies=None) -> list[Article]: ...
+                             aliases=None, limit=200) -> list[Article]: ...
     async def mark_as_read(self, article_ids) -> None: ...   # no-op if unsupported
     async def health_check(self) -> bool: ...
 
@@ -185,6 +184,32 @@ Two paths, depending on how the newsletter is delivered:
 
 **In short: email-only subscriptions depend on Cloudflare** (or the legacy local
 webhook); RSS newsletters do not.
+
+### Paywalled Sources
+
+**Not supported.** A paid source's public feed usually carries only the first
+paragraph or two, and cyris takes the feed at face value — it will not log in,
+carry a session, or otherwise reach behind a paywall.
+
+If you subscribe to something and want its full text in your digest, check what
+the publisher already offers you as a subscriber, in this order:
+
+1. **A subscriber-only RSS feed.** Many paid publications issue a personalised
+   feed URL — Stratechery's Passport (`stratechery.passport.online/feed/rss/<id>`)
+   is one, Substack paid subscriptions are another. Add it to `sources.yaml` like
+   any feed. This is the only option that needs nothing from cyris. Treat that URL
+   as a secret: it identifies you, and sharing it usually violates the publisher's
+   terms.
+2. **The email edition.** If the paid content arrives in your inbox in full,
+   route it through the newsletter path above and it becomes a normal source.
+3. **Neither.** Then read it in your browser. Server-side login (the approach
+   [wallabag](https://doc.wallabag.org/developer/paywall/) takes with per-site
+   login config) is possible in principle but is not implemented here, and would
+   mean handing your publisher credentials to a config file.
+
+An earlier version of cyris read cookies out of the local browser's SQLite to do
+this. It was removed in 2026-08: it only worked while a logged-in desktop browser
+sat next to the pipeline, and it tied a fetch-path detail to one machine.
 
 ### Article Lifecycle
 
@@ -220,8 +245,6 @@ Digest output language is configurable via `[digest] output_language` (default
 | Package manager | uv |
 | RSS aggregator | Miniflux (Docker) |
 | AI processing | Anthropic Claude or Google Gemini |
-| Full-text extraction | trafilatura |
-| Paywall handling | browser cookies (Zen/Chrome/Firefox) + httpx |
 | Preference learning | Claude API |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |
 | Output | Obsidian (filesystem) |

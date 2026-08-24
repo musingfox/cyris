@@ -18,7 +18,6 @@ from datetime import UTC, datetime
 import feedparser
 
 from cyris.adapters.fetch.email_parser import strip_tracking_params
-from cyris.adapters.fetch.extractor import extract_full_text
 from cyris.adapters.http_client import HttpClient
 from cyris.domain.models import Article, SourceConfig, Tier
 
@@ -54,7 +53,6 @@ class RssSource:
         sources: dict[str, SourceConfig],
         aliases: dict[str, str] | None = None,
         limit: int = 200,
-        cookies: dict[str, str] | None = None,
     ) -> list[Article]:
         """Fetch every configured feed concurrently and window-filter the entries.
 
@@ -69,7 +67,7 @@ class RssSource:
 
         async def one(source: SourceConfig) -> list[Article]:
             async with semaphore:
-                return await self._fetch_feed(source, after, before, cookies)
+                return await self._fetch_feed(source, after, before)
 
         results = await asyncio.gather(*(one(s) for s in feeds), return_exceptions=True)
 
@@ -91,7 +89,6 @@ class RssSource:
         source: SourceConfig,
         after: datetime,
         before: datetime,
-        cookies: dict[str, str] | None,
     ) -> list[Article]:
         response = await self._http.get(source.url or "")
         response.raise_for_status()
@@ -115,8 +112,6 @@ class RssSource:
                 continue
 
             content = _entry_content(entry)
-            if source.paywall and cookies:
-                content = await self._full_text(url, cookies) or content
 
             articles.append(
                 Article(
@@ -132,21 +127,6 @@ class RssSource:
                 )
             )
         return articles
-
-    async def _full_text(self, url: str, cookies: dict[str, str]) -> str:
-        """Fetch paywalled full text on a dedicated client.
-
-        HttpClient mutates `self._client.cookies` for the duration of a cookie'd
-        GET; sharing it with the concurrent feed fetches would leak the paywall
-        session onto other hosts and clear it mid-flight.
-        """
-        try:
-            async with HttpClient() as http:
-                extracted = await extract_full_text(url, http, cookies=cookies)
-            return extracted.content
-        except Exception:
-            logger.warning("Paywall extraction failed for %s", url, exc_info=True)
-            return ""
 
     async def mark_as_read(self, article_ids: list[int | str]) -> None:
         """No-op: read state lives in the ArticleStore, not in the feed."""

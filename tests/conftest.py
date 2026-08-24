@@ -61,7 +61,6 @@ def sample_sources() -> dict[str, SourceConfig]:
             url="https://stratechery.com/feed/",
             tier=Tier.SUMMARIZE,
             tags=["tech", "business-strategy"],
-            paywall=True,
         ),
     }
 
