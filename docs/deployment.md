@@ -82,8 +82,8 @@ To become a shippable open-source project, the gaps fall into two categories.
 | No LICENSE | AGPL-3.0-or-later + README notice + pyproject metadata | ✅ |
 | Confusing duplicate template naming | Unify to `cyris.toml.example` (fix `[claude]`→`[llm_provider]`+`[digest]`, de-personalize) | ✅ |
 | Scheduling bound to macOS | Docker uses supercronic; launchd kept as a macOS option | ✅ |
-| Hardcoded personal vault path | `CYRIS_VAULT_PATH` env override; default still `~/Documents/ObsidianVault` | ◐ Partial |
-| Hard dependency on self-hosted Miniflux + personal worker URL | Marked optional in README | ◐ |
+| Hardcoded personal vault path | `CYRIS_VAULT_PATH` env override; the remaining default `~/Documents/ObsidianVault` is generic, not personal | ✅ |
+| Hard dependency on self-hosted Miniflux + personal worker URL | Marked optional in README; retiring `MinifluxSource` outright is tracked as `cloud-p1-retire-miniflux` (the Worker buffer measured a strict superset on 2026-08-24) | ◐ |
 
 ### Project Quality (Open-Source Conventions, Should Fix)
 
@@ -91,7 +91,7 @@ To become a shippable open-source project, the gaps fall into two categories.
 |------|------|------|
 | No CI | `.github/workflows/ci.yml`: ruff check + format + pytest | ✅ |
 | Missing human-facing architecture docs | README architecture + adapter section + `docs/architecture.md` | ✅ |
-| No CONTRIBUTING / issue·PR template | README Contributing section (standalone templates not yet added) | ◐ |
+| No CONTRIBUTING / issue·PR template | README Contributing section carries the conventions; `.github/ISSUE_TEMPLATE/bug_report.md` added 2026-08-24. No separate CONTRIBUTING.md — it would duplicate the README — and no PR template until a real PR needs one | ✅ |
 
 **Good news**: `.env` / `cyris.toml` / `sources.yaml` are all gitignored, so personal email and worker URLs never entered the repo; the template files (`.env.example`, `sources.example.yaml`, `tracking.example.yaml`) are largely complete; test coverage is good. **The core code is clean; what's missing is mainly "de-personalized defaults + de-macOS-ing the deployment + open-source convention files".**
 
