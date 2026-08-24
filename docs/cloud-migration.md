@@ -1,6 +1,6 @@
 # Cloud Migration Plan
 
-> Status: phases 0 and 1 done. Supersedes the Cloudflare half of
+> Status: phases 0, 1 and 2 done — state lives in D1 as of 2026-08-25. Supersedes the Cloudflare half of
 > [`deployment.md`](deployment.md), whose "drop Miniflux, fetch RSS directly" plan was
 > measured and found wrong (see [Why the buffer](#why-a-buffer-and-not-direct-polling)).
 
@@ -22,8 +22,8 @@ remaining migration is roughly 1,300 lines of adapter rewriting, dominated by
 | Feed buffer | `workers/rss/` cron → D1 |
 | Published digest | Cloudflare Pages |
 
-Still local: the `cyris` container on a Mac mini (digest at 08:00 and 20:00),
-the triage UI, and all persistent state as JSON files.
+Still local: the `cyris` container on a Mac mini (digest at 08:00 and 20:00) and
+the triage UI. Persistent state moved to D1 on 2026-08-25.
 
 ### Why a buffer, and not direct polling
 
@@ -208,7 +208,8 @@ D1 but sources still came from the file, because nothing else makes that visible
 
 ### Cutover order
 
-Nothing here switches by itself; each step is separately reversible.
+Done 2026-08-25 — kept as the record of what was run, and as the recipe for
+anyone repeating it. Each step is separately reversible.
 
 1. `wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql`
    — creates `stored_articles`, `usage_log` and `sources`. Already done 2026-08-25.
@@ -218,6 +219,16 @@ Nothing here switches by itself; each step is separately reversible.
 5. `cyris sources push`, then `cyris sources list` to confirm the count.
 6. Redeploy `workers/rss/` so it reads the table instead of its bundle. Until this
    step the Worker keeps polling `feeds.json`, which is correct, not broken.
+
+Receipts: `store diff` returned 9067 URLs on each side with zero differences;
+the first full run on D1 produced the digest and both raw pages, logged its spend
+to `usage_log`, published to Pages (verified with a 200) and notified Discord.
+
+Two things bit during the migration and are worth remembering. A whole-store
+import is ~1,800 statements, so the client needs retries or a single timeout
+loses the run — `INSERT OR IGNORE` is what makes a retry safe. And a D1 400
+carries its reason in the response body: `raise_for_status()` was discarding it,
+turning `no such table: sources` into a bare URL.
 
 526 lines does not mean 526 new lines: the 8-day dedup scan currently reads eight local
 partitions per `save`, and over SQL that is one query.
