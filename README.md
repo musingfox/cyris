@@ -39,6 +39,29 @@ uv run cyris doctor                # check the config before the first run
 uv run cyris run                   # full pipeline (fetch → score → digest)
 ```
 
+`cyris doctor` is the fastest way to find out what is still missing — it checks the
+config, both vault paths, the store, every Worker and every Cloudflare token, and
+exits non-zero on anything that would break a run.
+
+### What needs what
+
+Nothing below the first row is required. Start at the top and add only what you want.
+
+| Feature | Needs | Cost |
+|---|---|---|
+| RSS digest to Obsidian | An LLM API key | LLM usage only |
+| Better feed coverage (see below) | A Cloudflare account | Workers Paid, US$5/mo |
+| Digest votes 👍/👎 | A Cloudflare account | Free tier |
+| Published HTML digest | A Cloudflare account | Free tier |
+| **Email-only newsletters** | A Cloudflare account **and your own domain** | Domain registration |
+| State in the cloud (`[store] backend = "d1"`) | A Cloudflare account | Free tier |
+
+**The domain is the one thing that cannot be automated away.** Cloudflare Email
+Routing needs a domain you control, so email-only newsletters — the ones with no
+feed at all — need one too. Everything else works on a `*.workers.dev` subdomain.
+Newsletters that publish RSS (Substack, Ghost, and most others) are just feeds; they
+need nothing extra.
+
 ### Where RSS comes from
 
 Feeds are listed in `sources.yaml`, and there are two ways to read them.
@@ -53,6 +76,19 @@ poll saw 176 of 317 articles.
 Worker polls every feed hourly into D1, and cyris reads a window out of the buffer, so
 nothing expires between runs. Deploy `workers/rss/`, then set `[rss] worker_url` in
 `cyris.toml` and `CYRIS_RSS_TOKEN` in `.env`. See [`workers/rss/README.md`](workers/rss/README.md).
+
+Once the buffer is deployed you can also keep the source list in D1 with
+`cyris sources push`, so adding a feed is a write instead of a redeploy.
+`sources.yaml` stays the file you edit, and stays the fallback.
+
+### Where the state lives
+
+By default the article store is JSON files under `[agent_vault] path`, which is fine
+until the machine holding them dies. Setting `[store] backend = "d1"` moves the store
+and the usage log to Cloudflare D1 instead. `cyris store migrate` copies what you
+already have across without overwriting anything, and `cyris store diff` compares the
+two before you commit to the switch. The full order is in
+[`docs/cloud-migration.md`](docs/cloud-migration.md).
 
 ## Docker Deployment
 
