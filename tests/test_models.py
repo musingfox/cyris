@@ -136,7 +136,6 @@ class TestDigestContent:
         assert digest.thematic_summaries == []
         assert digest.attention_sections == []
         assert digest.filtered_headlines == []
-        assert digest.tracked_updates is None
 
     def test_full_digest(self, sample_digest_content):
         assert sample_digest_content.articles_included == 3

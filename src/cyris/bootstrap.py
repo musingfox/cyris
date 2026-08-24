@@ -17,7 +17,7 @@ from cyris.adapters.output.digest import DigestWriter
 from cyris.adapters.output.usage_log import append_usage
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.event_store import EventStore
-from cyris.config import Config, LLMProviderConfig, VaultConfigSource
+from cyris.config import Config, LLMProviderConfig
 from cyris.service_layer.ports import FetchSource, LLMClient
 
 _DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-6", "gemini": "gemini-2.5-flash"}
@@ -52,7 +52,6 @@ class Deps:
     log_usage: Callable[..., None]
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
-    tracking: VaultConfigSource | None = None
     event_store: EventStore | None = None
     embedder: Any | None = None  # GeminiEmbedder when vote_similarity.enabled
 
@@ -118,7 +117,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
             store,
         )
 
-    tracking = VaultConfigSource(cfg.app.agent_vault.path / cfg.app.agent_vault.tracking_file)
     event_store = EventStore(cfg.app.agent_vault.path / "events")
 
     return Deps(
@@ -132,7 +130,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         sync_promotions=sync,
         log_usage=partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl"),
         on_progress=on_progress or (lambda _msg: None),
-        tracking=tracking,
         event_store=event_store,
         embedder=embedder,
     )

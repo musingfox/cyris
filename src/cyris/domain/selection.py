@@ -216,8 +216,6 @@ def select_digest_articles(content: DigestContent, max_items: int = 15) -> Diges
 
 def _iter_digest_items(content: DigestContent) -> list[DigestItem]:
     items: list[DigestItem] = []
-    if content.tracked_updates is not None:
-        items.extend(content.tracked_updates.items)
     for sections in (
         content.featured_articles,
         content.news_clusters,

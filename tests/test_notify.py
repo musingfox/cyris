@@ -13,17 +13,6 @@ class TestDiscordEmbeds:
             sources_processed=5,
             articles_received=20,
             articles_included=8,
-            tracked_updates=DigestSection(
-                heading="AI 監管",
-                items=[
-                    DigestItem(
-                        title="AI 監管",
-                        summary="歐盟推進 AI 法案",
-                        sources=["Reuters"],
-                        urls=["https://reuters.com/ai"],
-                    )
-                ],
-            ),
             featured_articles=[
                 DigestSection(
                     heading="Cross-Cutting Concerns",
@@ -90,7 +79,6 @@ class TestDiscordEmbeds:
         titles = [e["title"] for e in embeds]
 
         assert titles == [
-            "🔔 追蹤主題更新",
             "⭐ 精選文章",
             "📰 新聞聚合",
             "📋 主題摘要",
@@ -279,73 +267,6 @@ class TestDiscordEmbeds:
         assert "Brief summary" in headlines["description"]
         # Long summary should be truncated
         assert "…" in headlines["description"]
-
-    def test_tracked_updates_embed(self):
-        """Tracked updates appear first when present."""
-        content = DigestContent(
-            date="2026-04-10",
-            period="morning",
-            sources_processed=1,
-            articles_received=2,
-            articles_included=1,
-            tracked_updates=DigestSection(
-                heading="AI 監管動態",
-                items=[
-                    DigestItem(
-                        title="AI 監管",
-                        summary="歐盟新法案進展",
-                        sources=["Reuters"],
-                        urls=["https://reuters.com/ai"],
-                    )
-                ],
-            ),
-        )
-
-        embeds = build_discord_embeds(content)
-        assert embeds[0]["title"] == "🔔 追蹤主題更新"
-        assert embeds[0]["color"] == 0xED4245
-        assert "AI 監管動態" in embeds[0]["description"]
-
-    def test_tracked_updates_embed_multi_item(self):
-        """Tracked updates embed lists all items as **links** (T1)."""
-        content = DigestContent(
-            date="2026-04-10",
-            period="morning",
-            sources_processed=2,
-            articles_received=2,
-            articles_included=2,
-            tracked_updates=DigestSection(
-                heading="追蹤",
-                items=[
-                    DigestItem(title="t1", summary="s1", sources=["S1"], urls=["u1"]),
-                    DigestItem(title="t2", summary="s2", sources=["S2"], urls=["u2"]),
-                ],
-            ),
-        )
-
-        embeds = build_discord_embeds(content)
-        assert embeds[0]["title"] == "🔔 追蹤主題更新"
-        assert embeds[0]["color"] == 0xED4245
-        desc = embeds[0]["description"]
-        assert "- **[t1](u1)** — s1 (S1)" in desc
-        assert "- **[t2](u2)** — s2 (S2)" in desc
-
-    def test_tracked_updates_embed_no_wiki_link(self):
-        """Description has no [[ wiki syntax for tracked (T2)."""
-        content = DigestContent(
-            date="2026-04-10",
-            period="morning",
-            sources_processed=1,
-            articles_received=1,
-            articles_included=1,
-            tracked_updates=DigestSection(
-                heading="主題",
-                items=[DigestItem(title="t1", summary="", sources=[], urls=["u1"])],
-            ),
-        )
-
-        embeds = build_discord_embeds(content)
-        assert "[[" not in embeds[0]["description"]
 
     def test_stats_embed_always_last(self):
         """Stats embed is always the last embed."""

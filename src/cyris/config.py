@@ -13,7 +13,6 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 from cyris.domain.models import SourceConfig
-from cyris.domain.tracking import TrackedTopic
 
 
 def _load_dotenv(env_path: Path | None = None) -> None:
@@ -121,30 +120,12 @@ class ObsidianConfig(BaseModel):
 
 class AgentVaultConfig(BaseModel):
     path: Path = Path("./agent-vault")
-    tracking_file: Path = Path("tracking.yaml")
 
     @model_validator(mode="after")
     def override_path(self) -> "AgentVaultConfig":
         if p := os.environ.get("CYRIS_AGENT_VAULT_PATH"):
             self.path = Path(p)
         return self
-
-
-class VaultConfigSource:
-    """Vault-backed impl of TrackingConfigSource (for agent-vault/tracking.yaml)."""
-
-    def __init__(self, tracking_file: Path):
-        self.tracking_file = Path(tracking_file)
-
-    async def load_topics(self) -> list[TrackedTopic]:
-        from cyris.adapters.tracking_yaml import load_topics_from_file
-
-        return await load_topics_from_file(self.tracking_file)
-
-    async def upsert_topic(self, topic: TrackedTopic) -> None:
-        from cyris.adapters.tracking_yaml import upsert_topic_to_file
-
-        await upsert_topic_to_file(self.tracking_file, topic)
 
 
 class HtmlOutputConfig(BaseModel):

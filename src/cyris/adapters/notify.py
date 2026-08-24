@@ -52,22 +52,6 @@ def build_discord_embeds(
     label = period_labels.get(content.period, content.period)
     embeds: list[dict] = []
 
-    # --- Tracked topic updates ---
-    if content.tracked_updates and content.tracked_updates.items:
-        section = content.tracked_updates
-        lines: list[str] = []
-        lines.append(f"### {section.heading}")
-        for item in section.items:
-            title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
-            summary_str = f" — {item.summary}" if item.summary else ""
-            source_str = f" ({', '.join(item.sources)})" if item.sources else ""
-            lines.append(f"- {title_part}{summary_str}{source_str}")
-        text = "\n".join(lines).strip()
-        if text:
-            embeds.append(
-                {"title": "🔔 追蹤主題更新", "description": text[:4096], "color": 0xED4245}
-            )
-
     # --- Featured articles ---
     if content.featured_articles:
         lines = []

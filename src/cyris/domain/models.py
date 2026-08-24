@@ -24,7 +24,6 @@ class SourceConfig(BaseModel):
     tags: list[str] = Field(default_factory=list)
     language: str = "auto"
     email_match: str | None = None
-    cookie_domain: str | None = None
     # Where this source publishes. Its host is what makes "the sender's own domain"
     # knowable instead of guessed from link statistics.
     homepage: str | None = None
@@ -52,8 +51,6 @@ class DigestItem(BaseModel):
     summary: str
     sources: list[str]
     urls: list[str]
-    event_ref: str | None = None
-    is_tracked_topic: bool = False
     score: float | None = None
     ref_urls: list[str] = Field(default_factory=list)
 
@@ -106,7 +103,6 @@ class DigestContent(BaseModel):
     articles_received: int
     articles_included: int
     usage: UsageStats = Field(default_factory=UsageStats)
-    tracked_updates: DigestSection | None = None
     featured_articles: list[DigestSection] = Field(default_factory=list)
     news_clusters: list[DigestSection] = Field(default_factory=list)
     thematic_summaries: list[DigestSection] = Field(default_factory=list)

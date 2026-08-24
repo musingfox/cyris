@@ -9,16 +9,10 @@ from typing import TYPE_CHECKING
 
 from cyris.domain.models import ArticleState, Tier, UsageStats
 from cyris.domain.selection import count_dead_links, layer_by_score
-from cyris.domain.tracking import keyword_prescreen
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.scoring import score_in_batches
-from cyris.service_layer.topic_matching import (
-    assemble_tracked_section,
-    confirm_topic_matches,
-    record_tracked_events,
-)
 from cyris.utils.timezone import now_in_timezone
 
 if TYPE_CHECKING:
@@ -184,40 +178,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         progress("No pending articles to process.")
         return RunReport(status="no_pending", failed_sources=failed_sources)
 
-    # Tracked topics integration (after score; confirm only on active+prescreen hits -> no-op else)
-    tracked_updates = None
-    if deps.tracking is not None and deps.llm is not None:
-        try:
-            topics = await deps.tracking.load_topics()
-            active = [t for t in topics if t.status == "active"]
-            if active:
-                prescreen = keyword_prescreen(digest_articles, active)
-                if prescreen:
-                    stored_cands = [a for a in pending_articles if a.url in prescreen]
-                    matches, c_usage = await confirm_topic_matches(
-                        stored_cands,
-                        prescreen,
-                        deps.llm,
-                        output_language=cfg.app.digest.output_language,
-                        style_prompt=cfg.app.digest.style_prompt,
-                    )
-                    total_usage.add(c_usage.input_tokens, c_usage.output_tokens)
-                    if matches:
-                        today = now_in_timezone(tz).date()
-                        refs: dict[str, str] = {}
-                        if deps.event_store is not None and not options.dry_run:
-                            refs = record_tracked_events(deps.event_store, matches, today)
-                        else:
-                            refs = {m.topic_name: None for m in matches}
-                        tracked_updates = assemble_tracked_section(matches, refs)
-        except Exception:
-            tracked_updates = None
-            logger.warning("tracked topic matching failed; continuing without block")
-
-    # Event lifecycle: mark events silent for 30+ days as inactive
-    if deps.event_store is not None and not options.dry_run:
-        deps.event_store.mark_stale_inactive(now_in_timezone(tz).date())
-
     # Process all articles through digest pipeline
     digest_pipeline = DigestPipeline(
         deps.llm,
@@ -237,9 +197,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         article_scores=article_scores,
     )
     content = result.content
-
-    if tracked_updates is not None:
-        content.tracked_updates = tracked_updates
 
     # Layer by score to extract featured articles
     content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)

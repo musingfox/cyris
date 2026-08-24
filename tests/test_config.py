@@ -4,8 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cyris.adapters.tracking_yaml import TrackingConfigSource
-from cyris.config import VaultConfigSource, load_config
+from cyris.config import load_config
 from cyris.domain.models import Tier
 
 
@@ -256,10 +255,3 @@ class TestLLMProvider:
 
         # No provider ⇒ None (degraded mode)
         assert build_llm(LLMProviderConfig()) is None
-
-
-class TestVaultTrackingProtocol:
-    def test_vault_config_source_implements_tracking_config_source(self, tmp_path):
-        """T5: isinstance(VaultConfigSource, TrackingConfigSource) True."""
-        v = VaultConfigSource(tmp_path / "t.yaml")
-        assert isinstance(v, TrackingConfigSource)

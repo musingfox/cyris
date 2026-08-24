@@ -2,22 +2,7 @@
 
 from datetime import datetime
 
-from cyris.domain.models import Article, SourceConfig, Tier
-
-
-class TestSourceConfigExtension:
-    def test_with_cookie_domain(self):
-        s = SourceConfig(
-            name="Stratechery",
-            url="https://stratechery.com/feed/",
-            tier=Tier.SUMMARIZE,
-            cookie_domain="stratechery.com",
-        )
-        assert s.cookie_domain == "stratechery.com"
-
-    def test_without_cookie_domain(self):
-        s = SourceConfig(name="TechCrunch", url="https://techcrunch.com/feed/")
-        assert s.cookie_domain is None
+from cyris.domain.models import Article, Tier
 
 
 class TestArticleExtension:

@@ -40,16 +40,6 @@ class DigestWriter:
         parts.append(f"# {label} {content.date}")
         parts.append("")
 
-        # Tracked topic updates
-        if content.tracked_updates and content.tracked_updates.items:
-            parts.append("## 追蹤主題更新")
-            parts.append("")
-            parts.append("> 你正在追蹤的主題有新動態")
-            parts.append("")
-            parts.append(self._render_tracked_updates(content.tracked_updates))
-            parts.append("---")
-            parts.append("")
-
         # Featured articles
         if content.featured_articles:
             parts.append("## 精選文章")
@@ -160,10 +150,6 @@ class DigestWriter:
             if unique_sources:
                 lines.append(f"`Sources: {', '.join(unique_sources)}`")
 
-            # Event reference
-            event_refs = [i.event_ref for i in section.items if i.event_ref]
-            if event_refs:
-                lines.append(f" · [[{event_refs[0]}]]")
             for item in section.items:
                 if ref_urls := self._reference_urls(item):
                     lines.append(f"原文：{ref_urls}")
@@ -197,20 +183,6 @@ class DigestWriter:
             title_part = self._title_part(item)
             summary_str = f" — {item.summary}" if item.summary else ""
             lines.append(f"- {title_part}{summary_str}")
-            if ref_urls := self._reference_urls(item):
-                lines.append(f"  - 原文：{ref_urls}")
-        lines.append("")
-        return "\n".join(lines)
-
-    def _render_tracked_updates(self, section: DigestSection) -> str:
-        """Render tracked updates per-item (title+link, summary, source, event wiki ref)."""
-        lines = []
-        for item in section.items:
-            title_part = self._title_part(item)
-            source_str = f" ({', '.join(item.sources)})" if item.sources else ""
-            summary_str = f" — {item.summary}" if item.summary else ""
-            ref_str = f" · [[{item.event_ref}]]" if item.event_ref else ""
-            lines.append(f"- {title_part}{summary_str}{source_str}{ref_str}")
             if ref_urls := self._reference_urls(item):
                 lines.append(f"  - 原文：{ref_urls}")
         lines.append("")
