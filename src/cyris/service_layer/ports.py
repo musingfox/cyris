@@ -92,10 +92,6 @@ class FetchSource(Protocol):
         """Fetch articles within a time window."""
         ...
 
-    async def mark_as_read(self, article_ids: list[int | str]) -> None:
-        """Mark articles as read. No-op if source doesn't support it."""
-        ...
-
     async def health_check(self) -> bool:
         """Check if the source is reachable."""
         ...

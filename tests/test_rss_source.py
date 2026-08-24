@@ -1,4 +1,4 @@
-"""Tests for RssSource — the Miniflux-free feed adapter."""
+"""Tests for RssSource — the direct-polling feed adapter."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -55,7 +55,7 @@ async def test_published_at_is_always_tz_aware():
 
 @pytest.mark.asyncio
 async def test_entries_outside_the_window_are_dropped():
-    """Miniflux filtered the window server-side; that is this adapter's job now."""
+    """Window filtering is this adapter's job — nothing upstream does it."""
     http = _http_returning(
         _feed(
             _item("old", "https://a.test/old", "Mon, 10 Mar 2026 10:00:00 GMT"),
@@ -117,7 +117,7 @@ async def test_one_broken_feed_does_not_sink_the_run():
 
 @pytest.mark.asyncio
 async def test_tracking_params_are_stripped():
-    """Miniflux served stripped URLs; unstripped ones defeat the store's URL key."""
+    """Unstripped tracking params defeat the store's URL primary key."""
     http = _http_returning(
         _feed(
             _item(

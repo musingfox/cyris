@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Diff what Miniflux and the Cloudflare buffer return for the same window.
+"""Diff what a direct feed poll and the Cloudflare buffer return for the same window.
 
-The buffer only pays off once it has accumulated: high-volume feeds hold 2-4h
-per snapshot, so run this after the Worker has been polling for a full day.
+The buffer is the only RSS source in the pipeline, and its failure mode is silent
+loss, so this is what audits it. A direct poll is not a superset — feeds hold only
+2-4h per snapshot — so "only in poll" is the number that matters: anything a live
+feed is still serving that the buffer never recorded is a real gap. "only in
+buffer" is expected and large, and is the buffer earning its keep.
 
     uv run --with python-dotenv python workers/rss/compare.py [hours]
 """
 
 import asyncio
 import json
-import os
 import sys
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -17,8 +19,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from cyris.adapters.fetch.miniflux import MinifluxClient
-from cyris.adapters.fetch.miniflux_source import MinifluxSource
+from cyris.adapters.fetch.rss_source import RssSource
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.config import load_config
 
@@ -39,9 +40,8 @@ def report(label: str, urls: set[str], articles: list) -> None:
 def append_log(path: Path, record: dict) -> None:
     """Append one JSON line so several days of parity accumulate unattended.
 
-    Retiring Miniflux needs a run of clean days, not one good measurement — the
-    first 24h comparison looked like a 73% capture rate purely because it spanned
-    an outage. Delete this log and its launchd job once Miniflux is gone.
+    One good measurement is not a receipt — the first 24h comparison looked like a
+    73% capture rate purely because it spanned an outage.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -54,12 +54,10 @@ async def main() -> None:
     before = datetime.now(UTC)
     after = before - timedelta(hours=hours)
 
-    miniflux = MinifluxSource(
-        MinifluxClient(cfg.app.miniflux.url, os.environ["CYRIS_MINIFLUX_API_KEY"])
-    )
+    poll = RssSource()
     buffer = CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token)
 
-    mf_articles = await miniflux.fetch_articles(
+    mf_articles = await poll.fetch_articles(
         after=after, before=before, sources=cfg.sources, aliases=cfg.aliases, limit=LIMIT
     )
     cf_articles = await buffer.fetch_articles(
@@ -70,11 +68,11 @@ async def main() -> None:
     cf_urls = {a.url for a in cf_articles}
 
     print(f"window : last {hours}h")
-    print(f"miniflux: {len(mf_urls)} urls")
+    print(f"poll    : {len(mf_urls)} urls")
     print(f"buffer  : {len(cf_urls)} urls")
     print(f"shared  : {len(mf_urls & cf_urls)}")
 
-    report("miniflux", mf_urls - cf_urls, mf_articles)
+    report("poll", mf_urls - cf_urls, mf_articles)
     report("buffer", cf_urls - mf_urls, cf_articles)
 
     if "--log" in sys.argv:
@@ -82,7 +80,7 @@ async def main() -> None:
         record = {
             "checked_at": before.isoformat(),
             "hours": hours,
-            "miniflux": len(mf_urls),
+            "poll": len(mf_urls),
             "buffer": len(cf_urls),
             "shared": len(mf_urls & cf_urls),
             "missing_from_buffer": len(missing),

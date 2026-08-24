@@ -35,7 +35,8 @@ flowchart TB
     subgraph ADP["Adapters"]
         LLM["Anthropic / Gemini Client"]
         STORE["ArticleStore (JSON)"]
-        MF["MinifluxSource"]
+        RSS["RssSource (direct poll)"]
+        CFRSS["CloudflareRssSource"]
         NLA["NewsletterArchiveSource"]
         CFNL["CloudflareNewsletterSource"]
         WRITER["DigestWriter"]
@@ -47,7 +48,7 @@ flowchart TB
     end
 
     subgraph EXT["External / IO"]
-        MFSVC[("Miniflux + Postgres")]
+        FEEDS[("Publisher RSS feeds")]
         API(("Claude / Gemini API"))
         FS["Local filesystem"]
         VAULT["Obsidian Vault"]
@@ -66,7 +67,8 @@ flowchart TB
 
     P1 -. impl .-> LLM
     P2 -. impl .-> STORE
-    P3 -. impl .-> MF
+    P3 -. impl .-> RSS
+    P3 -. impl .-> CFRSS
     P3 -. impl .-> NLA
     P3 -. impl .-> CFNL
 
@@ -79,7 +81,8 @@ flowchart TB
 
     LLM --> API
     STORE --> FS
-    MF --> MFSVC
+    RSS --> FEEDS
+    CFRSS --> CFW
     NLA --> FS
     CFNL --> CFW
     WRITER --> VAULT
@@ -95,8 +98,8 @@ flowchart TB
     classDef cloud fill:#0d47a1,stroke:#64b5f6,color:#fff;
     class P1,P2,P3 port;
     class STORE,WRITER,HTML,USAGE move;
-    class MF,MFSVC local;
-    class CFNL,PUB,SYNC,CFW cloud;
+    class RSS,FEEDS local;
+    class CFNL,CFRSS,PUB,SYNC,CFW cloud;
 ```
 
 **Legend**: 🟢 Protocol boundary (clean to swap)　🟠 directly-injected local-file sink (needs work to move to the cloud, no Protocol)　🔴 local/macOS-bound　🔵 already cloud
@@ -124,7 +127,7 @@ implementation, so no Protocol was extracted. When the cloud move needs a second
 | usage log 🟠 | file | volume mount, unchanged | swap to D1 |
 | DigestWriter 🟠 | writes Obsidian vault | vault volume mount | disable (use HtmlDigestWriter → R2/Pages) |
 | LLMClient 🟢 | Anthropic/Gemini | unchanged | unchanged (already cloud) |
-| FetchSource · Miniflux 🔴 | self-hosted Docker | already in compose | retire in favour of `workers/rss/` (cron→D1); fetching at digest time instead was measured and misses 141 of 317 — see [cloud-migration.md](cloud-migration.md) |
+| FetchSource · Rss 🔴 | polls feeds directly | unchanged | fallback only: a digest-time poll sees each feed's current snapshot and misses 141 of 317 — see [cloud-migration.md](cloud-migration.md) |
 | FetchSource · CloudflareRss 🔵 | Worker+D1 | unchanged | unchanged |
 | FetchSource · CloudflareNewsletter 🔵 | Worker+KV | unchanged | unchanged |
 | publish / sync_promotions 🔵 | Cloudflare | unchanged | unchanged |

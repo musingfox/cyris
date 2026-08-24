@@ -150,14 +150,6 @@ async def test_fetch_articles_handles_malformed_file(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_mark_as_read_noop():
-    """Test that mark_as_read is a no-op for newsletter source."""
-    source = NewsletterArchiveSource(None)  # type: ignore
-    # Should not raise
-    await source.mark_as_read([1, 2, 3])
-
-
-@pytest.mark.asyncio
 async def test_health_check_path_exists(tmp_path):
     """Test that health_check returns True when path exists."""
     archive_dir = tmp_path / "newsletters"

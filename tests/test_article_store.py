@@ -63,7 +63,6 @@ def test_save_new_articles(store: ArticleStore, sample_articles: list[Article]) 
 
     assert result.saved_count == 3
     assert result.skipped_count == 0
-    assert result.miniflux_ids == [101, 102, 103]
 
 
 def test_save_with_duplicates(store: ArticleStore, sample_articles: list[Article]) -> None:
@@ -78,16 +77,15 @@ def test_save_with_duplicates(store: ArticleStore, sample_articles: list[Article
 
     assert result.saved_count == 1
     assert result.skipped_count == 1
-    assert result.miniflux_ids == [102]
 
 
 def test_save_mixed_ids(store: ArticleStore) -> None:
-    """Contract 1: Mixed Miniflux (id=int) + newsletter (id=str)."""
+    """Feed ids are ints, newsletter ids are strings; both must round-trip."""
     now = datetime.now(UTC)
     articles = [
         Article(
             id=101,
-            title="Miniflux Article",
+            title="Feed Article",
             url="https://example.com/m1",
             content="Content",
             published_at=now,
@@ -105,7 +103,7 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
         ),
         Article(
             id=102,
-            title="Miniflux Article 2",
+            title="Feed Article 2",
             url="https://example.com/m2",
             content="Content",
             published_at=now,
@@ -117,7 +115,8 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
     result = store.save(articles, now=now)
 
     assert result.saved_count == 3
-    assert result.miniflux_ids == [101, 102]  # Only int IDs
+    stored = store.get_by_urls([a.url for a in articles])
+    assert {a.original_id for a in stored} == {101, "newsletter-123", 102}
 
 
 def test_update_states_existing_articles(

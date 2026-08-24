@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS (via Miniflux) and newsletters, processes them through an LLM (Anthropic Claude or Google Gemini) with tier-based filtering/summarization, and outputs Obsidian markdown digest notes.
+Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic Claude or Google Gemini) with tier-based filtering/summarization, and outputs Obsidian markdown digest notes.
 
 ## Commands
 
@@ -66,7 +66,7 @@ src/cyris/
 ├── adapters/         # Concrete IO implementations
 │   ├── anthropic_client.py  # AnthropicClient (implements LLMClient)
 │   ├── store/               # ArticleStore (JSON, dedup by URL) + event store/schema
-│   ├── fetch/               # Miniflux client/source, newsletter archive + Cloudflare-worker sources, email parser
+│   ├── fetch/               # RSS sources (direct + Worker buffer), newsletter archive + Cloudflare-worker sources, email parser
 │   ├── output/              # DigestWriter, HTML digest, raw collected-article listings, article export, publish, usage log
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
@@ -91,7 +91,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 
 `service_layer/run_digest.py` is the single pipeline orchestrator (the CLI only parses args and calls it via `bootstrap.build_deps`):
 
-1. `service_layer/fetching.py` pulls from all FetchSources (Miniflux, newsletter archive, and the Cloudflare newsletter Worker when configured) within a time window
+1. `service_layer/fetching.py` pulls from all FetchSources (the RSS Worker buffer or direct polling, newsletter archive, and the Cloudflare newsletter Worker when configured) within a time window
 2. Articles are saved to the ArticleStore for dedup and persistent lifecycle tracking
 3. `service_layer/scoring.py` scores non-news articles via the LLM for relevance ranking
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
@@ -104,7 +104,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 
 All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or swapping IO, work at these seams — never touch `service_layer/` or `domain/`:
 
-- **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `mark_as_read` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `MinifluxSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource`.
+- **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured), `NewsletterArchiveSource`, `CloudflareNewsletterSource`.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`.
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` satisfies it structurally (no explicit inheritance).
 - **Output sinks** — `DigestWriter`, `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
@@ -129,7 +129,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[promote]`/`[newsletter]` Worker URLs)
 - `sources.yaml` — RSS/newsletter source definitions with tier, tags, and aliases; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
-- `.env` — secrets (API keys for Miniflux, Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`; Discord webhook)
+- `.env` — secrets (API keys for Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`, `CYRIS_RSS_TOKEN`; Discord webhook)
 
 ### Agent Vault (`agent-vault/`)
 

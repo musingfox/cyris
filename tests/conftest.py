@@ -1,6 +1,5 @@
 """Shared test fixtures for Cyris."""
 
-import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -144,9 +143,3 @@ def sample_digest_content() -> DigestContent:
             ),
         ],
     )
-
-
-@pytest.fixture
-def miniflux_response() -> dict:
-    with open(FIXTURES_DIR / "miniflux_response.json") as f:
-        return json.load(f)

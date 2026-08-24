@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 from aiohttp import web
 
-from cyris.adapters.fetch.miniflux import MinifluxClient
 from cyris.adapters.output.article_export import ArticleExporter
 from cyris.adapters.store.article_store import ArticleStore
 from cyris.domain.models import ArticleState
@@ -52,13 +51,11 @@ class TriageServer:
         self,
         store: ArticleStore,
         vault_path: Path | None = None,
-        miniflux_client: MinifluxClient | None = None,
         host: str = "127.0.0.1",
         port: int = 8766,
     ) -> None:
         self._store = store
         self._vault_path = vault_path
-        self._miniflux_client = miniflux_client
         self._host = host
         self._port = port
         self._app = web.Application()
@@ -205,19 +202,7 @@ class TriageServer:
             return web.json_response({"ok": False, "error": "article not found"}, status=404)
         self._store.update_triage_timestamp([url], datetime.now(UTC))
 
-        # Try to mark as read in Miniflux
-        marked_read = False
-        if self._miniflux_client:
-            try:
-                articles = self._store.get_by_urls([url])
-                if articles and isinstance(articles[0].original_id, int):
-                    await self._miniflux_client.mark_as_read([articles[0].original_id])
-                    marked_read = True
-                    logger.info("Marked Miniflux entry as read: %s", url)
-            except Exception as e:
-                logger.warning("Failed to mark Miniflux entry as read for %s: %s", url, e)
-
-        return web.json_response({"ok": True, "marked_read": marked_read})
+        return web.json_response({"ok": True})
 
     async def _handle_undo(self, request: web.Request) -> web.Response:
         try:

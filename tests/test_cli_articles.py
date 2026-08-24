@@ -22,10 +22,6 @@ def setup_store(tmp_path: Path) -> tuple[Path, Path, Path, ArticleStore]:
 [general]
 timezone = "Asia/Taipei"
 
-[miniflux]
-url = "http://localhost"
-api_key = "test"
-
 [llm_provider]
 api_key = "test"
 model = "test"
@@ -218,10 +214,6 @@ def test_articles_accept_without_vault(setup_store: tuple[Path, Path, Path, Arti
     toml_content = f'''
 [general]
 timezone = "Asia/Taipei"
-
-[miniflux]
-url = "http://localhost"
-api_key = "test"
 
 [llm_provider]
 api_key = "test"

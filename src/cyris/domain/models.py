@@ -196,7 +196,6 @@ class SaveResult(BaseModel):
 
     saved_count: int
     skipped_count: int
-    miniflux_ids: list[int]
 
 
 class ProcessResult(BaseModel):

@@ -152,9 +152,6 @@ class CloudflareNewsletterSource:
         except httpx.HTTPError:
             logger.warning("Newsletter worker ack failed", exc_info=True)
 
-    async def mark_as_read(self, article_ids: list[int | str]) -> None:
-        """No-op: newsletters are cleared via ACK during fetch."""
-
     async def health_check(self) -> bool:
         try:
             resp = httpx.get(

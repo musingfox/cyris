@@ -569,7 +569,6 @@ def triage_ui(
     """Start the triage web UI for article classification."""
     _setup_logging(verbose)
 
-    from cyris.adapters.fetch.miniflux import MinifluxClient
     from cyris.adapters.store import ArticleStore
     from cyris.config import load_config
     from cyris.entrypoints.triage_server import TriageServer
@@ -582,16 +581,10 @@ def triage_ui(
 
     store = ArticleStore(cfg.app.agent_vault.path)
 
-    # Conditionally create MinifluxClient if API key is configured
-    miniflux_client = None
-    if cfg.app.miniflux.api_key:
-        miniflux_client = MinifluxClient(cfg.app.miniflux.url, cfg.app.miniflux.api_key)
-
     async def _run() -> None:
         server = TriageServer(
             store,
             vault_path=cfg.app.obsidian.user_vault_path,
-            miniflux_client=miniflux_client,
             host=host,
             port=port,
         )

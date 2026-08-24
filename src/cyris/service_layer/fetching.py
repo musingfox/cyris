@@ -20,7 +20,7 @@ async def fetch_all_articles(
     """Fetch articles from multiple sources, deduplicate by URL.
 
     Args:
-        fetch_sources: List of FetchSource implementations (e.g., Miniflux, newsletters).
+        fetch_sources: List of FetchSource implementations (RSS buffer, newsletters).
         after: Start of time window (inclusive).
         before: End of time window (exclusive).
         sources: Source configs keyed by name.

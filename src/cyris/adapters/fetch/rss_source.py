@@ -1,12 +1,10 @@
-"""FetchSource that polls RSS/Atom feeds directly, no Miniflux in between.
+"""FetchSource that polls RSS/Atom feeds directly, with no buffer in between.
 
-ponytail: not wired into bootstrap. Built to test whether Miniflux could just be
-deleted; the measured answer was no. A digest-time poll sees only what a feed's
-current snapshot holds, and high-volume feeds hold 2-4h against a 24h window —
-141 of 317 articles went missing. What Miniflux provides is *accumulation*, not
-parsing, and workers/rss/ (hourly poll into D1) is what replaces it. This stays
-as the local fallback for when MinifluxSource is retired: same shape, no
-accumulation, correct only for feeds whose snapshot outlives the window.
+The fallback wired in when the RSS Worker isn't configured. A digest-time poll
+sees only what a feed's current snapshot holds, and high-volume feeds hold 2-4h
+against a 24h window — measured, 141 of 317 articles went missing. Accumulation
+is the whole point of workers/rss/ (hourly poll into D1); this adapter has none,
+so it is correct only for feeds whose snapshot outlives the window.
 """
 
 from __future__ import annotations
@@ -78,8 +76,8 @@ class RssSource:
                 continue
             articles.extend(result)
 
-        # Miniflux applied `limit` server-side across all feeds; per-feed limiting
-        # here would let the total balloon, so truncate the merged newest-first list.
+        # `limit` is a whole-run cap, not a per-feed one: limiting inside each feed
+        # would let the total balloon, so truncate the merged newest-first list.
         articles.sort(key=lambda a: a.published_at, reverse=True)
         logger.info("Fetched %d entries from %d feeds", len(articles), len(feeds))
         return articles[:limit]
@@ -105,8 +103,8 @@ class RssSource:
             if not (after <= published_at < before):
                 continue
 
-            # Miniflux served these already-stripped; without this the same article
-            # arrives under two URLs and defeats the store's URL primary key.
+            # Without stripping, the same article arrives under two URLs and
+            # defeats the store's URL primary key.
             url = strip_tracking_params(getattr(entry, "link", ""))
             if not url:
                 continue
@@ -128,15 +126,12 @@ class RssSource:
             )
         return articles
 
-    async def mark_as_read(self, article_ids: list[int | str]) -> None:
-        """No-op: read state lives in the ArticleStore, not in the feed."""
-
     async def health_check(self) -> bool:
         return True
 
 
 def _entry_content(entry: object) -> str:
-    """Prefer full content over the summary, mirroring what Miniflux served."""
+    """Prefer full content over the summary."""
     content = getattr(entry, "content", None)
     if content:
         return content[0].get("value", "")

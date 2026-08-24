@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +24,29 @@ def _make_claude_response(text: str, input_tokens: int = 100, output_tokens: int
     return mock_resp
 
 
+def _feed(items: list[dict]) -> bytes:
+    """Render a minimal RSS 2.0 document RssSource can parse."""
+    entries = "".join(
+        f"<item><guid>{i['id']}</guid><title>{i['title']}</title>"
+        f"<link>{i['url']}</link><description>{i['content']}</description>"
+        f"<pubDate>{format_datetime(i['published_at'])}</pubDate></item>"
+        for i in items
+    )
+    return f"<rss version='2.0'><channel>{entries}</channel></rss>".encode()
+
+
+def _patch_feeds(by_url: dict[str, list[dict]]):
+    """Patch the one adapter seam RssSource fetches through: HttpClient.get."""
+
+    async def get(self, url: str, **kwargs):
+        resp = MagicMock()
+        resp.content = _feed(by_url.get(url, []))
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    return patch("cyris.adapters.fetch.rss_source.HttpClient.get", new=get)
+
+
 @pytest.fixture
 def e2e_config(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     """Create minimal config files and directories for E2E tests."""
@@ -35,10 +59,6 @@ digest_schedule = ["08:00", "20:00"]
 
 [general.notify]
 discord_webhook_url = ""
-
-[miniflux]
-url = "http://localhost:8080"
-api_key = "test-key"
 
 [llm_provider]
 api_key = "test-anthropic-key"
@@ -105,43 +125,35 @@ class TestRunPipelineE2E:
         # Real clock throughout: run_digest must pick up articles saved within
         # the same run (regression coverage for the reload end bound).
         now = datetime.now(UTC) - timedelta(hours=1)
-        sample_entries = {
-            "entries": [
+        feeds = {
+            "https://reuters.com/feed/": [
                 {
-                    "id": 101,
+                    "id": "101",
                     "title": "Breaking News Story 1",
                     "url": "https://reuters.com/article1",
                     "content": "First breaking news content",
                     "published_at": now,
-                    "feed": {"title": "Reuters"},
                 },
                 {
-                    "id": 102,
+                    "id": "102",
                     "title": "Breaking News Story 2",
                     "url": "https://reuters.com/article2",
                     "content": "Second breaking news content",
                     "published_at": now,
-                    "feed": {"title": "Reuters"},
                 },
+            ],
+            "https://stratechery.com/feed/": [
                 {
-                    "id": 103,
+                    "id": "103",
                     "title": "Weekly Tech Trends",
                     "url": "https://stratechery.com/weekly",
                     "content": "Deep analysis of tech trends",
                     "published_at": now,
-                    "feed": {"title": "Stratechery"},
                 },
             ],
-            "total": 3,
         }
 
-        # Mock Miniflux
-        with patch("cyris.adapters.fetch.miniflux.miniflux.Client") as mock_miniflux_cls:
-            mock_miniflux = MagicMock()
-            mock_miniflux.get_entries.return_value = sample_entries
-            mock_miniflux.update_entries = MagicMock()
-            mock_miniflux_cls.return_value = mock_miniflux
-
+        with _patch_feeds(feeds):
             # Mock Claude API for news clustering
             cluster_response = _make_claude_response(
                 json.dumps(
@@ -150,7 +162,7 @@ class TestRunPipelineE2E:
                             {
                                 "heading": "Breaking News Cluster",
                                 "summary": "Two related breaking news stories",
-                                "article_ids": [101, 102],
+                                "article_ids": ["101", "102"],
                             }
                         ],
                         "unclustered_ids": [],
@@ -168,7 +180,7 @@ class TestRunPipelineE2E:
                                 "summary": "Weekly technology trends and insights",
                                 "articles": [
                                     {
-                                        "id": 103,
+                                        "id": "103",
                                         "title": "Weekly Tech Trends",
                                         "source": "Stratechery",
                                     }
@@ -181,7 +193,7 @@ class TestRunPipelineE2E:
 
             # Mock Claude API for scoring (article 103 is the only non-news scorable)
             score_response = _make_claude_response(
-                json.dumps({"scores": [{"id": 103, "score": 85, "language": "en"}]})
+                json.dumps({"scores": [{"id": "103", "score": 85, "language": "en"}]})
             )
 
             # All LLM calls go through the single AnthropicClient adapter;
@@ -229,12 +241,7 @@ class TestRunPipelineE2E:
         """Test run command when no articles are found."""
         config_path, sources_path, user_vault, agent_vault = e2e_config
 
-        # Mock Miniflux to return empty
-        with patch("cyris.adapters.fetch.miniflux.miniflux.Client") as mock_miniflux_cls:
-            mock_miniflux = MagicMock()
-            mock_miniflux.get_entries.return_value = {"entries": [], "total": 0}
-            mock_miniflux_cls.return_value = mock_miniflux
-
+        with _patch_feeds({}):
             # Run full pipeline
             result = runner.invoke(
                 app,
@@ -256,10 +263,6 @@ class TestArticlesLifecycleE2E:
         toml_content = f'''
 [general]
 timezone = "Asia/Taipei"
-
-[miniflux]
-url = "http://localhost"
-api_key = "test"
 
 [llm_provider]
 api_key = "test"

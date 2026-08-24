@@ -80,9 +80,6 @@ class CloudflareRssSource:
         logger.info("Read %d buffered entries from the RSS worker", len(articles))
         return articles
 
-    async def mark_as_read(self, article_ids: list[int | str]) -> None:
-        """No-op: read state lives in the ArticleStore, not in the buffer."""
-
     async def health_check(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:

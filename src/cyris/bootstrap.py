@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from cyris.adapters.anthropic_client import AnthropicClient
-from cyris.adapters.fetch.miniflux import MinifluxClient
-from cyris.adapters.fetch.miniflux_source import MinifluxSource
 from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord
@@ -57,10 +55,9 @@ class Deps:
 def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) -> Deps:
     store = ArticleStore(cfg.app.agent_vault.path)
 
-    miniflux_source = MinifluxSource(MinifluxClient(cfg.app.miniflux.url, cfg.app.miniflux.api_key))
     newsletter_source = NewsletterArchiveSource(cfg.app.agent_vault.path / "daily" / "newsletters")
 
-    fetch_sources: list[FetchSource] = [miniflux_source, newsletter_source]
+    fetch_sources: list[FetchSource] = [newsletter_source]
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
         from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 
@@ -68,11 +65,18 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
             CloudflareNewsletterSource(cfg.app.newsletter.worker_url, cfg.app.newsletter.token)
         )
 
-    # Opt-in while Miniflux stays up: both run, and fetch_all_articles dedups by URL.
+    # RSS comes from the Worker's hourly D1 buffer. Without it, direct polling is
+    # the fallback — correct only for feeds whose snapshot outlives the window
+    # (measured: a digest-time poll missed 141 of 317 articles). See
+    # docs/cloud-migration.md#why-a-buffer-and-not-direct-polling.
     if cfg.app.rss.worker_url and cfg.app.rss.token:
         from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 
         fetch_sources.append(CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token))
+    else:
+        from cyris.adapters.fetch.rss_source import RssSource
+
+        fetch_sources.append(RssSource())
 
     # Reuses the digest's own Gemini key: the Cloudflare token carries only
     # `account (read)` and Workers AI refuses it, so bge-m3 waits for the move.

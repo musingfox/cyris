@@ -59,7 +59,6 @@ def test_end_to_end_flow(store: ArticleStore) -> None:
     # Step 2: Save articles
     save_result = store.save(articles, now=now)
     assert save_result.saved_count == 3
-    assert save_result.miniflux_ids == [101, 102, 103]
 
     # Step 3: Simulate processing (filter tier: 1 accepted, 1 rejected; summarize: all accepted)
     accepted_urls = ["https://example.com/f1", "https://example.com/s1"]
@@ -117,36 +116,6 @@ def test_deduplication_across_runs(store: ArticleStore) -> None:
     end_time = now + timedelta(hours=1)
     all_articles = store.load_by_time_range(now, end_time)
     assert len(all_articles) == 1
-
-
-def test_mixed_miniflux_newsletter_ids(store: ArticleStore) -> None:
-    """Test that only Miniflux IDs (int) are returned for mark-as-read."""
-    now = datetime.now(UTC)
-
-    articles = [
-        Article(
-            id=101,
-            title="Miniflux Article",
-            url="https://example.com/m1",
-            content="Content",
-            published_at=now,
-            source_name="RSS",
-            source_tier=Tier.FILTER,
-        ),
-        Article(
-            id="newsletter-abc",
-            title="Newsletter Article",
-            url="https://example.com/n1",
-            content="Content",
-            published_at=now,
-            source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
-        ),
-    ]
-
-    result = store.save(articles, now=now)
-    assert result.saved_count == 2
-    assert result.miniflux_ids == [101]  # Newsletter ID not included
 
 
 def test_store_reload_preserves_ref_urls(vault_path: Path) -> None:

@@ -1,10 +1,10 @@
 # Cyris
 
-AI-powered information digest agent. Fetches articles from RSS (via Miniflux) and newsletters, processes them through Claude API with tier-based filtering and summarization, and outputs Obsidian markdown digest notes.
+AI-powered information digest agent. Fetches articles from RSS feeds and newsletters, processes them through Claude API with tier-based filtering and summarization, and outputs Obsidian markdown digest notes.
 
 ## What it does
 
-- Subscribes to 50+ RSS feeds and newsletters via self-hosted Miniflux
+- Subscribes to 50+ RSS feeds and newsletters, listed in one `sources.yaml`
 - Reduces daily article volume by 80%+ through AI-powered filtering
 - Scores and routes articles: high-relevance to digest, lower to triage queue
 - Generates twice-daily Obsidian markdown digest notes with thematic summaries
@@ -17,11 +17,10 @@ AI-powered information digest agent. Fetches articles from RSS (via Miniflux) an
 
 - Python 3.12+
 - [uv](https://github.com/astral-sh/uv) package manager
-- [Miniflux](https://miniflux.app/) RSS aggregator (Docker)
 - An LLM API key — Anthropic Claude (default) or Google Gemini
 - Obsidian vault for digest output
-- Optional: a Cloudflare account — only for **email-only newsletter** ingestion and
-  the promote / HTML-publish features (RSS feeds + the digest work without it)
+- Optional: a Cloudflare account — for the **feed buffer** (see below), **email-only
+  newsletter** ingestion, and the promote / HTML-publish features
 
 ## Setup
 
@@ -39,40 +38,30 @@ cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sou
 uv run cyris run                   # full pipeline (fetch → score → digest)
 ```
 
-### Miniflux quickstart (first run)
+### Where RSS comes from
 
-cyris fetches from Miniflux, so you need a running instance and an API key before
-`cyris run` has anything to pull. The compose file bundles Miniflux + Postgres — start
-just those two and leave cyris on the host:
+Feeds are listed in `sources.yaml`, and there are two ways to read them.
 
-```bash
-docker compose up -d db miniflux    # Miniflux UI → http://localhost:8085
-```
+**Directly** (the default — nothing to set up). At digest time cyris fetches each feed
+and keeps the entries inside the window. Simple, but a feed only publishes its current
+snapshot, and a busy one holds 2–4 hours of it. Against a 24h window that loses
+articles: measured against an hourly aggregator over the same window, a digest-time
+poll saw 176 of 317 articles.
 
-1. Open http://localhost:8085 and log in with `admin` / `cyris2026`
-   (set by `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `docker-compose.yml` — change them
-   before exposing the port).
-2. **Settings → API Keys → Create a new API key**, copy the token.
-3. Add feeds: **Feeds → Add subscription** (paste an RSS URL). These are what cyris
-   ingests.
-4. Wire cyris to Miniflux:
-   - `.env`: `CYRIS_MINIFLUX_API_KEY=<the token from step 2>`
-   - `cyris.toml`: set `[miniflux] url = "http://localhost:8085"` (the host port; the
-     `8080` in the example is the in-container port).
-
-Then `uv run cyris run` fetches from those feeds. (Running the *full* stack in Docker
-instead — see [Docker Deployment](#docker-deployment) — wires the URL automatically via
-`CYRIS_MINIFLUX_URL=http://miniflux:8080`, so you only do steps 1–3.)
+**Through the Cloudflare feed buffer** (recommended, needs a Workers Paid plan). A cron
+Worker polls every feed hourly into D1, and cyris reads a window out of the buffer, so
+nothing expires between runs. Deploy `workers/rss/`, then set `[rss] worker_url` in
+`cyris.toml` and `CYRIS_RSS_TOKEN` in `.env`. See [`workers/rss/README.md`](workers/rss/README.md).
 
 ## Docker Deployment
 
-Run the full stack (Miniflux + cyris) in containers — no macOS/launchd dependency:
+Run cyris in a container — no macOS/launchd dependency:
 
 ```bash
-cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_MINIFLUX_API_KEY, ...
+cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_RSS_TOKEN, ...
 # edit cyris.toml + sources.yaml as usual
 
-docker compose up -d        # builds cyris, starts Miniflux + scheduled cyris
+docker compose up -d        # builds cyris and runs it on a schedule
 ```
 
 Scheduling runs in-container via [supercronic](https://github.com/aptible/supercronic)
@@ -83,7 +72,6 @@ the same config file works locally and in Docker):
 
 | Env var | Purpose | Default |
 |---------|---------|---------|
-| `CYRIS_MINIFLUX_URL` | Miniflux endpoint | `http://miniflux:8080` (compose service) |
 | `CYRIS_VAULT_PATH` | Obsidian digest output (in-container) | `/vault` |
 | `CYRIS_VAULT_HOST_PATH` | Host path mounted to `/vault` | `./vault` |
 | `CYRIS_AGENT_VAULT_PATH` | Persistent article store | `/data/agent-vault` (named volume) |
@@ -138,7 +126,7 @@ Three Protocols in `service_layer/ports.py` are the clean seams:
 
 | Kind | Protocol | Existing implementations | Add one to… |
 |------|----------|--------------------------|-------------|
-| **Fetch source** (input) | `FetchSource` | `MinifluxSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
+| **Fetch source** (input) | `FetchSource` | `RssSource`, `CloudflareRssSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
 | **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient` | add an AI provider |
 | **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
 | **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md + raw list), `HtmlDigestWriter` (digest + raw page), `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
@@ -174,8 +162,8 @@ write the sink, add it to the `Deps` container, call it from `run_digest`.
 
 Two paths, depending on how the newsletter is delivered:
 
-- **RSS newsletters** (Substack, Ghost, Squarespace, and most others) — subscribe
-  via Miniflux like any other feed. No extra setup.
+- **RSS newsletters** (Substack, Ghost, Squarespace, and most others) — add the
+  feed to `sources.yaml` like any other. No extra setup.
 - **Email-only newsletters** — require a **Cloudflare Email Worker** (needs a
   Cloudflare account + Email Routing). It parses forwarded mail into KV for
   `cyris run` to pull, matched to a source by `email_match`. Deploy + setup:
@@ -241,7 +229,7 @@ Digest output language is configurable via `[digest] output_language` (default
 |-----------|--------|
 | Language | Python 3.12+ |
 | Package manager | uv |
-| RSS aggregator | Miniflux (Docker) |
+| Feed buffer | Cloudflare Worker cron → D1 (optional) |
 | AI processing | Anthropic Claude or Google Gemini |
 | Preference learning | Claude API |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |

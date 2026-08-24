@@ -61,10 +61,6 @@ class NewsletterArchiveSource:
         logger.info("Loaded %d articles from newsletter archive", len(articles))
         return articles
 
-    async def mark_as_read(self, article_ids: list[int | str]) -> None:
-        """No-op for newsletter archive (read-only source)."""
-        pass
-
     async def health_check(self) -> bool:
         """Check if archive path exists.
 

@@ -25,13 +25,9 @@ class FakeSource:
 
     def __init__(self, articles: list[Article]) -> None:
         self._articles = articles
-        self.marked_read: list[list] = []
 
     async def fetch_articles(self, **kwargs) -> list[Article]:
         return self._articles
-
-    async def mark_as_read(self, article_ids: list) -> None:
-        self.marked_read.append(article_ids)
 
     async def health_check(self) -> bool:
         return True
@@ -121,8 +117,7 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
     assert report.digest_path is not None and report.digest_path.exists()
     assert "AI 趨勢" in report.digest_path.read_text()
 
-    # Article saved, marked read, scored, and accepted
-    assert source.marked_read == [[1]]
+    # Article saved, scored, and accepted
     stored = deps.store.get_by_urls(["https://example.com/ai"])
     assert stored[0].state == ArticleState.ACCEPTED
     assert stored[0].score == 85.0

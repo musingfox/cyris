@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Removed
+
+- **Miniflux.** `MinifluxSource`, `MinifluxClient` and `SourceMatcher` are gone,
+  and with them the Postgres dependency, the `[miniflux]` config section,
+  `CYRIS_MINIFLUX_API_KEY`, and the `miniflux` + `db` services in
+  `docker-compose.yml`. RSS now comes from the Cloudflare feed buffer, or from
+  `RssSource` polling feeds directly when `[rss]` is unconfigured. Re-measured on
+  2026-08-25 against a live direct poll: buffer 179 URLs, poll 95, **0 the poll
+  saw that the buffer had not** — the buffer is a strict superset, and direct
+  polling alone would have lost 84 of 179 articles to feed snapshots expiring.
+- **`FetchSource.mark_as_read`** and `SaveResult.miniflux_ids`. Every remaining
+  source implemented `mark_as_read` as a no-op — the newsletter Worker ACKs its
+  queue inside `fetch_articles` — so the read state that is left lives entirely in
+  the article store.
+
 ## [0.2.0] — 2026-08-24
 
 ### Added
@@ -71,5 +88,6 @@ Initial public release.
 - Docker Compose stack (Miniflux + Postgres + cyris) and macOS launchd scheduling.
 - Optional Cloudflare Workers for email-newsletter ingestion and promote/HTML publish.
 
+[Unreleased]: https://github.com/musingfox/cyris/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/musingfox/cyris/releases/tag/v0.2.0
 [0.1.0]: https://github.com/musingfox/cyris/releases/tag/v0.1.0

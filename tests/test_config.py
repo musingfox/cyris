@@ -11,7 +11,6 @@ from cyris.domain.models import Tier
 class TestLoadConfig:
     def test_load_example_configs(self, tmp_path, monkeypatch):
         """Load the example config files successfully."""
-        monkeypatch.setenv("CYRIS_MINIFLUX_API_KEY", "test-miniflux-key")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
 
         project_root = Path(__file__).parent.parent
@@ -22,7 +21,6 @@ class TestLoadConfig:
 
         assert cfg.app.general.timezone == "Asia/Taipei"
         assert cfg.app.llm_provider.model == "claude-sonnet-4-6"
-        assert cfg.app.miniflux.api_key == "test-miniflux-key"
         assert cfg.app.llm_provider.api_key == "test-anthropic-key"
 
         # Curated teaching sample covering the main source shapes.
@@ -38,7 +36,6 @@ class TestLoadConfig:
 
     def test_path_expansion(self, monkeypatch):
         """User vault path should have ~ expanded."""
-        monkeypatch.setenv("CYRIS_MINIFLUX_API_KEY", "key")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
 
         project_root = Path(__file__).parent.parent
@@ -62,7 +59,6 @@ class TestLoadConfig:
 
     def test_missing_required_env_vars(self, tmp_path, monkeypatch):
         """validate_required_keys should raise if env vars are missing."""
-        monkeypatch.delenv("CYRIS_MINIFLUX_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
         # Use tmp_path so _load_dotenv won't find the real .env
@@ -224,12 +220,11 @@ class TestLLMProvider:
 
     def test_missing_gemini_key_named_in_error(self, monkeypatch):
         """validate_required_keys names GEMINI_API_KEY when provider=gemini."""
-        from cyris.config import AppConfig, Config, LLMProviderConfig, MinifluxConfig
+        from cyris.config import AppConfig, Config, LLMProviderConfig
 
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         cfg = Config(
             app=AppConfig(
-                miniflux=MinifluxConfig(api_key="test-key"),
                 llm_provider=LLMProviderConfig(provider="gemini"),
             ),
             sources={},

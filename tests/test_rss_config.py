@@ -4,9 +4,6 @@ from cyris.bootstrap import build_deps
 from cyris.config import load_config
 
 CONFIG = """
-[miniflux]
-url = "http://localhost:8085"
-
 [agent_vault]
 path = "{vault}"
 
@@ -23,7 +20,6 @@ sources:
 
 
 def _config(tmp_path, monkeypatch, rss_section: str):
-    monkeypatch.setenv("CYRIS_MINIFLUX_API_KEY", "key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(CONFIG.format(vault=tmp_path, rss=rss_section), encoding="utf-8")
@@ -47,13 +43,15 @@ def test_source_is_wired_only_when_url_and_token_are_both_set(tmp_path, monkeypa
 
     names = [type(s).__name__ for s in build_deps(cfg).fetch_sources]
     assert "CloudflareRssSource" in names
-    # Miniflux keeps running alongside it; fetch_all_articles dedups by URL.
-    assert "MinifluxSource" in names
+    # The buffer replaces direct polling; both at once would be double-fetching.
+    assert "RssSource" not in names
 
 
-def test_absent_section_leaves_the_buffer_unwired(tmp_path, monkeypatch):
+def test_absent_section_falls_back_to_direct_polling(tmp_path, monkeypatch):
+    """No buffer configured ⇒ RssSource, not a pipeline with no RSS at all."""
     monkeypatch.delenv("CYRIS_RSS_TOKEN", raising=False)
     cfg = _config(tmp_path, monkeypatch, "")
 
     names = [type(s).__name__ for s in build_deps(cfg).fetch_sources]
     assert "CloudflareRssSource" not in names
+    assert "RssSource" in names

@@ -1,6 +1,6 @@
 # Cloud Migration Plan
 
-> Status: phase 0 done, phase 1 in progress. Supersedes the Cloudflare half of
+> Status: phases 0 and 1 done. Supersedes the Cloudflare half of
 > [`deployment.md`](deployment.md), whose "drop Miniflux, fetch RSS directly" plan was
 > measured and found wrong (see [Why the buffer](#why-a-buffer-and-not-direct-polling)).
 
@@ -23,18 +23,18 @@ remaining migration is roughly 1,300 lines of adapter rewriting, dominated by
 | Published digest | Cloudflare Pages |
 
 Still local: the `cyris` container on a Mac mini (digest at 08:00 and 20:00),
-Miniflux + Postgres, the triage UI, and all persistent state as JSON files.
+the triage UI, and all persistent state as JSON files.
 
 ### Why a buffer, and not direct polling
 
 A feed publishes only its current snapshot, and high-volume feeds hold 2–4h of it.
 Polling once at digest time cannot see a 24h window: measured against Miniflux over
 the same window, a digest-time poll missed 141 of 317 articles, all from those feeds.
-What Miniflux provides is hourly *accumulation*, not parsing — so the replacement has
+What Miniflux provided is hourly *accumulation*, not parsing — so the replacement has
 to be a scheduled buffer, which is what `workers/rss/` is.
 
-`RssSource` (the direct-polling adapter that comparison was built on) stays in the tree
-unwired, as the local fallback for when `MinifluxSource` is retired.
+`RssSource` (the direct-polling adapter that comparison was built on) is now the wired
+fallback for when `[rss]` is unconfigured, and carries that measured caveat with it.
 
 ## Budget
 
@@ -139,16 +139,20 @@ None of this needs the cloud, and all of it is wrong to carry forward.
       the buffer misses nothing. The "hourly tick is too slow" reading was wrong: CNA feeds
       hold 14–17h per snapshot, so an hourly poll cannot miss them.
 
-- [ ] **Retire `MinifluxSource`** — now unblocked, but not yet earned. The parity receipt
-      is 17 hours old, against a component whose failure mode is silent loss and which
-      went fully dark for a day this week. Keep both running and re-run `compare.py` for a
-      few more days; Miniflux costs nothing while the Mac mini is up anyway. Only phase 3
-      actually requires it gone.
+- [x] **Retire `MinifluxSource`.** Done 2026-08-25. The 08-08 parity receipt was 17 hours
+      old against a component whose failure mode is silent loss, so it was re-measured 16
+      days later: **miniflux 137 / buffer 141 / shared 137 / only-in-miniflux 0** — still a
+      strict superset. `MinifluxSource`, `MinifluxClient` and `SourceMatcher` are deleted;
+      `RssSource` is wired as the no-buffer fallback. `mark_as_read` went with them: every
+      remaining source no-ops it (the newsletter Worker ACKs inside `fetch_articles`), so
+      the method left `FetchSource` and `SaveResult.miniflux_ids` left the domain.
+      `compare.py` stays — it is the only tool that can audit the buffer now that there is
+      no second source to diff against.
 
 - [x] **Drop the TMTB source.** Its feed served one item dated 2023-08-24 — dormant for
       three years.
-- [ ] **Retire `MinifluxSource`** once the comparison is clean. This is what frees the plan
-      from needing Postgres anywhere.
+
+Postgres is now out of the plan entirely.
 
 ## Phase 2 — state to D1, compute stays local
 

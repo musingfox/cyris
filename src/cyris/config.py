@@ -65,19 +65,6 @@ class GeneralConfig(BaseModel):
     notify: NotifyConfig = Field(default_factory=NotifyConfig)
 
 
-class MinifluxConfig(BaseModel):
-    url: str = "http://localhost:8080"
-    api_key: str = ""
-
-    @model_validator(mode="after")
-    def inject_api_key(self) -> "MinifluxConfig":
-        if url := os.environ.get("CYRIS_MINIFLUX_URL"):
-            self.url = url
-        if not self.api_key:
-            self.api_key = os.environ.get("CYRIS_MINIFLUX_API_KEY", "")
-        return self
-
-
 class LLMProviderConfig(BaseModel):
     # No default provider — the user opts in explicitly. Unset ⇒ degraded
     # (excerpt-only) mode instead of silently defaulting to one vendor.
@@ -171,7 +158,7 @@ class VoteSimilarityConfig(BaseModel):
 
 
 class RssConfig(BaseModel):
-    """Cloudflare RSS Worker — hourly feed buffer read in place of Miniflux."""
+    """Cloudflare RSS Worker — the hourly feed buffer the pipeline reads from."""
 
     worker_url: str = ""
     token: str = ""
@@ -185,7 +172,6 @@ class RssConfig(BaseModel):
 
 class AppConfig(BaseModel):
     general: GeneralConfig = Field(default_factory=GeneralConfig)
-    miniflux: MinifluxConfig = Field(default_factory=MinifluxConfig)
     llm_provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     digest: DigestConfig = Field(default_factory=DigestConfig)
     obsidian: ObsidianConfig = Field(default_factory=ObsidianConfig)
@@ -218,8 +204,6 @@ class Config(BaseModel):
         missing its key counts as an error.
         """
         missing = []
-        if not self.app.miniflux.api_key:
-            missing.append("CYRIS_MINIFLUX_API_KEY")
         if self.app.llm_provider.provider and not self.app.llm_provider.api_key:
             missing.append(self.app.llm_provider.api_key_env_var)
         if missing:

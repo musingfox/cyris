@@ -49,13 +49,13 @@ class ArticleStore:
             now: Timestamp for first_seen_at (defaults to UTC now).
 
         Returns:
-            SaveResult with counts and Miniflux IDs of saved articles.
+            SaveResult with saved and skipped counts.
         """
         if now is None:
             now = datetime.now(UTC)
 
         if not articles:
-            return SaveResult(saved_count=0, skipped_count=0, miniflux_ids=[])
+            return SaveResult(saved_count=0, skipped_count=0)
 
         # Build URL index from recent partitions for dedup (today + last 7 days)
         existing_urls: set[str] = set()
@@ -71,7 +71,6 @@ class ArticleStore:
 
         # Filter out duplicates and convert to StoredArticle
         new_articles = []
-        miniflux_ids = []
         skipped = 0
 
         for article in articles:
@@ -83,21 +82,13 @@ class ArticleStore:
             new_articles.append(stored)
             existing_urls.add(article.url)
 
-            # Collect Miniflux IDs (int type only)
-            if isinstance(article.id, int):
-                miniflux_ids.append(article.id)
-
         # Append to today's partition
         if new_articles:
             today_articles.extend(new_articles)
             self._save_partition(today_path, today_articles)
             logger.info("Saved %d new articles to %s", len(new_articles), today_path)
 
-        return SaveResult(
-            saved_count=len(new_articles),
-            skipped_count=skipped,
-            miniflux_ids=miniflux_ids,
-        )
+        return SaveResult(saved_count=len(new_articles), skipped_count=skipped)
 
     def update_states(
         self, url_to_state: dict[str, tuple[ArticleState, str | None]], digest_date: str

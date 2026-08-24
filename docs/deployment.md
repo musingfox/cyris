@@ -7,6 +7,9 @@
 
 ## Current State (Starting Point)
 
+> This section records the state as of this assessment (2026-07). Since then cyris itself
+> was containerized and Miniflux was retired; `docker-compose.yml` now holds only `cyris`.
+
 - The `cyris` pipeline currently runs on **local Python + macOS launchd** (`src/cyris/schedule/launchd.py`).
 - `docker-compose.yml` **only containerizes Miniflux + Postgres**; cyris itself is not containerized.
 - All persistent state lives in local files, **centrally injected** by `bootstrap.py` rooted at `agent_vault.path` (the storage port is clean and easy to swap).
@@ -83,7 +86,7 @@ To become a shippable open-source project, the gaps fall into two categories.
 | Confusing duplicate template naming | Unify to `cyris.toml.example` (fix `[claude]`→`[llm_provider]`+`[digest]`, de-personalize) | ✅ |
 | Scheduling bound to macOS | Docker uses supercronic; launchd kept as a macOS option | ✅ |
 | Hardcoded personal vault path | `CYRIS_VAULT_PATH` env override; the remaining default `~/Documents/ObsidianVault` is generic, not personal | ✅ |
-| Hard dependency on self-hosted Miniflux + personal worker URL | Marked optional in README; retiring `MinifluxSource` outright is tracked as `cloud-p1-retire-miniflux` (the Worker buffer measured a strict superset on 2026-08-24) | ◐ |
+| Hard dependency on self-hosted Miniflux + personal worker URL | `MinifluxSource` deleted 2026-08-25; RSS now comes from the Worker buffer, or direct polling when it is unconfigured | ✅ |
 
 ### Project Quality (Open-Source Conventions, Should Fix)
 

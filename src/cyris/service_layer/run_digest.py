@@ -86,12 +86,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             save_result.skipped_count,
         )
 
-        # Mark newly saved Miniflux articles as read
-        if save_result.miniflux_ids:
-            for source in deps.fetch_sources:
-                await source.mark_as_read(save_result.miniflux_ids)
-            logger.info("Marked %d Miniflux articles as read", len(save_result.miniflux_ids))
-
     # Articles saved in this run get a first_seen_at later than the `now`
     # captured at run start, and load_by_time_range's end bound is exclusive —
     # take a fresh end bound so this run's own articles are included.
