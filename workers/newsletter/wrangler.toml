@@ -2,6 +2,11 @@ name = "cyris-newsletter"
 main = "src/index.js"
 compatibility_date = "2026-06-01"
 
+# The id below is a Deploy to Cloudflare default, not a leak. Cloudflare provisions
+# a fresh namespace per deployment and rewrites this field, but it requires the
+# repository to ship a working default. Ids are not credentials — without an API
+# token scoped to the account they grant nothing. Do not delete it to "clean up":
+# an absent id fails the deploy instead of being replaced.
 kv_namespaces = [
   { binding = "NEWSLETTERS", id = "eb4ebc842d024684aa4223936ec8e4d1" }
 ]

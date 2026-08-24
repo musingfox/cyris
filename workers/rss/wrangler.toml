@@ -7,6 +7,11 @@ compatibility_date = "2026-06-01"
 [triggers]
 crons = ["0 * * * *"]
 
+# The id below is a Deploy to Cloudflare default, not a leak. Cloudflare provisions
+# a fresh database per deployment and rewrites this field, but it requires the
+# repository to ship a working default. Ids are not credentials — without an API
+# token scoped to the account they grant nothing. Do not delete it to "clean up":
+# an absent id fails the deploy instead of being replaced.
 [[d1_databases]]
 binding = "DB"
 database_name = "cyris-rss"
