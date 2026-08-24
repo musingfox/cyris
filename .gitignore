@@ -37,7 +37,6 @@ agent-vault/daily/
 agent-vault/articles/
 agent-vault/html/
 agent-vault/usage.jsonl
-agent-vault/tracking.yaml
 # vote-similarity vector caches — regenerable, and large (one per provider: the
 # dimensionalities differ, so they cannot share a file)
 agent-vault/embeddings.json

@@ -43,8 +43,6 @@ flowchart TB
         PUB["publish_html_digest"]
         SYNC["sync_promotions"]
         USAGE["append_usage"]
-        EVT["EventStore"]
-        TRKY["VaultConfigSource (tracking)"]
         NOTI["send_discord"]
     end
 
@@ -77,8 +75,6 @@ flowchart TB
     RUN -->|direct inject · no Protocol| PUB
     RUN -->|direct inject · no Protocol| SYNC
     RUN -->|direct inject · no Protocol| USAGE
-    RUN -->|direct inject · no Protocol| EVT
-    RUN -->|direct inject · no Protocol| TRKY
     RUN -->|direct inject · no Protocol| NOTI
 
     LLM --> API
@@ -91,8 +87,6 @@ flowchart TB
     PUB --> CFW
     SYNC --> CFW
     USAGE --> FS
-    EVT --> FS
-    TRKY --> FS
     NOTI --> DISC
 
     classDef port fill:#1b5e20,stroke:#66bb6a,color:#fff;
@@ -100,7 +94,7 @@ flowchart TB
     classDef local fill:#b71c1c,stroke:#ef5350,color:#fff;
     classDef cloud fill:#0d47a1,stroke:#64b5f6,color:#fff;
     class P1,P2,P3 port;
-    class STORE,WRITER,HTML,USAGE,EVT,TRKY move;
+    class STORE,WRITER,HTML,USAGE move;
     class MF,MFSVC local;
     class CFNL,PUB,SYNC,CFW cloud;
 ```
@@ -115,7 +109,7 @@ the core. But the core consumes them at **two strengths**:
 | Wiring | Targets | Swap difficulty |
 |--------|---------|-----------------|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository` (ArticleStore satisfies it structurally), `FetchSource` | **Low** — swapping the implementation doesn't touch the core; the contract is fixed |
-| **Direct concrete injection** (no Protocol) | DigestWriter, HtmlDigestWriter, publish, sync_promotions, EventStore, tracking, append_usage, notify | **Medium** — the core calls them directly; swapping the backend first needs a Protocol or an implementation change |
+| **Direct concrete injection** (no Protocol) | DigestWriter, HtmlDigestWriter, publish, sync_promotions, append_usage, notify | **Medium** — the core calls them directly; swapping the backend first needs a Protocol or an implementation change |
 
 The `ports.py` comment states the design intent: "Only genuine IO boundaries get a Protocol;
 single-implementation components are injected directly." These sinks currently have a single
@@ -127,7 +121,7 @@ implementation, so no Protocol was extracted. When the cloud move needs a second
 | Component | Current | Dockerize (local) | Cloud (Cloudflare) |
 |-----------|---------|-------------------|--------------------|
 | ArticleStore 🟠 | JSON @ local | volume mount, unchanged | extract Protocol → R2/D1 impl |
-| EventStore / usage / tracking 🟠 | files | volume mount, unchanged | same, swap to R2/D1 |
+| usage log 🟠 | file | volume mount, unchanged | swap to D1 |
 | DigestWriter 🟠 | writes Obsidian vault | vault volume mount | disable (use HtmlDigestWriter → R2/Pages) |
 | LLMClient 🟢 | Anthropic/Gemini | unchanged | unchanged (already cloud) |
 | FetchSource · Miniflux 🔴 | self-hosted Docker | already in compose | retire in favour of `workers/rss/` (cron→D1); fetching at digest time instead was measured and misses 141 of 317 — see [cloud-migration.md](cloud-migration.md) |

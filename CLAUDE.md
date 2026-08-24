@@ -50,7 +50,6 @@ src/cyris/
 │   ├── models.py            # Article, StoredArticle, DigestContent, Tier, ArticleState, ...
 │   ├── selection.py         # Score-based selection: layer_by_score, split_summarize_tier_by_score
 │   ├── language.py          # Language detection utilities
-│   ├── tracking.py          # TrackedTopic model
 │   └── triage.py            # RejectReason (canonical rejection reasons)
 ├── service_layer/    # Use cases and business services
 │   ├── ports.py             # Protocols: LLMClient, ArticleRepository, FetchSource + complete_json
@@ -71,7 +70,6 @@ src/cyris/
 │   ├── output/              # DigestWriter, HTML digest, raw collected-article listings, article export, publish, usage log
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
-│   ├── tracking_yaml.py     # tracking.yaml load/upsert
 │   └── http_client.py       # Shared httpx client
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
@@ -131,12 +129,11 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[promote]`/`[newsletter]` Worker URLs)
 - `sources.yaml` — RSS/newsletter source definitions with tier, tags, and aliases; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
-- `agent-vault/tracking.yaml` — tracked topics list (name/keywords/created; gitignored, copy from tracking.example.yaml)
 - `.env` — secrets (API keys for Miniflux, Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`; Discord webhook)
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/learning/` holds the preference profile. `agent-vault/events/` holds persistent event timeline files (tracked in git). `agent-vault/tracking.yaml` holds tracked interest topics (gitignored).
+Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/learning/` holds the preference profile. `agent-vault/events/` holds the timeline files the removed tracked-topics feature wrote (tracked in git, frozen — nothing updates them).
 
 ## Conventions
 

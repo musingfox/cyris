@@ -1,7 +1,7 @@
 ---
 title: Claude / Anthropic
 created: 2026-07-15
-last_updated: 2026-08-17
+last_updated: 2026-08-23
 tags: []
 status: active
 ---
@@ -34,6 +34,11 @@ status: active
 - **2026-08-15**: OpenAI與Anthropic因應中國AI競爭對手的崛起與客戶成本考量，紛紛下調模型價格。; 投資人預期Anthropic將於10月首次公開募股，估值至少達到2兆美元並創下紀錄。; 面對中國AI的高性價比競爭，OpenAI與Anthropic調降價格以挽留對成本敏感的客戶。
 - **2026-08-16**: Anthropic 詳細說明了 Claude 最新浮水印技術的運作原理及其對程式碼編輯的影響。
 - **2026-08-17**: Anthropic 執行長 Dario Amodei 表示，大眾對 AI 的反彈本質上是一場信任危機。; Anthropic 公開了旗下 AI 模型 Claude 的系統提示詞更新紀錄與相關文件。; 評論探討 Anthropic 為 Claude 生成文本嵌入隱形水印對寫作品質與純粹性的影響。; Anthropic 出面說明將如何在 Claude 生成的文本中加入隱形水印運作機制。
+- **2026-08-18**: Anthropic 的營收表現持續強勁，市場成長潛力備受關注。; Claude 開發商 Anthropic 年化營收突破 650 億美元，展現極快的成長速度。; Anthropic 年化營收飆升至 650 億美元，僅兩個月內就激增 180 億美元。
+- **2026-08-20**: OpenAI 與 Anthropic 在企業客戶資料的隱私保護措施上展開競爭。; 程式設計師聲稱已找到繞過 Anthropic 為符合歐盟法規而設的 Claude 隱形水印方法。
+- **2026-08-21**: AI巨頭Anthropic正加速準備首次公開募股，規模有望追平或超越SpaceX先前紀錄。; 最新數據顯示OpenAI在企業用戶領域正追趕Anthropic，反映出企業AI支出缺乏長期黏性。
+- **2026-08-22**: TechCrunch 測試發現 Anthropic 的 Claude 模型雖設有安全限制，但仍能輕易被繞過生成不當色情內容。; Claudette 是一個開源工具，旨在調整 Anthropic 的 Claude 模型輸出風格，使其減少類似網路流行文章的用語。
+- **2026-08-23**: Anthropic 似乎正在針對 Claude Code 測試調降推理努力程度的 A/B 測試。
 
 ## Key Entities
 
@@ -77,3 +82,9 @@ status: active
 - https://techcrunch.com/2026/08/15/anthropic-shares-more-details-about-how-claudes-new-watermarks-will-work/
 - https://techcrunch.com/2026/08/16/anthropic-ceo-says-ai-backlash-is-fundamentally-a-crisis-of-trust/
 - https://daringfireball.net/2026/08/anthropics_watermark_text_adulteration_in_claude_is_a_perversion_of_writing
+- https://stratechery.com/2026/nvidia-backs-openai-data-center-anthropic-news-google-buys-spirit-airlines-data/
+- https://techcrunch.com/2026/08/19/openai-seeks-to-one-up-anthropic-with-new-customer-privacy-protections/
+- https://www.cna.com.tw/news/afe/202608210104.aspx
+- https://techcrunch.com/2026/08/21/anthropics-opus-4-6-is-a-smut-machine/
+- https://github.com/adnanakil/nobuzz/blob/main/README.md
+- https://twitter.com/argofowl/status/2091150597374537729

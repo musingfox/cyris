@@ -71,10 +71,10 @@ These decide the shape of the work, so they are settled before any code moves.
    (as `newsletter_worker_source.py` already does). An async adapter would push `async`
    up through every call site and straight into `service_layer/`, which is the one thing
    this plan promises not to touch. If this constraint fails, the plan needs rewriting.
-2. **The surface callers actually use is 15 methods across `ArticleStore` and
-   `EventStore`, not the 9 in the Protocol.** Callers also use
-   `delete_articles`, `list_articles`, `load_events`, `mark_stale_inactive`, `save_event`
-   and `update_triage_timestamp`. A replacement satisfying only the Protocol will not run.
+2. **`ArticleStore`'s callers use more than the 9 methods in the Protocol.** They also
+   use `delete_articles`, `list_articles` and `update_triage_timestamp`. A replacement
+   satisfying only the Protocol will not run. (`EventStore` was on this list until
+   tracked topics were removed on 2026-08-24, taking its 256 lines with them.)
 3. **linux/amd64 only.** The build host is arm64, so cross-building becomes part of the
    release path. This is the only item that changes the build workflow rather than code.
 4. **All container disk is ephemeral** — a woken instance gets a fresh image. Nothing may
@@ -157,8 +157,6 @@ The risky half, done while the local store is still running and can be diffed ag
 | Adapter | Lines | Target |
 |---|---|---|
 | `store/article_store.py` | 526 | D1 |
-| `store/events.py` + `store/event_store.py` | 256 | D1 |
-| `tracking_yaml.py` | 117 | KV |
 | `output/usage_log.py` | 41 | D1 |
 
 526 lines does not mean 526 new lines: the 8-day dedup scan currently reads eight local
