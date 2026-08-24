@@ -71,10 +71,12 @@ These decide the shape of the work, so they are settled before any code moves.
    (as `newsletter_worker_source.py` already does). An async adapter would push `async`
    up through every call site and straight into `service_layer/`, which is the one thing
    this plan promises not to touch. If this constraint fails, the plan needs rewriting.
-2. **`ArticleStore`'s callers use more than the 9 methods in the Protocol.** They also
-   use `delete_articles`, `list_articles` and `update_triage_timestamp`. A replacement
-   satisfying only the Protocol will not run. (`EventStore` was on this list until
-   tracked topics were removed on 2026-08-24, taking its 256 lines with them.)
+2. ~~**`ArticleStore`'s callers use more than the 9 methods in the Protocol.**~~ Fixed at
+   the source on 2026-08-25: `delete_articles`, `update_article_state` and
+   `update_triage_timestamp` were added to `ArticleRepository`, so the Protocol is now
+   the whole contract — 13 methods — and a partial replacement fails loudly.
+   (`EventStore` was on this list until tracked topics were removed on 2026-08-24,
+   taking its 256 lines with them.)
 3. **linux/amd64 only.** The build host is arm64, so cross-building becomes part of the
    release path. This is the only item that changes the build workflow rather than code.
 4. **All container disk is ephemeral** — a woken instance gets a fresh image. Nothing may
@@ -158,10 +160,36 @@ Postgres is now out of the plan entirely.
 
 The risky half, done while the local store is still running and can be diffed against.
 
-| Adapter | Lines | Target |
-|---|---|---|
-| `store/article_store.py` | 526 | D1 |
-| `output/usage_log.py` | 41 | D1 |
+| Adapter | Lines | Target | Status |
+|---|---|---|---|
+| `store/article_store.py` | 526 | D1 | ✅ `store/d1_store.py` + `store/schema.sql` |
+| `output/usage_log.py` | 41 | D1 | ✅ `append_usage_d1` |
+
+### What landed (2026-08-25)
+
+`D1ArticleStore` implements the same 13 methods over `store/d1.py`, a blocking
+httpx client against D1's HTTP query API — constraint 1 held, nothing in
+`service_layer/` became async. `[store] backend = "json"|"d1"` picks one in
+`bootstrap.build_store()`, defaulting to json, so nothing switches by surprise.
+
+Two things worth knowing about the shape:
+
+- **D1 binds at most 100 parameters per statement**, and one article row is 19
+  columns. Every multi-row write chunks against that budget (`chunk_rows`), and
+  `update_scores` uses one `WITH … UPDATE … FROM` per chunk rather than one
+  round trip per URL — a scoring run touches ~150 articles.
+- **Dedup is now global by URL, not 8 days wide.** The window in the JSON store
+  was a scan-cost optimisation; a `url` PRIMARY KEY does exactly what it
+  approximated. That also makes `cyris store migrate` idempotent for free.
+
+Tests run the whole store contract against both backends: `SqliteD1` executes
+the real SQL through stdlib `sqlite3`, loading the same `schema.sql` that ships
+to D1, so a broken statement or schema fails locally.
+
+`cyris store migrate` copies the JSON store in (`INSERT OR IGNORE`, so it never
+overwrites a decision already made in D1) and `cyris store diff` compares both
+backends on state, score, language, triage stamp, digest date and rejection
+reason.
 
 526 lines does not mean 526 new lines: the 8-day dedup scan currently reads eight local
 partitions per `save`, and over SQL that is one query.

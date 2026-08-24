@@ -115,6 +115,35 @@ class AgentVaultConfig(BaseModel):
         return self
 
 
+class StoreConfig(BaseModel):
+    """Where persistent state lives.
+
+    `json` is local partition files under the agent vault. `d1` puts the article
+    store and the usage log in Cloudflare D1, so a dead local machine loses
+    nothing. Both read the same data model; run them side by side and diff with
+    `cyris store-diff` before switching.
+    """
+
+    backend: Literal["json", "d1"] = "json"
+    database_id: str = ""
+    account_id: str = ""
+    api_token: str = ""
+
+    @model_validator(mode="after")
+    def inject_credentials(self) -> "StoreConfig":
+        if not self.account_id:
+            self.account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+        if not self.api_token:
+            self.api_token = os.environ.get("CYRIS_D1_API_TOKEN", "") or os.environ.get(
+                "CLOUDFLARE_API_TOKEN", ""
+            )
+        return self
+
+    @property
+    def is_d1(self) -> bool:
+        return self.backend == "d1"
+
+
 class HtmlOutputConfig(BaseModel):
     enabled: bool = False
     output_dir: str = "agent-vault/html"
@@ -182,6 +211,7 @@ class AppConfig(BaseModel):
     promote: PromoteConfig = Field(default_factory=PromoteConfig)
     newsletter: NewsletterConfig = Field(default_factory=NewsletterConfig)
     rss: RssConfig = Field(default_factory=RssConfig)
+    store: StoreConfig = Field(default_factory=StoreConfig)
     vote_similarity: VoteSimilarityConfig = Field(default_factory=VoteSimilarityConfig)
 
 
@@ -204,6 +234,13 @@ class Config(BaseModel):
         missing its key counts as an error.
         """
         missing = []
+        if self.app.store.is_d1:
+            if not self.app.store.database_id:
+                missing.append("[store] database_id")
+            if not self.app.store.account_id:
+                missing.append("CLOUDFLARE_ACCOUNT_ID")
+            if not self.app.store.api_token:
+                missing.append("CYRIS_D1_API_TOKEN")
         if self.app.llm_provider.provider and not self.app.llm_provider.api_key:
             missing.append(self.app.llm_provider.api_key_env_var)
         if missing:

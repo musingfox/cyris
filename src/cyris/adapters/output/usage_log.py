@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from cyris.adapters.store.d1 import D1Queryable
 from cyris.domain.models import DigestContent
 
 logger = logging.getLogger(__name__)
@@ -39,3 +40,28 @@ def append_usage(content: DigestContent, log_path: Path) -> None:
         f.write(json.dumps(record) + "\n")
 
     logger.info("Usage logged to %s", log_path)
+
+
+def append_usage_d1(content: DigestContent, client: D1Queryable) -> None:
+    """Append the same record to D1 instead of a local file."""
+    if content.usage.api_calls == 0:
+        return
+
+    client.query(
+        "INSERT INTO usage_log (logged_at, digest_date, period, articles_received, "
+        "articles_included, model, api_calls, input_tokens, output_tokens, cost_usd) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            datetime.now(tz=UTC).isoformat(),
+            content.date,
+            content.period,
+            content.articles_received,
+            content.articles_included,
+            content.usage.model,
+            content.usage.api_calls,
+            content.usage.input_tokens,
+            content.usage.output_tokens,
+            round(content.usage.estimated_cost, 6),
+        ],
+    )
+    logger.info("Usage logged to D1")

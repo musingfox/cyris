@@ -9,9 +9,9 @@ from urllib.parse import urlparse
 from aiohttp import web
 
 from cyris.adapters.output.article_export import ArticleExporter
-from cyris.adapters.store.article_store import ArticleStore
 from cyris.domain.models import ArticleState
 from cyris.domain.triage import RejectReason
+from cyris.service_layer.ports import ArticleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class TriageServer:
 
     def __init__(
         self,
-        store: ArticleStore,
+        store: ArticleRepository,
         vault_path: Path | None = None,
         host: str = "127.0.0.1",
         port: int = 8766,

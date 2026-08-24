@@ -37,7 +37,10 @@ class LLMClient(Protocol):
 class ArticleRepository(Protocol):
     """Persistence boundary for the article store.
 
-    Declares only what use cases need; ArticleStore satisfies it structurally.
+    Every method a caller actually uses belongs here, not just the ones the
+    digest run touches: `ArticleStore` and `D1ArticleStore` both satisfy this
+    structurally, and a replacement that covers less will fail at the CLI or the
+    triage UI rather than at import.
     """
 
     def save(self, articles: list[Article], now: datetime | None = None): ...
@@ -75,6 +78,16 @@ class ArticleRepository(Protocol):
         sort_by: str = "first_seen_at",
         descending: bool = True,
     ) -> list[StoredArticle]: ...
+
+    def update_article_state(
+        self, url: str, state: ArticleState, reason: str | None = None
+    ) -> bool: ...
+
+    def update_triage_timestamp(self, urls: list[str], triaged_at: datetime) -> int: ...
+
+    def delete_articles(
+        self, state: ArticleState | list[ArticleState], older_than_days: int | None = None
+    ) -> int: ...
 
 
 @runtime_checkable

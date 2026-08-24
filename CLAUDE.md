@@ -65,7 +65,7 @@ src/cyris/
 │   └── parse.py             # AI response JSON extraction
 ├── adapters/         # Concrete IO implementations
 │   ├── anthropic_client.py  # AnthropicClient (implements LLMClient)
-│   ├── store/               # ArticleStore (JSON, dedup by URL) + event store/schema
+│   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL
 │   ├── fetch/               # RSS sources (direct + Worker buffer), newsletter archive + Cloudflare-worker sources, email parser
 │   ├── output/              # DigestWriter, HTML digest, raw collected-article listings, article export, publish, usage log
 │   ├── notify.py            # Discord notifications
@@ -106,7 +106,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured), `NewsletterArchiveSource`, `CloudflareNewsletterSource`.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`.
-- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` satisfies it structurally (no explicit inheritance).
+- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation fails at the CLI or the triage UI, not at import.
 - **Output sinks** — `DigestWriter`, `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
 `ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map: `docs/architecture.md`.
@@ -124,10 +124,11 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
 | `cyris triage-ui` | Start swipe-based web UI for article classification |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |
+| `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends |
 
 ### Configuration Files
 
-- `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[promote]`/`[newsletter]` Worker URLs)
+- `cyris.toml` — app config (API endpoints, vault paths, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[promote]`/`[newsletter]`/`[rss]` Worker URLs)
 - `sources.yaml` — RSS/newsletter source definitions with tier, tags, and aliases; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
 - `.env` — secrets (API keys for Anthropic/Gemini; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`, `CYRIS_RSS_TOKEN`; Discord webhook)
 

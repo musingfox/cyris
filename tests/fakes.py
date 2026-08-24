@@ -48,3 +48,30 @@ class FakeLLM:
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
         )
+
+
+class SqliteD1:
+    """A D1 stand-in that runs the real SQL against stdlib sqlite3.
+
+    D1 *is* SQLite, so the store's queries can be exercised for real without a
+    network: a broken statement fails here exactly as it would in production.
+    The schema is loaded from the file that ships to D1, so a schema mistake
+    fails here too.
+    """
+
+    def __init__(self) -> None:
+        import sqlite3
+        from pathlib import Path
+
+        schema = Path(__file__).parent.parent / "src/cyris/adapters/store/schema.sql"
+        self._conn = sqlite3.connect(":memory:")
+        self._conn.row_factory = sqlite3.Row
+        self._conn.executescript(schema.read_text(encoding="utf-8"))
+
+    def query(self, sql, params=None):
+        from cyris.adapters.store.d1 import QueryResult
+
+        cursor = self._conn.execute(sql, params or [])
+        rows = [dict(row) for row in cursor.fetchall()]
+        self._conn.commit()
+        return QueryResult(rows=rows, changes=max(cursor.rowcount, 0))

@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Article store on Cloudflare D1** (`[store] backend = "d1"`, off by default).
+  `D1ArticleStore` implements the same contract as the JSON store over D1's HTTP
+  query API, and the usage log moves into the same database. `cyris store migrate`
+  copies the local store in without ever overwriting a decision already made
+  there; `cyris store diff` compares the two backends field by field. With state
+  in D1, a dead local machine loses nothing.
+
+### Changed
+
+- `ArticleRepository` now declares all 13 methods its callers use, not the 10 the
+  digest run touches — a partial implementation used to fail at the triage UI
+  instead of at the boundary.
+
 ### Removed
 
 - **Miniflux.** `MinifluxSource`, `MinifluxClient` and `SourceMatcher` are gone,

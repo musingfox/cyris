@@ -569,7 +569,7 @@ def triage_ui(
     """Start the triage web UI for article classification."""
     _setup_logging(verbose)
 
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
     from cyris.entrypoints.triage_server import TriageServer
 
@@ -579,7 +579,7 @@ def triage_ui(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     async def _run() -> None:
         server = TriageServer(
@@ -624,7 +624,7 @@ def articles_list(
     ),
 ) -> None:
     """List articles from store."""
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
     from cyris.domain.models import ArticleState
 
@@ -634,7 +634,7 @@ def articles_list(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     # Parse state filter
     state_filter = None
@@ -681,7 +681,7 @@ def articles_accept(
 ) -> None:
     """Accept articles by URL."""
     from cyris.adapters.output.article_export import ArticleExporter
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
 
     try:
@@ -690,7 +690,7 @@ def articles_accept(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     # Update state and collect accepted URLs
     updated = 0
@@ -729,7 +729,7 @@ def articles_reject(
     ),
 ) -> None:
     """Reject articles by URL."""
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
 
     try:
@@ -738,7 +738,7 @@ def articles_reject(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     updated = store.reject(urls, reason=reason)
     if updated:
@@ -761,7 +761,7 @@ def articles_export(
 ) -> None:
     """Export articles to user vault."""
     from cyris.adapters.output.article_export import ArticleExporter
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
     from cyris.domain.models import ArticleState
 
@@ -771,7 +771,7 @@ def articles_export(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     # Parse state filter
     try:
@@ -805,7 +805,7 @@ def articles_clean(
     ),
 ) -> None:
     """Delete old articles by state."""
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
     from cyris.domain.models import ArticleState
 
@@ -822,7 +822,7 @@ def articles_clean(
         typer.echo(f"Invalid state: {state}")
         raise typer.Exit(1) from None
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     # Confirm deletion
     if not confirm:
@@ -852,7 +852,7 @@ def articles_score(
     """Score non-news articles via AI for triage ranking."""
     _setup_logging(verbose)
 
-    from cyris.adapters.store import ArticleStore
+    from cyris.bootstrap import build_store
     from cyris.config import load_config
     from cyris.domain.models import ArticleState
     from cyris.service_layer.scoring import score_in_batches
@@ -864,7 +864,7 @@ def articles_score(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = ArticleStore(cfg.app.agent_vault.path)
+    store = build_store(cfg)
 
     # Get articles to score
     if force:
@@ -923,3 +923,92 @@ def articles_score(
         )
 
     asyncio.run(_run())
+
+
+store_app = typer.Typer(help="Move the article store between backends")
+app.add_typer(store_app, name="store")
+
+_ALL_ARTICLES = 1_000_000  # the store holds thousands; this means "everything"
+
+
+def _load_both_stores(config_path: Path, sources_path: Path):
+    """Return (json_store, d1_store) regardless of which one [store] selects."""
+    from cyris.adapters.store import ArticleStore
+    from cyris.adapters.store.d1_store import D1ArticleStore
+    from cyris.bootstrap import build_d1_client
+    from cyris.config import load_config
+
+    try:
+        cfg = load_config(config_path, sources_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    if not cfg.app.store.database_id or not cfg.app.store.api_token:
+        typer.echo("No D1 configured: set [store] database_id and CYRIS_D1_API_TOKEN.")
+        raise typer.Exit(1)
+
+    # Both stores are needed here whichever backend is live, so D1 is built
+    # directly rather than through the [store] backend switch.
+    cfg.app.store.backend = "d1"
+    return ArticleStore(cfg.app.agent_vault.path), D1ArticleStore(build_d1_client(cfg))
+
+
+@store_app.command("migrate")
+def store_migrate(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Copy the local JSON store into D1. Safe to re-run; never overwrites."""
+    json_store, d1_store = _load_both_stores(config_path, sources_path)
+
+    articles = json_store.list_articles(state=None, limit=_ALL_ARTICLES)
+    typer.echo(f"Read {len(articles)} articles from the local store.")
+    imported = d1_store.import_articles(articles)
+    typer.echo(f"Inserted {imported} into D1 ({len(articles) - imported} already there).")
+
+
+@store_app.command("diff")
+def store_diff(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Compare both stores article by article. Silence means they agree."""
+    json_store, d1_store = _load_both_stores(config_path, sources_path)
+
+    local = {a.url: a for a in json_store.list_articles(state=None, limit=_ALL_ARTICLES)}
+    remote = {a.url: a for a in d1_store.list_articles(state=None, limit=_ALL_ARTICLES)}
+    typer.echo(f"local: {len(local)} articles    d1: {len(remote)} articles")
+
+    only_local = sorted(local.keys() - remote.keys())
+    only_remote = sorted(remote.keys() - local.keys())
+    for label, urls in (("only local", only_local), ("only d1", only_remote)):
+        typer.echo(f"\n{label} ({len(urls)}):")
+        for url in urls[:20]:
+            typer.echo(f"  {url}")
+        if len(urls) > 20:
+            typer.echo(f"  … and {len(urls) - 20} more")
+
+    # State, score and the triage stamp are what the pipeline acts on, so those
+    # are what a mismatch would corrupt — content drift is not a thing here.
+    fields = ("state", "score", "language", "triaged_at", "digest_date", "rejection_reason")
+    mismatched = 0
+    for url in sorted(local.keys() & remote.keys()):
+        differences = [
+            f"{f}: {getattr(local[url], f)!r} vs {getattr(remote[url], f)!r}"
+            for f in fields
+            if getattr(local[url], f) != getattr(remote[url], f)
+        ]
+        if differences:
+            mismatched += 1
+            if mismatched <= 20:
+                typer.echo(f"\n{url}\n  " + "\n  ".join(differences))
+    typer.echo(f"\nshared: {len(local.keys() & remote.keys())}, differing: {mismatched}")

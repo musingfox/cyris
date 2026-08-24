@@ -12,10 +12,10 @@ from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord
 from cyris.adapters.output.digest import DigestWriter
-from cyris.adapters.output.usage_log import append_usage
+from cyris.adapters.output.usage_log import append_usage, append_usage_d1
 from cyris.adapters.store import ArticleStore
 from cyris.config import Config, LLMProviderConfig
-from cyris.service_layer.ports import FetchSource, LLMClient
+from cyris.service_layer.ports import ArticleRepository, FetchSource, LLMClient
 
 _DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-6", "gemini": "gemini-2.5-flash"}
 
@@ -34,12 +34,37 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     return AnthropicClient(cfg.api_key, model)
 
 
+def build_d1_client(cfg: Config) -> Any | None:
+    """The D1 connection, or None when `[store] backend` is still json."""
+    if not cfg.app.store.is_d1:
+        return None
+
+    from cyris.adapters.store.d1 import D1Client
+
+    return D1Client(
+        account_id=cfg.app.store.account_id,
+        database_id=cfg.app.store.database_id,
+        api_token=cfg.app.store.api_token,
+    )
+
+
+def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
+    """The article store, JSON files or D1 depending on `[store] backend`."""
+    d1 = d1 or build_d1_client(cfg)
+    if d1 is None:
+        return ArticleStore(cfg.app.agent_vault.path)
+
+    from cyris.adapters.store.d1_store import D1ArticleStore
+
+    return D1ArticleStore(d1)
+
+
 @dataclass(frozen=True)
 class Deps:
     """Concrete dependencies for the use cases; built once per invocation."""
 
     cfg: Config
-    store: ArticleStore
+    store: ArticleRepository
     llm: LLMClient | None  # None ⇒ degraded (excerpt-only) mode
     fetch_sources: list[FetchSource]
     writer: DigestWriter
@@ -53,7 +78,14 @@ class Deps:
 
 
 def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) -> Deps:
-    store = ArticleStore(cfg.app.agent_vault.path)
+    # Spend is logged beside the articles: the same D1 when D1 is on, else usage.jsonl.
+    d1 = build_d1_client(cfg)
+    store = build_store(cfg, d1)
+    log_usage = (
+        partial(append_usage_d1, client=d1)
+        if d1
+        else partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl")
+    )
 
     newsletter_source = NewsletterArchiveSource(cfg.app.agent_vault.path / "daily" / "newsletters")
 
@@ -128,7 +160,7 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         html_writer=html_writer,
         publish=publish,
         sync_promotions=sync,
-        log_usage=partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl"),
+        log_usage=log_usage,
         on_progress=on_progress or (lambda _msg: None),
         embedder=embedder,
     )

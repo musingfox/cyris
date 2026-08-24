@@ -1,18 +1,27 @@
-"""Tests for ArticleStore persistent storage."""
+"""The article store contract, run against both backends.
+
+Every case here runs twice: once against the local JSON partitions and once
+against D1 (real SQL, stdlib sqlite3 — see `SqliteD1`). That is what makes the
+D1 store a drop-in rather than a lookalike.
+"""
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fakes import SqliteD1
 
 from cyris.adapters.store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
 
 
-@pytest.fixture
-def store(tmp_path: Path) -> ArticleStore:
-    """Create ArticleStore with temporary vault."""
-    return ArticleStore(tmp_path)
+@pytest.fixture(params=["json", "d1"])
+def store(request, tmp_path: Path):
+    """The store under test, one instance per backend."""
+    if request.param == "json":
+        return ArticleStore(tmp_path)
+    return D1ArticleStore(SqliteD1())
 
 
 @pytest.fixture
