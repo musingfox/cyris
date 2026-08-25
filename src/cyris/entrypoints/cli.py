@@ -496,6 +496,19 @@ def llm_compare(
         elapsed = time.monotonic() - started
 
         content = result.content
+        # The pipeline swallows LLM failures on purpose — `cyris run` would rather
+        # ship excerpts than nothing. For a comparison that is the wrong trade: an
+        # arm that never reached its model still renders a plausible digest, and
+        # printing it as a row invites reading excerpt fallback as this model's
+        # work. Zero calls is the tell, and it is not a result.
+        if content.usage.api_calls == 0:
+            logger.error(
+                "%s made no API calls — every request failed and the pipeline fell back to "
+                "excerpts. Re-run with --verbose for the provider's reason. Not comparable.",
+                label,
+            )
+            continue
+
         path = out_dir / f"{content.date}-{period}-{label.replace(':', '_').replace('/', '_')}.md"
         path.write_text(deps.writer.render(content), encoding="utf-8")
         rows.append((label, content, elapsed, getattr(llm, "neurons", None), path))
