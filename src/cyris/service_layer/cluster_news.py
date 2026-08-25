@@ -72,7 +72,15 @@ async def cluster_news(
         )
 
         clusters = result.get("clusters", [])
-        unclustered_ids = set(result.get("unclustered_ids", []))
+
+        # Deliberately not read from the response. `unclustered_ids` used to be
+        # taken at face value, which meant an article the model neither clustered
+        # nor listed there vanished from the run — no warning, no exception, gone
+        # before the filter tier. Measured 2026-08-25 on a 143-article window:
+        # llama-4-scout named 4 and dropped 139, and a bad gemini-3.6-flash run
+        # dropped all 143. Subtraction cannot lose an article, so what a weak
+        # model costs is a worse digest rather than a shorter one.
+        clustered_ids: set = set()
 
         # Build article lookup
         article_map = {a.id: a for a in articles}
@@ -98,7 +106,7 @@ async def cluster_news(
                     sources.append(a.source_name)
                     urls.append(a.url)
                     # Mark as clustered
-                    unclustered_ids.discard(aid)
+                    clustered_ids.add(aid)
                     # Collect score if available
                     if article_scores and a.url in article_scores:
                         scores.append(article_scores[a.url])
@@ -141,8 +149,8 @@ async def cluster_news(
                     )
                 )
 
-        # Build unclustered articles list
-        unclustered_articles = [article_map[aid] for aid in unclustered_ids if aid in article_map]
+        # Everything the clusters did not actually take, in the original order.
+        unclustered_articles = [a for a in articles if a.id not in clustered_ids]
 
         logger.info(
             "News clustering: %d clusters created, %d articles unclustered",

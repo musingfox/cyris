@@ -308,6 +308,46 @@ class TestClusterNews:
         assert len(clusters) == 0
         assert len(unclustered) == 3
 
+    async def test_articles_the_model_forgot_to_mention_are_not_lost(self, sample_news_articles):
+        """The response clusters one article and names none as unclustered.
+
+        Read literally that means "throw the other two away". Measured on a real
+        143-article window, llama-4-scout answered exactly this shape and named
+        4 — trusting it dropped 139 articles out of the run with no error.
+        """
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101]}],'
+            ' "unclustered_ids": []}'
+        )
+
+        clusters, unclustered = await cluster_news(sample_news_articles, llm)
+
+        assert len(clusters) == 1
+        assert [a.id for a in unclustered] == [102, 103]
+
+    async def test_an_empty_response_leaves_every_article_unclustered(self, sample_news_articles):
+        """`{"clusters": [], "unclustered_ids": []}` is a valid reply, not an error.
+
+        gemini-3.6-flash produced it on a live window; the whole window vanished.
+        """
+        llm = FakeLLM('{"clusters": [], "unclustered_ids": []}')
+
+        clusters, unclustered = await cluster_news(sample_news_articles, llm)
+
+        assert clusters == []
+        assert unclustered == sample_news_articles
+
+    async def test_an_id_the_model_invented_does_not_disturb_the_rest(self, sample_news_articles):
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 999]}],'
+            ' "unclustered_ids": []}'
+        )
+
+        clusters, unclustered = await cluster_news(sample_news_articles, llm)
+
+        assert len(clusters[0].items[0].sources) == 1  # 999 contributed nothing
+        assert [a.id for a in unclustered] == [102, 103]
+
     async def test_cluster_news_empty_input(self):
         clusters, unclustered = await cluster_news([], FakeLLM())
 
