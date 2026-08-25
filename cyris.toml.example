@@ -10,7 +10,10 @@ digest_window_hours = 24
 discord_webhook_url = ""                # optional; falls back to CYRIS_DISCORD_WEBHOOK_URL
 
 [llm_provider]
-# "anthropic" (key via ANTHROPIC_API_KEY) or "gemini" (key via GEMINI_API_KEY)
+# "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY), or "workers_ai"
+# (CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying Workers AI -> Read).
+# workers_ai keeps everything on one Cloudflare account, but it is not yet a
+# drop-in: run `cyris llm-compare` and read both digests before switching.
 provider = "anthropic"
 model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider = "gemini"
 

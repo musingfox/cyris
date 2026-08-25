@@ -209,6 +209,32 @@ class TestLLMProvider:
         config = LLMProviderConfig(provider="gemini")
         assert config.api_key == "g-key"
 
+    def test_workers_ai_reads_its_own_token_and_account(self, monkeypatch):
+        from cyris.config import LLMProviderConfig
+
+        monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "ai-token")
+        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct-1")
+        config = LLMProviderConfig(provider="workers_ai")
+        assert config.api_key == "ai-token"
+        assert config.account_id == "acct-1"
+
+    def test_workers_ai_falls_back_to_the_embedding_token(self, monkeypatch):
+        """Same 'Workers AI -> Read' permission, so an embed-compare setup needs nothing new."""
+        from cyris.config import LLMProviderConfig
+
+        monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
+        monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "embed-token")
+        assert LLMProviderConfig(provider="workers_ai").api_key == "embed-token"
+
+    def test_workers_ai_never_uses_the_d1_pages_token(self, monkeypatch):
+        """CLOUDFLARE_API_TOKEN carries D1 and Pages; using it here would 403 confusingly."""
+        from cyris.config import LLMProviderConfig
+
+        monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
+        monkeypatch.delenv("CLOUDFLARE_EMBEDDING_API_TOKEN", raising=False)
+        monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "d1-pages-token")
+        assert LLMProviderConfig(provider="workers_ai").api_key == ""
+
     def test_invalid_provider_rejected(self):
         """Unknown provider values fail validation."""
         from pydantic import ValidationError

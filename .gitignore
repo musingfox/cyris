@@ -69,3 +69,6 @@ htmlcov/
 # JS deps for the defuddle shim
 node_modules/
 .spiral/
+
+# `cyris llm-compare` renders, one digest per provider arm.
+agent-vault/llm-compare/

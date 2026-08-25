@@ -72,18 +72,32 @@ class GeneralConfig(BaseModel):
 class LLMProviderConfig(BaseModel):
     # No default provider — the user opts in explicitly. Unset ⇒ degraded
     # (excerpt-only) mode instead of silently defaulting to one vendor.
-    provider: Literal["anthropic", "gemini"] | None = None
+    provider: Literal["anthropic", "gemini", "workers_ai"] | None = None
     model: str = ""  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     api_key: str = ""
+    account_id: str = ""  # workers_ai only: its REST path is per-account
 
     @property
     def api_key_env_var(self) -> str:
-        return "GEMINI_API_KEY" if self.provider == "gemini" else "ANTHROPIC_API_KEY"
+        return {
+            "gemini": "GEMINI_API_KEY",
+            "workers_ai": "CLOUDFLARE_AI_TOKEN",
+        }.get(self.provider or "", "ANTHROPIC_API_KEY")
 
     @model_validator(mode="after")
     def inject_api_key(self) -> "LLMProviderConfig":
         if self.provider and not self.api_key:
             self.api_key = os.environ.get(self.api_key_env_var, "")
+        if self.provider == "workers_ai":
+            if not self.api_key:
+                # The Workers AI token `cyris embed-compare` already uses: the same
+                # "Workers AI -> Read" covers text models, so an existing setup needs
+                # nothing new. Deliberately never CLOUDFLARE_API_TOKEN — that one
+                # carries D1 and Pages, and would fail as a confusing 403 instead of
+                # an obviously missing key.
+                self.api_key = os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", "")
+            if not self.account_id:
+                self.account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
         return self
 
 

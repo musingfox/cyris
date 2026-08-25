@@ -71,14 +71,25 @@ def _check_llm(cfg: Config) -> Check:
             "llm provider",
             "warn",
             "not configured — the digest will fall back to plain excerpts",
-            'Set [llm_provider] provider = "anthropic" or "gemini" in cyris.toml.',
+            'Set [llm_provider] provider = "anthropic", "gemini" or "workers_ai" in cyris.toml.',
         )
     if not llm.api_key:
+        hint = f"Put {llm.api_key_env_var} in .env."
+        if llm.provider == "workers_ai":
+            hint += " CLOUDFLARE_EMBEDDING_API_TOKEN also works: the same Workers AI "
+            hint += "permission covers text models."
         return Check(
             "llm provider",
             "fail",
             f"provider is {llm.provider} but {llm.api_key_env_var} is empty",
-            f"Put {llm.api_key_env_var} in .env.",
+            hint,
+        )
+    if llm.provider == "workers_ai" and not llm.account_id:
+        return Check(
+            "llm provider",
+            "fail",
+            "workers_ai has a token but no account id — its REST path is per-account",
+            "Put CLOUDFLARE_ACCOUNT_ID in .env.",
         )
     return Check("llm provider", "ok", f"{llm.provider} · {llm.model or 'default model'}")
 

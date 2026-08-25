@@ -82,6 +82,18 @@ async def test_a_provider_without_its_key_names_the_variable(tmp_path: Path, mon
     assert "GEMINI_API_KEY" in check.fix
 
 
+async def test_workers_ai_without_an_account_id_fails(tmp_path: Path, monkeypatch) -> None:
+    """A token alone is not enough: the Workers AI REST path is per-account."""
+    monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "ai-token")
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="workers_ai"))
+
+    check = _by_name(await doctor.run_checks(cfg), "llm provider")
+
+    assert check.status == "fail"
+    assert "CLOUDFLARE_ACCOUNT_ID" in check.fix
+
+
 async def test_no_provider_is_a_warning_not_a_failure(tmp_path: Path) -> None:
     """Degraded mode is a choice; it must not read as a broken deployment."""
     check = _by_name(await doctor.run_checks(_config(tmp_path)), "llm provider")
@@ -103,9 +115,7 @@ async def test_an_unwired_rss_buffer_warns_with_the_measured_cost(tmp_path: Path
     assert "95 of the 179" in check.fix
 
 
-async def test_a_working_account_token_is_not_called_invalid(
-    tmp_path: Path, monkeypatch
-) -> None:
+async def test_a_working_account_token_is_not_called_invalid(tmp_path: Path, monkeypatch) -> None:
     """The bug this replaced: /user/tokens/verify rejects account-owned tokens,
     so doctor called a token invalid three lines under a check that had just
     used it successfully."""

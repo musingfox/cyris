@@ -361,6 +361,133 @@ def embed_compare(
         typer.echo(f"\nLogged to {log}")
 
 
+@app.command("llm-compare")
+def llm_compare(
+    model: Annotated[
+        str, typer.Option("--model", help="Workers AI model to put up against the configured one")
+    ] = "@cf/openai/gpt-oss-120b",
+    hours: Annotated[int, typer.Option("--hours", help="Window to digest")] = 24,
+    period: Annotated[str, typer.Option("--period", help="morning or evening")] = "morning",
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Where to write each arm's digest")
+    ] = None,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Digest one window with the configured provider and with Workers AI, side by side.
+
+    Cost and token counts are the easy half; the question this exists to answer is
+    whether an open model's 繁體中文 summaries read as well, and only the two rendered
+    digests can answer that. Both arms reuse the scores already in the store, so the
+    only difference between them is the model.
+
+    Read-only: no state updates, no usage_log row, no publish, no Discord. Neither
+    result reaches the digest, and the configured provider is left alone — switching
+    is a `cyris.toml` edit you make after reading the output.
+    """
+    _setup_logging(verbose)
+
+    from datetime import UTC, datetime, timedelta
+
+    from cyris.adapters.workers_ai_client import WorkersAIClient
+    from cyris.bootstrap import build_deps
+    from cyris.config import load_config
+    from cyris.service_layer.digest_pipeline import DigestPipeline
+
+    try:
+        cfg = load_config(config_path, sources_path)  # also loads .env into the environment
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    token = os.environ.get("CLOUDFLARE_AI_TOKEN", "") or os.environ.get(
+        "CLOUDFLARE_EMBEDDING_API_TOKEN", ""
+    )
+    if not (account and token):
+        logger.error(
+            "Needs CLOUDFLARE_ACCOUNT_ID and a Workers AI token (CLOUDFLARE_AI_TOKEN, or the "
+            "CLOUDFLARE_EMBEDDING_API_TOKEN embed-compare uses — same permission)."
+        )
+        raise typer.Exit(1)
+
+    deps = build_deps(cfg)
+    if deps.llm is None:
+        logger.error("No LLM provider configured, so there is nothing to compare against.")
+        raise typer.Exit(1)
+
+    now = datetime.now(UTC)
+    stored = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
+    if not stored:
+        typer.echo(f"No articles in the last {hours}h. Run `cyris run` first.")
+        raise typer.Exit(1)
+
+    articles = [a.to_article() for a in stored]
+    scores = {a.url: a.score for a in stored if a.score is not None}
+    arms = {
+        f"{cfg.app.llm_provider.provider}:{deps.llm.model}": deps.llm,
+        f"workers_ai:{model}": WorkersAIClient(token, account, model),
+    }
+
+    out_dir = out or cfg.app.agent_vault.path / "llm-compare"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    typer.echo(f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n")
+
+    rows = []
+    for label, llm in arms.items():
+        pipeline = DigestPipeline(
+            llm,
+            max_digest_output=cfg.app.digest.max_articles_per_digest_output,
+            summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
+            filter_snippet_length=cfg.app.digest.filter_snippet_length,
+            score_threshold=cfg.app.routing.summarize_score_threshold,
+            output_language=cfg.app.digest.output_language,
+            style_prompt=cfg.app.digest.style_prompt,
+        )
+        started = time.monotonic()
+        try:
+            result = asyncio.run(
+                pipeline.process(
+                    articles,
+                    cfg.sources,
+                    period=period,
+                    timezone=cfg.app.general.timezone,
+                    article_scores=scores,
+                )
+            )
+        except Exception as e:
+            logger.error("%s failed: %s", label, e)
+            continue
+        elapsed = time.monotonic() - started
+
+        content = result.content
+        path = out_dir / f"{content.date}-{period}-{label.replace(':', '_').replace('/', '_')}.md"
+        path.write_text(deps.writer.render(content), encoding="utf-8")
+        rows.append((label, content, elapsed, getattr(llm, "neurons", None), path))
+
+    for label, content, elapsed, neurons, path in rows:
+        u = content.usage
+        cost = f", {neurons:.1f} neurons" if neurons is not None else ""
+        typer.echo(
+            f"  {label:<44} {content.articles_included:>3} included   "
+            f"{len(content.news_clusters)} cluster(s), "
+            f"{len(content.thematic_summaries)} theme(s), "
+            f"{len(content.filtered_headlines)} headline(s)   "
+            f"({u.input_tokens:,} in / {u.output_tokens:,} out over {u.api_calls} calls, "
+            f"{elapsed:.1f}s{cost})"
+        )
+        typer.echo(f"  {'':<44} {path}")
+
+    if len(rows) == 2:
+        typer.echo("\nRead both files. The numbers say what it costs; only the prose says")
+        typer.echo("whether the summaries are worth reading.")
+
+
 @app.command("doctor")
 def doctor(
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
