@@ -177,12 +177,13 @@ class DigestPipeline:
             + sum(len(f.items) for f in fan_sections)
         )
 
+        cost = usage.estimated_cost
         logger.info(
-            "API usage: %d calls, %d input + %d output tokens, ~$%.4f",
+            "API usage: %d calls, %d input + %d output tokens, %s",
             usage.api_calls,
             usage.input_tokens,
             usage.output_tokens,
-            usage.estimated_cost,
+            f"~${cost:.4f}" if cost is not None else f"cost unknown for {usage.model}",
         )
 
         # Classify URLs: accepted (in digest) vs rejected (filtered out)

@@ -32,7 +32,11 @@ def append_usage(content: DigestContent, log_path: Path) -> None:
         "input_tokens": content.usage.input_tokens,
         "output_tokens": content.usage.output_tokens,
         "total_tokens": content.usage.total_tokens,
-        "estimated_cost_usd": round(content.usage.estimated_cost, 6),
+        # null, not 0, when the model has no rate card here — the two mean
+        # different things to whatever reads this log back.
+        "estimated_cost_usd": (
+            round(cost, 6) if (cost := content.usage.estimated_cost) is not None else None
+        ),
     }
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,21 +51,38 @@ def append_usage_d1(content: DigestContent, client: D1Queryable) -> None:
     if content.usage.api_calls == 0:
         return
 
+    columns = [
+        "logged_at",
+        "digest_date",
+        "period",
+        "articles_received",
+        "articles_included",
+        "model",
+        "api_calls",
+        "input_tokens",
+        "output_tokens",
+    ]
+    values = [
+        datetime.now(tz=UTC).isoformat(),
+        content.date,
+        content.period,
+        content.articles_received,
+        content.articles_included,
+        content.usage.model,
+        content.usage.api_calls,
+        content.usage.input_tokens,
+        content.usage.output_tokens,
+    ]
+    # `cost_usd` is NOT NULL DEFAULT 0, so an unpriced model leaves the column out
+    # instead of sending NULL. `model` is in the same row, which is what separates
+    # "no rate card for this vendor" from a genuine $0.
+    cost = content.usage.estimated_cost
+    if cost is not None:
+        columns.append("cost_usd")
+        values.append(round(cost, 6))
+
     client.query(
-        "INSERT INTO usage_log (logged_at, digest_date, period, articles_received, "
-        "articles_included, model, api_calls, input_tokens, output_tokens, cost_usd) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            datetime.now(tz=UTC).isoformat(),
-            content.date,
-            content.period,
-            content.articles_received,
-            content.articles_included,
-            content.usage.model,
-            content.usage.api_calls,
-            content.usage.input_tokens,
-            content.usage.output_tokens,
-            round(content.usage.estimated_cost, 6),
-        ],
+        f"INSERT INTO usage_log ({', '.join(columns)}) VALUES ({', '.join('?' * len(values))})",
+        values,
     )
     logger.info("Usage logged to D1")

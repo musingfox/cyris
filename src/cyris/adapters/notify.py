@@ -149,7 +149,7 @@ def build_discord_embeds(
         stats_lines.append(
             f"⚠️ 本次收取的電子報 {synthetic or 0} 篇未抽到原文；本篇 digest 內死連結 {dead or 0} 篇"
         )
-    if content.usage.api_calls > 0:
+    if content.usage.api_calls > 0 and content.usage.estimated_cost is not None:
         stats_lines.append(f"💰 費用 **${content.usage.estimated_cost:.4f}**")
 
     embeds.append(

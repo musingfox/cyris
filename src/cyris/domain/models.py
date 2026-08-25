@@ -71,6 +71,23 @@ class DigestSection(BaseModel):
     items: list[DigestItem] = Field(default_factory=list)
 
 
+# USD per million tokens, (input, output), keyed by the exact model id the
+# adapter reports. Read off each vendor's own pricing page on 2026-08-25.
+# Only models this repo actually runs are here on purpose: a miss returns None,
+# which is the one behaviour that cannot repeat the bug this table replaced.
+# Workers AI is deliberately absent — it bills in neurons rather than tokens,
+# and `WorkersAIClient.neurons` is the receipt for that.
+_PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+    "gemini-3.7-flash": (0.75, 3.75),  # promotional; 1.50/7.50 from 2027-01-01
+    "gemini-3.6-flash": (0.75, 3.75),  # same, and same expiry
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gpt-5.6-luna": (0.20, 1.20),
+    "gpt-5.6-terra": (2.00, 12.00),
+}
+
+
 class UsageStats(BaseModel):
     """LLM API usage statistics for a digest run."""
 
@@ -84,9 +101,19 @@ class UsageStats(BaseModel):
         return self.input_tokens + self.output_tokens
 
     @property
-    def estimated_cost(self) -> float:
-        """Estimate cost in USD based on Sonnet pricing ($3/M input, $15/M output)."""
-        return (self.input_tokens * 3 + self.output_tokens * 15) / 1_000_000
+    def estimated_cost(self) -> float | None:
+        """USD for this run, or None when this model's rate card is not known here.
+
+        None is an answer, not a gap. The old version applied Sonnet's $3/$15 to
+        whatever had run, so a Gemini digest reported four times its real cost
+        and nothing in the output said which vendor the number came from. An
+        unpriced model now prints no number at all rather than borrowing one.
+        """
+        price = _PRICES_PER_MTOK.get(self.model)
+        if price is None:
+            return None
+        input_price, output_price = price
+        return (self.input_tokens * input_price + self.output_tokens * output_price) / 1_000_000
 
     def add(self, input_tokens: int, output_tokens: int) -> None:
         self.input_tokens += input_tokens

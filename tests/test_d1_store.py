@@ -141,6 +141,33 @@ def test_usage_is_logged_to_the_same_database(sample_digest_content) -> None:
     assert rows[0]["api_calls"] == 3
 
 
+def test_a_priced_model_writes_its_cost(sample_digest_content) -> None:
+    db = SqliteD1()
+    sample_digest_content.usage.api_calls = 3
+    sample_digest_content.usage.model = "gemini-3.6-flash"
+    sample_digest_content.usage.input_tokens = 1_000_000
+    sample_digest_content.usage.output_tokens = 1_000_000
+
+    append_usage_d1(sample_digest_content, client=db)
+
+    assert db.query("SELECT * FROM usage_log").rows[0]["cost_usd"] == 4.5
+
+
+def test_an_unpriced_model_omits_the_column_rather_than_breaking_the_insert(
+    sample_digest_content,
+) -> None:
+    """`cost_usd` is NOT NULL DEFAULT 0, so a NULL here would fail the write."""
+    db = SqliteD1()
+    sample_digest_content.usage.api_calls = 3
+    sample_digest_content.usage.model = "@cf/openai/gpt-oss-120b"
+
+    append_usage_d1(sample_digest_content, client=db)
+
+    row = db.query("SELECT * FROM usage_log").rows[0]
+    assert row["cost_usd"] == 0
+    assert row["model"] == "@cf/openai/gpt-oss-120b"  # what tells 0 from unknown
+
+
 def test_usage_with_no_api_calls_is_not_logged(sample_digest_content) -> None:
     db = SqliteD1()
     sample_digest_content.usage.api_calls = 0

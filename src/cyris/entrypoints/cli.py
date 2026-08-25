@@ -1128,10 +1128,11 @@ def articles_score(
             persist=persist,
         )
 
+        cost = total_usage.estimated_cost
         typer.echo(
             f"\nScored {total_updated} articles. "
             f"API: {total_usage.api_calls} calls, "
-            f"${total_usage.estimated_cost:.4f}"
+            + (f"${cost:.4f}" if cost is not None else f"cost unknown for {total_usage.model}")
         )
 
     asyncio.run(_run())

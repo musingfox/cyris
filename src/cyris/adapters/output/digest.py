@@ -108,7 +108,8 @@ class DigestWriter:
                 f"- API 用量：{u.api_calls} 次呼叫，"
                 f"{u.input_tokens:,} 輸入 + {u.output_tokens:,} 輸出 tokens"
             )
-            parts.append(f"- 預估費用：${u.estimated_cost:.4f}")
+            if u.estimated_cost is not None:
+                parts.append(f"- 預估費用：${u.estimated_cost:.4f}")
         parts.append("")
 
         # Triage section
