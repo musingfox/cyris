@@ -2,6 +2,7 @@
 
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
+from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.bootstrap import build_llm
 from cyris.config import LLMProviderConfig
@@ -17,6 +18,13 @@ def test_anthropic_and_gemini_still_route_to_their_own_clients():
 
     assert isinstance(anthropic, AnthropicClient)
     assert isinstance(gemini, GeminiClient)
+
+
+def test_openai_routes_to_its_client_and_defaults_to_luna():
+    llm = build_llm(LLMProviderConfig(provider="openai", api_key="k"))
+
+    assert isinstance(llm, OpenAIClient)
+    assert llm.model == "gpt-5.6-luna"
 
 
 def test_workers_ai_defaults_to_gpt_oss():

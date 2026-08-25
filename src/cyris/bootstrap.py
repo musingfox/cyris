@@ -11,6 +11,7 @@ from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord
+from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.digest import DigestWriter
 from cyris.adapters.output.usage_log import append_usage, append_usage_d1
 from cyris.adapters.store import ArticleStore
@@ -21,6 +22,7 @@ from cyris.service_layer.ports import ArticleRepository, FetchSource, LLMClient
 _DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-6",
     "gemini": "gemini-2.5-flash",
+    "openai": "gpt-5.6-luna",
     # gpt-oss-120b rather than llama-3.3-70b: the filter tier sends its articles as
     # one un-batched prompt, and llama's 24k context leaves no headroom for a busy
     # window. gpt-oss has 128k, and its output rate is ~3x cheaper besides
@@ -40,6 +42,8 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     model = cfg.model or _DEFAULT_MODELS[cfg.provider]
     if cfg.provider == "gemini":
         return GeminiClient(cfg.api_key, model)
+    if cfg.provider == "openai":
+        return OpenAIClient(cfg.api_key, model)
     if cfg.provider == "workers_ai":
         if not cfg.account_id:
             return None  # doctor names the missing CLOUDFLARE_ACCOUNT_ID

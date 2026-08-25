@@ -242,7 +242,7 @@ class TestLLMProvider:
         from cyris.config import LLMProviderConfig
 
         with pytest.raises(ValidationError):
-            LLMProviderConfig(provider="openai")
+            LLMProviderConfig(provider="mistral")
 
     def test_missing_gemini_key_named_in_error(self, monkeypatch):
         """validate_required_keys names GEMINI_API_KEY when provider=gemini."""

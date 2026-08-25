@@ -72,7 +72,7 @@ class GeneralConfig(BaseModel):
 class LLMProviderConfig(BaseModel):
     # No default provider — the user opts in explicitly. Unset ⇒ degraded
     # (excerpt-only) mode instead of silently defaulting to one vendor.
-    provider: Literal["anthropic", "gemini", "workers_ai"] | None = None
+    provider: Literal["anthropic", "gemini", "openai", "workers_ai"] | None = None
     model: str = ""  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     api_key: str = ""
     account_id: str = ""  # workers_ai only: its REST path is per-account
@@ -81,6 +81,7 @@ class LLMProviderConfig(BaseModel):
     def api_key_env_var(self) -> str:
         return {
             "gemini": "GEMINI_API_KEY",
+            "openai": "OPENAI_API_KEY",
             "workers_ai": "CLOUDFLARE_AI_TOKEN",
         }.get(self.provider or "", "ANTHROPIC_API_KEY")
 

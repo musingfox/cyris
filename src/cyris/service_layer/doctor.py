@@ -71,7 +71,8 @@ def _check_llm(cfg: Config) -> Check:
             "llm provider",
             "warn",
             "not configured — the digest will fall back to plain excerpts",
-            'Set [llm_provider] provider = "anthropic", "gemini" or "workers_ai" in cyris.toml.',
+            'Set [llm_provider] provider to "anthropic", "gemini", "openai" or '
+            '"workers_ai" in cyris.toml.',
         )
     if not llm.api_key:
         hint = f"Put {llm.api_key_env_var} in .env."

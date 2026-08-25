@@ -17,7 +17,7 @@ AI-powered information digest agent. Fetches articles from RSS feeds and newslet
 
 - Python 3.12+
 - [uv](https://github.com/astral-sh/uv) package manager
-- An LLM API key — Anthropic Claude, Google Gemini, or a Cloudflare Workers AI token
+- An LLM API key — Anthropic Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token
 - Obsidian vault for digest output
 - Optional: a Cloudflare account — for the **feed buffer** (see below), **email-only
   newsletter** ingestion, and the promote / HTML-publish features
@@ -136,7 +136,7 @@ cyris articles triage         Process digest feedback and export
 cyris articles clean          Delete old rejected articles
 cyris store migrate           Copy the local article store into D1
 cyris store diff              Compare the JSON and D1 stores field by field
-cyris llm-compare             Digest one window with two LLM providers, side by side
+cyris llm-compare             Digest one window with several LLM providers, side by side
 ```
 
 ## Architecture
@@ -168,7 +168,7 @@ Three Protocols in `service_layer/ports.py` are the clean seams:
 | Kind | Protocol | Existing implementations | Add one to… |
 |------|----------|--------------------------|-------------|
 | **Fetch source** (input) | `FetchSource` | `RssSource`, `CloudflareRssSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
-| **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient`, `WorkersAIClient` | add an AI provider |
+| **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` | add an AI provider |
 | **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
 | **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md + raw list), `HtmlDigestWriter` (digest + raw page), `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
 
@@ -271,7 +271,7 @@ Digest output language is configurable via `[digest] output_language` (default
 | Language | Python 3.12+ |
 | Package manager | uv |
 | Feed buffer | Cloudflare Worker cron → D1 (optional) |
-| AI processing | Anthropic Claude, Google Gemini, or Cloudflare Workers AI |
+| AI processing | Anthropic Claude, Google Gemini, OpenAI, or Cloudflare Workers AI |
 | Preference learning | Claude API |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |
 | Output | Obsidian (filesystem) |
