@@ -361,11 +361,42 @@ def embed_compare(
         typer.echo(f"\nLogged to {log}")
 
 
+def _build_arm(spec: str):
+    """Turn "provider:model" into a labelled LLM client, or explain why it cannot.
+
+    Goes through the same `build_llm` the pipeline uses, so an arm picks up its
+    key and account id from the environment exactly as a configured provider
+    would, and a provider added later costs this command nothing. An empty model
+    means that provider's default.
+    """
+    from pydantic import ValidationError
+
+    from cyris.bootstrap import build_llm
+    from cyris.config import LLMProviderConfig
+
+    provider, _, model = spec.partition(":")
+    try:
+        arm_cfg = LLMProviderConfig(provider=provider.strip(), model=model.strip())
+    except ValidationError as e:
+        raise typer.BadParameter(f"--arm {spec!r}: unknown provider {provider.strip()!r}") from e
+
+    llm = build_llm(arm_cfg)
+    if llm is None:
+        missing = (
+            "CLOUDFLARE_ACCOUNT_ID"
+            if arm_cfg.provider == "workers_ai" and arm_cfg.api_key
+            else arm_cfg.api_key_env_var
+        )
+        raise typer.BadParameter(f"--arm {spec!r}: {missing} is empty")
+    return f"{arm_cfg.provider}:{llm.model}", llm
+
+
 @app.command("llm-compare")
 def llm_compare(
-    model: Annotated[
-        str, typer.Option("--model", help="Workers AI model to put up against the configured one")
-    ] = "@cf/openai/gpt-oss-120b",
+    arm: Annotated[
+        list[str] | None,
+        typer.Option("--arm", help="provider:model to compare against; repeat for a three-way"),
+    ] = None,
     hours: Annotated[int, typer.Option("--hours", help="Window to digest")] = 24,
     period: Annotated[str, typer.Option("--period", help="morning or evening")] = "morning",
     out: Annotated[
@@ -379,25 +410,34 @@ def llm_compare(
     ),
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
-    """Digest one window with the configured provider and with Workers AI, side by side.
+    """Digest one window with several LLM providers, side by side.
 
     Cost and token counts are the easy half; the question this exists to answer is
-    whether an open model's 繁體中文 summaries read as well, and only the two rendered
-    digests can answer that. Both arms reuse the scores already in the store, so the
-    only difference between them is the model.
+    whether the summaries read as well, and only the rendered digests can answer
+    that. Every arm reuses the scores already in the store, so the model is the
+    only difference between them.
 
-    Read-only: no state updates, no usage_log row, no publish, no Discord. Neither
-    result reaches the digest, and the configured provider is left alone — switching
-    is a `cyris.toml` edit you make after reading the output.
+    Arm one is always the provider in cyris.toml. Each --arm adds another, as
+    `provider:model` (an omitted model means that provider's default):
+
+        cyris llm-compare --arm anthropic:claude-haiku-4-5
+        cyris llm-compare --arm anthropic:claude-haiku-4-5 --arm openai:gpt-5.6-luna
+
+    Read-only: no state updates, no usage_log row, no publish, no Discord. Nothing
+    reaches the digest, and the configured provider is left alone — switching is a
+    `cyris.toml` edit you make after reading the output.
     """
     _setup_logging(verbose)
 
     from datetime import UTC, datetime, timedelta
 
-    from cyris.adapters.workers_ai_client import WorkersAIClient
     from cyris.bootstrap import build_deps
     from cyris.config import load_config
     from cyris.service_layer.digest_pipeline import DigestPipeline
+
+    if not arm:
+        logger.error("Nothing to compare against. Pass at least one --arm provider:model.")
+        raise typer.Exit(1)
 
     try:
         cfg = load_config(config_path, sources_path)  # also loads .env into the environment
@@ -405,21 +445,15 @@ def llm_compare(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-    token = os.environ.get("CLOUDFLARE_AI_TOKEN", "") or os.environ.get(
-        "CLOUDFLARE_EMBEDDING_API_TOKEN", ""
-    )
-    if not (account and token):
-        logger.error(
-            "Needs CLOUDFLARE_ACCOUNT_ID and a Workers AI token (CLOUDFLARE_AI_TOKEN, or the "
-            "CLOUDFLARE_EMBEDDING_API_TOKEN embed-compare uses — same permission)."
-        )
-        raise typer.Exit(1)
-
     deps = build_deps(cfg)
     if deps.llm is None:
         logger.error("No LLM provider configured, so there is nothing to compare against.")
         raise typer.Exit(1)
+
+    # Built before any LLM call, so a typo in the fourth arm fails now rather than
+    # after three digests have been paid for.
+    arms = [(f"{cfg.app.llm_provider.provider}:{deps.llm.model}", deps.llm)]
+    arms.extend(_build_arm(spec) for spec in arm)
 
     now = datetime.now(UTC)
     stored = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
@@ -429,17 +463,13 @@ def llm_compare(
 
     articles = [a.to_article() for a in stored]
     scores = {a.url: a.score for a in stored if a.score is not None}
-    arms = {
-        f"{cfg.app.llm_provider.provider}:{deps.llm.model}": deps.llm,
-        f"workers_ai:{model}": WorkersAIClient(token, account, model),
-    }
 
     out_dir = out or cfg.app.agent_vault.path / "llm-compare"
     out_dir.mkdir(parents=True, exist_ok=True)
     typer.echo(f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n")
 
     rows = []
-    for label, llm in arms.items():
+    for label, llm in arms:
         pipeline = DigestPipeline(
             llm,
             max_digest_output=cfg.app.digest.max_articles_per_digest_output,
@@ -470,21 +500,22 @@ def llm_compare(
         path.write_text(deps.writer.render(content), encoding="utf-8")
         rows.append((label, content, elapsed, getattr(llm, "neurons", None), path))
 
+    width = max((len(r[0]) for r in rows), default=0)
     for label, content, elapsed, neurons, path in rows:
         u = content.usage
         cost = f", {neurons:.1f} neurons" if neurons is not None else ""
         typer.echo(
-            f"  {label:<44} {content.articles_included:>3} included   "
+            f"  {label:<{width}} {content.articles_included:>3} included   "
             f"{len(content.news_clusters)} cluster(s), "
             f"{len(content.thematic_summaries)} theme(s), "
             f"{len(content.filtered_headlines)} headline(s)   "
             f"({u.input_tokens:,} in / {u.output_tokens:,} out over {u.api_calls} calls, "
             f"{elapsed:.1f}s{cost})"
         )
-        typer.echo(f"  {'':<44} {path}")
+        typer.echo(f"  {'':<{width}} {path}")
 
-    if len(rows) == 2:
-        typer.echo("\nRead both files. The numbers say what it costs; only the prose says")
+    if len(rows) > 1:
+        typer.echo("\nRead the files. The numbers say what it costs; only the prose says")
         typer.echo("whether the summaries are worth reading.")
 
 
