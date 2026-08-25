@@ -799,9 +799,12 @@ def triage_ui(
             vault_path=cfg.app.obsidian.user_vault_path,
             host=host,
             port=port,
+            config_path=config_path,
+            llm_provider=cfg.app.llm_provider,
         )
         await server.start()
         typer.echo(f"Triage UI: http://{host}:{port}")
+        typer.echo(f"Settings:  http://{host}:{port}/settings")
         typer.echo("Press Ctrl+C to stop")
         try:
             while True:

@@ -128,7 +128,7 @@ cyris learn                   Update preference profile from digest feedback
 cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
 cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
 cyris email-server            Legacy local email webhook (see workers/newsletter for the Cloudflare path)
-cyris triage-ui               Start swipe-based triage web UI
+cyris triage-ui               Start swipe-based triage web UI (also /settings, to pick the LLM provider)
 cyris articles list           List articles in store
 cyris articles export         Export accepted articles to vault
 cyris articles score          Score articles via AI

@@ -6,6 +6,7 @@ Sensitive values are injected from environment variables.
 
 import logging
 import os
+import re
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -265,6 +266,55 @@ class Config(BaseModel):
             missing.append(self.app.llm_provider.api_key_env_var)
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+
+def write_llm_provider(config_path: Path, provider: str, model: str) -> None:
+    """Point `[llm_provider]` at a different provider and model, in place.
+
+    Deliberately a line edit rather than a TOML round-trip. Every writer worth
+    depending on drops comments, and `cyris.toml` is mostly comments — the
+    workers_ai caveat, which env var each provider reads, what the digest caps
+    mean. Losing those to save a settings write would be a bad trade, and only
+    two scalars in one known table ever change.
+
+    Raises KeyError if the file has no `[llm_provider]` table to edit.
+    """
+    lines = config_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    written = {"provider": False, "model": False}
+    out: list[str] = []
+    in_table = False
+
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("["):
+            # Leaving the table with a key still unwritten means the file simply
+            # omitted it (both are optional), so append before moving on.
+            if in_table:
+                out.extend(
+                    f'{key} = "{value}"\n'
+                    for key, value in (("provider", provider), ("model", model))
+                    if not written[key]
+                )
+                written = dict.fromkeys(written, True)
+            in_table = stripped.startswith("[llm_provider]")
+        elif in_table:
+            for key, value in (("provider", provider), ("model", model)):
+                if re.match(rf"{key}\s*=", stripped):
+                    # Keep whatever trailing comment documented this line.
+                    comment = line.partition("#")[2].rstrip("\n")
+                    line = f'{key} = "{value}"' + (f"  #{comment}" if comment else "") + "\n"
+                    written[key] = True
+                    break
+        out.append(line)
+
+    if not in_table and not all(written.values()):
+        raise KeyError(f"{config_path} has no [llm_provider] table to write to")
+    out.extend(
+        f'{key} = "{value}"\n'
+        for key, value in (("provider", provider), ("model", model))
+        if not written[key]
+    )
+    config_path.write_text("".join(out), encoding="utf-8")
 
 
 def load_config(

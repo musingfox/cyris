@@ -53,17 +53,26 @@ class TriageServer:
         vault_path: Path | None = None,
         host: str = "127.0.0.1",
         port: int = 8766,
+        config_path: Path | None = None,
+        llm_provider=None,
     ) -> None:
         self._store = store
         self._vault_path = vault_path
         self._host = host
         self._port = port
+        # Without these the settings page still renders, read-only: nothing to
+        # show the current choice from, and nowhere to write a new one.
+        self._config_path = config_path
+        self._llm_provider = llm_provider
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
         self._app.router.add_post("/api/articles/accept", self._handle_accept)
         self._app.router.add_post("/api/articles/reject", self._handle_reject)
         self._app.router.add_post("/api/articles/undo", self._handle_undo)
+        self._app.router.add_get("/api/settings", self._handle_get_settings)
+        self._app.router.add_post("/api/settings", self._handle_post_settings)
+        self._app.router.add_get("/settings", self._handle_settings_page)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_static("/static", STATIC_DIR)
         self._runner: web.AppRunner | None = None
@@ -219,6 +228,95 @@ class TriageServer:
             return web.json_response({"ok": False, "error": "article not found"}, status=404)
 
         return web.json_response({"ok": True})
+
+    async def _handle_get_settings(self, request: web.Request) -> web.Response:
+        """What is configured now, and which providers this machine could switch to."""
+        from cyris.bootstrap import _DEFAULT_MODELS
+        from cyris.config import LLMProviderConfig
+
+        current = self._llm_provider
+        providers = []
+        for name in _DEFAULT_MODELS:
+            # Constructing it is what resolves the key from the environment, so
+            # `configured` reflects what a run would actually find, not a guess.
+            probe_cfg = LLMProviderConfig(provider=name)
+            ready = bool(probe_cfg.api_key) and (
+                bool(probe_cfg.account_id) if name == "workers_ai" else True
+            )
+            providers.append(
+                {
+                    "name": name,
+                    "env_var": probe_cfg.api_key_env_var,
+                    "default_model": _DEFAULT_MODELS[name],
+                    "configured": ready,
+                }
+            )
+        return web.json_response(
+            {
+                "provider": current.provider if current else None,
+                "model": (current.model if current else "") or "",
+                "providers": providers,
+                "writable": self._config_path is not None,
+            }
+        )
+
+    async def _handle_post_settings(self, request: web.Request) -> web.Response:
+        """Validate against the live provider, then write `cyris.toml`.
+
+        The order is the whole point. A bad provider or a mistyped model saved
+        here would not surface until the next scheduled digest, hours later and
+        after the fetch — so nothing reaches the file until a real call comes
+        back. See `service_layer.doctor.probe_llm`.
+        """
+        from pydantic import ValidationError
+
+        from cyris.config import LLMProviderConfig, write_llm_provider
+        from cyris.service_layer.doctor import probe_llm
+
+        if self._config_path is None:
+            return web.json_response(
+                {"ok": False, "error": "this server was started without a config file to write"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        provider = (body.get("provider") or "").strip()
+        model = (body.get("model") or "").strip()
+        try:
+            candidate = LLMProviderConfig(provider=provider, model=model)
+        except ValidationError:
+            return web.json_response(
+                {"ok": False, "error": f"unknown provider {provider!r}"}, status=400
+            )
+
+        probe = await probe_llm(candidate)
+        if probe.status != "ok":
+            return web.json_response({"ok": False, "error": probe.detail}, status=400)
+
+        try:
+            write_llm_provider(self._config_path, provider, model)
+        except (KeyError, OSError) as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        self._llm_provider = candidate
+        logger.info("LLM provider set to %s · %s", provider, model or "(default model)")
+        return web.json_response(
+            {
+                "ok": True,
+                "provider": provider,
+                "model": model,
+                "detail": probe.detail,
+                # This server holds no LLM of its own; the pipeline reads the file
+                # fresh on each run, so the change lands on the next digest.
+                "note": "Saved. The next digest run picks this up.",
+            }
+        )
+
+    async def _handle_settings_page(self, request: web.Request) -> web.Response:
+        return web.FileResponse(STATIC_DIR / "settings.html")
 
     async def start(self) -> None:
         self._runner = web.AppRunner(self._app)

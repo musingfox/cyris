@@ -95,6 +95,38 @@ def _check_llm(cfg: Config) -> Check:
     return Check("llm provider", "ok", f"{llm.provider} · {llm.model or 'default model'}")
 
 
+async def probe_llm(llm_cfg) -> Check:
+    """Ask the provider whether this model actually answers, with a real call.
+
+    `_check_llm` reads config and stops there, which is right for a check that
+    must stay free. This one costs a few tokens, and buys the one failure that
+    reading config cannot see: a model id that does not exist. A typo survives
+    every static check and then 404s in the middle of a digest run, after the
+    fetch has already happened — so anything that *writes* the provider config
+    should call this before saving, not after.
+    """
+    from cyris.bootstrap import build_llm
+
+    llm = build_llm(llm_cfg)
+    if llm is None:
+        return Check(
+            "llm probe",
+            "fail",
+            f"{llm_cfg.provider or 'no provider'} could not be built — "
+            f"{llm_cfg.api_key_env_var} is empty"
+            + (
+                " (workers_ai also needs CLOUDFLARE_ACCOUNT_ID)"
+                if llm_cfg.provider == "workers_ai"
+                else ""
+            ),
+        )
+    try:
+        await llm.complete("ping", max_tokens=16)
+    except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
+        return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}")
+    return Check("llm probe", "ok", f"{llm_cfg.provider} · {llm.model} answered")
+
+
 def _check_paths(cfg: Config) -> list[Check]:
     vault = cfg.app.obsidian.user_vault_path
     digests = vault / cfg.app.obsidian.digest_folder
