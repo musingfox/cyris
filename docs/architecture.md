@@ -376,7 +376,7 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 | M | What | Why here | Receipt | Ticket |
 |---|---|---|---|---|
 | **M0** | Finish the D1 cutover | In flight | D1 `usage_log` gains a row from a container run **and** `agent-vault/usage.jsonl` stops growing. Then delete `agent-vault/articles/` | `cloud-p2` |
-| **M1** | **Delete before porting** — `DigestWriter` + `[obsidian]` + `CYRIS_VAULT_PATH` + vault mount, `NewsletterArchiveSource` + maildir, `EmailConfig` + `webhook_server` + `cyris email-server`, `schedule/launchd.py` + `[general] digest_schedule`, `events/`, parity logs. Plus: make `cyris doctor` report what *this build* supports | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | Full `cyris run` still produces the HTML digest; `git grep -l 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|launchd'` returns nothing | new |
+| ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
 | **M2** | **Settings into D1** — a `settings` key/value table; `/settings` writes it instead of `cyris.toml`; grade-D keys read **D1 first, file as fallback** | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | Change the provider in the UI; the next run uses it with `cyris.toml` untouched | `schedule-settings-d1` |
 | **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | A digest run writes no file under `agent-vault/` and the Pages URL still returns 200 | `cloud-p3` |
 | **M4** | Embeddings → **Workers AI `bge-m3` + Vectorize** | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | `embeddings.json` deleted; `cyris vote-sim` at ≈0.53 suppresses the same set it does today | `cloud-p3` · `evaluate-embedding-provider` |
@@ -391,6 +391,15 @@ Two things this table deliberately makes explicit:
 - **M1 comes before every port.** Eliminate, then simplify, then move. Porting something that should
   have been deleted costs twice.
 
+**What M1 actually removed** (2026-08-27): `DigestWriter` and `article_export`, `[obsidian]`,
+`CYRIS_VAULT_PATH` and the vault bind mount, `cyris articles export`, the vault export on a triage
+accept, `NewsletterArchiveSource` and the maildir, `webhook_server` and `cyris email-server`,
+`EmailConfig` / `[email]` / `CYRIS_EMAIL_WEBHOOK_SECRET`, `schedule/launchd.py` and `cyris
+schedule`, both parity launchd jobs and `workers/rss/compare.py`, `agent-vault/events/`, and the
+parity logs. Added in the same milestone: the two `doctor` checks that would have caught the
+08-25→27 split — `build` (a config table this image cannot see is a failure) and `store wiring`
+(print the class the composition root resolved, not the name the config asked for).
+
 ### Blocking the cloud move
 
 | # | What | Today | Target | Ticket |
@@ -398,29 +407,30 @@ Two things this table deliberately makes explicit:
 | 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
 | 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
 | 3 | Embeddings | `embeddings.json`, 322 MB, rewritten whole per run | **Workers AI `bge-m3` + Vectorize** (threshold ≈0.53, already measured) | `cloud-p3` · `evaluate-embedding-provider` |
-| 7 | Scheduling | `docker/crontab` + supercronic, fixed 08:00/20:00 | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
-| 8 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
+| 4 | Scheduling | `docker/crontab` + supercronic, fixed 08:00/20:00 | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
+| 5 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 
 ### Blocking one-button deploy
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 9 | Three Worker URLs + Pages project name | hand-written in `cyris.toml` | **derived at deploy** | `cloud-p4` |
-| 10 | `deploy.json`, the README button, the secret checklist | absent | present | `cloud-p4` |
-| 11 | Three Workers vs one button | undecided | decide **after** `cloud-p3`, with the Container as the primary | `cloud-p4` |
+| 6 | Three Worker URLs + Pages project name | hand-written in `cyris.toml` | **derived at deploy** | `cloud-p4` |
+| 7 | `deploy.json`, the README button, the secret checklist | absent | present | `cloud-p4` |
+| 8 | Three Workers vs one button | undecided | decide **after** `cloud-p3`, with the Container as the primary | `cloud-p4` |
 
 ### Grade D has no home
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 12 | D1 `settings` table | does not exist | **exists**; `/settings` writes it instead of `cyris.toml` | `schedule-settings-d1` |
-| 13 | Digest times + timezone in the UI | `docker/crontab` only | a D1 row, effective next run | `schedule-settings-d1` |
+| 9 | D1 `settings` table | does not exist | **exists**; `/settings` writes it instead of `cyris.toml` | `schedule-settings-d1` |
+| 10 | Digest times + timezone in the UI | `docker/crontab` only | a D1 row, effective next run | `schedule-settings-d1` |
 
-### Unticketed — found while writing this document
+### Waiting on a receipt
 
 | # | What | Why it matters |
 |---|---|---|
-| 17 | Retire the local JSON store | Pending tonight's receipt: D1 `usage_log` gains a row and `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design** |
+| 11 | Retire the local JSON store | Waiting on M0's receipt: D1 `usage_log` gains a row from a container run **and** `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design**, and `agent-vault/articles/` must not be deleted |
+| 12 | Delete `[miniflux]` from `cyris.toml` | `doctor` fails on it — the table is dead since 08-25 and this build ignores it. Deferred only because `cyris.toml` is a single-file bind mount: rewriting it leaves the running container on a deleted inode until `--force-recreate`, which must not happen before the M0 receipt run |
 
 ## 8. Where the core never changes
 
