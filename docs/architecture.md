@@ -269,7 +269,6 @@ Every persistent datum, where it lives now, and where it is going.
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Embedding cache | `embeddings.json` **322 MB** + `embeddings-bge-m3.json` **93 MB** | **Vectorize** | Loaded into memory and rewritten whole every run |
 | HTML digest + raw pages | `agent-vault/html/` | **R2** | `output_dir` is relative to cwd — hence the extra bind mount in compose |
-| Newsletter maildir | `agent-vault/daily/newsletters/` | **delete** | Superseded by the newsletter Worker |
 | `agent-vault/events/` | local, frozen | **delete** | Tracked-topics feature was removed |
 | parity logs | `agent-vault/*.out,.err,.jsonl` | **move out** | Chore output, not agent state |
 
@@ -313,7 +312,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Digest times + timezone | D | `docker/crontab` | **D1 `settings`** |
 | Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
-| `EmailConfig` — legacy local webhook | — | `cyris.toml [email]` | **deleted**, superseded by the newsletter Worker |
+| ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
 
 Two consequences of grade D being homeless today:
 
@@ -400,7 +399,6 @@ Two things this table deliberately makes explicit:
 | 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
 | 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
 | 3 | Embeddings | `embeddings.json`, 322 MB, rewritten whole per run | **Workers AI `bge-m3` + Vectorize** (threshold ≈0.53, already measured) | `cloud-p3` · `evaluate-embedding-provider` |
-| 6 | `NewsletterArchiveSource` + `agent-vault/daily/newsletters/` | present | **delete** — the newsletter Worker replaced it | `cloud-p3` |
 | 7 | Scheduling | `docker/crontab` + supercronic | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
 | 8 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 
@@ -424,7 +422,6 @@ Two things this table deliberately makes explicit:
 | # | What | Why it matters |
 |---|---|---|
 | 14 | `cyris doctor` reports what the *config* asks for, not what *this build* supports | It went green inside a container that was ignoring `[store]` entirely. A capability check would have caught the 2026-08-25→27 split on day one |
-| 15 | `EmailConfig` + `entrypoints/webhook_server.py` + `cyris email-server` | Self-declared legacy, superseded by the newsletter Worker. Dead weight in the config surface |
 | 16 | `agent-vault/events/` and the `*-parity.{out,err,jsonl}` chore logs | Frozen leftovers and chore output living inside agent state |
 | 17 | Retire the local JSON store | Pending tonight's receipt: D1 `usage_log` gains a row and `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design** |
 

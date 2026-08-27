@@ -73,12 +73,6 @@ output_dir = "{tmp_path / "html"}"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
-
-[email]
-webhook_secret = ""
-webhook_host = "0.0.0.0"
-webhook_port = 8765
-webhook_path = "/webhook/email"
 '''
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(toml_content)
@@ -106,7 +100,6 @@ sources:
 
     agent_vault = tmp_path / "agent-vault"
     agent_vault.mkdir()
-    (agent_vault / "daily" / "newsletters").mkdir(parents=True)
 
     return config_path, sources_path, html_dir, agent_vault
 

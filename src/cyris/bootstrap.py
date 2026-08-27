@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from cyris.adapters.anthropic_client import AnthropicClient
-from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord
 from cyris.adapters.openai_client import OpenAIClient
@@ -102,9 +101,7 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         else partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl")
     )
 
-    newsletter_source = NewsletterArchiveSource(cfg.app.agent_vault.path / "daily" / "newsletters")
-
-    fetch_sources: list[FetchSource] = [newsletter_source]
+    fetch_sources: list[FetchSource] = []
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
         from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 

@@ -124,7 +124,6 @@ cyris doctor                  Check the config; non-zero exit if a run would bre
 cyris run                     Full pipeline: fetch, score, digest
 cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
 cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
-cyris email-server            Legacy local email webhook (see workers/newsletter for the Cloudflare path)
 cyris triage-ui               Start swipe-based triage web UI (also /settings, to pick the LLM provider)
 cyris articles list           List articles in store
 cyris articles export         Export accepted articles to vault
@@ -205,11 +204,9 @@ Two paths, depending on how the newsletter is delivered:
 - **Email-only newsletters** — require a **Cloudflare Email Worker** (needs a
   Cloudflare account + Email Routing). It parses forwarded mail into KV for
   `cyris run` to pull, matched to a source by `email_match`. Deploy + setup:
-  [`workers/newsletter/README.md`](workers/newsletter/README.md). A legacy local
-  webhook (`cyris email-server`) also exists but is superseded.
+  [`workers/newsletter/README.md`](workers/newsletter/README.md).
 
-**In short: email-only subscriptions depend on Cloudflare** (or the legacy local
-webhook); RSS newsletters do not.
+**In short: email-only subscriptions depend on Cloudflare**; RSS newsletters do not.
 
 ### Paywalled Sources
 

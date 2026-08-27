@@ -131,7 +131,6 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |
 | `cyris llm-compare` | Digest one window with several providers (`--arm provider:model`, repeatable), side by side |
-| `cyris email-server` | Legacy local email webhook receiver (superseded by the Cloudflare newsletter Worker) |
 | `cyris triage-ui` | Start swipe-based web UI for article classification; `/settings` picks the LLM provider and model, verifying against the live API before it writes `cyris.toml` |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |
 | `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends |

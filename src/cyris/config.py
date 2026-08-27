@@ -45,19 +45,6 @@ class NotifyConfig(BaseModel):
         return self
 
 
-class EmailConfig(BaseModel):
-    webhook_host: str = "0.0.0.0"
-    webhook_port: int = Field(default=8765, ge=1, le=65535)
-    webhook_path: str = "/webhook/email"
-    webhook_secret: str = ""
-
-    @model_validator(mode="after")
-    def inject_secret(self) -> "EmailConfig":
-        if not self.webhook_secret:
-            self.webhook_secret = os.environ.get("CYRIS_EMAIL_WEBHOOK_SECRET", "")
-        return self
-
-
 class RoutingConfig(BaseModel):
     score_threshold: int = Field(default=70, ge=0, le=100)  # Featured article threshold
     summarize_score_threshold: int = Field(default=70, ge=0, le=100)
@@ -212,7 +199,6 @@ class AppConfig(BaseModel):
     llm_provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     digest: DigestConfig = Field(default_factory=DigestConfig)
     agent_vault: AgentVaultConfig = Field(default_factory=AgentVaultConfig)
-    email: EmailConfig = Field(default_factory=EmailConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     html_output: HtmlOutputConfig = Field(default_factory=HtmlOutputConfig)
     promote: PromoteConfig = Field(default_factory=PromoteConfig)
