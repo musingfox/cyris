@@ -56,8 +56,67 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     return False
 
 
-def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
-    """One direct-upload deployment. Whether it is *live* is `_page_is_live`'s job."""
+def publish_site(
+    new_files: dict[str, bytes],
+    manifest_store,
+    pages_project: str,
+    slug: str,
+) -> bool:
+    """Publish without a local archive: this run's files plus the D1 manifest.
+
+    The archive is not a directory any more. Cloudflare's asset store already
+    holds every byte ever deployed, so all that has to survive between runs is
+    path → hash; the bytes of an evicted asset come back from the live site,
+    which serves exactly what it was given.
+    """
+    if not pages_project:
+        logger.warning("Pages publish enabled but promote.pages_project is empty")
+        return False
+    client = _client(pages_project)
+    if client is None:
+        return False
+
+    manifest = manifest_store.load()
+    for attempt in range(1, DEPLOY_ATTEMPTS + 1):
+        try:
+            deployment, updated = client.deploy_manifest(
+                new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
+            )
+        except (PagesDeployError, httpx.HTTPError) as e:
+            logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
+            continue
+        logger.info("Pages deployment %s created (%d file(s))", deployment, len(updated))
+        if _page_is_live(pages_project, slug):
+            # Only after the page is proven live: a manifest recording a deploy
+            # that did not land would describe a site that does not exist.
+            manifest_store.save(updated)
+            logger.info(
+                "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
+            )
+            return True
+    return False
+
+
+def _fetch_live(pages_project: str, path: str) -> bytes | None:
+    """Re-fetch an archived page from the site it was deployed to.
+
+    Pages serves the extensionless clean URL and 308s `.html` to it, so the
+    redirect has to be followed or the bytes come back as a redirect body.
+    """
+    clean = path.removesuffix(".html").removesuffix("/index")
+    url = f"https://{pages_project}.pages.dev{clean or '/'}"
+    try:
+        resp = httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+    except httpx.HTTPError as e:
+        logger.error("Could not recover %s from the live site: %s", path, e)
+        return None
+    if resp.status_code != 200:
+        logger.error("Could not recover %s: %s answered %d", path, url, resp.status_code)
+        return None
+    return resp.content
+
+
+def _client(pages_project: str) -> PagesClient | None:
     account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
     token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
     if not (account and token):
@@ -65,9 +124,17 @@ def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
             "Pages deploy needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN "
             "(the token needs Cloudflare Pages -> Edit)."
         )
+        return None
+    return PagesClient(account, token, pages_project)
+
+
+def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
+    """One direct-upload deployment. Whether it is *live* is `_page_is_live`'s job."""
+    client = _client(pages_project)
+    if client is None:
         return False
     try:
-        deployment = PagesClient(account, token, pages_project).deploy(html_dir)
+        deployment = client.deploy(html_dir)
     except (PagesDeployError, httpx.HTTPError) as e:
         logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
         return False

@@ -178,7 +178,7 @@ def test_render_index_with_digests(tmp_path):
     (tmp_path / "2026-04-14-morning.html").write_text("<html>test</html>")
 
     writer = HtmlDigestWriter(tmp_path)
-    html = writer.render_index(tmp_path)
+    html = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "<!DOCTYPE html>" in html
     # Should have three links
@@ -190,7 +190,7 @@ def test_render_index_with_digests(tmp_path):
 def test_render_index_empty(tmp_path):
     """C3 Test 2: Empty directory renders valid HTML with no links."""
     writer = HtmlDigestWriter(tmp_path)
-    html = writer.render_index(tmp_path)
+    html = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "<!DOCTYPE html>" in html
     assert "<a href=" not in html
@@ -205,7 +205,7 @@ def test_render_index_ignores_non_digests(tmp_path):
     (tmp_path / "not-a-digest.html").write_text("<html>other</html>")
 
     writer = HtmlDigestWriter(tmp_path)
-    html = writer.render_index(tmp_path)
+    html = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "<!DOCTYPE html>" in html
     # Should only have one link (2026-04-15-morning.html)
@@ -689,7 +689,7 @@ def test_index_skips_raw_pages(tmp_path):
     (tmp_path / "2026-08-20-morning.html").write_text("x")
     (tmp_path / "2026-08-20-morning-raw.html").write_text("x")
 
-    index = writer.render_index(tmp_path)
+    index = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "2026-08-20-morning.html" in index
     assert "morning-raw" not in index

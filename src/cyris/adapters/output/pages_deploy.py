@@ -29,6 +29,7 @@ import base64
 import json
 import logging
 import mimetypes
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -96,15 +97,63 @@ class PagesClient:
     # ---- the protocol ---------------------------------------------------
 
     def deploy(self, directory: Path, branch: str = "main") -> str:
-        """Upload what the account is missing, then deploy the whole directory.
+        """Deploy every file under `directory`. The local-archive path."""
+        files = _collect(directory)
+        if not files:
+            raise PagesDeployError(f"{directory} holds no files to deploy")
+        return self.deploy_files(files, branch=branch)
+
+    def deploy_manifest(
+        self,
+        new_files: dict[str, bytes],
+        manifest: dict[str, str],
+        recover: Callable[[str], bytes | None],
+        branch: str = "main",
+    ) -> tuple[str, dict[str, str]]:
+        """Deploy this run's files plus everything the manifest already names.
+
+        `manifest` is path → hash for the archive; `recover(path)` fetches the
+        bytes of an archived file, and is called only for the rare asset
+        Cloudflare has evicted. Returns the deployment id and the new manifest.
+        """
+        files = [
+            {
+                "path": path,
+                "hash": asset_hash(contents, path.rsplit(".", 1)[-1] if "." in path else ""),
+                "contents": contents,
+                "content_type": mimetypes.guess_type(path)[0] or "application/octet-stream",
+            }
+            for path, contents in sorted(new_files.items())
+        ]
+        fresh = {f["path"] for f in files}
+        for path, digest in sorted(manifest.items()):
+            if path in fresh:
+                continue
+            files.append(
+                {
+                    "path": path,
+                    "hash": digest,
+                    "contents": None,  # fetched from the live site only if evicted
+                    "content_type": mimetypes.guess_type(path)[0] or "application/octet-stream",
+                }
+            )
+        if not files:
+            raise PagesDeployError("nothing to deploy")
+        deployment = self.deploy_files(files, branch=branch, recover=recover)
+        return deployment, {f["path"]: f["hash"] for f in files}
+
+    def deploy_files(
+        self,
+        files: list[dict],
+        branch: str = "main",
+        recover: Callable[[str], bytes | None] | None = None,
+    ) -> str:
+        """Upload what the account is missing, then deploy every file given.
 
         Returns the deployment id. Raises `PagesDeployError` on any failed step —
         deciding whether a failed publish should stop the digest is the caller's
         call, not this adapter's.
         """
-        files = _collect(directory)
-        if not files:
-            raise PagesDeployError(f"{directory} holds no files to deploy")
 
         with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
             jwt = self._upload_token(client)
@@ -126,7 +175,28 @@ class PagesClient:
                 len(files) - len(missing),
             )
 
-            for bucket in _buckets([f for f in files if f["hash"] in missing]):
+            to_upload = []
+            for f in files:
+                if f["hash"] not in missing:
+                    continue
+                if f["contents"] is None:
+                    # Cloudflare aged this asset out. The deployed site still
+                    # serves the bytes it was uploaded with, so that is where the
+                    # archive is recovered from.
+                    contents = recover(f["path"]) if recover else None
+                    if contents is None:
+                        raise PagesDeployError(
+                            f"{f['path']} is missing from the asset store and could not be "
+                            "recovered from the live site; deploying without it would delete it"
+                        )
+                    # Mutated in place, not copied: the manifest sent to the
+                    # deployments endpoint is built from this same list, and a
+                    # hash there that was never uploaded fails the whole deploy.
+                    f["contents"] = contents
+                    f["hash"] = asset_hash(contents, _ext(f["path"]))
+                to_upload.append(f)
+
+            for bucket in _buckets(to_upload):
                 self._call(
                     client,
                     "POST",
@@ -149,7 +219,8 @@ class PagesClient:
                     "POST",
                     "/pages/assets/upsert-hashes",
                     headers=jwt_headers,
-                    json={"hashes": hashes},
+                    # Recomputed: a recovered asset may have been re-hashed above.
+                    json={"hashes": [f["hash"] for f in files]},
                 )
             except PagesDeployError as e:
                 # wrangler treats this the same way: it only warms the account's
@@ -170,6 +241,11 @@ class PagesClient:
                 },
             )
         return body["result"]["id"]
+
+
+def _ext(path: str) -> str:
+    name = path.rsplit("/", 1)[-1]
+    return name.rsplit(".", 1)[-1] if "." in name else ""
 
 
 def _collect(directory: Path) -> list[dict]:

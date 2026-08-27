@@ -36,6 +36,19 @@ class RunReport:
     failed_sources: list[str] = field(default_factory=list)
 
 
+def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
+    """This run's pages as bytes, keyed by the path Pages will serve them at."""
+    writer = deps.html_writer
+    slug = f"{content.date}-{content.period}"
+    pages = {f"/{slug}.html": writer.render(content)}
+    if collected:
+        pages[f"/{slug}-raw.html"] = writer.render_raw(content.date, content.period, collected)
+    # The archive page lists every digest the site holds, this run's included.
+    known = sorted({*deps.site_filenames(), *(p.lstrip("/") for p in pages)})
+    pages["/index.html"] = writer.render_index(known)
+    return {path: html.encode("utf-8") for path, html in pages.items()}
+
+
 async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     """Run the full pipeline: fetch → store → score → digest → output."""
     cfg = deps.cfg
@@ -219,27 +232,42 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
         # HTML output (optional, non-blocking)
         if deps.html_writer is not None:
-            try:
-                report.html_path = deps.html_writer.write(content)
-                progress(f"HTML digest written to {report.html_path}")
-            except Exception as e:
-                logger.error("Failed to write HTML digest: %s", e)
-
-            # Own try/except: a broken raw page must not cost the digest its publish.
-            if collected:
+            slug = f"{content.date}-{content.period}"
+            published = False
+            if deps.publish_site is not None:
+                # No local archive: the pages are built in memory and the site's
+                # file list comes from D1. Nothing here touches the filesystem.
                 try:
-                    raw_html = deps.html_writer.write_raw(content.date, content.period, collected)
-                    progress(f"Raw page written to {raw_html}")
+                    published = deps.publish_site(_render_site(deps, content, collected), slug)
+                    report.html_path = Path(f"{slug}.html")  # published, not written
                 except Exception as e:
-                    logger.error("Failed to write raw HTML page: %s", e)
+                    logger.error("Failed to publish the HTML digest: %s", e)
+            else:
+                try:
+                    report.html_path = deps.html_writer.write(content)
+                    progress(f"HTML digest written to {report.html_path}")
+                except Exception as e:
+                    logger.error("Failed to write HTML digest: %s", e)
 
-            if (
-                report.html_path is not None
-                and deps.publish is not None
-                and cfg.app.promote.pages_project
+                # Own try/except: a broken raw page must not cost the digest its publish.
+                if collected:
+                    try:
+                        raw = deps.html_writer.write_raw(content.date, content.period, collected)
+                        progress(f"Raw page written to {raw}")
+                    except Exception as e:
+                        logger.error("Failed to write raw HTML page: %s", e)
+
+                if (
+                    report.html_path is not None
+                    and deps.publish is not None
+                    and cfg.app.promote.pages_project
+                ):
+                    published = deps.publish(slug)
+
+            if deps.publish_site is not None or (
+                deps.publish is not None and cfg.app.promote.pages_project
             ):
-                slug = f"{content.date}-{content.period}"
-                if deps.publish(slug):
+                if published:
                     # Cloudflare Pages serves the extensionless clean URL.
                     digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
                 else:

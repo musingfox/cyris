@@ -74,3 +74,16 @@ CREATE TABLE IF NOT EXISTS settings (
   value      TEXT NOT NULL,        -- JSON-encoded
   updated_at TEXT NOT NULL
 );
+
+-- Which files the deployed digest site is made of: path → Pages asset hash.
+-- A Pages deployment is a full snapshot, so every deploy must name every file
+-- that should stay reachable. Cloudflare already holds the *bytes* in its
+-- account-wide asset store (that is what `check-missing` answers about), so
+-- this table is the only thing cyris has to keep — a few KB, not an archive.
+-- When an asset does age out, the deployed site itself is where it is recovered
+-- from: it serves the same bytes it was uploaded with.
+CREATE TABLE IF NOT EXISTS pages_manifest (
+  path       TEXT PRIMARY KEY,     -- "/2026-08-27-morning.html", slash-prefixed
+  hash       TEXT NOT NULL,        -- blake3(base64(bytes) + ext)[:32]
+  updated_at TEXT NOT NULL
+);

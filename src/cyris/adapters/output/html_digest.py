@@ -122,40 +122,25 @@ class HtmlDigestWriter:
 
         return file_path
 
-    def render_index(self, digest_dir: Path) -> str:
-        """Generate history index page listing all digest files.
+    def render_index(self, filenames: list[str]) -> str:
+        """The archive page, from the list of files the site is made of.
 
-        Args:
-            digest_dir: Directory containing digest HTML files
-
-        Returns:
-            Complete HTML index page
-
-        Raises:
-            jinja2.TemplateNotFound: If template is missing
+        Takes names rather than a directory because the archive no longer has to
+        be a directory: with the site published from a manifest, the list comes
+        from D1. `write_index` keeps the directory-scanning behaviour for the
+        unconfigured local case.
         """
         template = self.env.get_template("index.html.j2")
 
-        # Scan for digest files (pattern: YYYY-MM-DD-*.html)
         digest_pattern = re.compile(r"(\d{4}-\d{2}-\d{2})-(.+)\.html$")
         digests = []
-
-        if digest_dir.exists():
-            for file_path in digest_dir.iterdir():
-                if not file_path.is_file():
-                    continue
-                if file_path.name.endswith("-raw.html"):
-                    continue
-                match = digest_pattern.match(file_path.name)
-                if match:
-                    date, period = match.groups()
-                    digests.append(
-                        {
-                            "date": date,
-                            "period": period,
-                            "filename": file_path.name,
-                        }
-                    )
+        for name in filenames:
+            if name.endswith("-raw.html"):
+                continue
+            match = digest_pattern.match(name)
+            if match:
+                date, period = match.groups()
+                digests.append({"date": date, "period": period, "filename": name})
 
         # Sort by date descending (most recent first)
         digests.sort(key=lambda d: (d["date"], d["period"]), reverse=True)
@@ -171,7 +156,8 @@ class HtmlDigestWriter:
         Returns:
             Path to written index.html
         """
-        html = self.render_index(digest_dir)
+        names = [p.name for p in digest_dir.iterdir() if p.is_file()] if digest_dir.exists() else []
+        html = self.render_index(names)
         index_path = digest_dir / "index.html"
 
         # Ensure directory exists
@@ -191,6 +177,14 @@ class HtmlDigestWriter:
         Returns:
             Path to the written raw page.
         """
+        html = self.render_raw(date, period, articles)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        file_path = self.output_dir / f"{date}-{period}-raw.html"
+        file_path.write_text(html, encoding="utf-8")
+        return file_path
+
+    def render_raw(self, date: str, period: str, articles: list[StoredArticle]) -> str:
+        """The companion page's HTML: every collected article, grouped by source."""
         groups: dict[str, list[StoredArticle]] = {}
         for a in articles:
             groups.setdefault(a.source_name, []).append(a)
@@ -204,7 +198,7 @@ class HtmlDigestWriter:
             for name, items in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
         ]
 
-        html = self.env.get_template("raw.html.j2").render(
+        return self.env.get_template("raw.html.j2").render(
             date=date,
             period=period,
             total=len(articles),
@@ -213,8 +207,3 @@ class HtmlDigestWriter:
             promote_worker_url=self.promote_worker_url,
             promote_token=self.promote_token,
         )
-
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = self.output_dir / f"{date}-{period}-raw.html"
-        file_path.write_text(html, encoding="utf-8")
-        return file_path

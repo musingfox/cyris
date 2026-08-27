@@ -160,6 +160,10 @@ class Deps:
     publish: Callable[[str], bool] | None
     sync_promotions: Callable[[], int] | None
     log_usage: Callable[..., None]
+    # Set instead of `publish` when the site is published from the D1 manifest:
+    # takes {path: bytes} for this run's pages. Nothing touches the filesystem.
+    publish_site: Callable[[dict[str, bytes], str], bool] | None = None
+    site_filenames: Callable[[], list[str]] = field(default_factory=lambda: list)
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
     embedder: Any | None = None  # None ⇒ vote similarity is switched off
@@ -199,9 +203,10 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
 
     html_writer = None
     publish = None
+    publish_site = None
+    site_filenames: Callable[[], list[str]] = list
     if cfg.app.html_output.enabled:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
-        from cyris.adapters.output.publish import publish_html_digest
 
         html_writer = HtmlDigestWriter(
             Path(cfg.app.html_output.output_dir),
@@ -209,11 +214,26 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
             promote_token=cfg.app.promote.token,
         )
         if cfg.app.promote.publish_enabled:
-            publish = partial(
-                publish_html_digest,
-                Path(cfg.app.html_output.output_dir),
-                cfg.app.promote.pages_project,
-            )
+            from cyris.adapters.output.publish import publish_html_digest
+            from cyris.adapters.output.publish import publish_site as _site
+
+            if d1 is not None:
+                # The site's file list lives in D1, so the archive does not have
+                # to live on this machine. Local files are the no-D1 fallback,
+                # same shape as `sources.yaml` behind the `sources` table.
+                from cyris.adapters.output.pages_manifest import D1PagesManifest
+
+                manifest = D1PagesManifest(d1)
+                publish_site = partial(
+                    _site, manifest_store=manifest, pages_project=cfg.app.promote.pages_project
+                )
+                site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
+            else:
+                publish = partial(
+                    publish_html_digest,
+                    Path(cfg.app.html_output.output_dir),
+                    cfg.app.promote.pages_project,
+                )
 
     sync = None
     if cfg.app.promote.worker_url and cfg.app.promote.token:
@@ -233,6 +253,8 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         fetch_sources=fetch_sources,
         html_writer=html_writer,
         publish=publish,
+        publish_site=publish_site,
+        site_filenames=site_filenames,
         sync_promotions=sync,
         log_usage=log_usage,
         on_progress=on_progress or (lambda _msg: None),

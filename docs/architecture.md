@@ -268,8 +268,9 @@ Every persistent datum, where it lives now, and where it is going.
 | LLM spend | **D1 `usage_log`** | same | `usage.jsonl` is its retired predecessor |
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
+| Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
-| HTML digest + raw pages | `agent-vault/html/` | **R2** | `output_dir` is relative to cwd — hence the extra bind mount in compose |
+| HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 
 The three D1 tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
 declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
@@ -395,7 +396,7 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 | **M0** | Finish the D1 cutover | In flight | D1 `usage_log` gains a row from a container run **and** `agent-vault/usage.jsonl` stops growing. Then delete `agent-vault/articles/` | `cloud-p2` |
 | ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
 | ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
-| **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ⚠️ Half. ✅ Publishing is REST — the real archive deployed and `cyris-digest.pages.dev/2026-08-27-morning` returned the digest. ❌ R2 is **blocked on a token permission** | `cloud-p3` |
+| ~~**M3**~~ | Publish → **Pages REST**; the archive → **D1 `pages_manifest`**, not R2 | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ✅ A page rendered only in memory went live, and all 57 archived digests survived a deploy driven purely by the manifest. `check-missing` recognised 57/57, which is what proves the hash formula | `cloud-p3` |
 | ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below | `cloud-p3` · `evaluate-embedding-provider` |
 | **M5** | **Into the Container** — Worker-fronted Container; triage UI + `/settings` served through it **behind real auth**; supercronic → Workers Cron `0 * * * *` gated on the D1 schedule row; `onActivityExpired` → `stop()` | Everything local is gone by now, so this is a move rather than a rewrite | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
 | **M6** | **One-button deploy** — `deploy.json`, the README button, the secret checklist, Worker URLs derived at deploy, and the three-Workers-vs-one decision | Only meaningful once nothing runs locally | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
@@ -435,6 +436,31 @@ Three details are load-bearing and each was verified against the live account:
 
 `_page_is_live` is untouched. The transport changed; the reason for distrusting a success report did
 not — it is the check that caught wrangler exiting 0 having deployed nothing.
+
+### Why M3 did not use R2 either
+
+R2 was the named destination for the HTML archive, and the archive does not need one.
+
+The reason it seemed to is that a Pages deployment is a full snapshot: every file that should stay
+reachable must be named in every deploy, so publishing appeared to require holding the whole
+archive. The first REST deploy disproved that — `check-missing` answered that **57 of 57** files
+were already in Cloudflare's account-wide, content-addressed asset store. The bytes were never ours
+to keep. Only the **list** has to survive between runs: path → hash, a few KB, which is D1
+`pages_manifest`.
+
+For the rare asset Cloudflare ages out, the bytes come back from the deployed site, which serves
+exactly what it was given — verified byte-for-byte against `asset_hash` on 2026-08-27. The live site
+is the archive of record, which is strictly better than the status quo it replaces: one gitignored
+directory on one Mac mini.
+
+This also removed the blocker: every token in `.env` answers **403** on `/r2/buckets`. R2 is enabled
+on the account (a bucket already exists), so it is a missing `R2 → Edit` permission, not a missing
+service. Nothing now waits on it. If independent durable backups of rendered digests are ever wanted
+— they are otherwise unrecoverable, since the LLM summaries are not stored — R2 is where they go,
+and the token edit becomes worth making. That is a durability decision, not a cloud-move blocker.
+
+**The local-directory writer stays** as the no-D1 fallback, the same shape as `sources.yaml` behind
+the `sources` table: `backend = "json"` keeps writing `agent-vault/html/` and deploying a directory.
 
 ### Why M4 did not use Vectorize
 
@@ -492,7 +518,6 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** — **blocked**: every token in `.env` answers 403 on `/r2/buckets`. Needs one token edit (R2 → Edit) | `cloud-p3` |
 | 4 | Scheduling | `docker/crontab` + supercronic, hourly tick gated on D1 | **Workers Cron Trigger**, same gate | `cloud-p3` |
 | 5 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 
@@ -514,7 +539,7 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 | # | What | Why it matters |
 |---|---|---|
 | 11 | Retire the local JSON store | Waiting on M0's receipt: D1 `usage_log` gains a row from a container run **and** `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design**, and `agent-vault/articles/` must not be deleted |
-| 12 | Post-rebuild cleanup: delete `[miniflux]` from `cyris.toml`, and `agent-vault/embeddings.json` + `embeddings-bge-m3.json` | `doctor` fails on `[miniflux]` — dead since 08-25, ignored by this build. All three are deferred for the same reason: the running container is still the pre-M1 image, whose hardcoded `GeminiEmbedder` reads `embeddings.json` through the bind mount and would rewrite it, and whose `cyris.toml` mount must not be disturbed before the M0 receipt run |
+| 12 | Post-rebuild cleanup: delete `[miniflux]` from `cyris.toml`, `agent-vault/embeddings.json` + `embeddings-bge-m3.json`, `agent-vault/html/`, and the html bind mount in `docker-compose.yml` | `doctor` fails on `[miniflux]` — dead since 08-25, ignored by this build. All three are deferred for the same reason: the running container is still the pre-M1 image, whose hardcoded `GeminiEmbedder` reads `embeddings.json` through the bind mount and would rewrite it, and whose `cyris.toml` mount must not be disturbed before the M0 receipt run |
 | 13 | Recalibrate both similarity thresholds against the current seed set | 0.68 and 0.53 were measured against 7 up / 2 down seeds; there are now 101 / 24, and both margins have inverted. See "Both thresholds are stale" above. Affects the incumbent provider too — this is not an M4 regression |
 
 ## 8. Where the core never changes
