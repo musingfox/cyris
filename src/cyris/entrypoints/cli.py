@@ -46,21 +46,39 @@ def run(
             "--force", help="Re-process all articles in time window regardless of current state"
         ),
     ] = False,
+    if_due: Annotated[
+        bool,
+        typer.Option(
+            "--if-due",
+            help="Run only if this hour is on the digest schedule; picks --period from it",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Run the full pipeline: fetch, score, route, and digest."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_deps
-    from cyris.config import load_config
+    from cyris.bootstrap import build_deps, load_effective_config
     from cyris.service_layer.run_digest import RunOptions, run_digest
+    from cyris.service_layer.schedule import due_period
+    from cyris.utils.timezone import now_in_timezone
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
         cfg.validate_required_keys()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
+
+    if if_due:
+        # The cron tick is hourly and unconditional; the schedule lives in D1 so
+        # changing it does not need a rebuild. Not due is a normal outcome, not
+        # a failure — 22 of every 24 ticks end here.
+        due = due_period(now_in_timezone(cfg.app.general.timezone), cfg.app.general.digest_schedule)
+        if due is None:
+            typer.echo(f"Not a digest hour ({', '.join(cfg.app.general.digest_schedule)}).")
+            return
+        period = due
 
     deps = build_deps(cfg, on_progress=typer.echo)
     options = RunOptions(period=period, dry_run=dry_run, force=force)
@@ -82,11 +100,10 @@ def promote_sync(
     """Sync promote-button clicks from the cloud Worker to the vault (no fetch/LLM)."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_deps
-    from cyris.config import load_config
+    from cyris.bootstrap import build_deps, load_effective_config
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -126,12 +143,11 @@ def vote_sim(
     from datetime import UTC, datetime, timedelta
 
     from cyris.adapters.embedding import GeminiEmbedder
-    from cyris.bootstrap import build_deps
-    from cyris.config import load_config
+    from cyris.bootstrap import build_deps, load_effective_config
     from cyris.service_layer.vote_similarity import judge_by_votes
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -216,12 +232,12 @@ def embed_compare(
     from datetime import UTC, datetime, timedelta
 
     from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
-    from cyris.bootstrap import build_deps
-    from cyris.config import load_config
+    from cyris.bootstrap import build_deps, load_effective_config
     from cyris.service_layer.vote_similarity import judge_by_votes
 
     try:
-        cfg = load_config(config_path, sources_path)  # also loads .env into the environment
+        # also loads .env into the environment
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -423,8 +439,7 @@ def llm_compare(
 
     from datetime import UTC, datetime, timedelta
 
-    from cyris.bootstrap import build_deps
-    from cyris.config import load_config
+    from cyris.bootstrap import build_deps, load_effective_config
     from cyris.service_layer.digest_pipeline import DigestPipeline
 
     if not arm:
@@ -432,7 +447,8 @@ def llm_compare(
         raise typer.Exit(1)
 
     try:
-        cfg = load_config(config_path, sources_path)  # also loads .env into the environment
+        # also loads .env into the environment
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -540,11 +556,11 @@ def doctor(
         # The report is the output here; a request log per check buries it.
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    from cyris.config import load_config
+    from cyris.bootstrap import load_effective_config
     from cyris.service_layer.doctor import run_checks
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
         typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
@@ -580,12 +596,11 @@ def triage_ui(
     """Start the triage web UI for article classification."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
+    from cyris.bootstrap import build_settings, build_store, load_effective_config
     from cyris.entrypoints.triage_server import TriageServer
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -597,8 +612,9 @@ def triage_ui(
             store,
             host=host,
             port=port,
-            config_path=config_path,
+            settings=build_settings(cfg),
             llm_provider=cfg.app.llm_provider,
+            schedule=cfg.app.general.digest_schedule,
         )
         await server.start()
         typer.echo(f"Triage UI: http://{host}:{port}")
@@ -637,12 +653,11 @@ def articles_list(
     ),
 ) -> None:
     """List articles from store."""
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
+    from cyris.bootstrap import build_store, load_effective_config
     from cyris.domain.models import ArticleState
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -693,11 +708,10 @@ def articles_accept(
     ),
 ) -> None:
     """Accept articles by URL."""
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
+    from cyris.bootstrap import build_store, load_effective_config
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -730,11 +744,10 @@ def articles_reject(
     ),
 ) -> None:
     """Reject articles by URL."""
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
+    from cyris.bootstrap import build_store, load_effective_config
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -761,12 +774,11 @@ def articles_clean(
     ),
 ) -> None:
     """Delete old articles by state."""
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
+    from cyris.bootstrap import build_store, load_effective_config
     from cyris.domain.models import ArticleState
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -808,13 +820,12 @@ def articles_score(
     """Score non-news articles via AI for triage ranking."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
+    from cyris.bootstrap import build_store, load_effective_config
     from cyris.domain.models import ArticleState
     from cyris.service_layer.scoring import score_in_batches
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
         cfg.validate_required_keys()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
@@ -898,11 +909,10 @@ def _load_both_stores(config_path: Path, sources_path: Path):
     """Return (json_store, d1_store) regardless of which one [store] selects."""
     from cyris.adapters.store import ArticleStore
     from cyris.adapters.store.d1_store import D1ArticleStore
-    from cyris.bootstrap import build_d1_client
-    from cyris.config import load_config
+    from cyris.bootstrap import build_d1_client, load_effective_config
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -990,11 +1000,10 @@ app.add_typer(sources_app, name="sources")
 def _source_store(config_path: Path, sources_path: Path):
     """Return (yaml_sources, D1SourceStore) or exit with what is missing."""
     from cyris.adapters.store.source_store import D1SourceStore
-    from cyris.bootstrap import build_d1_client
-    from cyris.config import load_config
+    from cyris.bootstrap import build_d1_client, load_effective_config
 
     try:
-        cfg = load_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e

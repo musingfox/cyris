@@ -1,7 +1,10 @@
 # Cyris schedule — supercronic fires at container-local clock (TZ set in compose).
-# digest: 08:00 & 20:00 (--period is required: the CLI defaults to morning,
-# which made the 20:00 run overwrite the morning note)
-0 8 * * * cyris run --period morning --config /app/cyris.toml --sources /app/sources.yaml
-0 20 * * * cyris run --period evening --config /app/cyris.toml --sources /app/sources.yaml
+#
+# The tick is hourly and unconditional; `--if-due` asks the effective digest
+# schedule (D1 `settings`, falling back to `cyris.toml [general]`) whether this
+# hour is a digest hour, and derives --period from which of the two it is.
+# A fixed `0 8,20` line could not do that: this file is baked into the image, so
+# changing the times would mean a rebuild.
+0 * * * * cyris run --if-due --config /app/cyris.toml --sources /app/sources.yaml
 # promote-sync: hourly
 0 * * * * cyris promote-sync --config /app/cyris.toml --sources /app/sources.yaml

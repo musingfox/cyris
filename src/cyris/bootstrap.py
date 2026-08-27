@@ -63,6 +63,35 @@ def build_d1_client(cfg: Config) -> Any | None:
     )
 
 
+def build_settings(cfg: Config, d1: Any | None = None) -> Any | None:
+    """The D1 settings store, or None when there is no D1 to read it from."""
+    d1 = d1 if d1 is not None else build_d1_client(cfg)
+    if d1 is None:
+        return None
+
+    from cyris.adapters.store.settings import D1Settings
+
+    return D1Settings(d1)
+
+
+def load_effective_config(config_path: Path, sources_path: Path) -> Config:
+    """The config a run actually uses: the file, then D1's grade-D overrides.
+
+    The single seam where the read order from `adapters/store/settings.py` is
+    applied. Every entrypoint goes through here, because a host run and a
+    container run resolving settings differently is the failure this exists to
+    prevent — so a D1 read error propagates rather than quietly using the file.
+    """
+    from cyris.adapters.store.settings import apply_to
+    from cyris.config import load_config
+
+    cfg = load_config(config_path, sources_path)
+    settings = build_settings(cfg)
+    if settings is not None:
+        cfg.settings_from_d1 = apply_to(cfg, settings.all())
+    return cfg
+
+
 def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
     """The article store, JSON files or D1 depending on `[store] backend`."""
     d1 = d1 or build_d1_client(cfg)

@@ -264,6 +264,7 @@ Every persistent datum, where it lives now, and where it is going.
 | Article store | **D1 `stored_articles`** | same | `url` PRIMARY KEY is the dedup key |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention |
 | Source definitions | **D1 `sources`** + `sources.yaml` fallback | same | Both cyris and `workers/rss` read it |
+| Runtime settings | **D1 `settings`** + `cyris.toml` fallback | same | Grade D. D1 first, always — see §5 |
 | LLM spend | **D1 `usage_log`** | same | `usage.jsonl` is its retired predecessor |
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
@@ -306,21 +307,37 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | LLM API keys, `CYRIS_*_TOKEN`, Discord webhook | C | `.env` | Worker secrets |
 | **RSS + newsletter source list** | **D** | **D1 `sources`**, `sources.yaml` fallback | done — adding a feed is a write, not a rebuild |
 | **`email_match` per source** | **D** | inside the same `sources` row | same — an email sender is source data, not deploy config |
-| LLM provider + model | D | `cyris.toml [llm_provider]`, written by `/settings` | **D1 `settings`** |
-| Digest times + timezone | D | `docker/crontab` | **D1 `settings`** |
-| Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** |
+| LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
+| Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
+| Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
 
-Two consequences of grade D being homeless today:
+### Where grade D lives (M2, 2026-08-27)
 
-- `POST /api/settings` writes `cyris.toml` via `config.write_llm_provider`, but that file is baked
-  into the image and mounted `:ro` in the container — **the settings page cannot work in the cloud
-  as written.** Tracked in `schedule-settings-d1`.
-- The digest schedule has two expressions: `docker/crontab` — the only one in force — and
-  `cyris.toml [general] digest_schedule`, which nothing reads since launchd was deleted. **M2 adds
-  the D1 row and makes it the effective one, with the file key as its fallback; the crontab becomes
-  a fixed hourly tick that asks D1 whether this is a digest hour.**
+D1 `settings` is a key/value table of dotted paths into `AppConfig`, JSON-encoded.
+`bootstrap.load_effective_config` is the **single seam** every entrypoint resolves through: load the
+file, then overlay D1. Three rules make it trustworthy rather than merely convenient:
+
+- **D1 first, file second — never negotiable.** The file is what a fresh deployment starts from.
+- **A D1 read error propagates.** Falling back to the file on error would reintroduce exactly the
+  divergence the order exists to prevent: one run on D1's values, the next on the file's.
+- **A whitelist, not a free-form path.** `WRITABLE_KEYS` in `adapters/store/settings.py` lists only
+  keys that have a writer. A key written by an older build is ignored on read, not applied blind.
+
+`cyris doctor` prints which home won (`settings — D1 overrides …` vs `settings — cyris.toml`).
+
+With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
+409, exactly as it did with no config file. That deployment edits `cyris.toml` by hand.
+
+The schedule moved with it. `docker/crontab` is now an unconditional hourly tick running `cyris run
+--if-due`, which asks the effective `digest_schedule` whether this hour is a digest hour and derives
+`--period` from which of the two it is. Hour granularity is the contract, not a rounding: the write
+surface refuses `08:30` rather than firing at 08:00 and leaving the reader to work out why.
+
+**Still on `cyris.toml` only:** score thresholds, digest caps, output language, style prompt. They
+are grade D and the mechanism now exists, but none of them has a writer — each moves when it gets
+one, which is one line in `WRITABLE_KEYS` plus a field on the page.
 
 Credentials never live in `cyris.toml`. Each config model injects its own from the environment in a
 `model_validator`, so what the settings page reports as *configured* is what a run would actually
@@ -377,7 +394,7 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 |---|---|---|---|---|
 | **M0** | Finish the D1 cutover | In flight | D1 `usage_log` gains a row from a container run **and** `agent-vault/usage.jsonl` stops growing. Then delete `agent-vault/articles/` | `cloud-p2` |
 | ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
-| **M2** | **Settings into D1** — a `settings` key/value table; `/settings` writes it instead of `cyris.toml`; grade-D keys read **D1 first, file as fallback** | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | Change the provider in the UI; the next run uses it with `cyris.toml` untouched | `schedule-settings-d1` |
+| ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
 | **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | A digest run writes no file under `agent-vault/` and the Pages URL still returns 200 | `cloud-p3` |
 | **M4** | Embeddings → **Workers AI `bge-m3` + Vectorize** | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | `embeddings.json` deleted; `cyris vote-sim` at ≈0.53 suppresses the same set it does today | `cloud-p3` · `evaluate-embedding-provider` |
 | **M5** | **Into the Container** — Worker-fronted Container; triage UI + `/settings` served through it **behind real auth**; supercronic → Workers Cron `0 * * * *` gated on the D1 schedule row; `onActivityExpired` → `stop()` | Everything local is gone by now, so this is a move rather than a rewrite | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
@@ -407,7 +424,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
 | 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
 | 3 | Embeddings | `embeddings.json`, 322 MB, rewritten whole per run | **Workers AI `bge-m3` + Vectorize** (threshold ≈0.53, already measured) | `cloud-p3` · `evaluate-embedding-provider` |
-| 4 | Scheduling | `docker/crontab` + supercronic, fixed 08:00/20:00 | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
+| 4 | Scheduling | `docker/crontab` + supercronic, hourly tick gated on D1 | **Workers Cron Trigger**, same gate | `cloud-p3` |
 | 5 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 
 ### Blocking one-button deploy
@@ -418,12 +435,10 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | 7 | `deploy.json`, the README button, the secret checklist | absent | present | `cloud-p4` |
 | 8 | Three Workers vs one button | undecided | decide **after** `cloud-p3`, with the Container as the primary | `cloud-p4` |
 
-### Grade D has no home
+### Grade D has a home
 
-| # | What | Today | Target | Ticket |
-|---|---|---|---|---|
-| 9 | D1 `settings` table | does not exist | **exists**; `/settings` writes it instead of `cyris.toml` | `schedule-settings-d1` |
-| 10 | Digest times + timezone in the UI | `docker/crontab` only | a D1 row, effective next run | `schedule-settings-d1` |
+Both closed by M2 on 2026-08-27 — see §5. What remains grade-D-homeless is listed there: score
+thresholds, digest caps, output language, style prompt, none of which has a writer yet.
 
 ### Waiting on a receipt
 

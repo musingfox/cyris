@@ -60,7 +60,17 @@ class GeminiClient:
         response.raise_for_status()
 
         data = response.json()
-        parts = data["candidates"][0]["content"]["parts"]
+        candidate = data["candidates"][0]
+        # A thinking model can spend the whole output budget before writing a
+        # word, and then `content` carries no `parts` at all. Reading through it
+        # raised KeyError('parts'), which named neither the cause nor the fix.
+        parts = candidate.get("content", {}).get("parts")
+        if parts is None:
+            raise RuntimeError(
+                f"{self.model} returned no output "
+                f"(finishReason {candidate.get('finishReason', 'unknown')}) — "
+                "raise max_tokens if this is a reasoning model"
+            )
         usage = data.get("usageMetadata", {})
         return LLMResponse(
             text="".join(part.get("text", "") for part in parts),

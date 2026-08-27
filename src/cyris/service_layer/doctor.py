@@ -64,6 +64,13 @@ def _check_sources(cfg: Config) -> Check:
     return Check("sources", "ok", detail)
 
 
+def _check_settings_origin(cfg: Config) -> Check:
+    """Which home the grade-D keys came from, so a split is visible on sight."""
+    if not cfg.settings_from_d1:
+        return Check("settings", "ok", "cyris.toml — D1 holds no overrides")
+    return Check("settings", "ok", f"D1 overrides {', '.join(sorted(cfg.settings_from_d1))}")
+
+
 def _check_llm(cfg: Config) -> Check:
     llm = cfg.app.llm_provider
     if not llm.provider:
@@ -121,7 +128,9 @@ async def probe_llm(llm_cfg) -> Check:
             ),
         )
     try:
-        await llm.complete("ping", max_tokens=16)
+        # 16 was not enough: a reasoning model can spend the entire budget
+        # thinking and return an empty candidate, which reads as a broken model.
+        await llm.complete("ping", max_tokens=128)
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
         return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}")
     return Check("llm probe", "ok", f"{llm_cfg.provider} · {llm.model} answered")
@@ -313,6 +322,7 @@ async def run_checks(cfg: Config, config_path: Path | None = None) -> list[Check
     checks = [
         *_check_build(cfg, config_path),
         _check_sources(cfg),
+        _check_settings_origin(cfg),
         _check_llm(cfg),
         *_check_paths(cfg),
         _check_store(cfg),

@@ -192,7 +192,7 @@ def test_the_command_renders_every_status_and_exits_nonzero_on_failure(monkeypat
         ]
 
     monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
-    monkeypatch.setattr("cyris.config.load_config", lambda *a, **k: None)
+    monkeypatch.setattr("cyris.bootstrap.load_effective_config", lambda *a, **k: None)
 
     result = CliRunner().invoke(app, ["doctor"])
 
@@ -216,7 +216,7 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
         return [doctor.Check("fine", "ok", "all good")]
 
     monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
-    monkeypatch.setattr("cyris.config.load_config", lambda *a, **k: None)
+    monkeypatch.setattr("cyris.bootstrap.load_effective_config", lambda *a, **k: None)
 
     result = CliRunner().invoke(app, ["doctor"])
 

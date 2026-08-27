@@ -63,3 +63,14 @@ CREATE TABLE IF NOT EXISTS sources (
   type    TEXT NOT NULL DEFAULT 'rss',
   config  TEXT NOT NULL DEFAULT '{}'
 );
+
+-- Runtime-mutable settings (grade D in docs/architecture.md §5), so changing the
+-- LLM provider or the digest times is a write rather than an image rebuild.
+-- `cyris.toml` is baked into the image and mounted `:ro` in the container, which
+-- is why the settings page cannot write it. Read order is D1 first, file second;
+-- values are JSON so a list (digest_schedule) round-trips like a scalar.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,        -- JSON-encoded
+  updated_at TEXT NOT NULL
+);

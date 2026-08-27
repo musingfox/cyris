@@ -51,16 +51,19 @@ class TriageServer:
         store: ArticleRepository,
         host: str = "127.0.0.1",
         port: int = 8766,
-        config_path: Path | None = None,
+        settings=None,
         llm_provider=None,
+        schedule: list[str] | None = None,
     ) -> None:
         self._store = store
         self._host = host
         self._port = port
-        # Without these the settings page still renders, read-only: nothing to
-        # show the current choice from, and nowhere to write a new one.
-        self._config_path = config_path
+        # Without a settings store the page still renders, read-only: a
+        # `backend = "json"` deployment has nowhere to put a runtime setting, so
+        # its owner edits `cyris.toml` by hand.
+        self._settings = settings
         self._llm_provider = llm_provider
+        self._schedule = schedule or []
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
@@ -69,6 +72,7 @@ class TriageServer:
         self._app.router.add_post("/api/articles/undo", self._handle_undo)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
+        self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
         self._app.router.add_get("/settings", self._handle_settings_page)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_static("/static", STATIC_DIR)
@@ -241,26 +245,27 @@ class TriageServer:
                 "provider": current.provider if current else None,
                 "model": (current.model if current else "") or "",
                 "providers": providers,
-                "writable": self._config_path is not None,
+                "schedule": self._schedule,
+                "writable": self._settings is not None,
             }
         )
 
     async def _handle_post_settings(self, request: web.Request) -> web.Response:
-        """Validate against the live provider, then write `cyris.toml`.
+        """Validate against the live provider, then write the D1 settings row.
 
         The order is the whole point. A bad provider or a mistyped model saved
         here would not surface until the next scheduled digest, hours later and
-        after the fetch — so nothing reaches the file until a real call comes
-        back. See `service_layer.doctor.probe_llm`.
+        after the fetch — so nothing is stored until a real call comes back.
+        See `service_layer.doctor.probe_llm`.
         """
         from pydantic import ValidationError
 
-        from cyris.config import LLMProviderConfig, write_llm_provider
+        from cyris.config import LLMProviderConfig
         from cyris.service_layer.doctor import probe_llm
 
-        if self._config_path is None:
+        if self._settings is None:
             return web.json_response(
-                {"ok": False, "error": "this server was started without a config file to write"},
+                {"ok": False, "error": "this deployment has no settings store to write"},
                 status=409,
             )
         try:
@@ -282,8 +287,8 @@ class TriageServer:
             return web.json_response({"ok": False, "error": probe.detail}, status=400)
 
         try:
-            write_llm_provider(self._config_path, provider, model)
-        except (KeyError, OSError) as e:
+            self._settings.set({"llm_provider.provider": provider, "llm_provider.model": model})
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         self._llm_provider = candidate
@@ -294,11 +299,39 @@ class TriageServer:
                 "provider": provider,
                 "model": model,
                 "detail": probe.detail,
-                # This server holds no LLM of its own; the pipeline reads the file
-                # fresh on each run, so the change lands on the next digest.
+                # This server holds no LLM of its own; every run resolves settings
+                # fresh, so the change lands on the next digest.
                 "note": "Saved. The next digest run picks this up.",
             }
         )
+
+    async def _handle_post_schedule(self, request: web.Request) -> web.Response:
+        """Set the two digest hours. The cron tick is hourly and reads this."""
+        from cyris.service_layer.schedule import validate_schedule
+
+        if self._settings is None:
+            return web.json_response(
+                {"ok": False, "error": "this deployment has no settings store to write"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        try:
+            times = validate_schedule([str(t).strip() for t in body.get("times") or []])
+        except ValueError as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+        try:
+            self._settings.set({"general.digest_schedule": times})
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        self._schedule = times
+        logger.info("Digest schedule set to %s", ", ".join(times))
+        return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:
         return web.FileResponse(STATIC_DIR / "settings.html")

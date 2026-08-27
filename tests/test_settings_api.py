@@ -1,113 +1,35 @@
-"""Choosing a provider from the settings page, and the config write behind it."""
+"""Choosing a provider and the digest hours from the settings page."""
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from cyris.config import LLMProviderConfig, load_config, write_llm_provider
+from cyris.config import LLMProviderConfig
 from cyris.entrypoints.triage_server import TriageServer
 
-EXAMPLE = """\
-# Cyris configuration
-[general]
-timezone = "Asia/Taipei"
 
-[llm_provider]
-# "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY)
-provider = "anthropic"
-model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider = "gemini"
+class FakeSettings:
+    """Stands in for `D1Settings`; records what the page decided to store."""
 
-[digest]
-max_articles_per_digest = 400
-"""
+    def __init__(self) -> None:
+        self.stored: dict = {}
+
+    def set(self, values: dict) -> None:
+        self.stored.update(values)
 
 
 @pytest.fixture
-def config_file(tmp_path):
-    path = tmp_path / "cyris.toml"
-    path.write_text(EXAMPLE, encoding="utf-8")
-    return path
-
-
-class TestWriteLlmProvider:
-    def test_replaces_both_values(self, config_file):
-        write_llm_provider(config_file, "gemini", "gemini-3.7-flash")
-
-        text = config_file.read_text()
-        assert 'provider = "gemini"' in text
-        assert 'model = "gemini-3.7-flash"' in text
-        assert "claude-sonnet-4-6" not in text
-
-    def test_keeps_the_comments_that_explain_the_file(self, config_file):
-        """The reason this is a line edit and not a TOML round-trip."""
-        write_llm_provider(config_file, "gemini", "gemini-3.7-flash")
-
-        text = config_file.read_text()
-        assert "# Cyris configuration" in text
-        assert "(GEMINI_API_KEY)" in text
-        assert 'e.g. "gemini-2.5-flash"' in text  # the trailing comment survives too
-
-    def test_leaves_every_other_table_alone(self, config_file):
-        write_llm_provider(config_file, "openai", "gpt-5.6-luna")
-
-        text = config_file.read_text()
-        assert 'timezone = "Asia/Taipei"' in text
-        assert "max_articles_per_digest = 400" in text
-
-    def test_the_result_still_loads(self, config_file, tmp_path, monkeypatch):
-        monkeypatch.setenv("GEMINI_API_KEY", "k")
-        sources = tmp_path / "sources.yaml"
-        sources.write_text("sources: []\n")
-
-        write_llm_provider(config_file, "gemini", "gemini-3.7-flash")
-        cfg = load_config(config_path=config_file, sources_path=sources)
-
-        assert cfg.app.llm_provider.provider == "gemini"
-        assert cfg.app.llm_provider.model == "gemini-3.7-flash"
-
-    def test_an_empty_model_means_the_provider_default(self, config_file, tmp_path, monkeypatch):
-        monkeypatch.setenv("GEMINI_API_KEY", "k")
-        sources = tmp_path / "sources.yaml"
-        sources.write_text("sources: []\n")
-
-        write_llm_provider(config_file, "gemini", "")
-        cfg = load_config(config_path=config_file, sources_path=sources)
-
-        assert cfg.app.llm_provider.model == ""  # bootstrap fills in the default
-
-    def test_adds_keys_the_file_omitted(self, tmp_path):
-        """Both keys are optional, so a minimal file has neither line to replace."""
-        path = tmp_path / "cyris.toml"
-        path.write_text("[llm_provider]\n\n[digest]\nmax_articles_per_digest = 5\n")
-
-        write_llm_provider(path, "gemini", "gemini-3.7-flash")
-
-        text = path.read_text()
-        assert 'provider = "gemini"' in text
-        assert 'model = "gemini-3.7-flash"' in text
-        assert "max_articles_per_digest = 5" in text
-
-    def test_a_table_at_the_end_of_the_file_still_gets_the_keys(self, tmp_path):
-        path = tmp_path / "cyris.toml"
-        path.write_text('[general]\ntimezone = "UTC"\n\n[llm_provider]\n')
-
-        write_llm_provider(path, "openai", "gpt-5.6-luna")
-
-        assert 'provider = "openai"' in path.read_text()
-
-    def test_a_file_without_the_table_is_refused_rather_than_guessed_at(self, tmp_path):
-        path = tmp_path / "cyris.toml"
-        path.write_text('[general]\ntimezone = "UTC"\n')
-
-        with pytest.raises(KeyError, match="llm_provider"):
-            write_llm_provider(path, "gemini", "gemini-3.7-flash")
+def settings():
+    return FakeSettings()
 
 
 class FakeStore:
     """The settings routes never touch the store."""
 
 
-async def _client(config_path=None, llm_provider=None):
-    server = TriageServer(FakeStore(), config_path=config_path, llm_provider=llm_provider)
+async def _client(settings=None, llm_provider=None, schedule=None):
+    server = TriageServer(
+        FakeStore(), settings=settings, llm_provider=llm_provider, schedule=schedule
+    )
     client = TestClient(TestServer(server._app))
     await client.start_server()
     return client
@@ -115,11 +37,11 @@ async def _client(config_path=None, llm_provider=None):
 
 class TestSettingsApi:
     async def test_reports_the_current_choice_and_what_else_is_available(
-        self, config_file, monkeypatch
+        self, settings, monkeypatch
     ):
         monkeypatch.setenv("GEMINI_API_KEY", "g")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        client = await _client(config_file, LLMProviderConfig(provider="gemini", model="x"))
+        client = await _client(settings, LLMProviderConfig(provider="gemini", model="x"))
 
         data = await (await client.get("/api/settings")).json()
         await client.close()
@@ -133,8 +55,8 @@ class TestSettingsApi:
         assert by_name["openai"]["env_var"] == "OPENAI_API_KEY"
         assert by_name["gemini"]["default_model"]  # something to fall back to
 
-    async def test_an_unknown_provider_is_rejected_before_any_call(self, config_file):
-        client = await _client(config_file, LLMProviderConfig(provider="gemini"))
+    async def test_an_unknown_provider_is_rejected_before_any_call(self, settings):
+        client = await _client(settings, LLMProviderConfig(provider="gemini"))
 
         res = await client.post("/api/settings", json={"provider": "mistral", "model": "x"})
         body = await res.json()
@@ -142,13 +64,13 @@ class TestSettingsApi:
 
         assert res.status == 400
         assert "mistral" in body["error"]
-        assert config_file.read_text().count("anthropic") == 2  # file untouched
+        assert settings.stored == {}  # nothing stored
 
     async def test_a_provider_with_no_key_is_rejected_and_names_the_variable(
-        self, config_file, monkeypatch
+        self, settings, monkeypatch
     ):
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        client = await _client(config_file, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings, LLMProviderConfig(provider="gemini"))
 
         res = await client.post("/api/settings", json={"provider": "openai", "model": ""})
         body = await res.json()
@@ -157,9 +79,7 @@ class TestSettingsApi:
         assert res.status == 400
         assert "OPENAI_API_KEY" in body["error"]
 
-    async def test_a_model_the_provider_refuses_never_reaches_the_file(
-        self, config_file, monkeypatch
-    ):
+    async def test_a_model_the_provider_refuses_is_never_stored(self, settings, monkeypatch):
         """The failure this endpoint exists to prevent: a typo saved, and a
         digest run discovering it tomorrow morning after the fetch."""
         monkeypatch.setenv("GEMINI_API_KEY", "g")
@@ -168,7 +88,7 @@ class TestSettingsApi:
             raise RuntimeError("models/gemini-3.7-flashh is not found")
 
         monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", boom)
-        client = await _client(config_file, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings, LLMProviderConfig(provider="gemini"))
 
         res = await client.post(
             "/api/settings", json={"provider": "gemini", "model": "gemini-3.7-flashh"}
@@ -178,10 +98,9 @@ class TestSettingsApi:
 
         assert res.status == 400
         assert "is not found" in body["error"]
-        assert "gemini-3.7-flashh" not in config_file.read_text()
-        assert 'provider = "anthropic"' in config_file.read_text()
+        assert settings.stored == {}
 
-    async def test_a_model_that_answers_is_written(self, config_file, monkeypatch):
+    async def test_a_model_that_answers_is_stored(self, settings, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "g")
 
         async def ok(self, *a, **kw):
@@ -190,7 +109,7 @@ class TestSettingsApi:
             return LLMResponse(text="pong", input_tokens=1, output_tokens=1)
 
         monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", ok)
-        client = await _client(config_file, LLMProviderConfig(provider="anthropic"))
+        client = await _client(settings, LLMProviderConfig(provider="anthropic"))
 
         res = await client.post(
             "/api/settings", json={"provider": "gemini", "model": "gemini-3.7-flash"}
@@ -199,10 +118,12 @@ class TestSettingsApi:
         await client.close()
 
         assert res.status == 200 and body["ok"] is True
-        assert 'provider = "gemini"' in config_file.read_text()
-        assert 'model = "gemini-3.7-flash"' in config_file.read_text()
+        assert settings.stored == {
+            "llm_provider.provider": "gemini",
+            "llm_provider.model": "gemini-3.7-flash",
+        }
 
-    async def test_without_a_config_path_the_page_refuses_to_save(self, monkeypatch):
+    async def test_without_a_settings_store_the_page_refuses_to_save(self, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "g")
         client = await _client(None, None)
 
@@ -212,3 +133,46 @@ class TestSettingsApi:
 
         assert listing["writable"] is False
         assert res.status == 409
+
+
+class TestScheduleApi:
+    async def test_the_current_schedule_is_reported(self, settings):
+        client = await _client(settings, None, schedule=["08:00", "20:00"])
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["schedule"] == ["08:00", "20:00"]
+
+    async def test_two_whole_hours_are_stored_earliest_first(self, settings):
+        client = await _client(settings, None, schedule=["08:00", "20:00"])
+
+        res = await client.post("/api/settings/schedule", json={"times": ["21:00", "07:00"]})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["times"] == ["07:00", "21:00"]
+        assert settings.stored == {"general.digest_schedule": ["07:00", "21:00"]}
+
+    async def test_a_half_hour_is_refused_rather_than_rounded(self, settings):
+        """The cron tick is hourly. Accepting 08:30 would fire at 08:00 and the
+        reader would never learn why."""
+        client = await _client(settings, None, schedule=["08:00", "20:00"])
+
+        res = await client.post("/api/settings/schedule", json={"times": ["08:30", "20:00"]})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "whole hour" in body["error"]
+        assert settings.stored == {}
+
+    async def test_one_time_is_refused(self, settings):
+        client = await _client(settings, None, schedule=["08:00", "20:00"])
+
+        res = await client.post("/api/settings/schedule", json={"times": ["08:00"]})
+        await client.close()
+
+        assert res.status == 400
+        assert settings.stored == {}

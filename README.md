@@ -29,7 +29,7 @@ git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
 
 # Configure
-cp cyris.toml.example cyris.toml           # edit API endpoints, vault paths
+cp cyris.toml.example cyris.toml           # edit API endpoints, the agent-vault path
 cp .env.example .env                       # add API keys
 cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
 
@@ -39,7 +39,7 @@ uv run cyris run                   # full pipeline (fetch → score → digest)
 ```
 
 `cyris doctor` is the fastest way to find out what is still missing — it checks the
-config, both vault paths, the store, every Worker and every Cloudflare token, and
+config, the agent-vault path, the store, every Worker and every Cloudflare token, and
 exits non-zero on anything that would break a run.
 
 ### What needs what

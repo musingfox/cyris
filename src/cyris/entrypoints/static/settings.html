@@ -33,7 +33,9 @@
   </style>
 </head>
 <body>
-  <h1>LLM PROVIDER</h1>
+  <h1>SETTINGS</h1>
+
+  <h2 style="font-size:.9rem;letter-spacing:.08em;color:var(--text-muted);margin:1.5rem 0 .5rem">LLM PROVIDER</h2>
 
   <form id="form">
     <fieldset>
@@ -48,10 +50,26 @@
     </fieldset>
 
     <button type="submit" id="save">Save</button>
-    <a class="back" href="/" style="margin-left:1rem">&larr; back to triage</a>
   </form>
 
   <div id="result" class="hidden" hidden></div>
+
+  <h2 style="font-size:.9rem;letter-spacing:.08em;color:var(--text-muted);margin:2.5rem 0 .5rem">DIGEST SCHEDULE</h2>
+
+  <form id="sched-form">
+    <fieldset>
+      <legend>Hours</legend>
+      <input type="number" id="morning" min="0" max="23" style="width:5rem" autocomplete="off">
+      <input type="number" id="evening" min="0" max="23" style="width:5rem" autocomplete="off">
+      <p class="hint">Two whole hours, in the timezone from <code>[general]</code>. The tick is
+        hourly, so half hours are refused rather than quietly rounded down.</p>
+    </fieldset>
+
+    <button type="submit" id="save-sched">Save</button>
+    <a class="back" href="/" style="margin-left:1rem">&larr; back to triage</a>
+  </form>
+
+  <div id="sched-result" class="hidden" hidden></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -69,9 +87,13 @@ function render() {
   $("model").value = state.model;
   updateHint();
   $("providers").addEventListener("change", updateHint);
+  const [m, e] = state.schedule || [];
+  if (m) $("morning").value = parseInt(m, 10);
+  if (e) $("evening").value = parseInt(e, 10);
   if (!state.writable) {
     $("save").disabled = true;
-    show("err", "This server was started without a config file, so nothing can be saved.");
+    $("save-sched").disabled = true;
+    show("err", "This deployment has no settings store, so nothing can be saved here. Edit cyris.toml instead.");
   }
 }
 
@@ -87,8 +109,8 @@ function updateHint() {
     : "Pick a provider whose key is present.";
 }
 
-function show(kind, text) {
-  const el = $("result");
+function show(kind, text, id = "result") {
+  const el = $(id);
   el.className = kind;
   el.textContent = text;
   el.hidden = false;
@@ -118,6 +140,31 @@ $("form").addEventListener("submit", async (e) => {
     show("err", String(err));
   } finally {
     $("save").disabled = false;
+  }
+});
+
+$("sched-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const times = [$("morning").value, $("evening").value]
+    .map((h) => `${String(h).padStart(2, "0")}:00`);
+  $("save-sched").disabled = true;
+  try {
+    const res = await fetch("/api/settings/schedule", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({times}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      state.schedule = data.times;
+      show("ok", `Digest hours: ${data.times.join(" and ")}. ${data.note}`, "sched-result");
+    } else {
+      show("err", data.error || `HTTP ${res.status}`, "sched-result");
+    }
+  } catch (err) {
+    show("err", String(err), "sched-result");
+  } finally {
+    $("save-sched").disabled = false;
   }
 });
 
