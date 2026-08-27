@@ -225,7 +225,7 @@ class D1ArticleStore:
         return updated
 
     def update_triage_timestamp(self, urls: list[str], triaged_at: datetime) -> int:
-        """Stamp rows as human-decided. This is what `cyris learn` reads."""
+        """Stamp rows as human-decided. This is what vote similarity seeds from."""
         if not urls:
             return 0
         updated = 0

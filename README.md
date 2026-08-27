@@ -124,7 +124,6 @@ See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs
 ```
 cyris doctor                  Check the config; non-zero exit if a run would break
 cyris run                     Full pipeline: fetch, score, digest
-cyris learn                   Update preference profile from digest feedback
 cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
 cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
 cyris email-server            Legacy local email webhook (see workers/newsletter for the Cloudflare path)
@@ -272,7 +271,6 @@ Digest output language is configurable via `[digest] output_language` (default
 | Package manager | uv |
 | Feed buffer | Cloudflare Worker cron → D1 (optional) |
 | AI processing | Anthropic Claude, Google Gemini, OpenAI, or Cloudflare Workers AI |
-| Preference learning | Claude API |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |
 | Output | Obsidian (filesystem) |
 | Notifications | Discord webhook |

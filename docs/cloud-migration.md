@@ -235,7 +235,7 @@ partitions per `save`, and over SQL that is one query.
 
 `triage_server.py` reads the same store, so it **moves in this phase or it breaks**. It is
 not deferrable scope — per the two-channel model it is the knowledge gate and the only
-source of real-human training signal, and `cyris learn` reads what it writes.
+source of real-human training signal, and vote similarity seeds from what it writes.
 
 Independently valuable even if phase 3 never happens: once state is in D1, a dead Mac mini
 loses nothing.

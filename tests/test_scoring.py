@@ -58,29 +58,12 @@ class TestScoringSystem:
         assert "language" in SCORING_SYSTEM
         assert "0-100" in SCORING_SYSTEM
 
-    def test_build_scoring_system_prompt_no_profile(self):
+    def test_build_scoring_system_prompt(self):
         from cyris.service_layer.prompts import build_scoring_system_prompt
 
-        prompt = build_scoring_system_prompt(None)
+        prompt = build_scoring_system_prompt()
         assert "relevance" in prompt.lower()
         assert len(prompt) > 100
-
-    def test_build_scoring_system_prompt_with_profile(self):
-        from cyris.domain.models import PreferenceProfile
-        from cyris.service_layer.prompts import build_scoring_system_prompt
-
-        profile = PreferenceProfile(
-            generated_at="2026-04-09T10:00:00Z",
-            sample_size=10,
-            themes=["AI", "Cloud"],
-            signals=["Technical depth"],
-            anti_signals=["Marketing fluff"],
-            prompt_injection="User prefers AI and cloud computing news with technical depth.",
-        )
-
-        prompt = build_scoring_system_prompt(profile)
-        assert "relevance" in prompt.lower()
-        assert "User prefers AI and cloud computing news with technical depth." in prompt
 
 
 # --- Scoring prompt tests ---
@@ -230,31 +213,6 @@ class TestScoreArticlesBatch:
         # Article 2 has Chinese content, should fallback to "zh"
         assert result["http://b.com"][1] == "zh"
         assert result["http://a.com"][1] == "en"
-
-    async def test_with_preference_profile(self, sample_articles):
-        from cyris.domain.models import PreferenceProfile
-        from cyris.service_layer.scoring import score_articles_batch
-
-        profile = PreferenceProfile(
-            generated_at="2026-04-09T10:00:00Z",
-            sample_size=5,
-            themes=["AI"],
-            signals=["Deep analysis"],
-            anti_signals=["Shallow"],
-            prompt_injection="Prefers AI articles with deep analysis.",
-        )
-
-        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 90, "language": "en"}]}))
-
-        result, usage = await score_articles_batch(
-            [sample_articles[0]], llm, preference_profile=profile
-        )
-
-        # Verify system prompt includes profile injection
-        assert llm.calls[0]["system"] is not None
-        assert "Prefers AI articles with deep analysis." in llm.calls[0]["system"]
-
-        assert result["http://a.com"] == (90.0, "en")
 
     async def test_custom_snippet_length_in_batch(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch

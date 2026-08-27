@@ -141,17 +141,6 @@ class DigestContent(BaseModel):
     synthetic_url_count: int | None = None
 
 
-class PreferenceProfile(BaseModel):
-    """User preference profile generated from feedback history."""
-
-    generated_at: str
-    sample_size: int
-    themes: list[str]
-    signals: list[str]
-    anti_signals: list[str]
-    prompt_injection: str
-
-
 class ArticleState(StrEnum):
     """Article lifecycle state in persistent storage."""
 

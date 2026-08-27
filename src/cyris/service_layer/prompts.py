@@ -2,11 +2,11 @@
 
 User-facing output language is parameterized via the ``<output_language>``
 placeholder (substituted, not str.format, to avoid clashing with the JSON
-braces in the templates). An optional reader style prompt is appended, same
-mechanism as preference-profile injection.
+braces in the templates). An optional reader style prompt is appended the
+same way.
 """
 
-from cyris.domain.models import Article, PreferenceProfile
+from cyris.domain.models import Article
 
 DEFAULT_LANGUAGE = "繁體中文"
 
@@ -15,14 +15,11 @@ def _finalize_system(
     base: str,
     language: str = DEFAULT_LANGUAGE,
     style_prompt: str = "",
-    preference_profile: PreferenceProfile | None = None,
 ) -> str:
-    """Substitute the output language and append optional style/preference blocks."""
+    """Substitute the output language and append the optional style block."""
     out = base.replace("<output_language>", language)
     if style_prompt.strip():
         out += f"\n\nReader style — apply to tone and focus:\n{style_prompt.strip()}"
-    if preference_profile is not None:
-        out += f"\n\n{preference_profile.prompt_injection}"
     return out
 
 
@@ -132,19 +129,17 @@ def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: in
 def build_filter_system_prompt(
     language: str = DEFAULT_LANGUAGE,
     style_prompt: str = "",
-    preference_profile: PreferenceProfile | None = None,
 ) -> str:
-    """Build filter system prompt with output language, style, and preference injection."""
-    return _finalize_system(FILTER_SYSTEM, language, style_prompt, preference_profile)
+    """Build filter system prompt with output language and style."""
+    return _finalize_system(FILTER_SYSTEM, language, style_prompt)
 
 
 def build_summarize_system_prompt(
     language: str = DEFAULT_LANGUAGE,
     style_prompt: str = "",
-    preference_profile: PreferenceProfile | None = None,
 ) -> str:
-    """Build summarize system prompt with output language, style, and preference injection."""
-    return _finalize_system(SUMMARIZE_SYSTEM, language, style_prompt, preference_profile)
+    """Build summarize system prompt with output language and style."""
+    return _finalize_system(SUMMARIZE_SYSTEM, language, style_prompt)
 
 
 NEWS_CLUSTER_SYSTEM = """\
@@ -232,19 +227,9 @@ Respond in JSON:
 """
 
 
-def build_scoring_system_prompt(preference_profile: PreferenceProfile | None = None) -> str:
-    """Build scoring system prompt with optional preference injection.
-
-    Args:
-        preference_profile: Optional user preference profile to inject.
-
-    Returns:
-        System prompt string for article scoring.
-    """
-    if preference_profile is None:
-        return SCORING_SYSTEM
-
-    return f"{SCORING_SYSTEM}\n\n{preference_profile.prompt_injection}"
+def build_scoring_system_prompt() -> str:
+    """Build the scoring system prompt."""
+    return SCORING_SYSTEM
 
 
 def build_scoring_prompt(articles: list, snippet_length: int = 1000) -> str:

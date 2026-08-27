@@ -26,7 +26,6 @@ class RunOptions:
     period: str = "morning"
     dry_run: bool = False
     force: bool = False
-    enable_learning: bool = True
 
 
 @dataclass
@@ -110,24 +109,12 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     total_usage = UsageStats(model=cfg.app.llm_provider.model or "none")
 
-    # Load learning data if enabled
-    preference_profile = None
-    if options.enable_learning:
-        from cyris.learn.profile import load_latest_profile
-
-        preference_profile = load_latest_profile(cfg.app.agent_vault.path)
-        if preference_profile:
-            logger.info(
-                "Loaded preference profile (sample_size=%d)", preference_profile.sample_size
-            )
-
     if scorable and deps.llm is not None:
         progress(f"Scoring {len(scorable)} articles...")
         try:
             usage = await score_in_batches(
                 scorable,
                 deps.llm,
-                preference_profile=preference_profile,
                 snippet_length=cfg.app.digest.scoring_snippet_length,
                 progress=progress,
                 persist=None if options.dry_run else store.update_scores,
@@ -174,7 +161,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     # Process all articles through digest pipeline
     digest_pipeline = DigestPipeline(
         deps.llm,
-        preference_profile=preference_profile,
         max_digest_output=cfg.app.digest.max_articles_per_digest_output,
         summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
         filter_snippet_length=cfg.app.digest.filter_snippet_length,

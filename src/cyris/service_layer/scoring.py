@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 
 from cyris.domain.language import detect_language
-from cyris.domain.models import PreferenceProfile, StoredArticle, UsageStats
+from cyris.domain.models import StoredArticle, UsageStats
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import build_scoring_prompt, build_scoring_system_prompt
 
@@ -16,7 +16,6 @@ BATCH_SIZE = 20
 async def score_articles_batch(
     articles: list[StoredArticle],
     llm: LLMClient,
-    preference_profile: PreferenceProfile | None = None,
     snippet_length: int = 1000,
 ) -> tuple[dict[str, tuple[float, str]], UsageStats]:
     """Score a batch of articles via the LLM.
@@ -24,7 +23,6 @@ async def score_articles_batch(
     Args:
         articles: Articles to score (max ~20 for optimal batch size).
         llm: LLM client.
-        preference_profile: Optional user preference profile for personalized scoring.
         snippet_length: Maximum length of content snippet to include in prompt.
 
     Returns:
@@ -41,7 +39,7 @@ async def score_articles_batch(
     # Fallback language detection
     id_to_fallback_lang = {a.original_id: detect_language(a.title, a.content) for a in articles}
 
-    system_prompt = build_scoring_system_prompt(preference_profile)
+    system_prompt = build_scoring_system_prompt()
     user_prompt = build_scoring_prompt(articles, snippet_length=snippet_length)
 
     data = await complete_json(llm, user_prompt, system=system_prompt, usage=usage)
@@ -62,7 +60,6 @@ async def score_articles_batch(
 async def score_in_batches(
     articles: list[StoredArticle],
     llm: LLMClient,
-    preference_profile: PreferenceProfile | None = None,
     snippet_length: int = 1000,
     progress: Callable[[str], None] = lambda _msg: None,
     persist: Callable[[dict[str, tuple[float, str]]], None] | None = None,
@@ -72,7 +69,6 @@ async def score_in_batches(
     Args:
         articles: Articles to score.
         llm: LLM client.
-        preference_profile: Optional preference profile for personalized scoring.
         snippet_length: Content snippet length for the prompt.
         progress: Progress message callback.
         persist: Called with each batch's url→(score, language) mapping.
@@ -90,7 +86,6 @@ async def score_in_batches(
         url_to_score_lang, usage = await score_articles_batch(
             batch,
             llm,
-            preference_profile=preference_profile,
             snippet_length=snippet_length,
         )
         total_usage.add(usage.input_tokens, usage.output_tokens)

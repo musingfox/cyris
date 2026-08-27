@@ -110,7 +110,7 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
 
     # No clock mocking: articles saved within this run must be picked up by
     # the same run's reload (regression test for the exclusive end bound).
-    report = await run_digest(deps, RunOptions(enable_learning=False))
+    report = await run_digest(deps, RunOptions())
 
     assert report.status == "ok"
     assert report.digest_path is not None and report.digest_path.exists()
@@ -126,7 +126,7 @@ async def test_run_digest_no_articles(tmp_path: Path) -> None:
     source = FakeSource([])
     deps, notifications = make_deps(tmp_path, FakeLLM(), source)
 
-    report = await run_digest(deps, RunOptions(enable_learning=False))
+    report = await run_digest(deps, RunOptions())
 
     assert report.status == "no_articles"
     assert report.digest_path is None
@@ -155,7 +155,7 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
     # Dry run skips saving, so it only previews articles already in the store
     deps.store.save([article])
 
-    report = await run_digest(deps, RunOptions(dry_run=True, enable_learning=False))
+    report = await run_digest(deps, RunOptions(dry_run=True))
 
     assert report.status == "ok"
     assert report.rendered is not None
@@ -218,7 +218,7 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
             publish=lambda _slug: publish_ok,
             send_discord=capture,
         )
-        await run_digest(deps, RunOptions(enable_learning=False))
+        await run_digest(deps, RunOptions())
         return sent
 
     failed = await run_with(False, tmp_path / "failed")
@@ -252,7 +252,7 @@ async def test_run_digest_empty_content_has_no_dead_link_progress(tmp_path: Path
     deps, _ = make_deps(tmp_path, FakeLLM(), source)
     deps, messages = _with_progress(deps)
 
-    report = await run_digest(deps, RunOptions(enable_learning=False))
+    report = await run_digest(deps, RunOptions())
 
     assert report.status == "no_articles"
     assert not any("dead" in m.lower() for m in messages)
@@ -269,7 +269,7 @@ async def test_run_digest_reports_dead_link_count(tmp_path: Path) -> None:
     deps, _ = make_deps(tmp_path, FakeLLM(), source, discord_contents=contents)
     deps, messages = _with_progress(deps)
 
-    report = await run_digest(deps, RunOptions(enable_learning=False))
+    report = await run_digest(deps, RunOptions())
 
     assert report.status == "ok"
     assert any("1" in m for m in messages)
@@ -288,7 +288,7 @@ async def test_run_digest_reports_synthetic_newsletter_url_count(tmp_path: Path)
     deps, _ = make_deps(tmp_path, FakeLLM(), source, discord_contents=contents)
     deps, messages = _with_progress(deps)
 
-    report = await run_digest(deps, RunOptions(enable_learning=False))
+    report = await run_digest(deps, RunOptions())
 
     assert report.status == "ok"
     assert any("1" in m and "newsletter" in m.lower() for m in messages)
@@ -307,7 +307,7 @@ async def test_run_digest_omits_synthetic_url_progress_when_all_http(tmp_path: P
     deps, _ = make_deps(tmp_path, FakeLLM(), source, discord_contents=contents)
     deps, messages = _with_progress(deps)
 
-    report = await run_digest(deps, RunOptions(enable_learning=False))
+    report = await run_digest(deps, RunOptions())
 
     assert report.status == "ok"
     assert not any("newsletter" in m.lower() for m in messages)

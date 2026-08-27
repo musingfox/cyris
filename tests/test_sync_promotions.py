@@ -9,7 +9,6 @@ import pytest
 from cyris.adapters.promotions import PromotedArticle, pull_promotions, sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.domain.models import Article, ArticleState, Tier
-from cyris.learn.triage_feedback import collect_triage_feedback
 
 WORKER_URL = "https://promote.test.workers.dev"
 TOKEN = "test-token"
@@ -172,9 +171,10 @@ def test_voted_articles_reach_learning_but_pipeline_verdicts_do_not(store):
     ):
         sync_promotions(WORKER_URL, TOKEN, store)
 
-    feedback = collect_triage_feedback(store, days=14, min_triaged=1)
-    assert [a.url for a in feedback.accepted_articles] == ["https://example.com/stored"]
-    assert feedback.rejected_articles == []
+    # Only the vote leaves a human stamp; the digest's own verdict does not.
+    # That stamp is what vote similarity seeds from — see `vote_similarity._voted`.
+    stamped = [a for a in store.list_articles(state=ArticleState.ACCEPTED) if a.triaged_at]
+    assert [a.url for a in stamped] == ["https://example.com/stored"]
 
 
 def test_sync_empty_queue_skips_ack(store):

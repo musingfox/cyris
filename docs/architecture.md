@@ -40,7 +40,7 @@ flowchart TB
 
     subgraph CORE["Core · service_layer + domain"]
         RUN["run_digest orchestrator"]
-        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · learning"]
+        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity"]
         DOM["domain (pure): selection · models · similarity"]
         RUN --> UC
         RUN --> DOM
@@ -244,8 +244,9 @@ Each source carries a **tier**, which decides how much attention it gets:
 
 Between scoring and the pipeline, two optional filters run: **vote similarity** suppresses candidates
 sitting close to a downvoted article (it runs over *every* candidate, not just scored ones, because
-the scorer skips news and the first downvote was news-tagged), and the **preference profile** from
-`cyris learn` is injected into the prompts.
+the scorer skips news and the first downvote was news-tagged). It is the only personalization
+in the pipeline: prompt-level preference learning was removed on 2026-08-27 because it had never
+produced a profile.
 
 Output is the HTML digest and a companion raw page listing everything the window collected —
 uncapped and unfiltered, so what the digest dropped stays visible — both deployed to Cloudflare
@@ -269,7 +270,6 @@ Every persistent datum, where it lives now, and where it is going.
 | HTML digest + raw pages | `agent-vault/html/` | **R2** | `output_dir` is relative to cwd — hence the extra bind mount in compose |
 | Obsidian digest note | user vault via bind mount | **out of scope** | Export it yourself from the HTML digest or D1 |
 | Newsletter maildir | `agent-vault/daily/newsletters/` | **delete** | Superseded by the newsletter Worker |
-| Preference profile | `agent-vault/learning/` — **the directory does not exist** | D1 or R2 | `load_latest_profile` returns `None` on every run |
 | `agent-vault/events/` | local, frozen | **delete** | Tracked-topics feature was removed |
 | parity logs | `agent-vault/*.out,.err,.jsonl` | **move out** | Chore output, not agent state |
 
@@ -393,11 +393,10 @@ not on this list is already true of the running system.
 
 | # | What | Why it matters |
 |---|---|---|
-| 14 | **`agent-vault/learning/` has never existed.** `load_latest_profile` returns `None` on every run | The preference profile is wired in but has never influenced a digest. Either `cyris learn` has never completed, or `save_profile` fails silently. Decide whether the feature is alive before giving it a cloud home |
-| 15 | `cyris doctor` reports what the *config* asks for, not what *this build* supports | It went green inside a container that was ignoring `[store]` entirely. A capability check would have caught the 2026-08-25→27 split on day one |
-| 16 | `EmailConfig` + `entrypoints/webhook_server.py` + `cyris email-server` | Self-declared legacy, superseded by the newsletter Worker. Dead weight in the config surface |
-| 17 | `agent-vault/events/` and the `*-parity.{out,err,jsonl}` chore logs | Frozen leftovers and chore output living inside agent state |
-| 18 | Retire the local JSON store | Pending tonight's receipt: D1 `usage_log` gains a row and `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design** |
+| 14 | `cyris doctor` reports what the *config* asks for, not what *this build* supports | It went green inside a container that was ignoring `[store]` entirely. A capability check would have caught the 2026-08-25→27 split on day one |
+| 15 | `EmailConfig` + `entrypoints/webhook_server.py` + `cyris email-server` | Self-declared legacy, superseded by the newsletter Worker. Dead weight in the config surface |
+| 16 | `agent-vault/events/` and the `*-parity.{out,err,jsonl}` chore logs | Frozen leftovers and chore output living inside agent state |
+| 17 | Retire the local JSON store | Pending tonight's receipt: D1 `usage_log` gains a row and `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design** |
 
 ## 8. Where the core never changes
 

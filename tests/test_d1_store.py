@@ -102,10 +102,8 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
     assert store.get_by_urls(["https://example.com/full"])[0] == stored
 
 
-def test_learn_reads_only_human_stamped_rows_from_d1(store: D1ArticleStore) -> None:
-    """`cyris learn` trains on triaged_at stamps; that has to survive the backend."""
-    from cyris.learn.triage_feedback import collect_triage_feedback
-
+def test_human_stamps_survive_the_d1_backend(store: D1ArticleStore) -> None:
+    """Vote similarity seeds from triaged_at; that stamp has to survive the backend."""
     now = datetime.now(UTC)
 
     def _stored(url: str, state: ArticleState, triaged: bool) -> StoredArticle:
@@ -123,10 +121,11 @@ def test_learn_reads_only_human_stamped_rows_from_d1(store: D1ArticleStore) -> N
         ]
     )
 
-    feedback = collect_triage_feedback(store, days=14)
+    stamped_up = [a for a in store.list_articles(state=ArticleState.ACCEPTED) if a.triaged_at]
+    stamped_down = [a for a in store.list_articles(state=ArticleState.REJECTED) if a.triaged_at]
 
-    assert feedback.accepted_count == 5
-    assert feedback.rejected_count == 2
+    assert len(stamped_up) == 5
+    assert len(stamped_down) == 2
 
 
 def test_usage_is_logged_to_the_same_database(sample_digest_content) -> None:

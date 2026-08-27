@@ -2,7 +2,7 @@
 
 import logging
 
-from cyris.domain.models import Article, DigestItem, PreferenceProfile, UsageStats
+from cyris.domain.models import Article, DigestItem, UsageStats
 from cyris.service_layer.degrade import headlines_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
@@ -18,7 +18,6 @@ async def filter_articles(
     articles: list[Article],
     llm: LLMClient | None,
     usage: UsageStats | None = None,
-    preference_profile: PreferenceProfile | None = None,
     article_scores: dict[str, float] | None = None,
     filter_snippet_length: int = 500,
     output_language: str = DEFAULT_LANGUAGE,
@@ -33,7 +32,6 @@ async def filter_articles(
         articles: Filter-tier articles to process.
         llm: LLM client.
         usage: Optional UsageStats to accumulate token counts.
-        preference_profile: Optional user preference profile for prompt injection.
 
     Returns:
         Noteworthy headlines as DigestItems.
@@ -51,7 +49,7 @@ async def filter_articles(
     logger.info("Filtering %d articles through the LLM", len(articles_to_process))
 
     user_prompt = build_filter_prompt(articles_to_process, snippet_length=filter_snippet_length)
-    system_prompt = build_filter_system_prompt(output_language, style_prompt, preference_profile)
+    system_prompt = build_filter_system_prompt(output_language, style_prompt)
 
     try:
         data = await complete_json(

@@ -64,7 +64,6 @@ src/cyris/
 ├── service_layer/    # Use cases and business services
 │   ├── ports.py             # Protocols: LLMClient, ArticleRepository, FetchSource + complete_json
 │   ├── run_digest.py        # Use case: full pipeline run (fetch→store→score→digest→output)
-│   ├── learning.py          # Use case: learn preferences from triage feedback
 │   ├── digest_pipeline.py   # DigestPipeline: tier-based digest processing
 │   ├── scoring.py           # AI article scoring (score_in_batches shared loop)
 │   ├── filtering.py         # Filter tier: batch headline extraction (<10% pass)
@@ -87,7 +86,6 @@ src/cyris/
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
 │   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/
 │   └── webhook_server.py    # Email webhook receiver for newsletter ingestion
-├── learn/            # Preference learning helpers (profile, triage feedback)
 ├── schedule/         # macOS launchd plist management
 └── utils/            # timezone helpers (cross-cutting)
 
@@ -110,7 +108,6 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/digest.py` renders the final Obsidian markdown note; `domain/selection.py` layers featured articles by score
 7. Alongside each digest, both writers emit a companion listing every article the window collected — uncapped and unfiltered, so what the digest dropped stays visible: `{date}-{period}-raw.md` in the vault and `{date}-{period}-raw.html` grouped by source, linked from the digest footer and deployed with the rest of the Pages directory
-8. `service_layer/learning.py` turns triage feedback into a preference profile
 
 ### Adapter Extension Points
 
@@ -129,7 +126,6 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest |
 | `cyris doctor` | Read-only config health check; exits non-zero on anything that would break a run |
-| `cyris learn` | Analyze triage feedback, generate preference profile |
 | `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
@@ -149,7 +145,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/learning/` holds the preference profile. `agent-vault/events/` holds the timeline files the removed tracked-topics feature wrote (tracked in git, frozen — nothing updates them).
+Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/events/` holds the timeline files the removed tracked-topics feature wrote (tracked in git, frozen — nothing updates them).
 
 ## Conventions
 
@@ -158,7 +154,7 @@ Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw 
 - Pydantic v2 for all data models and config validation
 - pytest with `pytest-asyncio` (auto mode) for async tests
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
-- Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows feed `cyris learn`
+- Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
 - Digest output language is configurable via `[digest] output_language` (default 繁體中文); prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan remain only as fallbacks behind it. **Never make the extractor return a URL that repeats across issues** (a homepage, a `/join` link, an archive URL whose only per-issue param gets stripped): `ArticleStore` dedups by URL, so every later issue would be silently dropped — worse than the synthetic `newsletter:<hash>` URL, which is unique per issue by construction. That constraint is why the `homepage` fallback lands in `ref_urls` rather than in `url`: `DigestItem.link` falls through to `ref_urls[0]`, so the reader gets the publisher's site while the dedup key stays unique. `homepage` skips the `is_content_url` filter on purpose — that filter drops ESP hosts, and a Mailchimp-only newsletter's own site *is* its campaign-archive page — but still gets its tracking params stripped. Real-sample coverage lives in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
 - Link-health counters on `DigestContent` have deliberately different scopes: `synthetic_url_count` covers every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health), `dead_link_count` covers only items that reached the digest with no clickable link (what a reader hits). The Discord stats line labels each — don't "fix" them into agreement

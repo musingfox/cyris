@@ -40,9 +40,6 @@ def run(
     sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
         "sources.yaml"
     ),
-    disable_learning: Annotated[
-        bool, typer.Option("--disable-learning", help="Disable preference learning")
-    ] = False,
     force: Annotated[
         bool,
         typer.Option(
@@ -66,12 +63,7 @@ def run(
         raise typer.Exit(1) from e
 
     deps = build_deps(cfg, on_progress=typer.echo)
-    options = RunOptions(
-        period=period,
-        dry_run=dry_run,
-        force=force,
-        enable_learning=not disable_learning,
-    )
+    options = RunOptions(period=period, dry_run=dry_run, force=force)
     report = asyncio.run(run_digest(deps, options))
     if report.rendered:
         typer.echo(report.rendered)
@@ -573,46 +565,6 @@ def doctor(
     typer.echo("\nReady to run.")
 
 
-@app.command("learn")
-def learn(
-    days: Annotated[int, typer.Option(help="Number of days to scan for feedback")] = 14,
-    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
-        "cyris.toml"
-    ),
-    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
-        "sources.yaml"
-    ),
-    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
-) -> None:
-    """Analyze feedback and update preference profile."""
-    _setup_logging(verbose)
-
-    from cyris.bootstrap import build_deps
-    from cyris.config import load_config
-    from cyris.service_layer.learning import learn_from_triage
-
-    try:
-        cfg = load_config(config_path, sources_path)
-        cfg.validate_required_keys()
-    except (FileNotFoundError, ValueError) as e:
-        logger.error("Configuration error: %s", e)
-        raise typer.Exit(1) from e
-
-    deps = build_deps(cfg, on_progress=typer.echo)
-
-    try:
-        report = asyncio.run(learn_from_triage(deps, days=days))
-    except ValueError as e:
-        typer.echo(f"Error: {e}")
-        raise typer.Exit(1) from e
-
-    profile = report.profile
-    typer.echo("\nPreference Profile:")
-    typer.echo(f"  Themes: {', '.join(profile.themes)}")
-    typer.echo(f"  Signals: {', '.join(profile.signals[:3])}...")
-    typer.echo(f"  Anti-signals: {', '.join(profile.anti_signals[:3])}...")
-
-
 @app.command("schedule")
 def schedule(
     action: Annotated[str, typer.Argument(help="install, uninstall, or status")],
@@ -1104,17 +1056,8 @@ def articles_score(
 
     async def _run() -> None:
         from cyris.bootstrap import build_llm
-        from cyris.learn.profile import load_latest_profile
 
         llm = build_llm(cfg.app.llm_provider)
-
-        # Load preference profile
-        preference_profile = load_latest_profile(cfg.app.agent_vault.path)
-        if preference_profile:
-            logger.info(
-                "Loaded preference profile for scoring (sample_size=%d)",
-                preference_profile.sample_size,
-            )
 
         total_updated = 0
 
@@ -1125,7 +1068,6 @@ def articles_score(
         total_usage = await score_in_batches(
             scorable,
             llm,
-            preference_profile=preference_profile,
             snippet_length=cfg.app.digest.scoring_snippet_length,
             progress=typer.echo,
             persist=persist,
