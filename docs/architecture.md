@@ -242,11 +242,11 @@ Each source carries a **tier**, which decides how much attention it gets:
 | `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. |
 | `fan` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
 
-Between scoring and the pipeline, two optional filters run: **vote similarity** suppresses candidates
-sitting close to a downvoted article (it runs over *every* candidate, not just scored ones, because
-the scorer skips news and the first downvote was news-tagged). It is the only personalization
-in the pipeline: prompt-level preference learning was removed on 2026-08-27 because it had never
-produced a profile.
+Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
+sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
+the scorer skips news and the first downvote was news-tagged. It is the only personalization in the
+pipeline: prompt-level preference learning was removed on 2026-08-27 because it had never produced a
+profile.
 
 Output is the HTML digest and a companion raw page listing everything the window collected —
 uncapped and unfiltered, so what the digest dropped stays visible — both deployed to Cloudflare
@@ -360,6 +360,38 @@ silently ignored for two days.
 
 Everything this document describes as a *destination* rather than a *fact*, in one place. Anything
 not on this list is already true of the running system.
+
+### 7.0 The path
+
+Seven milestones. Each one ends with a receipt — an observed effect, not an exit code. Only three
+orderings are load-bearing; everything else can run in parallel.
+
+```
+M0 ─┬─ M1 ── M2 ─────────┐
+    │                     ├─ M5 ── M6
+    ├─ M3 ────────────────┤
+    └─ M4 ────────────────┘
+
+hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
+```
+
+| M | What | Why here | Receipt | Ticket |
+|---|---|---|---|---|
+| **M0** | Finish the D1 cutover | In flight | D1 `usage_log` gains a row from a container run **and** `agent-vault/usage.jsonl` stops growing. Then delete `agent-vault/articles/` | `cloud-p2` |
+| **M1** | **Delete before porting** — `DigestWriter` + `[obsidian]` + `CYRIS_VAULT_PATH` + vault mount, `NewsletterArchiveSource` + maildir, `EmailConfig` + `webhook_server` + `cyris email-server`, `schedule/launchd.py` + `[general] digest_schedule`, `events/`, parity logs. Plus: make `cyris doctor` report what *this build* supports | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | Full `cyris run` still produces the HTML digest; `git grep -l 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|launchd'` returns nothing | new |
+| **M2** | **Settings into D1** — a `settings` key/value table; `/settings` writes it instead of `cyris.toml`; grade-D keys read **D1 first, file as fallback** | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | Change the provider in the UI; the next run uses it with `cyris.toml` untouched | `schedule-settings-d1` |
+| **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | A digest run writes no file under `agent-vault/` and the Pages URL still returns 200 | `cloud-p3` |
+| **M4** | Embeddings → **Workers AI `bge-m3` + Vectorize** | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | `embeddings.json` deleted; `cyris vote-sim` at ≈0.53 suppresses the same set it does today | `cloud-p3` · `evaluate-embedding-provider` |
+| **M5** | **Into the Container** — Worker-fronted Container; triage UI + `/settings` served through it **behind real auth**; supercronic → Workers Cron `0 * * * *` gated on the D1 schedule row; `onActivityExpired` → `stop()` | Everything local is gone by now, so this is a move rather than a rewrite | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
+| **M6** | **One-button deploy** — `deploy.json`, the README button, the secret checklist, Worker URLs derived at deploy, and the three-Workers-vs-one decision | Only meaningful once nothing runs locally | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
+
+Two things this table deliberately makes explicit:
+
+- **The settings page is part of the cloud move, not a nicety.** It is a write surface that will be
+  reachable from the public internet, and today it writes a file that will be read-only. That makes
+  it M2 (its storage) and M5 (its auth) — never an afterthought.
+- **M1 comes before every port.** Eliminate, then simplify, then move. Porting something that should
+  have been deleted costs twice.
 
 ### Blocking the cloud move
 
