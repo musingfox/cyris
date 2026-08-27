@@ -137,6 +137,56 @@ def _check_paths(cfg: Config) -> list[Check]:
     return checks
 
 
+def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
+    """Ask what *this build* understands, not what the config asks for.
+
+    The 2026-08-25→27 split: `cyris.toml` gained `[store] backend = "d1"` while
+    the container ran an image whose config model had no `[store]` at all.
+    Pydantic ignores unknown keys, so the setting was silently dropped and every
+    run for two days wrote to the JSON store while `doctor` reported green.
+    A config key this build cannot see is a failure, not a stray comment.
+    """
+    from cyris.bootstrap import build_store
+    from cyris.config import AppConfig
+
+    checks: list[Check] = []
+    if config_path is not None and config_path.exists():
+        import tomllib
+
+        with open(config_path, "rb") as f:
+            tables = set(tomllib.load(f))
+        unknown = sorted(tables - set(AppConfig.model_fields))
+        if unknown:
+            checks.append(
+                Check(
+                    "build",
+                    "fail",
+                    f"this build ignores {', '.join('[' + t + ']' for t in unknown)}",
+                    "The config is newer than the code. Rebuild the image, or delete the keys.",
+                )
+            )
+        else:
+            checks.append(Check("build", "ok", f"understands every table in {config_path}"))
+
+    # What the wiring actually resolved to, so a mismatch is readable rather
+    # than inferred from behaviour two days later. A store that cannot be built
+    # at all is `_check_store`'s answer to give, not this one's.
+    try:
+        resolved = type(build_store(cfg)).__name__
+    except Exception:  # noqa: BLE001 - reported by _check_store, with its detail
+        return checks
+    expected = "D1ArticleStore" if cfg.app.store.is_d1 else "ArticleStore"
+    checks.append(
+        Check(
+            "store wiring",
+            "ok" if resolved == expected else "fail",
+            f"[store] backend = {cfg.app.store.backend!r} → {resolved}",
+            "" if resolved == expected else f"Expected {expected}. The build is out of date.",
+        )
+    )
+    return checks
+
+
 def _check_store(cfg: Config) -> Check:
     from cyris.bootstrap import build_store
 
@@ -258,9 +308,15 @@ def _check_notifications(cfg: Config) -> Check:
     )
 
 
-async def run_checks(cfg: Config) -> list[Check]:
+async def run_checks(cfg: Config, config_path: Path | None = None) -> list[Check]:
     """Every check, in the order a reader would want to see them."""
-    checks = [_check_sources(cfg), _check_llm(cfg), *_check_paths(cfg), _check_store(cfg)]
+    checks = [
+        *_check_build(cfg, config_path),
+        _check_sources(cfg),
+        _check_llm(cfg),
+        *_check_paths(cfg),
+        _check_store(cfg),
+    ]
     checks.extend(await _check_workers(cfg))
     checks.extend(_check_publish_token(cfg))
     checks.append(_check_notifications(cfg))

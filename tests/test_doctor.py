@@ -183,7 +183,7 @@ def test_the_command_renders_every_status_and_exits_nonzero_on_failure(monkeypat
 
     from cyris.entrypoints.cli import app
 
-    async def fake_checks(_cfg):
+    async def fake_checks(_cfg, _path=None):
         return [
             doctor.Check("fine", "ok", "all good"),
             doctor.Check("partial", "warn", "degraded", "do this"),
@@ -212,7 +212,7 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
 
     from cyris.entrypoints.cli import app
 
-    async def fake_checks(_cfg):
+    async def fake_checks(_cfg, _path=None):
         return [doctor.Check("fine", "ok", "all good")]
 
     monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
@@ -222,3 +222,27 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert "Ready to run." in result.stdout
+
+
+async def test_a_config_key_this_build_cannot_see_is_a_failure(tmp_path: Path) -> None:
+    """The 2026-08-25→27 split: the config asked for D1, the image had no `[store]`.
+
+    Pydantic ignores unknown tables, so the setting vanished and doctor stayed
+    green for two days while every run wrote to the wrong store.
+    """
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text('[general]\ntimezone = "Asia/Taipei"\n\n[from_the_future]\nx = 1\n')
+
+    check = _by_name(await doctor.run_checks(_config(tmp_path), config_path), "build")
+
+    assert check.status == "fail"
+    assert "[from_the_future]" in check.detail
+
+
+async def test_the_resolved_store_class_is_reported_not_the_configured_name(
+    tmp_path: Path,
+) -> None:
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "store wiring")
+
+    assert check.status == "ok"
+    assert "ArticleStore" in check.detail

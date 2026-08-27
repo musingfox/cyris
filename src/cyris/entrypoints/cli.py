@@ -552,7 +552,7 @@ def doctor(
     typer.echo(f"✓ config — {config_path} + {sources_path}")
 
     marks = {"ok": "✓", "warn": "!", "fail": "✗", "skip": "–"}
-    checks = asyncio.run(run_checks(cfg))
+    checks = asyncio.run(run_checks(cfg, config_path))
     for check in checks:
         typer.echo(f"{marks[check.status]} {check.name} — {check.detail}")
         if check.fix and check.status != "ok":

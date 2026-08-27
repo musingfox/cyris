@@ -124,7 +124,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest |
-| `cyris doctor` | Read-only config health check; exits non-zero on anything that would break a run |
+| `cyris doctor` | Read-only health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |

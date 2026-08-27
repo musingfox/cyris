@@ -420,7 +420,6 @@ Two things this table deliberately makes explicit:
 
 | # | What | Why it matters |
 |---|---|---|
-| 14 | `cyris doctor` reports what the *config* asks for, not what *this build* supports | It went green inside a container that was ignoring `[store]` entirely. A capability check would have caught the 2026-08-25→27 split on day one |
 | 17 | Retire the local JSON store | Pending tonight's receipt: D1 `usage_log` gains a row and `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design** |
 
 ## 8. Where the core never changes
