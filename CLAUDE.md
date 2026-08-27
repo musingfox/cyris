@@ -40,6 +40,16 @@ uv run pytest tests/test_newsletter_real_fixtures.py
 
 ## Architecture
 
+**Read `docs/architecture.md` before any non-trivial change.** It is the authoritative description of this system, and it is written to be acted on, not just read:
+
+- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. It also names what is *out* of the target architecture, not merely unfinished: `DigestWriter`/Obsidian output is gone, and any edge touching the local filesystem is a defect with a stated destination.
+- **§3 How a digest is made** — the two ingestion paths and why they have different shapes (RSS is an idempotent buffer, email is a pull/ack queue). Read this before touching a Worker or a `FetchSource`.
+- **§4 Data residency** — every persistent datum, where it lives, where it is going. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
+- **§5 Configuration: four grades** — A baked / B deployment identity / C secrets / D runtime-mutable. Every new setting must be assigned a grade and put in that grade's home. `cyris.toml` is not a default home.
+- **§7 Not built yet** — the single list of outstanding work with its ticket. Work is driven from here. If you name a new destination anywhere in the doc, add it to §7 in the same edit.
+
+Keep the document current in the same change that makes it stale — an architecture doc that lags the code is worse than none, because it is still trusted.
+
 Clean-architecture layering: **entrypoints → service_layer → domain**, with **adapters** implementing the service layer's Protocols. Pipeline flow: **Fetch → Store → Score → Process → Output**.
 
 ```
@@ -111,7 +121,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation fails at the CLI or the triage UI, not at import.
 - **Output sinks** — `DigestWriter`, `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
-`ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map: `docs/architecture.md`.
+`ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map, and what each of these is being replaced by: `docs/architecture.md`.
 
 ### CLI Commands
 
