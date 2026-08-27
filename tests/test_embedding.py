@@ -42,11 +42,9 @@ def patched_client(monkeypatch):
     return install
 
 
-async def test_workers_ai_returns_unit_vectors_and_records_what_it_charged(
-    tmp_path, patched_client
-):
+async def test_workers_ai_returns_unit_vectors_and_records_what_it_charged(patched_client):
     patched_client(lambda r: httpx.Response(200, json=workers_response([[3.0, 4.0]])))
-    embedder = WorkersAIEmbedder("tok", "acct", tmp_path / "c.json")
+    embedder = WorkersAIEmbedder("tok", "acct")
 
     [vector] = await embedder.embed(["今彩539開獎"])
 
@@ -56,7 +54,9 @@ async def test_workers_ai_returns_unit_vectors_and_records_what_it_charged(
     assert embedder.usage.requests == 1
 
 
-async def test_a_cached_text_never_reaches_the_api_again(tmp_path, patched_client):
+async def test_a_repeated_text_is_embedded_once_per_call(patched_client):
+    """No cache between calls (see the module docstring), but a run that asks for
+    the same headline twice must not pay twice inside that run."""
     calls = []
 
     def handler(request):
@@ -64,29 +64,27 @@ async def test_a_cached_text_never_reaches_the_api_again(tmp_path, patched_clien
         return httpx.Response(200, json=workers_response([[1.0, 0.0]]))
 
     patched_client(handler)
-    cache = tmp_path / "c.json"
-    await WorkersAIEmbedder("tok", "acct", cache).embed(["同一個標題"])
+    embedder = WorkersAIEmbedder("tok", "acct")
 
-    second = WorkersAIEmbedder("tok", "acct", cache)
-    [vector] = await second.embed(["同一個標題"])
+    vectors = await embedder.embed(["同一個標題", "同一個標題"])
 
-    assert calls == [["同一個標題"]], "the second run re-fetched a text it had on disk"
-    assert vector == [1.0, 0.0]
-    assert second.usage.requests == 0
+    assert calls == [["同一個標題"]]
+    assert vectors == [[1.0, 0.0], [1.0, 0.0]]
+    assert embedder.usage.requests == 1
 
 
-async def test_a_200_carrying_success_false_is_an_error(tmp_path, patched_client):
+async def test_a_200_carrying_success_false_is_an_error(patched_client):
     """Cloudflare answers 200 with success:false, so raise_for_status alone lets it pass."""
     patched_client(
         lambda r: httpx.Response(200, json={"success": False, "errors": [{"code": 10000}]})
     )
-    embedder = WorkersAIEmbedder("tok", "acct", tmp_path / "c.json")
+    embedder = WorkersAIEmbedder("tok", "acct")
 
     with pytest.raises(RuntimeError, match="refused"):
         await embedder.embed(["anything"])
 
 
-async def test_gemini_asks_for_truncated_dimensions_when_told_to(tmp_path, patched_client):
+async def test_gemini_asks_for_truncated_dimensions_when_told_to(patched_client):
     seen = {}
 
     def handler(request):
@@ -94,7 +92,7 @@ async def test_gemini_asks_for_truncated_dimensions_when_told_to(tmp_path, patch
         return httpx.Response(200, json={"embeddings": [{"values": [0.0, 2.0]}]})
 
     patched_client(handler)
-    embedder = GeminiEmbedder("k", tmp_path / "c.json", output_dimensions=768)
+    embedder = GeminiEmbedder("k", output_dimensions=768)
 
     [vector] = await embedder.embed(["title"])
 
@@ -103,11 +101,48 @@ async def test_gemini_asks_for_truncated_dimensions_when_told_to(tmp_path, patch
     assert vector == pytest.approx([0.0, 1.0])
 
 
-async def test_an_unreadable_cache_starts_empty_rather_than_crashing(tmp_path, patched_client):
-    cache = tmp_path / "c.json"
-    cache.write_text("{ truncated", encoding="utf-8")
-    patched_client(lambda r: httpx.Response(200, json=workers_response([[1.0, 0.0]])))
+async def test_an_empty_input_never_reaches_the_api(patched_client):
+    patched_client(lambda r: httpx.Response(500))
+    embedder = WorkersAIEmbedder("tok", "acct")
 
-    [vector] = await WorkersAIEmbedder("tok", "acct", cache).embed(["t"])
+    assert await embedder.embed([]) == []
+    assert embedder.usage.requests == 0
 
-    assert vector == [1.0, 0.0]
+
+def test_each_provider_carries_its_own_calibration(monkeypatch):
+    """Switching provider without switching threshold is how this feature dies
+    silently: bge-m3's cosines run lower, so 0.68 would suppress nothing."""
+    from cyris.bootstrap import build_embedder, embedding_threshold
+    from cyris.config import AppConfig, Config
+
+    monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+
+    cfg = Config(app=AppConfig(), sources={})
+    cfg.app.vote_similarity.enabled = True
+
+    cfg.app.vote_similarity.provider = "workers_ai"
+    assert embedding_threshold(cfg) == 0.53
+    assert type(build_embedder(cfg)).__name__ == "WorkersAIEmbedder"
+
+    cfg.app.vote_similarity.provider = "gemini"
+    assert embedding_threshold(cfg) == 0.68
+    assert type(build_embedder(cfg)).__name__ == "GeminiEmbedder"
+
+
+def test_a_configured_threshold_still_wins():
+    from cyris.bootstrap import embedding_threshold
+    from cyris.config import AppConfig, Config
+
+    cfg = Config(app=AppConfig(), sources={})
+    cfg.app.vote_similarity.threshold = 0.6
+
+    assert embedding_threshold(cfg) == 0.6
+
+
+def test_the_feature_off_means_no_embedder_at_all():
+    from cyris.bootstrap import build_embedder
+    from cyris.config import AppConfig, Config
+
+    assert build_embedder(Config(app=AppConfig(), sources={})) is None

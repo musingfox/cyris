@@ -139,7 +139,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             store,
             deps.embedder,
             pending_articles,
-            threshold=cfg.app.vote_similarity.threshold,
+            threshold=deps.embedding_threshold,
             max_seeds=cfg.app.vote_similarity.max_seeds,
         )
         if similarity.suppressed_urls:

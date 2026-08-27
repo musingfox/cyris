@@ -142,8 +142,7 @@ def vote_sim(
 
     from datetime import UTC, datetime, timedelta
 
-    from cyris.adapters.embedding import GeminiEmbedder
-    from cyris.bootstrap import build_deps, load_effective_config
+    from cyris.bootstrap import build_deps, embedding_threshold, load_effective_config
     from cyris.service_layer.vote_similarity import judge_by_votes
 
     try:
@@ -152,14 +151,15 @@ def vote_sim(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
+    from cyris.bootstrap import build_embedder
+
     deps = build_deps(cfg)
-    # Built directly rather than taken from Deps: the preview must work while the
-    # feature is still switched off, which is the whole point of previewing it.
-    embedder = deps.embedder or GeminiEmbedder(
-        api_key=os.environ.get("GEMINI_API_KEY", ""),
-        cache_path=cfg.app.agent_vault.path / "embeddings.json",
-        model=cfg.app.vote_similarity.model,
-    )
+    embedder = deps.embedder
+    if embedder is None:
+        # The preview has to work while the feature is still switched off — that
+        # is the whole point of previewing it.
+        cfg.app.vote_similarity.enabled = True
+        embedder = build_embedder(cfg)
     now = datetime.now(UTC)
     candidates = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
 
@@ -168,7 +168,7 @@ def vote_sim(
             deps.store,
             embedder,
             candidates,
-            threshold=threshold if threshold is not None else cfg.app.vote_similarity.threshold,
+            threshold=threshold if threshold is not None else embedding_threshold(cfg),
             max_seeds=cfg.app.vote_similarity.max_seeds,
         )
     )
@@ -177,7 +177,7 @@ def vote_sim(
         raise typer.Exit(1)
 
     by_url = {a.url: a for a in candidates}
-    cut = threshold if threshold is not None else cfg.app.vote_similarity.threshold
+    cut = threshold if threshold is not None else embedding_threshold(cfg)
     typer.echo(
         f"\n{len(candidates)} candidate(s) over {hours}h, judged against "
         f"{report.upvote_seeds} up / {report.downvote_seeds} down seed(s) at "
@@ -232,7 +232,7 @@ def embed_compare(
     from datetime import UTC, datetime, timedelta
 
     from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
-    from cyris.bootstrap import build_deps, load_effective_config
+    from cyris.bootstrap import _EMBEDDING_DEFAULTS, build_deps, load_effective_config
     from cyris.service_layer.vote_similarity import judge_by_votes
 
     try:
@@ -252,24 +252,13 @@ def embed_compare(
         raise typer.Exit(1)
 
     deps = build_deps(cfg)
-    vault = cfg.app.agent_vault.path
-    cut = threshold if threshold is not None else cfg.app.vote_similarity.threshold
     arms = {
         "gemini": (
-            GeminiEmbedder(
-                api_key=os.environ.get("GEMINI_API_KEY", ""),
-                cache_path=vault / "embeddings.json",
-                model=cfg.app.vote_similarity.model,
-            ),
-            cut,
+            GeminiEmbedder(api_key=os.environ.get("GEMINI_API_KEY", "")),
+            threshold if threshold is not None else _EMBEDDING_DEFAULTS["gemini"]["threshold"],
         ),
         "workers_ai": (
-            WorkersAIEmbedder(
-                api_token=token,
-                account_id=account,
-                # Separate file: the dimensionalities differ, so the caches cannot mix.
-                cache_path=vault / "embeddings-bge-m3.json",
-            ),
+            WorkersAIEmbedder(api_token=token, account_id=account),
             workers_threshold,
         ),
     }

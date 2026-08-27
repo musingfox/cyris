@@ -49,6 +49,51 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     return AnthropicClient(cfg.api_key, model)
 
 
+# Each embedding model has its own calibrated cutoff and its own default model id.
+# See docs/vote-signal-measurement.md — the scales differ, the discrimination does not.
+_EMBEDDING_DEFAULTS = {
+    "workers_ai": {"model": "@cf/baai/bge-m3", "threshold": 0.53},
+    "gemini": {"model": "gemini-embedding-001", "threshold": 0.68},
+}
+
+
+def build_embedder(cfg: Config) -> Any | None:
+    """The embedder for vote similarity, or None when it is switched off.
+
+    Neither adapter caches: a full run is ~600 texts, which bge-m3 prices at
+    roughly 20 of a 10,000/day neuron allowance. The 338 MB cache that used to
+    sit under this was optimising a cost that no longer exists.
+    """
+    vote = cfg.app.vote_similarity
+    if not vote.enabled:
+        return None
+    defaults = _EMBEDDING_DEFAULTS[vote.provider]
+    model = vote.model or defaults["model"]
+
+    if vote.provider == "gemini":
+        from cyris.adapters.embedding import GeminiEmbedder
+
+        return GeminiEmbedder(api_key=os.environ.get("GEMINI_API_KEY", ""), model=model)
+
+    from cyris.adapters.embedding import WorkersAIEmbedder
+
+    # Deliberately not CLOUDFLARE_API_TOKEN: that one is wrangler's, and it
+    # carries account:read only — Workers AI refuses it.
+    return WorkersAIEmbedder(
+        api_token=os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", ""),
+        account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
+        model=model,
+    )
+
+
+def embedding_threshold(cfg: Config) -> float:
+    """The configured cutoff, or the provider's own calibration."""
+    vote = cfg.app.vote_similarity
+    if vote.threshold is not None:
+        return vote.threshold
+    return _EMBEDDING_DEFAULTS[vote.provider]["threshold"]
+
+
 def build_d1_client(cfg: Config) -> Any | None:
     """The D1 connection, or None when `[store] backend` is still json."""
     if not cfg.app.store.is_d1:
@@ -117,7 +162,8 @@ class Deps:
     log_usage: Callable[..., None]
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
-    embedder: Any | None = None  # GeminiEmbedder when vote_similarity.enabled
+    embedder: Any | None = None  # None ⇒ vote similarity is switched off
+    embedding_threshold: float = 0.68  # the embedder's own calibration, not a preference
 
 
 def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) -> Deps:
@@ -150,18 +196,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         from cyris.adapters.fetch.rss_source import RssSource
 
         fetch_sources.append(RssSource())
-
-    # Reuses the digest's own Gemini key: the Cloudflare token carries only
-    # `account (read)` and Workers AI refuses it, so bge-m3 waits for the move.
-    embedder = None
-    if cfg.app.vote_similarity.enabled:
-        from cyris.adapters.embedding import GeminiEmbedder
-
-        embedder = GeminiEmbedder(
-            api_key=os.environ.get("GEMINI_API_KEY", ""),
-            cache_path=cfg.app.agent_vault.path / "embeddings.json",
-            model=cfg.app.vote_similarity.model,
-        )
 
     html_writer = None
     publish = None
@@ -202,5 +236,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         sync_promotions=sync,
         log_usage=log_usage,
         on_progress=on_progress or (lambda _msg: None),
-        embedder=embedder,
+        embedder=build_embedder(cfg),
+        embedding_threshold=embedding_threshold(cfg),
     )

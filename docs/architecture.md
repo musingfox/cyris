@@ -268,7 +268,7 @@ Every persistent datum, where it lives now, and where it is going.
 | LLM spend | **D1 `usage_log`** | same | `usage.jsonl` is its retired predecessor |
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
-| Embedding cache | `embeddings.json` **322 MB** + `embeddings-bge-m3.json` **93 MB** | **Vectorize** | Loaded into memory and rewritten whole every run |
+| ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | HTML digest + raw pages | `agent-vault/html/` | **R2** | `output_dir` is relative to cwd — hence the extra bind mount in compose |
 
 The three D1 tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
@@ -396,7 +396,7 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 | ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
 | ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
 | **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | A digest run writes no file under `agent-vault/` and the Pages URL still returns 200 | `cloud-p3` |
-| **M4** | Embeddings → **Workers AI `bge-m3` + Vectorize** | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | `embeddings.json` deleted; `cyris vote-sim` at ≈0.53 suppresses the same set it does today | `cloud-p3` · `evaluate-embedding-provider` |
+| ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below | `cloud-p3` · `evaluate-embedding-provider` |
 | **M5** | **Into the Container** — Worker-fronted Container; triage UI + `/settings` served through it **behind real auth**; supercronic → Workers Cron `0 * * * *` gated on the D1 schedule row; `onActivityExpired` → `stop()` | Everything local is gone by now, so this is a move rather than a rewrite | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
 | **M6** | **One-button deploy** — `deploy.json`, the README button, the secret checklist, Worker URLs derived at deploy, and the three-Workers-vs-one decision | Only meaningful once nothing runs locally | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
 
@@ -407,6 +407,49 @@ Two things this table deliberately makes explicit:
   it M2 (its storage) and M5 (its auth) — never an afterthought.
 - **M1 comes before every port.** Eliminate, then simplify, then move. Porting something that should
   have been deleted costs twice.
+
+### Why M4 did not use Vectorize
+
+The doc named Vectorize, and this deviates from it deliberately.
+
+Vectorize is an approximate-nearest-neighbour index. The access pattern here is
+**fetch-by-key**: `judge_by_votes` asks for a vector per title and `domain/similarity.judge`
+does the cosine work, because the margin rule — how far above the cutoff, up versus down — is a
+domain rule, and §8 says the core does not move into an adapter. A vector database whose
+similarity search goes unused is a new service, a new binding and a new failure mode carrying no
+payload.
+
+Then the rung above that one applied: **the cache did not need a home, it needed deleting.** The
+415 MB of JSON was optimising a cost that stopped existing when the provider became `bge-m3` —
+measured at 7.59 neurons for 222 texts, so a full run of ~600 is ~20 against a 10,000/day free
+allowance. The observed run: 1,221 texts, 13 requests, 17.9s wall, 42 neurons. It also never
+extended a seed's life, which its own docstring implied it did: `vote_similarity._voted` reads
+seeds from store rows, so a deleted row takes its seed with it, cached vector or not.
+
+Reverting this is a config line (`provider`) plus restoring a cache class, not an architecture
+change. `GeminiEmbedder` and `cyris embed-compare` stay for comparison; both are deletion
+candidates once `bge-m3` has weeks of production behind it.
+
+### Both thresholds are stale (found while collecting M4's receipt)
+
+M4's receipt was "`cyris vote-sim` at ≈0.53 suppresses the same set it does today". It does not,
+and the reason is not the new provider. Over 168h / 1,112 candidates, `cyris embed-compare` reports:
+
+```
+gemini      @ 0.68  suppresses 31   margin 0.6984 -> 0.692
+workers_ai  @ 0.53  suppresses 40   margin 0.5733 -> 0.5322
+agree on 28, disagree on 15
+```
+
+**Both margins are inverted** — each cutoff now runs through a dense band rather than a gap. Both
+numbers were calibrated in `docs/vote-signal-measurement.md` against **7 up / 2 down** seeds; there
+are now **101 up / 24 down**. More seeds means more chances for any candidate to clear the bar, for
+either provider. This is a pre-existing drift the provider swap surfaced, not caused: the incumbent
+`gemini @ 0.68` is over-suppressing too, and was before M4 was written.
+
+The thresholds were left at their published values. Re-tuning them to make this milestone's own
+receipt pass is exactly the check-shaped-to-fit the contract-first rule forbids. Recalibration
+against the current seed set is its own piece of work — see §7.
 
 **What M1 actually removed** (2026-08-27): `DigestWriter` and `article_export`, `[obsidian]`,
 `CYRIS_VAULT_PATH` and the vault bind mount, `cyris articles export`, the vault export on a triage
@@ -423,7 +466,6 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 |---|---|---|---|---|
 | 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
 | 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
-| 3 | Embeddings | `embeddings.json`, 322 MB, rewritten whole per run | **Workers AI `bge-m3` + Vectorize** (threshold ≈0.53, already measured) | `cloud-p3` · `evaluate-embedding-provider` |
 | 4 | Scheduling | `docker/crontab` + supercronic, hourly tick gated on D1 | **Workers Cron Trigger**, same gate | `cloud-p3` |
 | 5 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 
@@ -445,7 +487,8 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 | # | What | Why it matters |
 |---|---|---|
 | 11 | Retire the local JSON store | Waiting on M0's receipt: D1 `usage_log` gains a row from a container run **and** `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design**, and `agent-vault/articles/` must not be deleted |
-| 12 | Delete `[miniflux]` from `cyris.toml` | `doctor` fails on it — the table is dead since 08-25 and this build ignores it. Deferred only because `cyris.toml` is a single-file bind mount: rewriting it leaves the running container on a deleted inode until `--force-recreate`, which must not happen before the M0 receipt run |
+| 12 | Post-rebuild cleanup: delete `[miniflux]` from `cyris.toml`, and `agent-vault/embeddings.json` + `embeddings-bge-m3.json` | `doctor` fails on `[miniflux]` — dead since 08-25, ignored by this build. All three are deferred for the same reason: the running container is still the pre-M1 image, whose hardcoded `GeminiEmbedder` reads `embeddings.json` through the bind mount and would rewrite it, and whose `cyris.toml` mount must not be disturbed before the M0 receipt run |
+| 13 | Recalibrate both similarity thresholds against the current seed set | 0.68 and 0.53 were measured against 7 up / 2 down seeds; there are now 101 / 24, and both margins have inverted. See "Both thresholds are stale" above. Affects the incumbent provider too — this is not an M4 regression |
 
 ## 8. Where the core never changes
 

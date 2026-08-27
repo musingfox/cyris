@@ -64,10 +64,15 @@ worker_url = ""
 # Suppress candidates that sit close to a downvoted article. Runs over every
 # candidate, not just scored ones — the scorer skips news, and the class that
 # drew the first downvote was news-tagged. Preview with `cyris vote-sim` before
-# enabling. Embeddings reuse GEMINI_API_KEY; see docs/vote-signal-measurement.md.
+# enabling, and compare providers with `cyris embed-compare`.
 enabled = false
-threshold = 0.68      # inside the measured gap (0.673 out-of-class / 0.690 in-class)
-# model = "gemini-embedding-001"
+# provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
+#                           # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
+# Leave `threshold` unset: each provider carries its own calibration (bge-m3 0.53,
+# gemini 0.68) because their cosines run on different scales. Setting one value and
+# switching provider is how this feature silently stops suppressing anything.
+# threshold = 0.53
+# model = "@cf/baai/bge-m3"
 # max_seeds = 200
 
 [rss]

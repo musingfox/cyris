@@ -177,8 +177,13 @@ class VoteSimilarityConfig(BaseModel):
     """
 
     enabled: bool = False
-    threshold: float = Field(default=0.68, ge=0.0, le=1.0)
-    model: str = "gemini-embedding-001"
+    provider: Literal["workers_ai", "gemini"] = "workers_ai"
+    # None means "the provider's own calibration". Grade A: the pairing is a
+    # measured property of the model, not a preference — bge-m3's cosines run
+    # lower than Gemini's across the board, so carrying 0.68 over to it would
+    # suppress nothing and the feature would silently no-op.
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    model: str = ""
     max_seeds: int = Field(default=200, ge=1)
 
 

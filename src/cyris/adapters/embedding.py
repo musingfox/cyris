@@ -7,16 +7,21 @@ run in parallel so the comparison keeps accumulating on real traffic, including 
 things a one-off measurement cannot show: what each actually costs and how long it takes.
 
 See docs/vote-signal-measurement.md. Swapping is a config choice, not a code change.
+
+**Neither keeps a vector cache**, and that is a deliberate removal (2026-08-27). One
+existed — whole-file JSON, 338 MB for Gemini — and it optimised a cost that stopped
+existing when bge-m3 became the provider: 222 texts measured at 7.59 neurons, so a full
+run of ~600 (400 seeds + 200 candidates) is ~20 against a 10,000/day free allowance.
+Persisting 22 MB to skip five seconds of arithmetic is not a trade worth a storage tier.
+The cache never extended a seed's life either — `vote_similarity._voted` reads seeds from
+store rows, so a deleted row takes its seed with it, cached vector or not.
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 import time
-from pathlib import Path
 
 import httpx
 
@@ -31,54 +36,6 @@ WORKERS_AI_ROOT = "https://api.cloudflare.com/client/v4/accounts"
 
 MAX_RETRIES = 5
 TIMEOUT_SECONDS = 180
-
-
-class _VectorCache:
-    """Every vector ever produced, keyed by a hash of the text.
-
-    Keyed by text and not by URL: the same headline re-fetched under a
-    tracking-stripped URL must not pay twice, and a voted article's vector has to
-    survive the article leaving the store.
-
-    ponytail: whole-file JSON, rewritten on every miss. 3072 float64 per row as text
-    is ~14KB, so the Gemini corpus reached 81MB — fine for one machine and a few
-    hundred candidates a run, wrong past that. The upgrade is Vectorize (or any vector
-    store) once this moves to Cloudflare, which is also where the read pattern stops
-    being "load everything".
-    """
-
-    def __init__(self, path: Path) -> None:
-        self._path = path
-        self._data: dict[str, list[float]] = {}
-        if path.exists():
-            try:
-                self._data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                logger.warning("Embedding cache unreadable, starting empty: %s", path)
-
-    @staticmethod
-    def key(text: str) -> str:
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
-
-    def __len__(self) -> int:
-        return len(self._data)
-
-    def get(self, text: str) -> list[float]:
-        return self._data.get(self.key(text), [])
-
-    def put(self, text: str, vector: list[float]) -> None:
-        self._data[self.key(text)] = vector
-
-    def missing(self, texts: list[str]) -> list[str]:
-        return [t for t in dict.fromkeys(texts) if self.key(t) not in self._data]
-
-    def save(self) -> None:
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._data), encoding="utf-8")
-        except OSError as e:
-            # A lost cache costs money and time, never correctness.
-            logger.warning("Could not persist embedding cache: %s", e)
 
 
 class _Usage:
@@ -122,33 +79,30 @@ class GeminiEmbedder:
     def __init__(
         self,
         api_key: str,
-        cache_path: Path,
         model: str = GEMINI_MODEL,
         output_dimensions: int | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._dims = output_dimensions
-        self._cache = _VectorCache(cache_path)
         self.usage = _Usage()
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Return a unit-length vector per input, hitting the API only for misses."""
-        missing = self._cache.missing(texts)
-        if missing:
-            logger.info("Embedding %d new text(s) (%d cached)", len(missing), len(self._cache))
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
-                for start in range(0, len(missing), self.BATCH_SIZE):
-                    batch = missing[start : start + self.BATCH_SIZE]
-                    for text, vector in zip(
-                        batch, await self._post_batch(http, batch), strict=True
-                    ):
-                        self._cache.put(text, normalize(vector))
-                    self.usage.embedded += len(batch)
-                    if start + self.BATCH_SIZE < len(missing):
-                        await asyncio.sleep(self.PAUSE_SECONDS)
-            self._cache.save()
-        return [self._cache.get(t) for t in texts]
+        """Return a unit-length vector per input."""
+        unique = list(dict.fromkeys(texts))
+        if not unique:
+            return []
+        logger.info("Embedding %d text(s)", len(unique))
+        vectors: dict[str, list[float]] = {}
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
+            for start in range(0, len(unique), self.BATCH_SIZE):
+                batch = unique[start : start + self.BATCH_SIZE]
+                for text, vector in zip(batch, await self._post_batch(http, batch), strict=True):
+                    vectors[text] = normalize(vector)
+                self.usage.embedded += len(batch)
+                if start + self.BATCH_SIZE < len(unique):
+                    await asyncio.sleep(self.PAUSE_SECONDS)
+        return [vectors[t] for t in texts]
 
     async def _post_batch(self, http: httpx.AsyncClient, batch: list[str]) -> list[list[float]]:
         url = f"{GEMINI_API_ROOT}/{self._model}:batchEmbedContents?key={self._api_key}"
@@ -181,7 +135,8 @@ class WorkersAIEmbedder:
     the board, so its threshold is its own (~0.53 against ~0.68); the scale differs,
     the discrimination does not.
 
-    Needs a token with Workers AI → Read; the wrangler token carries account:read only.
+    Needs a token with Workers AI → Read (`CLOUDFLARE_EMBEDDING_API_TOKEN`); the wrangler
+    token carries account:read only.
     """
 
     # No pause: the text-embedding limit is 3000 req/min and a full-corpus pass at 100
@@ -192,32 +147,29 @@ class WorkersAIEmbedder:
         self,
         api_token: str,
         account_id: str,
-        cache_path: Path,
         model: str = WORKERS_AI_MODEL,
     ) -> None:
         self._token = api_token
         self._account = account_id
         self._model = model
-        self._cache = _VectorCache(cache_path)
         self.usage = _Usage()
         self.usage.input_tokens = 0
         self.usage.neurons = 0.0
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Return a unit-length vector per input, hitting the API only for misses."""
-        missing = self._cache.missing(texts)
-        if missing:
-            logger.info("Embedding %d new text(s) (%d cached)", len(missing), len(self._cache))
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
-                for start in range(0, len(missing), self.BATCH_SIZE):
-                    batch = missing[start : start + self.BATCH_SIZE]
-                    for text, vector in zip(
-                        batch, await self._post_batch(http, batch), strict=True
-                    ):
-                        self._cache.put(text, normalize(vector))
-                    self.usage.embedded += len(batch)
-            self._cache.save()
-        return [self._cache.get(t) for t in texts]
+        """Return a unit-length vector per input."""
+        unique = list(dict.fromkeys(texts))
+        if not unique:
+            return []
+        logger.info("Embedding %d text(s)", len(unique))
+        vectors: dict[str, list[float]] = {}
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
+            for start in range(0, len(unique), self.BATCH_SIZE):
+                batch = unique[start : start + self.BATCH_SIZE]
+                for text, vector in zip(batch, await self._post_batch(http, batch), strict=True):
+                    vectors[text] = normalize(vector)
+                self.usage.embedded += len(batch)
+        return [vectors[t] for t in texts]
 
     async def _post_batch(self, http: httpx.AsyncClient, batch: list[str]) -> list[list[float]]:
         url = f"{WORKERS_AI_ROOT}/{self._account}/ai/run/{self._model}"
