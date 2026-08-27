@@ -26,6 +26,13 @@ from dataclasses import dataclass
 # deletes an article the reader might have wanted; a miss just lets one through.
 # The band is only 0.017 wide, so this is a real setting, not a round number —
 # 0.62 would suppress 18 unvoted articles, including every 統一發票千萬獎 headline.
+# ponytail: an absolute cutoff is the wrong shape and this constant is already
+# stale. `max_similarity` takes a maximum over the seed list, and a maximum over a
+# growing set can only rise — so every downvote raises every candidate's
+# `down_similarity`, and a fixed number suppresses more each time the reader votes.
+# Measured on one fixed window: 2 downvote seeds suppressed 8 articles, 24
+# suppressed 45. The replacement is a relative cutoff (rank, or a margin over the
+# window's own distribution); see docs/architecture.md §7.
 DEFAULT_THRESHOLD = 0.68
 
 

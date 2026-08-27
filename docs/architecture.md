@@ -462,6 +462,22 @@ and the token edit becomes worth making. That is a durability decision, not a cl
 **The local-directory writer stays** as the no-D1 fallback, the same shape as `sources.yaml` behind
 the `sources` table: `backend = "json"` keeps writing `agent-vault/html/` and deploying a directory.
 
+**What this costs, stated plainly.** Three things a reviewer should be able to check:
+
+- **Durability.** Digest HTML holds LLM summaries stored nowhere else, so the deployed site is not
+  just the archive's *home*, it is its only copy. Deleting the Pages project deletes history. This
+  is better than what it replaced — one gitignored directory on one Mac mini — and worse than a
+  copy in R2. It is a decision, not an oversight; tracked in §7.
+- **Recovery.** If D1 is lost, the manifest is rebuilt rather than gone: the live `index.html` lists
+  every digest, so fetching each page and re-running `asset_hash` reconstructs path → hash exactly.
+  Written down because "recoverable in principle" that nobody has written down is not recoverable.
+  The reverse — losing the *site* — is not self-healing: `deploy_manifest` raises rather than
+  quietly deploying a truncated archive, which is the right failure but still a failure.
+- **Ceiling.** Every deploy sends a manifest of every file and asks `check-missing` about every
+  hash. The account's upload token caps a deployment at **20,000 files** (read from the JWT's
+  `max_file_count_allowed`). At two digests a day that is four files a day — roughly thirteen years.
+  The upgrade path when it matters is to prune the archive tail, not to add a storage tier.
+
 ### Why M4 did not use Vectorize
 
 The doc named Vectorize, and this deviates from it deliberately.
@@ -484,26 +500,38 @@ Reverting this is a config line (`provider`) plus restoring a cache class, not a
 change. `GeminiEmbedder` and `cyris embed-compare` stay for comparison; both are deletion
 candidates once `bge-m3` has weeks of production behind it.
 
-### Both thresholds are stale (found while collecting M4's receipt)
+### A fixed threshold is the wrong shape (found while collecting M4's receipt)
 
-M4's receipt was "`cyris vote-sim` at ≈0.53 suppresses the same set it does today". It does not,
-and the reason is not the new provider. Over 168h / 1,112 candidates, `cyris embed-compare` reports:
+M4's receipt was "`cyris vote-sim` at ≈0.53 suppresses the same set it does today". It does not, and
+the reason is neither the new provider nor a number that needs re-measuring.
 
-```
-gemini      @ 0.68  suppresses 31   margin 0.6984 -> 0.692
-workers_ai  @ 0.53  suppresses 40   margin 0.5733 -> 0.5322
-agree on 28, disagree on 15
-```
+**Votes are not in the embedding.** The model is general-purpose and knows nothing about this
+reader. A vote's only effect is to put one more *title vector* into a seed list, and
+`domain/similarity.max_similarity` takes the **maximum** cosine over that list. A maximum over a
+growing set is monotonically non-decreasing: every downvote can only raise every candidate's
+`down_similarity`, never lower it. So a **fixed absolute cutoff must over-suppress more each time
+the reader votes** — by construction, not by drift.
 
-**Both margins are inverted** — each cutoff now runs through a dense band rather than a gap. Both
-numbers were calibrated in `docs/vote-signal-measurement.md` against **7 up / 2 down** seeds; there
-are now **101 up / 24 down**. More seeds means more chances for any candidate to clear the bar, for
-either provider. This is a pre-existing drift the provider swap surfaced, not caused: the incumbent
-`gemini @ 0.68` is over-suppressing too, and was before M4 was written.
+Measured on one 168h window (1,112 candidates) at a fixed 0.53, varying only the seed cap:
 
-The thresholds were left at their published values. Re-tuning them to make this milestone's own
-receipt pass is exactly the check-shaped-to-fit the contract-first rule forbids. Recalibration
-against the current seed set is its own piece of work — see §7.
+| `max_seeds` | seeds | suppressed |
+|---|---|---|
+| 2 | 2 up / 2 down | 8 |
+| 5 | 5 / 5 | 27 |
+| 10 | 10 / 10 | 35 |
+| 25 | 25 / 24 | 45 |
+| 200 | 101 / 24 | 40 |
+
+Downvote seeds drive suppression up steeply; upvote seeds claw some back through the `up < down`
+guard, which is the only thing keeping this bounded at all. Both published thresholds were
+calibrated against **7 up / 2 down** seeds. There are now **101 / 24**, so both are stale — the
+incumbent `gemini @ 0.68` is over-suppressing too, and was before M4 was written.
+
+The numbers were left at their published values. Re-tuning them to make this milestone's own receipt
+pass is exactly the check-shaped-to-fit the contract-first rule forbids, and a new constant would go
+stale the same way for the same reason. The fix is a different *shape* — a relative cutoff (rank, or
+a margin over the window's own distribution) rather than an absolute cosine. That is its own piece
+of work; see §7.
 
 **What M1 actually removed** (2026-08-27): `DigestWriter` and `article_export`, `[obsidian]`,
 `CYRIS_VAULT_PATH` and the vault bind mount, `cyris articles export`, the vault export on a triage
@@ -540,7 +568,9 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 |---|---|---|
 | 11 | Retire the local JSON store | Waiting on M0's receipt: D1 `usage_log` gains a row from a container run **and** `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design**, and `agent-vault/articles/` must not be deleted |
 | 12 | Post-rebuild cleanup: delete `[miniflux]` from `cyris.toml`, `agent-vault/embeddings.json` + `embeddings-bge-m3.json`, `agent-vault/html/`, and the html bind mount in `docker-compose.yml` | `doctor` fails on `[miniflux]` — dead since 08-25, ignored by this build. All three are deferred for the same reason: the running container is still the pre-M1 image, whose hardcoded `GeminiEmbedder` reads `embeddings.json` through the bind mount and would rewrite it, and whose `cyris.toml` mount must not be disturbed before the M0 receipt run |
-| 13 | Recalibrate both similarity thresholds against the current seed set | 0.68 and 0.53 were measured against 7 up / 2 down seeds; there are now 101 / 24, and both margins have inverted. See "Both thresholds are stale" above. Affects the incumbent provider too — this is not an M4 regression |
+| 13 | Replace the absolute similarity threshold with a relative one | Not a recalibration: `max_similarity` over a growing seed list can only rise, so **any** fixed cutoff over-suppresses more with every vote — measured, 2→24 downvote seeds took suppression from 8 to 45 on a fixed window. Affects the incumbent provider too; this is not an M4 regression |
+| 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Digest HTML holds LLM summaries stored nowhere else, so deleting the Pages project deletes history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`) |
+| 15 | `cyris articles clean` deletes triaged rejected rows after 30 days | It erodes the downvote seeds — and since M4 those store rows are the *only* place the vote signal lives. The two lottery downvotes die in late September. One-line fix (`AND triaged_at IS NULL`) |
 
 ## 8. Where the core never changes
 

@@ -38,6 +38,9 @@ from blake3 import blake3
 logger = logging.getLogger(__name__)
 
 API_ROOT = "https://api.cloudflare.com/client/v4"
+# ponytail: every deploy names every file, and the upload token caps a deployment
+# at 20,000 (`max_file_count_allowed` in its JWT). Four files a day is ~13 years.
+# When it matters, prune the archive tail — do not add a storage tier for it.
 TIMEOUT_SECONDS = 120
 # wrangler's own ceilings (MAX_BUCKET_SIZE / MAX_BUCKET_FILE_COUNT).
 MAX_BUCKET_BYTES = 40 * 1024 * 1024
