@@ -269,8 +269,6 @@ Every persistent datum, where it lives now, and where it is going.
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Embedding cache | `embeddings.json` **322 MB** + `embeddings-bge-m3.json` **93 MB** | **Vectorize** | Loaded into memory and rewritten whole every run |
 | HTML digest + raw pages | `agent-vault/html/` | **R2** | `output_dir` is relative to cwd — hence the extra bind mount in compose |
-| `agent-vault/events/` | local, frozen | **delete** | Tracked-topics feature was removed |
-| parity logs | `agent-vault/*.out,.err,.jsonl` | **move out** | Chore output, not agent state |
 
 The three D1 tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
 declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
@@ -319,9 +317,10 @@ Two consequences of grade D being homeless today:
 - `POST /api/settings` writes `cyris.toml` via `config.write_llm_provider`, but that file is baked
   into the image and mounted `:ro` in the container — **the settings page cannot work in the cloud
   as written.** Tracked in `schedule-settings-d1`.
-- The digest schedule has three expressions: `docker/crontab`, `cyris.toml [general]
-  digest_schedule` (the retired launchd path), and the planned D1 row. **D1 wins; the other two are
-  deleted when `cloud-p3` retires supercronic.**
+- The digest schedule has two expressions: `docker/crontab` — the only one in force — and
+  `cyris.toml [general] digest_schedule`, which nothing reads since launchd was deleted. **M2 adds
+  the D1 row and makes it the effective one, with the file key as its fallback; the crontab becomes
+  a fixed hourly tick that asks D1 whether this is a digest hour.**
 
 Credentials never live in `cyris.toml`. Each config model injects its own from the environment in a
 `model_validator`, so what the settings page reports as *configured* is what a run would actually
@@ -399,7 +398,7 @@ Two things this table deliberately makes explicit:
 | 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
 | 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
 | 3 | Embeddings | `embeddings.json`, 322 MB, rewritten whole per run | **Workers AI `bge-m3` + Vectorize** (threshold ≈0.53, already measured) | `cloud-p3` · `evaluate-embedding-provider` |
-| 7 | Scheduling | `docker/crontab` + supercronic | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
+| 7 | Scheduling | `docker/crontab` + supercronic, fixed 08:00/20:00 | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
 | 8 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 
 ### Blocking one-button deploy
@@ -422,7 +421,6 @@ Two things this table deliberately makes explicit:
 | # | What | Why it matters |
 |---|---|---|
 | 14 | `cyris doctor` reports what the *config* asks for, not what *this build* supports | It went green inside a container that was ignoring `[store]` entirely. A capability check would have caught the 2026-08-25→27 split on day one |
-| 16 | `agent-vault/events/` and the `*-parity.{out,err,jsonl}` chore logs | Frozen leftovers and chore output living inside agent state |
 | 17 | Retire the local JSON store | Pending tonight's receipt: D1 `usage_log` gains a row and `usage.jsonl` stops growing. Until then `store diff` reports `differing: 2` **by design** |
 
 ## 8. Where the core never changes

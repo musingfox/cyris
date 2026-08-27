@@ -91,7 +91,7 @@ two before you commit to the switch. The full order is in
 
 ## Docker Deployment
 
-Run cyris in a container — no macOS/launchd dependency:
+Run cyris in a container — this is how it is scheduled:
 
 ```bash
 cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_RSS_TOKEN, ...
@@ -122,7 +122,6 @@ See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs
 ```
 cyris doctor                  Check the config; non-zero exit if a run would break
 cyris run                     Full pipeline: fetch, score, digest
-cyris schedule install        Install launchd jobs (digest + hourly promote-sync)
 cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
 cyris triage-ui               Start swipe-based triage web UI (also /settings, to pick the LLM provider)
 cyris articles list           List articles in store
@@ -266,7 +265,7 @@ Digest output language is configurable via `[digest] output_language` (default
 | Package manager | uv |
 | Feed buffer | Cloudflare Worker cron → D1 (optional) |
 | AI processing | Anthropic Claude, Google Gemini, OpenAI, or Cloudflare Workers AI |
-| Scheduling | macOS launchd (local) · supercronic (Docker) |
+| Scheduling | supercronic (Docker) |
 | Output | Cloudflare Pages (HTML) |
 | Notifications | Discord webhook |
 

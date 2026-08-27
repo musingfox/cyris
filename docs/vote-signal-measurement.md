@@ -264,9 +264,10 @@ informative when the downvote set covers something subtler; the 統一發票千�
 the obvious candidate.
 
 So it keeps running rather than closing. `cyris embed-compare` judges a window with both
-providers and appends a line to `agent-vault/embed-parity.jsonl` (daily, launchd
-`com.cyris.embed-parity`), including the two things this measurement could not produce:
-**observed** cost and latency. 168h window, both caches warm —
+providers, including the two things this measurement could not produce: **observed** cost
+and latency. It ran daily under launchd until 2026-08-27, when the job was removed — it had
+been returning "no candidates" since the D1 cutover, and M4 makes `bge-m3` the production
+embedder anyway, which is the outcome the parity run existed to justify. 168h window, both caches warm —
 
 ```
 1255 candidate(s) over 168h, 7 up / 2 down seed(s)

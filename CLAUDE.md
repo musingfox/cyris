@@ -86,7 +86,6 @@ src/cyris/
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
 │   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/
 │   └── webhook_server.py    # Email webhook receiver for newsletter ingestion
-├── schedule/         # macOS launchd plist management
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
@@ -126,7 +125,6 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest |
 | `cyris doctor` | Read-only config health check; exits non-zero on anything that would break a run |
-| `cyris schedule install\|uninstall\|status` | Manage launchd runs (digest + hourly promote-sync jobs) |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |

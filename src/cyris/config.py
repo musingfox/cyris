@@ -51,6 +51,8 @@ class RoutingConfig(BaseModel):
 
 
 class GeneralConfig(BaseModel):
+    # Grade D, file fallback: the effective schedule is the D1 settings row.
+    # This is what a deployment falls back to when that row is absent.
     digest_schedule: list[str] = Field(default_factory=lambda: ["08:00", "20:00"])
     timezone: str = "Asia/Taipei"
     digest_window_hours: int = Field(default=24, ge=1, le=168)

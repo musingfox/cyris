@@ -148,8 +148,8 @@ None of this needs the cloud, and all of it is wrong to carry forward.
       `RssSource` is wired as the no-buffer fallback. `mark_as_read` went with them: every
       remaining source no-ops it (the newsletter Worker ACKs inside `fetch_articles`), so
       the method left `FetchSource` and `SaveResult.miniflux_ids` left the domain.
-      `compare.py` stays — it is the only tool that can audit the buffer now that there is
-      no second source to diff against.
+      `compare.py` went with them on 2026-08-27: it could only diff against Miniflux, and
+      had been raising `AttributeError` on every run since the day Miniflux was retired.
 
 - [x] **Drop the TMTB source.** Its feed served one item dated 2023-08-24 — dormant for
       three years.
