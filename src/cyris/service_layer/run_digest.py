@@ -32,9 +32,7 @@ class RunOptions:
 class RunReport:
     status: str  # "ok" | "no_articles" | "no_pending"
     rendered: str | None = None  # dry-run render of the digest
-    digest_path: Path | None = None
     html_path: Path | None = None
-    raw_path: Path | None = None
     failed_sources: list[str] = field(default_factory=list)
 
 
@@ -198,11 +196,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     digest_url = ""  # online (Cloudflare Pages) URL, set after a successful publish
     publish_failed = False
     if options.dry_run:
-        report.rendered = deps.writer.render(content)
+        report.rendered = deps.html_writer.render(content) if deps.html_writer else ""
     else:
-        report.digest_path = deps.writer.write(content)
-        progress(f"Digest written to {report.digest_path}")
-
         # Update article states in store — before the raw outputs, so they show
         # this run's verdicts rather than a store snapshot taken one step early.
         url_to_state: dict[str, tuple[ArticleState, str | None]] = {}
@@ -219,10 +214,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         collected = []
         try:
             collected = store.load_by_time_range(start=window_start, end=load_end)
-            report.raw_path = deps.writer.write_raw_list(content.date, content.period, collected)
-            progress(f"Raw list written to {report.raw_path}")
         except Exception as e:
-            logger.error("Failed to write raw list: %s", e)
+            logger.error("Failed to load the window's collected articles: %s", e)
 
         # HTML output (optional, non-blocking)
         if deps.html_writer is not None:

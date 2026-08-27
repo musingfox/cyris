@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cyris.config import AppConfig, Config, LLMProviderConfig, ObsidianConfig
+from cyris.config import AppConfig, Config, LLMProviderConfig
 from cyris.domain.models import SourceConfig, Tier
 from cyris.service_layer import doctor
 
@@ -24,9 +24,7 @@ def no_network(monkeypatch):
 
 
 def _config(tmp_path: Path, **app_kwargs) -> Config:
-    vault = tmp_path / "vault"
-    (vault / "Digests").mkdir(parents=True)
-    app = AppConfig(obsidian=ObsidianConfig(user_vault_path=vault), **app_kwargs)
+    app = AppConfig(**app_kwargs)
     app.agent_vault.path = tmp_path / "agent-vault"
     return Config(
         app=app,
@@ -99,13 +97,6 @@ async def test_no_provider_is_a_warning_not_a_failure(tmp_path: Path) -> None:
     check = _by_name(await doctor.run_checks(_config(tmp_path)), "llm provider")
 
     assert check.status == "warn"
-
-
-async def test_a_missing_vault_is_a_failure(tmp_path: Path) -> None:
-    cfg = _config(tmp_path)
-    cfg.app.obsidian.user_vault_path = tmp_path / "nowhere"
-
-    assert _by_name(await doctor.run_checks(cfg), "obsidian vault").status == "fail"
 
 
 async def test_an_unwired_rss_buffer_warns_with_the_measured_cost(tmp_path: Path) -> None:

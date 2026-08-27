@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 from aiohttp import web
 
-from cyris.adapters.output.article_export import ArticleExporter
 from cyris.domain.models import ArticleState
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.ports import ArticleRepository
@@ -50,14 +49,12 @@ class TriageServer:
     def __init__(
         self,
         store: ArticleRepository,
-        vault_path: Path | None = None,
         host: str = "127.0.0.1",
         port: int = 8766,
         config_path: Path | None = None,
         llm_provider=None,
     ) -> None:
         self._store = store
-        self._vault_path = vault_path
         self._host = host
         self._port = port
         # Without these the settings page still renders, read-only: nothing to
@@ -167,19 +164,7 @@ class TriageServer:
             return web.json_response({"ok": False, "error": "article not found"}, status=404)
         self._store.update_triage_timestamp([url], datetime.now(UTC))
 
-        # Try to export if vault_path is configured
-        exported = False
-        if self._vault_path:
-            try:
-                articles = self._store.get_by_urls([url])
-                if articles:
-                    ArticleExporter().export_to_vault(articles, self._vault_path, folder="Reading")
-                    exported = True
-                    logger.info("Exported article to vault: %s", url)
-            except Exception as e:
-                logger.warning("Failed to export article %s: %s", url, e)
-
-        return web.json_response({"ok": True, "exported": exported})
+        return web.json_response({"ok": True})
 
     async def _handle_stats(self, request: web.Request) -> web.Response:
         counts = self._store.count_by_state()

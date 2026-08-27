@@ -10,7 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cyris.adapters.store.article_store import ArticleStore
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, ArticleState, Tier
 from cyris.entrypoints.cli import app
 
 runner = CliRunner()
@@ -67,9 +67,9 @@ model = "claude-sonnet-4-6"
 [digest]
 max_articles_per_digest = 200
 
-[obsidian]
-user_vault_path = "{tmp_path / "user-vault"}"
-digest_folder = "Digests"
+[html_output]
+enabled = true
+output_dir = "{tmp_path / "html"}"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
@@ -102,17 +102,13 @@ sources:
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(sources_content)
 
-    # Create vault directories
-    user_vault = tmp_path / "user-vault"
-    user_vault.mkdir()
-    (user_vault / "Digests").mkdir()
-    (user_vault / "Reading").mkdir()
+    html_dir = tmp_path / "html"
 
     agent_vault = tmp_path / "agent-vault"
     agent_vault.mkdir()
     (agent_vault / "daily" / "newsletters").mkdir(parents=True)
 
-    return config_path, sources_path, user_vault, agent_vault
+    return config_path, sources_path, html_dir, agent_vault
 
 
 class TestRunPipelineE2E:
@@ -120,7 +116,7 @@ class TestRunPipelineE2E:
 
     def test_run_happy_path(self, e2e_config: tuple[Path, Path, Path, Path]) -> None:
         """Test full run pipeline with mocked external services."""
-        config_path, sources_path, user_vault, agent_vault = e2e_config
+        config_path, sources_path, html_dir, agent_vault = e2e_config
 
         # Real clock throughout: run_digest must pick up articles saved within
         # the same run (regression coverage for the reload end bound).
@@ -180,7 +176,7 @@ class TestRunPipelineE2E:
                                 "summary": "Weekly technology trends and insights",
                                 "articles": [
                                     {
-                                        "id": "103",
+                                        "id": "0",
                                         "title": "Weekly Tech Trends",
                                         "source": "Stratechery",
                                     }
@@ -220,17 +216,15 @@ class TestRunPipelineE2E:
 
         # Assertions
         assert result.exit_code == 0, f"Run failed: {result.stdout}"
-        assert "Digest written to" in result.stdout
+        assert "HTML digest written to" in result.stdout
 
         # Verify digest file exists (date comes from the real clock)
-        digest_files = list((user_vault / "Digests").glob("*-morning.md"))
+        digest_files = [p for p in html_dir.glob("*-morning.html") if "raw" not in p.name]
         assert len(digest_files) == 1, f"Expected one digest, found {digest_files}"
-        digest_file = digest_files[0]
 
-        # Verify digest content
-        digest_content = digest_file.read_text()
-        assert "---" in digest_content  # Frontmatter
-        assert "新聞聚合" in digest_content or "主題摘要" in digest_content  # Section headings
+        # Verify digest content: the summarize-tier article reaches the page
+        digest_content = digest_files[0].read_text()
+        assert "Weekly Tech Trends" in digest_content
 
         # Verify article store was updated
         store = ArticleStore(agent_vault)
@@ -239,7 +233,7 @@ class TestRunPipelineE2E:
 
     def test_run_no_articles(self, e2e_config: tuple[Path, Path, Path, Path]) -> None:
         """Test run command when no articles are found."""
-        config_path, sources_path, user_vault, agent_vault = e2e_config
+        config_path, sources_path, html_dir, agent_vault = e2e_config
 
         with _patch_feeds({}):
             # Run full pipeline
@@ -257,7 +251,7 @@ class TestArticlesLifecycleE2E:
     """E2E tests for articles lifecycle commands."""
 
     @pytest.fixture
-    def articles_config(self, tmp_path: Path) -> tuple[Path, Path, Path, Path, ArticleStore]:
+    def articles_config(self, tmp_path: Path) -> tuple[Path, Path, Path, ArticleStore]:
         """Create config and store with test articles."""
         # Create config files
         toml_content = f'''
@@ -268,10 +262,6 @@ timezone = "Asia/Taipei"
 api_key = "test"
 model = "test"
 
-[obsidian]
-user_vault_path = "{tmp_path / "vault"}"
-digest_folder = "Digests"
-
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
 '''
@@ -281,10 +271,6 @@ path = "{tmp_path / "agent-vault"}"
         sources_path.write_text("sources: []")
 
         # Create directories
-        vault = tmp_path / "vault"
-        vault.mkdir()
-        (vault / "Reading").mkdir()
-        (vault / "Digests").mkdir()
         agent_vault = tmp_path / "agent-vault"
         agent_vault.mkdir()
 
@@ -322,13 +308,11 @@ path = "{tmp_path / "agent-vault"}"
         ]
         store.save(articles, now=now)
 
-        return config_path, sources_path, vault, agent_vault, store
+        return config_path, sources_path, agent_vault, store
 
-    def test_accept_and_export_lifecycle(
-        self, articles_config: tuple[Path, Path, Path, Path, ArticleStore]
-    ) -> None:
-        """Test accepting and exporting articles."""
-        config_path, sources_path, vault, agent_vault, store = articles_config
+    def test_accept_lifecycle(self, articles_config: tuple[Path, Path, Path, ArticleStore]) -> None:
+        """Accepting by URL marks the rows accepted and human-stamped."""
+        config_path, sources_path, agent_vault, store = articles_config
 
         # Step 1: Accept 2 articles
         result = runner.invoke(
@@ -347,30 +331,8 @@ path = "{tmp_path / "agent-vault"}"
         assert result.exit_code == 0
         assert "2" in result.stdout
 
-        # Step 2: Export accepted articles
-        result = runner.invoke(
-            app,
-            [
-                "articles",
-                "export",
-                "--state",
-                "accepted",
-                "--config",
-                str(config_path),
-                "--sources",
-                str(sources_path),
-            ],
-        )
-        assert result.exit_code == 0
-        assert "2" in result.stdout or "Exported" in result.stdout
-
-        # Verify files in Reading folder
-        reading_folder = vault / "Reading"
-        markdown_files = list(reading_folder.glob("*.md"))
-        assert len(markdown_files) == 2
-
-        # Verify frontmatter
-        for md_file in markdown_files:
-            content = md_file.read_text()
-            assert "---" in content
-            assert "url:" in content
+        # Step 2: both rows are accepted, and stamped as a human decision
+        for url in ("https://example.com/1", "https://example.com/2"):
+            row = store.get_by_urls([url])[0]
+            assert row.state == ArticleState.ACCEPTED
+            assert row.triaged_at is not None

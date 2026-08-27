@@ -4,7 +4,6 @@ services:
     env_file: .env
     environment:
       - TZ=${TZ:-Asia/Taipei}
-      - CYRIS_VAULT_PATH=/vault
       - CYRIS_AGENT_VAULT_PATH=/data/agent-vault
     volumes:
       # Single-file mounts bind an inode, and editors replace files by rename, so
@@ -13,7 +12,6 @@ services:
       # Plain `up -d` won't do it: compose sees no config change and leaves it running.
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
-      - ${CYRIS_VAULT_HOST_PATH:-./vault}:/vault
       - ./agent-vault:/data/agent-vault
       # [html_output] output_dir is relative to cwd (/app), so it lands outside
       # /data and every container recreate wiped the archive. Mount it back.

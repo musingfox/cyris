@@ -40,7 +40,7 @@ def test_no_model_at_all_is_also_unknown():
 
 def test_an_unpriced_run_still_renders_a_digest(tmp_path):
     """The failure that would actually page someone: a format string on None."""
-    from cyris.adapters.output.digest import DigestWriter
+    from cyris.adapters.output.html_digest import HtmlDigestWriter
 
     content = DigestContent(
         date="2026-08-25",
@@ -50,10 +50,9 @@ def test_an_unpriced_run_still_renders_a_digest(tmp_path):
         articles_included=1,
         usage=_usage("@cf/openai/gpt-oss-120b"),
     )
-    rendered = DigestWriter(tmp_path).render(content)
+    rendered = HtmlDigestWriter(tmp_path).render(content)
 
-    assert "預估費用" not in rendered
-    assert "API 用量" in rendered  # tokens are still real and still reported
+    assert "2000000 tokens" in rendered  # tokens are still real and still reported
 
 
 def test_an_unpriced_run_still_builds_a_discord_payload():

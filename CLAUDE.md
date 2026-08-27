@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic Claude or Google Gemini) with tier-based filtering/summarization, and outputs Obsidian markdown digest notes.
+Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic, Gemini, OpenAI or Cloudflare Workers AI) with tier-based filtering/summarization, and publishes an HTML digest to Cloudflare Pages.
 
 ## Commands
 
@@ -42,7 +42,7 @@ uv run pytest tests/test_newsletter_real_fixtures.py
 
 **Read `docs/architecture.md` before any non-trivial change.** It is the authoritative description of this system, and it is written to be acted on, not just read:
 
-- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. It also names what is *out* of the target architecture, not merely unfinished: `DigestWriter`/Obsidian output is gone, and any edge touching the local filesystem is a defect with a stated destination.
+- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. It also names what is *out* of the target architecture, not merely unfinished: Obsidian output is gone, and any edge touching the local filesystem is a defect with a stated destination.
 - **§3 How a digest is made** — the two ingestion paths and why they have different shapes (RSS is an idempotent buffer, email is a pull/ack queue). Read this before touching a Worker or a `FetchSource`.
 - **§4 Data residency** — every persistent datum, where it lives, where it is going. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
 - **§5 Configuration: four grades** — A baked / B deployment identity / C secrets / D runtime-mutable. Every new setting must be assigned a grade and put in that grade's home. `cyris.toml` is not a default home.
@@ -78,7 +78,7 @@ src/cyris/
 │   ├── workers_ai_client.py # WorkersAIClient (implements LLMClient) over Cloudflare Workers AI
 │   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL
 │   ├── fetch/               # RSS sources (direct + Worker buffer), newsletter archive + Cloudflare-worker sources, email parser
-│   ├── output/              # DigestWriter, HTML digest, raw collected-article listings, article export, publish, usage log
+│   ├── output/              # HTML digest, raw collected-article listings, publish, usage log
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   └── http_client.py       # Shared httpx client
@@ -106,8 +106,8 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 3. `service_layer/scoring.py` scores non-news articles via the LLM for relevance ranking
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
-6. `adapters/output/digest.py` renders the final Obsidian markdown note; `domain/selection.py` layers featured articles by score
-7. Alongside each digest, both writers emit a companion listing every article the window collected — uncapped and unfiltered, so what the digest dropped stays visible: `{date}-{period}-raw.md` in the vault and `{date}-{period}-raw.html` grouped by source, linked from the digest footer and deployed with the rest of the Pages directory
+6. `adapters/output/html_digest.py` renders the digest page; `domain/selection.py` layers featured articles by score
+7. Alongside each digest, the writer emits a companion listing every article the window collected — uncapped and unfiltered, so what the digest dropped stays visible: `{date}-{period}-raw.html` grouped by source, linked from the digest footer and deployed with the rest of the Pages directory
 
 ### Adapter Extension Points
 
@@ -116,7 +116,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 - **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured), `NewsletterArchiveSource`, `CloudflareNewsletterSource`.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it).
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation fails at the CLI or the triage UI, not at import.
-- **Output sinks** — `DigestWriter`, `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
+- **Output sinks** — `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
 `ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map, and what each of these is being replaced by: `docs/architecture.md`.
 
@@ -145,7 +145,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned Obsidian vault for persistent state. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/events/` holds the timeline files the removed tracked-topics feature wrote (tracked in git, frozen — nothing updates them).
+Agent-owned state directory. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/events/` holds the timeline files the removed tracked-topics feature wrote (tracked in git, frozen — nothing updates them).
 
 ## Conventions
 

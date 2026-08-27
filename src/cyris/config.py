@@ -113,18 +113,6 @@ class DigestConfig(BaseModel):
     style_prompt: str = ""  # optional reader-defined tone/focus injected into prompts
 
 
-class ObsidianConfig(BaseModel):
-    user_vault_path: Path = Path("~/Documents/ObsidianVault")
-    digest_folder: str = "Digests"
-
-    @model_validator(mode="after")
-    def expand_path(self) -> "ObsidianConfig":
-        if p := os.environ.get("CYRIS_VAULT_PATH"):
-            self.user_vault_path = Path(p)
-        self.user_vault_path = self.user_vault_path.expanduser()
-        return self
-
-
 class AgentVaultConfig(BaseModel):
     path: Path = Path("./agent-vault")
 
@@ -223,7 +211,6 @@ class AppConfig(BaseModel):
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     llm_provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     digest: DigestConfig = Field(default_factory=DigestConfig)
-    obsidian: ObsidianConfig = Field(default_factory=ObsidianConfig)
     agent_vault: AgentVaultConfig = Field(default_factory=AgentVaultConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)

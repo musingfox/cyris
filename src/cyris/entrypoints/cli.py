@@ -748,7 +748,6 @@ def triage_ui(
     async def _run() -> None:
         server = TriageServer(
             store,
-            vault_path=cfg.app.obsidian.user_vault_path,
             host=host,
             port=port,
             config_path=config_path,
@@ -847,7 +846,6 @@ def articles_accept(
     ),
 ) -> None:
     """Accept articles by URL."""
-    from cyris.adapters.output.article_export import ArticleExporter
     from cyris.bootstrap import build_store
     from cyris.config import load_config
 
@@ -871,17 +869,6 @@ def articles_accept(
         store.update_triage_timestamp(accepted_urls, datetime.now(UTC))
 
     typer.echo(f"Accepted {updated} article(s).")
-
-    # Export to vault if configured and articles were accepted
-    vault_path = cfg.app.obsidian.user_vault_path
-    if vault_path and updated > 0:
-        try:
-            articles = store.get_by_urls(accepted_urls)
-            if articles:
-                ArticleExporter().export_to_vault(articles, vault_path, folder="Reading")
-                typer.echo(f"Exported {len(articles)} article(s) to vault.")
-        except Exception as e:
-            logger.warning("Failed to export articles: %s", e)
 
 
 @articles_app.command("reject")
@@ -912,51 +899,6 @@ def articles_reject(
         store.update_triage_timestamp(urls, datetime.now(UTC))
 
     typer.echo(f"Rejected {updated} article(s).")
-
-
-@articles_app.command("export")
-def articles_export(
-    state: Annotated[str, typer.Option(help="State filter")] = "accepted",
-    folder: Annotated[str, typer.Option(help="Vault subfolder")] = "Reading",
-    limit: Annotated[int, typer.Option(help="Max articles")] = 100,
-    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
-        "cyris.toml"
-    ),
-    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
-        "sources.yaml"
-    ),
-) -> None:
-    """Export articles to user vault."""
-    from cyris.adapters.output.article_export import ArticleExporter
-    from cyris.bootstrap import build_store
-    from cyris.config import load_config
-    from cyris.domain.models import ArticleState
-
-    try:
-        cfg = load_config(config_path, sources_path)
-    except (FileNotFoundError, ValueError) as e:
-        logger.error("Configuration error: %s", e)
-        raise typer.Exit(1) from e
-
-    store = build_store(cfg)
-
-    # Parse state filter
-    try:
-        state_filter = ArticleState(state)
-    except ValueError:
-        typer.echo(f"Invalid state: {state}")
-        raise typer.Exit(1) from None
-
-    articles = store.list_articles(state=state_filter, limit=limit)
-
-    if not articles:
-        typer.echo("No articles to export.")
-        return
-
-    exporter = ArticleExporter()
-    paths = exporter.export_to_vault(articles, cfg.app.obsidian.user_vault_path, folder=folder)
-
-    typer.echo(f"Exported {len(paths)} article(s) to {cfg.app.obsidian.user_vault_path / folder}")
 
 
 @articles_app.command("clean")

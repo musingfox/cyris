@@ -7,14 +7,13 @@ from pathlib import Path
 
 from fakes import FakeLLM
 
-from cyris.adapters.output.digest import DigestWriter
+from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store import ArticleStore
 from cyris.bootstrap import Deps
 from cyris.config import (
     AgentVaultConfig,
     AppConfig,
     Config,
-    ObsidianConfig,
 )
 from cyris.domain.models import Article, ArticleState, Tier
 from cyris.service_layer.run_digest import RunOptions, run_digest
@@ -40,14 +39,12 @@ def make_deps(
     *,
     discord_contents: list | None = None,
 ) -> tuple[Deps, list]:
-    user_vault = tmp_path / "user-vault"
-    (user_vault / "Digests").mkdir(parents=True)
+    html_dir = tmp_path / "html"
     agent_vault = tmp_path / "agent-vault"
-    agent_vault.mkdir()
+    agent_vault.mkdir(parents=True)
 
     cfg = Config(
         app=AppConfig(
-            obsidian=ObsidianConfig(user_vault_path=user_vault),
             agent_vault=AgentVaultConfig(path=agent_vault),
         ),
         sources={},
@@ -65,8 +62,7 @@ def make_deps(
         store=ArticleStore(agent_vault),
         llm=llm,
         fetch_sources=[source],
-        writer=DigestWriter(user_vault, "Digests"),
-        html_writer=None,
+        html_writer=HtmlDigestWriter(html_dir),
         publish=None,
         sync_promotions=None,
         log_usage=lambda content: None,
@@ -97,7 +93,11 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
                             "heading": "AI 趨勢",
                             "summary": "企業加速導入 AI",
                             "articles": [
-                                {"id": 1, "title": "Enterprise AI Adoption", "source": "TechSource"}
+                                {
+                                    "id": "0",
+                                    "title": "Enterprise AI Adoption",
+                                    "source": "TechSource",
+                                }
                             ],
                         }
                     ]
@@ -113,8 +113,8 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
     report = await run_digest(deps, RunOptions())
 
     assert report.status == "ok"
-    assert report.digest_path is not None and report.digest_path.exists()
-    assert "AI 趨勢" in report.digest_path.read_text()
+    assert report.html_path is not None and report.html_path.exists()
+    assert "Enterprise AI Adoption" in report.html_path.read_text()
 
     # Article saved, scored, and accepted
     stored = deps.store.get_by_urls(["https://example.com/ai"])
@@ -129,7 +129,7 @@ async def test_run_digest_no_articles(tmp_path: Path) -> None:
     report = await run_digest(deps, RunOptions())
 
     assert report.status == "no_articles"
-    assert report.digest_path is None
+    assert report.html_path is None
 
 
 async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> None:

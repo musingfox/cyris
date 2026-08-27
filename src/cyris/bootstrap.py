@@ -12,7 +12,6 @@ from cyris.adapters.fetch.newsletter_source import NewsletterArchiveSource
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord
 from cyris.adapters.openai_client import OpenAIClient
-from cyris.adapters.output.digest import DigestWriter
 from cyris.adapters.output.usage_log import append_usage, append_usage_d1
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
@@ -84,7 +83,6 @@ class Deps:
     store: ArticleRepository
     llm: LLMClient | None  # None ⇒ degraded (excerpt-only) mode
     fetch_sources: list[FetchSource]
-    writer: DigestWriter
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled
     publish: Callable[[str], bool] | None
     sync_promotions: Callable[[], int] | None
@@ -173,7 +171,6 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         store=store,
         llm=build_llm(cfg.app.llm_provider),
         fetch_sources=fetch_sources,
-        writer=DigestWriter(cfg.app.obsidian.user_vault_path, cfg.app.obsidian.digest_folder),
         html_writer=html_writer,
         publish=publish,
         sync_promotions=sync,

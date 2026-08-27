@@ -128,23 +128,7 @@ async def probe_llm(llm_cfg) -> Check:
 
 
 def _check_paths(cfg: Config) -> list[Check]:
-    vault = cfg.app.obsidian.user_vault_path
-    digests = vault / cfg.app.obsidian.digest_folder
     checks = []
-    if not vault.exists():
-        checks.append(
-            Check(
-                "obsidian vault",
-                "fail",
-                f"{vault} does not exist",
-                "Point [obsidian] user_vault_path at your vault, or CYRIS_VAULT_PATH.",
-            )
-        )
-    elif not _writable(digests):
-        checks.append(Check("obsidian vault", "fail", f"{digests} is not writable"))
-    else:
-        checks.append(Check("obsidian vault", "ok", str(digests)))
-
     agent_vault = cfg.app.agent_vault.path
     if _writable(agent_vault):
         checks.append(Check("agent vault", "ok", str(agent_vault)))

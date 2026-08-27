@@ -1,13 +1,13 @@
 # Cyris
 
-AI-powered information digest agent. Fetches articles from RSS feeds and newsletters, processes them through Claude API with tier-based filtering and summarization, and outputs Obsidian markdown digest notes.
+AI-powered information digest agent. Fetches articles from RSS feeds and newsletters, processes them through an LLM with tier-based filtering and summarization, and publishes an HTML digest to Cloudflare Pages.
 
 ## What it does
 
 - Subscribes to 50+ RSS feeds and newsletters, listed in one `sources.yaml`
 - Reduces daily article volume by 80%+ through AI-powered filtering
 - Scores and routes articles: high-relevance to digest, lower to triage queue
-- Generates twice-daily Obsidian markdown digest notes with thematic summaries
+- Generates twice-daily HTML digest pages with thematic summaries
 - Ships each digest with a companion listing everything the window collected, grouped by
   source, so what the filters dropped stays inspectable instead of disappearing
 - Learns user preferences from digest feedback to improve filtering over time
@@ -18,7 +18,6 @@ AI-powered information digest agent. Fetches articles from RSS feeds and newslet
 - Python 3.12+
 - [uv](https://github.com/astral-sh/uv) package manager
 - An LLM API key — Anthropic Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token
-- Obsidian vault for digest output
 - Optional: a Cloudflare account — for the **feed buffer** (see below), **email-only
   newsletter** ingestion, and the promote / HTML-publish features
 
@@ -49,7 +48,7 @@ Nothing below the first row is required. Start at the top and add only what you 
 
 | Feature | Needs | Cost |
 |---|---|---|
-| RSS digest to Obsidian | An LLM API key | LLM usage only |
+| RSS digest, HTML output | An LLM API key | LLM usage only |
 | Better feed coverage (see below) | A Cloudflare account | Workers Paid, US$5/mo |
 | Digest votes 👍/👎 | A Cloudflare account | Free tier |
 | Published HTML digest | A Cloudflare account | Free tier |
@@ -109,7 +108,6 @@ the same config file works locally and in Docker):
 
 | Env var | Purpose | Default |
 |---------|---------|---------|
-| `CYRIS_VAULT_PATH` | Obsidian digest output (in-container) | `/vault` |
 | `CYRIS_VAULT_HOST_PATH` | Host path mounted to `/vault` | `./vault` |
 | `CYRIS_AGENT_VAULT_PATH` | Persistent article store | `/data/agent-vault` (named volume) |
 
@@ -169,7 +167,7 @@ Three Protocols in `service_layer/ports.py` are the clean seams:
 | **Fetch source** (input) | `FetchSource` | `RssSource`, `CloudflareRssSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
 | **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` | add an AI provider |
 | **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
-| **Output** (sinks) | *direct inject* | `DigestWriter` (Obsidian md + raw list), `HtmlDigestWriter` (digest + raw page), `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
+| **Output** (sinks) | *direct inject* | `HtmlDigestWriter` (digest + raw page), `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
 
 Core code (`service_layer/` + `domain/`) never changes when you swap or add an
 adapter — that is the point of the Protocol seams.
@@ -272,7 +270,7 @@ Digest output language is configurable via `[digest] output_language` (default
 | Feed buffer | Cloudflare Worker cron → D1 (optional) |
 | AI processing | Anthropic Claude, Google Gemini, OpenAI, or Cloudflare Workers AI |
 | Scheduling | macOS launchd (local) · supercronic (Docker) |
-| Output | Obsidian (filesystem) |
+| Output | Cloudflare Pages (HTML) |
 | Notifications | Discord webhook |
 
 ## License

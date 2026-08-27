@@ -34,19 +34,6 @@ class TestLoadConfig:
         # language override on a non-English feed
         assert cfg.sources["報導者"].language == "zh"
 
-    def test_path_expansion(self, monkeypatch):
-        """User vault path should have ~ expanded."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
-
-        project_root = Path(__file__).parent.parent
-        cfg = load_config(
-            config_path=project_root / "cyris.toml.example",
-            sources_path=project_root / "sources.example.yaml",
-        )
-
-        assert "~" not in str(cfg.app.obsidian.user_vault_path)
-        assert cfg.app.obsidian.user_vault_path.is_absolute()
-
     def test_missing_config_file(self):
         with pytest.raises(FileNotFoundError, match="Config file not found"):
             load_config(config_path=Path("nonexistent.toml"))

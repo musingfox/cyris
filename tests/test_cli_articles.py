@@ -155,58 +155,6 @@ def test_articles_accept(setup_store: tuple[Path, Path, Path, ArticleStore]) -> 
     assert articles[0].state == ArticleState.ACCEPTED
 
 
-def test_articles_accept_with_export(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
-    """Test accepting articles with vault export."""
-    tmp_path, config_path, sources_path, store = setup_store
-    result = runner.invoke(
-        app,
-        [
-            "articles",
-            "accept",
-            "https://example.com/1",
-            "--config",
-            str(config_path),
-            "--sources",
-            str(sources_path),
-        ],
-    )
-    assert result.exit_code == 0
-    assert "Accepted 1" in result.stdout
-    assert "Exported" in result.stdout
-    # Verify markdown file created
-    vault_path = tmp_path / "vault"
-    reading_folder = vault_path / "Reading"
-    assert reading_folder.exists()
-    md_files = list(reading_folder.glob("*.md"))
-    assert len(md_files) == 1
-
-
-def test_articles_accept_multiple_urls(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
-    """Test accepting multiple articles at once."""
-    tmp_path, config_path, sources_path, store = setup_store
-    result = runner.invoke(
-        app,
-        [
-            "articles",
-            "accept",
-            "https://example.com/1",
-            "https://example.com/2",
-            "--config",
-            str(config_path),
-            "--sources",
-            str(sources_path),
-        ],
-    )
-    assert result.exit_code == 0
-    assert "Accepted 2" in result.stdout
-    assert "Exported 2" in result.stdout
-    # Verify both markdown files created
-    vault_path = tmp_path / "vault"
-    reading_folder = vault_path / "Reading"
-    md_files = list(reading_folder.glob("*.md"))
-    assert len(md_files) == 2
-
-
 def test_articles_accept_without_vault(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
     """Test accepting articles without vault_path configured."""
     tmp_path, config_path, sources_path, store = setup_store
@@ -287,28 +235,6 @@ def test_articles_reject(setup_store: tuple[Path, Path, Path, ArticleStore]) -> 
     )
     assert result.exit_code == 0
     assert "1" in result.stdout
-
-
-def test_articles_export(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
-    """Test exporting accepted articles to vault."""
-    tmp_path, config_path, sources_path, store = setup_store
-    # First accept an article
-    store.update_article_state("https://example.com/1", ArticleState.ACCEPTED)
-    result = runner.invoke(
-        app,
-        [
-            "articles",
-            "export",
-            "--state",
-            "accepted",
-            "--config",
-            str(config_path),
-            "--sources",
-            str(sources_path),
-        ],
-    )
-    assert result.exit_code == 0
-    assert "1" in result.stdout or "Exported" in result.stdout
 
 
 def test_articles_clean(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:

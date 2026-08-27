@@ -71,7 +71,7 @@ flowchart TB
         FEEDS[("Publisher feeds")]
         CFW{{"Cloudflare · Workers · D1 · KV · Pages"}}
         DISC{{"Discord"}}
-        FS["Local filesystem<br/>must be empty by P3"]
+        FS["Local filesystem<br/>must be empty by M3+M4"]
     end
 
     CLI --> DEPS
@@ -120,15 +120,16 @@ flowchart TB
 **Legend**: 🟢 Protocol boundary　🟠 still writes local files, must move　🔴 must not exist in the
 target architecture　🔵 already on Cloudflare
 
-### No Obsidian writer
+### No Obsidian writer — deleted 2026-08-27 (M1)
 
-`DigestWriter` — the Obsidian markdown note — **is out of the target architecture.** The digest's
-output is the HTML digest on Cloudflare Pages, plus the article store in D1. A reader who wants the
-digest in Obsidian exports it themselves from either.
+`DigestWriter` — the Obsidian markdown note — is **gone**. The digest's output is the HTML digest on
+Cloudflare Pages, plus the article store in D1. A reader who wants the digest in Obsidian exports it
+themselves from either.
 
-This removes more than one adapter: `cyris.toml [obsidian]`, the `CYRIS_VAULT_PATH` environment
-variable, and the vault bind mount in `docker-compose.yml` all go with it. The code still exists
-(`adapters/output/digest.py`); it is deleted with the rest of `cloud-p3`.
+It took its whole dependency cone with it: `adapters/output/digest.py`, `adapters/output/
+article_export.py`, `cyris.toml [obsidian]`, the `CYRIS_VAULT_PATH` environment variable, the vault
+bind mount in `docker-compose.yml`, `cyris articles export`, and the vault export that ran on a
+triage accept. `--dry-run` renders the HTML instead.
 
 ### Local filesystem is a defect, not a tier
 
@@ -268,7 +269,6 @@ Every persistent datum, where it lives now, and where it is going.
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Embedding cache | `embeddings.json` **322 MB** + `embeddings-bge-m3.json` **93 MB** | **Vectorize** | Loaded into memory and rewritten whole every run |
 | HTML digest + raw pages | `agent-vault/html/` | **R2** | `output_dir` is relative to cwd — hence the extra bind mount in compose |
-| Obsidian digest note | user vault via bind mount | **out of scope** | Export it yourself from the HTML digest or D1 |
 | Newsletter maildir | `agent-vault/daily/newsletters/` | **delete** | Superseded by the newsletter Worker |
 | `agent-vault/events/` | local, frozen | **delete** | Tracked-topics feature was removed |
 | parity logs | `agent-vault/*.out,.err,.jsonl` | **move out** | Chore output, not agent state |
@@ -312,7 +312,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | LLM provider + model | D | `cyris.toml [llm_provider]`, written by `/settings` | **D1 `settings`** |
 | Digest times + timezone | D | `docker/crontab` | **D1 `settings`** |
 | Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** |
-| `[obsidian]` vault path, `CYRIS_VAULT_PATH` | — | `cyris.toml` / env | **deleted** with `DigestWriter` |
+| ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | `EmailConfig` — legacy local webhook | — | `cyris.toml [email]` | **deleted**, superseded by the newsletter Worker |
 
 Two consequences of grade D being homeless today:
@@ -400,8 +400,6 @@ Two things this table deliberately makes explicit:
 | 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
 | 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
 | 3 | Embeddings | `embeddings.json`, 322 MB, rewritten whole per run | **Workers AI `bge-m3` + Vectorize** (threshold ≈0.53, already measured) | `cloud-p3` · `evaluate-embedding-provider` |
-| 4 | `article_export.py` | writes local files | **R2, or delete with the Obsidian path** | `cloud-p3` |
-| 5 | `DigestWriter` + `[obsidian]` + `CYRIS_VAULT_PATH` + vault mount | present | **delete** — Obsidian export is the reader's own job | `cloud-p3` |
 | 6 | `NewsletterArchiveSource` + `agent-vault/daily/newsletters/` | present | **delete** — the newsletter Worker replaced it | `cloud-p3` |
 | 7 | Scheduling | `docker/crontab` + supercronic | **Workers Cron Trigger** (fixed hourly, gated on D1) | `cloud-p3` · `schedule-settings-d1` |
 | 8 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
