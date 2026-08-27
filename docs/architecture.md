@@ -395,7 +395,7 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 | **M0** | Finish the D1 cutover | In flight | D1 `usage_log` gains a row from a container run **and** `agent-vault/usage.jsonl` stops growing. Then delete `agent-vault/articles/` | `cloud-p2` |
 | ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
 | ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
-| **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | A digest run writes no file under `agent-vault/` and the Pages URL still returns 200 | `cloud-p3` |
+| **M3** | HTML digest + raw pages → **R2**; publish → **Pages REST API** | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ⚠️ Half. ✅ Publishing is REST — the real archive deployed and `cyris-digest.pages.dev/2026-08-27-morning` returned the digest. ❌ R2 is **blocked on a token permission** | `cloud-p3` |
 | ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below | `cloud-p3` · `evaluate-embedding-provider` |
 | **M5** | **Into the Container** — Worker-fronted Container; triage UI + `/settings` served through it **behind real auth**; supercronic → Workers Cron `0 * * * *` gated on the D1 schedule row; `onActivityExpired` → `stop()` | Everything local is gone by now, so this is a move rather than a rewrite | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
 | **M6** | **One-button deploy** — `deploy.json`, the README button, the secret checklist, Worker URLs derived at deploy, and the three-Workers-vs-one decision | Only meaningful once nothing runs locally | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
@@ -407,6 +407,34 @@ Two things this table deliberately makes explicit:
   it M2 (its storage) and M5 (its auth) — never an afterthought.
 - **M1 comes before every port.** Eliminate, then simplify, then move. Porting something that should
   have been deleted costs twice.
+
+### Publishing without a subprocess (M3, 2026-08-27)
+
+`wrangler pages deploy` is gone, and with it node and wrangler from the image. The replacement is
+the Pages **direct-upload** protocol spoken over REST in `adapters/output/pages_deploy.py`, read off
+wrangler's own `wrangler-dist/cli.js` rather than reconstructed from documentation:
+
+```
+GET  /accounts/{a}/pages/projects/{p}/upload-token   → a short-lived JWT
+POST /pages/assets/check-missing   {hashes}          → which the account lacks
+POST /pages/assets/upload          [{key,value,…}]   → base64 payloads, ≤40 MB per request
+POST /pages/assets/upsert-hashes   {hashes}          → best-effort cache touch
+POST /accounts/{a}/pages/projects/{p}/deployments    → multipart: manifest + branch
+```
+
+Three details are load-bearing and each was verified against the live account:
+
+- **The asset key is `blake3(base64(bytes) + extension)`, hex, first 32 chars.** Hashing the bytes
+  instead of their base64 is not a tidier equivalent — Cloudflare's account-wide asset store is keyed
+  by that exact formulation, so any other one makes `check-missing` answer "all new" and the deploy
+  re-uploads the whole archive forever. The receipt that it is right: `check-missing` recognised
+  **57 of 57** files wrangler had uploaded on previous days.
+- **A deployment is a full snapshot.** A path missing from the manifest is deleted from the site, so
+  the manifest always covers every file, and an empty directory is refused rather than deployed.
+- **`branch` must be the production branch** or the deploy lands on a preview URL nobody reads.
+
+`_page_is_live` is untouched. The transport changed; the reason for distrusting a success report did
+not — it is the check that caught wrangler exiting 0 having deployed nothing.
 
 ### Why M4 did not use Vectorize
 
@@ -464,8 +492,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** | `cloud-p3` |
-| 2 | Publishing | `wrangler pages deploy` via shell-out | **Pages REST API** — a Worker-fronted container cannot shell out | `cloud-p3` |
+| 1 | HTML digest + raw pages | written to `agent-vault/html/` | **R2** — **blocked**: every token in `.env` answers 403 on `/r2/buckets`. Needs one token edit (R2 → Edit) | `cloud-p3` |
 | 4 | Scheduling | `docker/crontab` + supercronic, hourly tick gated on D1 | **Workers Cron Trigger**, same gate | `cloud-p3` |
 | 5 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
 

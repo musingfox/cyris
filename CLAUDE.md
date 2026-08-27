@@ -79,7 +79,8 @@ src/cyris/
 │   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL;
 │   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback
 │   ├── fetch/               # RSS sources (direct + Worker buffer), newsletter archive + Cloudflare-worker sources, email parser
-│   ├── output/              # HTML digest, raw collected-article listings, publish, usage log
+│   ├── output/              # HTML digest, raw collected-article listings, usage log;
+│   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   └── http_client.py       # Shared httpx client

@@ -1,6 +1,5 @@
 """Tests for the Cloudflare Pages publish step."""
 
-import subprocess
 from pathlib import Path
 
 import httpx
@@ -21,11 +20,25 @@ def _no_sleep(monkeypatch):
     monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
 
 
-def _fake_run(monkeypatch, *, returncode=0, stdout="", stderr=""):
-    def run(*_args, **_kwargs):
-        return subprocess.CompletedProcess([], returncode, stdout=stdout, stderr=stderr)
+@pytest.fixture(autouse=True)
+def _credentials(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
 
-    monkeypatch.setattr(publish_mod.subprocess, "run", run)
+
+def _fake_deploy(monkeypatch, *, fails=False):
+    """Stub the direct-upload client. Whether the deploy *worked* is _page_is_live's
+    question, and that is what these tests are about."""
+    runs = []
+
+    def deploy(_self, _directory, branch="main"):
+        runs.append(branch)
+        if fails:
+            raise publish_mod.PagesDeployError("boom")
+        return "dep-1"
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy", deploy)
+    return runs
 
 
 def _fake_get(monkeypatch, *pages):
@@ -42,29 +55,24 @@ def _fake_get(monkeypatch, *pages):
 
 
 def test_live_page_confirms_the_deploy(monkeypatch):
-    _fake_run(monkeypatch)
+    _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, LIVE_PAGE)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
 
 
-def test_exit_zero_without_a_live_page_is_a_failure(monkeypatch):
-    """wrangler exits 0 having deployed nothing, and the 404 fallback answers 200 —
-    that silently dropped the Discord link on 2026-08-18 evening and 2026-08-20 morning."""
-    _fake_run(monkeypatch)
+def test_a_created_deployment_without_a_live_page_is_a_failure(monkeypatch):
+    """A deployment id is not a live page, and the 404 fallback answers 200 — that
+    silently dropped the Discord link on 2026-08-18 evening and 2026-08-20 morning.
+    The transport changed; the reason for verifying it did not."""
+    _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
 
 
 def test_a_no_op_deploy_is_retried(monkeypatch):
-    runs = []
-
-    def run(*_args, **_kwargs):
-        runs.append(1)
-        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
-
-    monkeypatch.setattr(publish_mod.subprocess, "run", run)
+    runs = _fake_deploy(monkeypatch)
     # Every poll of the first deploy sees the fallback; the retry lands.
     _fake_get(monkeypatch, *([ARCHIVE_PAGE] * publish_mod.VERIFY_POLLS), LIVE_PAGE)
 
@@ -73,7 +81,7 @@ def test_a_no_op_deploy_is_retried(monkeypatch):
 
 
 def test_verification_tolerates_propagation_delay(monkeypatch):
-    _fake_run(monkeypatch)
+    _fake_deploy(monkeypatch)
     calls = _fake_get(monkeypatch, ARCHIVE_PAGE, LIVE_PAGE)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
@@ -81,21 +89,15 @@ def test_verification_tolerates_propagation_delay(monkeypatch):
 
 
 def test_retries_are_bounded(monkeypatch):
-    runs = []
-
-    def run(*_args, **_kwargs):
-        runs.append(1)
-        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
-
-    monkeypatch.setattr(publish_mod.subprocess, "run", run)
+    runs = _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
     assert len(runs) == publish_mod.DEPLOY_ATTEMPTS
 
 
-def test_nonzero_exit_skips_verification(monkeypatch):
-    _fake_run(monkeypatch, returncode=1, stderr="boom")
+def test_a_refused_deployment_skips_verification(monkeypatch):
+    _fake_deploy(monkeypatch, fails=True)
 
     def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
         raise AssertionError("should not verify a deploy that never ran")
@@ -106,7 +108,7 @@ def test_nonzero_exit_skips_verification(monkeypatch):
 
 
 def test_unreachable_page_is_a_failure(monkeypatch):
-    _fake_run(monkeypatch)
+    _fake_deploy(monkeypatch)
 
     def get(*_args, **_kwargs):
         raise httpx.ConnectError("no route")
@@ -118,28 +120,19 @@ def test_unreachable_page_is_a_failure(monkeypatch):
 
 def test_missing_project_name_short_circuits(monkeypatch):
     def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
-        raise AssertionError("should not shell out without a project name")
+        raise AssertionError("should not call the API without a project name")
 
-    monkeypatch.setattr(publish_mod.subprocess, "run", explode)
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy", explode)
 
     assert publish_html_digest(Path("html"), "", SLUG) is False
 
 
-def test_baked_wrangler_is_preferred_over_bunx(monkeypatch):
-    """The image runs wrangler on node; bunx silently no-op'd mid-deploy."""
-    seen = []
+def test_missing_credentials_fail_rather_than_calling_the_api(monkeypatch):
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
 
-    def run(cmd, *_args, **_kwargs):
-        seen.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("should not call the API without a token")
 
-    monkeypatch.setattr(publish_mod.subprocess, "run", run)
-    _fake_get(monkeypatch, LIVE_PAGE)
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy", explode)
 
-    monkeypatch.setattr(publish_mod.shutil, "which", lambda _n: "/usr/local/bin/wrangler")
-    publish_html_digest(Path("html"), "cyris-digest", SLUG)
-    assert seen[-1][:1] == ["wrangler"]
-
-    monkeypatch.setattr(publish_mod.shutil, "which", lambda _n: None)
-    publish_html_digest(Path("html"), "cyris-digest", SLUG)
-    assert seen[-1][:2] == ["bunx", publish_mod.WRANGLER]
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False

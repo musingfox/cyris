@@ -1,20 +1,23 @@
-"""Publish HTML digest directory to Cloudflare Pages."""
+"""Publish the HTML digest directory to Cloudflare Pages.
+
+Deploying goes through `pages_deploy.PagesClient` (the REST direct-upload
+protocol), not `wrangler pages deploy`. Verifying it stayed exactly as it was —
+`_page_is_live` is the receipt that caught the 2026-08-18/08-20 silent failures,
+and swapping the transport underneath it is no reason to trust the new one more.
+"""
 
 import logging
+import os
 import re
-import shutil
-import subprocess
 import time
 from pathlib import Path
 
 import httpx
 
+from cyris.adapters.output.pages_deploy import PagesClient, PagesDeployError
+
 logger = logging.getLogger(__name__)
 
-DEPLOY_TIMEOUT_SECONDS = 180
-# Fallback for local runs outside the container, which has no baked wrangler.
-# Pinned to the image's version (Dockerfile) — keep the two in sync.
-WRANGLER = "wrangler@4.122.0"
 DEPLOY_ATTEMPTS = 3
 # Cloudflare Pages serves the extensionless clean URL almost immediately, but
 # not always on the first read.
@@ -54,27 +57,21 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
 
 
 def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
-    """One `wrangler pages deploy` invocation. Exit code only — see _page_is_live."""
-    # The image bakes wrangler on node; bunx is the local-dev fallback.
-    launcher = ["wrangler"] if shutil.which("wrangler") else ["bunx", WRANGLER]
-    cmd = [
-        *launcher,
-        "pages",
-        "deploy",
-        str(html_dir),
-        "--project-name",
-        pages_project,
-        "--commit-dirty=true",
-    ]
+    """One direct-upload deployment. Whether it is *live* is `_page_is_live`'s job."""
+    account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    if not (account and token):
+        logger.error(
+            "Pages deploy needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN "
+            "(the token needs Cloudflare Pages -> Edit)."
+        )
+        return False
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=DEPLOY_TIMEOUT_SECONDS)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        logger.error("Pages deploy failed to run: %s", e)
+        deployment = PagesClient(account, token, pages_project).deploy(html_dir)
+    except (PagesDeployError, httpx.HTTPError) as e:
+        logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
         return False
-
-    if result.returncode != 0:
-        logger.error("Pages deploy failed (attempt %d): %s", attempt, result.stderr[-500:])
-        return False
+    logger.info("Pages deployment %s created", deployment)
     return True
 
 
