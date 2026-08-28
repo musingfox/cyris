@@ -1,7 +1,12 @@
 """Tests for digest article selection with priority fill."""
 
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
-from cyris.domain.selection import count_dead_links, layer_by_score, select_digest_articles
+from cyris.domain.selection import (
+    _truncate_sections,
+    count_dead_links,
+    layer_by_score,
+    select_digest_articles,
+)
 
 
 def _make_items(count: int, prefix: str = "item") -> list[DigestItem]:
@@ -517,3 +522,14 @@ def test_count_dead_links_ref_urls_are_clickable():
 def test_count_dead_links_empty_content():
     content = _base_content(articles_included=0)
     assert count_dead_links(content) == 0
+
+
+def test_truncation_preserves_story_id():
+    """T3: a truncated section keeps its story_id."""
+    section = DigestSection(heading="Tech", items=_make_items(3), story_id="X")
+
+    result = _truncate_sections([section], max_items=1)
+
+    assert len(result) == 1
+    assert result[0].story_id == "X"
+    assert len(result[0].items) == 1

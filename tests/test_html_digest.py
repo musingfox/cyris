@@ -469,6 +469,27 @@ def test_vote_buttons_use_arrows_not_emoji(tmp_path):
     assert "👎" not in html
 
 
+def test_news_cluster_vote_group_carries_story_id(tmp_path):
+    """T1: a cluster with a story_id renders it as data-story-id on its vote-group span."""
+    content = _cluster_digest(2)
+    content.news_clusters[0].story_id = "2026-08-28-morning-0"
+
+    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    html = writer.render(content)
+
+    assert 'class="vote-group" data-story-id="2026-08-28-morning-0" data-urls=' in html
+
+
+def test_news_cluster_without_story_id_renders_unchanged(tmp_path):
+    """T2: story_id=None emits no data-story-id; the page is otherwise identical."""
+    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    html = writer.render(_cluster_digest(2))
+
+    assert "data-story-id" not in html
+    # The vote-group span keeps its pre-story shape.
+    assert '<span class="vote-group" data-urls=' in html
+
+
 def test_fan_item_links_to_newsletter_references_but_votes_on_store_url(tmp_path):
     """Newsletter references are reader links; the store URL remains the vote key."""
     item = DigestItem(

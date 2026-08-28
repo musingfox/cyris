@@ -70,6 +70,9 @@ class DigestSection(BaseModel):
     description: str | None = None
     items: list[DigestItem] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
+    # news clusters; None everywhere else and on digests rendered before stories.
+    story_id: str | None = None
 
 
 # USD per million tokens, (input, output), keyed by the exact model id the

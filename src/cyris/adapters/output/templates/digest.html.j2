@@ -1,5 +1,5 @@
-{% macro promote_btn(item) -%}
-{% if promote_enabled and item.urls %}<span class="vote-group" data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>{% endif %}
+{% macro promote_btn(item, story_id=None) -%}
+{% if promote_enabled and item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>{% endif %}
 {%- endmacro -%}
 {#- Sources of a news cluster: one link per article, so a busy topic renders five of
     them and wraps into a mess on a phone. Fold past two behind a native <details>. -#}
@@ -751,7 +751,7 @@
                         sources and urls are appended in lockstep by cluster_news, hence the shared index. -#}
                     <div class="meta">
                         {{ source_list(item) }}
-                        {{ promote_btn(item) }}
+                        {{ promote_btn(item, cluster.story_id) }}
                     </div>
                     {% endfor %}
                 </div>
