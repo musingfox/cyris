@@ -70,7 +70,7 @@ def test_the_run_deploys_its_pages_plus_the_whole_archive(monkeypatch):
     store = _Store({"/2026-08-26-evening.html": "old"})
 
     ok = publish_mod.publish_site(
-        {"/2026-08-27-morning.html": b"<html>x</html>"}, store, "proj", "2026-08-27-morning"
+        {"/2026-08-27-morning.html": b"<html>x</html>"}, "2026-08-27-morning", store, "proj"
     )
 
     assert ok is True
@@ -87,7 +87,7 @@ def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch)
     _stub_client(monkeypatch, deployed=[])
     store = _Store({"/old.html": "old"})
 
-    assert publish_mod.publish_site({"/new.html": b"x"}, store, "proj", "slug") is False
+    assert publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj") is False
     assert store.saved is None
 
 
@@ -112,3 +112,20 @@ def test_a_page_the_site_cannot_serve_back_is_not_silently_dropped(monkeypatch):
     monkeypatch.setattr(publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(404, content=b""))
 
     assert publish_mod._fetch_live("proj", "/gone.html") is None
+
+
+def test_bootstrap_partial_accepts_run_digest_calling_convention(monkeypatch):
+    """`Deps.publish_site` promises Callable[[files, slug], bool]; bootstrap binds
+    manifest_store/pages_project by keyword. The two met for the first time in
+    production and collided on the second positional — this pins the seam."""
+    from functools import partial
+
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    _stub_client(monkeypatch, deployed=[])
+    store = _Store({})
+
+    wired = partial(publish_mod.publish_site, manifest_store=store, pages_project="proj")
+
+    assert wired({"/2026-08-28-evening.html": b"<html>x</html>"}, "2026-08-28-evening") is True

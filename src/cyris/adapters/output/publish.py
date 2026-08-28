@@ -58,9 +58,9 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
 
 def publish_site(
     new_files: dict[str, bytes],
+    slug: str,
     manifest_store,
     pages_project: str,
-    slug: str,
 ) -> bool:
     """Publish without a local archive: this run's files plus the D1 manifest.
 
