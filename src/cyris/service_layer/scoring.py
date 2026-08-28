@@ -17,7 +17,7 @@ async def score_articles_batch(
     articles: list[StoredArticle],
     llm: LLMClient,
     snippet_length: int = 1000,
-) -> tuple[dict[str, tuple[float, str]], UsageStats]:
+) -> tuple[dict[str, tuple[float, str]], dict[str, list[str]], UsageStats]:
     """Score a batch of articles via the LLM.
 
     Args:
@@ -26,13 +26,13 @@ async def score_articles_batch(
         snippet_length: Maximum length of content snippet to include in prompt.
 
     Returns:
-        Tuple of (url_to_score_lang mapping, usage stats).
-        Mapping is {url: (score, language)}.
+        Tuple of score mapping, tag mapping, and usage stats.
+        Score mapping is {url: (score, language)}.
     """
     usage = UsageStats(model=llm.model)
 
     if not articles:
-        return {}, usage
+        return {}, {}, usage
 
     # Build lookup: original_id -> url
     id_to_url = {a.original_id: a.url for a in articles}
@@ -45,6 +45,7 @@ async def score_articles_batch(
     data = await complete_json(llm, user_prompt, system=system_prompt, usage=usage)
 
     result: dict[str, tuple[float, str]] = {}
+    url_to_tags: dict[str, list[str]] = {}
     for entry in data.get("scores", []):
         article_id = entry["id"]
         score = float(entry["score"])
@@ -52,9 +53,12 @@ async def score_articles_batch(
         url = id_to_url.get(article_id)
         if url:
             result[url] = (score, language)
+            tags = entry.get("tags", [])
+            if tags:
+                url_to_tags[url] = tags
 
     logger.info("Scored %d / %d articles", len(result), len(articles))
-    return result, usage
+    return result, url_to_tags, usage
 
 
 async def score_in_batches(
@@ -63,6 +67,7 @@ async def score_in_batches(
     snippet_length: int = 1000,
     progress: Callable[[str], None] = lambda _msg: None,
     persist: Callable[[dict[str, tuple[float, str]]], None] | None = None,
+    persist_tags: Callable[[dict[str, list[str]]], None] | None = None,
 ) -> UsageStats:
     """Score articles in BATCH_SIZE chunks, persisting each batch as it completes.
 
@@ -73,6 +78,7 @@ async def score_in_batches(
         progress: Progress message callback.
         persist: Called with each batch's url→(score, language) mapping.
 
+        persist_tags: Called with each batch's URL-to-tags mapping.
     Returns:
         Accumulated usage stats across all batches.
     """
@@ -83,7 +89,7 @@ async def score_in_batches(
         batch = articles[i : i + BATCH_SIZE]
         progress(f"  Batch {i // BATCH_SIZE + 1}/{total_batches}: {len(batch)} articles...")
 
-        url_to_score_lang, usage = await score_articles_batch(
+        url_to_score_lang, url_to_tags, usage = await score_articles_batch(
             batch,
             llm,
             snippet_length=snippet_length,
@@ -92,5 +98,7 @@ async def score_in_batches(
 
         if persist is not None:
             persist(url_to_score_lang)
+        if persist_tags is not None and url_to_tags:
+            persist_tags(url_to_tags)
 
     return total_usage

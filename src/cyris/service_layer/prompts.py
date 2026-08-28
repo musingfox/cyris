@@ -223,9 +223,10 @@ Calibration anchors:
 
 For each article, also detect the primary language: "zh" for Chinese, "en" for English, \
 or the appropriate ISO 639-1 code for other languages.
+For each article, also assign concise topic tags.
 
 Respond in JSON:
-{"scores": [{"id": <article_id>, "score": <0-100>, "language": "<lang_code>"}]}
+{"scores": [{"id": <article_id>, "score": <0-100>, "language": "<lang_code>", "tags": ["<topic tag>", ...]}]}
 """
 
 

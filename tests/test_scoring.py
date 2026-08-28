@@ -180,18 +180,20 @@ class TestScoreArticlesBatch:
             )
         )
 
-        result, usage = await score_articles_batch(sample_articles, llm)
+        result, tags, usage = await score_articles_batch(sample_articles, llm)
 
         assert result["http://a.com"] == (85.0, "en")
         assert result["http://b.com"] == (72.0, "zh")
+        assert tags == {}
         assert usage.api_calls == 1
         assert usage.input_tokens == 500
 
     async def test_empty_articles(self):
         from cyris.service_layer.scoring import score_articles_batch
 
-        result, usage = await score_articles_batch([], FakeLLM())
+        result, tags, usage = await score_articles_batch([], FakeLLM())
         assert result == {}
+        assert tags == {}
         assert usage.api_calls == 0
 
     async def test_fallback_language(self, sample_articles):
@@ -208,11 +210,46 @@ class TestScoreArticlesBatch:
             )
         )
 
-        result, _ = await score_articles_batch(sample_articles, llm)
+        result, _, _ = await score_articles_batch(sample_articles, llm)
 
         # Article 2 has Chinese content, should fallback to "zh"
         assert result["http://b.com"][1] == "zh"
         assert result["http://a.com"][1] == "en"
+
+    async def test_batch_scoring_returns_article_tags(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "scores": [
+                        {
+                            "id": 1,
+                            "score": 80,
+                            "language": "en",
+                            "tags": ["Rust"],
+                        }
+                    ]
+                }
+            )
+        )
+
+        scores, tags, _ = await score_articles_batch(sample_articles, llm)
+
+        assert scores["http://a.com"] == (80.0, "en")
+        assert tags == {"http://a.com": ["Rust"]}
+
+    async def test_batch_scoring_omits_missing_tags(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(
+            json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]})
+        )
+
+        scores, tags, _ = await score_articles_batch(sample_articles, llm)
+
+        assert scores["http://a.com"] == (80.0, "en")
+        assert tags == {}
 
     async def test_custom_snippet_length_in_batch(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch

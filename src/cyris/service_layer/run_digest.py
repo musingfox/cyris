@@ -120,6 +120,15 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     total_usage = UsageStats(model=cfg.app.llm_provider.model or "none")
 
+    persist_tags = None
+    if not options.dry_run and deps.tag_store is not None:
+
+        def persist_tags(url_to_tags) -> None:
+            try:
+                deps.tag_store.save(url_to_tags)
+            except Exception as e:
+                logger.warning("Failed to persist scoring tags: %s", e)
+
     if scorable and deps.llm is not None:
         progress(f"Scoring {len(scorable)} articles...")
         try:
@@ -129,6 +138,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 snippet_length=cfg.app.digest.scoring_snippet_length,
                 progress=progress,
                 persist=None if options.dry_run else store.update_scores,
+                persist_tags=persist_tags,
             )
             total_usage.add(usage.input_tokens, usage.output_tokens)
         except Exception:

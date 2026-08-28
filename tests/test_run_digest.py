@@ -313,3 +313,60 @@ async def test_run_digest_omits_synthetic_url_progress_when_all_http(tmp_path: P
     assert not any("newsletter" in m.lower() for m in messages)
     assert contents
     assert contents[0].synthetic_url_count == 0
+
+
+async def test_scoring_tag_write_failure_does_not_stop_later_batches(tmp_path: Path) -> None:
+    articles = [
+        Article(
+            id=i,
+            title=f"Article {i}",
+            url=f"https://example.com/{i}",
+            content="Content",
+            published_at=datetime.now(UTC) - timedelta(hours=1),
+            source_name="Source",
+            source_tier=Tier.FILTER,
+        )
+        for i in range(1, 22)
+    ]
+    first_scores = [
+        {"id": i, "score": 80, "language": "en", "tags": ["First"]}
+        for i in range(1, 21)
+    ]
+    llm = FakeLLM(
+        [
+            json.dumps({"scores": first_scores}),
+            json.dumps(
+                {
+                    "scores": [
+                        {
+                            "id": 21,
+                            "score": 81,
+                            "language": "en",
+                            "tags": ["Second"],
+                        }
+                    ]
+                }
+            ),
+            json.dumps({"selected": []}),
+        ]
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
+
+    class FlakyTagStore:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def save(self, url_to_tags) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("D1 unavailable")
+
+    tag_store = FlakyTagStore()
+    deps = replace(deps, tag_store=tag_store)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert tag_store.calls == 2
+    stored = deps.store.get_by_urls(["https://example.com/21"])
+    assert stored[0].score == 81
