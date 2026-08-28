@@ -101,6 +101,7 @@ def test_reject_reason_supports_specific_human_feedback():
     assert RejectReason("already_known") is RejectReason.ALREADY_KNOWN
     assert RejectReason("manual_triage") is RejectReason.MANUAL_TRIAGE
 
+
 def test_sync_routes_votes(store):
     """up accepts, down rejects, and both are stamped as human labels."""
     store.save(
