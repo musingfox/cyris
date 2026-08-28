@@ -204,6 +204,14 @@ class DigestPipeline:
         accepted_urls = list(accepted_filter_urls | summarize_urls | fan_urls)
         rejected_urls = list(rejected_filter_urls)
 
+        url_to_tags = {
+            url: section.tags
+            for section in news_clusters
+            for item in section.items
+            for url in item.urls
+            if section.tags
+        }
+
         content = DigestContent(
             date=today,
             period=period,
@@ -224,4 +232,5 @@ class DigestPipeline:
             content=content,
             accepted_urls=accepted_urls,
             rejected_urls=rejected_urls,
+            url_to_tags=url_to_tags,
         )

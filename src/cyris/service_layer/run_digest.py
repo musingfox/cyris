@@ -187,6 +187,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         article_scores=article_scores,
     )
     content = result.content
+    if not options.dry_run and deps.tag_store is not None and result.url_to_tags:
+        try:
+            deps.tag_store.save(result.url_to_tags)
+        except Exception as e:
+            logger.warning("Failed to persist cluster tags: %s", e)
 
     # Layer by score to extract featured articles
     content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)

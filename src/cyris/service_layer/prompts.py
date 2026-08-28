@@ -149,8 +149,9 @@ Task:
 1. Identify content-related news articles (e.g. different reports on the same event,
    a series on the same topic)
 2. Create a concise, specific topic heading for each cluster
-3. Write an integrated summary covering the key information across the cluster's articles
-4. Preserve divergent viewpoints and complementary details
+3. Assign concise topic tags to each cluster
+4. Write an integrated summary covering the key information across the cluster's articles
+5. Preserve divergent viewpoints and complementary details
 
 Rules:
 - Each cluster needs at least 2 articles
@@ -164,7 +165,8 @@ Respond in JSON:
     {
       "heading": "<heading in <output_language>>",
       "summary": "<2-3 sentence summary in <output_language>>",
-      "article_ids": [<id>, <id>, ...]
+      "article_ids": [<id>, <id>, ...],
+      "tags": ["<topic tag>", ...]
     }
   ],
   "unclustered_ids": [<id>, ...]

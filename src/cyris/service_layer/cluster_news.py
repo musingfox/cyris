@@ -91,6 +91,7 @@ async def cluster_news(
             heading = cluster["heading"]
             summary = cluster["summary"]
             article_ids = cluster["article_ids"]
+            tags = cluster.get("tags", [])
 
             # Build DigestItems from cluster articles
             items = []
@@ -146,6 +147,7 @@ async def cluster_news(
                     DigestSection(
                         heading=heading,
                         items=items,
+                        tags=tags,
                     )
                 )
 

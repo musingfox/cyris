@@ -308,6 +308,17 @@ class TestClusterNews:
         assert len(clusters) == 0
         assert len(unclustered) == 3
 
+    async def test_cluster_without_tags_keeps_empty_tags(self, sample_news_articles):
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 102]}]}'
+        )
+
+        clusters, unclustered = await cluster_news(sample_news_articles, llm)
+
+        assert clusters[0].heading == "H"
+        assert clusters[0].tags == []
+        assert [article.id for article in unclustered] == [103]
+
     async def test_articles_the_model_forgot_to_mention_are_not_lost(self, sample_news_articles):
         """The response clusters one article and names none as unclustered.
 

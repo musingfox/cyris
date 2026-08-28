@@ -87,3 +87,14 @@ CREATE TABLE IF NOT EXISTS pages_manifest (
   hash       TEXT NOT NULL,        -- blake3(base64(bytes) + ext)[:32]
   updated_at TEXT NOT NULL
 );
+
+-- Normalized tag vocabulary and its URL-keyed article memberships.
+CREATE TABLE IF NOT EXISTS tags (
+  name TEXT PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS article_tags (
+  article_url TEXT NOT NULL,
+  tag         TEXT NOT NULL,
+  PRIMARY KEY (article_url, tag)
+);
