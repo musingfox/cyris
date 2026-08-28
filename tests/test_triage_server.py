@@ -477,9 +477,12 @@ class TestRejectActionsUI:
         assert 'e.key === "k"' in source
         assert 'postAction("reject", article.url, "already_known")' in source
 
+    @pytest.mark.skipif(
+        shutil.which("node") is None,
+        reason="Node.js not installed; the executable UI contract test needs it",
+    )
     def test_button_responses_preserve_or_record_verdict(self) -> None:
         node = shutil.which("node")
-        assert node is not None, "Node.js is required for the executable UI contract test"
         app_path = self.static_dir / "app.js"
         harness = r"""
 const fs = require("fs");
