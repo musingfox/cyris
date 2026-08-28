@@ -158,7 +158,21 @@ class TestAcceptArticle:
 
 
 class TestRejectArticle:
-    async def test_reject_success(
+    async def test_reject_with_explicit_reason(
+        self, client: TestClient, store_with_articles: ArticleStore
+    ) -> None:
+        resp = await client.post(
+            "/api/articles/reject",
+            json={"url": "https://example.com/3", "reason": "already_known"},
+        )
+        assert resp.status == 200
+        assert await resp.json() == {"ok": True}
+
+        [article] = store_with_articles.get_by_urls(["https://example.com/3"])
+        assert article.rejection_reason == "already_known"
+        assert article.triaged_at is not None
+
+    async def test_reject_defaults_to_not_interested(
         self, client: TestClient, store_with_articles: ArticleStore
     ) -> None:
         resp = await client.post(
@@ -166,14 +180,31 @@ class TestRejectArticle:
             json={"url": "https://example.com/3"},
         )
         assert resp.status == 200
-        data = await resp.json()
-        assert data["ok"] is True
 
-        # Verify state changed to REJECTED with reason
-        articles = store_with_articles.list_articles(state=ArticleState.REJECTED)
-        rejected = [a for a in articles if a.url == "https://example.com/3"]
-        assert len(rejected) == 1
-        assert rejected[0].rejection_reason == "manual_triage"
+        [article] = store_with_articles.get_by_urls(["https://example.com/3"])
+        assert article.rejection_reason == "not_interested"
+
+    async def test_reject_invalid_reason_leaves_article_pending(
+        self, client: TestClient, store_with_articles: ArticleStore
+    ) -> None:
+        resp = await client.post(
+            "/api/articles/reject",
+            json={"url": "https://example.com/3", "reason": "banana"},
+        )
+        assert resp.status == 400
+        assert (await resp.json())["ok"] is False
+
+        [article] = store_with_articles.get_by_urls(["https://example.com/3"])
+        assert article.state == ArticleState.PENDING
+        assert article.rejection_reason is None
+        assert article.triaged_at is None
+
+    async def test_reject_not_found(self, client: TestClient) -> None:
+        resp = await client.post(
+            "/api/articles/reject",
+            json={"url": "https://nope"},
+        )
+        assert resp.status == 404
 
     async def test_reject_removes_from_pending(
         self, client: TestClient, store_with_articles: ArticleStore
@@ -182,7 +213,6 @@ class TestRejectArticle:
             "/api/articles/reject",
             json={"url": "https://example.com/3"},
         )
-        # Article should no longer appear in pending list
         resp = await client.get("/api/articles?limit=10")
         data = await resp.json()
         urls = [a["url"] for a in data["articles"]]

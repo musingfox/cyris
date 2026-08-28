@@ -194,8 +194,11 @@ class TriageServer:
         if not url:
             return web.json_response({"ok": False, "error": "url required"}, status=400)
 
-        # Update state first
-        updated = self._store.reject([url], reason=RejectReason.MANUAL_TRIAGE)
+        reason = body.get("reason", RejectReason.NOT_INTERESTED.value)
+        if reason not in (RejectReason.ALREADY_KNOWN, RejectReason.NOT_INTERESTED):
+            return web.json_response({"ok": False, "error": "invalid reason"}, status=400)
+
+        updated = self._store.reject([url], reason=RejectReason(reason))
         if not updated:
             return web.json_response({"ok": False, "error": "article not found"}, status=404)
         self._store.update_triage_timestamp([url], datetime.now(UTC))
