@@ -460,9 +460,7 @@ class TestRejectActionsUI:
 
     def test_swipe_footer_has_both_reject_buttons(self) -> None:
         html = (self.static_dir / "index.html").read_text()
-        footer = html[
-            html.index('<footer id="swipe-footer">') : html.index("</footer>")
-        ]
+        footer = html[html.index('<footer id="swipe-footer">') : html.index("</footer>")]
 
         assert 'data-reason="not_interested"' in footer
         assert 'data-reason="already_known"' in footer
