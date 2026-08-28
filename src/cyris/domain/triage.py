@@ -9,3 +9,5 @@ class RejectReason(StrEnum):
     FILTERED = "filtered"
     MANUAL = "manual"
     MANUAL_TRIAGE = "manual_triage"
+    ALREADY_KNOWN = "already_known"
+    NOT_INTERESTED = "not_interested"

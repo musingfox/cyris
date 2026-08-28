@@ -90,7 +90,7 @@ def sync_promotions(
     rejected = [a.url for a in found if vote_by_url[a.url] == "down"]
     accepted = [a.url for a in found if vote_by_url[a.url] != "down"]
     if rejected:
-        store.reject(rejected, reason=RejectReason.MANUAL_TRIAGE)
+        store.reject(rejected, reason=RejectReason.NOT_INTERESTED)
     if accepted:
         store.accept(accepted)
     if found:

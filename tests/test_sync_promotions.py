@@ -9,6 +9,7 @@ import pytest
 from cyris.adapters.promotions import PromotedArticle, pull_promotions, sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.domain.models import Article, ArticleState, Tier
+from cyris.domain.triage import RejectReason
 
 WORKER_URL = "https://promote.test.workers.dev"
 TOKEN = "test-token"
@@ -95,6 +96,11 @@ def test_sync_legacy_deep_vote_accepts(store):
     assert article.state == ArticleState.ACCEPTED
 
 
+def test_reject_reason_supports_specific_human_feedback():
+    assert RejectReason("not_interested") is RejectReason.NOT_INTERESTED
+    assert RejectReason("already_known") is RejectReason.ALREADY_KNOWN
+    assert RejectReason("manual_triage") is RejectReason.MANUAL_TRIAGE
+
 def test_sync_routes_votes(store):
     """up accepts, down rejects, and both are stamped as human labels."""
     store.save(
@@ -112,7 +118,11 @@ def test_sync_routes_votes(store):
     )
     payload = [
         {"url": "https://example.com/stored", "vote": "up"},
-        {"url": "https://example.com/nope", "vote": "down"},
+        {
+            "url": "https://example.com/nope",
+            "vote": "down",
+            "digest_date": "2026-08-28",
+        },
     ]
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
@@ -126,6 +136,8 @@ def test_sync_routes_votes(store):
     [down] = store.get_by_urls(["https://example.com/nope"])
     assert up.state == ArticleState.ACCEPTED
     assert down.state == ArticleState.REJECTED
+    assert up.rejection_reason is None
+    assert down.rejection_reason == RejectReason.NOT_INTERESTED
     assert up.triaged_at is not None and down.triaged_at is not None
 
 
