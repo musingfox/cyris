@@ -216,12 +216,15 @@ class SaveResult(BaseModel):
 
 
 class StoryRecord(BaseModel):
-    """A news cluster's full pre-truncation membership, keyed for one digest window."""
+    """A news cluster's full pre-truncation membership, keyed for one digest window.
+
+    Deliberately carries no tags: the normalized ones already live on the member
+    articles (`article_tags`), and a second home for raw LLM strings would drift.
+    """
 
     id: str  # "{digest_date}-{period}-{n}", deterministic per window
     heading: str
     urls: list[str]
-    tags: list[str] = Field(default_factory=list)
 
 
 class ProcessResult(BaseModel):

@@ -220,7 +220,6 @@ class DigestPipeline:
                 id=f"{today}-{period}-{n}",
                 heading=section.heading,
                 urls=[url for item in section.items for url in item.urls],
-                tags=section.tags,
             )
             for n, section in enumerate(news_clusters)
         ]

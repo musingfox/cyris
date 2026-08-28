@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS stories (
   digest_date TEXT NOT NULL,
   period      TEXT NOT NULL,
   heading     TEXT NOT NULL,
-  tags        TEXT NOT NULL DEFAULT '[]'   -- JSON array
+  created_at  TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_stories_window ON stories(digest_date, period);
@@ -108,13 +108,21 @@ CREATE TABLE IF NOT EXISTS story_members (
   PRIMARY KEY (story_id, article_url)
 );
 
--- Normalized tag vocabulary and its URL-keyed article memberships.
+CREATE INDEX IF NOT EXISTS idx_story_members_url ON story_members(article_url);
+
+-- Normalized tag vocabulary and its URL-keyed article memberships. A story's
+-- tags live here (on its member articles), never on `stories`: one normalized
+-- home, no raw-LLM-string sibling to drift from it.
 CREATE TABLE IF NOT EXISTS tags (
-  name TEXT PRIMARY KEY
+  name       TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL      -- first sighting; INSERT OR IGNORE keeps it
 );
 
 CREATE TABLE IF NOT EXISTS article_tags (
   article_url TEXT NOT NULL,
   tag         TEXT NOT NULL,
+  tagged_at   TEXT NOT NULL,    -- latest write; INSERT OR REPLACE refreshes it
   PRIMARY KEY (article_url, tag)
 );
+
+CREATE INDEX IF NOT EXISTS idx_article_tags_tag ON article_tags(tag);
