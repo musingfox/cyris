@@ -216,9 +216,35 @@ def test_articles_accept_not_in_store(setup_store: tuple[Path, Path, Path, Artic
     assert "Exported" not in result.stdout
 
 
-def test_articles_reject(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
-    """Test rejecting articles by URL with reason."""
-    tmp_path, config_path, sources_path, store = setup_store
+def test_articles_reject_defaults_to_not_interested(
+    setup_store: tuple[Path, Path, Path, ArticleStore],
+) -> None:
+    """Rejecting without a reason records the canonical default and triage time."""
+    _, config_path, sources_path, store = setup_store
+    result = runner.invoke(
+        app,
+        [
+            "articles",
+            "reject",
+            "https://example.com/1",
+            "--config",
+            str(config_path),
+            "--sources",
+            str(sources_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    rejected = store.list_articles(state=ArticleState.REJECTED)
+    assert rejected[0].rejection_reason == "not_interested"
+    assert rejected[0].triaged_at is not None
+
+
+def test_articles_reject_accepts_free_text_reason(
+    setup_store: tuple[Path, Path, Path, ArticleStore],
+) -> None:
+    """An explicit free-text rejection reason is preserved."""
+    _, config_path, sources_path, store = setup_store
     result = runner.invoke(
         app,
         [
@@ -226,15 +252,17 @@ def test_articles_reject(setup_store: tuple[Path, Path, Path, ArticleStore]) -> 
             "reject",
             "https://example.com/1",
             "--reason",
-            "spam",
+            "duplicate coverage",
             "--config",
             str(config_path),
             "--sources",
             str(sources_path),
         ],
     )
+
     assert result.exit_code == 0
-    assert "1" in result.stdout
+    rejected = store.list_articles(state=ArticleState.REJECTED)
+    assert rejected[0].rejection_reason == "duplicate coverage"
 
 
 def test_articles_clean(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:

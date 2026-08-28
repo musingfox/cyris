@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
 logger = logging.getLogger("cyris")
@@ -724,7 +725,7 @@ def articles_accept(
 @articles_app.command("reject")
 def articles_reject(
     urls: Annotated[list[str], typer.Argument(help="Article URLs to reject")],
-    reason: Annotated[str, typer.Option(help="Rejection reason")] = "manual",
+    reason: Annotated[str, typer.Option(help="Rejection reason")] = RejectReason.NOT_INTERESTED,
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
     ),
