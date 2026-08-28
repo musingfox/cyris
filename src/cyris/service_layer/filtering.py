@@ -64,7 +64,10 @@ async def filter_articles(
 
     items = []
     for entry in data.get("selected", []):
-        missing_fields = {"id", "title", "source"} - entry.keys()
+        required_fields = {"id", "title", "source"}
+        missing_fields = (
+            required_fields - entry.keys() if isinstance(entry, dict) else required_fields
+        )
         if missing_fields:
             logger.warning(
                 "Skipping malformed filter entry missing required fields %s: %r",
