@@ -13,7 +13,4 @@ services:
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
       - ./agent-vault:/data/agent-vault
-      # [html_output] output_dir is relative to cwd (/app), so it lands outside
-      # /data and every container recreate wiped the archive. Mount it back.
-      - ./agent-vault/html:/app/agent-vault/html
     restart: unless-stopped
