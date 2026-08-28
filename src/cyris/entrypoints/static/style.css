@@ -247,6 +247,32 @@ footer {
   opacity: 0.5;
 }
 
+.reject-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.reject-button {
+  background: var(--accent-reject);
+  border: 1px solid var(--accent-reject);
+  color: var(--text);
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reject-button.secondary {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+  color: var(--text-muted);
+}
+
+.reject-button:hover {
+  opacity: 0.8;
+}
+
 .read-only-hint {
   font-size: 0.85rem;
   color: var(--text-muted);

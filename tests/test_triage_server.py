@@ -1,5 +1,7 @@
 """Tests for triage web server API endpoints."""
 
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -451,3 +453,146 @@ class TestStatsAndFilter:
             assert resp.status == 400
         finally:
             await test_client.close()
+
+
+class TestRejectActionsUI:
+    static_dir = Path(__file__).parents[1] / "src/cyris/entrypoints/static"
+
+    def test_swipe_footer_has_both_reject_buttons(self) -> None:
+        html = (self.static_dir / "index.html").read_text()
+        footer = html[
+            html.index('<footer id="swipe-footer">') : html.index("</footer>")
+        ]
+
+        assert 'data-reason="not_interested"' in footer
+        assert 'data-reason="already_known"' in footer
+        assert "沒興趣" in footer
+        assert "已知道" in footer
+
+    def test_reject_paths_send_their_reason(self) -> None:
+        source = (self.static_dir / "app.js").read_text()
+
+        assert "JSON.stringify({ url: url, reason: reason })" in source
+        assert 'postAction("reject", article.url, "not_interested")' in source
+        assert 'e.key === "k"' in source
+        assert 'postAction("reject", article.url, "already_known")' in source
+
+    def test_button_responses_preserve_or_record_verdict(self) -> None:
+        node = shutil.which("node")
+        assert node is not None, "Node.js is required for the executable UI contract test"
+        app_path = self.static_dir / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+class ClassList {
+  constructor(...names) { this.names = new Set(names); }
+  add(...names) { names.forEach((name) => this.names.add(name)); }
+  remove(...names) { names.forEach((name) => this.names.delete(name)); }
+  toggle(name, force) {
+    if (force === undefined ? !this.names.has(name) : force) this.names.add(name);
+    else this.names.delete(name);
+  }
+  contains(name) { return this.names.has(name); }
+}
+
+class Element {
+  constructor(id = "") {
+    this.id = id;
+    this.children = [];
+    this.dataset = {};
+    this.listeners = {};
+    this.classList = new ClassList();
+    this.style = {};
+    this.textContent = "";
+  }
+  addEventListener(name, callback) { this.listeners[name] = callback; }
+  appendChild(child) { this.children.push(child); }
+  replaceChildren(...children) { this.children = children; }
+  querySelector(selector) {
+    return selector === ".card" ? this.children[0] || null : null;
+  }
+}
+
+const ids = [
+  "deck", "empty-state", "counter", "toast", "undo-toast", "undo-message",
+  "undo-button", "swipe-footer", "history-footer", "prev-btn", "next-btn",
+  "count-pending", "count-accepted", "count-rejected", "count-all",
+];
+const elements = Object.fromEntries(ids.map((id) => [id, new Element(id)]));
+["empty-state", "toast", "undo-toast", "history-footer"].forEach(
+  (id) => elements[id].classList.add("hidden")
+);
+const rejectButtons = ["not_interested", "already_known"].map((reason) => {
+  const button = new Element();
+  button.dataset.reason = reason;
+  return button;
+});
+const tabs = ["pending", "accepted", "rejected", "all"].map((state) => {
+  const tab = new Element();
+  tab.dataset.state = state;
+  return tab;
+});
+
+global.document = {
+  getElementById: (id) => elements[id],
+  createElement: () => new Element(),
+  querySelectorAll: (selector) =>
+    selector === ".reject-button" ? rejectButtons : tabs,
+  addEventListener: () => {},
+};
+global.setTimeout = () => 1;
+global.clearTimeout = () => {};
+
+const article = {
+  url: "https://example.com/1",
+  title: "Article",
+  content: "content",
+  published_at: "2026-08-28T00:00:00Z",
+};
+let rejectBody;
+let rejectOk = false;
+global.fetch = async (url, options = {}) => {
+  if (url.startsWith("/api/articles?")) {
+    return {json: async () => ({articles: [article]})};
+  }
+  if (url === "/api/stats") {
+    return {json: async () => ({pending: 1, accepted: 0, rejected: 0, total: 1})};
+  }
+  if (url === "/api/articles/reject") {
+    rejectBody = JSON.parse(options.body);
+    return {json: async () => rejectOk ? {ok: true} : {ok: false, error: "denied"}};
+  }
+  throw new Error("unexpected fetch " + url);
+};
+
+vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
+
+(async () => {
+  await new Promise(setImmediate);
+  const originalCard = elements.deck.children[0];
+  rejectButtons[1].listeners.click();
+  await new Promise(setImmediate);
+
+  if (rejectBody.reason !== "already_known") throw new Error("reason not sent");
+  if (elements.toast.textContent !== "Error: denied") throw new Error("toast not shown");
+  if (elements.toast.classList.contains("hidden")) throw new Error("toast hidden");
+  if (elements.deck.children[0] === originalCard) throw new Error("card not re-rendered");
+  if (elements.counter.textContent !== "1 remaining") throw new Error("verdict advanced");
+  if (!elements["undo-toast"].classList.contains("hidden")) throw new Error("undo recorded");
+
+  rejectOk = true;
+  rejectButtons[1].listeners.click();
+  await new Promise(setImmediate);
+  if (elements["undo-message"].textContent !== "Rejected: 已知道") {
+    throw new Error("undo reason not shown");
+  }
+  if (elements["undo-toast"].classList.contains("hidden")) {
+    throw new Error("undo not shown");
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+"""
+        subprocess.run([node, "-e", harness, str(app_path)], check=True)

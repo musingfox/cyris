@@ -19,6 +19,7 @@
   const undoMessage = document.getElementById("undo-message");
   const undoButton = document.getElementById("undo-button");
   const swipeFooter = document.getElementById("swipe-footer");
+  const rejectButtons = document.querySelectorAll(".reject-button");
   const historyFooter = document.getElementById("history-footer");
   const prevBtn = document.getElementById("prev-btn");
   const nextBtn = document.getElementById("next-btn");
@@ -284,11 +285,11 @@
     }, 2000);
   }
 
-  function showUndoToast(action, url) {
+  function showUndoToast(action, url, reason) {
     hideUndoToast(); // Clear previous undo
 
-    const actionText = action === "accept" ? "Accepted" : "Rejected";
-    undoMessage.textContent = actionText;
+    const reasonText = reason === "already_known" ? "已知道" : "沒興趣";
+    undoMessage.textContent = action === "accept" ? "Accepted" : "Rejected: " + reasonText;
 
     lastAction = {
       action: action,
@@ -375,7 +376,7 @@
         postAction("accept", article.url);
       } else if (currentX < -SWIPE_THRESHOLD) {
         card.classList.add("fly-left");
-        postAction("reject", article.url);
+        postAction("reject", article.url, "not_interested");
       } else {
         card.style.transform = "";
         card.classList.remove("accept-hint", "reject-hint");
@@ -392,7 +393,7 @@
 
   /* ---- Actions ---- */
 
-  async function postAction(action, url) {
+  async function postAction(action, url, reason) {
     // Clear previous undo when swiping to next card
     hideUndoToast();
 
@@ -400,7 +401,7 @@
       const res = await fetch(API + "/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url }),
+        body: JSON.stringify({ url: url, reason: reason }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -414,7 +415,7 @@
       return;
     }
 
-    showUndoToast(action, url);
+    showUndoToast(action, url, reason);
     currentIndex++;
     updateCounter();
     setTimeout(function () {
@@ -445,7 +446,10 @@
         postAction("accept", article.url);
       } else if (e.key === "ArrowLeft" || e.key === "h") {
         card.classList.add("fly-left");
-        postAction("reject", article.url);
+        postAction("reject", article.url, "not_interested");
+      } else if (e.key === "k") {
+        card.classList.add("fly-left");
+        postAction("reject", article.url, "already_known");
       }
     }
   });
@@ -456,6 +460,16 @@
   document.querySelectorAll("#filter-tabs .tab").forEach(function (tab) {
     tab.addEventListener("click", function () {
       switchTab(tab.dataset.state);
+    });
+  });
+
+  rejectButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      if (currentIndex >= articles.length) return;
+      var card = deck.querySelector(".card");
+      if (!card) return;
+      card.classList.add("fly-left");
+      postAction("reject", articles[currentIndex].url, button.dataset.reason);
     });
   });
 
