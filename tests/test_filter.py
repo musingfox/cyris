@@ -1,6 +1,7 @@
 """Tests for filter-tier processor."""
 
 import json
+import logging
 from datetime import UTC, datetime
 
 from fakes import FakeLLM
@@ -31,6 +32,46 @@ class TestFilterArticles:
         assert len(items) == 1
         assert items[0].title == "Apple Vision Pro 第二代發表"
         assert items[0].urls == ["https://techcrunch.com/2026/03/16/apple-vision-pro-2"]
+
+    async def test_filter_skips_entry_missing_id_and_keeps_valid_entry(
+        self, sample_filter_articles, caplog
+    ):
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "selected": [
+                        {"title": "only-title"},
+                        {"id": 101, "title": "ok", "source": "S"},
+                    ]
+                }
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            items = await filter_articles(sample_filter_articles, llm)
+
+        assert [item.title for item in items] == ["ok"]
+        assert len(caplog.records) == 1
+
+    async def test_filter_skips_entries_missing_title_or_source(
+        self, sample_filter_articles, caplog
+    ):
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "selected": [
+                        {"id": 101, "source": "S"},
+                        {"id": 101, "title": "missing-source"},
+                    ]
+                }
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            items = await filter_articles(sample_filter_articles, llm)
+
+        assert items == []
+        assert len(caplog.records) == 2
 
     async def test_filter_empty_input(self):
         items = await filter_articles([], FakeLLM())

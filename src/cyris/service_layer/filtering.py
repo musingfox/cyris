@@ -64,6 +64,14 @@ async def filter_articles(
 
     items = []
     for entry in data.get("selected", []):
+        missing_fields = {"id", "title", "source"} - entry.keys()
+        if missing_fields:
+            logger.warning(
+                "Skipping malformed filter entry missing required fields %s: %r",
+                sorted(missing_fields),
+                entry,
+            )
+            continue
         article_id = entry["id"]
         source_article = article_map.get(article_id)
         article_url = source_article.url if source_article else ""
