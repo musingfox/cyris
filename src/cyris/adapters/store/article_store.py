@@ -487,6 +487,10 @@ class ArticleStore:
                     remaining_articles.append(article)
                     continue
 
+                if article.triaged_at is not None:
+                    remaining_articles.append(article)
+                    continue
+
                 # Check age if specified
                 if cutoff_date is not None:
                     first_seen = article.first_seen_at

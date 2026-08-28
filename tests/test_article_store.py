@@ -556,6 +556,47 @@ def test_delete_articles_older_than(store: ArticleStore) -> None:
     assert deleted == 1
 
 
+def test_delete_articles_preserves_triaged_rows(store: ArticleStore) -> None:
+    old = datetime.now(UTC) - timedelta(days=60)
+    triaged = StoredArticle.from_article(
+        Article(
+            id=1,
+            title="Triaged",
+            url="https://example.com/triaged",
+            content="C",
+            published_at=old,
+            source_name="S",
+            source_tier=Tier.FILTER,
+        ),
+        first_seen_at=old,
+    )
+    triaged.state = ArticleState.REJECTED
+    triaged.triaged_at = old
+    untriaged = StoredArticle.from_article(
+        Article(
+            id=2,
+            title="Untriaged",
+            url="https://example.com/untriaged",
+            content="C",
+            published_at=old,
+            source_name="S",
+            source_tier=Tier.FILTER,
+        ),
+        first_seen_at=old,
+    )
+    untriaged.state = ArticleState.REJECTED
+
+    if isinstance(store, D1ArticleStore):
+        store.import_articles([triaged, untriaged])
+    else:
+        store._save_partition(store._partition_path(old), [triaged, untriaged])
+
+    assert store.delete_articles(ArticleState.REJECTED, 30) == 1
+    assert [article.url for article in store.list_articles()] == [
+        "https://example.com/triaged"
+    ]
+
+
 def test_delete_articles_negative_days(store: ArticleStore) -> None:
     """delete_articles with negative older_than_days raises ValueError."""
     with pytest.raises(ValueError, match="older_than_days"):

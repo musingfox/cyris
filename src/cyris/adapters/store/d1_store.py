@@ -246,7 +246,10 @@ class D1ArticleStore:
             raise ValueError("older_than_days must be non-negative")
 
         states = [str(s) for s in (state if isinstance(state, list) else [state])]
-        sql = f"DELETE FROM stored_articles WHERE state IN ({', '.join('?' * len(states))})"
+        sql = (
+            f"DELETE FROM stored_articles "
+            f"WHERE state IN ({', '.join('?' * len(states))}) AND triaged_at IS NULL"
+        )
         params: list[Any] = list(states)
         if older_than_days is not None:
             sql += " AND first_seen_at < ?"

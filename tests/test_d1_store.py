@@ -128,6 +128,12 @@ def test_human_stamps_survive_the_d1_backend(store: D1ArticleStore) -> None:
     assert len(stamped_down) == 2
 
 
+def test_architecture_no_longer_lists_cleaning_triaged_rows_as_outstanding() -> None:
+    architecture = Path("docs/architecture.md").read_text()
+
+    assert "| 15 | `cyris articles clean` deletes triaged rejected rows" not in architecture
+
+
 def test_usage_is_logged_to_the_same_database(sample_digest_content) -> None:
     db = SqliteD1()
     sample_digest_content.usage.api_calls = 3
