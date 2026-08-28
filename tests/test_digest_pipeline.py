@@ -108,6 +108,40 @@ class TestDigestPipeline:
         assert result.rejected_urls == []
         assert result.content.articles_included == 2
 
+    async def test_story_records_keep_full_membership_past_truncation(self, sample_sources):
+        """Story records carry every cluster's full URL list even when the cap drops clusters."""
+        news = [
+            Article(
+                id=i,
+                title=f"News {i}",
+                url=f"https://news.example/{i}",
+                content="News content",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Wire",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+            )
+            for i in (1, 2, 3)
+        ]
+        pipeline = DigestPipeline(
+            FakeLLM(
+                '{"clusters": ['
+                '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
+            ),
+            max_digest_output=1,
+        )
+
+        result = await pipeline.process(news, sample_sources, period="morning")
+
+        # The cap truncated the rendered clusters...
+        assert len(result.content.news_clusters) == 1
+        # ...but the records still name both stories with their full memberships.
+        date = result.content.date
+        assert [r.id for r in result.story_records] == [f"{date}-morning-0", f"{date}-morning-1"]
+        assert result.story_records[0].urls == ["https://news.example/1", "https://news.example/2"]
+        assert result.story_records[1].urls == ["https://news.example/3"]
+
     async def test_process_no_articles(self, pipeline, sample_sources):
         result = await pipeline.process([], sample_sources, period="evening")
 

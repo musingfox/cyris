@@ -88,6 +88,26 @@ CREATE TABLE IF NOT EXISTS pages_manifest (
   updated_at TEXT NOT NULL
 );
 
+-- Pre-truncation story membership: which articles the clustering step grouped
+-- together, per digest window. Written delete-then-insert per (digest_date,
+-- period), so a re-run of the same window replaces its rows rather than
+-- accumulating duplicates.
+CREATE TABLE IF NOT EXISTS stories (
+  id          TEXT PRIMARY KEY,    -- "{digest_date}-{period}-{n}", deterministic per window
+  digest_date TEXT NOT NULL,
+  period      TEXT NOT NULL,
+  heading     TEXT NOT NULL,
+  tags        TEXT NOT NULL DEFAULT '[]'   -- JSON array
+);
+
+CREATE INDEX IF NOT EXISTS idx_stories_window ON stories(digest_date, period);
+
+CREATE TABLE IF NOT EXISTS story_members (
+  story_id    TEXT NOT NULL,
+  article_url TEXT NOT NULL,
+  PRIMARY KEY (story_id, article_url)
+);
+
 -- Normalized tag vocabulary and its URL-keyed article memberships.
 CREATE TABLE IF NOT EXISTS tags (
   name TEXT PRIMARY KEY

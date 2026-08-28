@@ -592,9 +592,7 @@ def test_delete_articles_preserves_triaged_rows(store: ArticleStore) -> None:
         store._save_partition(store._partition_path(old), [triaged, untriaged])
 
     assert store.delete_articles(ArticleState.REJECTED, 30) == 1
-    assert [article.url for article in store.list_articles()] == [
-        "https://example.com/triaged"
-    ]
+    assert [article.url for article in store.list_articles()] == ["https://example.com/triaged"]
 
 
 def test_delete_articles_negative_days(store: ArticleStore) -> None:

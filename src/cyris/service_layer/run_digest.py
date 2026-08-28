@@ -202,6 +202,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             deps.tag_store.save(result.url_to_tags)
         except Exception as e:
             logger.warning("Failed to persist cluster tags: %s", e)
+    if not options.dry_run and deps.story_store is not None and result.story_records:
+        try:
+            deps.story_store.save(content.date, content.period, result.story_records)
+        except Exception as e:
+            logger.warning("Failed to persist story membership: %s", e)
 
     # Layer by score to extract featured articles
     content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)

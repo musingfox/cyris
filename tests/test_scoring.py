@@ -242,9 +242,7 @@ class TestScoreArticlesBatch:
     async def test_batch_scoring_omits_missing_tags(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch
 
-        llm = FakeLLM(
-            json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]})
-        )
+        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]}))
 
         scores, tags, _ = await score_articles_batch(sample_articles, llm)
 

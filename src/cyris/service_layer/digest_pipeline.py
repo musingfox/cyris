@@ -7,6 +7,7 @@ from cyris.domain.models import (
     DigestContent,
     ProcessResult,
     SourceConfig,
+    StoryRecord,
     Tier,
     UsageStats,
 )
@@ -212,6 +213,18 @@ class DigestPipeline:
             if section.tags
         }
 
+        # Captured before select_digest_articles truncates the content: the
+        # records carry each cluster's full membership, not what survived the cap.
+        story_records = [
+            StoryRecord(
+                id=f"{today}-{period}-{n}",
+                heading=section.heading,
+                urls=[url for item in section.items for url in item.urls],
+                tags=section.tags,
+            )
+            for n, section in enumerate(news_clusters)
+        ]
+
         content = DigestContent(
             date=today,
             period=period,
@@ -233,4 +246,5 @@ class DigestPipeline:
             accepted_urls=accepted_urls,
             rejected_urls=rejected_urls,
             url_to_tags=url_to_tags,
+            story_records=story_records,
         )

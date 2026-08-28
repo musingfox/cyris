@@ -329,8 +329,7 @@ async def test_scoring_tag_write_failure_does_not_stop_later_batches(tmp_path: P
         for i in range(1, 22)
     ]
     first_scores = [
-        {"id": i, "score": 80, "language": "en", "tags": ["First"]}
-        for i in range(1, 21)
+        {"id": i, "score": 80, "language": "en", "tags": ["First"]} for i in range(1, 21)
     ]
     llm = FakeLLM(
         [
@@ -370,3 +369,44 @@ async def test_scoring_tag_write_failure_does_not_stop_later_batches(tmp_path: P
     assert tag_store.calls == 2
     stored = deps.store.get_by_urls(["https://example.com/21"])
     assert stored[0].score == 81
+
+
+async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None:
+    articles = [
+        Article(
+            id=i,
+            title=f"News {i}",
+            url=f"https://news.example/{i}",
+            content="News content",
+            published_at=datetime.now(UTC) - timedelta(hours=1),
+            source_name="Wire",
+            source_tier=Tier.FILTER,
+            source_tags=["news"],
+        )
+        for i in (1, 2)
+    ]
+    # News skips scoring; the single call is the cluster response, and the
+    # emptied filter pool never reaches the LLM.
+    llm = FakeLLM(
+        json.dumps(
+            {"clusters": [{"heading": "H", "summary": "S", "article_ids": [1, 2], "tags": []}]}
+        )
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
+
+    class ExplodingStoryStore:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def save(self, digest_date, period, records) -> None:
+            self.calls += 1
+            raise RuntimeError("D1 unavailable")
+
+    story_store = ExplodingStoryStore()
+    deps = replace(deps, story_store=story_store)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert story_store.calls == 1  # the write was attempted, not skipped
+    assert report.status == "ok"
+    assert report.html_path is not None and report.html_path.exists()

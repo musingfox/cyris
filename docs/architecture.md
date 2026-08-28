@@ -264,6 +264,8 @@ Every persistent datum, where it lives now, and where it is going.
 | Article store | **D1 `stored_articles`** | same | `url` PRIMARY KEY is the dedup key |
 | Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
+| Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{n}`, replaced per window |
+| Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention |
 | Source definitions | **D1 `sources`** + `sources.yaml` fallback | same | Both cyris and `workers/rss` read it |
 | Runtime settings | **D1 `settings`** + `cyris.toml` fallback | same | Grade D. D1 first, always — see §5 |

@@ -309,9 +309,7 @@ class TestClusterNews:
         assert len(unclustered) == 3
 
     async def test_cluster_without_tags_keeps_empty_tags(self, sample_news_articles):
-        llm = FakeLLM(
-            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 102]}]}'
-        )
+        llm = FakeLLM('{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 102]}]}')
 
         clusters, unclustered = await cluster_news(sample_news_articles, llm)
 

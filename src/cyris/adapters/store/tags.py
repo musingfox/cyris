@@ -10,11 +10,7 @@ class D1TagStore:
 
     def save(self, url_to_tags: dict[str, list[str]]) -> None:
         for url, tags in url_to_tags.items():
-            normalized = {
-                value
-                for tag in tags
-                if (value := normalize_tag(tag)) is not None
-            }
+            normalized = {value for tag in tags if (value := normalize_tag(tag)) is not None}
             for tag in sorted(normalized):
                 self._db.query("INSERT OR IGNORE INTO tags (name) VALUES (?)", [tag])
                 self._db.query(

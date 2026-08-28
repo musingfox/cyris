@@ -226,7 +226,8 @@ or the appropriate ISO 639-1 code for other languages.
 For each article, also assign concise topic tags.
 
 Respond in JSON:
-{"scores": [{"id": <article_id>, "score": <0-100>, "language": "<lang_code>", "tags": ["<topic tag>", ...]}]}
+{"scores": [{"id": <article_id>, "score": <0-100>, "language": "<lang_code>", \
+"tags": ["<topic tag>", ...]}]}
 """
 
 

@@ -161,6 +161,7 @@ class Deps:
     sync_promotions: Callable[[], int] | None
     log_usage: Callable[..., None]
     tag_store: Any | None = None
+    story_store: Any | None = None
     # Set instead of `publish` when the site is published from the D1 manifest:
     # takes {path: bytes} for this run's pages. Nothing touches the filesystem.
     publish_site: Callable[[dict[str, bytes], str], bool] | None = None
@@ -181,10 +182,13 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         else partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl")
     )
     tag_store = None
+    story_store = None
     if d1 is not None:
+        from cyris.adapters.store.stories import D1StoryStore
         from cyris.adapters.store.tags import D1TagStore
 
         tag_store = D1TagStore(d1)
+        story_store = D1StoryStore(d1)
 
     fetch_sources: list[FetchSource] = []
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
@@ -264,6 +268,7 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         sync_promotions=sync,
         log_usage=log_usage,
         tag_store=tag_store,
+        story_store=story_store,
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
         embedding_threshold=embedding_threshold(cfg),
