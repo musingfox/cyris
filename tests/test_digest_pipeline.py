@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fakes import FakeLLM
 
+from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import Article, DigestItem, DigestSection, Tier
 from cyris.domain.selection import split_summarize_tier_by_score
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -153,6 +154,42 @@ class TestDigestPipeline:
         ]
         assert result.story_records[0].urls == ["https://news.example/1", "https://news.example/2"]
         assert result.story_records[1].urls == ["https://news.example/3"]
+
+    async def test_rendered_story_id_matches_persisted_record(self, sample_sources, tmp_path):
+        """Seam: the id the digest renders is the id the story store persists."""
+        news = [
+            Article(
+                id=i,
+                title=f"News {i}",
+                url=f"https://news.example/{i}",
+                content="News content",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Wire",
+                source_tier=Tier.FILTER,
+                source_tags=["news"],
+            )
+            for i in (1, 2, 3)
+        ]
+        pipeline = DigestPipeline(
+            FakeLLM(
+                '{"clusters": ['
+                '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
+            )
+        )
+
+        result = await pipeline.process(news, sample_sources, period="morning")
+
+        # (a) Sections and records carry the same ids, one-to-one, in order.
+        assert [s.story_id for s in result.content.news_clusters] == [
+            r.id for r in result.story_records
+        ]
+
+        # (b) The rendered page exposes each of those ids as data-story-id, verbatim.
+        writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+        html = writer.render(result.content)
+        for record in result.story_records:
+            assert f'data-story-id="{record.id}"' in html
 
     async def test_process_no_articles(self, pipeline, sample_sources):
         result = await pipeline.process([], sample_sources, period="evening")

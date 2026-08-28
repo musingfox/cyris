@@ -226,13 +226,16 @@ class DigestPipeline:
         }
 
         # Captured before select_digest_articles truncates the content: the
-        # records carry each cluster's full membership, not what survived the cap.
+        # records carry every cluster's full membership, not what survived the cap.
+        # The section takes the same id the record persists — computed once, so the
+        # rendered data-story-id and the D1 row can never drift apart.
         story_records = []
         for section in news_clusters:
             member_urls = [url for item in section.items for url in item.urls]
+            section.story_id = _story_id(today, period, member_urls)
             story_records.append(
                 StoryRecord(
-                    id=_story_id(today, period, member_urls),
+                    id=section.story_id,
                     heading=section.heading,
                     urls=member_urls,
                 )
