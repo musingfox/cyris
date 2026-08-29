@@ -89,9 +89,9 @@ CREATE TABLE IF NOT EXISTS pages_manifest (
 );
 
 -- Pre-truncation story membership: which articles the clustering step grouped
--- together, per digest window. Written delete-then-insert per (digest_date,
--- period), so a re-run of the same window replaces its rows rather than
--- accumulating duplicates.
+-- together, per digest window. A save replaces the (digest_date, period)
+-- window's rows — insert first, then delete what the new set no longer names,
+-- so a mid-way failure leaves a union rather than an empty window.
 CREATE TABLE IF NOT EXISTS stories (
   id          TEXT PRIMARY KEY,    -- "{digest_date}-{period}-{urlhash}": content-derived
                                    -- from the sorted member URLs, so the same story keeps

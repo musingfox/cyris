@@ -59,6 +59,29 @@ def test_save_replaces_the_date_period_window() -> None:
     ]
 
 
+def test_rerun_with_zero_stories_clears_the_window_only() -> None:
+    """A re-run that clustered nothing must not leave a previous run's rows as current."""
+    db = SqliteD1()
+    store = D1StoryStore(db)
+    store.save(
+        "2026-08-28",
+        "morning",
+        [
+            StoryRecord(id="a", heading="A", urls=["u1"]),
+            StoryRecord(id="b", heading="B", urls=["u2"]),
+            StoryRecord(id="c", heading="C", urls=["u3"]),
+        ],
+    )
+    store.save("2026-08-28", "evening", [StoryRecord(id="e", heading="E", urls=["u9"])])
+
+    store.save("2026-08-28", "morning", [])
+
+    assert [row["id"] for row in db.query("SELECT id FROM stories").rows] == ["e"]
+    assert db.query("SELECT story_id, article_url FROM story_members").rows == [
+        {"story_id": "e", "article_url": "u9"}
+    ]
+
+
 def test_save_batches_writes_within_the_bound_param_budget() -> None:
     db = CountingD1()
     records = [
@@ -74,7 +97,7 @@ def test_save_batches_writes_within_the_bound_param_budget() -> None:
     queries = db.query_count
 
     assert written == 62  # 2 stories + 60 members
-    # 2 deletes + 1 stories statement + 2 member statements (60 rows, 50 per statement)
+    # 1 stories statement + 2 member statements (60 rows, 50 per) + 2 stale-row deletes
     assert queries == 5
 
 

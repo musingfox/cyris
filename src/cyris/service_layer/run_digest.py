@@ -202,7 +202,9 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             deps.tag_store.save(result.url_to_tags)
         except Exception as e:
             logger.warning("Failed to persist cluster tags: %s", e)
-    if not options.dry_run and deps.story_store is not None and result.story_records:
+    # Deliberately no empty-records guard: a re-run that clustered nothing must
+    # clear the window's rows, not leave a previous run's stories looking current.
+    if not options.dry_run and deps.story_store is not None:
         try:
             deps.story_store.save(content.date, content.period, result.story_records)
         except Exception as e:
