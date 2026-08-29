@@ -93,6 +93,28 @@ class TestFilterArticles:
         assert [item.title for item in items] == ["ok"]
         assert len(caplog.records) == 1
 
+    async def test_filter_skips_wrongly_typed_entry_and_keeps_valid_entry(
+        self, sample_filter_articles, caplog
+    ):
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "selected": [
+                        {"id": [101], "title": "x", "source": "S"},
+                        {"id": 101, "title": 7, "source": "S"},
+                        {"id": 101, "title": "x", "source": None},
+                        {"id": 101, "title": "ok", "source": "S"},
+                    ]
+                }
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            items = await filter_articles(sample_filter_articles, llm)
+
+        assert [item.title for item in items] == ["ok"]
+        assert len(caplog.records) == 3
+
     async def test_filter_empty_input(self):
         items = await filter_articles([], FakeLLM())
         assert items == []

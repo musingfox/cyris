@@ -75,6 +75,16 @@ async def filter_articles(
                 entry,
             )
             continue
+        if (
+            not isinstance(entry["id"], int | str)
+            or not isinstance(entry["title"], str)
+            or not isinstance(entry["source"], str)
+        ):
+            logger.warning(
+                "Skipping malformed filter entry with wrongly typed required fields: %r",
+                entry,
+            )
+            continue
         article_id = entry["id"]
         source_article = article_map.get(article_id)
         article_url = source_article.url if source_article else ""
