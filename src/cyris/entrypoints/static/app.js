@@ -19,7 +19,6 @@
   const undoMessage = document.getElementById("undo-message");
   const undoButton = document.getElementById("undo-button");
   const swipeFooter = document.getElementById("swipe-footer");
-  const rejectButtons = document.querySelectorAll(".reject-button");
   const historyFooter = document.getElementById("history-footer");
   const prevBtn = document.getElementById("prev-btn");
   const nextBtn = document.getElementById("next-btn");
@@ -288,8 +287,7 @@
   function showUndoToast(action, url, reason) {
     hideUndoToast(); // Clear previous undo
 
-    const reasonText = reason === "already_known" ? "已知道" : "沒興趣";
-    undoMessage.textContent = action === "accept" ? "Accepted" : "Rejected: " + reasonText;
+    undoMessage.textContent = action === "accept" ? "Accepted" : "Rejected";
 
     lastAction = {
       action: action,
@@ -458,9 +456,6 @@
       } else if (e.key === "ArrowLeft" || e.key === "h") {
         card.classList.add("fly-left");
         postAction("reject", article.url, "not_interested");
-      } else if (e.key === "k") {
-        card.classList.add("fly-left");
-        postAction("reject", article.url, "already_known");
       }
     }
   });
@@ -471,16 +466,6 @@
   document.querySelectorAll("#filter-tabs .tab").forEach(function (tab) {
     tab.addEventListener("click", function () {
       switchTab(tab.dataset.state);
-    });
-  });
-
-  rejectButtons.forEach(function (button) {
-    button.addEventListener("click", function () {
-      if (currentIndex >= articles.length) return;
-      var card = deck.querySelector(".card");
-      if (!card) return;
-      card.classList.add("fly-left");
-      postAction("reject", articles[currentIndex].url, button.dataset.reason);
     });
   });
 

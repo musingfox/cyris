@@ -500,11 +500,7 @@ const elements = Object.fromEntries(ids.map((id) => [id, new Element(id)]));
 ["empty-state", "toast", "undo-toast", "history-footer"].forEach(
   (id) => elements[id].classList.add("hidden")
 );
-const rejectButtons = ["not_interested", "already_known"].map((reason) => {
-  const button = new Element();
-  button.dataset.reason = reason;
-  return button;
-});
+const docListeners = {};
 const tabs = ["pending", "accepted", "rejected", "all"].map((state) => {
   const tab = new Element();
   tab.dataset.state = state;
@@ -514,9 +510,8 @@ const tabs = ["pending", "accepted", "rejected", "all"].map((state) => {
 global.document = {
   getElementById: (id) => elements[id],
   createElement: () => new Element(),
-  querySelectorAll: (selector) =>
-    selector === ".reject-button" ? rejectButtons : tabs,
-  addEventListener: () => {},
+  querySelectorAll: () => tabs,
+  addEventListener: (name, callback) => { docListeners[name] = callback; },
 };
 """
 
@@ -524,28 +519,27 @@ global.document = {
 class TestRejectActionsUI:
     static_dir = Path(__file__).parents[1] / "src/cyris/entrypoints/static"
 
-    def test_swipe_footer_has_both_reject_buttons(self) -> None:
+    def test_swipe_footer_is_swipe_only(self) -> None:
         html = (self.static_dir / "index.html").read_text()
         footer = html[html.index('<footer id="swipe-footer">') : html.index("</footer>")]
 
-        assert 'data-reason="not_interested"' in footer
-        assert 'data-reason="already_known"' in footer
-        assert "沒興趣" in footer
-        assert "已知道" in footer
+        assert "reject" in footer and "accept" in footer
+        assert "data-reason" not in footer
+        assert "已知道" not in footer
 
     def test_reject_paths_send_their_reason(self) -> None:
         source = (self.static_dir / "app.js").read_text()
 
         assert "JSON.stringify({ url: url, reason: reason })" in source
         assert 'postAction("reject", article.url, "not_interested")' in source
-        assert 'e.key === "k"' in source
-        assert 'postAction("reject", article.url, "already_known")' in source
+        assert 'e.key === "k"' not in source
+        assert "already_known" not in source
 
     @pytest.mark.skipif(
         shutil.which("node") is None,
         reason="Node.js not installed; the executable UI contract test needs it",
     )
-    def test_button_responses_preserve_or_record_verdict(self) -> None:
+    def test_reject_responses_preserve_or_record_verdict(self) -> None:
         node = shutil.which("node")
         app_path = self.static_dir / "app.js"
         harness = (
@@ -581,10 +575,10 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
 (async () => {
   await new Promise(setImmediate);
   const originalCard = elements.deck.children[0];
-  rejectButtons[1].listeners.click();
+  docListeners.keydown({key: "ArrowLeft"});
   await new Promise(setImmediate);
 
-  if (rejectBody.reason !== "already_known") throw new Error("reason not sent");
+  if (rejectBody.reason !== "not_interested") throw new Error("reason not sent");
   if (elements.toast.textContent !== "Error: denied") throw new Error("toast not shown");
   if (elements.toast.classList.contains("hidden")) throw new Error("toast hidden");
   if (elements.deck.children[0] === originalCard) throw new Error("card not re-rendered");
@@ -592,10 +586,10 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
   if (!elements["undo-toast"].classList.contains("hidden")) throw new Error("undo recorded");
 
   rejectOk = true;
-  rejectButtons[1].listeners.click();
+  docListeners.keydown({key: "ArrowLeft"});
   await new Promise(setImmediate);
-  if (elements["undo-message"].textContent !== "Rejected: 已知道") {
-    throw new Error("undo reason not shown");
+  if (elements["undo-message"].textContent !== "Rejected") {
+    throw new Error("undo not shown as rejected");
   }
   if (elements["undo-toast"].classList.contains("hidden")) {
     throw new Error("undo not shown");
@@ -612,12 +606,12 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
         shutil.which("node") is None,
         reason="Node.js not installed; the executable UI contract test needs it",
     )
-    def test_double_click_rejects_only_the_seen_article(self) -> None:
-        """A second click before the 300ms re-render must not reject the next card.
+    def test_double_press_rejects_only_the_seen_article(self) -> None:
+        """A second reject before the 300ms re-render must not hit the next card.
 
         postAction advances currentIndex as soon as the fetch resolves but keeps
         the old card on screen for 300ms, so without the in-flight guard a
-        double-click stamps a human rejection on an article the user never saw.
+        double-press stamps a human rejection on an article the user never saw.
         """
         node = shutil.which("node")
         app_path = self.static_dir / "app.js"
@@ -654,11 +648,11 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
 (async () => {
   await new Promise(setImmediate);
 
-  // Double-click: the first verdict is in flight / its card still shown.
-  rejectButtons[0].listeners.click();
-  rejectButtons[0].listeners.click();
+  // Double-press: the first verdict is in flight / its card still shown.
+  docListeners.keydown({key: "ArrowLeft"});
+  docListeners.keydown({key: "ArrowLeft"});
   await new Promise(setImmediate);
-  rejectButtons[0].listeners.click();  // fetch resolved, re-render still pending
+  docListeners.keydown({key: "ArrowLeft"});  // fetch resolved, re-render still pending
   await new Promise(setImmediate);
 
   if (rejected.length !== 1 || rejected[0] !== "https://example.com/1") {
@@ -667,7 +661,7 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
 
   // After the delayed re-render the next card is visible and clickable again.
   timers.splice(0).forEach((fn) => fn());
-  rejectButtons[0].listeners.click();
+  docListeners.keydown({key: "ArrowLeft"});
   await new Promise(setImmediate);
 
   if (rejected.length !== 2 || rejected[1] !== "https://example.com/2") {
