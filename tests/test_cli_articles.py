@@ -285,3 +285,47 @@ def test_articles_clean(setup_store: tuple[Path, Path, Path, ArticleStore]) -> N
     )
     assert result.exit_code == 0
     assert "1" in result.stdout or "Deleted" in result.stdout
+
+
+def test_articles_score_persists_tags_when_d1_available(
+    setup_store: tuple[Path, Path, Path, ArticleStore],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`articles score` wires persist_tags like run_digest: paid-for tags land in D1."""
+    from fakes import FakeLLM, SqliteD1
+
+    import cyris.bootstrap as bootstrap
+    from cyris.adapters.store.d1_store import D1ArticleStore
+
+    _tmp_path, config_path, sources_path, _store = setup_store
+
+    db = SqliteD1()
+    now = datetime.now(UTC)
+    D1ArticleStore(db).save(
+        [
+            Article(
+                id=1,
+                title="Scorable Article",
+                url="https://example.com/scorable",
+                content="Content",
+                published_at=now,
+                source_name="Source A",
+                source_tier=Tier.SUMMARIZE,
+            )
+        ],
+        now=now,
+    )
+    llm = FakeLLM(
+        json.dumps({"scores": [{"id": 1, "score": 80, "language": "en", "tags": ["AI Policy"]}]})
+    )
+    monkeypatch.setattr(bootstrap, "build_d1_client", lambda cfg: db)
+    monkeypatch.setattr(bootstrap, "build_llm", lambda cfg: llm)
+
+    result = runner.invoke(
+        app,
+        ["articles", "score", "--config", str(config_path), "--sources", str(sources_path)],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert db.query("SELECT name FROM tags").rows == [{"name": "ai policy"}]
+    assert db.query("SELECT COUNT(*) AS n FROM article_tags").rows == [{"n": 1}]

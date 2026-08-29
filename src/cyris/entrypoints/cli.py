@@ -816,7 +816,7 @@ def articles_score(
     """Score non-news articles via AI for triage ranking."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_store, load_effective_config
+    from cyris.bootstrap import build_d1_client, build_store, load_effective_config
     from cyris.domain.models import ArticleState
     from cyris.service_layer.scoring import score_in_batches
 
@@ -827,7 +827,17 @@ def articles_score(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = build_store(cfg)
+    d1 = build_d1_client(cfg)
+    store = build_store(cfg, d1)
+
+    # Same wiring as run_digest: the prompt asks for tags on every call, so
+    # persist them when D1 is available instead of paying for them and
+    # discarding them. JSON-only deployments keep the current behavior.
+    tag_store = None
+    if d1 is not None:
+        from cyris.adapters.store.tags import D1TagStore
+
+        tag_store = D1TagStore(d1)
 
     # Get articles to score
     if force:
@@ -861,12 +871,22 @@ def articles_score(
             nonlocal total_updated
             total_updated += store.update_scores(url_to_score_lang)
 
+        persist_tags = None
+        if tag_store is not None:
+
+            def persist_tags(url_to_tags) -> None:
+                try:
+                    tag_store.save(url_to_tags)
+                except Exception as e:
+                    logger.warning("Failed to persist scoring tags: %s", e)
+
         total_usage = await score_in_batches(
             scorable,
             llm,
             snippet_length=cfg.app.digest.scoring_snippet_length,
             progress=typer.echo,
             persist=persist,
+            persist_tags=persist_tags,
         )
 
         cost = total_usage.estimated_cost
