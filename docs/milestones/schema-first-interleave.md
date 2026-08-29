@@ -17,7 +17,7 @@ cyris 的未完工作排成一條「先出貨、再落資料形狀、行為與�
 1. **M-ship（先行，唯一的全域前置）**：33 commits 推上 origin/main（fast-forward，已確認無衝突）；用 branch rebuild image、`--force-recreate`；讓 M1–M4 程式碼在生產跑完至少一輪完整 digest 並收到收據；收據到手後才執行不可逆刪除（`[miniflux]`、embeddings 快取、`agent-vault/html/` 與其 bind mount、退役本機 JSON store）。同一個 recreate 窗口內把 vote similarity 關掉——它正用著專案已文件化為錯形狀的門檻在壓制生產內容，替代品就是本計畫的行為半邊；開著才是需要理由的那個選項。
 2. **M-persist（M-ship 之後，設計軌優先項）**：拒絕理由二分（已知道＝故事作用域短時鐘／沒興趣＝題目作用域週時鐘）開始寫入既有的 rejection_reason 欄位；故事歸屬與 tag 詞彙表成為 D1 裡的持久資料。全部是增量 DDL＋寫入端，與運行平台無關。兩個便宜修補搭車：畸形 LLM 回應防護（GitHub #5，它會炸掉整輪 digest）與 articles clean 的 triaged 保護（§7#15 一行 guard）。
 3. **M5（M-ship 之後，與 M-persist 平行）**：進 Container，照 §7 原定義（真實 auth、Workers Cron、onActivityExpired→stop）。與 M-persist 互不阻塞——store 已是 D1，兩邊碰的層不同。
-4. **M-behaviour（M-persist 之後）**：兩層興趣狀態（題目＋故事）與新的壓制形式（每次壓制能回答「因為什麼、到什麼時候」）。§7#13 在此以取代結案，不做門檻重校。
+4. **M-behaviour（M-persist 之後）**：兩層興趣狀態（題目＋故事）與新的壓制形式（每次壓制能回答「因為什麼、到什麼時候」）。§7#13 在此以取代結案，不做門檻重校。附帶產出：興趣狀態的圖像化——tag 為節點、共現為邊、票的極性染色、興趣時鐘映射成亮度衰減的 force-directed graph，digest run 順手產靜態頁掛上 Pages。它是「掌握」的檢查面（壓制的視覺答案），不是獨立功能；等 tag 資料累積數週、興趣狀態表存在後才動工。
 5. **M6（M5 與 M-persist 都完成之後）**：部署鈕。M-persist 的 schema 已在裡面，不需要遷移機制。
 
 已順手定案的小事：GitHub #4（newsletter fixture 驗證）維持開放票，不排進任何里程碑的關鍵路徑；R2 備份決策（§7#14）維持開放——Pages 站自 M3 起已是檔案庫本體，M-ship 的刪除不改變這件事，要不要第二份拷貝是耐久性偏好，隨時可以用一個 token 權限補上。
