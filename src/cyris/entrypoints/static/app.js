@@ -393,7 +393,15 @@
 
   /* ---- Actions ---- */
 
+  // Blocks a second verdict while one is in flight or its card is still on
+  // screen (the re-render lags 300ms), so a double-click cannot reject the
+  // next, unseen article.
+  let actionInFlight = false;
+
   async function postAction(action, url, reason) {
+    if (actionInFlight) return;
+    actionInFlight = true;
+
     // Clear previous undo when swiping to next card
     hideUndoToast();
 
@@ -407,11 +415,13 @@
       if (!data.ok) {
         showToast("Error: " + (data.error || "unknown"));
         renderCurrentCard();
+        actionInFlight = false;
         return;
       }
     } catch (err) {
       showToast("Network error");
       renderCurrentCard();
+      actionInFlight = false;
       return;
     }
 
@@ -420,6 +430,7 @@
     updateCounter();
     setTimeout(function () {
       renderCurrentCard();
+      actionInFlight = false;
     }, 300);
     await fetchStats();
   }

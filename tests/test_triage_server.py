@@ -455,34 +455,10 @@ class TestStatsAndFilter:
             await test_client.close()
 
 
-class TestRejectActionsUI:
-    static_dir = Path(__file__).parents[1] / "src/cyris/entrypoints/static"
-
-    def test_swipe_footer_has_both_reject_buttons(self) -> None:
-        html = (self.static_dir / "index.html").read_text()
-        footer = html[html.index('<footer id="swipe-footer">') : html.index("</footer>")]
-
-        assert 'data-reason="not_interested"' in footer
-        assert 'data-reason="already_known"' in footer
-        assert "沒興趣" in footer
-        assert "已知道" in footer
-
-    def test_reject_paths_send_their_reason(self) -> None:
-        source = (self.static_dir / "app.js").read_text()
-
-        assert "JSON.stringify({ url: url, reason: reason })" in source
-        assert 'postAction("reject", article.url, "not_interested")' in source
-        assert 'e.key === "k"' in source
-        assert 'postAction("reject", article.url, "already_known")' in source
-
-    @pytest.mark.skipif(
-        shutil.which("node") is None,
-        reason="Node.js not installed; the executable UI contract test needs it",
-    )
-    def test_button_responses_preserve_or_record_verdict(self) -> None:
-        node = shutil.which("node")
-        app_path = self.static_dir / "app.js"
-        harness = r"""
+# Shared node scaffold for executable UI contract tests: a minimal DOM stub
+# for app.js. Each test appends its own scenario (timers, articles, fetch
+# stub, assertions) before handing the script to node.
+_UI_HARNESS_SCAFFOLD = r"""
 const fs = require("fs");
 const vm = require("vm");
 
@@ -542,6 +518,39 @@ global.document = {
     selector === ".reject-button" ? rejectButtons : tabs,
   addEventListener: () => {},
 };
+"""
+
+
+class TestRejectActionsUI:
+    static_dir = Path(__file__).parents[1] / "src/cyris/entrypoints/static"
+
+    def test_swipe_footer_has_both_reject_buttons(self) -> None:
+        html = (self.static_dir / "index.html").read_text()
+        footer = html[html.index('<footer id="swipe-footer">') : html.index("</footer>")]
+
+        assert 'data-reason="not_interested"' in footer
+        assert 'data-reason="already_known"' in footer
+        assert "沒興趣" in footer
+        assert "已知道" in footer
+
+    def test_reject_paths_send_their_reason(self) -> None:
+        source = (self.static_dir / "app.js").read_text()
+
+        assert "JSON.stringify({ url: url, reason: reason })" in source
+        assert 'postAction("reject", article.url, "not_interested")' in source
+        assert 'e.key === "k"' in source
+        assert 'postAction("reject", article.url, "already_known")' in source
+
+    @pytest.mark.skipif(
+        shutil.which("node") is None,
+        reason="Node.js not installed; the executable UI contract test needs it",
+    )
+    def test_button_responses_preserve_or_record_verdict(self) -> None:
+        node = shutil.which("node")
+        app_path = self.static_dir / "app.js"
+        harness = (
+            _UI_HARNESS_SCAFFOLD
+            + r"""
 global.setTimeout = () => 1;
 global.clearTimeout = () => {};
 
@@ -596,4 +605,78 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
   process.exitCode = 1;
 });
 """
+        )
+        subprocess.run([node, "-e", harness, str(app_path)], check=True)
+
+    @pytest.mark.skipif(
+        shutil.which("node") is None,
+        reason="Node.js not installed; the executable UI contract test needs it",
+    )
+    def test_double_click_rejects_only_the_seen_article(self) -> None:
+        """A second click before the 300ms re-render must not reject the next card.
+
+        postAction advances currentIndex as soon as the fetch resolves but keeps
+        the old card on screen for 300ms, so without the in-flight guard a
+        double-click stamps a human rejection on an article the user never saw.
+        """
+        node = shutil.which("node")
+        app_path = self.static_dir / "app.js"
+        harness = (
+            _UI_HARNESS_SCAFFOLD
+            + r"""
+const timers = [];
+global.setTimeout = (fn) => timers.push(fn);
+global.clearTimeout = () => {};
+
+const articles = [1, 2].map((n) => ({
+  url: "https://example.com/" + n,
+  title: "Article " + n,
+  content: "content",
+  published_at: "2026-08-28T00:00:00Z",
+}));
+const rejected = [];
+global.fetch = async (url, options = {}) => {
+  if (url.startsWith("/api/articles?")) {
+    return {json: async () => ({articles: articles})};
+  }
+  if (url === "/api/stats") {
+    return {json: async () => ({pending: 2, accepted: 0, rejected: 0, total: 2})};
+  }
+  if (url === "/api/articles/reject") {
+    rejected.push(JSON.parse(options.body).url);
+    return {json: async () => ({ok: true})};
+  }
+  throw new Error("unexpected fetch " + url);
+};
+
+vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
+
+(async () => {
+  await new Promise(setImmediate);
+
+  // Double-click: the first verdict is in flight / its card still shown.
+  rejectButtons[0].listeners.click();
+  rejectButtons[0].listeners.click();
+  await new Promise(setImmediate);
+  rejectButtons[0].listeners.click();  // fetch resolved, re-render still pending
+  await new Promise(setImmediate);
+
+  if (rejected.length !== 1 || rejected[0] !== "https://example.com/1") {
+    throw new Error("extra clicks leaked a verdict: " + JSON.stringify(rejected));
+  }
+
+  // After the delayed re-render the next card is visible and clickable again.
+  timers.splice(0).forEach((fn) => fn());
+  rejectButtons[0].listeners.click();
+  await new Promise(setImmediate);
+
+  if (rejected.length !== 2 || rejected[1] !== "https://example.com/2") {
+    throw new Error("guard stuck after re-render: " + JSON.stringify(rejected));
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+"""
+        )
         subprocess.run([node, "-e", harness, str(app_path)], check=True)
