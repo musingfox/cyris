@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from cyris.adapters.store.d1 import D1Queryable, chunk_rows
-from cyris.domain.tags import normalize_tag
+from cyris.domain.tags import normalize_tags
 
 _VOCAB_PARAMS = 2  # name, created_at
 _MEMBER_PARAMS = 3  # article_url, tag, tagged_at
@@ -20,14 +20,20 @@ class D1TagStore:
         sighting. Memberships are INSERT OR REPLACE so `tagged_at` follows the
         latest write instead of going stale. Writes are chunked against D1's
         bound-parameter budget, not sent row by row.
+
+        Callers are not trusted with the values' shape: a bare string would
+        otherwise be iterated character by character into permanent junk rows,
+        and one non-string element would throw away the whole batch.
         """
         now = datetime.now(UTC).isoformat()
         vocabulary: set[str] = set()
         memberships: list[list[str]] = []
         for url, tags in url_to_tags.items():
-            normalized = {value for tag in tags if (value := normalize_tag(tag)) is not None}
+            if isinstance(tags, str):
+                tags = [tags]
+            normalized = normalize_tags(tags) if isinstance(tags, list) else []
             vocabulary.update(normalized)
-            memberships.extend([url, tag, now] for tag in sorted(normalized))
+            memberships.extend([url, tag, now] for tag in normalized)
 
         written = 0
         vocab_rows = [[name, now] for name in sorted(vocabulary)]

@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from cyris.domain.language import detect_language
 from cyris.domain.models import StoredArticle, UsageStats
+from cyris.domain.tags import normalize_tags
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import build_scoring_prompt, build_scoring_system_prompt
 
@@ -53,7 +54,12 @@ async def score_articles_batch(
         url = id_to_url.get(article_id)
         if url:
             result[url] = (score, language)
-            tags = entry.get("tags", [])
+            # Same distrust as cluster_news: a null, a bare string, or a list
+            # with non-strings costs this entry its tags, never the batch.
+            raw_tags = entry.get("tags")
+            if isinstance(raw_tags, str):
+                raw_tags = [raw_tags]
+            tags = normalize_tags(raw_tags) if isinstance(raw_tags, list) else []
             if tags:
                 url_to_tags[url] = tags
 

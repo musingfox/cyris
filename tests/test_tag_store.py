@@ -56,6 +56,33 @@ def test_save_is_idempotent_normalizes_tags_and_reports_rows_written() -> None:
     ]
 
 
+def test_string_tags_value_is_one_tag_not_characters() -> None:
+    db = SqliteD1()
+
+    written = D1TagStore(db).save({"u1": "Rust"})
+
+    assert written == 2  # 1 tags row + 1 article_tags row, not 4 char rows
+    assert db.query("SELECT name FROM tags").rows == [{"name": "rust"}]
+    assert db.query("SELECT article_url, tag FROM article_tags").rows == [
+        {"article_url": "u1", "tag": "rust"}
+    ]
+
+
+def test_non_string_tag_elements_are_dropped_without_losing_the_batch() -> None:
+    db = SqliteD1()
+
+    D1TagStore(db).save({"u1": ["AI", 42], "u2": ["ML"]})
+
+    assert db.query("SELECT name FROM tags ORDER BY name").rows == [
+        {"name": "ai"},
+        {"name": "ml"},
+    ]
+    assert db.query("SELECT article_url, tag FROM article_tags ORDER BY article_url").rows == [
+        {"article_url": "u1", "tag": "ai"},
+        {"article_url": "u2", "tag": "ml"},
+    ]
+
+
 def test_resave_refreshes_tagged_at_but_keeps_created_at() -> None:
     db = SqliteD1()
     store = D1TagStore(db)

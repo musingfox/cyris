@@ -317,6 +317,47 @@ class TestClusterNews:
         assert clusters[0].tags == []
         assert [article.id for article in unclustered] == [103]
 
+    async def test_null_tags_do_not_destroy_the_windows_clustering(self, sample_news_articles):
+        """One malformed tags value must never degrade the whole window to unclustered."""
+        llm = FakeLLM(
+            '{"clusters": ['
+            '{"heading": "A", "summary": "S", "article_ids": [101], "tags": null}, '
+            '{"heading": "B", "summary": "S", "article_ids": [102], "tags": ["AI Policy"]}]}'
+        )
+
+        clusters, unclustered = await cluster_news(sample_news_articles, llm)
+
+        assert [c.heading for c in clusters] == ["A", "B"]
+        assert clusters[0].tags == []
+        assert clusters[1].tags == ["ai policy"]
+        assert [article.id for article in unclustered] == [103]
+
+    async def test_string_tags_value_becomes_a_single_tag(self, sample_news_articles):
+        llm = FakeLLM(
+            '{"clusters": ['
+            '{"heading": "A", "summary": "S", "article_ids": [101], "tags": "AI"}, '
+            '{"heading": "B", "summary": "S", "article_ids": [102], "tags": ["ML"]}]}'
+        )
+
+        clusters, _ = await cluster_news(sample_news_articles, llm)
+
+        assert [c.heading for c in clusters] == ["A", "B"]
+        assert clusters[0].tags == ["ai"]  # one tag, not per-character shards
+        assert clusters[1].tags == ["ml"]
+
+    async def test_non_string_tag_elements_are_dropped_not_fatal(self, sample_news_articles):
+        llm = FakeLLM(
+            '{"clusters": ['
+            '{"heading": "A", "summary": "S", "article_ids": [101], "tags": ["AI", 42]}, '
+            '{"heading": "B", "summary": "S", "article_ids": [102], "tags": ["ML"]}]}'
+        )
+
+        clusters, _ = await cluster_news(sample_news_articles, llm)
+
+        assert [c.heading for c in clusters] == ["A", "B"]
+        assert clusters[0].tags == ["ai"]
+        assert clusters[1].tags == ["ml"]
+
     async def test_articles_the_model_forgot_to_mention_are_not_lost(self, sample_news_articles):
         """The response clusters one article and names none as unclustered.
 

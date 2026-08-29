@@ -237,7 +237,27 @@ class TestScoreArticlesBatch:
         scores, tags, _ = await score_articles_batch(sample_articles, llm)
 
         assert scores["http://a.com"] == (80.0, "en")
-        assert tags == {"http://a.com": ["Rust"]}
+        assert tags == {"http://a.com": ["rust"]}  # normalized at the source
+
+    async def test_batch_scoring_survives_malformed_tags_values(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "scores": [
+                        {"id": 1, "score": 80, "language": "en", "tags": ["AI", 42]},
+                        {"id": 2, "score": 70, "language": "en", "tags": "Rust"},
+                    ]
+                }
+            )
+        )
+
+        scores, tags, _ = await score_articles_batch(sample_articles, llm)
+
+        assert scores["http://a.com"] == (80.0, "en")  # nothing thrown away
+        assert tags["http://a.com"] == ["ai"]  # 42 dropped, no TypeError
+        assert tags["http://b.com"] == ["rust"]  # one tag, not per-character shards
 
     async def test_batch_scoring_omits_missing_tags(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch

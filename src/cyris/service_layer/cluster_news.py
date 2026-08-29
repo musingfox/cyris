@@ -3,6 +3,7 @@
 import logging
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
+from cyris.domain.tags import normalize_tags
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     DEFAULT_LANGUAGE,
@@ -91,7 +92,14 @@ async def cluster_news(
             heading = cluster["heading"]
             summary = cluster["summary"]
             article_ids = cluster["article_ids"]
-            tags = cluster.get("tags", [])
+            # Never trust the response's shape: a null, a bare string, or a
+            # list with non-strings must cost this cluster its tags at worst —
+            # a ValidationError here would hit the blanket except below and
+            # silently throw away every cluster in the window.
+            raw_tags = cluster.get("tags")
+            if isinstance(raw_tags, str):
+                raw_tags = [raw_tags]
+            tags = normalize_tags(raw_tags) if isinstance(raw_tags, list) else []
 
             # Build DigestItems from cluster articles
             items = []
