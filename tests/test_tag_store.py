@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fakes import FakeLLM, SqliteD1
+from fakes import CountingD1, FakeLLM, SqliteD1
 
 from cyris.adapters.store.tags import D1TagStore
 from cyris.domain.models import Article, Tier
@@ -94,18 +94,6 @@ def test_resave_refreshes_tagged_at_but_keeps_created_at() -> None:
 
     assert db.query("SELECT tagged_at FROM article_tags").rows[0]["tagged_at"] != "stale"
     assert db.query("SELECT created_at FROM tags").rows[0]["created_at"] == "first-seen"
-
-
-class CountingD1:
-    """SqliteD1 that counts queries, so a per-row-write regression fails a test."""
-
-    def __init__(self) -> None:
-        self._inner = SqliteD1()
-        self.query_count = 0
-
-    def query(self, sql, params=None):
-        self.query_count += 1
-        return self._inner.query(sql, params)
 
 
 def test_save_batches_writes_within_the_bound_param_budget() -> None:

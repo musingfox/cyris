@@ -75,3 +75,15 @@ class SqliteD1:
         rows = [dict(row) for row in cursor.fetchall()]
         self._conn.commit()
         return QueryResult(rows=rows, changes=max(cursor.rowcount, 0))
+
+
+class CountingD1(SqliteD1):
+    """SqliteD1 that counts queries, so a per-row-write regression fails a test."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.query_count = 0
+
+    def query(self, sql, params=None):
+        self.query_count += 1
+        return super().query(sql, params)

@@ -315,7 +315,8 @@ async def test_run_digest_omits_synthetic_url_progress_when_all_http(tmp_path: P
     assert contents[0].synthetic_url_count == 0
 
 
-async def test_scoring_tag_write_failure_does_not_stop_later_batches(tmp_path: Path) -> None:
+async def test_scoring_tag_write_failure_does_not_stop_the_run(tmp_path: Path) -> None:
+    """Scoring tags are saved once after all batches; that write failing costs only the tags."""
     articles = [
         Article(
             id=i,
@@ -351,22 +352,27 @@ async def test_scoring_tag_write_failure_does_not_stop_later_batches(tmp_path: P
     )
     deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
 
-    class FlakyTagStore:
+    class ExplodingTagStore:
         def __init__(self) -> None:
             self.calls = 0
+            self.seen: dict[str, list[str]] = {}
 
         def save(self, url_to_tags) -> None:
             self.calls += 1
-            if self.calls == 1:
-                raise RuntimeError("D1 unavailable")
+            self.seen = dict(url_to_tags)
+            raise RuntimeError("D1 unavailable")
 
-    tag_store = FlakyTagStore()
+    tag_store = ExplodingTagStore()
     deps = replace(deps, tag_store=tag_store)
 
     report = await run_digest(deps, RunOptions())
 
     assert report.status == "ok"
-    assert tag_store.calls == 2
+    # One accumulated write for both scoring batches, not one per batch.
+    assert tag_store.calls == 1
+    assert tag_store.seen["https://example.com/1"] == ["first"]
+    assert tag_store.seen["https://example.com/21"] == ["second"]
+    # Both batches' scores persisted despite the failed tag write.
     stored = deps.store.get_by_urls(["https://example.com/21"])
     assert stored[0].score == 81
 

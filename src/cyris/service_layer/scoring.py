@@ -83,13 +83,15 @@ async def score_in_batches(
         snippet_length: Content snippet length for the prompt.
         progress: Progress message callback.
         persist: Called with each batch's url→(score, language) mapping.
+        persist_tags: Called once, after the last batch, with the accumulated
+            URL-to-tags mapping — one write instead of one per batch.
 
-        persist_tags: Called with each batch's URL-to-tags mapping.
     Returns:
         Accumulated usage stats across all batches.
     """
     total_usage = UsageStats(model=llm.model)
     total_batches = (len(articles) + BATCH_SIZE - 1) // BATCH_SIZE
+    collected_tags: dict[str, list[str]] = {}
 
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
@@ -104,7 +106,9 @@ async def score_in_batches(
 
         if persist is not None:
             persist(url_to_score_lang)
-        if persist_tags is not None and url_to_tags:
-            persist_tags(url_to_tags)
+        collected_tags.update(url_to_tags)
+
+    if persist_tags is not None and collected_tags:
+        persist_tags(collected_tags)
 
     return total_usage

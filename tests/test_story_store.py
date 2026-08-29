@@ -1,21 +1,9 @@
 from pathlib import Path
 
-from fakes import SqliteD1
+from fakes import CountingD1, SqliteD1
 
 from cyris.adapters.store.stories import D1StoryStore
 from cyris.domain.models import StoryRecord
-
-
-class CountingD1:
-    """SqliteD1 that counts queries, so a per-row-write regression fails a test."""
-
-    def __init__(self) -> None:
-        self._inner = SqliteD1()
-        self.query_count = 0
-
-    def query(self, sql, params=None):
-        self.query_count += 1
-        return self._inner.query(sql, params)
 
 
 def test_save_persists_story_and_members_and_reports_rows_written() -> None:
