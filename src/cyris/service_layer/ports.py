@@ -87,7 +87,17 @@ class ArticleRepository(Protocol):
 
     def delete_articles(
         self, state: ArticleState | list[ArticleState], older_than_days: int | None = None
-    ) -> int: ...
+    ) -> int:
+        """Delete matching articles, except human-triaged ones.
+
+        Rows with a non-null `triaged_at` are never deleted regardless of the
+        filters: that stamp marks a real human decision (digest vote, triage
+        UI, `cyris articles accept|reject`), and those rows are the training
+        signal that seeds vote similarity. Every implementation must honor
+        this exclusion — a backend that deletes stamped rows silently erodes
+        the corpus.
+        """
+        ...
 
 
 @runtime_checkable

@@ -791,7 +791,8 @@ def articles_clean(
     # Confirm deletion
     if not confirm:
         proceed = typer.confirm(
-            f"Delete all {state_filter.upper()} articles older than {older_than} days?"
+            f"Delete all {state_filter.upper()} articles older than {older_than} days? "
+            "(human-triaged rows are kept)"
         )
         if not proceed:
             typer.echo("Cancelled.")
