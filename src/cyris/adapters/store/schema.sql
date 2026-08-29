@@ -93,7 +93,9 @@ CREATE TABLE IF NOT EXISTS pages_manifest (
 -- period), so a re-run of the same window replaces its rows rather than
 -- accumulating duplicates.
 CREATE TABLE IF NOT EXISTS stories (
-  id          TEXT PRIMARY KEY,    -- "{digest_date}-{period}-{n}", deterministic per window
+  id          TEXT PRIMARY KEY,    -- "{digest_date}-{period}-{urlhash}": content-derived
+                                   -- from the sorted member URLs, so the same story keeps
+                                   -- its id across re-runs of the window
   digest_date TEXT NOT NULL,
   period      TEXT NOT NULL,
   heading     TEXT NOT NULL,

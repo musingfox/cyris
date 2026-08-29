@@ -1,5 +1,6 @@
 """DigestPipeline - stage-based digest processing pipeline."""
 
+import hashlib
 import logging
 
 from cyris.domain.models import (
@@ -23,6 +24,17 @@ from cyris.service_layer.summarize import (
 from cyris.utils.timezone import now_in_timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _story_id(date: str, period: str, member_urls: list[str]) -> str:
+    """Content-derived story id: the same member set yields the same id.
+
+    An enumerate position would be deterministic only per run — a re-run of
+    the same window that clusters differently would bind an old id to a new
+    story. Hashing the sorted member URLs keys the id to the story itself.
+    """
+    membership = hashlib.sha1("\n".join(sorted(member_urls)).encode("utf-8")).hexdigest()[:8]
+    return f"{date}-{period}-{membership}"
 
 
 class DigestPipeline:
@@ -215,14 +227,16 @@ class DigestPipeline:
 
         # Captured before select_digest_articles truncates the content: the
         # records carry each cluster's full membership, not what survived the cap.
-        story_records = [
-            StoryRecord(
-                id=f"{today}-{period}-{n}",
-                heading=section.heading,
-                urls=[url for item in section.items for url in item.urls],
+        story_records = []
+        for section in news_clusters:
+            member_urls = [url for item in section.items for url in item.urls]
+            story_records.append(
+                StoryRecord(
+                    id=_story_id(today, period, member_urls),
+                    heading=section.heading,
+                    urls=member_urls,
+                )
             )
-            for n, section in enumerate(news_clusters)
-        ]
 
         content = DigestContent(
             date=today,

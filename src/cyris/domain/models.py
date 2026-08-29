@@ -222,7 +222,7 @@ class StoryRecord(BaseModel):
     articles (`article_tags`), and a second home for raw LLM strings would drift.
     """
 
-    id: str  # "{digest_date}-{period}-{n}", deterministic per window
+    id: str  # "{digest_date}-{period}-{urlhash}", content-derived from the member URLs
     heading: str
     urls: list[str]
 

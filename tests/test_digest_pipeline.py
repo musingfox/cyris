@@ -1,5 +1,6 @@
 """Tests for DigestPipeline."""
 
+import hashlib
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -9,6 +10,11 @@ from fakes import FakeLLM
 from cyris.domain.models import Article, DigestItem, DigestSection, Tier
 from cyris.domain.selection import split_summarize_tier_by_score
 from cyris.service_layer.digest_pipeline import DigestPipeline
+
+
+def _expected_story_id(date: str, period: str, urls: list[str]) -> str:
+    """Computed independently of the implementation: the id formula is a contract."""
+    return f"{date}-{period}-" + hashlib.sha1("\n".join(sorted(urls)).encode()).hexdigest()[:8]
 
 
 class TestDigestPipeline:
@@ -136,9 +142,15 @@ class TestDigestPipeline:
 
         # The cap truncated the rendered clusters...
         assert len(result.content.news_clusters) == 1
-        # ...but the records still name both stories with their full memberships.
+        # ...but the records still name both stories with their full memberships,
+        # under content-derived ids a re-run of the same window would reproduce.
         date = result.content.date
-        assert [r.id for r in result.story_records] == [f"{date}-morning-0", f"{date}-morning-1"]
+        assert [r.id for r in result.story_records] == [
+            _expected_story_id(
+                date, "morning", ["https://news.example/1", "https://news.example/2"]
+            ),
+            _expected_story_id(date, "morning", ["https://news.example/3"]),
+        ]
         assert result.story_records[0].urls == ["https://news.example/1", "https://news.example/2"]
         assert result.story_records[1].urls == ["https://news.example/3"]
 
