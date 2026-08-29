@@ -64,6 +64,8 @@ flowchart TB
         USAGE["append_usage_d1"]
         NOTI["send_discord"]
         EMB["Embedder"]
+        TAGS["D1TagStore"]
+        STORIES["D1StoryStore"]
     end
 
     subgraph EXT["External"]
@@ -94,6 +96,8 @@ flowchart TB
     RUN -->|direct inject| USAGE
     RUN -->|direct inject| NOTI
     RUN -->|direct inject| EMB
+    RUN -->|direct inject| TAGS
+    RUN -->|direct inject| STORIES
 
     LLM --> API
     STORE --> CFW
@@ -103,6 +107,8 @@ flowchart TB
     PUB --> CFW
     SYNC --> CFW
     USAGE --> CFW
+    TAGS --> CFW
+    STORIES --> CFW
     NOTI --> DISC
     HTML -->|to remove| FS
     EMB -->|to remove| FS
@@ -114,7 +120,7 @@ flowchart TB
     class P1,P2,P3 port;
     class HTML,EMB move;
     class RSS,FEEDS,FS bad;
-    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE cloud;
+    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES cloud;
 ```
 
 **Legend**: 🟢 Protocol boundary　🟠 still writes local files, must move　🔴 must not exist in the
@@ -149,7 +155,7 @@ That is the acceptance test; anything else is progress reporting.
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `FetchSource` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, embedder | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, embedder, `D1TagStore`, `D1StoryStore` | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -248,6 +254,14 @@ sitting close to a downvoted article — it runs over *every* candidate, not jus
 the scorer skips news and the first downvote was news-tagged. It is the only personalization in the
 pipeline: prompt-level preference learning was removed on 2026-08-27 because it had never produced a
 profile.
+
+Two analytics facts are persisted beside the digest, both fail-soft — a write failure is logged
+and the run continues. Topic tags emitted by scoring and by news clustering land normalized in D1
+`tags`/`article_tags` (`D1TagStore`), and each run's pre-truncation story membership — which
+articles the clustering step grouped, including members the output cap dropped — replaces its
+(date, period) window in `stories`/`story_members` (`D1StoryStore`). Both stores are direct
+injections built only when D1 is configured; with `backend = "json"` they are absent and the run
+skips the writes.
 
 Output is the HTML digest and a companion raw page listing everything the window collected —
 uncapped and unfiltered, so what the digest dropped stays visible — both deployed to Cloudflare
