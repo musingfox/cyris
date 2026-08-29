@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from fakes import SqliteD1
+from fakes import CompoundSelectLimitedD1, SqliteD1
 
 from cyris.adapters.output.usage_log import append_usage_d1
 from cyris.adapters.store import ArticleStore
@@ -258,3 +258,23 @@ def test_a_client_error_is_not_retried(monkeypatch) -> None:
     with pytest.raises(D1Error):
         client.query("SELECT 1")
     assert len(calls) == 1
+
+
+def test_scores_survive_a_batch_past_d1s_compound_select_ceiling() -> None:
+    """A scoring run of more than five articles must still write every score.
+
+    `update_scores` batched its rows as `SELECT ? UNION ALL SELECT ?`, and D1
+    caps a compound SELECT at five terms. The D1Error escaped `score_in_batches`
+    before the tag write, so every run lost both its scores and its tags to
+    run_digest's "Scoring failed; continuing without scores".
+    """
+    store = D1ArticleStore(CompoundSelectLimitedD1())
+    urls = [f"https://example.com/{n}" for n in range(12)]
+    store.save([_article(url, n) for n, url in enumerate(urls)])
+
+    # The scores themselves are the receipt, not the return count: stdlib
+    # sqlite3 reports rowcount 0 for `UPDATE ... FROM`, where D1 counts the rows.
+    store.update_scores({url: (float(n), "en") for n, url in enumerate(urls)})
+
+    stored = {a.url: a.score for a in store.list_articles(state=None, limit=100)}
+    assert [stored[url] for url in urls] == [float(n) for n in range(len(urls))]

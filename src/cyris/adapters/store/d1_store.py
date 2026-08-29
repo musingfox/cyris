@@ -215,9 +215,12 @@ class D1ArticleStore:
         for chunk in chunk_rows(rows, 3):
             # One UPDATE per chunk instead of one per URL: a scoring run touches
             # ~150 articles, and that many round trips is minutes, not seconds.
-            values = " UNION ALL ".join("SELECT ?, ?, ?" for _ in chunk)
+            # A VALUES list, never `SELECT ? UNION ALL SELECT ?`: D1 caps a
+            # compound SELECT at 5 terms, so the UNION form died on any batch
+            # past five articles — measured against the live database.
+            values = ", ".join("(?, ?, ?)" for _ in chunk)
             sql = (
-                f"WITH v(url, score, language) AS ({values}) "
+                f"WITH v(url, score, language) AS (VALUES {values}) "
                 "UPDATE stored_articles SET score = v.score, language = v.language "
                 "FROM v WHERE stored_articles.url = v.url"
             )

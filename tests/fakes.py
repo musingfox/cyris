@@ -87,3 +87,23 @@ class CountingD1(SqliteD1):
     def query(self, sql, params=None):
         self.query_count += 1
         return super().query(sql, params)
+
+
+class CompoundSelectLimitedD1(SqliteD1):
+    """SqliteD1 that also enforces D1's compound-SELECT ceiling.
+
+    stdlib sqlite3 allows 500 `UNION ALL` terms, so a statement that D1 rejects
+    passes silently here. The real limit, measured against the live database on
+    2026-08-29, is **5** — which is how `update_scores` shipped a statement that
+    every scoring run past five articles died on, with the whole batch's scores
+    and tags lost to the caller's `except`.
+    """
+
+    LIMIT = 5
+
+    def query(self, sql, params=None):
+        from cyris.adapters.store.d1 import D1Error
+
+        if sql.upper().count(" UNION ALL ") >= self.LIMIT:
+            raise D1Error("HTTP 400: too many terms in compound SELECT: SQLITE_ERROR")
+        return super().query(sql, params)
