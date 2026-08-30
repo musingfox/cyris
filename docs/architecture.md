@@ -407,7 +407,7 @@ REST, cacheless embeddings. Every persistent datum is in Cloudflare and the cont
 state. What is left is one platform move, one design track, and the deploy button.
 
 ```
-now ─┬─ P1 per-batch scoring guard ─┐
+now ─┬─ (P1: shipped)               ─┐
      ├─ P2 #15 sources write surface ┼─ M5 into the Container ─┐
      └─ (M-persist: shipped)         ┘                          ├─ M6 deploy button
                                                                 │
@@ -418,7 +418,7 @@ hard edges:  P2 → M5      M5 → M6      M-persist → M-behaviour → (closes
 
 | Order | What | Why here | Done when | Ticket |
 |---|---|---|---|---|
-| **P1** | Guard each scoring batch | `score_in_batches` (`scoring.py:95`) wraps no batch in a `try`. One malformed LLM response aborts the whole scoring pass — and `persist_tags` runs only after the loop, so that run's tags die with it. `run_digest` catches it and the digest still ships, silently unscored. This is GitHub #5's remaining half, and the shape of the 08-29 run whose tags all came from clustering | A batch that raises leaves the other batches' scores and tags written | `cyris#5` |
+| ~~**P1**~~ | ~~Guard each scoring batch~~ — done 2026-08-30 | `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only after the loop, so one malformed LLM response cost the whole run both its scores and its tags — the shape of the 08-29 run whose tags all came from clustering | ✅ `test_a_failing_batch_leaves_the_others_scores_and_tags_written`: batch 2 raises, batch 1's 20 scores and 20 tag rows are still written. The tag write is guarded too, so losing it no longer unwinds the scores | `cyris#5` |
 | **P2** | §7 #15, the `sources` write surface | Its urgency comes from M5, not from the page. Today a feed is added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed becomes a rebuild + redeploy. This is the same shape M2 fixed for settings, on the half that was left behind | A feed is added, retired, and re-tiered from `/settings`, and the next run fetches accordingly | `settings-source-editor` |
 | **M5** | Into the Container | Four pieces, three of them new code: a Containers definition (none exists — `workers/` holds only promote/newsletter/rss, and the image's `CMD` is `supercronic`), Workers Cron replacing `docker/crontab` (the `--if-due` gate already reads D1, so the logic moves unchanged), **auth** (the triage server has none — `127.0.0.1` is the current security boundary, and this is the first public write surface), and `onActivityExpired → stop()` | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |

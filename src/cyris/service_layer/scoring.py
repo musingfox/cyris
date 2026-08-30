@@ -97,18 +97,27 @@ async def score_in_batches(
         batch = articles[i : i + BATCH_SIZE]
         progress(f"  Batch {i // BATCH_SIZE + 1}/{total_batches}: {len(batch)} articles...")
 
-        url_to_score_lang, url_to_tags, usage = await score_articles_batch(
-            batch,
-            llm,
-            snippet_length=snippet_length,
-        )
-        total_usage.add(usage.input_tokens, usage.output_tokens)
+        try:
+            url_to_score_lang, url_to_tags, usage = await score_articles_batch(
+                batch,
+                llm,
+                snippet_length=snippet_length,
+            )
+            total_usage.add(usage.input_tokens, usage.output_tokens)
 
-        if persist is not None:
-            persist(url_to_score_lang)
-        collected_tags.update(url_to_tags)
+            if persist is not None:
+                persist(url_to_score_lang)
+            collected_tags.update(url_to_tags)
+        except Exception:
+            # One bad batch loses its own scores, not the whole run's.
+            logger.exception(
+                "Scoring batch %d/%d failed; continuing", i // BATCH_SIZE + 1, total_batches
+            )
 
     if persist_tags is not None and collected_tags:
-        persist_tags(collected_tags)
+        try:
+            persist_tags(collected_tags)
+        except Exception:
+            logger.exception("Persisting tags failed; the scores are already written")
 
     return total_usage

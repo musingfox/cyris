@@ -443,3 +443,57 @@ class TestFilterNonNews:
         non_news = [a for a in articles if "news" not in a.source_tags]
         assert len(non_news) == 1
         assert non_news[0].url == "http://a.com"
+
+
+class TestBatchGuard:
+    async def test_a_failing_batch_leaves_the_others_scores_and_tags_written(self):
+        """One malformed LLM response must not cost the whole run its scores.
+
+        `score_in_batches` wrapped no batch in a try and `persist_tags` ran only
+        after the loop, so a single bad batch aborted the pass and took every
+        other batch's tags with it (`cyris#5`).
+        """
+        from cyris.service_layer.scoring import BATCH_SIZE, score_in_batches
+
+        now = datetime.now(UTC)
+        articles = [
+            StoredArticle(
+                url=f"http://e.com/{n}",
+                original_id=n,
+                title=f"T{n}",
+                content="C",
+                published_at=now,
+                source_name="S",
+                source_tier=Tier.SUMMARIZE,
+                source_tags=[],
+                first_seen_at=now,
+            )
+            for n in range(BATCH_SIZE * 2)
+        ]
+
+        def response(ids: range) -> str:
+            return json.dumps({"scores": [{"id": n, "score": 7, "tags": ["ai"]} for n in ids]})
+
+        class SecondBatchExplodes(FakeLLM):
+            async def complete(self, prompt, **kwargs):
+                if len(self.calls) == 1:
+                    self.calls.append({})
+                    raise RuntimeError("malformed")
+                return await super().complete(prompt, **kwargs)
+
+        llm = SecondBatchExplodes(
+            responses=[response(range(BATCH_SIZE)), response(range(BATCH_SIZE, BATCH_SIZE * 2))]
+        )
+
+        scored: dict[str, tuple[float, str]] = {}
+        tagged: dict[str, list[str]] = {}
+        await score_in_batches(
+            articles,
+            llm,
+            persist=scored.update,
+            persist_tags=tagged.update,
+        )
+
+        first = {f"http://e.com/{n}" for n in range(BATCH_SIZE)}
+        assert set(scored) == first
+        assert set(tagged) == first
