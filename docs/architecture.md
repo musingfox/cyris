@@ -471,7 +471,9 @@ not on this list is already true of the running system.
 
 ### 7.0 The path
 
-Each milestone ends with a receipt — an observed effect, not an exit code.
+Each milestone ends with a receipt — an observed effect, not an exit code. The **ticket** column
+names a note in the Obsidian vault (`pm/cyris/tasks/`), which is where this project's work is
+tracked. A `cyris#N` is a GitHub issue, of which there are few and none new — do not open one.
 
 **M0–M4 are done** (2026-08-27 → 08-30): the cutover, the deletions, settings in D1, Pages over
 REST, cacheless embeddings. Every persistent datum is in Cloudflare and the container holds no
@@ -687,7 +689,7 @@ Worker, which is when a half-written settings page and three visual systems stop
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
 | ~~15~~ | ~~A write surface for the `sources` table~~ | Done 2026-08-30 (P2): `POST /api/sources` upserts one row and `DELETE /api/sources/{name}` retires it, over the **existing** `sources` row — name, url, type, tier, tags, `homepage`, `email_match`. No new table, no new §4 row. Two shapes worth knowing: a write against an **empty** table seeds it with the run's effective sources first, because an empty table means "use `sources.yaml`" and a single insert would otherwise silently stop every other feed; and `cyris sources push` still replaces the table wholesale, so it clobbers edits made here — the file stays the fallback, not a mirror | `settings-source-editor` |
-| 17 | Embedding provider is not on the page the LLM provider is on | `[vote_similarity] provider`/`model` in `cyris.toml` only; the embedder is a peer of `LLMClient` in `ports.py` but has no config section of its own | `[embedding]` as its own table, `provider` + `model` grade D on `/settings`, verified against the live API before storing — the same shape the LLM half already has. **`threshold` stays grade A**: the cosine scale is a measured property of the model, not a preference, so it follows the provider rather than being typed in | `settings-embedding-provider` · `cyris#6` |
+| 17 | Embedding provider is not on the page the LLM provider is on | `[vote_similarity] provider`/`model` in `cyris.toml` only; the embedder is a peer of `LLMClient` in `ports.py` but has no config section of its own | `[embedding]` as its own table, `provider` + `model` grade D on `/settings`, verified against the live API before storing — the same shape the LLM half already has. **`threshold` stays grade A**: the cosine scale is a measured property of the model, not a preference, so it follows the provider rather than being typed in | `settings-embedding-provider` |
 | ~~16~~ | ~~One visual system across the three surfaces~~ | Done 2026-08-30: `static/style.css` now carries the digest's token names and values (a digest is a standalone file deployed to Pages, so the copy is the sharing mechanism — the stylesheet's header comment is where the two stay in sync), plus Geist and the grid background. The deck's swipe glows follow `--accent`/`--warn`; `/settings` lost its two hard-coded result colours | — | `ui-one-visual-system` |
 
 Two boundaries #15 does **not** cross, both already decided in §5:
