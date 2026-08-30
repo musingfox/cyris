@@ -74,7 +74,7 @@ poll saw 176 of 317 articles.
 **Through the Cloudflare feed buffer** (recommended, needs a Workers Paid plan). A cron
 Worker polls every feed hourly into D1, and cyris reads a window out of the buffer, so
 nothing expires between runs. Deploy `workers/rss/`, then set `[rss] worker_url` in
-`cyris.toml` and `CYRIS_RSS_TOKEN` in `.env`. See [`workers/rss/README.md`](workers/rss/README.md).
+`cyris.toml` and `CYRIS_WORKER_TOKEN` in `.env`. See [`workers/rss/README.md`](workers/rss/README.md).
 
 Once the buffer is deployed you can also keep the source list in D1 with
 `cyris sources push`, so adding a feed is a write instead of a redeploy.
@@ -97,7 +97,7 @@ Trigger, and the triage UI wakes on request and sleeps again. See
 two auth layers.
 
 ```bash
-cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_RSS_TOKEN, ...
+cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_WORKER_TOKEN, ...
 # edit cyris.toml + sources.yaml as usual
 
 cd workers/app && bun install && bunx wrangler deploy

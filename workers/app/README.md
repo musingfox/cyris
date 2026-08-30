@@ -40,8 +40,8 @@ bun install                       # or npm install
 # Every secret the container needs. CYRIS_UI_TOKEN is the login above; the rest
 # are the same values .env holds for a local run.
 for s in CYRIS_UI_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
-         CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_PROMOTE_TOKEN \
-         CYRIS_NEWSLETTER_TOKEN CYRIS_RSS_TOKEN CYRIS_DISCORD_WEBHOOK_URL \
+         CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
+         CYRIS_DISCORD_WEBHOOK_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
   bunx wrangler secret put "$s"
 done

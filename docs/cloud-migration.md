@@ -308,7 +308,7 @@ Dropped rather than migrated: `output/digest.py` (Obsidian markdown),
 
 Every phase above leaves the existing pipeline working, because each one lands behind the
 adapter seam and is wired only when configured — `CloudflareRssSource` is already opt-in
-on `[rss] worker_url` + `CYRIS_RSS_TOKEN`, and `fetch_all_articles` dedups by URL, so old
+on `[rss] worker_url` + `CYRIS_WORKER_TOKEN`, and `fetch_all_articles` dedups by URL, so old
 and new sources run side by side. Verify a change with the receipts, not the exit code:
 
 ```bash
@@ -317,5 +317,5 @@ curl -sfL https://<pages>.pages.dev/ | grep -o '2026-[0-9-]*'
 # the archive grew rather than being replaced
 ls agent-vault/html/*.html | wc -l
 # the buffer is current
-curl -s -H "Authorization: Bearer $CYRIS_RSS_TOKEN" <worker>/stats
+curl -s -H "Authorization: Bearer $CYRIS_WORKER_TOKEN" <worker>/stats
 ```

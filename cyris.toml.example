@@ -53,12 +53,12 @@ output_dir = "agent-vault/html"
 worker_url = ""
 publish_enabled = false                 # publish HTML digest to Cloudflare Pages
 pages_project = ""
-# Token via env: CYRIS_PROMOTE_TOKEN
+# Token via env: CYRIS_WORKER_TOKEN
 
 [newsletter]
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).
 worker_url = ""
-# Token via env: CYRIS_NEWSLETTER_TOKEN
+# Token via env: CYRIS_WORKER_TOKEN
 
 [vote_similarity]
 # Suppress candidates that sit close to a downvoted article. Runs over every
@@ -81,4 +81,4 @@ enabled = false
 # pipeline polls feeds directly at digest time instead — simpler, but it only
 # sees each feed's current snapshot, which for busy feeds is 2-4h, not 24.
 worker_url = ""
-# Token via env: CYRIS_RSS_TOKEN
+# Token via env: CYRIS_WORKER_TOKEN

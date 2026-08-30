@@ -41,7 +41,8 @@ npx wrangler kv namespace create NEWSLETTERS  # → copy the printed id into kv_
 # 2. Deploy
 npx wrangler deploy                           # prints https://cyris-newsletter.<sub>.workers.dev
 
-# 3. Set the shared token (same value goes in cyris .env as CYRIS_NEWSLETTER_TOKEN)
+# 3. Set the shared token (same value goes in cyris .env as CYRIS_WORKER_TOKEN,
+#    the one bearer all three Workers accept)
 TOKEN=$(openssl rand -hex 32)
 printf 'NEWSLETTER_TOKEN=%s\n' "$TOKEN" > .dev.vars      # local dev
 printf '%s' "$TOKEN" | npx wrangler secret put NEWSLETTER_TOKEN
@@ -78,9 +79,9 @@ forwarded body, so one-off manual forwards work too.
 ```toml
 [newsletter]
 worker_url = "https://cyris-newsletter.<sub>.workers.dev"
-# token via env: CYRIS_NEWSLETTER_TOKEN
+# token via env: CYRIS_WORKER_TOKEN
 ```
-`.env`: `CYRIS_NEWSLETTER_TOKEN=<same token as the Worker secret>`
+`.env`: `CYRIS_WORKER_TOKEN=<same token as the Worker secret>`
 
 `build_deps` adds the pull source to `fetch_sources` when both are set.
 

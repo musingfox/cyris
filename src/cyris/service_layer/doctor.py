@@ -234,7 +234,7 @@ async def _check_workers(cfg: Config) -> list[Check]:
                 "rss buffer",
                 "ok" if alive else "fail",
                 cfg.app.rss.worker_url if alive else f"{cfg.app.rss.worker_url} did not answer",
-                "" if alive else "Check the Worker is deployed and CYRIS_RSS_TOKEN matches it.",
+                "" if alive else "Check the Worker is deployed and CYRIS_WORKER_TOKEN matches it.",
             )
         )
     else:
@@ -258,7 +258,7 @@ async def _check_workers(cfg: Config) -> list[Check]:
                 "newsletter worker",
                 "ok" if alive else "fail",
                 cfg.app.newsletter.worker_url,
-                "" if alive else "Check the Worker and CYRIS_NEWSLETTER_TOKEN.",
+                "" if alive else "Check the Worker and CYRIS_WORKER_TOKEN.",
             )
         )
     else:

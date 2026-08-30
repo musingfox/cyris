@@ -55,7 +55,8 @@ uv run --with pyyaml python gen-feeds.py
 npx wrangler d1 create cyris-rss           # → copy database_id into wrangler.toml
 npx wrangler d1 execute cyris-rss --remote --file=schema.sql
 
-# 3. Auth token (same value goes into cyris's .env as CYRIS_RSS_TOKEN)
+# 3. Auth token (same value goes into cyris's .env as CYRIS_WORKER_TOKEN,
+#    the one bearer all three Workers accept)
 npx wrangler secret put RSS_TOKEN
 
 npx wrangler deploy
@@ -66,7 +67,7 @@ Then in `cyris.toml`:
 ```toml
 [rss]
 worker_url = "https://cyris-rss.<subdomain>.workers.dev"
-# Token via env: CYRIS_RSS_TOKEN
+# Token via env: CYRIS_WORKER_TOKEN
 ```
 
 ## Local development

@@ -143,28 +143,32 @@ class HtmlOutputConfig(BaseModel):
     output_dir: str = "agent-vault/html"
 
 
-class PromoteConfig(BaseModel):
+class WorkerConfig(BaseModel):
+    """A Cloudflare Worker cyris pulls from, and the bearer it presents.
+
+    One token for all three. They were three random values, but never three
+    trust domains: the same `.env` and the same Worker secret store hold them
+    all, so whoever reads one reads them all, and separating them bought
+    independent rotation of keys nobody rotates.
+    """
+
     worker_url: str = ""
+    token: str = ""
+
+    @model_validator(mode="after")
+    def inject_token(self) -> "WorkerConfig":
+        if not self.token:
+            self.token = os.environ.get("CYRIS_WORKER_TOKEN", "")
+        return self
+
+
+class PromoteConfig(WorkerConfig):
     publish_enabled: bool = False
     pages_project: str = ""
-    token: str = ""
-
-    @model_validator(mode="after")
-    def inject_token(self) -> "PromoteConfig":
-        if not self.token:
-            self.token = os.environ.get("CYRIS_PROMOTE_TOKEN", "")
-        return self
 
 
-class NewsletterConfig(BaseModel):
-    worker_url: str = ""
-    token: str = ""
-
-    @model_validator(mode="after")
-    def inject_token(self) -> "NewsletterConfig":
-        if not self.token:
-            self.token = os.environ.get("CYRIS_NEWSLETTER_TOKEN", "")
-        return self
+class NewsletterConfig(WorkerConfig):
+    pass
 
 
 class VoteSimilarityConfig(BaseModel):
@@ -185,17 +189,8 @@ class VoteSimilarityConfig(BaseModel):
     max_seeds: int = Field(default=200, ge=1)
 
 
-class RssConfig(BaseModel):
+class RssConfig(WorkerConfig):
     """Cloudflare RSS Worker — the hourly feed buffer the pipeline reads from."""
-
-    worker_url: str = ""
-    token: str = ""
-
-    @model_validator(mode="after")
-    def inject_token(self) -> "RssConfig":
-        if not self.token:
-            self.token = os.environ.get("CYRIS_RSS_TOKEN", "")
-        return self
 
 
 class AppConfig(BaseModel):

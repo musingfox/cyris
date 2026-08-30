@@ -146,7 +146,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the **fallback**, not the source of truth: `bootstrap.load_effective_config` overlays D1 `settings` on top, always in that order — see `docs/architecture.md` §5
 - `sources.yaml` — RSS/newsletter source definitions with tier and tags. The editable format and the fallback; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table instead, and `cyris sources push` is what fills it. An empty or unreachable table falls back to the file on both sides, so a half-migrated deployment keeps fetching; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
-- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_PROMOTE_TOKEN`, `CYRIS_NEWSLETTER_TOKEN`, `CYRIS_RSS_TOKEN`; Discord webhook)
+- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the one bearer all three Workers accept; Discord webhook)
 
 ### Agent Vault (`agent-vault/`)
 
