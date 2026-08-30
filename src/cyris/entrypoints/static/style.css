@@ -28,8 +28,11 @@ body {
   font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-feature-settings: "ss01", "ss02", "cv11";
   background: var(--bg);
-  /* The digest's grid, without its `background-attachment: fixed`: this is a
-     touch surface and iOS Safari treats fixed attachment inconsistently. */
+  /* The digest's grid. This surface dropped `background-attachment: fixed`
+     first — iOS Safari treats it inconsistently on a touch surface — and the
+     digest templates followed on 2026-08-30 for the reason that generalises:
+     a fixed-attachment gradient cannot be composited, so every scroll frame
+     repaints the whole viewport. The two now agree. */
   background-image:
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
