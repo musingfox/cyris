@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from aiohttp import web
+from pydantic import ValidationError
 
 from cyris.domain.models import ArticleState, SourceConfig
 from cyris.domain.triage import RejectReason
@@ -56,6 +57,7 @@ class TriageServer:
         schedule: list[str] | None = None,
         sources: dict[str, SourceConfig] | None = None,
         sources_origin: str = "",
+        source_store=None,
     ) -> None:
         self._store = store
         self._host = host
@@ -71,6 +73,9 @@ class TriageServer:
         # half-migrated deployment does not look like a stale one.
         self._sources = sources or {}
         self._sources_origin = sources_origin
+        # The write surface (§7 #15). Absent on a `backend = "json"` deployment,
+        # where `sources.yaml` is the only home and the list stays read-only.
+        self._source_store = source_store
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
@@ -81,6 +86,8 @@ class TriageServer:
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
         self._app.router.add_get("/api/sources", self._handle_get_sources)
+        self._app.router.add_post("/api/sources", self._handle_post_source)
+        self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
         self._app.router.add_get("/settings", self._handle_settings_page)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_static("/static", STATIC_DIR)
@@ -347,13 +354,14 @@ class TriageServer:
     async def _handle_get_sources(self, request: web.Request) -> web.Response:
         """What the pipeline is actually fetching, and from which home.
 
-        Read-only: the write surface is §7 #15. `email_match` rides along because
-        it is source data (grade D); Cloudflare Email Routing is grade B and
-        stays in the dashboard.
+        `email_match` rides along because it is source data (grade D);
+        Cloudflare Email Routing is grade B and stays in the dashboard.
         """
+        sources, origin = self._effective_sources()
         return web.json_response(
             {
-                "origin": self._sources_origin or "unknown",
+                "origin": origin,
+                "writable": self._source_store is not None,
                 "sources": [
                     {
                         "name": s.name,
@@ -361,12 +369,79 @@ class TriageServer:
                         "tier": s.tier.value,
                         "url": s.url,
                         "email_match": s.email_match,
+                        "homepage": s.homepage,
                         "tags": s.tags,
                     }
-                    for s in self._sources.values()
+                    for s in sources.values()
                 ],
             }
         )
+
+    def _effective_sources(self) -> tuple[dict[str, SourceConfig], str]:
+        """The live table when there is one, else the startup snapshot.
+
+        Re-reading matters after the first write: `sources_origin` was resolved
+        once at startup, and an empty table then meant "sources.yaml".
+        """
+        if self._source_store is None:
+            return self._sources, self._sources_origin or "unknown"
+        live = self._source_store.list_sources()
+        return (live, "d1") if live else (self._sources, self._sources_origin or "unknown")
+
+    def _seed_before_writing(self) -> None:
+        """Put today's effective list in D1 before the table's first edit.
+
+        An empty table means "use sources.yaml", so writing a single source into
+        one would flip the pipeline to D1 with that source alone and silently
+        stop every feed the file serves. Seeding first makes the first edit mean
+        what it looks like: `cyris sources push`, then the change.
+        """
+        if not self._source_store.list_sources() and self._sources:
+            self._source_store.replace_all(self._sources)
+
+    async def _handle_post_source(self, request: web.Request) -> web.Response:
+        """Add or edit one source, over the row `name` owns."""
+        if self._source_store is None:
+            return web.json_response(
+                {"ok": False, "error": "No writable source table (store backend is not D1)"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        try:
+            source = SourceConfig.model_validate(body)
+        except ValidationError as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=400)
+        if not source.name.strip():
+            return web.json_response({"ok": False, "error": "name is required"}, status=400)
+
+        try:
+            self._seed_before_writing()
+            self._source_store.upsert(source)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        logger.info("Source %s written to D1", source.name)
+        return web.json_response({"ok": True, "name": source.name, "note": "Effective next run."})
+
+    async def _handle_delete_source(self, request: web.Request) -> web.Response:
+        if self._source_store is None:
+            return web.json_response(
+                {"ok": False, "error": "No writable source table (store backend is not D1)"},
+                status=409,
+            )
+        name = request.match_info["name"]
+        try:
+            self._seed_before_writing()
+            self._source_store.delete(name)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        logger.info("Source %s retired", name)
+        return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:
         return web.FileResponse(STATIC_DIR / "settings.html")

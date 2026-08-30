@@ -255,7 +255,7 @@ class TestIndexPage:
 
 
 class TestSourcesEndpoint:
-    """The settings page's read-only source list (§7 #15's placeholder)."""
+    """The settings page's source list and its write surface (§7 #15)."""
 
     async def test_lists_sources_with_origin(self, store_with_articles: ArticleStore) -> None:
         from cyris.domain.models import SourceConfig, Tier
@@ -284,7 +284,73 @@ class TestSourcesEndpoint:
 
     async def test_no_sources_wired_is_empty_not_an_error(self, client: TestClient) -> None:
         data = await (await client.get("/api/sources")).json()
-        assert data == {"origin": "unknown", "sources": []}
+        assert data == {"origin": "unknown", "writable": False, "sources": []}
+
+    async def test_writes_are_refused_without_a_writable_table(self, client: TestClient) -> None:
+        """A `backend = "json"` deployment has nowhere to put a source."""
+        resp = await client.post("/api/sources", json={"name": "x", "url": "https://e.com/rss"})
+        assert resp.status == 409
+        assert (await client.delete("/api/sources/x")).status == 409
+
+
+class TestSourcesWriteSurface:
+    """§7 #15: add, retire and re-tier a source over the existing D1 row."""
+
+    @pytest.fixture
+    async def client(self, store_with_articles: ArticleStore) -> TestClient:
+        from cyris.adapters.store.source_store import D1SourceStore
+        from cyris.domain.models import SourceConfig
+
+        server = TriageServer(
+            store_with_articles,
+            sources={"From File": SourceConfig(name="From File", url="https://file.test/feed")},
+            sources_origin="sources.yaml",
+            source_store=D1SourceStore(SqliteD1()),
+        )
+        self.sources = server._source_store
+        test_client = TestClient(TestServer(server._app))
+        await test_client.start_server()
+        yield test_client
+        await test_client.close()
+
+    async def test_first_write_seeds_the_table_before_adding(self, client: TestClient) -> None:
+        """An empty `sources` table means "use sources.yaml".
+
+        Writing one source into one would flip the pipeline to D1 with that
+        source alone, and every feed the file serves would silently stop.
+        """
+        resp = await client.post(
+            "/api/sources",
+            json={"name": "New Feed", "url": "https://new.test/rss", "tier": "summarize"},
+        )
+        assert resp.status == 200
+
+        stored = self.sources.list_sources()
+        assert set(stored) == {"From File", "New Feed"}
+        assert stored["New Feed"].tier.value == "summarize"
+
+        data = await (await client.get("/api/sources")).json()
+        assert data["origin"] == "d1"
+        assert data["writable"] is True
+
+    async def test_retiring_a_source_removes_its_row(self, client: TestClient) -> None:
+        await client.post("/api/sources", json={"name": "New Feed", "url": "https://n.test/rss"})
+        assert (await client.delete("/api/sources/From File")).status == 200
+        assert set(self.sources.list_sources()) == {"New Feed"}
+
+    async def test_re_tiering_replaces_the_row_it_owns(self, client: TestClient) -> None:
+        await client.post(
+            "/api/sources",
+            json={"name": "From File", "url": "https://file.test/feed", "tier": "summarize"},
+        )
+        stored = self.sources.list_sources()
+        assert len(stored) == 1
+        assert stored["From File"].tier.value == "summarize"
+
+    async def test_an_invalid_tier_is_a_400_not_a_row(self, client: TestClient) -> None:
+        resp = await client.post("/api/sources", json={"name": "x", "tier": "nonsense"})
+        assert resp.status == 400
+        assert self.sources.list_sources() == {}
 
 
 class TestStatsAndFilter:

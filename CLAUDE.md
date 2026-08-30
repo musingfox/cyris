@@ -133,7 +133,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |
 | `cyris llm-compare` | Digest one window with several providers (`--arm provider:model`, repeatable), side by side |
-| `cyris triage-ui` | Start swipe-based web UI for article classification; `/settings` picks the LLM provider and model (verified against the live API before storing) and the two digest hours, both written to D1 `settings` |
+| `cyris triage-ui` | Start swipe-based web UI for article classification; `/settings` picks the LLM provider and model (verified against the live API before storing) and the two digest hours, both written to D1 `settings`, and adds/edits/retires sources in D1 `sources` |
 | `cyris articles list\|accept\|reject\|export\|clean\|score` | Article store management |
 | `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends |
 | `cyris sources push\|list` | Make D1's source table match `sources.yaml`; show what it serves |

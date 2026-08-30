@@ -587,7 +587,8 @@ def triage_ui(
     """Start the triage web UI for article classification."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_settings, build_store, load_effective_config
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.bootstrap import build_d1_client, build_settings, build_store, load_effective_config
     from cyris.entrypoints.triage_server import TriageServer
 
     try:
@@ -597,6 +598,7 @@ def triage_ui(
         raise typer.Exit(1) from e
 
     store = build_store(cfg)
+    d1 = build_d1_client(cfg)
 
     async def _run() -> None:
         server = TriageServer(
@@ -608,6 +610,7 @@ def triage_ui(
             schedule=cfg.app.general.digest_schedule,
             sources=cfg.sources,
             sources_origin=cfg.sources_origin,
+            source_store=D1SourceStore(d1) if d1 else None,
         )
         await server.start()
         typer.echo(f"Triage UI: http://{host}:{port}")

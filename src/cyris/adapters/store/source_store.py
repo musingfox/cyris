@@ -35,6 +35,25 @@ class D1SourceStore:
             sources[row["name"]] = SourceConfig.model_validate(data)
         return sources
 
+    def upsert(self, source: SourceConfig) -> None:
+        """Write one source, creating or replacing the row `name` owns."""
+        self._db.query(
+            "INSERT INTO sources (name, url, type, config) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET url = excluded.url, "
+            "type = excluded.type, config = excluded.config",
+            _columns(source),
+        )
+
+    def delete(self, name: str) -> int:
+        """Retire one source.
+
+        Emptying the table entirely hands the pipeline back to `sources.yaml`
+        (`config._sources_from_d1`), so the last delete resurrects the file's
+        list rather than fetching nothing. That is the documented fallback, not
+        a bug to engineer around.
+        """
+        return self._db.query("DELETE FROM sources WHERE name = ?", [name]).changes
+
     def replace_all(self, sources: dict[str, SourceConfig]) -> int:
         """Make the table match `sources` exactly, removals included.
 
@@ -45,11 +64,7 @@ class D1SourceStore:
         if not sources:
             return 0
 
-        rows = []
-        for source in sources.values():
-            # name/url/type are columns; the rest rides as JSON.
-            config = source.model_dump(mode="json", exclude={"name", "url", "type"})
-            rows.append([source.name, source.url, source.type, json.dumps(config)])
+        rows = [_columns(source) for source in sources.values()]
 
         written = 0
         for chunk in chunk_rows(rows, _PARAMS_PER_ROW):
@@ -58,3 +73,9 @@ class D1SourceStore:
             written += self._db.query(sql, [v for row in chunk for v in row]).changes
         logger.info("Pushed %d sources to D1", written)
         return written
+
+
+def _columns(source: SourceConfig) -> list:
+    """name/url/type are columns; the rest rides as JSON."""
+    config = source.model_dump(mode="json", exclude={"name", "url", "type"})
+    return [source.name, source.url, source.type, json.dumps(config)]

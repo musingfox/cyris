@@ -324,7 +324,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `cyris.toml` | derived at deploy, not hand-written |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, `CYRIS_*_TOKEN`, Discord webhook | C | `.env` | Worker secrets |
-| **RSS + newsletter source list** | **D** | **D1 `sources`**, `sources.yaml` fallback — but the only writer is `cyris sources push` from that file | a writer on `/settings`, so adding a feed is a write and not a rebuild — §7 #15 |
+| RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
@@ -407,19 +407,18 @@ REST, cacheless embeddings. Every persistent datum is in Cloudflare and the cont
 state. What is left is one platform move, one design track, and the deploy button.
 
 ```
-now ─┬─ (P1: shipped)               ─┐
-     ├─ P2 #15 sources write surface ┼─ M5 into the Container ─┐
-     └─ (M-persist: shipped)         ┘                          ├─ M6 deploy button
-                                                                │
-        (weeks of tag data) ─── M-behaviour ────────────────────┘
+now ─── M5 into the Container ─┬─ M6 deploy button
+                               │
+(weeks of tag data) ─ M-behaviour
 
-hard edges:  P2 → M5      M5 → M6      M-persist → M-behaviour → (closes #13)
+shipped: P1, P2, M-persist
+hard edges:  M5 → M6      M-behaviour → (closes #13)
 ```
 
 | Order | What | Why here | Done when | Ticket |
 |---|---|---|---|---|
 | ~~**P1**~~ | ~~Guard each scoring batch~~ — done 2026-08-30 | `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only after the loop, so one malformed LLM response cost the whole run both its scores and its tags — the shape of the 08-29 run whose tags all came from clustering | ✅ `test_a_failing_batch_leaves_the_others_scores_and_tags_written`: batch 2 raises, batch 1's 20 scores and 20 tag rows are still written. The tag write is guarded too, so losing it no longer unwinds the scores | `cyris#5` |
-| **P2** | §7 #15, the `sources` write surface | Its urgency comes from M5, not from the page. Today a feed is added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed becomes a rebuild + redeploy. This is the same shape M2 fixed for settings, on the half that was left behind | A feed is added, retired, and re-tiered from `/settings`, and the next run fetches accordingly | `settings-source-editor` |
+| ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | `settings-source-editor` |
 | **M5** | Into the Container | Four pieces, three of them new code: a Containers definition (none exists — `workers/` holds only promote/newsletter/rss, and the image's `CMD` is `supercronic`), Workers Cron replacing `docker/crontab` (the `--if-due` gate already reads D1, so the logic moves unchanged), **auth** (the triage server has none — `127.0.0.1` is the current security boundary, and this is the first public write surface), and `onActivityExpired → stop()` | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |
 | **M6** | One-button deploy | Only meaningful once nothing runs locally. M-persist's schema is already inside, so no migration mechanism is needed | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
@@ -617,7 +616,7 @@ Worker, which is when a half-written settings page and three visual systems stop
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 15 | A write surface for the `sources` table | `/settings` **lists** them read-only (`GET /api/sources`, reporting which home served them); the only writer is still `cyris sources push` from `sources.yaml`, a file the container mounts `:ro` | Source CRUD on the same page: name, url, type, tier, tags, `homepage`, `email_match`, over the **existing** `sources` row. No new table, no new §4 row — the storage landed with the D1 cutover, only the writer is missing | `settings-source-editor` |
+| ~~15~~ | ~~A write surface for the `sources` table~~ | Done 2026-08-30 (P2): `POST /api/sources` upserts one row and `DELETE /api/sources/{name}` retires it, over the **existing** `sources` row — name, url, type, tier, tags, `homepage`, `email_match`. No new table, no new §4 row. Two shapes worth knowing: a write against an **empty** table seeds it with the run's effective sources first, because an empty table means "use `sources.yaml`" and a single insert would otherwise silently stop every other feed; and `cyris sources push` still replaces the table wholesale, so it clobbers edits made here — the file stays the fallback, not a mirror | `settings-source-editor` |
 | ~~16~~ | ~~One visual system across the three surfaces~~ | Done 2026-08-30: `static/style.css` now carries the digest's token names and values (a digest is a standalone file deployed to Pages, so the copy is the sharing mechanism — the stylesheet's header comment is where the two stay in sync), plus Geist and the grid background. The deck's swipe glows follow `--accent`/`--warn`; `/settings` lost its two hard-coded result colours | — | `ui-one-visual-system` |
 
 Two boundaries #15 does **not** cross, both already decided in §5:

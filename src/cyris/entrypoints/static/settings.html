@@ -39,6 +39,15 @@
     table.sources td { padding: .35rem .5rem .35rem 0; border-top: 1px solid var(--border); vertical-align: top; }
     table.sources .mono { font-family: 'Geist Mono', ui-monospace, monospace; color: var(--text-dim); word-break: break-all; }
     table.sources .tier { color: var(--accent); }
+    table.sources button { padding: .2rem .5rem; font-size: .72rem; font-weight: 500; }
+    table.sources button.retire { background: var(--warn); }
+    select, input[type=text] { font: inherit; }
+    select {
+      padding: .5rem; border-radius: 6px;
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    }
+    .row { display: flex; gap: .5rem; margin-bottom: .5rem; }
+    .row > input { flex: 1; }
   </style>
 </head>
 <body>
@@ -84,11 +93,36 @@
   <fieldset>
     <legend id="sources-origin">Feeds and senders</legend>
     <div id="sources"></div>
-    <p class="hint">Read-only for now. Editing a source here — adding a feed, retiring one, pointing
-      a newsletter at a different sender — is §7 #15; the row it will write already exists.
-      <code>email_match</code> is the sender→source mapping, not Cloudflare Email Routing: the
-      domain and the route stay in the dashboard.</p>
   </fieldset>
+
+  <form id="src-form">
+    <fieldset>
+      <legend>Add or edit</legend>
+      <div class="row">
+        <input type="text" id="src-name" placeholder="name (the key)" autocomplete="off">
+        <select id="src-type">
+          <option value="rss">rss</option>
+          <option value="newsletter">newsletter</option>
+        </select>
+        <select id="src-tier">
+          <option value="filter">filter</option>
+          <option value="summarize">summarize</option>
+          <option value="fan">fan</option>
+        </select>
+      </div>
+      <div class="row"><input type="text" id="src-url" placeholder="url (rss feed)" autocomplete="off"></div>
+      <div class="row"><input type="text" id="src-email" placeholder="email_match, e.g. from:hi@letter.com" autocomplete="off"></div>
+      <div class="row"><input type="text" id="src-homepage" placeholder="homepage (where it publishes)" autocomplete="off"></div>
+      <div class="row"><input type="text" id="src-tags" placeholder="tags, comma separated" autocomplete="off"></div>
+      <p class="hint">The name is the key: saving an existing name edits that source.
+        <code>email_match</code> is the sender→source mapping, not Cloudflare Email Routing — the
+        domain and the route stay in the dashboard. A change takes effect on the next run.</p>
+    </fieldset>
+
+    <button type="submit" id="save-src">Save source</button>
+  </form>
+
+  <div id="src-result" class="hidden" hidden></div>
 
   <a class="back" href="/">&larr; back to triage</a>
 
@@ -191,28 +225,100 @@ $("sched-form").addEventListener("submit", async (e) => {
 
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
+let sources = [];
+
 function renderSources(d) {
+  sources = d.sources;
   $("sources-origin").textContent = `Feeds and senders — served from ${d.origin}`;
+  if (!d.writable) {
+    $("save-src").disabled = true;
+    show("err", "No writable source table here — this deployment reads sources.yaml.", "src-result");
+  }
   if (!d.sources.length) return $("sources").textContent = "No sources configured.";
   $("sources").innerHTML = `<table class="sources">
-    <tr><th>name</th><th>tier</th><th>type</th><th>url / email_match</th></tr>
-    ${d.sources.map((s) => `<tr>
+    <tr><th>name</th><th>tier</th><th>type</th><th>url / email_match</th><th></th></tr>
+    ${d.sources.map((s, i) => `<tr>
       <td>${esc(s.name)}</td>
       <td class="tier">${esc(s.tier)}</td>
       <td>${esc(s.type)}</td>
       <td class="mono">${esc(s.email_match || s.url || "—")}</td>
+      <td style="white-space:nowrap">
+        <button type="button" data-edit="${i}">edit</button>
+        <button type="button" class="retire" data-retire="${i}">retire</button>
+      </td>
     </tr>`).join("")}</table>`;
 }
+
+$("sources").addEventListener("click", async (e) => {
+  const edit = e.target.dataset.edit, retire = e.target.dataset.retire;
+  if (edit !== undefined) {
+    const s = sources[edit];
+    $("src-name").value = s.name;
+    $("src-type").value = s.type;
+    $("src-tier").value = s.tier;
+    $("src-url").value = s.url || "";
+    $("src-email").value = s.email_match || "";
+    $("src-homepage").value = s.homepage || "";
+    $("src-tags").value = (s.tags || []).join(", ");
+    $("src-form").scrollIntoView({behavior: "smooth"});
+  } else if (retire !== undefined) {
+    const s = sources[retire];
+    if (!confirm(`Stop fetching ${s.name}?`)) return;
+    await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
+                      `${s.name} retired.`);
+  }
+});
+
+async function writeSource(url, method, body, okText) {
+  $("save-src").disabled = true;
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {"Content-Type": "application/json"},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json();
+    if (data.ok) {
+      show("ok", `${okText} ${data.note}`, "src-result");
+      await loadSources();
+    } else {
+      show("err", data.error || `HTTP ${res.status}`, "src-result");
+    }
+  } catch (err) {
+    show("err", String(err), "src-result");
+  } finally {
+    $("save-src").disabled = false;
+  }
+}
+
+$("src-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("src-name").value.trim();
+  if (!name) return show("err", "A source needs a name.", "src-result");
+  const tags = $("src-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+  return writeSource("/api/sources", "POST", {
+    name,
+    type: $("src-type").value,
+    tier: $("src-tier").value,
+    url: $("src-url").value.trim() || null,
+    email_match: $("src-email").value.trim() || null,
+    homepage: $("src-homepage").value.trim() || null,
+    tags,
+  }, `${name} saved.`);
+});
+
+const loadSources = () =>
+  fetch("/api/sources")
+    .then((r) => r.json())
+    .then(renderSources)
+    .catch((e) => { $("sources").textContent = `Could not load sources: ${e}`; });
+
+loadSources();
 
 fetch("/api/settings")
   .then((r) => r.json())
   .then((d) => { state = d; render(); })
   .catch((e) => show("err", `Could not load settings: ${e}`));
-
-fetch("/api/sources")
-  .then((r) => r.json())
-  .then(renderSources)
-  .catch((e) => { $("sources").textContent = `Could not load sources: ${e}`; });
 </script>
 </body>
 </html>
