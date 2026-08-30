@@ -16,8 +16,10 @@ Two layers, deliberately:
 1. **Cloudflare Access** on the Worker's route — who you are (email policy, MFA,
    audit log). Dashboard only, and manual on purpose: the domain and the policy
    are grade-B deployment identity (`docs/architecture.md` §5), so automating
-   them here would tie the repo to one account. **It needs a custom domain** —
-   see below; a `workers.dev` hostname cannot be put behind Access at all.
+   them here would tie the repo to one account. It needs a custom
+   domain: `workers.dev` cannot be put behind Access at all. This deployment is
+   routed at **`digest.musingfox.me`** with `workers_dev = false`; the
+   application itself is still to be created — see below.
 2. **The `CYRIS_UI_TOKEN` secret**, checked in `src/index.js` before anything
    reaches the container. `/login` takes the token and sets an HttpOnly cookie
    holding its SHA-256. A request without the cookie gets the form (browser) or
@@ -33,26 +35,30 @@ domain from an active zone in your Cloudflare account, or a custom hostname via
 Cloudflare for SaaS" — and `workers.dev` is neither. So the order is: give the
 Worker a hostname you own, close the one you don't, then write the policy.
 
-1. **Route the Worker at your own domain.** In `wrangler.toml`:
+1. ~~**Route the Worker at your own domain.**~~ Done 2026-08-30:
 
    ```toml
-   routes = [{ pattern = "cyris.example.com", custom_domain = true }]
+   routes = [{ pattern = "digest.musingfox.me", custom_domain = true }]
    ```
 
-   `wrangler deploy` creates the DNS record. The zone must already be active on
+   `wrangler deploy` created the DNS record. The zone must already be active on
    the account.
 
-2. **Turn `workers.dev` off in the same change** — `workers_dev = false`. This
-   is the step it is easy to skip and expensive to skip: Access binds to one
-   hostname, so leaving `cyris-app.<subdomain>.workers.dev` reachable leaves a
-   door Access does not cover, and the whole layer becomes decorative. (The
-   token check still holds it, which is the point of having two layers, but a
-   layer you believe in and do not have is worse than one you know you lack.)
+2. ~~**Turn `workers.dev` off in the same change**~~ — `workers_dev = false`,
+   done in the same deploy. It is the step that is easy to skip and expensive to
+   skip: Access binds to one hostname, so leaving
+   `cyris-app.<subdomain>.workers.dev` reachable leaves a door Access does not
+   cover, and the whole layer becomes decorative. (The token check still holds
+   it, which is the point of having two layers, but a layer you believe in and
+   do not have is worse than one you know you lack.) Receipt: the workers.dev
+   URL answers **404**, the custom domain answers 401 unauthenticated and serves
+   the deck once logged in.
 
-3. **Create the application.** Zero Trust → Access → Applications → Add an
-   application → **Self-hosted**. Name it, set the domain to the hostname from
-   step 1, and add a policy: Action **Allow**, rule **Emails** → your address.
-   Applications are deny-by-default, so no other rule is needed.
+3. **Create the application** — the one step left, and the only one that is not
+   `wrangler deploy`. Zero Trust → Access → Applications → Add an
+   application → **Self-hosted**. Name it, set the domain to
+   `digest.musingfox.me`, and add a policy: Action **Allow**, rule **Emails** →
+   your address. Applications are deny-by-default, so no other rule is needed.
 
 4. **Check it from a browser you are not logged in with** (or a private window):
    the Access login should appear *before* cyris's own `/login` form. If cyris's

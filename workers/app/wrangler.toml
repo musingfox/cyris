@@ -2,11 +2,13 @@ name = "cyris-app"
 main = "src/index.js"
 compatibility_date = "2026-06-01"
 
-# The workers.dev URL is the deployment's address. Preview URLs are not: each
-# one is another public hostname for the same Worker, and an Access application
-# is bound to a hostname — so a preview URL would be a door Access does not
-# cover. The token check still would, but one door is the design.
-workers_dev = true
+# One hostname, because an Access application is bound to one. workers.dev is
+# off rather than merely unused: Access cannot protect a workers.dev URL at all
+# (it takes a domain from an active zone), so leaving it reachable would leave a
+# door the outer layer does not cover and make that layer decorative. Preview
+# URLs are off for the same reason — each is another public hostname.
+routes = [{ pattern = "digest.musingfox.me", custom_domain = true }]
+workers_dev = false
 preview_urls = false
 
 # The hourly tick that used to be docker/crontab + supercronic. It is
