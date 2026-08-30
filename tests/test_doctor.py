@@ -45,6 +45,18 @@ async def test_a_clean_local_setup_has_no_failures(tmp_path: Path, monkeypatch) 
     assert [c for c in checks if c.status == "fail"] == []
 
 
+async def test_the_vault_check_is_gone_on_d1_and_creates_no_directory(tmp_path: Path) -> None:
+    """The probe used to mkdir the very directory it asked about."""
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    cfg.app.agent_vault.path = tmp_path / "never-created"
+
+    checks = await doctor.run_checks(cfg)
+
+    assert [c for c in checks if c.name == "agent vault"] == []
+    assert not (tmp_path / "never-created").exists()
+
+
 async def test_a_d1_store_with_unpushed_sources_warns(tmp_path: Path) -> None:
     """The Worker would be polling its bundled snapshot; that is not visible anywhere else."""
     cfg = _config(tmp_path)

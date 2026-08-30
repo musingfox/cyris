@@ -385,6 +385,9 @@ silently ignored for two days.
 - Changing code means `up -d --build --force-recreate`. Plain `up -d` is not enough.
 - Changing `cyris.toml` or `sources.yaml` also means `--force-recreate`: single-file bind mounts
   bind an inode, and editors replace files by rename.
+- The container is **stateless** since 2026-08-30: the only mounts left are the two `:ro` config
+  files. `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
+  directory it was asking about, which re-created a local-filesystem edge M0–M4 had removed.
 - **Verifying on the host is not verifying production.** An acceptance criterion signed off from a
   host run says nothing about what the container is running.
 - `cyris doctor` should report what *this build* supports, not only what the config asks for —
@@ -411,7 +414,7 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 
 | M | What | Why here | Receipt | Ticket |
 |---|---|---|---|---|
-| **M0** | Finish the D1 cutover | In flight | D1 `usage_log` gains a row from a container run **and** `agent-vault/usage.jsonl` stops growing. Then delete `agent-vault/articles/` | `cloud-p2` |
+| ~~**M0**~~ | ~~Finish the D1 cutover~~ — done 2026-08-30 | — | ✅ All three: `usage_log` has a row per scheduled run (latest 2026-08-30T00:00:25Z, the morning digest), `agent-vault/usage.jsonl` stopped at 2026-08-27T00:01Z, and `agent-vault/articles/` was deleted with #11. The vault bind mount went with it on 2026-08-30 — the container now mounts only `cyris.toml` and `sources.yaml`, both `:ro`, and holds no state at all | `cloud-p2` |
 | ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
 | ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
 | ~~**M3**~~ | Publish → **Pages REST**; the archive → **D1 `pages_manifest`**, not R2 | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ✅ A page rendered only in memory went live, and all 57 archived digests survived a deploy driven purely by the manifest. `check-missing` recognised 57/57, which is what proves the hash formula | `cloud-p3` |

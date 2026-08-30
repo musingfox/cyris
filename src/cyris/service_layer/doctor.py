@@ -137,6 +137,13 @@ async def probe_llm(llm_cfg) -> Check:
 
 
 def _check_paths(cfg: Config) -> list[Check]:
+    # With D1 the vault has no writer left — articles are a table and spend goes
+    # to `usage_log` — so there is nothing to check. Probing anyway would *create*
+    # the directory it asks about: a local-filesystem edge the cloud target spent
+    # M0–M4 removing, re-added by the health check itself.
+    if cfg.app.store.is_d1:
+        return []
+
     checks = []
     agent_vault = cfg.app.agent_vault.path
     if _writable(agent_vault):

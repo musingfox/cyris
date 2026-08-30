@@ -4,7 +4,6 @@ services:
     env_file: .env
     environment:
       - TZ=${TZ:-Asia/Taipei}
-      - CYRIS_AGENT_VAULT_PATH=/data/agent-vault
     volumes:
       # Single-file mounts bind an inode, and editors replace files by rename, so
       # editing either of these leaves the container reading a deleted inode
@@ -12,5 +11,4 @@ services:
       # Plain `up -d` won't do it: compose sees no config change and leaves it running.
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
-      - ./agent-vault:/data/agent-vault
     restart: unless-stopped
