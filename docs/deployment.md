@@ -1,9 +1,11 @@
 # Deployment Direction Assessment: Fully Local vs. Cloudflare
 
-> Status: superseded for the Cloudflare direction — see [`cloud-migration.md`](cloud-migration.md).
-> Option B below is kept for the local-vs-cloud comparison, but its "drop Miniflux and let
-> cyris fetch RSS directly" recommendation was measured and is wrong: a digest-time poll
-> misses 141 of 317 articles because feeds hold only 2-4h of snapshot.
+> Status: superseded. The Cloudflare direction was taken and shipped on 2026-08-30 — the pipeline
+> runs in a Cloudflare Container fronted by `workers/app/`, and nothing runs locally. Read this
+> only for the comparison that produced that decision; for what exists today see
+> [`architecture.md`](architecture.md) §6 and §7. Option B's "drop Miniflux and let cyris fetch
+> RSS directly" recommendation was measured and is wrong: a digest-time poll misses 141 of 317
+> articles because feeds hold only 2-4h of snapshot.
 
 ## Current State (Starting Point)
 

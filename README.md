@@ -117,15 +117,18 @@ See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs
 cyris doctor                  Check the config; non-zero exit if a run would break
 cyris run                     Full pipeline: fetch, score, digest
 cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
-cyris triage-ui               Start swipe-based triage web UI (also /settings, to pick the LLM provider)
+cyris triage-ui               Swipe-based triage web UI; /settings picks the LLM provider
+                              and model, the digest hours, and edits the source list
 cyris articles list           List articles in store
-cyris articles export         Export accepted articles to vault
+cyris articles accept|reject  Accept or reject articles by URL
 cyris articles score          Score articles via AI
-cyris articles triage         Process digest feedback and export
-cyris articles clean          Delete old rejected articles
+cyris articles clean          Delete old articles by state
+cyris sources push|list       Make D1's source table match sources.yaml; show what it serves
 cyris store migrate           Copy the local article store into D1
 cyris store diff              Compare the JSON and D1 stores field by field
 cyris llm-compare             Digest one window with several LLM providers, side by side
+cyris embed-compare           Judge one window with both embedding providers
+cyris vote-sim                Preview what vote similarity would suppress
 ```
 
 ## Architecture

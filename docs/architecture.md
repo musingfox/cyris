@@ -312,7 +312,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | **A · Baked defaults** | code | a release | nobody at runtime |
 | **B · Deployment identity** | `wrangler.toml`, provisioned at deploy | a redeploy | the deploy flow |
 | **C · Secrets** | environment / `.env` / Worker secrets | an env change | the operator, once |
-| **D · Runtime-mutable** | **D1 `settings`** *(planned)* | a write, effective next run | the reader, in the UI |
+| **D · Runtime-mutable** | **D1 `settings`** | a write, effective next run | the reader, in the UI |
 
 ### Every setting, graded
 
@@ -323,7 +323,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Pages project name | B | `cyris.toml [promote]` | `wrangler.toml` |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `cyris.toml` | derived at deploy, not hand-written |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, `CYRIS_*_TOKEN`, Discord webhook | C | `.env` | Worker secrets |
+| LLM API keys, two Cloudflare tokens, one Worker bearer | C | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
@@ -331,6 +331,47 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
+
+### Grade C is seven variables (2026-08-30)
+
+It was twelve that morning. Two of them were not separate secrets at all, and the reduction is
+worth writing down because both mistakes regrow on their own.
+
+```
+ANTHROPIC_API_KEY  GEMINI_API_KEY  OPENAI_API_KEY   all three: the provider is a D1 setting,
+                                                    so the container carries every key
+CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_API_TOKEN              D1 + Pages
+CLOUDFLARE_EMBEDDING_API_TOKEN    Workers AI only
+CYRIS_WORKER_TOKEN                the bearer all three cyris Workers accept
+```
+
+**`CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name** — the same string in `.env`
+twice, so `StoreConfig`'s fallback chain had never once chosen its second branch. What makes this
+findable rather than arguable is asking the API, since a token's permissions cannot be read back
+from `/user/tokens/verify`:
+
+| | D1 query | Workers AI | Pages project | upload-token | R2 |
+|---|---|---|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | 200 | 401 | 200 | 200 | 403 |
+| `CYRIS_D1_API_TOKEN` *(deleted)* | 200 | 401 | 200 | 200 | 403 |
+| `CLOUDFLARE_EMBEDDING_API_TOKEN` | 403 | 200 | 403 | 403 | 403 |
+
+The embedding token stays: it is genuinely a different permission, and the row above is why the
+code refuses to fall back to `CLOUDFLARE_API_TOKEN` for inference — that token answers **401** on
+Workers AI, which reads as a broken key rather than a missing permission. (Both tokens answer 403
+on R2, unchanged since M3; see §7 #14.)
+
+**The three Worker bearers were three values but never three trust domains.** They lived in one
+`.env` on one machine and now in one Worker secret store, so whoever reads one reads all three.
+Separating them bought independent rotation of keys nobody rotates, and cost three copies of one
+validator — now a single `WorkerConfig`. The Worker-side names (`PROMOTE_TOKEN`,
+`NEWSLETTER_TOKEN`, `RSS_TOKEN`) are deliberately left alone: renaming a secret on three deployed
+Workers is put, delete and redeploy for nothing but matching spelling.
+
+One asymmetry survives the merge and should not be forgotten: `rss` is an idempotent read, while
+`promote` and `newsletter` are pull/ack queues (§3), so a leak there can drop items rather than
+merely read them. That was already true when the three tokens were held together.
 
 ### Where grade D lives (M2, 2026-08-27)
 
@@ -618,7 +659,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
 | 6 | Three Worker URLs + Pages project name | hand-written in `cyris.toml` | **derived at deploy** | `cloud-p4` |
-| 7 | `deploy.json`, the README button, the secret checklist | absent | present | `cloud-p4` |
+| 7 | `deploy.json`, the README button, the secret checklist | absent | present — the checklist is seven variables now, not twelve (§5) | `cloud-p4` |
 | 8 | Three Workers vs one button | undecided | decide **after** `cloud-p3`, with the Container as the primary | `cloud-p4` |
 
 ### Grade D has a home
@@ -630,7 +671,7 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 
 | # | What | Why it matters |
 |---|---|---|
-| ~~11~~ | ~~Retire the local JSON store~~ | Done 2026-08-29: the M-ship receipt landed (a scheduled container run advanced `pages_manifest` while every local file stayed frozen), and `agent-vault/articles/` was deleted. `cyris store migrate\|diff` died with it, as designed |
+| ~~11~~ | ~~Retire the local JSON store~~ | Done 2026-08-29: the M-ship receipt landed (a scheduled container run advanced `pages_manifest` while every local file stayed frozen), and `agent-vault/articles/` was deleted. `cyris store migrate\|diff` **were not** removed with it — checked 2026-08-30, both are still on the CLI, and they still have a subject: `backend = "json"` remains the no-D1 fallback |
 | ~~12~~ | ~~Post-rebuild cleanup~~ | Done 2026-08-29 in the same window: `[miniflux]`, both embeddings caches, `agent-vault/html/` and its bind mount are gone. `agent-vault/` now holds ~52KB and no pipeline state |
 | 13 | Replace the absolute similarity threshold with a relative one | Superseded in shape by M-behaviour (`docs/milestones/schema-first-interleave.md`): suppression must carry a reason and a clock, not a recalibrated cosine. `[vote_similarity]` is **off** in production since 2026-08-28 — the stale cutoff was suppressing measurably (2→24 downvote seeds took suppression from 8 to 45 on a fixed window); off is the honest state until the replacement lands |
 | 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Digest HTML holds LLM summaries stored nowhere else, so deleting the Pages project deletes history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`) |

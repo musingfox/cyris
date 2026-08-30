@@ -7,6 +7,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **cyris runs in a Cloudflare Container.** `workers/app/` fronts the existing
+  image with a Worker: an hourly Cron Trigger replaces `docker/crontab`
+  (`--if-due` reads its schedule from D1, so the logic moved unchanged), and any
+  HTTP request wakes the triage UI, which sleeps five minutes later via
+  `onActivityExpired → stop()`. One image, three roles, picked by `CYRIS_ROLE`:
+  `run` does one pipeline pass and exits so the instance stops billing, `ui`
+  serves the deck, and the default keeps the local supercronic loop for
+  development. The Mac mini's `docker compose` was stopped the same day — two
+  schedulers publishing to one Pages manifest is the failure this cutover had to
+  avoid, so it is not additive.
+- **Auth on the triage UI**, which had none: `127.0.0.1` was the whole security
+  boundary, and a Container is a public write surface. Two layers —
+  Cloudflare Access on the route (who you are; a dashboard step, because the
+  hostname and policy are deployment identity) and `CYRIS_UI_TOKEN` checked in
+  the Worker, where `/login` sets an HttpOnly cookie holding the token's
+  SHA-256. Anything without it gets the form or a `401` before a byte reaches
+  the container. Preview URLs are disabled: an Access application binds to one
+  hostname, so a second hostname is a door it does not cover.
+- **Source editing on `/settings`.** `POST /api/sources` upserts one row and
+  `DELETE /api/sources/{name}` retires it — name, url, type, tier, tags,
+  `homepage`, `email_match`, over the `sources` row that already existed. Adding
+  a feed was previously an edit to `sources.yaml` plus `cyris sources push`, and
+  in the Container that file is baked into the image. A write against an *empty*
+  table seeds it with the run's effective sources first: an empty table means
+  "use `sources.yaml`", so a single insert would otherwise flip the pipeline to
+  D1 holding one feed and silently stop every other one.
+
 - **`cyris doctor`.** A read-only pass over sources, LLM provider, vault paths,
   the article store, every Worker, and whether the digest can actually be
   published — with a fix line per problem and a non-zero exit when something
@@ -29,9 +56,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Grade C is seven environment variables, down from twelve.**
+  `CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name — the same
+  string in `.env` twice, so `StoreConfig`'s fallback chain had never chosen its
+  second branch. Probed against the live account, the two are indistinguishable
+  (D1 200, Pages 200, upload-token 200, Workers AI 401, R2 403).
+  `CLOUDFLARE_EMBEDDING_API_TOKEN` stays: it is genuinely a different permission.
+  The three Worker bearers became one `CYRIS_WORKER_TOKEN` — three random values
+  but never three trust domains, since they shared one `.env` and now one Worker
+  secret store, so separating them bought independent rotation of keys nobody
+  rotates. `PromoteConfig`, `NewsletterConfig` and `RssConfig` collapse into one
+  `WorkerConfig`; the Worker-side secret names are unchanged.
 - `ArticleRepository` now declares all 13 methods its callers use, not the 10 the
   digest run touches — a partial implementation used to fail at the triage UI
   instead of at the boundary.
+
+### Fixed
+
+- **A malformed LLM response no longer costs a scoring run its scores and tags.**
+  `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only
+  after the loop, so one bad batch aborted the pass and took every completed
+  batch's tags with it — `run_digest` caught it and the digest shipped silently
+  unscored. Each batch now carries its own guard, and so does the tag write.
 
 ### Removed
 

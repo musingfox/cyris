@@ -1,8 +1,14 @@
 # Cloud Migration Plan
 
-> Status: phases 0, 1 and 2 done — state lives in D1 as of 2026-08-25. Supersedes the Cloudflare half of
-> [`deployment.md`](deployment.md), whose "drop Miniflux, fetch RSS directly" plan was
-> measured and found wrong (see [Why the buffer](#why-a-buffer-and-not-direct-polling)).
+> Status: **the move is done.** Phases 0–2 landed by 2026-08-25 (state in D1); the compute
+> followed on 2026-08-30, when `workers/app/` put the pipeline in a Cloudflare Container and the
+> Mac mini's `docker compose` was stopped. This file is kept for the measurements and the
+> reasoning behind each choice — **the live list of what is and is not done is
+> [`architecture.md`](architecture.md) §7**, not this plan.
+>
+> Supersedes the Cloudflare half of [`deployment.md`](deployment.md), whose "drop Miniflux, fetch
+> RSS directly" plan was measured and found wrong (see
+> [Why the buffer](#why-a-buffer-and-not-direct-polling)).
 
 Goal: the HTML digest keeps being produced with no always-on machine, on the US$5/mo
 Workers Paid plan. Obsidian output is handled separately and is not a migration target.
