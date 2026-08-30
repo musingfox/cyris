@@ -91,6 +91,10 @@ src/cyris/
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
+├── app/              # The Container and its door: hourly Cron Trigger runs the pipeline
+│                     #   (CYRIS_ROLE=run, one pass then exits), any HTTP request wakes the
+│                     #   triage UI (CYRIS_ROLE=ui). Auth = Cloudflare Access + CYRIS_UI_TOKEN
+│                     #   cookie. See its README to deploy; wrangler must run from that directory
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
 ├── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
 │                     #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.

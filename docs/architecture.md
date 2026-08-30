@@ -349,8 +349,9 @@ file, then overlay D1. Three rules make it trustworthy rather than merely conven
 With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
 409, exactly as it did with no config file. That deployment edits `cyris.toml` by hand.
 
-The schedule moved with it. `docker/crontab` is now an unconditional hourly tick running `cyris run
---if-due`, which asks the effective `digest_schedule` whether this hour is a digest hour and derives
+The schedule moved with it, and then moved again: the tick is now a Workers Cron Trigger
+(`workers/app/wrangler.toml`) rather than `docker/crontab`, unconditional and hourly, running
+`cyris run --if-due`, which asks the effective `digest_schedule` whether this hour is a digest hour and derives
 `--period` from which of the two it is. Hour granularity is the contract, not a rounding: the write
 surface refuses `08:30` rather than firing at 08:00 and leaving the reader to work out why.
 
@@ -365,17 +366,39 @@ find.
 ## 6. Deployment, and how it fails
 
 ```
-Cloudflare                                    Mac mini · docker compose
-├── Worker: rss        → D1 articles          ┌────────────────────────┐
-├── Worker: newsletter → KV                   │ supercronic            │
-├── Worker: promote    → KV                   │   08:00  digest        │
-├── D1: stored_articles · usage_log · sources │   20:00  digest        │
-└── Pages: cyris-digest                       │   hourly promote-sync  │
-                                              └────────────────────────┘
+Cloudflare
+├── Worker: rss        → D1 articles
+├── Worker: newsletter → KV
+├── Worker: promote    → KV
+├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
+│     └ login + Access              └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
+├── D1: stored_articles · usage_log · sources · settings · pages_manifest
+└── Pages: cyris-digest
 ```
 
-`cloud-p3` moves the right-hand box into a Cloudflare Container fronted by a Worker; `cloud-p4`
-makes the whole thing deployable by someone else with one button.
+Nothing runs on the Mac mini since 2026-08-30: `docker compose down` was the cutover, and the
+`compose` file survives only as the local development path. `cloud-p4` makes the whole thing
+deployable by someone else with one button.
+
+**Two schedulers is the failure mode this cutover had to avoid.** The Mac mini and the Container
+run the same pipeline against the same D1 and publish to the same Pages project, where a deployment
+is a full snapshot of one manifest. Bringing the cloud one up is therefore not additive — the local
+one goes down in the same sitting.
+
+**The image carries three roles, and `CYRIS_ROLE` picks one** (`docker/entrypoint.sh`). `run` does
+one `cyris run --if-due` plus one `promote-sync` and exits, so the instance stops billing without
+waiting for a sleep timer; `ui` serves the triage deck and `/settings`; the default is the
+supercronic loop, which now has no scheduled user and dies with `docker/crontab` whenever someone
+gets to it.
+
+**Auth is two layers** (`workers/app/`), and they answer different questions. Cloudflare Access on
+the route decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: the
+hostname and the policy are grade-B deployment identity, so automating them would tie the repo to
+one account. `CYRIS_UI_TOKEN` decides whether a request carries this deployment's own secret:
+`/login` sets an HttpOnly cookie holding the token's SHA-256, and anything without it gets the form
+or a `401` before a byte reaches the container. Layer 2 deploys with the Worker, so a route not yet
+behind Access is still not an open write surface. Preview URLs are disabled for the same reason an
+Access application is bound to a hostname: a second public hostname is a second door.
 
 **Known failure mode.** Code is baked into the image; config is bind-mounted. The two can drift
 arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"` from a current
@@ -388,6 +411,10 @@ silently ignored for two days.
 - The container is **stateless** since 2026-08-30: the only mounts left are the two `:ro` config
   files. `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
   directory it was asking about, which re-created a local-filesystem edge M0–M4 had removed.
+- **In the Container the drift runs the other way**: nothing is mounted, so `cyris.toml` and
+  `sources.yaml` are baked in with the code and cannot disagree with it. What they can be is stale —
+  a worker URL or the Pages project name is a rebuild until §7 M6. Neither file is a source of
+  truth: settings and sources are read from D1 with these as the fallback.
 - **Verifying on the host is not verifying production.** An acceptance criterion signed off from a
   host run says nothing about what the container is running.
 - `cyris doctor` should report what *this build* supports, not only what the config asks for —
@@ -407,11 +434,10 @@ REST, cacheless embeddings. Every persistent datum is in Cloudflare and the cont
 state. What is left is one platform move, one design track, and the deploy button.
 
 ```
-now ─── M5 into the Container ─┬─ M6 deploy button
-                               │
-(weeks of tag data) ─ M-behaviour
+now ─── M5's receipt (two cloud digests) ─── M6 deploy button
+        (weeks of tag data) ─ M-behaviour
 
-shipped: P1, P2, M-persist
+shipped: P1, P2, M-persist, M5's code
 hard edges:  M5 → M6      M-behaviour → (closes #13)
 ```
 
@@ -419,7 +445,7 @@ hard edges:  M5 → M6      M-behaviour → (closes #13)
 |---|---|---|---|---|
 | ~~**P1**~~ | ~~Guard each scoring batch~~ — done 2026-08-30 | `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only after the loop, so one malformed LLM response cost the whole run both its scores and its tags — the shape of the 08-29 run whose tags all came from clustering | ✅ `test_a_failing_batch_leaves_the_others_scores_and_tags_written`: batch 2 raises, batch 1's 20 scores and 20 tag rows are still written. The tag write is guarded too, so losing it no longer unwinds the scores | `cyris#5` |
 | ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | `settings-source-editor` |
-| **M5** | Into the Container | Four pieces, three of them new code: a Containers definition (none exists — `workers/` holds only promote/newsletter/rss, and the image's `CMD` is `supercronic`), Workers Cron replacing `docker/crontab` (the `--if-due` gate already reads D1, so the logic moves unchanged), **auth** (the triage server has none — `127.0.0.1` is the current security boundary, and this is the first public write surface), and `onActivityExpired → stop()` | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
+| **M5** | Into the Container — deployed 2026-08-30, **⚠️ awaiting its own receipt** | All four pieces are live in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran the same afternoon — see §6 on why that is not optional | ⚠️ Two thirds. **Collected:** every unauthenticated path answers `401` (`/`, `/api/sources`, `POST /run`, a wrong token), the authenticated deck loads live D1 in 6.8 s cold, and a cloud `POST /run` at 16:27 reached "Not a digest hour (08:00, 20:00)" and stopped with `exitCode: 0` after ~7 s. **Outstanding:** the wall-clock half — two digests from an off Mac mini, and a bill showing the instance asleep. First scheduled cloud digest: 2026-08-30 20:00 Taipei | `cloud-p3` |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |
 | **M6** | One-button deploy | Only meaningful once nothing runs locally. M-persist's schema is already inside, so no migration mechanism is needed | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
 
@@ -584,8 +610,8 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 4 | Scheduling | `docker/crontab` + supercronic, hourly tick gated on D1 | **Workers Cron Trigger**, same gate | `cloud-p3` |
-| 5 | `onActivityExpired` → `stop()` | not implemented | **required, not an optimisation**: default 10-min idle costs ~10 container-hours per 60 runs | `cloud-p3` |
+| ~~4~~ | ~~Scheduling~~ | Done 2026-08-30: `[triggers] crons = ["0 * * * *"]` on `cyris-app`, the same D1 gate, the same `--if-due` code | — | `cloud-p3` |
+| ~~5~~ | ~~`onActivityExpired` → `stop()`~~ | Done 2026-08-30, with `sleepAfter = "5m"`. The `run` role does not rely on it — it exits when the pipeline pass ends, which is why it is a separate instance from the UI | — | `cloud-p3` |
 
 ### Blocking one-button deploy
 

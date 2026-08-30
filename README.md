@@ -89,30 +89,24 @@ already have across without overwriting anything, and `cyris store diff` compare
 two before you commit to the switch. The full order is in
 [`docs/cloud-migration.md`](docs/cloud-migration.md).
 
-## Docker Deployment
+## Deployment
 
-Run cyris in a container — this is how it is scheduled:
+cyris runs as a Cloudflare Container fronted by a Worker — the schedule is a Workers Cron
+Trigger, and the triage UI wakes on request and sleeps again. See
+[`workers/app/README.md`](workers/app/README.md) for the deploy steps, the secret list and the
+two auth layers.
 
 ```bash
 cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_RSS_TOKEN, ...
 # edit cyris.toml + sources.yaml as usual
 
-docker compose up -d        # builds cyris and runs it on a schedule
+cd workers/app && bun install && bunx wrangler deploy
 ```
 
-Scheduling runs in-container via [supercronic](https://github.com/aptible/supercronic)
-(`docker/crontab`): digest at 08:00 & 20:00, promote-sync hourly. Set `TZ` to change the clock.
-
-Container config is injected via environment (compose overrides your `cyris.toml`, so
-the same config file works locally and in Docker):
-
-| Env var | Purpose | Default |
-|---------|---------|---------|
-| `CYRIS_VAULT_HOST_PATH` | Host path mounted to `/vault` | `./vault` |
-| `CYRIS_AGENT_VAULT_PATH` | Persistent article store | `/data/agent-vault` (named volume) |
-
-Notes:
-- HTML digest publish (`wrangler pages deploy`) needs `CLOUDFLARE_API_TOKEN` in `.env`.
+The same image runs locally with `docker compose up -d`, where the default `CYRIS_ROLE` is a
+supercronic loop reading `docker/crontab` (digest at 08:00 & 20:00, promote-sync hourly; set `TZ`
+to change the clock). That is the development path; the deployment is the Container above, and
+running both at once means two schedulers publishing to one Pages project.
 
 See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs and
 [`docs/architecture.md`](docs/architecture.md) for the core↔adapter map.
@@ -265,7 +259,7 @@ Digest output language is configurable via `[digest] output_language` (default
 | Package manager | uv |
 | Feed buffer | Cloudflare Worker cron → D1 (optional) |
 | AI processing | Anthropic Claude, Google Gemini, OpenAI, or Cloudflare Workers AI |
-| Scheduling | supercronic (Docker) |
+| Scheduling | Workers Cron Trigger → Cloudflare Container |
 | Output | Cloudflare Pages (HTML) |
 | Notifications | Discord webhook |
 

@@ -2,6 +2,13 @@ name = "cyris-app"
 main = "src/index.js"
 compatibility_date = "2026-06-01"
 
+# The workers.dev URL is the deployment's address. Preview URLs are not: each
+# one is another public hostname for the same Worker, and an Access application
+# is bound to a hostname — so a preview URL would be a door Access does not
+# cover. The token check still would, but one door is the design.
+workers_dev = true
+preview_urls = false
+
 # The hourly tick that used to be docker/crontab + supercronic. It is
 # unconditional on purpose: `cyris run --if-due` asks D1 whether this hour is a
 # digest hour and derives --period from which of the two it is, so changing the
