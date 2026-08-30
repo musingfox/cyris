@@ -16,9 +16,8 @@ Two layers, deliberately:
 1. **Cloudflare Access** on the Worker's route — who you are (email policy, MFA,
    audit log). Dashboard only, and manual on purpose: the domain and the policy
    are grade-B deployment identity (`docs/architecture.md` §5), so automating
-   them here would tie the repo to one account. Zero Trust → Access →
-   Applications → Add → Self-hosted, hostname = this Worker's route, policy =
-   Allow / Emails / your address.
+   them here would tie the repo to one account. **It needs a custom domain** —
+   see below; a `workers.dev` hostname cannot be put behind Access at all.
 2. **The `CYRIS_UI_TOKEN` secret**, checked in `src/index.js` before anything
    reaches the container. `/login` takes the token and sets an HttpOnly cookie
    holding its SHA-256. A request without the cookie gets the form (browser) or
@@ -26,6 +25,45 @@ Two layers, deliberately:
 
 Layer 2 deploys with the Worker, so a route that has not been put behind Access
 yet is still not an open write surface.
+
+### Putting Access in front (the part that is not `wrangler deploy`)
+
+**Access cannot protect a `workers.dev` URL.** An Access application takes "a
+domain from an active zone in your Cloudflare account, or a custom hostname via
+Cloudflare for SaaS" — and `workers.dev` is neither. So the order is: give the
+Worker a hostname you own, close the one you don't, then write the policy.
+
+1. **Route the Worker at your own domain.** In `wrangler.toml`:
+
+   ```toml
+   routes = [{ pattern = "cyris.example.com", custom_domain = true }]
+   ```
+
+   `wrangler deploy` creates the DNS record. The zone must already be active on
+   the account.
+
+2. **Turn `workers.dev` off in the same change** — `workers_dev = false`. This
+   is the step it is easy to skip and expensive to skip: Access binds to one
+   hostname, so leaving `cyris-app.<subdomain>.workers.dev` reachable leaves a
+   door Access does not cover, and the whole layer becomes decorative. (The
+   token check still holds it, which is the point of having two layers, but a
+   layer you believe in and do not have is worse than one you know you lack.)
+
+3. **Create the application.** Zero Trust → Access → Applications → Add an
+   application → **Self-hosted**. Name it, set the domain to the hostname from
+   step 1, and add a policy: Action **Allow**, rule **Emails** → your address.
+   Applications are deny-by-default, so no other rule is needed.
+
+4. **Check it from a browser you are not logged in with** (or a private window):
+   the Access login should appear *before* cyris's own `/login` form. If cyris's
+   form appears first, Access is not in front of that hostname.
+
+Cyris does not validate the Access JWT itself. It could — the
+`Cf-Access-Jwt-Assertion` header is there, and Cloudflare documents verifying it
+against the team JWKS — but a request only reaches the Worker after Access has
+allowed it, so verifying again would only defend against someone who can already
+route traffic to the origin. The two layers are already independent; a third
+copy of layer 1 is not a third layer.
 
 ## Deploy
 
