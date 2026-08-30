@@ -737,10 +737,16 @@ answers on both `/` and `/triage`: `/` is what it serves on localhost, `/triage`
 on where the root belongs to the digest. Two routes on one handler, rather than rewriting every
 absolute URL in three static files.
 
-**The digest archive stays public**, which is a decision and not an oversight: digest HTML carries
-LLM summaries of everything the reader found interesting, and the cost of closing it is that every
-link in Discord becomes a login. Access is scoped to the paths above; scoping is what makes the two
-surfaces able to share a hostname at all.
+**The archive is meant to be behind Access, and is not yet.** The decision on 2026-08-30 was that
+every page requires a login by default — per-page login is cheap once Access has an OAuth provider
+behind it. Access does cover all of `digest.musingfox.me`, but the same bytes are public at
+`cyris-digest.pages.dev`, and that is the URL `publish.py` puts in Discord and the index. The door
+everyone actually uses bypasses the lock.
+
+Closing it means the Worker proxying a Pages origin that is itself shut: a custom domain on the
+Pages project with `*.pages.dev` toggled off and its own Access application, and the Worker sending
+an Access **service token** on the proxy fetch. That keeps one hostname for the reader, which
+redirecting to a second protected hostname would not. Ticket: `access-covers-the-digest`.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
