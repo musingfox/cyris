@@ -5,11 +5,13 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
-# secrets & per-user config (injected via compose env / volume mount)
+# secrets stay out of the image; tokens are read from the environment
 .env
-cyris.toml
-sources.yaml
 tracking.yaml
+# cyris.toml and sources.yaml are NOT excluded: the Container mounts nothing, so
+# the deployment identity (§5 grade B — worker URLs, Pages project, D1 id) has
+# to be in the image. They carry no secrets. Building therefore needs a
+# configured tree; §7 M6 replaces this with values derived at deploy.
 # runtime data (volume-mounted)
 agent-vault
 vault

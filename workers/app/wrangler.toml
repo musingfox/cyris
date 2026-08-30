@@ -1,0 +1,31 @@
+name = "cyris-app"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# The hourly tick that used to be docker/crontab + supercronic. It is
+# unconditional on purpose: `cyris run --if-due` asks D1 whether this hour is a
+# digest hour and derives --period from which of the two it is, so changing the
+# times stays a settings write rather than a redeploy.
+[triggers]
+crons = ["0 * * * *"]
+
+[[containers]]
+class_name = "CyrisContainer"
+# Relative to this file; its directory is the build context, which is why the
+# repo-root Dockerfile is the one that ships.
+image = "../../Dockerfile"
+# One digest run and one triage session at a time — this is a single reader's
+# deployment, and a second instance would be a second publisher.
+max_instances = 2
+# ponytail: 1/4 vCPU, 1 GiB. The run is IO-bound (it waits on the LLM, not on
+# the CPU), so the ceiling here is memory during scoring. Move to `standard` if
+# a run OOMs; the receipt is an exit before the digest, not a slow one.
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+class_name = "CyrisContainer"
+name = "CYRIS"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CyrisContainer"]

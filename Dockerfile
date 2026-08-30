@@ -34,6 +34,13 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 COPY docker/crontab /app/crontab
+COPY docker/entrypoint.sh /app/entrypoint.sh
 
-# supercronic fires crontab at container-local clock times (set TZ via compose)
-CMD ["supercronic", "/app/crontab"]
+# cyris.toml and sources.yaml are mounted :ro by compose; the Container has no
+# mounts, so it needs them in the image. Neither is a source of truth any more —
+# settings and sources both live in D1, with these two as the fallback (§5).
+COPY cyris.toml sources.yaml /app/
+
+# CYRIS_ROLE picks the role: `run` for the Workers Cron tick, `ui` for the
+# triage server, and the default `cron` for the Mac mini's supercronic loop.
+CMD ["/app/entrypoint.sh"]
