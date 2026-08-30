@@ -444,16 +444,29 @@ or a `401` before a byte reaches the container. Layer 2 deploys with the Worker,
 behind Access is still not an open write surface. Preview URLs are disabled for the same reason an
 Access application is bound to a hostname: a second public hostname is a second door.
 
-**Layer 1 is not deployed, and the reason is structural, not a forgotten click.** An Access
-application takes a domain from an active zone on the account, or a Cloudflare-for-SaaS custom
-hostname. `workers.dev` is neither, so `cyris-app.<subdomain>.workers.dev` **cannot** be put behind
-Access at any price. Both halves of the prerequisite landed on 2026-08-30: the Worker is
-routed at `digest.musingfox.me` (`custom_domain = true`) and `workers_dev` is **off**, because
-Access binds to one hostname and a live workers.dev URL beside it would be a door Access does not
-cover — decorative rather than absent. Receipt: workers.dev now answers 404, the custom domain
-answers 401 unauthenticated. What remains is the Access application itself, which is a dashboard
-step (`workers/app/README.md`). Until it exists the deployment is single-layer and is described
-that way: the token cookie alone.
+**Layer 1 needed a hostname, and that is why it took a second step.** An Access application
+takes a domain from an active zone on the account, or a Cloudflare-for-SaaS custom hostname.
+`workers.dev` is neither, so `cyris-app.<subdomain>.workers.dev` **could not** be put behind Access
+at any price. Both halves landed on 2026-08-30: the Worker is routed at `digest.musingfox.me`
+(`custom_domain = true`) with `workers_dev` **off** — Access binds to one hostname, so a live
+workers.dev URL beside it would have been a door Access does not cover, decorative rather than
+absent — and the Access application was then created on that hostname.
+
+**Both layers verified from outside, in the right order.** An unauthenticated request 302s to
+`musingfox.cloudflareaccess.com/cdn-cgi/access/login/digest.musingfox.me` with `auth_status: NONE`;
+a request carrying a *valid* cyris session cookie gets the same redirect, which is the property that
+matters — layer 2 cannot be used to walk past layer 1. workers.dev answers 404.
+
+**What this costs: every path is now browser-shaped.** `/api/*` redirects like everything else, so
+scripted access needs an Access **service token** (`CF-Access-Client-Id` / `CF-Access-Client-Secret`
+plus a Service Auth policy), not the `CYRIS_UI_TOKEN` cookie. Nothing automated depends on this
+today — the pipeline talks to D1 and the three Workers directly, never to its own UI — but a future
+script would hit a redirect rather than a 401 and should be told why.
+
+Cyris still does not validate `Cf-Access-Jwt-Assertion`, which now arrives on every request. A
+request reaches the Worker only after Access allowed it, so verifying again defends only against
+someone who can already route traffic to the origin: that is a second copy of layer 1, not a third
+layer.
 
 **Known failure mode.** Code is baked into the image; config is bind-mounted. The two can drift
 arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"` from a current
@@ -502,7 +515,7 @@ hard edges:  M5 → M6      M-behaviour → (closes #13)
 |---|---|---|---|---|
 | ~~**P1**~~ | ~~Guard each scoring batch~~ — done 2026-08-30 | `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only after the loop, so one malformed LLM response cost the whole run both its scores and its tags — the shape of the 08-29 run whose tags all came from clustering | ✅ `test_a_failing_batch_leaves_the_others_scores_and_tags_written`: batch 2 raises, batch 1's 20 scores and 20 tag rows are still written. The tag write is guarded too, so losing it no longer unwinds the scores | `cyris#5` |
 | ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | `settings-source-editor` |
-| **M5** | Into the Container — deployed 2026-08-30, **⚠️ awaiting its own receipt** | All four pieces are live in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran the same afternoon — see §6 on why that is not optional | ⚠️ Two thirds. **Collected:** every unauthenticated path answers `401` (`/`, `/api/sources`, `POST /run`, a wrong token), and the authenticated deck loads live D1 in 6.8 s cold — **one layer, not the two that were decided** — the hostname prerequisite is now met (`digest.musingfox.me`, workers.dev off), the Access application itself is not yet created (§6). The **Cron Trigger fired on its own** at 18:00 Taipei with no request in front of it — `"0 * * * *" Ok` → `CyrisContainer.start` → `container stopped { exitCode: 0 }`, twelve seconds end to end. Under the entrypoint's `set -e` that exit code covers both `run --if-due` (correctly a no-op off the hour) and `promote-sync`'s authenticated call. **The first cloud digest landed on schedule**: the 20:00 Taipei tick fired at 12:00:14Z, and 58 seconds later `usage_log` carried `2026-08-30 · evening · 61 received · 9 included · gemini-3.7-flash · 3 calls · $0.025`, with `/2026-08-30-evening.html` in `pages_manifest` and on the live index. Nothing ran on the Mac mini to produce it. **Outstanding:** the second digest (2026-08-31 morning) and a bill showing the instance asleep | `cloud-p3` |
+| **M5** | Into the Container — deployed 2026-08-30, **⚠️ awaiting its own receipt** | All four pieces are live in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran the same afternoon — see §6 on why that is not optional | ⚠️ Two thirds. **Collected:** every unauthenticated path answers `401` (`/`, `/api/sources`, `POST /run`, a wrong token), and the authenticated deck loads live D1 in 6.8 s cold — **both layers, verified in the right order** — an unauthenticated request, *and* one carrying a valid cyris cookie, both 302 to the Access login for `digest.musingfox.me`; workers.dev answers 404 (§6). The **Cron Trigger fired on its own** at 18:00 Taipei with no request in front of it — `"0 * * * *" Ok` → `CyrisContainer.start` → `container stopped { exitCode: 0 }`, twelve seconds end to end. Under the entrypoint's `set -e` that exit code covers both `run --if-due` (correctly a no-op off the hour) and `promote-sync`'s authenticated call. **The first cloud digest landed on schedule**: the 20:00 Taipei tick fired at 12:00:14Z, and 58 seconds later `usage_log` carried `2026-08-30 · evening · 61 received · 9 included · gemini-3.7-flash · 3 calls · $0.025`, with `/2026-08-30-evening.html` in `pages_manifest` and on the live index. Nothing ran on the Mac mini to produce it. **Outstanding:** the second digest (2026-08-31 morning) and a bill showing the instance asleep | `cloud-p3` |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |
 | **M6** | One-button deploy | Only meaningful once nothing runs locally. M-persist's schema is already inside, so no migration mechanism is needed | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
 

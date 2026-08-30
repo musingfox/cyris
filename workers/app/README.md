@@ -54,15 +54,24 @@ Worker a hostname you own, close the one you don't, then write the policy.
    URL answers **404**, the custom domain answers 401 unauthenticated and serves
    the deck once logged in.
 
-3. **Create the application** — the one step left, and the only one that is not
-   `wrangler deploy`. Zero Trust → Access → Applications → Add an
+3. ~~**Create the application.**~~ Done 2026-08-30, on team domain
+   `musingfox.cloudflareaccess.com`. Zero Trust → Access → Applications → Add an
    application → **Self-hosted**. Name it, set the domain to
    `digest.musingfox.me`, and add a policy: Action **Allow**, rule **Emails** →
    your address. Applications are deny-by-default, so no other rule is needed.
 
-4. **Check it from a browser you are not logged in with** (or a private window):
-   the Access login should appear *before* cyris's own `/login` form. If cyris's
-   form appears first, Access is not in front of that hostname.
+4. ~~**Check it from a browser you are not logged in with.**~~ Verified with
+   `curl`, which is stricter than a private window: a request carrying a *valid*
+   `cyris_session` cookie still 302s to the Access login. Layer 2 cannot be used
+   to walk past layer 1.
+
+**Consequence worth knowing before you script against this.** Every path is
+behind Access now, `/api/*` included, so a scripted client gets a 302 to
+`cloudflareaccess.com` rather than a 401 — the `CYRIS_UI_TOKEN` cookie is no
+help. Scripting needs an Access **service token** (`CF-Access-Client-Id` /
+`CF-Access-Client-Secret` headers, plus a Service Auth policy on the
+application). Nothing automated needs this today: the pipeline talks to D1 and
+the three Workers directly and never to its own UI.
 
 Cyris does not validate the Access JWT itself. It could — the
 `Cf-Access-Jwt-Assertion` header is there, and Cloudflare documents verifying it
