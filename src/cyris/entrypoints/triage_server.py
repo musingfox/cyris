@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from aiohttp import web
 
-from cyris.domain.models import ArticleState
+from cyris.domain.models import ArticleState, SourceConfig
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.ports import ArticleRepository
 
@@ -54,6 +54,8 @@ class TriageServer:
         settings=None,
         llm_provider=None,
         schedule: list[str] | None = None,
+        sources: dict[str, SourceConfig] | None = None,
+        sources_origin: str = "",
     ) -> None:
         self._store = store
         self._host = host
@@ -64,6 +66,11 @@ class TriageServer:
         self._settings = settings
         self._llm_provider = llm_provider
         self._schedule = schedule or []
+        # Already resolved by `load_effective_config` — D1's `sources` table when
+        # it has rows, `sources.yaml` otherwise. The page reports which, so a
+        # half-migrated deployment does not look like a stale one.
+        self._sources = sources or {}
+        self._sources_origin = sources_origin
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
@@ -73,6 +80,7 @@ class TriageServer:
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
+        self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_get("/settings", self._handle_settings_page)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_static("/static", STATIC_DIR)
@@ -335,6 +343,30 @@ class TriageServer:
         self._schedule = times
         logger.info("Digest schedule set to %s", ", ".join(times))
         return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
+
+    async def _handle_get_sources(self, request: web.Request) -> web.Response:
+        """What the pipeline is actually fetching, and from which home.
+
+        Read-only: the write surface is §7 #15. `email_match` rides along because
+        it is source data (grade D); Cloudflare Email Routing is grade B and
+        stays in the dashboard.
+        """
+        return web.json_response(
+            {
+                "origin": self._sources_origin or "unknown",
+                "sources": [
+                    {
+                        "name": s.name,
+                        "type": s.type,
+                        "tier": s.tier.value,
+                        "url": s.url,
+                        "email_match": s.email_match,
+                        "tags": s.tags,
+                    }
+                    for s in self._sources.values()
+                ],
+            }
+        )
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:
         return web.FileResponse(STATIC_DIR / "settings.html")

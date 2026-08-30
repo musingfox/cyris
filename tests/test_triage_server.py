@@ -254,6 +254,39 @@ class TestIndexPage:
         assert "Cyris Triage" in text
 
 
+class TestSourcesEndpoint:
+    """The settings page's read-only source list (§7 #15's placeholder)."""
+
+    async def test_lists_sources_with_origin(self, store_with_articles: ArticleStore) -> None:
+        from cyris.domain.models import SourceConfig, Tier
+
+        server = TriageServer(
+            store_with_articles,
+            sources={
+                "feed": SourceConfig(name="feed", url="https://e.com/rss", tier=Tier.SUMMARIZE),
+                "letter": SourceConfig(
+                    name="letter", type="newsletter", email_match="from:a@b.com"
+                ),
+            },
+            sources_origin="d1",
+        )
+        test_client = TestClient(TestServer(server._app))
+        await test_client.start_server()
+        try:
+            data = await (await test_client.get("/api/sources")).json()
+        finally:
+            await test_client.close()
+
+        assert data["origin"] == "d1"
+        by_name = {s["name"]: s for s in data["sources"]}
+        assert by_name["feed"]["tier"] == "summarize"
+        assert by_name["letter"]["email_match"] == "from:a@b.com"
+
+    async def test_no_sources_wired_is_empty_not_an_error(self, client: TestClient) -> None:
+        data = await (await client.get("/api/sources")).json()
+        assert data == {"origin": "unknown", "sources": []}
+
+
 class TestStatsAndFilter:
     """Tests for stats endpoint and state filtering."""
 

@@ -324,8 +324,8 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `cyris.toml` | derived at deploy, not hand-written |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, `CYRIS_*_TOKEN`, Discord webhook | C | `.env` | Worker secrets |
-| **RSS + newsletter source list** | **D** | **D1 `sources`**, `sources.yaml` fallback | done — adding a feed is a write, not a rebuild |
-| **`email_match` per source** | **D** | inside the same `sources` row | same — an email sender is source data, not deploy config |
+| **RSS + newsletter source list** | **D** | **D1 `sources`**, `sources.yaml` fallback — but the only writer is `cyris sources push` from that file | a writer on `/settings`, so adding a feed is a write and not a rebuild — §7 #15 |
+| **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
 | Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
@@ -588,6 +588,26 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 | ~~12~~ | ~~Post-rebuild cleanup~~ | Done 2026-08-29 in the same window: `[miniflux]`, both embeddings caches, `agent-vault/html/` and its bind mount are gone. `agent-vault/` now holds ~52KB and no pipeline state |
 | 13 | Replace the absolute similarity threshold with a relative one | Superseded in shape by M-behaviour (`docs/milestones/schema-first-interleave.md`): suppression must carry a reason and a clock, not a recalibrated cosine. `[vote_similarity]` is **off** in production since 2026-08-28 — the stale cutoff was suppressing measurably (2→24 downvote seeds took suppression from 8 to 45 on a fixed window); off is the honest state until the replacement lands |
 | 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Digest HTML holds LLM summaries stored nowhere else, so deleting the Pages project deletes history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`) |
+
+### The reader-facing surfaces
+
+Both are M5-adjacent: that milestone puts the digest, the triage deck and `/settings` behind one
+Worker, which is when a half-written settings page and three visual systems stop being cosmetic.
+
+| # | What | Today | Target | Ticket |
+|---|---|---|---|---|
+| 15 | A write surface for the `sources` table | `/settings` **lists** them read-only (`GET /api/sources`, reporting which home served them); the only writer is still `cyris sources push` from `sources.yaml`, a file the container mounts `:ro` | Source CRUD on the same page: name, url, type, tier, tags, `homepage`, `email_match`, over the **existing** `sources` row. No new table, no new §4 row — the storage landed with the D1 cutover, only the writer is missing | `settings-source-editor` |
+| ~~16~~ | ~~One visual system across the three surfaces~~ | Done 2026-08-30: `static/style.css` now carries the digest's token names and values (a digest is a standalone file deployed to Pages, so the copy is the sharing mechanism — the stylesheet's header comment is where the two stay in sync), plus Geist and the grid background. The deck's swipe glows follow `--accent`/`--warn`; `/settings` lost its two hard-coded result colours | — | `ui-one-visual-system` |
+
+Two boundaries #15 does **not** cross, both already decided in §5:
+
+- **Cloudflare Email Routing stays manual.** The domain and the route are grade B and need the
+  operator's own domain. What #15 makes editable is the sender→source mapping (`email_match`), which
+  is grade D and already rides in the `sources` row. Putting a B-grade setting on a D-grade page is
+  how a deployment stops being portable.
+- **`sources.yaml` stays the fallback**, the same shape as `cyris.toml` under `settings`: an empty or
+  unreachable table still falls back to the file on both readers (cyris and `workers/rss`). #15 adds
+  a writer, it does not retire the file.
 
 ## 8. Where the core never changes
 

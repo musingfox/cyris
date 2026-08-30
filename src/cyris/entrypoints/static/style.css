@@ -1,12 +1,21 @@
+/* One visual system across the three reader-facing surfaces (§7 #16). These are
+   the digest's tokens, copied from `adapters/output/templates/digest.html.j2`:
+   a digest is a standalone HTML file deployed to Pages, so it cannot link this
+   stylesheet — the copy is the sharing mechanism, and this comment is where the
+   two stay in sync. Change a value there, change it here. */
 :root {
-  --bg: #1a1a2e;
-  --card-bg: #16213e;
-  --card-border: #0f3460;
-  --text: #e0e0e0;
-  --text-muted: #8a8a9a;
-  --accent-accept: #4ecca3;
-  --accent-reject: #e94560;
-  --badge-bg: #0f3460;
+  --bg: #07070a;
+  --surface: #11111a;
+  --surface-2: #161622;
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #56566e;
+  --accent: #c6ff3d;
+  --warn: #ff5b8a;
+  --info: #4ad6ff;
+  --grid: rgba(198, 255, 61, 0.035);
 }
 
 * {
@@ -16,8 +25,15 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: "ss01", "ss02", "cv11";
   background: var(--bg);
+  /* The digest's grid, without its `background-attachment: fixed`: this is a
+     touch surface and iOS Safari treats fixed attachment inconsistently. */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px;
   color: var(--text);
   min-height: 100dvh;
   display: flex;
@@ -34,13 +50,13 @@ header {
 header h1 {
   font-size: 1.2rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-dim);
   letter-spacing: 0.05em;
 }
 
 #counter {
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
   margin-top: 0.25rem;
 }
 
@@ -54,8 +70,8 @@ header h1 {
 
 #filter-tabs .tab {
   background: transparent;
-  border: 1px solid var(--card-border);
-  color: var(--text-muted);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
   padding: 0.5rem 1rem;
   border-radius: 8px;
   font-size: 0.85rem;
@@ -68,12 +84,12 @@ header h1 {
 }
 
 #filter-tabs .tab:hover {
-  border-color: var(--text-muted);
+  border-color: var(--text-dim);
 }
 
 #filter-tabs .tab.active {
-  background: var(--card-border);
-  border-color: var(--accent-accept);
+  background: var(--border);
+  border-color: var(--accent);
   color: var(--text);
 }
 
@@ -97,8 +113,8 @@ main#deck {
 .card {
   position: absolute;
   width: min(90vw, 420px);
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 1.5rem;
   touch-action: none;
@@ -110,7 +126,7 @@ main#deck {
 
 .card.read-only {
   cursor: default;
-  border-color: var(--text-muted);
+  border-color: var(--text-dim);
   opacity: 0.9;
 }
 
@@ -132,13 +148,13 @@ main#deck {
 }
 
 .card.accept-hint {
-  border-color: var(--accent-accept);
-  box-shadow: 0 0 20px rgba(78, 204, 163, 0.3);
+  border-color: var(--accent);
+  box-shadow: 0 0 20px rgba(198, 255, 61, 0.3);
 }
 
 .card.reject-hint {
-  border-color: var(--accent-reject);
-  box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+  border-color: var(--warn);
+  box-shadow: 0 0 20px rgba(255, 91, 138, 0.3);
 }
 
 .card-meta {
@@ -153,14 +169,14 @@ main#deck {
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
-  background: var(--badge-bg);
-  color: var(--text-muted);
+  background: var(--surface-2);
+  color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .badge-score {
-  color: var(--accent-accept);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -190,7 +206,7 @@ main#deck {
 
 .card-source-line {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
   margin-bottom: 0.5rem;
 }
 
@@ -208,7 +224,7 @@ main#deck {
 
 .card-snippet {
   font-size: 0.9rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
   line-height: 1.6;
   margin-bottom: 1rem;
 }
@@ -218,7 +234,7 @@ main#deck {
   justify-content: space-between;
   align-items: center;
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 #empty-state {
@@ -227,7 +243,7 @@ main#deck {
   align-items: center;
   justify-content: center;
   font-size: 1.2rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 .hidden {
@@ -243,21 +259,21 @@ footer {
 
 .hint {
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
   opacity: 0.5;
 }
 
 .read-only-hint {
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
   opacity: 0.5;
   text-align: center;
 }
 
 .nav-btn {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
   padding: 0.5rem 1rem;
   border-radius: 8px;
   font-size: 0.85rem;
@@ -281,7 +297,7 @@ footer {
   bottom: 4rem;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--card-border);
+  background: var(--border);
   color: var(--text);
   padding: 0.5rem 1.5rem;
   border-radius: 8px;
@@ -294,8 +310,8 @@ footer {
   bottom: 5rem;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--card-bg);
-  border: 1px solid var(--accent-accept);
+  background: var(--surface);
+  border: 1px solid var(--accent);
   color: var(--text);
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
@@ -308,7 +324,7 @@ footer {
 }
 
 #undo-button {
-  background: var(--accent-accept);
+  background: var(--accent);
   border: none;
   color: var(--bg);
   padding: 0.4rem 1rem;

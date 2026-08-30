@@ -4,38 +4,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cyris Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/style.css">
   <style>
     /* Its own page rather than a view inside app.js: the deck is a swipe
        surface with global key and touch handlers, and a form has no business
        sharing them. body there is overflow:hidden, which a form must undo. */
     body { overflow: auto; display: block; padding: 1.5rem; max-width: 34rem; margin: 0 auto; }
-    h1 { font-size: 1.2rem; color: var(--text-muted); letter-spacing: .05em; margin-bottom: 1.5rem; }
-    fieldset { border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-    legend { color: var(--text-muted); font-size: .8rem; padding: 0 .4rem; }
+    h1 { font-size: 1.2rem; color: var(--text-dim); letter-spacing: .05em; margin-bottom: 1.5rem; }
+    fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    legend { color: var(--text-dim); font-size: .8rem; padding: 0 .4rem; }
     label.provider { display: flex; align-items: baseline; gap: .6rem; padding: .5rem 0; cursor: pointer; }
     label.provider.unavailable { opacity: .45; cursor: not-allowed; }
-    .env { color: var(--text-muted); font-size: .75rem; margin-left: auto; }
+    .env { color: var(--text-dim); font-size: .75rem; margin-left: auto; }
     input[type=text] {
       width: 100%; padding: .6rem; border-radius: 6px; font: inherit;
-      background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border);
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
     }
-    .hint { color: var(--text-muted); font-size: .78rem; margin-top: .4rem; line-height: 1.5; }
+    .hint { color: var(--text-dim); font-size: .78rem; margin-top: .4rem; line-height: 1.5; }
     button {
-      background: var(--accent-accept); color: var(--bg); border: 0; border-radius: 6px;
+      background: var(--accent); color: var(--bg); border: 0; border-radius: 6px;
       padding: .7rem 1.4rem; font: inherit; font-weight: 600; cursor: pointer;
     }
     button[disabled] { opacity: .5; cursor: default; }
-    #result { margin-top: 1rem; padding: .8rem; border-radius: 6px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
-    #result.ok { background: #14342c; color: var(--accent-accept); }
-    #result.err { background: #3a1620; color: var(--accent-reject); }
-    a.back { color: var(--text-muted); font-size: .8rem; }
+    h2 { font-size: .9rem; letter-spacing: .08em; color: var(--text-dim); font-weight: 600; margin: 2.5rem 0 .5rem; }
+    #result, #sched-result { margin-top: 1rem; padding: .8rem; border-radius: 6px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
+    .ok { background: rgba(198, 255, 61, 0.09); color: var(--accent); }
+    .err { background: rgba(255, 91, 138, 0.11); color: var(--warn); }
+    a.back { color: var(--text-dim); font-size: .8rem; }
+    table.sources { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    table.sources th { text-align: left; color: var(--text-faint); font-weight: 500; padding: .3rem .5rem .3rem 0; }
+    table.sources td { padding: .35rem .5rem .35rem 0; border-top: 1px solid var(--border); vertical-align: top; }
+    table.sources .mono { font-family: 'Geist Mono', ui-monospace, monospace; color: var(--text-dim); word-break: break-all; }
+    table.sources .tier { color: var(--accent); }
   </style>
 </head>
 <body>
   <h1>SETTINGS</h1>
 
-  <h2 style="font-size:.9rem;letter-spacing:.08em;color:var(--text-muted);margin:1.5rem 0 .5rem">LLM PROVIDER</h2>
+  <h2 style="margin-top:1.5rem">LLM PROVIDER</h2>
 
   <form id="form">
     <fieldset>
@@ -54,7 +63,7 @@
 
   <div id="result" class="hidden" hidden></div>
 
-  <h2 style="font-size:.9rem;letter-spacing:.08em;color:var(--text-muted);margin:2.5rem 0 .5rem">DIGEST SCHEDULE</h2>
+  <h2>DIGEST SCHEDULE</h2>
 
   <form id="sched-form">
     <fieldset>
@@ -66,10 +75,22 @@
     </fieldset>
 
     <button type="submit" id="save-sched">Save</button>
-    <a class="back" href="/" style="margin-left:1rem">&larr; back to triage</a>
   </form>
 
   <div id="sched-result" class="hidden" hidden></div>
+
+  <h2>SOURCES</h2>
+
+  <fieldset>
+    <legend id="sources-origin">Feeds and senders</legend>
+    <div id="sources"></div>
+    <p class="hint">Read-only for now. Editing a source here — adding a feed, retiring one, pointing
+      a newsletter at a different sender — is §7 #15; the row it will write already exists.
+      <code>email_match</code> is the sender→source mapping, not Cloudflare Email Routing: the
+      domain and the route stay in the dashboard.</p>
+  </fieldset>
+
+  <a class="back" href="/">&larr; back to triage</a>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -168,10 +189,30 @@ $("sched-form").addEventListener("submit", async (e) => {
   }
 });
 
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function renderSources(d) {
+  $("sources-origin").textContent = `Feeds and senders — served from ${d.origin}`;
+  if (!d.sources.length) return $("sources").textContent = "No sources configured.";
+  $("sources").innerHTML = `<table class="sources">
+    <tr><th>name</th><th>tier</th><th>type</th><th>url / email_match</th></tr>
+    ${d.sources.map((s) => `<tr>
+      <td>${esc(s.name)}</td>
+      <td class="tier">${esc(s.tier)}</td>
+      <td>${esc(s.type)}</td>
+      <td class="mono">${esc(s.email_match || s.url || "—")}</td>
+    </tr>`).join("")}</table>`;
+}
+
 fetch("/api/settings")
   .then((r) => r.json())
   .then((d) => { state = d; render(); })
   .catch((e) => show("err", `Could not load settings: ${e}`));
+
+fetch("/api/sources")
+  .then((r) => r.json())
+  .then(renderSources)
+  .catch((e) => { $("sources").textContent = `Could not load sources: ${e}`; });
 </script>
 </body>
 </html>

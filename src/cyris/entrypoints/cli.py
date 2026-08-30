@@ -606,6 +606,8 @@ def triage_ui(
             settings=build_settings(cfg),
             llm_provider=cfg.app.llm_provider,
             schedule=cfg.app.general.digest_schedule,
+            sources=cfg.sources,
+            sources_origin=cfg.sources_origin,
         )
         await server.start()
         typer.echo(f"Triage UI: http://{host}:{port}")
