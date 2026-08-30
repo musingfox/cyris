@@ -737,16 +737,20 @@ answers on both `/` and `/triage`: `/` is what it serves on localhost, `/triage`
 on where the root belongs to the digest. Two routes on one handler, rather than rewriting every
 absolute URL in three static files.
 
-**The archive is meant to be behind Access, and is not yet.** The decision on 2026-08-30 was that
-every page requires a login by default — per-page login is cheap once Access has an OAuth provider
-behind it. Access does cover all of `digest.musingfox.me`, but the same bytes are public at
-`cyris-digest.pages.dev`, and that is the URL `publish.py` puts in Discord and the index. The door
-everyone actually uses bypasses the lock.
+**The archive is public, and what needs closing is the write, not the read.** Anyone holding a
+digest link can vote today: `_promote_script.html.j2` renders the promote bearer into every
+published page, so a stranger's click lands in `stored_articles` as a `triaged_at`-stamped *human*
+verdict and seeds `vote_similarity` and `article_tags`. Sharing a digest shares write access to the
+interest model.
 
-Closing it means the Worker proxying a Pages origin that is itself shut: a custom domain on the
-Pages project with `*.pages.dev` toggled off and its own Access application, and the Worker sending
-an Access **service token** on the proxy fetch. That keeps one hostname for the reader, which
-redirecting to a second protected hostname would not. Ticket: `access-covers-the-digest`.
+The fix keeps the archive public — which is what it should be, since a digest is worth sending to
+someone — and moves the capability instead of the content: the token stops being rendered at all,
+votes go to a same-origin `POST /api/vote` on the Worker, which attaches the bearer server-side, and
+the buttons render only where that endpoint is reachable and authorised. The same file then gives a
+reader on `pages.dev` everything except the ability to vote, and a reader on `digest.musingfox.me`
+— past Access — the whole thing. No second rendering, no second Access application, no service
+token. Ticket: `private-votes-public-archive`, which supersedes an earlier plan to put the archive
+itself behind Access; that one had misread which half was exposed.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
