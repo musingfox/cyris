@@ -89,7 +89,10 @@ class TriageServer:
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
         self._app.router.add_get("/settings", self._handle_settings_page)
+        # Two paths, one page: `/` is the deck on localhost, and `/triage` is what
+        # it answers on behind the Worker, where `/` belongs to the digest.
         self._app.router.add_get("/", self._handle_index)
+        self._app.router.add_get("/triage", self._handle_index)
         self._app.router.add_static("/static", STATIC_DIR)
         self._runner: web.AppRunner | None = None
 

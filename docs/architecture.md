@@ -707,19 +707,26 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 
 ### The reader-facing surfaces
 
-These were written as M5-adjacent, on the expectation that the milestone would put the digest, the
-triage deck and `/settings` behind one Worker. **It did not, and that turned out to be right.** The
-deck and `/settings` are the Container's UI at `digest.musingfox.me`, behind Access; the digest is a
-static snapshot deployed to Pages, and serving it through the Worker would mean waking a container
-to hand back a file Cloudflare already holds — and would put the archive of record behind an auth
-layer it does not want.
+All three are on `digest.musingfox.me` since 2026-08-30, split by path rather than by hostname:
 
-**So the digest archive is public**, at `cyris-digest.pages.dev`, and Access covers only the reading
-surface it does not include. That is unchanged since M3, but it is now easy to assume otherwise, and
-the assumption is the dangerous kind: digest HTML carries LLM summaries of everything the reader
-found interesting. Making it private is a real decision with a real cost (Access on the Pages
-project, and every digest link in Discord becomes a login), not an oversight — it is simply not
-one that has been taken.
+```
+/                       digest index      ─┐ public: the Worker proxies Pages,
+/2026-08-30-evening.html  one digest      ─┘ no container, no auth
+/triage · /settings · /api/* · /static/*    Access + CYRIS_UI_TOKEN + container
+```
+
+The split is what "behind one Worker" should have meant. Serving the digest *from the container*
+would wake a container to hand back a file Cloudflare already holds, and putting the archive of
+record behind an auth layer would turn every Discord link into a login — so the Worker proxies
+`DIGEST_ORIGIN` for anything not on the protected list, which costs one Worker request. The deck
+answers on both `/` and `/triage`: `/` is what it serves on localhost, `/triage` is what it answers
+on where the root belongs to the digest. Two routes on one handler, rather than rewriting every
+absolute URL in three static files.
+
+**The digest archive stays public**, which is a decision and not an oversight: digest HTML carries
+LLM summaries of everything the reader found interesting, and the cost of closing it is that every
+link in Discord becomes a login. Access is scoped to the paths above; scoping is what makes the two
+surfaces able to share a hostname at all.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|

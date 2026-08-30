@@ -15,6 +15,11 @@ preview_urls = false
 # unconditional on purpose: `cyris run --if-due` asks D1 whether this hour is a
 # digest hour and derives --period from which of the two it is, so changing the
 # times stays a settings write rather than a redeploy.
+# Where the digest archive actually lives. Grade B — deployment identity, same
+# as the Pages project name it points at.
+[vars]
+DIGEST_ORIGIN = "https://cyris-digest.pages.dev"
+
 [triggers]
 crons = ["0 * * * *"]
 

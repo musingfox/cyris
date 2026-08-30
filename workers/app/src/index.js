@@ -88,9 +88,27 @@ const LOGIN_PAGE = (message) => `<!DOCTYPE html>
   ${message ? `<p>${message}</p>` : ""}
 </form>`;
 
+// The two jobs this hostname does, split by path. Everything not listed here is
+// the digest archive, which is public: it is the archive of record, and every
+// link to it in Discord would otherwise become a login.
+const PROTECTED = (path) =>
+  path === "/triage" ||
+  path === "/settings" ||
+  path === "/login" ||
+  path === "/run" ||
+  path.startsWith("/api/") ||
+  path.startsWith("/static/");
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+
+    // The digest is a static snapshot Cloudflare already holds. Proxying it
+    // costs one Worker request; serving it from the container would wake a
+    // container to hand back a file.
+    if (!PROTECTED(url.pathname)) {
+      return fetch(new Request(env.DIGEST_ORIGIN + url.pathname + url.search, request));
+    }
 
     if (url.pathname === "/login") {
       if (request.method !== "POST") return html(LOGIN_PAGE(""));
