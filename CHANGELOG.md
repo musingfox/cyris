@@ -62,11 +62,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   second branch. Probed against the live account, the two are indistinguishable
   (D1 200, Pages 200, upload-token 200, Workers AI 401, R2 403).
   `CLOUDFLARE_EMBEDDING_API_TOKEN` stays: it is genuinely a different permission.
-  The three Worker bearers became one `CYRIS_WORKER_TOKEN` — three random values
-  but never three trust domains, since they shared one `.env` and now one Worker
-  secret store, so separating them bought independent rotation of keys nobody
-  rotates. `PromoteConfig`, `NewsletterConfig` and `RssConfig` collapse into one
-  `WorkerConfig`; the Worker-side secret names are unchanged.
+`rss` and `newsletter` share one `CYRIS_WORKER_TOKEN` — two random values but
+  never two trust domains, since they shared one `.env` and now one Worker secret
+  store. `promote` keeps its own `CYRIS_PROMOTE_TOKEN` and is **not a secret**:
+  the digest's vote buttons run in the reader's browser, so the token is rendered
+  into every published page. Merging it in was a same-day mistake, caught when
+  the 20:00 digest published the shared value in plain HTML; the dividing line is
+  published-vs-secret, not one-value-vs-three.
 - `ArticleRepository` now declares all 13 methods its callers use, not the 10 the
   digest run touches — a partial implementation used to fail at the triage UI
   instead of at the boundary.

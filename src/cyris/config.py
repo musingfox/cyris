@@ -146,10 +146,12 @@ class HtmlOutputConfig(BaseModel):
 class WorkerConfig(BaseModel):
     """A Cloudflare Worker cyris pulls from, and the bearer it presents.
 
-    One token for all three. They were three random values, but never three
-    trust domains: the same `.env` and the same Worker secret store hold them
-    all, so whoever reads one reads them all, and separating them bought
-    independent rotation of keys nobody rotates.
+    One token for the two that are server-to-server (`rss`, `newsletter`).
+    They were separate random values but never separate trust domains: the same
+    `.env` and the same Worker secret store hold both, so whoever reads one
+    reads the other.
+
+    `promote` is **not** one of them — see PromoteConfig.
     """
 
     worker_url: str = ""
@@ -163,8 +165,27 @@ class WorkerConfig(BaseModel):
 
 
 class PromoteConfig(WorkerConfig):
+    """The vote Worker. Its token is **published, not secret.**
+
+    The digest's up/down buttons run in the reader's browser, so the token is
+    rendered into every digest and raw page (`_promote_script.html.j2`) and
+    those pages are public. Recovering it takes one `curl` of any published
+    digest — which is the proof, not the risk.
+
+    That is why it does not share `CYRIS_WORKER_TOKEN` with `rss` and
+    `newsletter`: merging them on 2026-08-30 printed a server-to-server
+    credential into a public page, and `newsletter`'s `/ack` deletes a queue.
+    The dividing line is published-vs-secret, not one-random-value-vs-three.
+    """
+
     publish_enabled: bool = False
     pages_project: str = ""
+
+    @model_validator(mode="after")
+    def inject_token(self) -> "PromoteConfig":
+        if not self.token:
+            self.token = os.environ.get("CYRIS_PROMOTE_TOKEN", "")
+        return self
 
 
 class NewsletterConfig(WorkerConfig):

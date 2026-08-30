@@ -323,7 +323,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Pages project name | B | `cyris.toml [promote]` | `wrangler.toml` |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `cyris.toml` | derived at deploy, not hand-written |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, two Cloudflare tokens, one Worker bearer | C | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
+| LLM API keys, two Cloudflare tokens, one Worker bearer, one *published* vote token | C (the vote token is not a secret) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
@@ -346,7 +346,9 @@ ANTHROPIC_API_KEY  GEMINI_API_KEY  OPENAI_API_KEY   all three: the provider is a
 CLOUDFLARE_ACCOUNT_ID
 CLOUDFLARE_API_TOKEN              D1 + Pages
 CLOUDFLARE_EMBEDDING_API_TOKEN    Workers AI only
-CYRIS_WORKER_TOKEN                the bearer all three cyris Workers accept
+CYRIS_WORKER_TOKEN                rss + newsletter, server-to-server
+CYRIS_PROMOTE_TOKEN               the vote Worker — printed in every published
+                                  digest page, so not a secret at all
 ```
 
 **`CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name** — the same string in `.env`
@@ -365,16 +367,28 @@ code refuses to fall back to `CLOUDFLARE_API_TOKEN` for inference — that token
 Workers AI, which reads as a broken key rather than a missing permission. (Both tokens answer 403
 on R2, unchanged since M3; see §7 #14.)
 
-**The three Worker bearers were three values but never three trust domains.** They lived in one
-`.env` on one machine and now in one Worker secret store, so whoever reads one reads all three.
-Separating them bought independent rotation of keys nobody rotates, and cost three copies of one
-validator — now a single `WorkerConfig`. The Worker-side names (`PROMOTE_TOKEN`,
-`NEWSLETTER_TOKEN`, `RSS_TOKEN`) are deliberately left alone: renaming a secret on three deployed
-Workers is put, delete and redeploy for nothing but matching spelling.
+**Two of the three Worker bearers are one value; `promote` is not, and the reason is the whole
+lesson.** `rss` and `newsletter` are server-to-server: their tokens live in `.env` and the Worker
+secret store, so whoever reads one reads the other, and holding them apart bought independent
+rotation of keys nobody rotates.
 
-One asymmetry survives the merge and should not be forgotten: `rss` is an idempotent read, while
-`promote` and `newsletter` are pull/ack queues (§3), so a leak there can drop items rather than
-merely read them. That was already true when the three tokens were held together.
+`promote` is different in kind. Its up/down buttons run in the **reader's browser**, so
+`_promote_script.html.j2` renders the token into every digest and raw page, and those pages are
+public — recovering it takes one `curl` of any published digest. It is not a secret and never was.
+
+**This was merged into `CYRIS_WORKER_TOKEN` on 2026-08-30 and unmerged the same evening**, after the
+20:00 digest published the shared value in plain HTML. For about an hour, the token printed on a
+public page was also `newsletter`'s — whose `/ack` deletes a queue — and `rss`'s. The reasoning that
+produced it ("three random values but never three trust domains") was right about `rss` and
+`newsletter` and wrong about `promote`, and the evidence was in the repo the whole time, four lines
+into a template nobody re-read. **The dividing line is published-vs-secret, not
+one-value-vs-three.**
+
+The repair, and why each half: `rss` and `newsletter` rotated to a fresh value, because theirs had
+been published. `promote` went *back* to its original value rather than forward to a new one —
+rotating a token that is baked into 58 already-published pages would break every vote button in the
+archive, and rotating a public token buys nothing. Receipt: the old token answers 200 on
+`/promotions`, and the leaked one answers 401 on both `newsletter` and `rss`.
 
 ### Where grade D lives (M2, 2026-08-27)
 

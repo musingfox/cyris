@@ -53,7 +53,9 @@ output_dir = "agent-vault/html"
 worker_url = ""
 publish_enabled = false                 # publish HTML digest to Cloudflare Pages
 pages_project = ""
-# Token via env: CYRIS_WORKER_TOKEN
+# Token via env: CYRIS_PROMOTE_TOKEN — deliberately not CYRIS_WORKER_TOKEN. The
+# vote buttons run in the reader's browser, so this token is rendered into every
+# published digest page; it is public by construction, not a secret.
 
 [newsletter]
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).
