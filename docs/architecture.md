@@ -400,17 +400,37 @@ not on this list is already true of the running system.
 
 ### 7.0 The path
 
-Seven milestones. Each one ends with a receipt — an observed effect, not an exit code. Only three
-orderings are load-bearing; everything else can run in parallel.
+Each milestone ends with a receipt — an observed effect, not an exit code.
+
+**M0–M4 are done** (2026-08-27 → 08-30): the cutover, the deletions, settings in D1, Pages over
+REST, cacheless embeddings. Every persistent datum is in Cloudflare and the container holds no
+state. What is left is one platform move, one design track, and the deploy button.
 
 ```
-M0 ─┬─ M1 ── M2 ─────────┐
-    │                     ├─ M5 ── M6
-    ├─ M3 ────────────────┤
-    └─ M4 ────────────────┘
+now ─┬─ P1 per-batch scoring guard ─┐
+     ├─ P2 #15 sources write surface ┼─ M5 into the Container ─┐
+     └─ (M-persist: shipped)         ┘                          ├─ M6 deploy button
+                                                                │
+        (weeks of tag data) ─── M-behaviour ────────────────────┘
 
-hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
+hard edges:  P2 → M5      M5 → M6      M-persist → M-behaviour → (closes #13)
 ```
+
+| Order | What | Why here | Done when | Ticket |
+|---|---|---|---|---|
+| **P1** | Guard each scoring batch | `score_in_batches` (`scoring.py:95`) wraps no batch in a `try`. One malformed LLM response aborts the whole scoring pass — and `persist_tags` runs only after the loop, so that run's tags die with it. `run_digest` catches it and the digest still ships, silently unscored. This is GitHub #5's remaining half, and the shape of the 08-29 run whose tags all came from clustering | A batch that raises leaves the other batches' scores and tags written | `cyris#5` |
+| **P2** | §7 #15, the `sources` write surface | Its urgency comes from M5, not from the page. Today a feed is added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed becomes a rebuild + redeploy. This is the same shape M2 fixed for settings, on the half that was left behind | A feed is added, retired, and re-tiered from `/settings`, and the next run fetches accordingly | `settings-source-editor` |
+| **M5** | Into the Container | Four pieces, three of them new code: a Containers definition (none exists — `workers/` holds only promote/newsletter/rss, and the image's `CMD` is `supercronic`), Workers Cron replacing `docker/crontab` (the `--if-due` gate already reads D1, so the logic moves unchanged), **auth** (the triage server has none — `127.0.0.1` is the current security boundary, and this is the first public write surface), and `onActivityExpired → stop()` | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
+| **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |
+| **M6** | One-button deploy | Only meaningful once nothing runs locally. M-persist's schema is already inside, so no migration mechanism is needed | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
+
+**M-persist shipped** with M-ship's window: rejection reasons are a two-way split
+(`already_known` / `not_interested`), stories and story membership are D1 tables keyed by content
+hash, the tag vocabulary is live, and `articles clean` keeps human-triaged rows
+(`delete_articles` … `AND triaged_at IS NULL`). Its two hitchhiker fixes are half done — the clean
+guard landed, the scoring guard is P1 above.
+
+Delivered, with the receipt each one was signed off on:
 
 | M | What | Why here | Receipt | Ticket |
 |---|---|---|---|---|
@@ -419,8 +439,6 @@ hard edges:  M0 → delete the JSON store      M2 → M5      (M3 + M4) → M5
 | ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
 | ~~**M3**~~ | Publish → **Pages REST**; the archive → **D1 `pages_manifest`**, not R2 | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ✅ A page rendered only in memory went live, and all 57 archived digests survived a deploy driven purely by the manifest. `check-missing` recognised 57/57, which is what proves the hash formula | `cloud-p3` |
 | ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below | `cloud-p3` · `evaluate-embedding-provider` |
-| **M5** | **Into the Container** — Worker-fronted Container; triage UI + `/settings` served through it **behind real auth**; supercronic → Workers Cron `0 * * * *` gated on the D1 schedule row; `onActivityExpired` → `stop()` | Everything local is gone by now, so this is a move rather than a rewrite | Mac mini off for 24 h and two digests appear; the triage UI is reachable **and an unauthenticated request is refused**; the bill shows the instance sleeping | `cloud-p3` |
-| **M6** | **One-button deploy** — `deploy.json`, the README button, the secret checklist, Worker URLs derived at deploy, and the three-Workers-vs-one decision | Only meaningful once nothing runs locally | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
 
 Two things this table deliberately makes explicit:
 
