@@ -174,9 +174,7 @@ class StoredArticle(BaseModel):
     rejection_reason: str | None = None
     score: float | None = None
     language: str | None = None
-    scored_at: datetime | None = None
     triaged_at: datetime | None = None
-    exported_at: datetime | None = None
 
     @classmethod
     def from_article(cls, article: Article, first_seen_at: datetime) -> "StoredArticle":

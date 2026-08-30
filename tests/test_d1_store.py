@@ -92,9 +92,7 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
         rejection_reason=None,
         score=71.5,
         language="zh",
-        scored_at=now,
         triaged_at=now,
-        exported_at=now,
     )
 
     store.import_articles([stored])

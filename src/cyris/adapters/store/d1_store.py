@@ -36,9 +36,7 @@ COLUMNS = (
     "rejection_reason",
     "score",
     "language",
-    "scored_at",
     "triaged_at",
-    "exported_at",
 )
 
 # `WHERE url IN (?, ?, ...)` plus whatever the statement sets, kept under 100.
@@ -83,9 +81,7 @@ def _to_row(article: StoredArticle) -> list[Any]:
         article.rejection_reason,
         article.score,
         article.language,
-        _iso(article.scored_at),
         _iso(article.triaged_at),
-        _iso(article.exported_at),
     ]
 
 

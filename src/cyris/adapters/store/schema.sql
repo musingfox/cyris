@@ -27,9 +27,7 @@ CREATE TABLE IF NOT EXISTS stored_articles (
   rejection_reason TEXT,
   score            REAL,
   language         TEXT,
-  scored_at        TEXT,
-  triaged_at       TEXT,                 -- non-null ⇒ a human decided; the pipeline must not overwrite
-  exported_at      TEXT
+  triaged_at       TEXT                  -- non-null ⇒ a human decided; the pipeline must not overwrite
 );
 
 -- The digest window, the triage queue, and `cyris learn` are the three read paths.
