@@ -83,8 +83,8 @@ class LLMProviderConfig(BaseModel):
                 # The Workers AI token `cyris embed-compare` already uses: the same
                 # "Workers AI -> Read" covers text models, so an existing setup needs
                 # nothing new. Deliberately never CLOUDFLARE_API_TOKEN — that one
-                # carries D1 and Pages, and would fail as a confusing 403 instead of
-                # an obviously missing key.
+                # carries D1 and Pages but answers 401 on Workers AI, which reads as
+                # a broken key rather than a missing permission.
                 self.api_key = os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", "")
             if not self.account_id:
                 self.account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")

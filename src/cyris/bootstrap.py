@@ -77,8 +77,9 @@ def build_embedder(cfg: Config) -> Any | None:
 
     from cyris.adapters.embedding import WorkersAIEmbedder
 
-    # Deliberately not CLOUDFLARE_API_TOKEN: that one is wrangler's, and it
-    # carries account:read only — Workers AI refuses it.
+    # Deliberately not CLOUDFLARE_API_TOKEN. That one carries D1 and Pages —
+    # measured 2026-08-30: D1 200, Pages 200, upload-token 200, Workers AI 401.
+    # Inference is a separate token because it is a separate permission.
     return WorkersAIEmbedder(
         api_token=os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", ""),
         account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
