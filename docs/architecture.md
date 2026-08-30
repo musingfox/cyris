@@ -707,8 +707,19 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 
 ### The reader-facing surfaces
 
-Both are M5-adjacent: that milestone puts the digest, the triage deck and `/settings` behind one
-Worker, which is when a half-written settings page and three visual systems stop being cosmetic.
+These were written as M5-adjacent, on the expectation that the milestone would put the digest, the
+triage deck and `/settings` behind one Worker. **It did not, and that turned out to be right.** The
+deck and `/settings` are the Container's UI at `digest.musingfox.me`, behind Access; the digest is a
+static snapshot deployed to Pages, and serving it through the Worker would mean waking a container
+to hand back a file Cloudflare already holds — and would put the archive of record behind an auth
+layer it does not want.
+
+**So the digest archive is public**, at `cyris-digest.pages.dev`, and Access covers only the reading
+surface it does not include. That is unchanged since M3, but it is now easy to assume otherwise, and
+the assumption is the dangerous kind: digest HTML carries LLM summaries of everything the reader
+found interesting. Making it private is a real decision with a real cost (Access on the Pages
+project, and every digest link in Discord becomes a login), not an oversight — it is simply not
+one that has been taken.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
