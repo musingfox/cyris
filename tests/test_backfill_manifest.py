@@ -33,7 +33,7 @@ class RecordingD1:
 def fake_d1(monkeypatch):
     fake = RecordingD1()
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-    monkeypatch.setenv("CYRIS_D1_API_TOKEN", "tok")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     monkeypatch.setattr(backfill, "D1Client", lambda *args, **kwargs: fake)
     return fake
 
@@ -81,26 +81,12 @@ def test_a_missing_account_id_is_named_on_stderr(tmp_path, fake_d1, monkeypatch,
     assert fake_d1.queries == []
 
 
-def test_the_token_falls_back_to_cloudflare_api_token(tmp_path, fake_d1, monkeypatch, capsys):
-    """Same chain as production config: CYRIS_D1_API_TOKEN first, CLOUDFLARE_API_TOKEN second."""
-    monkeypatch.delenv("CYRIS_D1_API_TOKEN")
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "wrangler-tok")
-    (tmp_path / "a.html").write_bytes(b"hello")
-
-    code = backfill.main(["--html-dir", str(tmp_path), "--database-id", "x"])
-
-    assert code == 0
-    assert D1PagesManifest(fake_d1).load() == {"/a.html": asset_hash(b"hello", "html")}
-
-
-def test_both_token_variables_missing_names_them_both(tmp_path, fake_d1, monkeypatch, capsys):
-    monkeypatch.delenv("CYRIS_D1_API_TOKEN")
-    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+def test_a_missing_token_is_named_on_stderr(tmp_path, fake_d1, monkeypatch, capsys):
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN")
     (tmp_path / "a.html").write_bytes(b"hello")
 
     code = backfill.main(["--html-dir", str(tmp_path), "--database-id", "x"])
 
     assert code != 0
-    err = capsys.readouterr().err
-    assert "CYRIS_D1_API_TOKEN" in err and "CLOUDFLARE_API_TOKEN" in err
+    assert "CLOUDFLARE_API_TOKEN" in capsys.readouterr().err
     assert fake_d1.queries == []

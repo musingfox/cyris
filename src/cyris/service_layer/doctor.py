@@ -214,7 +214,7 @@ def _check_store(cfg: Config) -> Check:
             f"article store ({backend})",
             "fail",
             str(e),
-            "Check [store] and CYRIS_D1_API_TOKEN." if cfg.app.store.is_d1 else "",
+            "Check [store] and CLOUDFLARE_API_TOKEN." if cfg.app.store.is_d1 else "",
         )
     total = sum(counts.values())
     summary = ", ".join(f"{state} {n}" for state, n in sorted(counts.items())) or "empty"

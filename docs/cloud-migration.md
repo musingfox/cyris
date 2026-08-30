@@ -213,7 +213,7 @@ anyone repeating it. Each step is separately reversible.
 
 1. `wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql`
    — creates `stored_articles`, `usage_log` and `sources`. Already done 2026-08-25.
-2. Put a `D1:Edit` API token in `.env` as `CYRIS_D1_API_TOKEN`.
+2. Give `.env`'s `CLOUDFLARE_API_TOKEN` the `D1:Edit` permission — the same token deploys Pages.
 3. `cyris store migrate`, then `cyris store diff` — expect no differences.
 4. Set `[store] backend = "d1"`, run `cyris doctor`, then a full `cyris run`.
 5. `cyris sources push`, then `cyris sources list` to confirm the count.

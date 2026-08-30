@@ -38,7 +38,7 @@ path = "./agent-vault"
 backend = "json"
 database_id = ""                        # the D1 database holding stored_articles
 # account_id via env: CLOUDFLARE_ACCOUNT_ID
-# API token via env: CYRIS_D1_API_TOKEN (needs D1 read+write)
+# API token via env: CLOUDFLARE_API_TOKEN (needs D1 read+write, same token as Pages)
 
 [routing]
 score_threshold = 70                    # featured-article cutoff (0-100)

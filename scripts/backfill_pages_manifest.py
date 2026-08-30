@@ -10,9 +10,8 @@ Usage:
     uv run python scripts/backfill_pages_manifest.py --html-dir agent-vault/html \
         --database-id <id>
 
-Reads `CLOUDFLARE_ACCOUNT_ID` from the environment; the D1 token comes from
-`CYRIS_D1_API_TOKEN`, falling back to `CLOUDFLARE_API_TOKEN` (the same chain
-production uses in `cyris.config`).
+Reads `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` from the environment,
+the same two `cyris.config` uses.
 """
 
 from __future__ import annotations
@@ -34,13 +33,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-    # Same fallback chain as production (src/cyris/config.py StoreConfig).
-    api_token = os.environ.get("CYRIS_D1_API_TOKEN") or os.environ.get("CLOUDFLARE_API_TOKEN")
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN")
     missing = [
         name
         for name, value in [
             ("CLOUDFLARE_ACCOUNT_ID", account_id),
-            ("CYRIS_D1_API_TOKEN / CLOUDFLARE_API_TOKEN", api_token),
+            ("CLOUDFLARE_API_TOKEN", api_token),
         ]
         if not value
     ]

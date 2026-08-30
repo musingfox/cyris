@@ -130,9 +130,7 @@ class StoreConfig(BaseModel):
         if not self.account_id:
             self.account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
         if not self.api_token:
-            self.api_token = os.environ.get("CYRIS_D1_API_TOKEN", "") or os.environ.get(
-                "CLOUDFLARE_API_TOKEN", ""
-            )
+            self.api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
         return self
 
     @property
@@ -243,7 +241,7 @@ class Config(BaseModel):
             if not self.app.store.account_id:
                 missing.append("CLOUDFLARE_ACCOUNT_ID")
             if not self.app.store.api_token:
-                missing.append("CYRIS_D1_API_TOKEN")
+                missing.append("CLOUDFLARE_API_TOKEN")
         if self.app.llm_provider.provider and not self.app.llm_provider.api_key:
             missing.append(self.app.llm_provider.api_key_env_var)
         if missing:

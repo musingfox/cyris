@@ -83,7 +83,7 @@ def _write_config(tmp_path: Path, backend: str) -> tuple[Path, Path]:
 
 
 def test_the_file_is_used_when_the_backend_is_json(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("CYRIS_D1_API_TOKEN", "tok")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     config_path, sources_path = _write_config(tmp_path, "json")
 
     cfg = load_config(config_path=config_path, sources_path=sources_path)
@@ -92,7 +92,7 @@ def test_the_file_is_used_when_the_backend_is_json(tmp_path: Path, monkeypatch) 
 
 
 def test_d1_sources_win_when_the_table_has_rows(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("CYRIS_D1_API_TOKEN", "tok")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     db = SqliteD1()
     D1SourceStore(db).replace_all(_sources(SourceConfig(name="From D1", url="https://d1.test/f")))
     monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
@@ -105,7 +105,7 @@ def test_d1_sources_win_when_the_table_has_rows(tmp_path: Path, monkeypatch) -> 
 
 def test_an_empty_table_falls_back_to_the_file(tmp_path: Path, monkeypatch) -> None:
     """A deployment that switched to D1 but has not pushed yet must still fetch."""
-    monkeypatch.setenv("CYRIS_D1_API_TOKEN", "tok")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     db = SqliteD1()
     monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
     config_path, sources_path = _write_config(tmp_path, "d1")
@@ -117,7 +117,7 @@ def test_an_empty_table_falls_back_to_the_file(tmp_path: Path, monkeypatch) -> N
 
 def test_an_unreachable_d1_falls_back_to_the_file(tmp_path: Path, monkeypatch) -> None:
     """Dropping every source would look like a quiet news day, not an outage."""
-    monkeypatch.setenv("CYRIS_D1_API_TOKEN", "tok")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
 
     class Dead:
         def query(self, *_a, **_k):

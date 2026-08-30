@@ -940,7 +940,7 @@ def _load_both_stores(config_path: Path, sources_path: Path):
         raise typer.Exit(1) from e
 
     if not cfg.app.store.database_id or not cfg.app.store.api_token:
-        typer.echo("No D1 configured: set [store] database_id and CYRIS_D1_API_TOKEN.")
+        typer.echo("No D1 configured: set [store] database_id and CLOUDFLARE_API_TOKEN.")
         raise typer.Exit(1)
 
     # Both stores are needed here whichever backend is live, so D1 is built
@@ -1031,7 +1031,7 @@ def _source_store(config_path: Path, sources_path: Path):
         raise typer.Exit(1) from e
 
     if not cfg.app.store.database_id or not cfg.app.store.api_token:
-        typer.echo("No D1 configured: set [store] database_id and CYRIS_D1_API_TOKEN.")
+        typer.echo("No D1 configured: set [store] database_id and CLOUDFLARE_API_TOKEN.")
         raise typer.Exit(1)
 
     cfg.app.store.backend = "d1"
