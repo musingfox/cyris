@@ -4,14 +4,19 @@ AI-powered information digest agent. Fetches articles from RSS feeds and newslet
 
 ## What it does
 
-- Subscribes to 50+ RSS feeds and newsletters, listed in one `sources.yaml`
+- Subscribes to RSS feeds and newsletters, listed in `sources.yaml` (or the D1
+  `sources` table once you push / edit them)
 - Reduces daily article volume by 80%+ through AI-powered filtering
-- Scores and routes articles: high-relevance to digest, lower to triage queue
-- Generates twice-daily HTML digest pages with thematic summaries
+- Scores and routes articles: high-relevance to the digest, lower to a triage queue
+- Generates twice-daily HTML digest pages with thematic summaries (hours are
+  configurable; news-tagged `filter` sources are clustered by topic)
 - Ships each digest with a companion listing everything the window collected, grouped by
   source, so what the filters dropped stays inspectable instead of disappearing
-- Learns user preferences from digest feedback to improve filtering over time
-- Provides a swipe-based web UI for triaging borderline articles
+- Lets you 👍/👎 items on the published digest; those votes accept or reject in the
+  store. Optional vote-similarity filtering can suppress later candidates that sit
+  close to a downvote
+- Provides a swipe-based web UI for triaging borderline articles, plus `/settings`
+  for the LLM provider, digest hours, and the source list
 
 ## Requirements
 
@@ -19,7 +24,11 @@ AI-powered information digest agent. Fetches articles from RSS feeds and newslet
 - [uv](https://github.com/astral-sh/uv) package manager
 - An LLM API key — Anthropic Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token
 - Optional: a Cloudflare account — for the **feed buffer** (see below), **email-only
-  newsletter** ingestion, and the promote / HTML-publish features
+  newsletter** ingestion, digest votes, HTML publishing, D1 state, and the production
+  Container
+
+Without an LLM key the pipeline still runs, in degraded mode: fetch and store as
+usual, digest as plain excerpts.
 
 ## Setup
 
@@ -29,7 +38,7 @@ git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
 
 # Configure
-cp cyris.toml.example cyris.toml           # edit API endpoints, the agent-vault path
+cp cyris.toml.example cyris.toml           # LLM provider, store backend, Worker URLs
 cp .env.example .env                       # add API keys
 cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
 
@@ -39,8 +48,14 @@ uv run cyris run                   # full pipeline (fetch → score → digest)
 ```
 
 `cyris doctor` is the fastest way to find out what is still missing — it checks the
-config, the agent-vault path, the store, every Worker and every Cloudflare token, and
-exits non-zero on anything that would break a run.
+config (and whether this build understands every table in it), the store, every
+Worker and every Cloudflare token, and exits non-zero on anything that would break
+a run. With `[store] backend = "json"` it also checks that the agent-vault path is
+writable; with D1 there is nothing left on disk to probe.
+
+Runtime settings (LLM provider, digest hours) and the source list are **D1 first,
+file fallback**. `cyris.toml` and `sources.yaml` are what a fresh deployment starts
+from; `/settings` and `cyris sources push` write the live copies.
 
 ### What needs what
 
@@ -49,17 +64,20 @@ Nothing below the first row is required. Start at the top and add only what you 
 | Feature | Needs | Cost |
 |---|---|---|
 | RSS digest, HTML output | An LLM API key | LLM usage only |
-| Better feed coverage (see below) | A Cloudflare account | Workers Paid, US$5/mo |
+| Better feed coverage (see below) | A Cloudflare account, Workers Paid | US$5/mo |
+| Production schedule + public triage UI | Same Workers Paid plan; Access needs **your own domain** | same US$5/mo |
 | Digest votes 👍/👎 | A Cloudflare account | Free tier |
 | Published HTML digest | A Cloudflare account | Free tier |
 | **Email-only newsletters** | A Cloudflare account **and your own domain** | Domain registration |
 | State in the cloud (`[store] backend = "d1"`) | A Cloudflare account | Free tier |
+| Vote-similarity filtering | A Workers AI embedding token, or Gemini | Inference only |
 
 **The domain is the one thing that cannot be automated away.** Cloudflare Email
 Routing needs a domain you control, so email-only newsletters — the ones with no
-feed at all — need one too. Everything else works on a `*.workers.dev` subdomain.
-Newsletters that publish RSS (Substack, Ghost, and most others) are just feeds; they
-need nothing extra.
+feed at all — need one too. Cloudflare Access (the outer lock on the triage UI)
+cannot sit in front of `*.workers.dev` either. Everything else works on a
+`*.workers.dev` subdomain. Newsletters that publish RSS (Substack, Ghost, and most
+others) are just feeds; they need nothing extra.
 
 ### Where RSS comes from
 
@@ -76,46 +94,56 @@ Worker polls every feed hourly into D1, and cyris reads a window out of the buff
 nothing expires between runs. Deploy `workers/rss/`, then set `[rss] worker_url` in
 `cyris.toml` and `CYRIS_WORKER_TOKEN` in `.env`. See [`workers/rss/README.md`](workers/rss/README.md).
 
-Once the buffer is deployed you can also keep the source list in D1 with
-`cyris sources push`, so adding a feed is a write instead of a redeploy.
-`sources.yaml` stays the file you edit, and stays the fallback.
+Once the buffer is deployed you can keep the source list in D1 — `cyris sources push`
+from the file, or add/remove a feed on `/settings` — so adding a feed is a write
+instead of a redeploy. `sources.yaml` stays the file you edit, and stays the fallback
+when the table is empty or unreachable.
 
 ### Where the state lives
 
 By default the article store is JSON files under `[agent_vault] path`, which is fine
 until the machine holding them dies. Setting `[store] backend = "d1"` moves the store
-and the usage log to Cloudflare D1 instead. `cyris store migrate` copies what you
-already have across without overwriting anything, and `cyris store diff` compares the
-two before you commit to the switch. The full order is in
+and the usage log to Cloudflare D1 instead, and (when D1 is on) also holds sources,
+runtime settings, topic tags, news-cluster stories, and the Pages file list.
+
+`cyris store migrate` copies what you already have across without overwriting
+anything, and `cyris store diff` compares the two before you commit to the switch.
+**Pick one backend.** They are alternatives, never a pair — running both splits
+decisions that `INSERT OR IGNORE` cannot heal. The full order is in
 [`docs/cloud-migration.md`](docs/cloud-migration.md).
 
 ## Deployment
 
-cyris runs as a Cloudflare Container fronted by a Worker — the schedule is a Workers Cron
-Trigger, and the triage UI wakes on request and sleeps again. See
-[`workers/app/README.md`](workers/app/README.md) for the deploy steps, the secret list and the
-two auth layers.
+cyris runs as a Cloudflare Container fronted by a Worker — the schedule is an hourly
+Workers Cron Trigger (`cyris run --if-due` plus `promote-sync`, then the instance
+exits), and the triage UI wakes on request and sleeps again. Digest hours live in D1,
+so changing them does not need a rebuild. See [`workers/app/README.md`](workers/app/README.md)
+for the deploy steps, the secret list, and the two auth layers (Cloudflare Access +
+`CYRIS_UI_TOKEN`).
 
 ```bash
-cp .env.example .env        # API keys: ANTHROPIC/GEMINI, CYRIS_WORKER_TOKEN, ...
+cp .env.example .env        # API keys: ANTHROPIC/GEMINI/OPENAI, CYRIS_WORKER_TOKEN, ...
 # edit cyris.toml + sources.yaml as usual
 
 cd workers/app && bun install && bunx wrangler deploy
 ```
 
-The same image runs locally with `docker compose up -d`, where the default `CYRIS_ROLE` is a
-supercronic loop reading `docker/crontab` (digest at 08:00 & 20:00, promote-sync hourly; set `TZ`
-to change the clock). That is the development path; the deployment is the Container above, and
-running both at once means two schedulers publishing to one Pages project.
+The same image runs locally with `docker compose up -d`, where the default `CYRIS_ROLE`
+is a supercronic loop reading `docker/crontab` (digest at 08:00 & 20:00, promote-sync
+hourly; set `TZ` to change the clock). That is the development path; the deployment is
+the Container above, and running both at once means two schedulers publishing to one
+Pages project.
 
-See [`docs/deployment.md`](docs/deployment.md) for local-vs-Cloudflare tradeoffs and
-[`docs/architecture.md`](docs/architecture.md) for the core↔adapter map.
+See [`docs/architecture.md`](docs/architecture.md) for the core↔adapter map, data
+residency, and how settings are graded.
 
 ## CLI Commands
 
 ```
 cyris doctor                  Check the config; non-zero exit if a run would break
 cyris run                     Full pipeline: fetch, score, digest
+                              (--if-due only runs on a digest hour; --dry-run renders
+                              without writing)
 cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
 cyris triage-ui               Swipe-based triage web UI; /settings picks the LLM provider
                               and model, the digest hours, and edits the source list
@@ -149,20 +177,26 @@ bootstrap.py     composition root: wires adapters into a Deps container
 
 Pipeline: **Fetch → Store → Score → Process → Output**.
 `service_layer/run_digest.py` orchestrates it; the CLI only parses args and
-calls it via `bootstrap.build_deps`. See
+calls it via `bootstrap.build_deps`. Config is resolved by
+`bootstrap.load_effective_config` (file, then D1 overlays). See
 [`docs/architecture.md`](docs/architecture.md) for the full core↔adapter diagram.
 
 ### Adapters — the extension points
 
 Everything pluggable lives in `adapters/`, wired in `bootstrap.build_deps()`.
-Three Protocols in `service_layer/ports.py` are the clean seams:
+Protocols in `service_layer/ports.py` are the clean seams:
 
 | Kind | Protocol | Existing implementations | Add one to… |
 |------|----------|--------------------------|-------------|
-| **Fetch source** (input) | `FetchSource` | `RssSource`, `CloudflareRssSource`, `NewsletterArchiveSource`, `CloudflareNewsletterSource` | ingest a new article source |
+| **Fetch source** (input) | `FetchSource` | `RssSource`, `CloudflareRssSource`, `CloudflareNewsletterSource` | ingest a new article source |
 | **LLM** | `LLMClient` | `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` | add an AI provider |
-| **Storage** | `ArticleRepository` | `ArticleStore` (JSON) | swap persistence (SQL, object store) |
-| **Output** (sinks) | *direct inject* | `HtmlDigestWriter` (digest + raw page), `publish` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
+| **Storage** | `ArticleRepository` | `ArticleStore` (JSON), `D1ArticleStore` | swap persistence |
+| **Embeddings** | `Embedder` | `WorkersAIEmbedder`, `GeminiEmbedder` | a new vote-similarity backend |
+| **Output** (sinks) | *direct inject* | `HtmlDigestWriter` (digest + raw page), `publish` / `publish_site` (Cloudflare Pages), `notify` (Discord) | send the digest somewhere new |
+
+`ports.py`'s rule: only genuine IO boundaries get a Protocol; single-implementation
+components (`D1TagStore`, `D1StoryStore`, promote-sync, usage log) are injected
+directly.
 
 Core code (`service_layer/` + `domain/`) never changes when you swap or add an
 adapter — that is the point of the Protocol seams.
@@ -173,8 +207,7 @@ adapter — that is the point of the Protocol seams.
 # 1. implement the FetchSource Protocol (service_layer/ports.py)
 class MySource:
     async def fetch_articles(self, after, before, sources,
-                             aliases=None, limit=200) -> list[Article]: ...
-    async def mark_as_read(self, article_ids) -> None: ...   # no-op if unsupported
+                             limit=200) -> list[Article]: ...
     async def health_check(self) -> bool: ...
 
 # 2. register it in bootstrap.build_deps()
@@ -188,8 +221,13 @@ write the sink, add it to the `Deps` container, call it from `run_digest`.
 
 | Tier | Processing | Example |
 |------|-----------|---------|
-| `filter` | Discard most; surface only significant headlines (<10% pass) | TechCrunch, 聯合新聞網 |
-| `summarize` | Per-article or cross-source paragraph summary | Stratechery, Benedict Evans |
+| `filter` | Discard most; surface only significant headlines (<10% pass). News-tagged articles are clustered by topic. | TechCrunch, 聯合新聞網 |
+| `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions | Stratechery, Benedict Evans |
+| `fan` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
+
+Between scoring and the pipeline, **vote similarity** (off by default) can suppress
+candidates sitting close to a downvoted article. It is the only personalization in
+the pipeline. Preview with `cyris vote-sim` before turning `[vote_similarity]` on.
 
 ### Newsletter Ingestion
 
@@ -234,6 +272,10 @@ sat next to the pipeline, and it tied a fetch-path detail to one machine.
 pending → accepted / rejected / awaiting_triage
 ```
 
+👍/👎 on a published digest, the triage UI, and `cyris articles accept|reject`
+all stamp `triaged_at`. That stamp is what later vote-similarity treats as a
+human decision.
+
 ## Contributing
 
 ```bash
@@ -261,8 +303,10 @@ Digest output language is configurable via `[digest] output_language` (default
 | Language | Python 3.12+ |
 | Package manager | uv |
 | Feed buffer | Cloudflare Worker cron → D1 (optional) |
+| Article store | JSON files, or Cloudflare D1 |
 | AI processing | Anthropic Claude, Google Gemini, OpenAI, or Cloudflare Workers AI |
-| Scheduling | Workers Cron Trigger → Cloudflare Container |
+| Scheduling | Workers Cron Trigger → Cloudflare Container (`CYRIS_ROLE=run`) |
+| Triage UI | same Container, on request (`CYRIS_ROLE=ui`), behind Access |
 | Output | Cloudflare Pages (HTML) |
 | Notifications | Discord webhook |
 
