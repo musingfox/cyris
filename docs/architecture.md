@@ -449,6 +449,18 @@ waiting for a sleep timer; `ui` serves the triage deck and `/settings`; the defa
 supercronic loop, which now has no scheduled user and dies with `docker/crontab` whenever someone
 gets to it.
 
+**The idle container does not sleep, and this was found by the receipt rather than by the code.**
+`sleepAfter = "5m"` and an `onActivityExpired` that calls `stop()` are both in the Container class,
+and neither is working: per-instance metrics show the `ui` container holding 132 MB with **zero
+CPU every hour** since it first woke, while the `run` container behaves exactly as designed — 0 MB
+in every hour except the one it digests in. Two candidates, and the data already kills one: it is
+not requests resetting the timer, because Access answers bots with a 302 before the Worker is
+reached and eight idle hours of zero CPU mean nothing was ever served. That leaves the hook not
+firing, or `stop()` not ending a process that ignores SIGTERM. The cheapest test is a log line
+inside `onActivityExpired` and ten minutes of `wrangler tail`: a log with no `container stopped`
+after it means the signal, no log at all means the hook. Until it is fixed, the deployment pays for
+one permanently allocated instance — the exact cost §7 introduced this piece to avoid.
+
 **Auth is two layers** (`workers/app/`), and they answer different questions. Cloudflare Access on
 the route decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: the
 hostname and the policy are grade-B deployment identity, so automating them would tie the repo to
@@ -531,7 +543,7 @@ hard edges:  M-behaviour → (closes #13)
 |---|---|---|---|---|
 | ~~**P1**~~ | ~~Guard each scoring batch~~ — done 2026-08-30 | `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only after the loop, so one malformed LLM response cost the whole run both its scores and its tags — the shape of the 08-29 run whose tags all came from clustering | ✅ `test_a_failing_batch_leaves_the_others_scores_and_tags_written`: batch 2 raises, batch 1's 20 scores and 20 tag rows are still written. The tag write is guarded too, so losing it no longer unwinds the scores | `cyris#5` |
 | ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | `settings-source-editor` |
-| ~~**M5**~~ | ~~Into the Container~~ — done 2026-08-31 | All four pieces in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran on 08-30 — see §6 on why that is not optional | ✅ **Two digests from a machine that was off.** `usage_log`: `2026-08-30 evening · 61 received · 9 included · $0.025` at 12:01:12Z and `2026-08-31 morning · 42 · 8 · $0.024` at 00:01:12Z, both ~60 s after their cron fired, with the Mac mini down since 08-30 08:29Z; the row above them is its last. Auth: every unauthenticated path answers `401`, and after Access went on, a request carrying a *valid* cyris cookie still redirects to the Access login — the layers are ordered. ⚠️ The third clause, *the bill shows the instance sleeping*, is **not** collected: the container analytics dataset is not reachable over GraphQL with a wrangler OAuth token, so it needs the dashboard. What is observed instead is the mechanism — each `run` instance logs `container stopped { exitCode: 0, reason: 'exit' }` within ~10 s of its tick, so it bills only while it runs | `cloud-p3` |
+| ~~**M5**~~ | ~~Into the Container~~ — done 2026-08-31 | All four pieces in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran on 08-30 — see §6 on why that is not optional | ✅ **Two digests from a machine that was off.** `usage_log`: `2026-08-30 evening · 61 received · 9 included · $0.025` at 12:01:12Z and `2026-08-31 morning · 42 · 8 · $0.024` at 00:01:12Z, both ~60 s after their cron fired, with the Mac mini down since 08-30 08:29Z; the row above them is its last. Auth: every unauthenticated path answers `401`, and after Access went on, a request carrying a *valid* cyris cookie still redirects to the Access login — the layers are ordered. ❌ The third clause, *the bill shows the instance sleeping*, **fails**. `containersUsageAdaptiveGroups` (the dataset the earlier attempt had the wrong name for) shows 19,316 GB·s of allocated memory in the first 4.2 h of 08-31, and `containersMetricsAdaptiveGroups` splits it by instance: the `run` container is 0 MB in every hour but the one it works in (14.0 s of CPU at 00:00Z), while the **`ui` container has held 132 MB with zero CPU every hour since 20:00Z on 08-30** — eight hours awake with nothing to serve. `sleepAfter = "5m"` and `onActivityExpired → stop()` are configured and are not taking effect. See §6 | `cloud-p3` |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |
 | **M6** | One-button deploy | Only meaningful once nothing runs locally. M-persist's schema is already inside, so no migration mechanism is needed | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
 
@@ -697,7 +709,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
 | ~~4~~ | ~~Scheduling~~ | Done 2026-08-30: `[triggers] crons = ["0 * * * *"]` on `cyris-app`, the same D1 gate, the same `--if-due` code | — | `cloud-p3` |
-| ~~5~~ | ~~`onActivityExpired` → `stop()`~~ | Done 2026-08-30, with `sleepAfter = "5m"`. The `run` role does not rely on it — it exits when the pipeline pass ends, which is why it is a separate instance from the UI | — | `cloud-p3` |
+| 5 | `onActivityExpired` → `stop()` | **Written 2026-08-30, not working.** `sleepAfter = "5m"` and the hook are both in the Container class, and the `ui` instance has stayed awake at 132 MB regardless (§6). The `run` role never depended on it — it exits when the pipeline pass ends, which is why it is a separate instance | an idle hour bills nothing | `cloud-p3` |
 
 ### Blocking one-button deploy
 
