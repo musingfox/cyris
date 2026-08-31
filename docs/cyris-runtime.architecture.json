@@ -33,7 +33,7 @@
     { "id": "app", "type": "backend", "label": "cyris-app", "sublabel": "Container · run | ui", "brand": "cloudflare", "pos": [644, 220], "size": [148, 60] },
     { "id": "pages", "type": "frontend", "label": "Pages", "sublabel": "cyris-digest", "brand": "cloudflare", "pos": [848, 220], "size": [144, 60] },
     { "id": "reader", "type": "external", "label": "讀者", "sublabel": "digest + triage", "pos": [1052, 220], "size": [140, 60] },
-    { "id": "llm", "type": "external", "label": "LLM APIs", "sublabel": "Claude · Gemini · OpenAI", "pos": [440, 48], "size": [148, 60] },
+    { "id": "llm", "type": "external", "label": "LLM APIs", "sublabel": "Claude · Gemini · OpenAI", "pos": [48, 48], "size": [144, 60] },
     { "id": "access", "type": "security", "label": "Access", "sublabel": "digest.musingfox.me", "brand": "cloudflare", "pos": [1052, 48], "size": [140, 60] },
     { "id": "senders", "type": "external", "label": "電子報寄件者", "sublabel": "email-only", "pos": [48, 400], "size": [144, 60] },
     { "id": "newsletter", "type": "cloud", "label": "cyris-newsletter", "sublabel": "email() handler", "brand": "cloudflare", "pos": [244, 400], "size": [144, 60] },
@@ -41,11 +41,11 @@
     { "id": "discord", "type": "external", "label": "Discord", "sublabel": "digest 通知", "brand": "discord", "pos": [848, 400], "size": [144, 60] }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Cloudflare", "wraps": ["rss", "newsletter", "d1", "kv", "app", "pages", "access"] },
+    { "kind": "region", "label": "Cloudflare", "wraps": ["rss", "newsletter", "d1", "kv", "app", "pages"] },
     { "kind": "security-group", "label": "Triage 信任邊界", "wraps": ["access"] }
   ],
   "connections": [
-    { "id": "feeds-rss", "from": "feeds", "to": "rss", "label": "每小時抓取", "variant": "emphasis", "labelDy": -24 },
+    { "id": "feeds-rss", "from": "feeds", "to": "rss", "label": "每小時抓取", "variant": "emphasis", "labelAt": [218, 294] },
     { "id": "rss-d1", "from": "rss", "to": "d1", "label": "INSERT OR IGNORE", "variant": "emphasis", "labelDy": -24 },
     { "id": "d1-app", "from": "d1", "to": "app", "label": "GET /articles", "variant": "emphasis", "labelDy": -24 },
     { "id": "app-pages", "from": "app", "to": "pages", "label": "publish HTML", "variant": "emphasis", "labelDy": -24 },
@@ -53,7 +53,7 @@
     { "id": "senders-nl", "from": "senders", "to": "newsletter", "label": "Email Routing", "labelAt": [218, 478] },
     { "id": "nl-kv", "from": "newsletter", "to": "kv", "label": "nl:<sha256>", "labelAt": [416, 478] },
     { "id": "kv-app", "from": "kv", "to": "app", "label": "pull + ack" },
-    { "id": "app-llm", "from": "app", "to": "llm", "label": "score / summarize", "fromSide": "top", "toSide": "bottom", "via": [[718, 164], [514, 164]] },
+    { "id": "app-llm", "from": "app", "to": "llm", "label": "score / summarize", "fromSide": "top", "toSide": "top", "via": [[718, 28], [120, 28]] },
     { "id": "reader-access", "from": "reader", "to": "access", "label": "瀏覽器", "variant": "security" },
     { "id": "access-app", "from": "access", "to": "app", "label": "CYRIS_UI_TOKEN", "variant": "security", "fromSide": "top", "toSide": "top", "via": [[1122, 28], [718, 28]] },
     { "id": "app-discord", "from": "app", "to": "discord", "label": "webhook", "variant": "dashed" }
