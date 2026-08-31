@@ -41,6 +41,10 @@ export class CyrisContainer extends Container {
 
   // Overriding this hook without stopping renews the timer instead of sleeping,
   // and the instance bills on. This is the whole point of the override.
+  //
+  // stop() is only a SIGTERM. The image's PID 1 has to act on it — Linux drops
+  // signals PID 1 has no handler for, which is how this hook ran every five
+  // minutes for a day without ever putting the instance to sleep.
   async onActivityExpired() {
     await this.stop();
   }

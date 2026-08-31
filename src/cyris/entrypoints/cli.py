@@ -1,9 +1,11 @@
 """CLI entry point for Cyris."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
+import signal
 import sys
 import time
 from datetime import UTC, datetime
@@ -616,9 +618,17 @@ def triage_ui(
         typer.echo(f"Triage UI: http://{host}:{port}")
         typer.echo(f"Settings:  http://{host}:{port}/settings")
         typer.echo("Press Ctrl+C to stop")
+
+        # In the Container this process is PID 1, and Linux drops signals that
+        # PID 1 has no handler for. Without these two lines the runtime's
+        # SIGTERM is ignored, the instance never sleeps, and it bills all day.
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            with contextlib.suppress(NotImplementedError):
+                loop.add_signal_handler(sig, stop.set)
         try:
-            while True:
-                await asyncio.sleep(3600)
+            await stop.wait()
         except asyncio.CancelledError:
             pass
         finally:
