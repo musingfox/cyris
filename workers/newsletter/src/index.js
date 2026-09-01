@@ -9,6 +9,33 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
+// Email headers whose values we keep (all others are stored as key-only).
+const VALUE_HEADERS = new Set([
+  "archived-at",
+  "list-id",
+  "list-post",
+  "list-archive",
+  "list-help",
+  "x-mc-user",
+  "x-campaignid",
+  "x-campaign",
+  "feedback-id",
+  "content-type",
+  "x-mailer",
+]);
+
+function safeHeaders(headers) {
+  return (Array.isArray(headers) ? headers : [])
+    .filter((header) => typeof header?.key === "string")
+    .map((header) => {
+      const record = { key: header.key };
+      if (VALUE_HEADERS.has(header.key.toLowerCase()) && typeof header.value === "string") {
+        record.value = header.value;
+      }
+      return record;
+    });
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -34,6 +61,8 @@ export default {
       html: parsed.html || "",
       text: parsed.text || "",
       date: (parsed.date ? new Date(parsed.date) : new Date()).toISOString(),
+      headers: safeHeaders(parsed.headers),
+      raw_size: typeof message.rawSize === "number" ? message.rawSize : null,
     };
     // Dedup by sender+subject+date so a re-delivered copy overwrites, not duplicates.
     const key = `nl:${await sha256(`${from}|${record.subject}|${record.date}`)}`;

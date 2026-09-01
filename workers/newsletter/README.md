@@ -26,6 +26,44 @@ email-only sources.
 
 Inbound email is handled by the Worker's `email()` trigger (Email Routing), not HTTP.
 
+### Stored record format
+
+Each newsletter in KV contains:
+```json
+{
+  "id": "nl:<sha256>",
+  "from": "sender@example.com",
+  "subject": "Newsletter Title",
+  "html": "...",
+  "text": "...",
+  "date": "2026-09-01T12:00:00.000Z",
+  "headers": [
+    { "key": "List-ID", "value": "<newsletter.example.com>" },
+    { "key": "X-Campaignid", "value": "abc123" },
+    { "key": "Return-Path" },
+    { "key": "To" }
+  ],
+  "raw_size": 45678
+}
+```
+
+**headers**: An array of email header objects. Each object has a `key` field; allowlisted
+headers also have a `value` field. Allowlisted headers (case-insensitive):
+
+- `archived-at` — permanent archive URL (some mailing lists)
+- `list-id`, `list-post`, `list-archive`, `list-help` — mailing-list metadata
+- `x-mc-user`, `x-campaignid`, `x-campaign` — Mailchimp campaign identifiers
+- `feedback-id` — ESP feedback-loop identifier
+- `content-type` — MIME type
+- `x-mailer` — sending software
+
+All other headers (including `return-path`, `received`, `list-unsubscribe`, `to`, `cc`,
+`delivered-to`) are stored as `{ "key": "Header-Name" }` — present but value-redacted.
+This preserves header presence for diagnostics without leaking routing/recipient details.
+
+**raw_size**: The original MIME message size in bytes (`message.rawSize`), or `null` if unavailable.
+Used for throughput and parsing-cost monitoring.
+
 ## Deploy
 
 Prereqs: a domain on your Cloudflare account (Email Routing does **not** work on
