@@ -37,13 +37,18 @@ Each newsletter in KV contains:
   "html": "...",
   "text": "...",
   "date": "2026-09-01T12:00:00.000Z",
-  "headers": { ... },
+  "headers": [
+    { "key": "List-ID", "value": "<newsletter.example.com>" },
+    { "key": "X-Campaignid", "value": "abc123" },
+    { "key": "Return-Path" },
+    { "key": "To" }
+  ],
   "raw_size": 45678
 }
 ```
 
-**headers**: A safe subset of the email's MIME headers. All header names are present
-(lowercased), but values are kept only for these allowlisted headers:
+**headers**: An array of email header objects. Each object has a `key` field; allowlisted
+headers also have a `value` field. Allowlisted headers (case-insensitive):
 
 - `archived-at` — permanent archive URL (some mailing lists)
 - `list-id`, `list-post`, `list-archive`, `list-help` — mailing-list metadata
@@ -53,11 +58,11 @@ Each newsletter in KV contains:
 - `x-mailer` — sending software
 
 All other headers (including `return-path`, `received`, `list-unsubscribe`, `to`, `cc`,
-`delivered-to`) are stored as `"header-name": null` — present but value-redacted.
+`delivered-to`) are stored as `{ "key": "Header-Name" }` — present but value-redacted.
 This preserves header presence for diagnostics without leaking routing/recipient details.
 
-**raw_size**: The original MIME message size in bytes (`message.rawSize`), for throughput
-and parsing-cost monitoring.
+**raw_size**: The original MIME message size in bytes (`message.rawSize`), or `null` if unavailable.
+Used for throughput and parsing-cost monitoring.
 
 ## Deploy
 

@@ -24,15 +24,16 @@ const VALUE_HEADERS = new Set([
   "x-mailer",
 ]);
 
-// Return a safe subset of headers: all header names present, but values only
-// for VALUE_HEADERS (others → null). Header keys are lowercased.
-function safeHeaders(parsed) {
-  const safe = {};
-  for (const [key, value] of Object.entries(parsed.headers || {})) {
-    const lower = key.toLowerCase();
-    safe[lower] = VALUE_HEADERS.has(lower) ? value : null;
-  }
-  return safe;
+function safeHeaders(headers) {
+  return (Array.isArray(headers) ? headers : [])
+    .filter((header) => typeof header?.key === "string")
+    .map((header) => {
+      const record = { key: header.key };
+      if (VALUE_HEADERS.has(header.key.toLowerCase()) && typeof header.value === "string") {
+        record.value = header.value;
+      }
+      return record;
+    });
 }
 
 function json(data, status = 200) {
@@ -50,7 +51,6 @@ async function sha256(text) {
 export default {
   // Inbound email from Cloudflare Email Routing.
   async email(message, env) {
-    const rawSize = message.rawSize || 0;
     const parsed = await PostalMime.parse(message.raw);
     // Prefer the original sender's From header (survives Gmail auto-forward);
     // fall back to the envelope sender.
@@ -61,8 +61,8 @@ export default {
       html: parsed.html || "",
       text: parsed.text || "",
       date: (parsed.date ? new Date(parsed.date) : new Date()).toISOString(),
-      headers: safeHeaders(parsed),
-      raw_size: rawSize,
+      headers: safeHeaders(parsed.headers),
+      raw_size: typeof message.rawSize === "number" ? message.rawSize : null,
     };
     // Dedup by sender+subject+date so a re-delivered copy overwrites, not duplicates.
     const key = `nl:${await sha256(`${from}|${record.subject}|${record.date}`)}`;
