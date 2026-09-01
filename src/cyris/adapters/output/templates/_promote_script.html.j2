@@ -1,7 +1,4 @@
-    {% if promote_enabled %}
     <script>
-    const PROMOTE_URL = {{ promote_worker_url | tojson }};
-    const PROMOTE_TOKEN = {{ promote_token | tojson }};
     const DIGEST_DATE = {{ date | tojson }};
     // The page is static with no read-back endpoint, so votes are echoed from localStorage.
     const VOTES_KEY = 'cyris-votes';
@@ -25,6 +22,28 @@
         if (votes[key]) paint(group, votes[key]);
     }
 
+    // Capability probe: check if /api/vote is available before showing buttons.
+    // Contract (do not follow Access redirects):
+    // - pages.dev (or any host without Worker): 404
+    // - digest.musingfox.me unauthenticated: 401 or 302 (Access)
+    // - digest.musingfox.me past Access: 2xx (or a dedicated check)
+    (async () => {
+        try {
+            const resp = await fetch('/api/vote', {
+                method: 'HEAD',
+                redirect: 'manual',  // do not follow Access redirects
+            });
+            // 2xx: authorized, show buttons
+            // 401/302: Access gate exists but user not authed, hide buttons
+            // 404: no Worker (pages.dev), hide buttons
+            if (resp.status >= 200 && resp.status < 300) {
+                document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
+            }
+        } catch {
+            // Network error: hide buttons
+        }
+    })();
+
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.promote-btn');
         if (!btn) return;
@@ -33,12 +52,9 @@
         const vote = btn.dataset.vote;
         btn.disabled = true;
         try {
-            const results = await Promise.all(urls.map((u) => fetch(PROMOTE_URL + '/promote', {
+            const results = await Promise.all(urls.map((u) => fetch('/api/vote', {
                 method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer ' + PROMOTE_TOKEN,
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
             })));
             if (results.some((r) => !r.ok)) throw new Error('promote failed');
@@ -53,4 +69,3 @@
         }
     });
     </script>
-    {% endif %}

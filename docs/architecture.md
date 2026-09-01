@@ -347,8 +347,8 @@ CLOUDFLARE_ACCOUNT_ID
 CLOUDFLARE_API_TOKEN              D1 + Pages
 CLOUDFLARE_EMBEDDING_API_TOKEN    Workers AI only
 CYRIS_WORKER_TOKEN                rss + newsletter, server-to-server
-CYRIS_PROMOTE_TOKEN               the vote Worker — printed in every published
-                                  digest page, so not a secret at all
+CYRIS_PROMOTE_TOKEN               the vote Worker — server-side only since
+                                  private-votes-public-archive (M-ship)
 ```
 
 **`CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name** — the same string in `.env`
@@ -755,20 +755,23 @@ answers on both `/` and `/triage`: `/` is what it serves on localhost, `/triage`
 on where the root belongs to the digest. Two routes on one handler, rather than rewriting every
 absolute URL in three static files.
 
-**The archive is public, and what needs closing is the write, not the read.** Anyone holding a
+~~**The archive is public, and what needs closing is the write, not the read.** Anyone holding a
 digest link can vote today: `_promote_script.html.j2` renders the promote bearer into every
 published page, so a stranger's click lands in `stored_articles` as a `triaged_at`-stamped *human*
 verdict and seeds `vote_similarity` and `article_tags`. Sharing a digest shares write access to the
-interest model.
+interest model.~~
 
-The fix keeps the archive public — which is what it should be, since a digest is worth sending to
+~~The fix keeps the archive public — which is what it should be, since a digest is worth sending to
 someone — and moves the capability instead of the content: the token stops being rendered at all,
 votes go to a same-origin `POST /api/vote` on the Worker, which attaches the bearer server-side, and
 the buttons render only where that endpoint is reachable and authorised. The same file then gives a
 reader on `pages.dev` everything except the ability to vote, and a reader on `digest.musingfox.me`
 — past Access — the whole thing. No second rendering, no second Access application, no service
-token. Ticket: `private-votes-public-archive`, which supersedes an earlier plan to put the archive
-itself behind Access; that one had misread which half was exposed.
+token.~~ **Done 2026-09-01** (`private-votes-public-archive`): the token stays server-side only,
+votes go through `POST /api/vote` (Access-only, no UI token), and vote buttons probe `/api/vote`
+to detect whether they should render. `pages.dev` readers see no buttons; `digest.musingfox.me`
+past Access sees them. One HTML, two capabilities. `CYRIS_PROMOTE_TOKEN` is now kept separate from
+`CYRIS_WORKER_TOKEN` and never rendered into templates.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|

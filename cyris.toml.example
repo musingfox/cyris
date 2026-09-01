@@ -53,9 +53,11 @@ output_dir = "agent-vault/html"
 worker_url = ""
 publish_enabled = false                 # publish HTML digest to Cloudflare Pages
 pages_project = ""
-# Token via env: CYRIS_PROMOTE_TOKEN — deliberately not CYRIS_WORKER_TOKEN. The
-# vote buttons run in the reader's browser, so this token is rendered into every
-# published digest page; it is public by construction, not a secret.
+custom_domain = ""                      # Custom domain for Discord links (e.g., digest.musingfox.me)
+# Token via env: CYRIS_PROMOTE_TOKEN — deliberately not CYRIS_WORKER_TOKEN.
+# Since private-votes-public-archive, the token is server-side only (never rendered
+# into HTML). Votes go through POST /api/vote on the Worker (Access-only), which
+# attaches the token server-side and forwards to the promote Worker.
 
 [newsletter]
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).

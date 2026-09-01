@@ -291,7 +291,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             ):
                 if published:
                     # Cloudflare Pages serves the extensionless clean URL.
-                    digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
+                    # Use custom_domain for operator/self links if set, else pages.dev.
+                    if cfg.app.promote.custom_domain:
+                        digest_url = f"https://{cfg.app.promote.custom_domain}/{slug}"
+                    else:
+                        digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
                 else:
                     publish_failed = True
 
