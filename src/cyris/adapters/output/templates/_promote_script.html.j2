@@ -22,25 +22,26 @@
         if (votes[key]) paint(group, votes[key]);
     }
 
-    // Capability probe: check if /api/vote is available before showing buttons.
+    // Capability probe: check if /api/vote is available before showing buttons and Settings.
     // Contract (do not follow Access redirects):
     // - pages.dev (or any host without Worker): 404
     // - digest.musingfox.me unauthenticated: 401 or 302 (Access)
-    // - digest.musingfox.me past Access: 2xx (or a dedicated check)
+    // - digest.musingfox.me past Access: 2xx
     (async () => {
         try {
             const resp = await fetch('/api/vote', {
-                method: 'HEAD',
+                method: 'GET',
                 redirect: 'manual',  // do not follow Access redirects
             });
-            // 2xx: authorized, show buttons
-            // 401/302: Access gate exists but user not authed, hide buttons
-            // 404: no Worker (pages.dev), hide buttons
+            // 2xx: authorized, show vote buttons and Settings link
+            // 401/302: Access gate exists but user not authed, hide both
+            // 404: no Worker (pages.dev), hide both
             if (resp.status >= 200 && resp.status < 300) {
                 document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
+                document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
             }
         } catch {
-            // Network error: hide buttons
+            // Network error: hide both
         }
     })();
 

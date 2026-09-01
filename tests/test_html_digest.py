@@ -802,7 +802,30 @@ def test_vote_buttons_hidden_by_default_shown_by_capability_probe(tmp_path):
 
     # Vote groups should have display: none by default
     assert ".vote-group { display: none;" in html
-    # Capability probe should exist
+    # Capability probe should exist and use GET
     assert "fetch('/api/vote'" in html or 'fetch("/api/vote"' in html
+    assert "method: 'GET'" in html or 'method: "GET"' in html
     # Probe should set display: inline-flex when authorized
     assert "style.display = 'inline-flex'" in html or 'style.display = "inline-flex"' in html
+
+
+def test_settings_link_hidden_by_default_shown_by_capability_probe(tmp_path):
+    """Settings link is hidden by default and shown by same capability probe as votes."""
+    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+    )
+
+    html = writer.render(content)
+
+    # Settings link should be present but hidden by default
+    assert '<a href="/settings">Settings' in html
+    assert ".settings-link { display: none;" in html
+    # Capability probe should show it when authorized
+    assert "'.settings-link'" in html or '".settings-link"' in html
+    assert "style.display = 'inline'" in html or 'style.display = "inline"' in html

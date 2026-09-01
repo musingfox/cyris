@@ -127,6 +127,7 @@
         .promote-btn.done { color: var(--accent); border-color: var(--accent); }
         .promote-btn.error { color: #e06c75; border-color: #e06c75; }
         .vote-group { display: none; gap: 4px; }
+        .settings-link { display: none; }
 
         .article {
             display: grid;
@@ -228,6 +229,7 @@
         <div class="footer">
             <a href="{{ date }}-{{ period }}.html">← Back to digest</a>
             <a href="index.html">Archive →</a>
+            <span class="settings-link"><a href="/settings">Settings →</a></span>
         </div>
     </div>
     {% include "_promote_script.html.j2" %}
