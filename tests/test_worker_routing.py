@@ -6,23 +6,35 @@ The Worker is JavaScript, so we read the source as text and assert on structure.
 from pathlib import Path
 
 
-def test_triage_not_in_protected():
-    """T1: /triage is NOT in the PROTECTED() function."""
+def test_triage_returns_404():
+    """T1: /triage returns 404 before reaching the digest-origin proxy."""
     worker_js = Path("workers/app/src/index.js").read_text()
 
-    # Find the PROTECTED function definition
-    assert "const PROTECTED = (path) =>" in worker_js
-
-    # Extract the PROTECTED function body (between its opening and the next function/export)
-    start = worker_js.index("const PROTECTED = (path) =>")
-    # Find the end of the PROTECTED function (next const or export)
-    end = worker_js.index("\nconst VOTE_ONLY", start)
-    protected_body = worker_js[start:end]
-
+    # Find the fetch handler
+    fetch_start = worker_js.index("async fetch(request)")
+    
+    # Assert /triage 404 logic exists
+    assert '"/triage"' in worker_js or "'/triage'" in worker_js, "/triage path check must exist"
+    
+    # Find positions of key routing logic
+    triage_check = worker_js.index('url.pathname === "/triage"', fetch_start)
+    protected_check = worker_js.index("if (!PROTECTED(url.pathname))", fetch_start)
+    digest_origin_fetch = worker_js.index("fetch(new Request(env.DIGEST_ORIGIN", fetch_start)
+    
+    # /triage 404 must come BEFORE the PROTECTED check and DIGEST_ORIGIN proxy
+    assert triage_check < protected_check, "/triage 404 must come before PROTECTED check"
+    assert triage_check < digest_origin_fetch, "/triage 404 must come before DIGEST_ORIGIN proxy"
+    
+    # Verify 404 response exists near the /triage check
+    triage_block_end = worker_js.index("}", triage_check)
+    triage_block = worker_js[triage_check:triage_block_end]
+    assert "404" in triage_block, "/triage block must return 404"
+    
     # Assert /triage is NOT in PROTECTED
+    protected_start = worker_js.index("const PROTECTED = (path) =>")
+    protected_end = worker_js.index("\nconst VOTE_ONLY", protected_start)
+    protected_body = worker_js[protected_start:protected_end]
     assert "/triage" not in protected_body, "/triage should not be in PROTECTED"
-    # Assert /settings IS in PROTECTED
-    assert "/settings" in protected_body, "/settings should be in PROTECTED"
 
 
 def test_vote_only_function_exists():

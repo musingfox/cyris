@@ -1,5 +1,5 @@
 // The Worker in front of the cyris Container: the hourly tick, and the only
-// door to the triage deck and /settings.
+// door to /settings.
 //
 // Auth is two layers, and they answer different questions. Cloudflare Access
 // sits on the route and decides *who* — email policy, MFA, audit log, no code
@@ -112,6 +112,11 @@ const VOTE_ONLY = (path) => path === "/api/vote";
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+
+    // /triage was removed in M1; return 404 instead of proxying to the archive.
+    if (url.pathname === "/triage" || url.pathname.startsWith("/triage/")) {
+      return new Response("Not Found", { status: 404, headers: { "Content-Type": "text/plain" } });
+    }
 
     // The digest is a static snapshot Cloudflare already holds. Proxying it
     // costs one Worker request; serving it from the container would wake a
