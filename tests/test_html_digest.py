@@ -729,3 +729,49 @@ def test_write_raw_renders_vote_buttons_when_promote_configured(tmp_path):
 
     plain = HtmlDigestWriter(tmp_path).write_raw("2026-08-20", "evening", articles)
     assert 'class="vote-group"' not in plain.read_text(encoding="utf-8")
+
+
+def test_vote_buttons_hidden_by_default_shown_by_capability_probe(tmp_path):
+    """T3: Vote buttons render with display:none; JS probe checks JSON authorized:true."""
+    writer = HtmlDigestWriter(tmp_path, "https://w.dev", "tok")
+    item = DigestItem(title="T", summary="s", sources=["S"], urls=["https://x.com/1"])
+    content = DigestContent(
+        date="2026-08-20",
+        period="morning",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        featured_articles=[DigestSection(heading="Features", items=[item])],
+    )
+
+    html = writer.render(content)
+
+    # Buttons render but are hidden by CSS
+    assert 'class="vote-group"' in html
+    assert ".vote-group { display: none;" in html
+    # Probe checks JSON body, not just status
+    assert "await resp.json()" in html
+    assert "data.authorized !== true" in html
+    # On success, probe sets display to inline-flex
+    assert "el.style.display = 'inline-flex'" in html
+
+
+def test_settings_link_hidden_by_default_shown_by_capability_probe(tmp_path):
+    """T4: Settings link hidden by default; same probe shows it when authorized."""
+    writer = HtmlDigestWriter(tmp_path, "https://w.dev", "tok")
+    content = DigestContent(
+        date="2026-08-20",
+        period="morning",
+        sources_processed=0,
+        articles_received=0,
+        articles_included=0,
+        usage=UsageStats(),
+    )
+
+    html = writer.render(content)
+
+    # Settings link CSS rule exists
+    assert ".settings-link { display: none;" in html
+    # Probe shows it on success
+    assert ".settings-link" in html and "el.style.display = 'inline'" in html

@@ -138,6 +138,11 @@ export default {
       return wantsHtml ? html(LOGIN_PAGE(""), 401) : json({ error: "unauthorized" }, 401);
     }
 
+    // Capability probe for vote buttons: returns JSON only when authorized.
+    if (request.method === "GET" && url.pathname === "/api/vote") {
+      return json({ authorized: true });
+    }
+
     // The scheduled tick without waiting an hour for it.
     if (request.method === "POST" && url.pathname === "/run") {
       return json(await startRun());

@@ -9,6 +9,22 @@
     let votes = {};
     try { votes = JSON.parse(localStorage.getItem(VOTES_KEY) || '{}'); } catch { votes = {}; }
 
+    // Capability probe: show vote buttons and Settings only when authorized.
+    // Pages returns 200 HTML for unknown paths; Worker returns 200 JSON {"authorized":true}.
+    (async () => {
+        try {
+            const resp = await fetch('/api/vote', { method: 'GET', redirect: 'manual' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.authorized !== true) return;
+            // Authorized: show vote buttons and Settings link.
+            for (const el of document.querySelectorAll('.vote-group')) el.style.display = 'inline-flex';
+            for (const el of document.querySelectorAll('.settings-link')) el.style.display = 'inline';
+        } catch {
+            // Parse error, network failure, or CORS → fail closed, buttons stay hidden.
+        }
+    })();
+
     function paint(group, vote) {
         // Votes stored before the deep-read button was dropped have no button to paint; up is the same polarity.
         const shown = group.querySelector('[data-vote="' + vote + '"]') ? vote : 'up';
