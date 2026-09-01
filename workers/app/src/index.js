@@ -99,12 +99,15 @@ const LOGIN_PAGE = (message) => `<!DOCTYPE html>
 // the digest archive, which is public: it is the archive of record, and every
 // link to it in Discord would otherwise become a login.
 const PROTECTED = (path) =>
-  path === "/triage" ||
   path === "/settings" ||
   path === "/login" ||
   path === "/run" ||
   path.startsWith("/api/") ||
   path.startsWith("/static/");
+
+// Vote auth is Access only — digest readers can vote without the UI token.
+// Everything else in /api/* (settings, sources) stays two-layer.
+const VOTE_ONLY = (path) => path === "/api/vote";
 
 export default {
   async fetch(request) {
@@ -129,6 +132,45 @@ export default {
             "SameSite=Lax; Path=/; Max-Age=2592000",
         },
       });
+    }
+
+    // Vote endpoint: Access-only, no UI token required.
+    // Capability probe contract (static page JS, do not follow Access redirects):
+    // - pages.dev (or any host without the Worker): 404
+    // - digest.musingfox.me, unauthenticated: 401 or 302 (Access)
+    // - digest.musingfox.me, past Access: 2xx
+    if (VOTE_ONLY(url.pathname)) {
+      // HEAD/GET for capability probe: if Access let us reach here, return 2xx
+      if (request.method === "HEAD" || request.method === "GET") {
+        return json({ authorized: true }, 200);
+      }
+      if (request.method !== "POST") {
+        return json({ error: "method not allowed" }, 405);
+      }
+      // Cloudflare Access sits in front; if we reach here, the user is authenticated.
+      // Forward to the promote Worker with the server-side token.
+      const promoteUrl = env.CYRIS_PROMOTE_WORKER_URL;
+      if (!promoteUrl) {
+        return json({ error: "promote worker not configured" }, 503);
+      }
+      try {
+        const body = await request.json();
+        const resp = await fetch(promoteUrl + "/promote", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + env.CYRIS_PROMOTE_TOKEN,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+        // Pass through the promote Worker's response
+        return new Response(resp.body, {
+          status: resp.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        return json({ error: "promote worker failed" }, 502);
+      }
     }
 
     if (!(await authorized(request))) {

@@ -85,9 +85,6 @@ class HtmlDigestWriter:
             fan_sections=content.fan_sections,
             attention_sections=content.attention_sections,
             filtered_headlines=content.filtered_headlines,
-            promote_enabled=bool(self.promote_worker_url and self.promote_token),
-            promote_worker_url=self.promote_worker_url,
-            promote_token=self.promote_token,
         )
 
     def write(self, content: DigestContent, dry_run: bool = False) -> Path:
@@ -203,7 +200,4 @@ class HtmlDigestWriter:
             period=period,
             total=len(articles),
             groups=rendered_groups,
-            promote_enabled=bool(self.promote_worker_url and self.promote_token),
-            promote_worker_url=self.promote_worker_url,
-            promote_token=self.promote_token,
         )

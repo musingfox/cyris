@@ -165,21 +165,20 @@ class WorkerConfig(BaseModel):
 
 
 class PromoteConfig(WorkerConfig):
-    """The vote Worker. Its token is **published, not secret.**
+    """The vote Worker. Its token is **server-side only** (since private-votes-public-archive).
 
-    The digest's up/down buttons run in the reader's browser, so the token is
-    rendered into every digest and raw page (`_promote_script.html.j2`) and
-    those pages are public. Recovering it takes one `curl` of any published
-    digest — which is the proof, not the risk.
+    Votes go through `POST /api/vote` on the Worker (Access-only, no UI token),
+    which attaches `CYRIS_PROMOTE_TOKEN` server-side and forwards to the promote
+    Worker. The token is never rendered into HTML anymore.
 
-    That is why it does not share `CYRIS_WORKER_TOKEN` with `rss` and
-    `newsletter`: merging them on 2026-08-30 printed a server-to-server
-    credential into a public page, and `newsletter`'s `/ack` deletes a queue.
-    The dividing line is published-vs-secret, not one-random-value-vs-three.
+    It remains separate from `CYRIS_WORKER_TOKEN` (used by `rss` and `newsletter`)
+    because their access patterns differ: votes are Access-gated, while the other
+    Workers use server-to-server bearer auth. The dividing line is Access vs bearer.
     """
 
     publish_enabled: bool = False
     pages_project: str = ""
+    custom_domain: str = ""  # Custom domain for operator/self links (e.g., digest.musingfox.me)
 
     @model_validator(mode="after")
     def inject_token(self) -> "PromoteConfig":

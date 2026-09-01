@@ -126,7 +126,8 @@
         .promote-btn:hover { color: var(--text); }
         .promote-btn.done { color: var(--accent); border-color: var(--accent); }
         .promote-btn.error { color: #e06c75; border-color: #e06c75; }
-        .vote-group { display: inline-flex; gap: 4px; }
+        .vote-group { display: none; gap: 4px; }
+        .settings-link { display: none; }
 
         .article {
             display: grid;
@@ -219,7 +220,7 @@
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>
-                {% if promote_enabled %}<span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>{% endif %}
+                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>
             </div>
             {% endfor %}
         </section>
@@ -228,6 +229,7 @@
         <div class="footer">
             <a href="{{ date }}-{{ period }}.html">← Back to digest</a>
             <a href="index.html">Archive →</a>
+            <span class="settings-link"><a href="/settings">Settings →</a></span>
         </div>
     </div>
     {% include "_promote_script.html.j2" %}

@@ -91,10 +91,11 @@ overrides your OAuth login.
 bun install                       # or npm install
 
 # Every secret the container needs. CYRIS_UI_TOKEN is the login above; the rest
-# are the same values .env holds for a local run.
+# are the same values .env holds for a local run. CYRIS_PROMOTE_WORKER_URL should
+# match [promote] worker_url in cyris.toml.
 for s in CYRIS_UI_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
          CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
-         CYRIS_PROMOTE_TOKEN CYRIS_DISCORD_WEBHOOK_URL \
+         CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL CYRIS_DISCORD_WEBHOOK_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
   bunx wrangler secret put "$s"
 done

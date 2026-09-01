@@ -725,7 +725,107 @@ def test_write_raw_renders_vote_buttons_when_promote_configured(tmp_path):
 
     assert html.count('class="vote-group"') == 1
     assert 'data-vote="up"' in html and 'data-vote="down"' in html
-    assert '"https://promote.example"' in html
+    # PROMOTE_TOKEN must not be rendered into HTML
+    assert "tok" not in html
+    assert "PROMOTE_TOKEN" not in html
+    # Vote script now uses /api/vote instead of direct promote Worker calls
+    assert '"/api/vote"' in html or "'/api/vote'" in html
 
-    plain = HtmlDigestWriter(tmp_path).write_raw("2026-08-20", "evening", articles)
-    assert 'class="vote-group"' not in plain.read_text(encoding="utf-8")
+
+def test_promote_token_never_rendered_in_digest_or_raw(tmp_path):
+    """PROMOTE_TOKEN must not appear in any published HTML (private-votes-public-archive)."""
+    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "secret-token-12345")
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        featured_articles=[
+            DigestSection(
+                heading="Featured",
+                items=[
+                    DigestItem(
+                        title="Article",
+                        summary="Summary",
+                        sources=["Src"],
+                        urls=["https://example.com/1"],
+                    )
+                ],
+            )
+        ],
+    )
+
+    digest_html = writer.render(content)
+    raw_html = writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")])
+
+    # Token must not appear in either digest or raw HTML
+    assert "secret-token-12345" not in digest_html
+    assert "secret-token-12345" not in raw_html
+    assert "PROMOTE_TOKEN" not in digest_html
+    assert "PROMOTE_TOKEN" not in raw_html
+    # Vote buttons should still be present (hidden by default)
+    assert 'class="vote-group"' in digest_html
+    assert 'class="vote-group"' in raw_html
+    # Script should use /api/vote
+    assert '"/api/vote"' in digest_html or "'/api/vote'" in digest_html
+    assert '"/api/vote"' in raw_html or "'/api/vote'" in raw_html
+
+
+def test_vote_buttons_hidden_by_default_shown_by_capability_probe(tmp_path):
+    """Vote buttons are hidden by default and shown by capability probe (Access check)."""
+    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+        featured_articles=[
+            DigestSection(
+                heading="Featured",
+                items=[
+                    DigestItem(
+                        title="Article",
+                        summary="Summary",
+                        sources=["Src"],
+                        urls=["https://example.com/1"],
+                    )
+                ],
+            )
+        ],
+    )
+
+    html = writer.render(content)
+
+    # Vote groups should have display: none by default
+    assert ".vote-group { display: none;" in html
+    # Capability probe should exist and use GET
+    assert "fetch('/api/vote'" in html or 'fetch("/api/vote"' in html
+    assert "method: 'GET'" in html or 'method: "GET"' in html
+    # Probe should set display: inline-flex when authorized
+    assert "style.display = 'inline-flex'" in html or 'style.display = "inline-flex"' in html
+
+
+def test_settings_link_hidden_by_default_shown_by_capability_probe(tmp_path):
+    """Settings link is hidden by default and shown by same capability probe as votes."""
+    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+    )
+
+    html = writer.render(content)
+
+    # Settings link should be present but hidden by default
+    assert '<a href="/settings">Settings' in html
+    assert ".settings-link { display: none;" in html
+    # Capability probe should show it when authorized
+    assert "'.settings-link'" in html or '".settings-link"' in html
+    assert "style.display = 'inline'" in html or 'style.display = "inline"' in html
