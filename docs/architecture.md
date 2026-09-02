@@ -512,12 +512,12 @@ silently ignored for two days.
 - The container is **stateless** since 2026-08-30: the only mounts left are the two `:ro` config
   files. `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
   directory it was asking about, which re-created a local-filesystem edge M0–M4 had removed.
-- **In the Container the drift runs the other way**: nothing is mounted, so `cyris.toml` and
-  `sources.yaml` are baked in with the code and cannot disagree with it. Deployment identity is no
-  longer stuck in there: the app Worker forwards the `CYRIS_*` grade-B keys (§5) into the container
-  process, where an empty one counts as unset — so a worker URL or the Pages project name changes
-  by editing the Worker's env, not by a rebuild, and the baked file remains the fallback. Neither
-  file is a source of truth: settings and sources are read from D1 with these as the fallback.
+- **In the Container the drift runs the other way**: nothing is mounted, and the image holds no
+  `cyris.toml` at all — only `sources.example.yaml`, copied to `/app/sources.yaml`, is baked in with
+  the code. Deployment identity is not stuck in there either: the app Worker forwards the `CYRIS_*`
+  grade-B keys (§5) into the container process, where an empty one counts as unset — so a worker URL
+  or the Pages project name changes by editing the Worker's env, not by a rebuild. The baked sources
+  file is not a source of truth: settings and sources are read from D1 with it as the fallback.
 - **Verifying on the host is not verifying production.** An acceptance criterion signed off from a
   host run says nothing about what the container is running.
 - `cyris doctor` should report what *this build* supports, not only what the config asks for —
