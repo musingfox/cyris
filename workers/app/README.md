@@ -103,12 +103,18 @@ done
 bunx wrangler deploy              # builds ../../Dockerfile, pushes, deploys
 ```
 
-The image is built from the repo root and includes `cyris.toml` and
-`sources.yaml` — the Container mounts nothing, and those two carry the
-deployment identity. Neither is a source of truth: settings and sources are read
-from D1 with these as the fallback. Changing a *setting* is a write on
-`/settings`; changing a worker URL or the Pages project is still a rebuild until
-§7 M6.
+Grade-B identity is the same names the Python process already reads
+(`CYRIS_STORE_BACKEND`, `CYRIS_STORE_DATABASE_ID`, `CYRIS_HTML_OUTPUT_ENABLED`,
+`CYRIS_PROMOTE_PUBLISH_ENABLED`, `CYRIS_PROMOTE_PAGES_PROJECT`,
+`CYRIS_PROMOTE_CUSTOM_DOMAIN`, `CYRIS_PROMOTE_WORKER_URL`,
+`CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL`). Set each as a Worker
+secret or in `[vars]` on your own fork. Leave a name unset or empty and the
+Worker omits it from the container env rather than forwarding the string
+`undefined`. This repo does not ship values for them.
+
+The image is built from the repo root. Settings and sources are read from D1;
+changing a *setting* is a write on `/settings`. Worker URLs and the Pages
+project can come from the bindings above without a rebuild.
 
 The image must be `linux/amd64`. On an Apple Silicon machine that is emulation,
 so the first build is slow.

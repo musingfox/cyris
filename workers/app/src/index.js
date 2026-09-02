@@ -29,6 +29,27 @@ const SECRETS = {
   OPENAI_API_KEY: env.OPENAI_API_KEY,
 };
 
+// Grade-B deployment identity. The deployer sets these as Worker secrets or
+// [vars]; this list carries no defaults and no account-specific values.
+const DEPLOYMENT = {
+  CYRIS_STORE_BACKEND: env.CYRIS_STORE_BACKEND,
+  CYRIS_STORE_DATABASE_ID: env.CYRIS_STORE_DATABASE_ID,
+  CYRIS_HTML_OUTPUT_ENABLED: env.CYRIS_HTML_OUTPUT_ENABLED,
+  CYRIS_PROMOTE_PUBLISH_ENABLED: env.CYRIS_PROMOTE_PUBLISH_ENABLED,
+  CYRIS_PROMOTE_PAGES_PROJECT: env.CYRIS_PROMOTE_PAGES_PROJECT,
+  CYRIS_PROMOTE_CUSTOM_DOMAIN: env.CYRIS_PROMOTE_CUSTOM_DOMAIN,
+  CYRIS_PROMOTE_WORKER_URL: env.CYRIS_PROMOTE_WORKER_URL,
+  CYRIS_NEWSLETTER_WORKER_URL: env.CYRIS_NEWSLETTER_WORKER_URL,
+  CYRIS_RSS_WORKER_URL: env.CYRIS_RSS_WORKER_URL,
+};
+
+// Unset or empty Worker bindings become JS undefined/"". Spreading those into
+// envVars would hand the container the string "undefined". Drop them instead.
+const present = (vars) =>
+  Object.fromEntries(Object.entries(vars).filter(([, v]) => v != null && v !== ""));
+
+const containerEnv = (role) => ({ ...present(SECRETS), ...present(DEPLOYMENT), CYRIS_ROLE: role });
+
 export class CyrisContainer extends Container {
   defaultPort = 8766;
   // Idle time is billed. §7 called the default 10 minutes ~10 container-hours
@@ -37,7 +58,7 @@ export class CyrisContainer extends Container {
 
   // Without a role the image runs the Mac mini's supercronic loop, which in the
   // cloud would be a second scheduler racing the Workers Cron above.
-  envVars = { ...SECRETS, CYRIS_ROLE: "ui" };
+  envVars = containerEnv("ui");
 
   // Overriding this hook without stopping renews the timer instead of sleeping,
   // and the instance bills on. This is the whole point of the override.
@@ -201,7 +222,7 @@ export default {
 // A separate instance from the UI: this one runs the pipeline once and exits,
 // so it stops billing without waiting for a sleep timer.
 async function startRun() {
-  await getContainer(env.CYRIS, "run").start({ envVars: { ...SECRETS, CYRIS_ROLE: "run" } });
+  await getContainer(env.CYRIS, "run").start({ envVars: containerEnv("run") });
   return { started: "run", at: new Date().toISOString() };
 }
 
