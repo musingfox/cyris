@@ -230,6 +230,35 @@ class TestStoreBackendFromEnv:
         assert B_GRADE_ENV_VARS["store.database_id"] == "CYRIS_STORE_DATABASE_ID"
 
 
+class TestWorkerUrlsFromEnv:
+    def test_rss_url_and_token_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_RSS_WORKER_URL", "https://rss.example.dev")
+        monkeypatch.setenv("CYRIS_WORKER_TOKEN", "t")
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.rss.worker_url == "https://rss.example.dev"
+        assert cfg.app.rss.token == "t"
+
+    def test_promote_url_does_not_bleed_into_newsletter(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_PROMOTE_WORKER_URL", "https://p.example.dev")
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.promote.worker_url == "https://p.example.dev"
+        assert cfg.app.newsletter.worker_url == ""
+
+    def test_file_newsletter_url_wins_over_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_NEWSLETTER_WORKER_URL", "https://env.example")
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[newsletter]\nworker_url = "https://file.example"\n')
+        cfg = _load_tmp(tmp_path, config_file)
+        assert cfg.app.newsletter.worker_url == "https://file.example"
+
+    def test_empty_file_rss_url_yields_to_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_RSS_WORKER_URL", "https://env.example")
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[rss]\nworker_url = ""\n')
+        cfg = _load_tmp(tmp_path, config_file)
+        assert cfg.app.rss.worker_url == "https://env.example"
+
+
 class TestRoutingConfig:
     def test_routing_config_default(self):
         """RoutingConfig default threshold is 70 (featured article threshold)."""

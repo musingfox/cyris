@@ -40,6 +40,9 @@ B_GRADE_ENV_VARS: dict[str, str] = {
     "promote.publish_enabled": "CYRIS_PROMOTE_PUBLISH_ENABLED",
     "promote.pages_project": "CYRIS_PROMOTE_PAGES_PROJECT",
     "promote.custom_domain": "CYRIS_PROMOTE_CUSTOM_DOMAIN",
+    "promote.worker_url": "CYRIS_PROMOTE_WORKER_URL",
+    "newsletter.worker_url": "CYRIS_NEWSLETTER_WORKER_URL",
+    "rss.worker_url": "CYRIS_RSS_WORKER_URL",
 }
 
 
@@ -227,6 +230,7 @@ class PromoteConfig(WorkerConfig):
                 "publish_enabled": B_GRADE_ENV_VARS["promote.publish_enabled"],
                 "pages_project": B_GRADE_ENV_VARS["promote.pages_project"],
                 "custom_domain": B_GRADE_ENV_VARS["promote.custom_domain"],
+                "worker_url": B_GRADE_ENV_VARS["promote.worker_url"],
             },
         )
 
@@ -238,7 +242,10 @@ class PromoteConfig(WorkerConfig):
 
 
 class NewsletterConfig(WorkerConfig):
-    pass
+    @model_validator(mode="before")
+    @classmethod
+    def inject_b_grade(cls, data: object) -> object:
+        return _fill_from_env(data, {"worker_url": B_GRADE_ENV_VARS["newsletter.worker_url"]})
 
 
 class VoteSimilarityConfig(BaseModel):
@@ -261,6 +268,11 @@ class VoteSimilarityConfig(BaseModel):
 
 class RssConfig(WorkerConfig):
     """Cloudflare RSS Worker — the hourly feed buffer the pipeline reads from."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def inject_b_grade(cls, data: object) -> object:
+        return _fill_from_env(data, {"worker_url": B_GRADE_ENV_VARS["rss.worker_url"]})
 
 
 class AppConfig(BaseModel):

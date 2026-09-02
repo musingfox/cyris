@@ -50,7 +50,7 @@ output_dir = "agent-vault/html"
 
 [promote]
 # Optional Cloudflare Worker for promote-button clicks (see workers/promote/).
-worker_url = ""
+worker_url = ""                         # or CYRIS_PROMOTE_WORKER_URL
 publish_enabled = false                 # or CYRIS_PROMOTE_PUBLISH_ENABLED
 pages_project = ""                      # or CYRIS_PROMOTE_PAGES_PROJECT
 custom_domain = ""                      # or CYRIS_PROMOTE_CUSTOM_DOMAIN
@@ -61,7 +61,7 @@ custom_domain = ""                      # or CYRIS_PROMOTE_CUSTOM_DOMAIN
 
 [newsletter]
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).
-worker_url = ""
+worker_url = ""                         # or CYRIS_NEWSLETTER_WORKER_URL
 # Token via env: CYRIS_WORKER_TOKEN
 
 [vote_similarity]
@@ -84,5 +84,5 @@ enabled = false
 # the 24h window sees more than a feed snapshot holds. Leave empty and the
 # pipeline polls feeds directly at digest time instead — simpler, but it only
 # sees each feed's current snapshot, which for busy feeds is 2-4h, not 24.
-worker_url = ""
+worker_url = ""                         # or CYRIS_RSS_WORKER_URL
 # Token via env: CYRIS_WORKER_TOKEN

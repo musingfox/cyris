@@ -324,7 +324,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |
 | HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
 | Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |
-| Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `cyris.toml` | derived at deploy, not hand-written |
+| Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (file fallback) | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, two Cloudflare tokens, one Worker bearer, one *published* vote token | C (the vote token is not a secret) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
