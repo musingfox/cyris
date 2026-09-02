@@ -296,6 +296,20 @@ class SourcesConfig(BaseModel):
     sources: list[SourceConfig] = Field(default_factory=list)
 
 
+def _missing_store_keys(app_config: "AppConfig") -> list[str]:
+    """Env vars a D1 store needs and does not have; empty when json or complete."""
+    if not app_config.store.is_d1:
+        return []
+    missing = []
+    if not app_config.store.database_id:
+        missing.append("CYRIS_STORE_DATABASE_ID")
+    if not app_config.store.account_id:
+        missing.append("CLOUDFLARE_ACCOUNT_ID")
+    if not app_config.store.api_token:
+        missing.append("CLOUDFLARE_API_TOKEN")
+    return missing
+
+
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
@@ -309,16 +323,7 @@ class Config(BaseModel):
 
     def missing_store_keys(self) -> list[str]:
         """Env vars a D1 store needs and does not have; empty when json or complete."""
-        if not self.app.store.is_d1:
-            return []
-        missing = []
-        if not self.app.store.database_id:
-            missing.append("CYRIS_STORE_DATABASE_ID")
-        if not self.app.store.account_id:
-            missing.append("CLOUDFLARE_ACCOUNT_ID")
-        if not self.app.store.api_token:
-            missing.append("CLOUDFLARE_API_TOKEN")
-        return missing
+        return _missing_store_keys(self.app)
 
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
@@ -403,6 +408,13 @@ def _sources_from_d1(app_config: AppConfig) -> dict[str, SourceConfig] | None:
     and an unreachable D1 must not silently drop every source.
     """
     if not app_config.store.is_d1:
+        return None
+
+    missing = _missing_store_keys(app_config)
+    if missing:
+        # Four doomed retries ahead of the error that names these is 13 seconds
+        # of noise for a first deploy; the file fallback is the same either way.
+        logger.warning("D1 store is missing %s; using sources.yaml", ", ".join(missing))
         return None
 
     from cyris.adapters.store.d1 import D1Client

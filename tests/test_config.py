@@ -247,6 +247,29 @@ class TestStoreBackendFromEnv:
             bootstrap.build_d1_client(cfg)
         assert constructed == []
 
+    def test_sources_read_skips_d1_when_credentials_are_missing(self, tmp_path, monkeypatch):
+        """The fallback to sources.yaml must not cost four doomed requests first."""
+        from cyris.adapters.store import d1 as d1_module
+
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+        monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+
+        attempts: list[dict] = []
+
+        class RecordingD1Client:
+            def __init__(self, **kwargs):
+                # `_sources_from_d1` swallows everything, so record rather than raise.
+                attempts.append(kwargs)
+                raise RuntimeError("no credentials")
+
+        monkeypatch.setattr(d1_module, "D1Client", RecordingD1Client)
+
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert attempts == []
+        assert cfg.sources_origin == "sources.yaml"
+        assert cfg.sources
+
     def test_b_grade_registry_names_store_keys(self):
         from cyris.config import B_GRADE_ENV_VARS
 
