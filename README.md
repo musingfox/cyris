@@ -123,7 +123,8 @@ for the deploy steps, the secret list, and the two auth layers (Cloudflare Acces
 
 ```bash
 cp .env.example .env        # API keys: ANTHROPIC/GEMINI/OPENAI, CYRIS_WORKER_TOKEN, ...
-# edit cyris.toml + sources.yaml as usual
+# docker build needs no cyris.toml / sources.yaml — the image copies
+# sources.example.yaml to /app/sources.yaml. compose bind-mounts over that path.
 
 cd workers/app && bun install && bunx wrangler deploy
 ```

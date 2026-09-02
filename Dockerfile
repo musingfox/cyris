@@ -36,10 +36,9 @@ RUN uv sync --frozen --no-dev
 COPY docker/crontab /app/crontab
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
-# cyris.toml and sources.yaml are mounted :ro by compose; the Container has no
-# mounts, so it needs them in the image. Neither is a source of truth any more —
-# settings and sources both live in D1, with these two as the fallback (§5).
-COPY cyris.toml sources.yaml /app/
+# compose bind-mounts ./sources.yaml over this path; a clone has no sources.yaml,
+# so bake the tracked example. cyris.toml is optional (defaults + env).
+COPY sources.example.yaml /app/sources.yaml
 
 # CYRIS_ROLE picks the role: `run` for the Workers Cron tick, `ui` for the
 # triage server, and the default `cron` for the Mac mini's supercronic loop.

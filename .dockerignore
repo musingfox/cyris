@@ -8,10 +8,11 @@ __pycache__
 # secrets stay out of the image; tokens are read from the environment
 .env
 tracking.yaml
-# cyris.toml and sources.yaml are NOT excluded: the Container mounts nothing, so
-# the deployment identity (§5 grade B — worker URLs, Pages project, D1 id) has
-# to be in the image. They carry no secrets. Building therefore needs a
-# configured tree; §7 M6 replaces this with values derived at deploy.
+# cyris.toml and sources.yaml are gitignored — do not COPY them. The image bakes
+# sources.example.yaml as /app/sources.yaml; compose bind-mounts over that path.
+# Grade-B identity (worker URLs, Pages project, D1 id) comes from the environment.
+cyris.toml
+sources.yaml
 # runtime data (volume-mounted)
 agent-vault
 vault
