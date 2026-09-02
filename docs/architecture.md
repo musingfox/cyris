@@ -310,7 +310,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Grade | Home | Changing it costs | Who sets it |
 |---|---|---|---|
 | **A · Baked defaults** | code | a release | nobody at runtime |
-| **B · Deployment identity** | `wrangler.toml`, provisioned at deploy | a redeploy | the deploy flow |
+| **B · Deployment identity** | environment (`CYRIS_<TABLE>_<KEY>`), file fallback | an env change or a redeploy | the deploy flow |
 | **C · Secrets** | environment / `.env` / Worker secrets | an env change | the operator, once |
 | **D · Runtime-mutable** | **D1 `settings`** | a write, effective next run | the reader, in the UI |
 
@@ -320,7 +320,9 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 |---|---|---|---|
 | Tier thresholds, batch sizes, model defaults | A | code | unchanged |
 | KV namespace ids, D1 database id | B | `wrangler.toml` | unchanged — Cloudflare rewrites these at deploy |
-| Pages project name | B | `cyris.toml [promote]` | `wrangler.toml` |
+| Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |
+| HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
+| Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `cyris.toml` | derived at deploy, not hand-written |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, two Cloudflare tokens, one Worker bearer, one *published* vote token | C (the vote token is not a secret) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |

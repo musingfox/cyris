@@ -31,6 +31,26 @@ def _load_dotenv(env_path: Path | None = None) -> None:
 
 logger = logging.getLogger(__name__)
 
+# Grade-B deployment identity. The environment supplies a key the file left
+# absent or empty; a set file value always wins. Named CYRIS_<TABLE>_<KEY>.
+B_GRADE_ENV_VARS: dict[str, str] = {
+    "html_output.enabled": "CYRIS_HTML_OUTPUT_ENABLED",
+    "promote.publish_enabled": "CYRIS_PROMOTE_PUBLISH_ENABLED",
+    "promote.pages_project": "CYRIS_PROMOTE_PAGES_PROJECT",
+    "promote.custom_domain": "CYRIS_PROMOTE_CUSTOM_DOMAIN",
+}
+
+
+def _fill_from_env(data: object, fields: dict[str, str]) -> object:
+    data = {} if not isinstance(data, dict) else dict(data)
+    for field, env_name in fields.items():
+        env_val = os.environ.get(env_name)
+        if env_val is None:
+            continue
+        if field not in data or data[field] == "":
+            data[field] = env_val
+    return data
+
 
 class NotifyConfig(BaseModel):
     discord_webhook_url: str = ""
@@ -142,6 +162,11 @@ class HtmlOutputConfig(BaseModel):
     enabled: bool = False
     output_dir: str = "agent-vault/html"
 
+    @model_validator(mode="before")
+    @classmethod
+    def inject_b_grade(cls, data: object) -> object:
+        return _fill_from_env(data, {"enabled": B_GRADE_ENV_VARS["html_output.enabled"]})
+
 
 class WorkerConfig(BaseModel):
     """A Cloudflare Worker cyris pulls from, and the bearer it presents.
@@ -179,6 +204,18 @@ class PromoteConfig(WorkerConfig):
     publish_enabled: bool = False
     pages_project: str = ""
     custom_domain: str = ""  # Custom domain for operator/self links (e.g., digest.musingfox.me)
+
+    @model_validator(mode="before")
+    @classmethod
+    def inject_b_grade(cls, data: object) -> object:
+        return _fill_from_env(
+            data,
+            {
+                "publish_enabled": B_GRADE_ENV_VARS["promote.publish_enabled"],
+                "pages_project": B_GRADE_ENV_VARS["promote.pages_project"],
+                "custom_domain": B_GRADE_ENV_VARS["promote.custom_domain"],
+            },
+        )
 
     @model_validator(mode="after")
     def inject_token(self) -> "PromoteConfig":

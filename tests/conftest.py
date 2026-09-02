@@ -19,6 +19,14 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _DEFAULT_NEWSLETTER_FIXTURES = Path.home() / "cyris-newsletter-fixtures"
 
 
+@pytest.fixture(autouse=True)
+def _clear_b_grade_env(monkeypatch):
+    from cyris.config import B_GRADE_ENV_VARS
+
+    for name in B_GRADE_ENV_VARS.values():
+        monkeypatch.delenv(name, raising=False)
+
+
 def newsletter_fixtures_dir() -> Path:
     """Directory of real newsletter samples; override with CYRIS_NEWSLETTER_FIXTURES."""
     override = os.environ.get("CYRIS_NEWSLETTER_FIXTURES")

@@ -1,13 +1,23 @@
 """Tests for configuration loader."""
 
 import logging
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 
 from cyris.config import load_config
 from cyris.domain.models import Tier
+
+
+def _copy_example_sources(tmp_path: Path) -> Path:
+    path = tmp_path / "sources.yaml"
+    path.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
+    return path
+
+
+def _load_tmp(tmp_path: Path, config_path: Path):
+    return load_config(config_path=config_path, sources_path=_copy_example_sources(tmp_path))
 
 
 class TestLoadConfig:
@@ -93,6 +103,50 @@ class TestLoadConfig:
 
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             cfg.validate_required_keys()
+
+
+class TestPublishingSettingsFromEnv:
+    def test_no_file_reads_enabled_and_pages_project(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_HTML_OUTPUT_ENABLED", "true")
+        monkeypatch.setenv("CYRIS_PROMOTE_PUBLISH_ENABLED", "1")
+        monkeypatch.setenv("CYRIS_PROMOTE_PAGES_PROJECT", "cyris-digest")
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.html_output.enabled is True
+        assert cfg.app.promote.publish_enabled is True
+        assert cfg.app.promote.pages_project == "cyris-digest"
+
+    def test_enabled_false_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_HTML_OUTPUT_ENABLED", "false")
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.html_output.enabled is False
+
+    def test_invalid_bool_raises(self, monkeypatch):
+        from pydantic import ValidationError
+
+        from cyris.config import AppConfig
+
+        monkeypatch.setenv("CYRIS_HTML_OUTPUT_ENABLED", "maybe")
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate({})
+
+    def test_file_bool_wins_over_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_HTML_OUTPUT_ENABLED", "true")
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text("[html_output]\nenabled = false\n")
+        cfg = _load_tmp(tmp_path, config_file)
+        assert cfg.app.html_output.enabled is False
+
+    def test_empty_file_pages_project_yields_to_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_PROMOTE_PAGES_PROJECT", "cyris-digest")
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[promote]\npages_project = ""\n')
+        cfg = _load_tmp(tmp_path, config_file)
+        assert cfg.app.promote.pages_project == "cyris-digest"
+
+    def test_custom_domain_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", "digest.example.org")
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.promote.custom_domain == "digest.example.org"
 
 
 class TestRoutingConfig:

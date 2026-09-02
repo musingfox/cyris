@@ -45,15 +45,15 @@ score_threshold = 70                    # featured-article cutoff (0-100)
 summarize_score_threshold = 70
 
 [html_output]
-enabled = false
+enabled = false                         # or CYRIS_HTML_OUTPUT_ENABLED
 output_dir = "agent-vault/html"
 
 [promote]
 # Optional Cloudflare Worker for promote-button clicks (see workers/promote/).
 worker_url = ""
-publish_enabled = false                 # publish HTML digest to Cloudflare Pages
-pages_project = ""
-custom_domain = ""                      # Custom domain for Discord links (e.g., digest.musingfox.me)
+publish_enabled = false                 # or CYRIS_PROMOTE_PUBLISH_ENABLED
+pages_project = ""                      # or CYRIS_PROMOTE_PAGES_PROJECT
+custom_domain = ""                      # or CYRIS_PROMOTE_CUSTOM_DOMAIN
 # Token via env: CYRIS_PROMOTE_TOKEN — deliberately not CYRIS_WORKER_TOKEN.
 # Since private-votes-public-archive, the token is server-side only (never rendered
 # into HTML). Votes go through POST /api/vote on the Worker (Access-only), which
