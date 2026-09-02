@@ -236,6 +236,32 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
     assert "Ready to run." in result.stdout
 
 
+def test_the_command_does_not_claim_a_config_file_it_never_read(monkeypatch, tmp_path) -> None:
+    """No green `config —` banner: the `config file` check is what reports this."""
+    from typer.testing import CliRunner
+
+    from cyris.entrypoints.cli import app
+
+    async def fake_checks(cfg, _path=None):
+        return [doctor._check_config_file(cfg, None)]
+
+    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "doctor",
+            "--config",
+            str(tmp_path / "nope.toml"),
+            "--sources",
+            str(tmp_path / "nope.yaml"),
+        ],
+    )
+
+    assert "✓ config —" not in result.stdout
+    assert "! config file — not found" in result.stdout
+
+
 async def test_a_config_key_this_build_cannot_see_is_a_failure(tmp_path: Path) -> None:
     """The 2026-08-25→27 split: the config asked for D1, the image had no `[store]`.
 

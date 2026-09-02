@@ -558,8 +558,9 @@ def doctor(
         typer.echo(f"✗ config — {e}")
         typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
         raise typer.Exit(1) from e
-    typer.echo(f"✓ config — {config_path} + {sources_path}")
 
+    # No green banner here: it used to be true because a missing file raised.
+    # It no longer does, and `_check_config_file` reports which file was read.
     marks = {"ok": "✓", "warn": "!", "fail": "✗", "skip": "–"}
     checks = asyncio.run(run_checks(cfg, config_path))
     for check in checks:
