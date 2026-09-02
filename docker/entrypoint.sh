@@ -9,10 +9,12 @@ case "${CYRIS_ROLE:-cron}" in
   # Cloudflare Workers Cron fires the hourly tick, so the container's own job is
   # one pass and exit — the instance stops and stops billing.
   run)
+    export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
     cyris run --if-due $CONF
     cyris promote-sync $CONF
     ;;
   ui)
+    export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
     exec cyris triage-ui --host 0.0.0.0 --port 8766 $CONF
     ;;
   # ponytail: the Mac mini's role, alive only until M5's cutover. Deleting it
