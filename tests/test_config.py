@@ -1,8 +1,10 @@
 """Tests for configuration loader."""
 
+import logging
 from pathlib import Path
 
 import pytest
+import tomllib
 
 from cyris.config import load_config
 from cyris.domain.models import Tier
@@ -34,9 +36,41 @@ class TestLoadConfig:
         # language override on a non-English feed
         assert cfg.sources["報導者"].language == "zh"
 
-    def test_missing_config_file(self):
-        with pytest.raises(FileNotFoundError, match="Config file not found"):
-            load_config(config_path=Path("nonexistent.toml"))
+    def test_missing_config_file(self, tmp_path):
+        sources = tmp_path / "sources.yaml"
+        sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
+        missing = tmp_path / "nope.toml"
+        cfg = load_config(config_path=missing, sources_path=sources)
+        assert cfg.app.general.timezone == "Asia/Taipei"
+        assert cfg.app.store.backend == "json"
+        assert cfg.config_file_found is False
+
+    def test_present_config_file_is_used(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[general]\ntimezone = "UTC"\n')
+        sources = tmp_path / "sources.yaml"
+        sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
+        cfg = load_config(config_path=config_file, sources_path=sources)
+        assert cfg.app.general.timezone == "UTC"
+        assert cfg.config_file_found is True
+
+    def test_malformed_config_file_raises(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text("[general\n")
+        sources = tmp_path / "sources.yaml"
+        sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
+        with pytest.raises(tomllib.TOMLDecodeError):
+            load_config(config_path=config_file, sources_path=sources)
+
+    def test_missing_config_file_warns(self, tmp_path, caplog):
+        sources = tmp_path / "sources.yaml"
+        sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
+        missing = tmp_path / "nope.toml"
+        with caplog.at_level(logging.WARNING):
+            load_config(config_path=missing, sources_path=sources)
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert str(missing) in warnings[0].message
 
     def test_missing_sources_file(self, tmp_path):
         config_file = tmp_path / "cyris.toml"

@@ -241,6 +241,7 @@ class Config(BaseModel):
     # Grade-D keys this run took from the D1 `settings` table rather than the
     # file. Same reason as above: which home won has to be reportable.
     settings_from_d1: list[str] = Field(default_factory=list)
+    config_file_found: bool = True
 
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
@@ -277,7 +278,7 @@ def load_config(
         Validated Config object.
 
     Raises:
-        FileNotFoundError: If config files don't exist.
+        TOMLDecodeError: If the config file exists but is malformed.
         ValueError: If required env vars are missing.
         ValidationError: If config structure is invalid.
     """
@@ -287,13 +288,16 @@ def load_config(
     # Load .env from same directory as config
     _load_dotenv(config_path.parent / ".env")
 
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    config_file_found = config_path.exists()
+    if config_file_found:
+        with open(config_path, "rb") as f:
+            raw_toml = tomllib.load(f)
+    else:
+        logger.warning("Config file not found: %s", config_path)
+        raw_toml = {}
+
     if not sources_path.exists():
         raise FileNotFoundError(f"Sources file not found: {sources_path}")
-
-    with open(config_path, "rb") as f:
-        raw_toml = tomllib.load(f)
 
     with open(sources_path) as f:
         raw_yaml = yaml.safe_load(f)
@@ -316,6 +320,7 @@ def load_config(
         app=app_config,
         sources=from_d1 or sources_dict,
         sources_origin="d1" if from_d1 else "sources.yaml",
+        config_file_found=config_file_found,
     )
 
 
