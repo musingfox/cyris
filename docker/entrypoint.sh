@@ -10,6 +10,8 @@ case "${CYRIS_ROLE:-cron}" in
   # one pass and exit — the instance stops and stops billing.
   run)
     export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
+    export CYRIS_HTML_OUTPUT_ENABLED=${CYRIS_HTML_OUTPUT_ENABLED:-true}
+    export CYRIS_PROMOTE_PUBLISH_ENABLED=${CYRIS_PROMOTE_PUBLISH_ENABLED:-true}
     cyris run --if-due $CONF
     cyris promote-sync $CONF
     ;;

@@ -63,3 +63,24 @@ class TestContainerRoleDefaultsToD1Store:
     def test_cron_does_not_set_store_backend(self, tmp_path: Path) -> None:
         recorded = _recorded_env(tmp_path, role="cron", stub="supercronic")
         assert "CYRIS_STORE_BACKEND" not in recorded
+
+
+class TestContainerRoleDefaultsToPublishing:
+    def test_run_defaults_publish_flags_on(self, tmp_path: Path) -> None:
+        recorded = _recorded_env(tmp_path, role="run", stub="cyris")
+        assert recorded["CYRIS_HTML_OUTPUT_ENABLED"] == "true"
+        assert recorded["CYRIS_PROMOTE_PUBLISH_ENABLED"] == "true"
+
+    def test_run_keeps_preset_publish_disabled(self, tmp_path: Path) -> None:
+        recorded = _recorded_env(
+            tmp_path,
+            role="run",
+            stub="cyris",
+            extra_env={"CYRIS_PROMOTE_PUBLISH_ENABLED": "false"},
+        )
+        assert recorded["CYRIS_PROMOTE_PUBLISH_ENABLED"] == "false"
+
+    def test_ui_does_not_set_publish_flags(self, tmp_path: Path) -> None:
+        recorded = _recorded_env(tmp_path, role="ui", stub="cyris")
+        assert "CYRIS_HTML_OUTPUT_ENABLED" not in recorded
+        assert "CYRIS_PROMOTE_PUBLISH_ENABLED" not in recorded
