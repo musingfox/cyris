@@ -64,10 +64,26 @@ def _check_sources(cfg: Config) -> Check:
     return Check("sources", "ok", detail)
 
 
+def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
+    """Where this run's file came from, so a silent-default host is visible."""
+    if cfg.config_file_found:
+        where = str(config_path) if config_path is not None else "cyris.toml"
+        return Check("config file", "ok", where)
+    if cfg.app.store.is_d1:
+        return Check("config file", "ok", "not found — running from the environment")
+    return Check(
+        "config file",
+        "warn",
+        "not found — running on baked defaults",
+        "Set CYRIS_STORE_BACKEND (and the other CYRIS_ keys), or place a cyris.toml here.",
+    )
+
+
 def _check_settings_origin(cfg: Config) -> Check:
     """Which home the grade-D keys came from, so a split is visible on sight."""
     if not cfg.settings_from_d1:
-        return Check("settings", "ok", "cyris.toml — D1 holds no overrides")
+        home = "defaults" if not cfg.config_file_found else "cyris.toml"
+        return Check("settings", "ok", f"{home} — D1 holds no overrides")
     return Check("settings", "ok", f"D1 overrides {', '.join(sorted(cfg.settings_from_d1))}")
 
 
@@ -328,6 +344,7 @@ async def run_checks(cfg: Config, config_path: Path | None = None) -> list[Check
     """Every check, in the order a reader would want to see them."""
     checks = [
         *_check_build(cfg, config_path),
+        _check_config_file(cfg, config_path),
         _check_sources(cfg),
         _check_settings_origin(cfg),
         _check_llm(cfg),

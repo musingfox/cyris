@@ -258,3 +258,59 @@ async def test_the_resolved_store_class_is_reported_not_the_configured_name(
 
     assert check.status == "ok"
     assert "ArticleStore" in check.detail
+
+
+async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
+    tmp_path: Path,
+) -> None:
+    """A container that ships no file is not a host that forgot the file."""
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    cfg.config_file_found = False
+
+    checks = await doctor.run_checks(cfg)
+    check = _by_name(checks, "config file")
+
+    assert check.status == "ok"
+    assert "environment" in check.detail.lower()
+    assert {c.name for c in checks if c.status in ("warn", "fail")} <= {
+        "sources",
+        "llm provider",
+        "rss buffer",
+    }
+
+
+async def test_a_missing_config_file_on_json_warns_to_set_cyris_env(
+    tmp_path: Path,
+) -> None:
+    cfg = _config(tmp_path)
+    cfg.config_file_found = False
+
+    check = _by_name(await doctor.run_checks(cfg), "config file")
+
+    assert check.status == "warn"
+    assert "CYRIS_" in check.fix
+
+
+async def test_a_found_config_file_is_named_in_the_check(tmp_path: Path) -> None:
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text('[general]\ntimezone = "Asia/Taipei"\n')
+    cfg = _config(tmp_path)
+    cfg.config_file_found = True
+
+    check = _by_name(await doctor.run_checks(cfg, config_path), "config file")
+
+    assert check.status == "ok"
+    assert str(config_path) in check.detail
+
+
+async def test_settings_without_a_config_file_do_not_claim_cyris_toml(
+    tmp_path: Path,
+) -> None:
+    cfg = _config(tmp_path)
+    cfg.config_file_found = False
+    cfg.settings_from_d1 = []
+
+    check = _by_name(await doctor.run_checks(cfg), "settings")
+
+    assert "cyris.toml" not in check.detail
