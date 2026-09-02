@@ -230,6 +230,23 @@ class TestStoreBackendFromEnv:
         assert B_GRADE_ENV_VARS["store.database_id"] == "CYRIS_STORE_DATABASE_ID"
 
 
+class TestEmptyEnvIsUnset:
+    def test_blank_b_grade_vars_leave_defaults(self, tmp_path, monkeypatch):
+        """`cp .env.example .env` exports every CYRIS_* key as "" — that is not a value.
+
+        The autouse fixture clears these, so set them back explicitly.
+        """
+        from cyris.config import B_GRADE_ENV_VARS
+
+        for name in B_GRADE_ENV_VARS.values():
+            monkeypatch.setenv(name, "")
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.store.backend == "json"
+        assert cfg.app.html_output.enabled is False
+        assert cfg.app.promote.publish_enabled is False
+        assert cfg.app.rss.worker_url == ""
+
+
 class TestWorkerUrlsFromEnv:
     def test_rss_url_and_token_from_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_RSS_WORKER_URL", "https://rss.example.dev")

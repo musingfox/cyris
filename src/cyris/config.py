@@ -50,7 +50,9 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
     data = {} if not isinstance(data, dict) else dict(data)
     for field, env_name in fields.items():
         env_val = os.environ.get(env_name)
-        if env_val is None:
+        # An exported-but-empty key is *unset*, not a value: `cp .env.example .env`
+        # exports every one of these blank, and "" is not a valid backend or bool.
+        if not env_val:
             continue
         if field not in data or data[field] == "":
             data[field] = env_val
