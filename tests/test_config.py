@@ -85,8 +85,32 @@ class TestLoadConfig:
     def test_missing_sources_file(self, tmp_path):
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
-        with pytest.raises(FileNotFoundError, match="Sources file not found"):
-            load_config(config_path=config_file, sources_path=Path("nonexistent.yaml"))
+        cfg = load_config(config_path=config_file, sources_path=tmp_path / "nope.yaml")
+        assert cfg.sources == {}
+
+    def test_missing_sources_fails_doctor(self, tmp_path):
+        from cyris.service_layer.doctor import _check_sources
+
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[general]\ntimezone = "UTC"\n')
+        cfg = load_config(config_path=config_file, sources_path=tmp_path / "nope.yaml")
+        check = _check_sources(cfg)
+        assert check.name == "sources"
+        assert check.status == "fail"
+        assert check.detail == "no usable sources"
+
+    def test_sources_file_is_used(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[general]\ntimezone = "UTC"\n')
+        sources = tmp_path / "sources.yaml"
+        sources.write_text(
+            "sources:\n"
+            "  - name: X\n"
+            "    url: https://x/feed\n"
+            "    tier: filter\n"
+        )
+        cfg = load_config(config_path=config_file, sources_path=sources)
+        assert set(cfg.sources) == {"X"}
 
     def test_missing_required_env_vars(self, tmp_path, monkeypatch):
         """validate_required_keys should raise if env vars are missing."""

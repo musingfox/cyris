@@ -333,11 +333,12 @@ def load_config(
         logger.warning("Config file not found: %s", config_path)
         raw_toml = {}
 
-    if not sources_path.exists():
-        raise FileNotFoundError(f"Sources file not found: {sources_path}")
-
-    with open(sources_path) as f:
-        raw_yaml = yaml.safe_load(f)
+    if sources_path.exists():
+        with open(sources_path) as f:
+            raw_yaml = yaml.safe_load(f)
+    else:
+        logger.warning("Sources file not found: %s", sources_path)
+        raw_yaml = {}
 
     app_config = AppConfig.model_validate(raw_toml)
 
