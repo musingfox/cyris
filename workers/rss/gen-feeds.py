@@ -17,8 +17,20 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(__file__).parent / "src" / "feeds.json"
 
 
+def sources_path(root: Path) -> Path:
+    primary = root / "sources.yaml"
+    if primary.is_file():
+        return primary
+    fallback = root / "sources.example.yaml"
+    if fallback.is_file():
+        return fallback
+    raise FileNotFoundError(
+        f"neither sources.yaml nor sources.example.yaml found under {root}"
+    )
+
+
 def main() -> None:
-    sources = yaml.safe_load((ROOT / "sources.yaml").read_text(encoding="utf-8"))["sources"]
+    sources = yaml.safe_load(sources_path(ROOT).read_text(encoding="utf-8"))["sources"]
     feeds = [
         {"name": s["name"], "url": s["url"]}
         for s in sources

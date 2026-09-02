@@ -1,7 +1,8 @@
 # cyris-rss — hourly feed buffer on Cloudflare (Miniflux replacement)
 
-Polls every RSS/Atom feed in `sources.yaml` once an hour into **D1**, so the 24h
-digest window has something to read. Replaces what Miniflux actually contributed:
+Polls every RSS/Atom feed in `sources.yaml` (falls back to `sources.example.yaml`
+on a clean clone) once an hour into **D1**, so the 24h digest window has something
+to read. Replaces what Miniflux actually contributed:
 not parsing, but *accumulation*.
 
 ```
@@ -48,7 +49,8 @@ digest crashes. Rows age out after 8 days, matching the ArticleStore's dedup sca
 cd workers/rss
 bun install
 
-# 1. Feed list is a build-time snapshot of sources.yaml — regenerate when it changes
+# 1. Feed list is a build-time snapshot of sources.yaml
+#    (falls back to sources.example.yaml if sources.yaml is absent)
 uv run --with pyyaml python gen-feeds.py
 
 # 2. Create the D1 database, then paste its id into wrangler.toml
