@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 # Grade-B deployment identity. The environment supplies a key the file left
 # absent or empty; a set file value always wins. Named CYRIS_<TABLE>_<KEY>.
 B_GRADE_ENV_VARS: dict[str, str] = {
+    "store.backend": "CYRIS_STORE_BACKEND",
+    "store.database_id": "CYRIS_STORE_DATABASE_ID",
     "html_output.enabled": "CYRIS_HTML_OUTPUT_ENABLED",
     "promote.publish_enabled": "CYRIS_PROMOTE_PUBLISH_ENABLED",
     "promote.pages_project": "CYRIS_PROMOTE_PAGES_PROJECT",
@@ -144,6 +146,17 @@ class StoreConfig(BaseModel):
     database_id: str = ""
     account_id: str = ""
     api_token: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def inject_b_grade(cls, data: object) -> object:
+        return _fill_from_env(
+            data,
+            {
+                "backend": B_GRADE_ENV_VARS["store.backend"],
+                "database_id": B_GRADE_ENV_VARS["store.database_id"],
+            },
+        )
 
     @model_validator(mode="after")
     def inject_credentials(self) -> "StoreConfig":
@@ -290,7 +303,7 @@ class Config(BaseModel):
         missing = []
         if self.app.store.is_d1:
             if not self.app.store.database_id:
-                missing.append("[store] database_id")
+                missing.append("CYRIS_STORE_DATABASE_ID")
             if not self.app.store.account_id:
                 missing.append("CLOUDFLARE_ACCOUNT_ID")
             if not self.app.store.api_token:

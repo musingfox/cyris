@@ -199,7 +199,7 @@ def test_build_store_returns_d1_when_selected(tmp_path: Path) -> None:
 def test_d1_credentials_are_required_before_a_run(tmp_path: Path) -> None:
     cfg = _config(tmp_path, backend="d1", account_id="acct", api_token="tok")
 
-    with pytest.raises(ValueError, match="database_id"):
+    with pytest.raises(ValueError, match="CYRIS_STORE_DATABASE_ID"):
         cfg.validate_required_keys()
 
 

@@ -319,7 +319,8 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Setting | Grade | Today | Target |
 |---|---|---|---|
 | Tier thresholds, batch sizes, model defaults | A | code | unchanged |
-| KV namespace ids, D1 database id | B | `wrangler.toml` | unchanged — Cloudflare rewrites these at deploy |
+| KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
+| Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; file fallback) | done |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |
 | HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
 | Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |

@@ -103,12 +103,7 @@ class TestLoadConfig:
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
         sources = tmp_path / "sources.yaml"
-        sources.write_text(
-            "sources:\n"
-            "  - name: X\n"
-            "    url: https://x/feed\n"
-            "    tier: filter\n"
-        )
+        sources.write_text("sources:\n  - name: X\n    url: https://x/feed\n    tier: filter\n")
         cfg = load_config(config_path=config_file, sources_path=sources)
         assert set(cfg.sources) == {"X"}
 
@@ -171,6 +166,68 @@ class TestPublishingSettingsFromEnv:
         monkeypatch.setenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", "digest.example.org")
         cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
         assert cfg.app.promote.custom_domain == "digest.example.org"
+
+
+class TestStoreBackendFromEnv:
+    def test_env_selects_d1_store(self, monkeypatch):
+        from cyris.bootstrap import build_store
+        from cyris.config import AppConfig, Config
+
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+        monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
+        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+        monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+        cfg = Config(app=AppConfig.model_validate({}), sources={})
+        assert cfg.app.store.is_d1 is True
+        assert cfg.app.store.database_id == "abc"
+        assert type(build_store(cfg)).__name__ == "D1ArticleStore"
+
+    def test_no_file_defaults_to_json(self, tmp_path):
+        from cyris.bootstrap import build_store
+
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
+        assert cfg.app.store.backend == "json"
+        assert type(build_store(cfg)).__name__ == "ArticleStore"
+
+    def test_invalid_backend_raises(self, monkeypatch):
+        from pydantic import ValidationError
+
+        from cyris.config import AppConfig
+
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
+        with pytest.raises(ValidationError, match="backend"):
+            AppConfig.model_validate({})
+
+    def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[store]\nbackend = "json"\n')
+        cfg = _load_tmp(tmp_path, config_file)
+        assert cfg.app.store.backend == "json"
+
+    def test_empty_database_id_yields_to_env(self, monkeypatch):
+        import tomllib
+
+        from cyris.config import AppConfig
+
+        monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
+        raw = tomllib.loads('[store]\nbackend = "d1"\ndatabase_id = ""\n')
+        cfg_app = AppConfig.model_validate(raw)
+        assert cfg_app.store.database_id == "abc"
+
+    def test_d1_without_database_id_names_env_var(self, monkeypatch):
+        from cyris.config import AppConfig, Config
+
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+        cfg = Config(app=AppConfig.model_validate({}), sources={})
+        with pytest.raises(ValueError, match="CYRIS_STORE_DATABASE_ID"):
+            cfg.validate_required_keys()
+
+    def test_b_grade_registry_names_store_keys(self):
+        from cyris.config import B_GRADE_ENV_VARS
+
+        assert B_GRADE_ENV_VARS["store.backend"] == "CYRIS_STORE_BACKEND"
+        assert B_GRADE_ENV_VARS["store.database_id"] == "CYRIS_STORE_DATABASE_ID"
 
 
 class TestRoutingConfig:

@@ -35,8 +35,8 @@ path = "./agent-vault"
 #            `wrangler d1 execute <db> --remote --file=src/cyris/adapters/store/schema.sql`,
 #            copy the local store over with `cyris store migrate`, and compare the
 #            two with `cyris store diff` before switching.
-backend = "json"
-database_id = ""                        # the D1 database holding stored_articles
+backend = "json"                        # or CYRIS_STORE_BACKEND
+database_id = ""                        # or CYRIS_STORE_DATABASE_ID
 # account_id via env: CLOUDFLARE_ACCOUNT_ID
 # API token via env: CLOUDFLARE_API_TOKEN (needs D1 read+write, same token as Pages)
 
