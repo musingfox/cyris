@@ -292,6 +292,10 @@ async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
     """A container that ships no file is not a host that forgot the file."""
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
+    # The premise of this case: the identity arrives as env, not as a file.
+    cfg.app.store.database_id = "db"
+    cfg.app.store.account_id = "acct"
+    cfg.app.store.api_token = "tok"
     cfg.config_file_found = False
 
     checks = await doctor.run_checks(cfg)

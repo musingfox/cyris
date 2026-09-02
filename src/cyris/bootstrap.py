@@ -100,6 +100,13 @@ def build_d1_client(cfg: Config) -> Any | None:
     if not cfg.app.store.is_d1:
         return None
 
+    # Named here, not at the first request: a client built on blank credentials
+    # retries four times and dies on `Bearer ` with nothing a reader can act on,
+    # and it does so a line before `validate_required_keys` would have run.
+    missing = cfg.missing_store_keys()
+    if missing:
+        raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
     from cyris.adapters.store.d1 import D1Client
 
     return D1Client(

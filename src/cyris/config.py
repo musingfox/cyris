@@ -307,6 +307,19 @@ class Config(BaseModel):
     settings_from_d1: list[str] = Field(default_factory=list)
     config_file_found: bool = True
 
+    def missing_store_keys(self) -> list[str]:
+        """Env vars a D1 store needs and does not have; empty when json or complete."""
+        if not self.app.store.is_d1:
+            return []
+        missing = []
+        if not self.app.store.database_id:
+            missing.append("CYRIS_STORE_DATABASE_ID")
+        if not self.app.store.account_id:
+            missing.append("CLOUDFLARE_ACCOUNT_ID")
+        if not self.app.store.api_token:
+            missing.append("CLOUDFLARE_API_TOKEN")
+        return missing
+
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
 
@@ -314,14 +327,7 @@ class Config(BaseModel):
         degraded (excerpt-only) mode, so only a provider that IS set but is
         missing its key counts as an error.
         """
-        missing = []
-        if self.app.store.is_d1:
-            if not self.app.store.database_id:
-                missing.append("CYRIS_STORE_DATABASE_ID")
-            if not self.app.store.account_id:
-                missing.append("CLOUDFLARE_ACCOUNT_ID")
-            if not self.app.store.api_token:
-                missing.append("CLOUDFLARE_API_TOKEN")
+        missing = self.missing_store_keys()
         if self.app.llm_provider.provider and not self.app.llm_provider.api_key:
             missing.append(self.app.llm_provider.api_key_env_var)
         if missing:

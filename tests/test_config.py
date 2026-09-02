@@ -223,6 +223,30 @@ class TestStoreBackendFromEnv:
         with pytest.raises(ValueError, match="CYRIS_STORE_DATABASE_ID"):
             cfg.validate_required_keys()
 
+    def test_d1_client_refuses_empty_credentials_before_any_request(self, monkeypatch):
+        """`backend = d1` with blank creds must name the variable, not retry HTTP 4x."""
+        from cyris import bootstrap
+        from cyris.adapters.store import d1 as d1_module
+        from cyris.config import AppConfig, Config
+
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+        monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+
+        constructed: list[object] = []
+
+        class ExplodingD1Client:
+            def __init__(self, **kwargs):
+                constructed.append(kwargs)
+                raise AssertionError("D1Client must not be constructed without credentials")
+
+        monkeypatch.setattr(d1_module, "D1Client", ExplodingD1Client)
+
+        cfg = Config(app=AppConfig.model_validate({}), sources={})
+        with pytest.raises(ValueError, match="CYRIS_STORE_DATABASE_ID"):
+            bootstrap.build_d1_client(cfg)
+        assert constructed == []
+
     def test_b_grade_registry_names_store_keys(self):
         from cyris.config import B_GRADE_ENV_VARS
 
