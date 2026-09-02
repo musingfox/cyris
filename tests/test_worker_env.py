@@ -4,7 +4,7 @@ from pathlib import Path
 
 from cyris.config import B_GRADE_ENV_VARS
 
-WORKER_JS = Path("workers/app/src/index.js")
+WORKER_JS = Path(__file__).resolve().parents[1] / "workers/app/src/index.js"
 
 _SECRETS = (
     "CLOUDFLARE_ACCOUNT_ID",
