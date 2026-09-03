@@ -41,8 +41,7 @@ This repo's `wrangler.toml` has `workers_dev = true` and no `routes`, so
 Cloudflare dashboard (Workers → your worker → Settings → Domains & Routes) or
 the API. **Known cost:** routing then lives in two places — this file for
 `workers_dev`, the dashboard for the domain — so the Wrangler config is no
-longer the sole source of truth for hostnames. After attaching, set
-`CYRIS_UI_ACCESS_HOST` to that hostname.
+longer the sole source of truth for hostnames.
 
 1. Attach the custom domain from the dashboard. The zone must already be active.
 2. Zero Trust → Access → Applications → Add an application → **Self-hosted**.
@@ -51,6 +50,9 @@ longer the sole source of truth for hostnames. After attaching, set
 3. Check from a browser you are not logged in with: a request carrying a valid
    `cyris_session` cookie still 302s to the Access login. The cookie cannot walk
    past Access.
+4. **Only now** set `CYRIS_UI_ACCESS_HOST` to that hostname. The flag makes
+   `/api/vote` on it skip the cookie check and trust Access instead, so setting
+   it before step 3's 302 receipt leaves those writes open to anyone.
 
 **Consequence worth knowing before you script against an Access host.** Those
 paths 302 to `cloudflareaccess.com` rather than 401. Scripting needs an Access
@@ -73,7 +75,7 @@ bun install                       # or npm install
 
 # CYRIS_UI_TOKEN: openssl rand -hex 32
 # DIGEST_ORIGIN: https://<your-pages-project>.pages.dev
-# CYRIS_UI_ACCESS_HOST: only if you attached a custom domain (that hostname)
+# CYRIS_UI_ACCESS_HOST: only after Access is verified blocking (step 4 above)
 for s in CYRIS_UI_TOKEN DIGEST_ORIGIN \
          CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
          CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
