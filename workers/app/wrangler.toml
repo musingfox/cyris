@@ -2,23 +2,22 @@ name = "cyris-app"
 main = "src/index.js"
 compatibility_date = "2026-06-01"
 
-# One hostname, because an Access application is bound to one. workers.dev is
-# off rather than merely unused: Access cannot protect a workers.dev URL at all
-# (it takes a domain from an active zone), so leaving it reachable would leave a
-# door the outer layer does not cover and make that layer decorative. Preview
-# URLs are off for the same reason — each is another public hostname.
-routes = [{ pattern = "digest.musingfox.me", custom_domain = true }]
-workers_dev = false
+# Fork-neutral top level: a clone deploys to *.workers.dev with no account-
+# specific hostname or Pages project in this file. Custom domains are attached
+# from the Cloudflare dashboard or API — after that, this file is no longer the
+# sole source of truth for routing. Preview URLs stay off: each is another
+# public hostname.
+workers_dev = true
 preview_urls = false
 
 # The hourly tick that used to be docker/crontab + supercronic. It is
 # unconditional on purpose: `cyris run --if-due` asks D1 whether this hour is a
 # digest hour and derives --period from which of the two it is, so changing the
 # times stays a settings write rather than a redeploy.
-# Where the digest archive actually lives. Grade B — deployment identity, same
-# as the Pages project name it points at.
-[vars]
-DIGEST_ORIGIN = "https://cyris-digest.pages.dev"
+#
+# DIGEST_ORIGIN is grade B and deployer-supplied (Worker secret or [vars]), e.g.
+#   DIGEST_ORIGIN = "https://<your-pages-project>.pages.dev"
+# No default is shipped. Unset, the Worker answers 503 on the public archive.
 
 [triggers]
 crons = ["0 * * * *"]
