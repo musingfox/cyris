@@ -22,18 +22,25 @@ def load_fixture(text: str | None = None) -> list[dict]:
     return json.loads(text if text is not None else FIXTURE.read_text())
 
 
+# Path literals in router.js that are not routes this Worker serves. Every other
+# "/…" literal must appear in routes.json — an allow-list of prefixes would let a
+# route outside those prefixes (say /admin/purge) reach the container unnamed.
+ROUTER_PATH_OPT_OUT = {
+    # Appended to CYRIS_PROMOTE_WORKER_URL: a path on the *promote* Worker
+    # upstream, never matched against this Worker's own request URL.
+    "/promote",
+}
+
+
 def triage_route_literals(src: str) -> list[str]:
-    return re.findall(r'add_(?:get|post|delete|static)\("([^"]+)"', src)
+    # add_route takes the method first, so the path is its second string.
+    return re.findall(
+        r'add_(?:get|post|put|patch|delete|head|options|view|static)\("([^"]+)"', src
+    ) + re.findall(r'add_route\(\s*"[^"]+"\s*,\s*"([^"]+)"', src)
 
 
 def router_path_literals(src: str) -> list[str]:
-    lits = re.findall(r'"(/[^"]*)"', src)
-    return [
-        lit
-        for lit in lits
-        if lit == "/"
-        or lit.startswith(("/api", "/static", "/login", "/run", "/settings", "/triage"))
-    ]
+    return [lit for lit in re.findall(r'"(/[^"]*)"', src) if lit not in ROUTER_PATH_OPT_OUT]
 
 
 def assert_triage_covered(fixture: list[dict], triage_src: str) -> None:
@@ -90,9 +97,16 @@ def test_missing_schedule_row_is_named():
 
 
 def test_new_router_path_without_fixture_row_is_named():
-    src = ROUTER.read_text() + '\nconst extra = "/api/purge";\n'
-    with pytest.raises(AssertionError, match=r"/api/purge"):
+    src = ROUTER.read_text() + '\nconst extra = "/admin/purge";\n'
+    with pytest.raises(AssertionError, match=r"/admin/purge"):
         assert_router_covered(load_fixture(), src)
+
+
+def test_add_route_registration_without_fixture_row_is_named():
+    added = '\n        self._app.router.add_route("PUT", "/api/nuke", self._handle_index)\n'
+    src = TRIAGE.read_text() + added
+    with pytest.raises(AssertionError, match=r"/api/nuke"):
+        assert_triage_covered(load_fixture(), src)
 
 
 def test_wrangler_toml_is_fork_neutral():
