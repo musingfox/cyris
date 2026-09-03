@@ -65,19 +65,19 @@ Nothing below the first row is required. Start at the top and add only what you 
 |---|---|---|
 | RSS digest, HTML output | An LLM API key | LLM usage only |
 | Better feed coverage (see below) | A Cloudflare account, Workers Paid | US$5/mo |
-| Production schedule + public triage UI | Same Workers Paid plan; Access needs **your own domain** | same US$5/mo |
+| Production schedule + public triage UI | Same Workers Paid plan; a domain is an optional Access layer | same US$5/mo |
 | Digest votes 👍/👎 | A Cloudflare account | Free tier |
 | Published HTML digest | A Cloudflare account | Free tier |
 | **Email-only newsletters** | A Cloudflare account **and your own domain** | Domain registration |
 | State in the cloud (`[store] backend = "d1"`) | A Cloudflare account | Free tier |
 | Vote-similarity filtering | A Workers AI embedding token, or Gemini | Inference only |
 
-**The domain is the one thing that cannot be automated away.** Cloudflare Email
-Routing needs a domain you control, so email-only newsletters — the ones with no
-feed at all — need one too. Cloudflare Access (the outer lock on the triage UI)
-cannot sit in front of `*.workers.dev` either. Everything else works on a
-`*.workers.dev` subdomain. Newsletters that publish RSS (Substack, Ghost, and most
-others) are just feeds; they need nothing extra.
+**Email Routing is the one thing that cannot be automated away.** It needs a
+domain you control, so email-only newsletters — the ones with no feed at all —
+need one too. The triage UI and digest archive run on `*.workers.dev` with the
+`CYRIS_UI_TOKEN` cookie as the only lock. Cloudflare Access is an optional second
+layer if you attach your own hostname. Newsletters that publish RSS (Substack,
+Ghost, and most others) are just feeds; they need nothing extra.
 
 ### Where RSS comes from
 
@@ -118,8 +118,8 @@ cyris runs as a Cloudflare Container fronted by a Worker — the schedule is an 
 Workers Cron Trigger (`cyris run --if-due` plus `promote-sync`, then the instance
 exits), and the triage UI wakes on request and sleeps again. Digest hours live in D1,
 so changing them does not need a rebuild. See [`workers/app/README.md`](workers/app/README.md)
-for the deploy steps, the secret list, and the two auth layers (Cloudflare Access +
-`CYRIS_UI_TOKEN`).
+for the deploy steps, the secret list, and auth (`CYRIS_UI_TOKEN` cookie, with
+optional Cloudflare Access on a hostname you own).
 
 ```bash
 cp .env.example .env        # API keys: ANTHROPIC/GEMINI/OPENAI, CYRIS_WORKER_TOKEN, ...

@@ -11,74 +11,55 @@ Replaces the Mac mini's `docker compose` + supercronic (§7 M5).
 
 ## Auth
 
-Two layers, deliberately:
+One layer always, a second if you own a domain.
 
-1. **Cloudflare Access** on the Worker's route — who you are (email policy, MFA,
-   audit log). Dashboard only, and manual on purpose: the domain and the policy
-   are grade-B deployment identity (`docs/architecture.md` §5), so automating
-   them here would tie the repo to one account. It needs a custom
-   domain: `workers.dev` cannot be put behind Access at all. This deployment is
-   routed at **`digest.musingfox.me`** with `workers_dev = false`; the
-   application itself is still to be created — see below.
-2. **The `CYRIS_UI_TOKEN` secret**, checked in `src/index.js` before anything
+1. **The `CYRIS_UI_TOKEN` secret**, checked in `src/router.js` before anything
    reaches the container. `/login` takes the token and sets an HttpOnly cookie
-   holding its SHA-256. A request without the cookie gets the form (browser) or
-   `401` (anything else).
+   holding its SHA-256, compared in constant time. A request without the cookie
+   gets the form (browser) or `401` (anything else). Generate one with
+   `openssl rand -hex 32` — `/login` refuses to mint a session if the secret is
+   shorter than 32 characters. Revocation is rotate `CYRIS_UI_TOKEN`; every
+   outstanding cookie dies at once.
+2. **Cloudflare Access**, optional, on a hostname you own. Dashboard only, and
+   manual on purpose: the domain and the policy are grade-B deployment identity
+   (`docs/architecture.md` §5). Access cannot protect `workers.dev`. Set
+   `CYRIS_UI_ACCESS_HOST` to that hostname so `/api/vote` on it stays Access-only
+   (a reader who already passed Access does not log in again). On every other
+   hostname the cookie is required.
 
-Layer 2 deploys with the Worker, so a route that has not been put behind Access
-yet is still not an open write surface.
+A fork on `*.workers.dev` is a complete install: cookie only. A domain is an
+optional second layer.
 
-### Putting Access in front (the part that is not `wrangler deploy`)
+### Putting Access in front (optional)
 
 **Access cannot protect a `workers.dev` URL.** An Access application takes "a
 domain from an active zone in your Cloudflare account, or a custom hostname via
-Cloudflare for SaaS" — and `workers.dev` is neither. So the order is: give the
-Worker a hostname you own, close the one you don't, then write the policy.
+Cloudflare for SaaS" — and `workers.dev` is neither.
 
-1. ~~**Route the Worker at your own domain.**~~ Done 2026-08-30:
+This repo's `wrangler.toml` has `workers_dev = true` and no `routes`, so
+`wrangler deploy` does not need a domain. Attach a custom domain from the
+Cloudflare dashboard (Workers → your worker → Settings → Domains & Routes) or
+the API. **Known cost:** routing then lives in two places — this file for
+`workers_dev`, the dashboard for the domain — so the Wrangler config is no
+longer the sole source of truth for hostnames. After attaching, set
+`CYRIS_UI_ACCESS_HOST` to that hostname.
 
-   ```toml
-   routes = [{ pattern = "digest.musingfox.me", custom_domain = true }]
-   ```
+1. Attach the custom domain from the dashboard. The zone must already be active.
+2. Zero Trust → Access → Applications → Add an application → **Self-hosted**.
+   Set the domain to the hostname you attached, policy Action **Allow**, rule
+   **Emails** → your address. Applications are deny-by-default.
+3. Check from a browser you are not logged in with: a request carrying a valid
+   `cyris_session` cookie still 302s to the Access login. The cookie cannot walk
+   past Access.
 
-   `wrangler deploy` created the DNS record. The zone must already be active on
-   the account.
+**Consequence worth knowing before you script against an Access host.** Those
+paths 302 to `cloudflareaccess.com` rather than 401. Scripting needs an Access
+**service token** (`CF-Access-Client-Id` / `CF-Access-Client-Secret` headers,
+plus a Service Auth policy). Nothing automated needs this today: the pipeline
+talks to D1 and the three Workers directly and never to its own UI.
 
-2. ~~**Turn `workers.dev` off in the same change**~~ — `workers_dev = false`,
-   done in the same deploy. It is the step that is easy to skip and expensive to
-   skip: Access binds to one hostname, so leaving
-   `cyris-app.<subdomain>.workers.dev` reachable leaves a door Access does not
-   cover, and the whole layer becomes decorative. (The token check still holds
-   it, which is the point of having two layers, but a layer you believe in and
-   do not have is worse than one you know you lack.) Receipt: the workers.dev
-   URL answers **404**, the custom domain answers 401 unauthenticated and serves
-   the deck once logged in.
-
-3. ~~**Create the application.**~~ Done 2026-08-30, on team domain
-   `musingfox.cloudflareaccess.com`. Zero Trust → Access → Applications → Add an
-   application → **Self-hosted**. Name it, set the domain to
-   `digest.musingfox.me`, and add a policy: Action **Allow**, rule **Emails** →
-   your address. Applications are deny-by-default, so no other rule is needed.
-
-4. ~~**Check it from a browser you are not logged in with.**~~ Verified with
-   `curl`, which is stricter than a private window: a request carrying a *valid*
-   `cyris_session` cookie still 302s to the Access login. Layer 2 cannot be used
-   to walk past layer 1.
-
-**Consequence worth knowing before you script against this.** Every path is
-behind Access now, `/api/*` included, so a scripted client gets a 302 to
-`cloudflareaccess.com` rather than a 401 — the `CYRIS_UI_TOKEN` cookie is no
-help. Scripting needs an Access **service token** (`CF-Access-Client-Id` /
-`CF-Access-Client-Secret` headers, plus a Service Auth policy on the
-application). Nothing automated needs this today: the pipeline talks to D1 and
-the three Workers directly and never to its own UI.
-
-Cyris does not validate the Access JWT itself. It could — the
-`Cf-Access-Jwt-Assertion` header is there, and Cloudflare documents verifying it
-against the team JWKS — but a request only reaches the Worker after Access has
-allowed it, so verifying again would only defend against someone who can already
-route traffic to the origin. The two layers are already independent; a third
-copy of layer 1 is not a third layer.
+Cyris does not validate the Access JWT itself. A third copy of layer 1 is not a
+third layer.
 
 ## Deploy
 
@@ -90,10 +71,11 @@ overrides your OAuth login.
 ```sh
 bun install                       # or npm install
 
-# Every secret the container needs. CYRIS_UI_TOKEN is the login above; the rest
-# are the same values .env holds for a local run. CYRIS_PROMOTE_WORKER_URL should
-# match [promote] worker_url in cyris.toml.
-for s in CYRIS_UI_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
+# CYRIS_UI_TOKEN: openssl rand -hex 32
+# DIGEST_ORIGIN: https://<your-pages-project>.pages.dev
+# CYRIS_UI_ACCESS_HOST: only if you attached a custom domain (that hostname)
+for s in CYRIS_UI_TOKEN DIGEST_ORIGIN \
+         CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
          CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
          CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL CYRIS_DISCORD_WEBHOOK_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
@@ -107,10 +89,16 @@ Grade-B identity is the same names the Python process already reads
 (`CYRIS_STORE_BACKEND`, `CYRIS_STORE_DATABASE_ID`, `CYRIS_HTML_OUTPUT_ENABLED`,
 `CYRIS_PROMOTE_PUBLISH_ENABLED`, `CYRIS_PROMOTE_PAGES_PROJECT`,
 `CYRIS_PROMOTE_CUSTOM_DOMAIN`, `CYRIS_PROMOTE_WORKER_URL`,
-`CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL`). Set each as a Worker
-secret or in `[vars]` on your own fork. Leave a name unset or empty and the
-Worker omits it from the container env rather than forwarding the string
-`undefined`. This repo does not ship values for them.
+`CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL`) plus two Worker-only
+keys: `DIGEST_ORIGIN` (the Pages origin this Worker proxies) and
+`CYRIS_UI_ACCESS_HOST` (the hostname Access is bound to; unset = cookie-only).
+Set each as a Worker secret or in `[vars]` on your own fork. Leave a name unset
+or empty and the Worker omits it from the container env rather than forwarding
+the string `undefined`. This repo does not ship values for them.
+
+On a domainless deploy, set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to your
+`*.workers.dev` hostname so Discord links land where `/api/vote` exists. If it
+stays empty, readers follow `pages.dev` and the vote probe 404s.
 
 The image is built from the repo root. Settings and sources are read from D1;
 changing a *setting* is a write on `/settings`. Worker URLs and the Pages

@@ -325,6 +325,8 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
 | Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (file fallback) | done |
+| UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
+| Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies) | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, two Cloudflare tokens, one Worker bearer, one *published* vote token | C (the vote token is not a secret) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
@@ -468,38 +470,13 @@ existing `finally: await server.stop()` runs. Anything else that ever becomes PI
 inherits the same obligation. Receipt: last request 08:11:18Z on 2026-08-31, `container stopped
 { exitCode: 0, reason: 'exit' }` at 08:16:31Z — 5 min 13 s — and the instance back to `inactive`.
 
-**Auth is two layers** (`workers/app/`), and they answer different questions. Cloudflare Access on
-the route decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: the
-hostname and the policy are grade-B deployment identity, so automating them would tie the repo to
-one account. `CYRIS_UI_TOKEN` decides whether a request carries this deployment's own secret:
-`/login` sets an HttpOnly cookie holding the token's SHA-256, and anything without it gets the form
-or a `401` before a byte reaches the container. Layer 2 deploys with the Worker, so a route not yet
-behind Access is still not an open write surface. Preview URLs are disabled for the same reason an
-Access application is bound to a hostname: a second public hostname is a second door.
+**Auth is one layer always, two if you own a domain** (`workers/app/`). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. That layer deploys with the Worker, so a `*.workers.dev` fork is not an open write surface. Preview URLs stay disabled: a second public hostname is a second door.
 
-**Layer 1 needed a hostname, and that is why it took a second step.** An Access application
-takes a domain from an active zone on the account, or a Cloudflare-for-SaaS custom hostname.
-`workers.dev` is neither, so `cyris-app.<subdomain>.workers.dev` **could not** be put behind Access
-at any price. Both halves landed on 2026-08-30: the Worker is routed at `digest.musingfox.me`
-(`custom_domain = true`) with `workers_dev` **off** — Access binds to one hostname, so a live
-workers.dev URL beside it would have been a door Access does not cover, decorative rather than
-absent — and the Access application was then created on that hostname.
+Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: automating the hostname and the policy would tie the repo to one account. Access cannot sit in front of `workers.dev` at any price (it takes a domain from an active zone, or a Cloudflare-for-SaaS custom hostname). Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required.
 
-**Both layers verified from outside, in the right order.** An unauthenticated request 302s to
-`musingfox.cloudflareaccess.com/cdn-cgi/access/login/digest.musingfox.me` with `auth_status: NONE`;
-a request carrying a *valid* cyris session cookie gets the same redirect, which is the property that
-matters — layer 2 cannot be used to walk past layer 1. workers.dev answers 404.
+`wrangler.toml` ships with `workers_dev = true` and no `routes`, so a clone deploys unmodified. Custom domains are attached from the dashboard or API, which means the file is then not the sole source of truth for routing.
 
-**What this costs: every path is now browser-shaped.** `/api/*` redirects like everything else, so
-scripted access needs an Access **service token** (`CF-Access-Client-Id` / `CF-Access-Client-Secret`
-plus a Service Auth policy), not the `CYRIS_UI_TOKEN` cookie. Nothing automated depends on this
-today — the pipeline talks to D1 and the three Workers directly, never to its own UI — but a future
-script would hit a redirect rather than a 401 and should be told why.
-
-Cyris still does not validate `Cf-Access-Jwt-Assertion`, which now arrives on every request. A
-request reaches the Worker only after Access allowed it, so verifying again defends only against
-someone who can already route traffic to the origin: that is a second copy of layer 1, not a third
-layer.
+Cyris still does not validate `Cf-Access-Jwt-Assertion`. A request reaches the Worker on an Access host only after Access allowed it; verifying again defends only against someone who can already route traffic to the origin: that is a second copy of layer 1, not a third layer. On workers.dev the header is not a credential.
 
 **Known failure mode.** Code is baked into the image; config is bind-mounted. The two can drift
 arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"` from a current
@@ -749,16 +726,16 @@ All three are on `digest.musingfox.me` since 2026-08-30, split by path rather th
 ```
 /                       digest index      ─┐ public: the Worker proxies Pages,
 /2026-08-30-evening.html  one digest      ─┘ no container, no auth
-/triage · /settings · /api/* · /static/*    Access + CYRIS_UI_TOKEN + container
+/triage*                                    404; the deck is at /static/index.html
+/settings · /api/* · /static/*              CYRIS_UI_TOKEN cookie; Access too if
+                                            CYRIS_UI_ACCESS_HOST matches this host
 ```
 
 The split is what "behind one Worker" should have meant. Serving the digest *from the container*
 would wake a container to hand back a file Cloudflare already holds, and putting the archive of
 record behind an auth layer would turn every Discord link into a login — so the Worker proxies
-`DIGEST_ORIGIN` for anything not on the protected list, which costs one Worker request. The deck
-answers on both `/` and `/triage`: `/` is what it serves on localhost, `/triage` is what it answers
-on where the root belongs to the digest. Two routes on one handler, rather than rewriting every
-absolute URL in three static files.
+`DIGEST_ORIGIN` for anything not on the protected list, which costs one Worker request. `/triage*`
+returns 404; the deck is at `/static/index.html`.
 
 ~~**The archive is public, and what needs closing is the write, not the read.** Anyone holding a
 digest link can vote today: `_promote_script.html.j2` renders the promote bearer into every
@@ -772,11 +749,7 @@ votes go to a same-origin `POST /api/vote` on the Worker, which attaches the bea
 the buttons render only where that endpoint is reachable and authorised. The same file then gives a
 reader on `pages.dev` everything except the ability to vote, and a reader on `digest.musingfox.me`
 — past Access — the whole thing. No second rendering, no second Access application, no service
-token.~~ **Done 2026-09-01** (`private-votes-public-archive`): the token stays server-side only,
-votes go through `POST /api/vote` (Access-only, no UI token), and vote buttons probe `/api/vote`
-to detect whether they should render. `pages.dev` readers see no buttons; `digest.musingfox.me`
-past Access sees them. One HTML, two capabilities. `CYRIS_PROMOTE_TOKEN` is now kept separate from
-`CYRIS_WORKER_TOKEN` and never rendered into templates.
+token.~~ **Done 2026-09-01** (`private-votes-public-archive`), then the domainless form: the token stays server-side only, votes go through `POST /api/vote`, and vote buttons probe `/api/vote` to detect whether they should render. On a hostname equal to `CYRIS_UI_ACCESS_HOST`, the probe and the POST stay Access-only (no UI token). On every other hostname the session cookie is required, so a stranger on `*.workers.dev` cannot write a human verdict. `pages.dev` readers still see no buttons (`/api/vote` is not routed there). One HTML, two capabilities. `CYRIS_PROMOTE_TOKEN` is kept separate from `CYRIS_WORKER_TOKEN` and never rendered into templates.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|

@@ -25,8 +25,9 @@
     // Capability probe: check if /api/vote is available before showing buttons and Settings.
     // Contract (do not follow Access redirects):
     // - pages.dev (or any host without Worker): 404, or 200 HTML (fallback) → fail closed
-    // - digest.musingfox.me unauthenticated: 401 or 302 (Access) → fail closed
-    // - digest.musingfox.me past Access: 200 JSON {"authorized":true} → show buttons
+    // - hostname == CYRIS_UI_ACCESS_HOST, unauthenticated: 401 or 302 (Access) → fail closed
+    // - hostname == CYRIS_UI_ACCESS_HOST, past Access: 200 JSON {"authorized":true} → show buttons
+    // - any other Worker hostname (*.workers.dev): 200 JSON only with a valid cyris_session cookie
     (async () => {
         try {
             const resp = await fetch('/api/vote', {
