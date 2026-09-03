@@ -70,8 +70,18 @@ class D1Settings:
 def apply_to(cfg: Any, stored: dict[str, Any]) -> list[str]:
     """Overlay stored settings onto a loaded Config. Returns the keys applied."""
     applied = []
+    overrides: dict[str, dict[str, Any]] = {}
     for key, value in stored.items():
         table, field = key.split(".", 1)
-        setattr(getattr(cfg.app, table), field, value)
+        overrides.setdefault(table, {})[field] = value
         applied.append(key)
+    # Rebuild each table rather than setattr-ing into it: a plain assignment
+    # skips the model validators, and some of them derive one field from
+    # another. `llm_provider.api_key` is read from the env var named by
+    # `provider`, so a D1 row that flips the provider must re-run that
+    # injection — otherwise the key stays empty and the run dies naming an
+    # environment variable that is in fact set.
+    for table, fields in overrides.items():
+        current = getattr(cfg.app, table)
+        setattr(cfg.app, table, type(current).model_validate(current.model_dump() | fields))
     return applied

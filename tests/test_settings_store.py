@@ -66,3 +66,21 @@ def test_a_key_d1_does_not_hold_keeps_its_file_value():
     apply_to(cfg, {"llm_provider.provider": "openai"})
 
     assert cfg.app.general.digest_schedule == ["08:00", "20:00"]
+
+
+def test_a_provider_from_d1_still_picks_up_its_api_key(monkeypatch):
+    """Regression: `apply_to` used to `setattr` straight into the table, which
+    skips the model validators. With no `cyris.toml` in the image the provider
+    is unset at construction, so `inject_api_key` never ran; D1 then flipped the
+    provider and the key stayed empty — the run died naming an environment
+    variable that was in fact set. Deployed 2026-09-04, caught in production."""
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key-from-env")
+    cfg = Config(app=AppConfig.model_validate({}), sources={})
+    assert cfg.app.llm_provider.provider is None
+    assert cfg.app.llm_provider.api_key == ""
+
+    apply_to(cfg, {"llm_provider.provider": "gemini"})
+
+    assert cfg.app.llm_provider.provider == "gemini"
+    assert cfg.app.llm_provider.api_key == "gemini-key-from-env"
+    cfg.validate_required_keys()
