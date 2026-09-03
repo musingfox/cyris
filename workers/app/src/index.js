@@ -1,16 +1,12 @@
 // The Worker in front of the cyris Container: the hourly tick, and the only
 // door to /settings.
 //
-// Auth is two layers, and they answer different questions. Cloudflare Access
-// sits on the route and decides *who* — email policy, MFA, audit log, no code
-// here. The cookie below decides *whether this request carries the deployment's
-// own secret*, so a misconfigured Access application is not the only thing
-// between the internet and a write surface. Access is a dashboard step (§5
-// grade B); this half deploys with a secret.
+// Auth is one layer always — the CYRIS_UI_TOKEN cookie, checked in router.js
+// before anything reaches the container. Cloudflare Access is an optional
+// second layer on the hostname named by CYRIS_UI_ACCESS_HOST (grade B).
 import { Container, getContainer } from "@cloudflare/containers";
 import { env } from "cloudflare:workers";
-
-const COOKIE = "cyris_session";
+import { handleRequest } from "./router.js";
 
 // Every secret the pipeline reads from the environment. The provider is a
 // runtime setting in D1, so all three LLM keys ride along — passing only the
@@ -79,146 +75,6 @@ export class CyrisContainer extends Container {
   }
 }
 
-const sha256 = async (text) => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-};
-
-const cookieOf = (request) =>
-  (request.headers.get("Cookie") || "")
-    .split(";")
-    .map((c) => c.trim().split("="))
-    .find(([k]) => k === COOKIE)?.[1];
-
-// The cookie is the token's digest, so the secret itself is never at rest in a
-// browser and the comparison is between two fixed-length hex strings.
-async function authorized(request) {
-  const token = env.CYRIS_UI_TOKEN;
-  if (!token) return false;
-  const cookie = cookieOf(request);
-  return Boolean(cookie) && cookie === (await sha256(token));
-}
-
-const LOGIN_PAGE = (message) => `<!DOCTYPE html>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cyris</title>
-<style>
- body{background:#111;color:#eee;font:14px/1.6 system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
- form{display:flex;flex-direction:column;gap:.8rem;width:min(20rem,80vw)}
- input,button{padding:.7rem;border-radius:6px;border:1px solid #333;font:inherit}
- input{background:#1b1b1b;color:#eee}
- button{background:#c6ff3d;color:#111;border:0;font-weight:600;cursor:pointer}
- p{color:#ff5b8a;margin:0}
-</style>
-<form method="POST" action="/login">
-  <input type="password" name="token" placeholder="access token" autofocus autocomplete="current-password">
-  <button type="submit">Enter</button>
-  ${message ? `<p>${message}</p>` : ""}
-</form>`;
-
-// The two jobs this hostname does, split by path. Everything not listed here is
-// the digest archive, which is public: it is the archive of record, and every
-// link to it in Discord would otherwise become a login.
-const PROTECTED = (path) =>
-  path === "/settings" ||
-  path === "/login" ||
-  path === "/run" ||
-  path.startsWith("/api/") ||
-  path.startsWith("/static/");
-
-// Vote auth is Access only — digest readers can vote without the UI token.
-// Everything else in /api/* (settings, sources) stays two-layer.
-const VOTE_ONLY = (path) => path === "/api/vote";
-
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
-
-    // /triage was removed in M1; return 404 instead of proxying to the archive.
-    if (url.pathname === "/triage" || url.pathname.startsWith("/triage/")) {
-      return new Response("Not Found", { status: 404, headers: { "Content-Type": "text/plain" } });
-    }
-
-    // The digest is a static snapshot Cloudflare already holds. Proxying it
-    // costs one Worker request; serving it from the container would wake a
-    // container to hand back a file.
-    if (!PROTECTED(url.pathname)) {
-      return fetch(new Request(env.DIGEST_ORIGIN + url.pathname + url.search, request));
-    }
-
-    if (url.pathname === "/login") {
-      if (request.method !== "POST") return html(LOGIN_PAGE(""));
-      const form = await request.formData();
-      if (form.get("token") !== env.CYRIS_UI_TOKEN) return html(LOGIN_PAGE("Wrong token."), 401);
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: "/",
-          "Set-Cookie": `${COOKIE}=${await sha256(env.CYRIS_UI_TOKEN)}; HttpOnly; Secure; ` +
-            "SameSite=Lax; Path=/; Max-Age=2592000",
-        },
-      });
-    }
-
-    // Vote endpoint: Access-only, no UI token required.
-    // Capability probe contract (static page JS, do not follow Access redirects):
-    // - pages.dev (or any host without the Worker): 404
-    // - digest.musingfox.me, unauthenticated: 401 or 302 (Access)
-    // - digest.musingfox.me, past Access: 2xx
-    if (VOTE_ONLY(url.pathname)) {
-      // HEAD/GET for capability probe: if Access let us reach here, return 2xx
-      if (request.method === "HEAD" || request.method === "GET") {
-        return json({ authorized: true }, 200);
-      }
-      if (request.method !== "POST") {
-        return json({ error: "method not allowed" }, 405);
-      }
-      // Cloudflare Access sits in front; if we reach here, the user is authenticated.
-      // Forward to the promote Worker with the server-side token.
-      const promoteUrl = env.CYRIS_PROMOTE_WORKER_URL;
-      if (!promoteUrl) {
-        return json({ error: "promote worker not configured" }, 503);
-      }
-      try {
-        const body = await request.json();
-        const resp = await fetch(promoteUrl + "/promote", {
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer " + env.CYRIS_PROMOTE_TOKEN,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        });
-        // Pass through the promote Worker's response
-        return new Response(resp.body, {
-          status: resp.status,
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (e) {
-        return json({ error: "promote worker failed" }, 502);
-      }
-    }
-
-    if (!(await authorized(request))) {
-      // A browser gets the form; anything else gets the status code, so an
-      // unauthenticated API call fails loudly instead of parsing HTML.
-      const wantsHtml = (request.headers.get("Accept") || "").includes("text/html");
-      return wantsHtml ? html(LOGIN_PAGE(""), 401) : json({ error: "unauthorized" }, 401);
-    }
-
-    // The scheduled tick without waiting an hour for it.
-    if (request.method === "POST" && url.pathname === "/run") {
-      return json(await startRun());
-    }
-
-    return getContainer(env.CYRIS, "ui").fetch(request);
-  },
-
-  async scheduled() {
-    await startRun();
-  },
-};
-
 // A separate instance from the UI: this one runs the pipeline once and exits,
 // so it stops billing without waiting for a sleep timer.
 async function startRun() {
@@ -226,11 +82,16 @@ async function startRun() {
   return { started: "run", at: new Date().toISOString() };
 }
 
-const html = (body, status = 200) =>
-  new Response(body, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
+export default {
+  async fetch(request) {
+    return handleRequest(request, env, {
+      container: (r) => getContainer(env.CYRIS, "ui").fetch(r),
+      startRun,
+      fetchImpl: (input, init) => fetch(input, init),
+    });
+  },
 
-const json = (body, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  async scheduled() {
+    await startRun();
+  },
+};

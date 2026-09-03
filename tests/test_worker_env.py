@@ -4,7 +4,9 @@ from pathlib import Path
 
 from cyris.config import B_GRADE_ENV_VARS
 
-WORKER_JS = Path(__file__).resolve().parents[1] / "workers/app/src/index.js"
+ROOT = Path(__file__).resolve().parents[1]
+WORKER_JS = ROOT / "workers/app/src/index.js"
+ROUTER_JS = ROOT / "workers/app/src/router.js"
 
 _SECRETS = (
     "CLOUDFLARE_ACCOUNT_ID",
@@ -29,3 +31,9 @@ def test_worker_still_names_every_secret():
     text = WORKER_JS.read_text()
     for name in _SECRETS:
         assert name in text, f"{name} must still appear in {WORKER_JS}"
+
+
+def test_worker_names_access_host_and_digest_origin():
+    text = WORKER_JS.read_text() + ROUTER_JS.read_text()
+    assert "CYRIS_UI_ACCESS_HOST" in text
+    assert "DIGEST_ORIGIN" in text
