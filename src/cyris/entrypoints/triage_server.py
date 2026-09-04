@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from aiohttp import web
 from pydantic import ValidationError
 
+from cyris.domain.language import language_sort_key
 from cyris.domain.models import ArticleState, SourceConfig
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.ports import ArticleRepository
@@ -144,8 +145,7 @@ class TriageServer:
 
         # Secondary sort: Chinese first on score ties (stable sort preserves score order)
         def _lang_key(a):
-            lang_order = {"zh": 0, "en": 1}
-            return lang_order.get(a.language, 2)
+            return language_sort_key(a.language)
 
         articles.sort(key=_lang_key)
         # Re-sort by score descending (stable sort preserves language order within ties)

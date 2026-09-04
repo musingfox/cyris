@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from cyris.domain.language import language_sort_key
 from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
 
 logger = logging.getLogger(__name__)
@@ -269,9 +270,7 @@ class ArticleStore:
                     return (float("inf"),) if not descending else (float("-inf"),)
                 return (val,)
             if sort_by == "language":
-                # Chinese first: zh=0, en=1, None=2
-                lang_order = {"zh": 0, "en": 1}
-                return (lang_order.get(val, 2),)
+                return (language_sort_key(val),)
             return (val,)
 
         reverse = descending

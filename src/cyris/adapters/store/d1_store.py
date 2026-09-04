@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from cyris.adapters.store.d1 import D1Queryable, chunk_rows
+from cyris.domain.language import LANGUAGE_SORT_ORDER
 from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ COLUMNS = (
 # `WHERE url IN (?, ?, ...)` plus whatever the statement sets, kept under 100.
 _URLS_PER_STATEMENT = 90
 
+_LANGUAGE_CASE = " ".join(f"WHEN '{code}' THEN {i}" for i, code in enumerate(LANGUAGE_SORT_ORDER))
+
 _SORT_EXPRESSIONS = {
     "first_seen_at": "first_seen_at {dir}",
     "published_at": "published_at {dir}",
@@ -49,8 +52,9 @@ _SORT_EXPRESSIONS = {
     # `IS NULL ASC` is not a typo: unscored articles sort last in both
     # directions, which is what the JSON store's ±inf sort key does.
     "score": "score IS NULL ASC, score {dir}",
-    # Chinese first: the same zh/en/other ordering the JSON store applies.
-    "language": "CASE language WHEN 'zh' THEN 0 WHEN 'en' THEN 1 ELSE 2 END {dir}",
+    # Chinese first, built from LANGUAGE_SORT_ORDER so it cannot drift from the
+    # JSON store's key function.
+    "language": f"CASE language {_LANGUAGE_CASE} ELSE {len(LANGUAGE_SORT_ORDER)} END {{dir}}",
 }
 
 
