@@ -17,7 +17,7 @@ TIMEOUT_SECONDS = 15
 class PromotedArticle(BaseModel):
     url: str
     # "up" or "down". Legacy payloads (vote-less, or "deep" from digests published
-    # before the 深讀 button was dropped) are anything-but-"down", so they accept.
+    # before the deep-read button was dropped) are anything-but-"down", so they accept.
     vote: str = "up"
     digest_date: str | None = None
     ts: str | None = None

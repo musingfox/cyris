@@ -2,7 +2,7 @@
 
 The unit of preference here is deliberately narrower than a feed and wider than a
 single article. A downvote on a lottery draw means "this kind of article", not
-"this source" — suppressing 中央社財經 wholesale would take 1,193 unrelated
+"this source" — suppressing the finance newswire wholesale would take 1,193 unrelated
 articles with it, while the class the vote actually points at is 71.
 
 Re-measured 2026-08-10 with gemini-embedding-001 over the whole 5,724-article store
@@ -25,7 +25,8 @@ from dataclasses import dataclass
 # high: the cost of the two errors is not symmetric. A false positive silently
 # deletes an article the reader might have wanted; a miss just lets one through.
 # The band is only 0.017 wide, so this is a real setting, not a round number —
-# 0.62 would suppress 18 unvoted articles, including every 統一發票千萬獎 headline.
+# 0.62 would suppress 18 unvoted articles, including every receipt-lottery jackpot
+# headline — measured, not hypothetical; those are not what the two downvotes meant.
 # ponytail: an absolute cutoff is the wrong shape and this constant is already
 # stale. `max_similarity` takes a maximum over the seed list, and a maximum over a
 # growing set can only rise — so every downvote raises every candidate's

@@ -69,7 +69,7 @@ def test_an_unpriced_run_still_builds_a_discord_payload():
     embeds = build_discord_embeds(content)
 
     assert embeds  # the stats embed always goes out
-    assert "費用" not in " ".join(e.get("description", "") for e in embeds)
+    assert "Cost" not in " ".join(e.get("description", "") for e in embeds)
 
 
 def test_an_unpriced_run_logs_a_null_cost_not_a_zero(tmp_path):

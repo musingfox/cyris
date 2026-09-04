@@ -130,7 +130,8 @@ class GeminiEmbedder:
 class WorkersAIEmbedder:
     """Embeds text via Workers AI `@cf/baai/bge-m3`. 1024 dimensions, already unit-length.
 
-    Multilingual, which the 62%-中央社 corpus requires — the English-only trap is the
+    Multilingual, which a corpus 62% of which is Chinese-language newswire requires — the
+    English-only trap is the
     `bge-*-en-v1.5` family, not this model. Its cosines run lower than Gemini's across
     the board, so its threshold is its own (~0.53 against ~0.68); the scale differs,
     the discrimination does not.

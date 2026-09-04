@@ -44,7 +44,7 @@ sources:
   # `type: newsletter` + `email_match` instead of a url; needs the [newsletter] Worker
   # configured in cyris.toml (see docs). Matches incoming mail by From: header.
   # `homepage` is where this newsletter publishes, and it does two jobs. Its host tells
-  # the extractor which links in the email are the sender's own, so the issue's 原文 link
+  # the extractor which links in the email are the sender's own, so the issue's canonical link
   # comes from those rather than from whichever domain the issue happens to quote most.
   # And when an issue carries no link at all (some newsletters wrap every href per
   # recipient), it is offered as a reference link so the reader still has somewhere to

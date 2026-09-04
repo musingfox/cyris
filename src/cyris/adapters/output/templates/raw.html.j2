@@ -220,7 +220,7 @@
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>
-                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>
+                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="promote-btn" data-vote="up" title="More like this">↑</button><button class="promote-btn" data-vote="down" title="Less like this">↓</button></span>
             </div>
             {% endfor %}
         </section>

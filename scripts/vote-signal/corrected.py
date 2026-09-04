@@ -1,4 +1,5 @@
-"""Corrected ground truth. The first run's 'lottery' regex missed 頭獎槓龜 variants,
+"""Corrected ground truth. The first run's 'lottery' regex missed the no-winner
+phrasings (a draw with no jackpot winner is still a draw report),
 so T2/T3 were scored against a class definition that is itself wrong — which is
 exactly the reproducibility problem (HB-2) showing up inside my own measurement."""
 import glob, json, pathlib, re, numpy as np

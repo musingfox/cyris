@@ -79,12 +79,12 @@ class TestDiscordEmbeds:
         titles = [e["title"] for e in embeds]
 
         assert titles == [
-            "⭐ 精選文章",
-            "📰 新聞聚合",
-            "📋 主題摘要",
-            "👀 值得關注",
-            "📌 其他標題（1篇）",
-            "早報 2026-04-10",
+            "⭐ Featured",
+            "📰 News",
+            "📋 Themes",
+            "👀 Worth a look",
+            "📌 Other headlines (1)",
+            "Morning 2026-04-10",
         ]
 
     def test_featured_articles_embed(self):
@@ -111,7 +111,7 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        featured = next(e for e in embeds if e["title"] == "⭐ 精選文章")
+        featured = next(e for e in embeds if e["title"] == "⭐ Featured")
 
         assert featured["color"] == 0xF1C40F
         assert "[API 橫切關注點](https://bytebytego.com/article)" in featured["description"]
@@ -142,7 +142,7 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        attention = next(e for e in embeds if e["title"] == "👀 值得關注")
+        attention = next(e for e in embeds if e["title"] == "👀 Worth a look")
 
         assert attention["color"] == 0x9B59B6
         assert "[tech](https://stratechery.com/interview)" in attention["description"]
@@ -172,7 +172,7 @@ class TestDiscordEmbeds:
 
         embeds = build_discord_embeds(content)
 
-        news_embed = next(e for e in embeds if e["title"] == "📰 新聞聚合")
+        news_embed = next(e for e in embeds if e["title"] == "📰 News")
         assert news_embed["color"] == 0xFEE75C
         assert "科技裁員潮" in news_embed["description"]
         assert "多家科技公司宣布裁員計畫" in news_embed["description"]
@@ -198,10 +198,10 @@ class TestDiscordEmbeds:
         embeds = build_discord_embeds(content)
 
         for embed in embeds:
-            assert embed["title"] != "📰 新聞聚合"
+            assert embed["title"] != "📰 News"
 
     def test_digest_url_adds_online_link_to_stats(self):
-        """A digest_url renders a '線上完整版' link in the stats embed."""
+        """A digest_url renders a 'Read online' link in the stats embed."""
         content = DigestContent(
             date="2026-07-15",
             period="morning",
@@ -216,7 +216,7 @@ class TestDiscordEmbeds:
 
         with_link = build_discord_embeds(content, digest_url=url)
         stats = with_link[-1]  # stats embed is always last
-        assert f"[線上完整版]({url})" in stats["description"]
+        assert f"[Read online]({url})" in stats["description"]
 
     def test_failed_publish_is_called_out_not_silently_omitted(self):
         """A missing link used to look like the digest simply had no online version."""
@@ -229,10 +229,10 @@ class TestDiscordEmbeds:
         )
 
         stats = build_discord_embeds(content, publish_failed=True)[-1]
-        assert "線上版發佈失敗" in stats["description"]
+        assert "Publishing the online edition failed" in stats["description"]
 
         quiet = build_discord_embeds(content)[-1]
-        assert "線上版發佈失敗" not in quiet["description"]
+        assert "Publishing the online edition failed" not in quiet["description"]
 
     def test_filtered_headlines_with_links(self):
         """Filtered headlines include clickable links and truncated summaries."""
@@ -259,10 +259,10 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        headlines = next(e for e in embeds if "其他標題" in e["title"])
+        headlines = next(e for e in embeds if "Other headlines" in e["title"])
 
         assert headlines["color"] == 0x95A5A6
-        assert "（2篇）" in headlines["title"]
+        assert "(2)" in headlines["title"]
         assert "[Short Title](https://example.com/1)" in headlines["description"]
         assert "Brief summary" in headlines["description"]
         # Long summary should be truncated
@@ -279,9 +279,9 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        assert embeds[-1]["title"] == "晚報 2026-04-10"
+        assert embeds[-1]["title"] == "Evening 2026-04-10"
         assert embeds[-1]["color"] == 0x57F287
-        assert "來源 **3**" in embeds[-1]["description"]
+        assert "Sources **3**" in embeds[-1]["description"]
 
     def test_empty_sections_skipped(self):
         """Empty sections produce no embeds (only stats)."""
@@ -295,7 +295,7 @@ class TestDiscordEmbeds:
 
         embeds = build_discord_embeds(content)
         assert len(embeds) == 1
-        assert embeds[0]["title"] == "早報 2026-04-10"
+        assert embeds[0]["title"] == "Morning 2026-04-10"
 
     def test_stats_embed_link_health_line_when_counts_present(self):
         content = DigestContent(
@@ -323,4 +323,4 @@ class TestDiscordEmbeds:
             dead_link_count=0,
         )
         desc = build_discord_embeds(content)[-1]["description"]
-        assert "⚠️ 電子報" not in desc
+        assert "no canonical link" not in desc

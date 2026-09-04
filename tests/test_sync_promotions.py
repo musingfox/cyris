@@ -83,7 +83,7 @@ def test_sync_accepts_and_acks(store):
 
 
 def test_sync_legacy_deep_vote_accepts(store):
-    """Digests published before the 深讀 button was dropped are still live and still send it."""
+    """Digests published before the deep-read button was dropped still send its vote."""
     payload = [{"url": "https://example.com/stored", "vote": "deep"}]
     with (
         patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),

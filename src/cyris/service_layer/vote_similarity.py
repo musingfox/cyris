@@ -2,7 +2,7 @@
 
 This runs over *every* candidate, not just the scored ones. The scorer skips news
 and fan tiers (`run_digest.py:121-124`), and the class that provoked the first
-downvote — 中央社財經 lottery draws — is news-tagged, so a score adjustment would
+downvote — a newswire's lottery draw reports — is news-tagged, so a score adjustment would
 never have reached it. Vote similarity therefore has to be its own pass.
 """
 

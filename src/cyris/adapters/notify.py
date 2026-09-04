@@ -48,7 +48,7 @@ def build_discord_embeds(
     Discord limits: 4096 chars per embed description, max 10 embeds per message.
     Embed order mirrors the Obsidian digest structure.
     """
-    period_labels = {"morning": "早報", "evening": "晚報"}
+    period_labels = {"morning": "Morning", "evening": "Evening"}
     label = period_labels.get(content.period, content.period)
     embeds: list[dict] = []
 
@@ -59,7 +59,7 @@ def build_discord_embeds(
             lines.append(_render_section_embed(section))
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "⭐ 精選文章", "description": text[:4096], "color": 0xF1C40F})
+            embeds.append({"title": "⭐ Featured", "description": text[:4096], "color": 0xF1C40F})
 
     # --- News clusters ---
     if content.news_clusters:
@@ -68,7 +68,7 @@ def build_discord_embeds(
             lines.append(_render_section_embed(section))
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "📰 新聞聚合", "description": text[:4096], "color": 0xFEE75C})
+            embeds.append({"title": "📰 News", "description": text[:4096], "color": 0xFEE75C})
 
     # --- Fan sections (followed groups — own channel) ---
     if content.fan_sections:
@@ -84,7 +84,7 @@ def build_discord_embeds(
             lines.append("")
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "📣 追蹤動態", "description": text[:4096], "color": 0xEB459E})
+            embeds.append({"title": "📣 Following", "description": text[:4096], "color": 0xEB459E})
 
     # --- Thematic summaries ---
     if content.thematic_summaries:
@@ -93,7 +93,7 @@ def build_discord_embeds(
             lines.append(_render_section_embed(section))
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "📋 主題摘要", "description": text[:4096], "color": 0x5865F2})
+            embeds.append({"title": "📋 Themes", "description": text[:4096], "color": 0x5865F2})
 
     # --- Attention sections ---
     if content.attention_sections:
@@ -102,7 +102,9 @@ def build_discord_embeds(
             lines.append(_render_section_embed(section))
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "👀 值得關注", "description": text[:4096], "color": 0x9B59B6})
+            embeds.append(
+                {"title": "👀 Worth a look", "description": text[:4096], "color": 0x9B59B6}
+            )
 
     # --- Filtered headlines ---
     if content.filtered_headlines:
@@ -118,7 +120,7 @@ def build_discord_embeds(
         if text:
             embeds.append(
                 {
-                    "title": f"📌 其他標題（{len(content.filtered_headlines)}篇）",
+                    "title": f"📌 Other headlines ({len(content.filtered_headlines)})",
                     "description": text[:4096],
                     "color": 0x95A5A6,
                 }
@@ -132,25 +134,26 @@ def build_discord_embeds(
     )
     stats_lines = []
     if digest_url:
-        stats_lines.append(f"📖 [線上完整版]({digest_url})")
+        stats_lines.append(f"📖 [Read online]({digest_url})")
     elif publish_failed:
-        stats_lines.append("⚠️ 線上版發佈失敗")
+        stats_lines.append("⚠️ Publishing the online edition failed")
     stats_lines += [
-        f"📊 來源 **{content.sources_processed}** 個",
-        f"📥 文章 **{content.articles_received}** 篇",
-        f"✅ 保留 **{content.articles_included}** 篇（{pct}）",
+        f"📊 Sources **{content.sources_processed}**",
+        f"📥 Articles **{content.articles_received}**",
+        f"✅ Kept **{content.articles_included}** ({pct})",
     ]
     synthetic = content.synthetic_url_count
     dead = content.dead_link_count
     if (synthetic or 0) or (dead or 0):
         # The two counts have different scopes on purpose — synthetic covers every
         # article fetched this run, dead covers what actually reached the digest.
-        # Saying so keeps them from reading as a contradiction next to 保留 N 篇.
+        # Saying so keeps them from reading as a contradiction next to the kept count.
         stats_lines.append(
-            f"⚠️ 本次收取的電子報 {synthetic or 0} 篇未抽到原文；本篇 digest 內死連結 {dead or 0} 篇"
+            f"⚠️ {synthetic or 0} newsletter issue(s) fetched with no canonical link; "
+            f"{dead or 0} item(s) in this digest have no link to follow"
         )
     if content.usage.api_calls > 0 and content.usage.estimated_cost is not None:
-        stats_lines.append(f"💰 費用 **${content.usage.estimated_cost:.4f}**")
+        stats_lines.append(f"💰 Cost **${content.usage.estimated_cost:.4f}**")
 
     embeds.append(
         {

@@ -1,5 +1,5 @@
 {% macro promote_btn(item, story_id=None) -%}
-{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="想看">↑</button><button class="promote-btn" data-vote="down" title="不想看">↓</button></span>{% endif %}
+{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="More like this">↑</button><button class="promote-btn" data-vote="down" title="Less like this">↓</button></span>{% endif %}
 {%- endmacro -%}
 {#- Sources of a news cluster: one link per article, so a busy topic renders five of
     them and wraps into a mess on a phone. Fold past two behind a native <details>. -#}
@@ -762,7 +762,7 @@
             {% if fan_sections %}
             <section class="section">
                 <div class="section-tag"><span class="id">◆</span><span>Following</span></div>
-                <h2 class="section-heading">追蹤動態</h2>
+                <h2 class="section-heading">Following</h2>
                 {% for sec in fan_sections %}
                 <div class="thematic-block">
                     <h3>{{ sec.heading }}</h3>
