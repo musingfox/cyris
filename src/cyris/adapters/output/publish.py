@@ -28,6 +28,16 @@ VERIFY_TIMEOUT_SECONDS = 15
 _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
+def _slash(path: str) -> str:
+    return path if path.startswith("/") else f"/{path}"
+
+
+def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
+    """Live archive pages this manifest would not put on the next deploy."""
+    kept = {_slash(p) for p in manifest_paths}
+    return {_slash(p) for p in live} - kept
+
+
 def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     """Deploy the HTML digest directory to Cloudflare Pages.
 

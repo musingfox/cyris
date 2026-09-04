@@ -443,3 +443,57 @@ def test_exists_is_keyed_by_project():
     store = D1PagesDeployReceipt(SqliteD1())
     store.record("proj")
     assert store.exists("other") is False
+
+
+def _dated(n, *, month=1):
+    paths = []
+    for i in range(n):
+        day = i // 2 + 1
+        period = "morning" if i % 2 == 0 else "evening"
+        paths.append(f"/2026-{month:02d}-{day:02d}-{period}.html")
+    return paths
+
+
+def test_archive_shortfall_is_empty_when_every_live_page_is_in_the_manifest():
+    live = set(_dated(62))
+    manifest = {p: "h" for p in live}
+    for i in range(1, 25):
+        manifest[f"/2026-01-{i:02d}-morning-raw.html"] = "r"
+    manifest["/index.html"] = "i"
+
+    assert publish_mod._archive_shortfall(live, manifest) == set()
+
+
+def test_archive_shortfall_names_each_page_a_same_size_wrong_d1_would_drop():
+    live = set(_dated(62, month=1))
+    manifest = {p: "h" for p in _dated(62, month=2)}
+    manifest["/index.html"] = "i"
+
+    assert publish_mod._archive_shortfall(live, manifest) == live
+
+
+def test_archive_shortfall_names_the_pages_a_truncated_manifest_would_drop():
+    live = _dated(62)
+    kept = live[:3]
+    manifest = {p: "h" for p in kept}
+    manifest["/index.html"] = "i"
+
+    assert publish_mod._archive_shortfall(set(live), manifest) == set(live[3:])
+
+
+def test_archive_shortfall_names_the_one_page_a_live_check_flake_would_drop():
+    live = {"/2026-09-04-morning.html", "/2026-09-04-evening.html"}
+    manifest = {"/2026-09-04-morning.html": "h"}
+
+    assert publish_mod._archive_shortfall(live, manifest) == {"/2026-09-04-evening.html"}
+
+
+def test_archive_shortfall_treats_an_unslashed_manifest_key_as_the_same_page():
+    live = {"/2026-09-04-morning.html"}
+    manifest = {"2026-09-04-morning.html": "h"}
+
+    assert publish_mod._archive_shortfall(live, manifest) == set()
+
+
+def test_archive_shortfall_is_empty_when_the_live_archive_lists_nothing():
+    assert publish_mod._archive_shortfall(set(), {"/a.html": "1", "/b.html": "2", "/c.html": "3"}) == set()
