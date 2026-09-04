@@ -1,5 +1,6 @@
 {
-  "_comment": "Mail vocabulary the fetch adapters match against, kept out of the code so a new locale is a data edit. Structure stays in code: the separators, the repetition, the ordering of forward-then-reply. Matching is case-insensitive, so list each token once in its usual casing.",
+  "_comment": "Vocabulary the fetch adapters match against, kept out of the code so a new sender, ESP or locale is a data edit. Structure stays in code: the separators, the repetition, the ordering of forward-then-reply. Matching is case-insensitive, so list each token once in its usual casing. Every `host` here matches that host or any subdomain of it.",
+
   "forward_prefixes": ["Fwd", "Fw", "轉寄"],
   "reply_prefixes": ["Re", "回覆"],
   "view_in_browser_markers": [
@@ -8,5 +9,35 @@
     "view online",
     "網頁版",
     "線上閱讀"
-  ]
+  ],
+
+  "_comment_links": "What makes a link in a newsletter something other than the article. reject_host_patterns are regexes because these hosts are numbered (campaign-archive1, 2, ...); everything else is a plain list. A share entry needs both a host and how its share path looks, and the two path keys are not interchangeable: path_contains is a substring, path_segment_prefix matches the path exactly or followed by a slash, so /share matches /share and /share/x but not /share-tips.",
+  "reject_hosts": ["mailchi.mp", "list-manage.com"],
+  "reject_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
+  "reject_path_contains": ["unsubscribe"],
+  "reject_path_segments": ["checkout"],
+  "reject_path_suffixes": [
+    ".avif",
+    ".bmp",
+    ".gif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".svg",
+    ".webp"
+  ],
+  "share_links": [
+    { "host": "facebook.com", "path_contains": "sharer" },
+    { "host": "linkedin.com", "path_segment_prefix": "/share" },
+    { "host": "t.me", "path_segment_prefix": "/share" },
+    { "host": "twitter.com", "path_contains": "/intent/" },
+    { "host": "x.com", "path_contains": "/intent/" }
+  ],
+
+  "_comment_tracking": "A click-tracking redirect carries its real destination in a query parameter; unwrapping it is what keeps the store's URL key stable. tracking_params are the per-recipient parameters stripped from a newsletter link.",
+  "tracking_redirects": [
+    { "host": "list-manage.com", "path_contains": "/track/click", "target_param": "url" }
+  ],
+  "tracking_params": ["post_id", "media_id", "c2id"]
 }

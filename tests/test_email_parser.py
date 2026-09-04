@@ -376,3 +376,36 @@ class TestStripTrackingParamsExtra:
             strip_tracking_params("not a url at all", extra_params=frozenset({"post_id"}))
             == "not a url at all"
         )
+
+
+class TestLinkRulesComeFromData:
+    """The hosts and path shapes live in keywords.json; these pin what it means."""
+
+    def test_a_share_host_is_rejected_only_on_its_own_share_path(self):
+        assert is_content_url("https://www.linkedin.com/share/") is False
+        assert is_content_url("https://www.linkedin.com/share/x") is False
+        # path_segment_prefix, not a substring: a real article whose slug merely
+        # starts with the same letters stays a content URL.
+        assert is_content_url("https://www.linkedin.com/share-tips-for-writers") is True
+
+    def test_every_share_host_in_the_data_is_actually_matched(self):
+        for url in (
+            "https://facebook.com/sharer/sharer.php?u=x",
+            "https://www.linkedin.com/share/x",
+            "https://t.me/share/url?url=x",
+            "https://twitter.com/intent/tweet?url=x",
+            "https://x.com/intent/post?url=x",
+        ):
+            assert is_content_url(url) is False, url
+
+    def test_a_subdomain_of_a_rejected_host_is_rejected_too(self):
+        assert is_content_url("https://us1.list-manage.com/subscribe") is False
+        assert is_content_url("https://mailchi.mp/abc/issue") is False
+
+    def test_the_tracking_redirect_target_param_comes_from_the_data(self):
+        wrapped = "https://us1.list-manage.com/track/click?u=1&id=2&url=https%3A%2F%2Fe.com%2Fa"
+        assert unwrap_tracking_redirect(wrapped) == "https://e.com/a"
+        # Same host, not a click wrapper: left alone rather than half-parsed.
+        assert unwrap_tracking_redirect("https://us1.list-manage.com/profile?u=1") == (
+            "https://us1.list-manage.com/profile?u=1"
+        )

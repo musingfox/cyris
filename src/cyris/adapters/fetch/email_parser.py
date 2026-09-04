@@ -1,7 +1,6 @@
 """Email newsletter parsing utilities."""
 
 import logging
-import re
 from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -10,7 +9,14 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic import BaseModel
 
-from cyris.adapters.fetch.keywords import subject_prefix_re
+from cyris.adapters.fetch.keywords import (
+    is_rejected_host,
+    is_rejected_path,
+    is_share_link,
+    subject_prefix_re,
+    tracking_params,
+    tracking_redirect_param,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +60,13 @@ def unwrap_tracking_redirect(url: str) -> str:
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
-        if (
-            hostname is None
-            or (hostname != "list-manage.com" and not hostname.endswith(".list-manage.com"))
-            or "/track/click" not in parsed.path
-        ):
+        if hostname is None:
+            return url
+        param = tracking_redirect_param(hostname.lower(), parsed.path)
+        if param is None:
             return url
 
-        target = dict(parse_qsl(parsed.query, keep_blank_values=True)).get("url")
+        target = dict(parse_qsl(parsed.query, keep_blank_values=True)).get(param)
         return strip_tracking_params(target) if target else url
     except Exception:
         return url
@@ -78,8 +83,8 @@ class _HrefParser(HTMLParser):
 
 
 _MAX_REF_URLS = 5
-_IMAGE_SUFFIXES = (".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp")
-NEWSLETTER_TRACKING_PARAMS = frozenset({"post_id", "media_id", "c2id"})
+# Re-exported: callers import it from here, the values live in keywords.json.
+NEWSLETTER_TRACKING_PARAMS = tracking_params()
 
 
 def is_content_url(url: str) -> bool:
@@ -95,36 +100,14 @@ def is_content_url(url: str) -> bool:
         return False
     hostname = hostname.lower()
     path = parsed.path.lower()
-    is_campaign_archive = bool(re.search(r"(?:^|\.)campaign-archive\d*\.com$", hostname))
-    is_facebook = hostname == "facebook.com" or hostname.endswith(".facebook.com")
-    is_linkedin = hostname == "linkedin.com" or hostname.endswith(".linkedin.com")
-    is_telegram = hostname == "t.me" or hostname.endswith(".t.me")
-    is_twitter = (
-        hostname == "twitter.com"
-        or hostname.endswith(".twitter.com")
-        or hostname == "x.com"
-        or hostname.endswith(".x.com")
-    )
-    is_share = (
-        (is_facebook and "sharer" in path)
-        or (is_linkedin and (path == "/share" or path.startswith("/share/")))
-        or (is_telegram and (path == "/share" or path.startswith("/share/")))
-        or (is_twitter and "/intent/" in path)
-    )
     return not (
         parsed.scheme not in {"http", "https"}
-        or hostname == "mailchi.mp"
-        or hostname.endswith(".mailchi.mp")
-        or is_campaign_archive
-        or hostname == "list-manage.com"
-        or hostname.endswith(".list-manage.com")
-        or is_share
-        or "unsubscribe" in path
-        # A checkout page is never the article, and its per-subscriber rid would
+        or is_rejected_host(hostname)
+        or is_share_link(hostname, path)
+        # "unsubscribe" anywhere in the path, "checkout" only as a whole segment --
+        # /checkout-ux-redesign is an article, and its per-subscriber rid would
         # otherwise be offered as this issue's canonical link on the public digest.
-        # Match the path segment, not a substring — /checkout-ux-redesign is an article.
-        or "checkout" in path.split("/")
-        or path.endswith(_IMAGE_SUFFIXES)
+        or is_rejected_path(path)
     )
 
 

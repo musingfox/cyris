@@ -1,9 +1,10 @@
-"""Mail vocabulary loaded from keywords.json.
+"""Fetch-side vocabulary loaded from keywords.json.
 
-The tokens are data; the structure around them is not. A subject line's forward
-and reply prefixes repeat, nest, and are followed by either ASCII or fullwidth
-colons — that shape is the same in every language, so it stays in the regexes
-below while the words themselves live in the JSON.
+The words and the hosts are data; the structure around them is not. A subject
+line's forward and reply prefixes repeat, nest, and are followed by either ASCII
+or fullwidth colons — that shape is the same in every language. A host matches
+itself or any subdomain of it. Those rules live here; what they are applied to
+lives in the JSON, so adding an ESP or a locale never means editing code.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ _SEPARATOR = "[:：]"
 
 
 @cache
-def _vocabulary() -> dict[str, list[str]]:
+def _vocabulary() -> dict:
     raw = (files(__package__) / "keywords.json").read_text(encoding="utf-8")
     return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
 
@@ -48,3 +49,60 @@ def private_reply_re() -> re.Pattern[str]:
 def view_in_browser_re() -> re.Pattern[str]:
     """The "read this on the web" wording newsletters put above their content."""
     return re.compile(_alternation("view_in_browser_markers"), re.IGNORECASE)
+
+
+def host_matches(hostname: str, host: str) -> bool:
+    """A host entry covers the host itself and every subdomain of it."""
+    return hostname == host or hostname.endswith(f".{host}")
+
+
+@cache
+def _reject_host_res() -> tuple[re.Pattern[str], ...]:
+    return tuple(re.compile(p) for p in _vocabulary()["reject_host_patterns"])
+
+
+def is_rejected_host(hostname: str) -> bool:
+    """An ESP or campaign-archive host: never the article, whatever the path says."""
+    return any(host_matches(hostname, h) for h in _vocabulary()["reject_hosts"]) or any(
+        pattern.search(hostname) for pattern in _reject_host_res()
+    )
+
+
+def _path_matches(rule: dict, path: str) -> bool:
+    prefix = rule.get("path_segment_prefix")
+    if prefix is not None:
+        return path == prefix or path.startswith(f"{prefix}/")
+    return rule["path_contains"] in path
+
+
+def is_share_link(hostname: str, path: str) -> bool:
+    """A "share this" endpoint on a social host, not the thing being shared."""
+    return any(
+        host_matches(hostname, rule["host"]) and _path_matches(rule, path)
+        for rule in _vocabulary()["share_links"]
+    )
+
+
+def is_rejected_path(path: str) -> bool:
+    """Paths that disqualify a link wherever it is hosted."""
+    vocab = _vocabulary()
+    segments = path.split("/")
+    return (
+        any(word in path for word in vocab["reject_path_contains"])
+        or any(segment in segments for segment in vocab["reject_path_segments"])
+        or path.endswith(tuple(vocab["reject_path_suffixes"]))
+    )
+
+
+def tracking_redirect_param(hostname: str, path: str) -> str | None:
+    """The query parameter holding the real destination, when this is a click wrapper."""
+    for rule in _vocabulary()["tracking_redirects"]:
+        if host_matches(hostname, rule["host"]) and _path_matches(rule, path):
+            return rule["target_param"]
+    return None
+
+
+@cache
+def tracking_params() -> frozenset[str]:
+    """Per-recipient parameters stripped from a newsletter link."""
+    return frozenset(_vocabulary()["tracking_params"])
