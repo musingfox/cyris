@@ -106,3 +106,9 @@ def tracking_redirect_param(hostname: str, path: str) -> str | None:
 def tracking_params() -> frozenset[str]:
     """Per-recipient parameters stripped from a newsletter link."""
     return frozenset(_vocabulary()["tracking_params"])
+
+
+@cache
+def base_tracking_params() -> frozenset[str]:
+    """Parameters stripped from every link, newsletter or feed."""
+    return frozenset(_vocabulary()["base_tracking_params"])

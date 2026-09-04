@@ -35,9 +35,10 @@
     { "host": "x.com", "path_contains": "/intent/" }
   ],
 
-  "_comment_tracking": "A click-tracking redirect carries its real destination in a query parameter; unwrapping it is what keeps the store's URL key stable. tracking_params are the per-recipient parameters stripped from a newsletter link.",
+  "_comment_tracking": "A click-tracking redirect carries its real destination in a query parameter; unwrapping it is what keeps the store's URL key stable. base_tracking_params are stripped from every link; tracking_params are the extra per-recipient parameters stripped from a newsletter link, which RSS callers keep. `utm_`-prefixed keys are matched by prefix in code: a prefix is structure, not vocabulary. workers/rss/src/parse.js keeps a hand-maintained mirror of base_tracking_params.",
   "tracking_redirects": [
     { "host": "list-manage.com", "path_contains": "/track/click", "target_param": "url" }
   ],
+  "base_tracking_params": ["e", "c", "fbclid", "gclid", "mc_cid", "mc_eid"],
   "tracking_params": ["post_id", "media_id", "c2id"]
 }

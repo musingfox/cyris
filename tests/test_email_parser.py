@@ -409,3 +409,22 @@ class TestLinkRulesComeFromData:
         assert unwrap_tracking_redirect("https://us1.list-manage.com/profile?u=1") == (
             "https://us1.list-manage.com/profile?u=1"
         )
+
+
+def test_rss_worker_mirrors_base_tracking_params() -> None:
+    """The Worker's hand-kept copy must equal keywords.json's list.
+
+    A Worker bundle cannot import the Python package's data file, so the two
+    lists are kept in step by hand. They key the same articles: the URL is D1's
+    primary key on the Worker side and the dedup key in the ArticleStore, so a
+    parameter stripped on one side and kept on the other stores one article twice.
+    """
+    import re
+    from pathlib import Path
+
+    from cyris.adapters.fetch.keywords import base_tracking_params
+
+    parse_js = Path(__file__).resolve().parents[1] / "workers" / "rss" / "src" / "parse.js"
+    match = re.search(r"const TRACKING_KEYS = new Set\(\[(.*?)\]\)", parse_js.read_text(), re.S)
+    assert match, "TRACKING_KEYS not found in workers/rss/src/parse.js"
+    assert set(re.findall(r'"([^"]+)"', match.group(1))) == set(base_tracking_params())

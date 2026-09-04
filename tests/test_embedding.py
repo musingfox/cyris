@@ -146,3 +146,17 @@ def test_the_feature_off_means_no_embedder_at_all():
     from cyris.config import AppConfig, Config
 
     assert build_embedder(Config(app=AppConfig(), sources={})) is None
+
+
+def test_module_default_models_match_provider_defaults() -> None:
+    """The adapters' fallback models must equal provider_defaults.json's.
+
+    `bootstrap.build_embedder` and `cyris embed-compare` both name the model from
+    the JSON, so a constant here that drifts from it would only surface for a
+    caller that omits the model — silently embedding with the wrong one.
+    """
+    from cyris.adapters.embedding import GEMINI_MODEL, WORKERS_AI_MODEL
+    from cyris.bootstrap import embedding_defaults
+
+    assert embedding_defaults("gemini")["model"] == GEMINI_MODEL
+    assert embedding_defaults("workers_ai")["model"] == WORKERS_AI_MODEL

@@ -11,6 +11,9 @@ const parser = new XMLParser({
 // Mirror of cyris's strip_tracking_params (adapters/fetch/email_parser.py).
 // The URL is D1's primary key, so an unstripped ?utm_source= would store the
 // same article twice and mismatch what the ArticleStore already holds.
+// Kept separate so the Worker bundles without reaching into the Python package:
+// it must equal `base_tracking_params` in src/cyris/adapters/fetch/keywords.json,
+// and tests/test_email_parser.py fails if the two drift.
 const TRACKING_KEYS = new Set(["e", "c", "fbclid", "gclid", "mc_cid", "mc_eid"]);
 
 export function stripTrackingParams(url) {

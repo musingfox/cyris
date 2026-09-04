@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pydantic import BaseModel
 
 from cyris.adapters.fetch.keywords import (
+    base_tracking_params,
     is_rejected_host,
     is_rejected_path,
     is_share_link,
@@ -22,11 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def strip_tracking_params(url: str, extra_params: frozenset[str] | None = None) -> str:
-    """Strip tracking query params (utm_*, e, fbclid etc) from newsletter URLs.
+    """Strip tracking query params from a URL.
 
-    Non-URL or unparsable input returned verbatim (no exception). Only ? kept if other
-    params remain; trailing ? removed when empty. extra_params are stripped in addition
-    to the default set (RSS callers omit it so post_id/media_id/c2id stay).
+    The stripped set is `base_tracking_params` in keywords.json plus any `utm_`-prefixed
+    key; `extra_params` adds to it, which is how newsletter callers also drop the
+    per-recipient parameters that RSS callers keep. Non-URL or unparsable input is
+    returned verbatim (no exception); a trailing `?` is removed when nothing remains.
     """
     if not url or not isinstance(url, str):
         return url
@@ -34,8 +36,7 @@ def strip_tracking_params(url: str, extra_params: frozenset[str] | None = None) 
         p = urlparse(url)
         if not p.scheme or not p.netloc:
             return url
-        # keep params that are not tracking
-        tracking = {"e", "c", "fbclid", "gclid", "mc_cid", "mc_eid"}
+        tracking = base_tracking_params()
         if extra_params:
             tracking = tracking | set(extra_params)
         qsl = [
@@ -171,7 +172,6 @@ def parse_newsletter(payload: dict, source_name: str) -> ParsedNewsletter:
     html_content = payload.get("html", "")
     text_content = payload.get("text", "")
 
-    # Parse date from headers
     date_str = (payload.get("headers") or {}).get("Date", "")
     date = None
     if date_str:

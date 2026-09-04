@@ -267,11 +267,18 @@ def embed_compare(
     deps = build_deps(cfg)
     arms = {
         "gemini": (
-            GeminiEmbedder(api_key=os.environ.get("GEMINI_API_KEY", "")),
+            GeminiEmbedder(
+                api_key=os.environ.get("GEMINI_API_KEY", ""),
+                model=embedding_defaults("gemini")["model"],
+            ),
             threshold if threshold is not None else embedding_defaults("gemini")["threshold"],
         ),
         "workers_ai": (
-            WorkersAIEmbedder(api_token=token, account_id=account),
+            WorkersAIEmbedder(
+                api_token=token,
+                account_id=account,
+                model=embedding_defaults("workers_ai")["model"],
+            ),
             workers_threshold,
         ),
     }
