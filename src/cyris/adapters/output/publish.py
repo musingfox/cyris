@@ -78,10 +78,20 @@ def publish_site(
         return False
 
     manifest = manifest_store.load()
-    if not manifest and not receipt_store.exists(pages_project):
-        if client.has_deployments():
+    if not manifest:
+        try:
+            owned = receipt_store.exists(pages_project)
+        except Exception as e:
+            logger.error("Pages deploy receipt lookup failed: %s", e)
             return False
-        receipt_store.record(pages_project)
+        if not owned:
+            try:
+                if client.has_deployments():
+                    return False
+            except (PagesDeployError, httpx.HTTPError) as e:
+                logger.error("Pages deployment probe failed: %s", e)
+                return False
+            receipt_store.record(pages_project)
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
         try:
             deployment, updated = client.deploy_manifest(

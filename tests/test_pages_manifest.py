@@ -181,6 +181,59 @@ def test_a_first_ever_deploy_goes_through(monkeypatch):
     assert "/2026-08-27-morning.html" in store.saved
 
 
+def test_an_empty_manifest_refuses_when_the_probe_fails(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+
+    def probe(_self):
+        raise publish_mod.PagesDeployError("GET ... -> 404 Project not found")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probe)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
+
+
+def test_an_empty_manifest_refuses_when_the_probe_cannot_connect(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+
+    def boom(_self):
+        raise httpx.ConnectError("boom")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", boom)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
+
+
+def test_an_empty_manifest_refuses_when_receipt_lookup_fails(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    class _Down:
+        def exists(self, project):
+            raise RuntimeError("d1 down")
+
+        def record(self, project):
+            raise AssertionError("record")
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _Down())
+
+    assert ok is False
+    assert deployed == []
+
+
 def test_record_writes_one_row_with_iso8601_created_at():
     db = SqliteD1()
     D1PagesDeployReceipt(db).record("proj")
