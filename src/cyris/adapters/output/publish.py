@@ -75,7 +75,7 @@ def _fetch_live_index(pages_project: str) -> set[str] | None:
             )
             continue
         return _parse_archive_anchors(resp.text)
-    logger.error("Could not read the live archive at %s", url)
+    logger.error("The live archive could not be read at %s", url)
     return None
 
 
@@ -155,7 +155,9 @@ def publish_site(
                 return False
     if manifest or owned_at_entry:
         live = _fetch_live_index(pages_project)
-        missing = _archive_shortfall(live or set(), manifest)
+        if live is None:
+            return False
+        missing = _archive_shortfall(live, manifest)
         if len(missing) > ARCHIVE_SHORTFALL_TOLERANCE:
             logger.error(
                 "Refusing to deploy: the live archive still lists %d page(s) "

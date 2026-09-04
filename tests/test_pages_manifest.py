@@ -829,3 +829,47 @@ def test_publish_deploys_an_empty_manifest_with_receipt_inside_tolerance(monkeyp
 
     assert ok is True
     assert len(deployed) == 1
+
+
+def test_publish_refuses_when_the_live_archive_cannot_be_read(monkeypatch, caplog):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
+
+    def boom(_u, **_k):
+        raise httpx.ConnectError("boom")
+
+    monkeypatch.setattr(publish_mod.httpx, "get", boom)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+    store = _Store({"/old.html": "old"})
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
+    assert store.saved is None
+    errors = [r.message for r in caplog.records if r.levelname == "ERROR"]
+    assert any("could not be read" in m.lower() for m in errors)
+    assert all("[store] database_id" not in m for m in errors)
+
+
+def test_publish_refuses_when_the_live_archive_answers_500(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(500, content=b"")
+    )
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({"/old.html": "old"}), "proj", _Receipt()
+    )
+
+    assert ok is False
+    assert deployed == []
