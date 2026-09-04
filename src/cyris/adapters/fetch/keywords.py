@@ -68,6 +68,18 @@ def is_rejected_host(hostname: str) -> bool:
     )
 
 
+@cache
+def _view_url_host_res() -> tuple[re.Pattern[str], ...]:
+    return tuple(re.compile(p) for p in _vocabulary()["view_url_host_patterns"])
+
+
+def is_view_url_host(hostname: str) -> bool:
+    """An ESP host whose page IS the issue, unlike the click wrapper next to it."""
+    return any(host_matches(hostname, h) for h in _vocabulary()["view_url_hosts"]) or any(
+        pattern.search(hostname) for pattern in _view_url_host_res()
+    )
+
+
 def _path_matches(rule: dict, path: str) -> bool:
     prefix = rule.get("path_segment_prefix")
     if prefix is not None:

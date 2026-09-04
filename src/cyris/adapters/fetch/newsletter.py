@@ -21,7 +21,7 @@ from cyris.adapters.fetch.email_parser import (
     strip_tracking_params,
     unwrap_tracking_redirect,
 )
-from cyris.adapters.fetch.keywords import view_in_browser_re
+from cyris.adapters.fetch.keywords import is_view_url_host, view_in_browser_re
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def _generate_article_id(source_name: str, key: str) -> str:
 
 
 def _find_newsletter_view_url(html: str) -> str | None:
-    """Find public view link by hostname only (mailchi.mp or campaign-archive).
+    """Find the ESP-hosted public view link; hosts are `view_url_hosts` in keywords.json.
 
     Critical: parse .hostname of the href itself, never 'foo in href' substring.
     This prevents using a track/click wrapper (which has encoded target mailchi url)
@@ -43,14 +43,11 @@ def _find_newsletter_view_url(html: str) -> str | None:
     """
     if not html:
         return None
-    # extract hrefs (stdlib re sufficient for controlled newsletter html)
+    # stdlib re is sufficient for controlled newsletter html
     hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', html, re.I)
     for href in hrefs:
         try:
-            host = (urlsplit(href).hostname or "").lower()
-            if re.fullmatch(r"(.+\.)?mailchi\.mp", host) or re.fullmatch(
-                r"(.+\.)?campaign-archive\d*\.com", host
-            ):
+            if is_view_url_host((urlsplit(href).hostname or "").lower()):
                 return strip_tracking_params(href)
         except Exception:
             continue

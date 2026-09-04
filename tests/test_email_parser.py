@@ -428,3 +428,18 @@ def test_rss_worker_mirrors_base_tracking_params() -> None:
     match = re.search(r"const TRACKING_KEYS = new Set\(\[(.*?)\]\)", parse_js.read_text(), re.S)
     assert match, "TRACKING_KEYS not found in workers/rss/src/parse.js"
     assert set(re.findall(r'"([^"]+)"', match.group(1))) == set(base_tracking_params())
+
+
+def test_click_wrapper_host_is_rejected_and_never_a_view_url() -> None:
+    """view_url_hosts is deliberately narrower than reject_hosts.
+
+    list-manage.com carries the tracking wrapper whose encoded target is the real
+    mailchi link. Treating it as the public view URL would publish the per-recipient
+    `e=` parameter, so it must fail both tests, not just the reject one.
+    """
+    from cyris.adapters.fetch.keywords import is_rejected_host, is_view_url_host
+
+    assert is_rejected_host("us1.list-manage.com")
+    assert not is_view_url_host("us1.list-manage.com")
+    assert is_view_url_host("mailchi.mp")
+    assert is_view_url_host("us7.campaign-archive3.com")

@@ -13,6 +13,9 @@
 
   "_comment_links": "What makes a link in a newsletter something other than the article. reject_host_patterns are regexes because these hosts are numbered (campaign-archive1, 2, ...); everything else is a plain list. A share entry needs both a host and how its share path looks, and the two path keys are not interchangeable: path_contains is a substring, path_segment_prefix matches the path exactly or followed by a slash, so /share matches /share and /share/x but not /share-tips.",
   "reject_hosts": ["mailchi.mp", "list-manage.com"],
+  "_comment_view_url": "The ESP-hosted \"view in browser\" page, which IS the issue when nothing better is found. Deliberately narrower than reject_hosts: list-manage.com is the click-tracking wrapper, so it is rejected as an article link and must never be offered as the public one either. Same shape as the reject pair — a plain host list plus regexes for the numbered hosts.",
+  "view_url_hosts": ["mailchi.mp"],
+  "view_url_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
   "reject_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
   "reject_path_contains": ["unsubscribe"],
   "reject_path_segments": ["checkout"],
