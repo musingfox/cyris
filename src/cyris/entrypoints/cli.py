@@ -110,7 +110,7 @@ def promote_sync(
     ),
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
-    """Sync promote-button clicks from the cloud Worker to the vault (no fetch/LLM)."""
+    """Sync promote-button clicks from the cloud Worker into the article store (no fetch/LLM)."""
     _setup_logging(verbose)
 
     from cyris.bootstrap import build_deps, load_effective_config

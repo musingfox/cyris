@@ -59,7 +59,6 @@ async def filter_articles(
         logger.warning("Filter LLM call failed; falling back to excerpt headlines", exc_info=True)
         return headlines_from_articles(articles_to_process, article_scores)
 
-    # Build lookup for source URLs
     article_map = {a.id: a for a in articles_to_process}
 
     items = []

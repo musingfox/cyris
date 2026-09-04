@@ -83,10 +83,8 @@ async def cluster_news(
         # model costs is a worse digest rather than a shorter one.
         clustered_ids: set = set()
 
-        # Build article lookup
         article_map = {a.id: a for a in articles}
 
-        # Build DigestSections
         digest_sections = []
         for cluster in clusters:
             heading = cluster["heading"]
@@ -101,7 +99,6 @@ async def cluster_news(
                 raw_tags = [raw_tags]
             tags = normalize_tags(raw_tags) if isinstance(raw_tags, list) else []
 
-            # Build DigestItems from cluster articles
             items = []
             members = []
             sources = []
@@ -114,9 +111,7 @@ async def cluster_news(
                     members.append(a)
                     sources.append(a.source_name)
                     urls.append(a.url)
-                    # Mark as clustered
                     clustered_ids.add(aid)
-                    # Collect score if available
                     if article_scores and a.url in article_scores:
                         scores.append(article_scores[a.url])
 
@@ -137,9 +132,7 @@ async def cluster_news(
                 )
 
             if sources:
-                # Use max score from clustered articles
                 max_score = max(scores) if scores else None
-                # Single DigestItem per cluster with combined metadata
                 items.append(
                     DigestItem(
                         title=heading,

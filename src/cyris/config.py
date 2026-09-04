@@ -360,7 +360,6 @@ def load_config(
     config_path = config_path or Path("cyris.toml")
     sources_path = sources_path or Path("sources.yaml")
 
-    # Load .env from same directory as config
     _load_dotenv(config_path.parent / ".env")
 
     config_file_found = config_path.exists()
@@ -382,13 +381,11 @@ def load_config(
 
     sources_config = SourcesConfig.model_validate(raw_yaml or {})
 
-    # Apply defaults to sources
     defaults = sources_config.defaults
     for source in sources_config.sources:
         if source.language == "auto" and "language" in defaults:
             source.language = defaults["language"]
 
-    # Key sources by name for fast lookup
     sources_dict = {s.name: s for s in sources_config.sources}
 
     from_d1 = _sources_from_d1(app_config)

@@ -34,7 +34,6 @@ class HtmlDigestWriter:
         self.promote_worker_url = promote_worker_url.rstrip("/")
         self.promote_token = promote_token
 
-        # Load templates from package-relative templates/ directory
         template_dir = Path(__file__).parent / "templates"
         self.env = Environment(
             loader=FileSystemLoader(template_dir),
@@ -108,13 +107,10 @@ class HtmlDigestWriter:
             print(html)
             return file_path
 
-        # Create parent directories if needed
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write digest file
         file_path.write_text(html, encoding="utf-8")
 
-        # Regenerate index
         self.write_index(self.output_dir)
 
         return file_path
@@ -139,7 +135,6 @@ class HtmlDigestWriter:
                 date, period = match.groups()
                 digests.append({"date": date, "period": period, "filename": name})
 
-        # Sort by date descending (most recent first)
         digests.sort(key=lambda d: (d["date"], d["period"]), reverse=True)
 
         return template.render(digests=digests)
@@ -157,7 +152,6 @@ class HtmlDigestWriter:
         html = self.render_index(names)
         index_path = digest_dir / "index.html"
 
-        # Ensure directory exists
         digest_dir.mkdir(parents=True, exist_ok=True)
 
         index_path.write_text(html, encoding="utf-8")

@@ -117,7 +117,6 @@ def build_filter_prompt(articles: list[Article], snippet_length: int = 500) -> s
     lines = []
     for a in articles:
         lines.append(f"[{a.id}] ({a.source_name}) {a.title}")
-        # Include first snippet_length chars of content for context
         snippet = a.content[:snippet_length].replace("\n", " ").strip()
         if snippet:
             lines.append(f"    {snippet}")
@@ -137,7 +136,6 @@ def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: in
     # the URL-string ids newsletter articles carry.
     for i, a in enumerate(articles):
         lines.append(f"[{i}] ({a.source_name}) {a.title}")
-        # Include more content for summarize tier
         snippet = a.content[:snippet_length].replace("\n", " ").strip()
         if snippet:
             lines.append(f"    {snippet}")
@@ -207,7 +205,6 @@ def build_news_cluster_prompt(articles: list[Article]) -> str:
     lines = []
     for a in articles:
         lines.append(f"[{a.id}] ({a.source_name}) {a.title}")
-        # Include first 500 chars of content for clustering context
         snippet = a.content[:500].replace("\n", " ").strip()
         if snippet:
             lines.append(f"    {snippet}")

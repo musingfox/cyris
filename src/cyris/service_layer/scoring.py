@@ -35,9 +35,7 @@ async def score_articles_batch(
     if not articles:
         return {}, {}, usage
 
-    # Build lookup: original_id -> url
     id_to_url = {a.original_id: a.url for a in articles}
-    # Fallback language detection
     id_to_fallback_lang = {a.original_id: detect_language(a.title, a.content) for a in articles}
 
     system_prompt = build_scoring_system_prompt()

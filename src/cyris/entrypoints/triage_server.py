@@ -119,7 +119,7 @@ class TriageServer:
         exclude_rejected = False
 
         if state_param == "all":
-            state_filter = None  # No filter
+            state_filter = None
         elif state_param:
             try:
                 state_filter = ArticleState(state_param)

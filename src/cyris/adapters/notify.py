@@ -46,7 +46,7 @@ def build_discord_embeds(
 
     Returns a list of embed dicts ready for the Discord webhook payload.
     Discord limits: 4096 chars per embed description, max 10 embeds per message.
-    Embed order mirrors the Obsidian digest structure.
+    Embed order mirrors the HTML digest's section order.
     """
     period_labels = {"morning": "Morning", "evening": "Evening"}
     label = period_labels.get(content.period, content.period)
