@@ -1,6 +1,7 @@
 """`cyris doctor` — the checks, and what each verdict tells the reader to do."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -298,7 +299,14 @@ async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
     cfg.app.store.api_token = "tok"
     cfg.config_file_found = False
 
-    checks = await doctor.run_checks(cfg)
+    # Unpatched, `_check_store` counts rows over the network on these
+    # placeholder credentials and comes back `fail` — tolerating that name below
+    # would mean tolerating a real store regression too. Nothing else here does
+    # IO: the wiring check only constructs the store.
+    with patch.object(
+        doctor, "_check_store", lambda _cfg: doctor.Check("article store (d1)", "ok", "stubbed")
+    ):
+        checks = await doctor.run_checks(cfg)
     check = _by_name(checks, "config file")
 
     assert check.status == "ok"
@@ -307,8 +315,6 @@ async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
         "sources",
         "llm provider",
         "rss buffer",
-        # This fixture's D1 holds no articles, which is its own warning now.
-        "article store (d1)",
     }
 
 

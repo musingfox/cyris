@@ -139,8 +139,8 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris llm-compare` | Digest one window with several providers (`--arm provider:model`, repeatable), side by side |
 | `cyris triage-ui` | Start swipe-based web UI for article classification; `/settings` picks the LLM provider and model (verified against the live API before storing) and the two digest hours, both written to D1 `settings`, and adds/edits/retires sources in D1 `sources` |
 | `cyris articles list\|accept\|reject\|clean\|score` | Article store management (`export` went with the vault in M1) |
-| `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends |
-| `cyris sources push\|list` | Make D1's source table match `sources.yaml`; show what it serves |
+| `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends. Like every command that opens D1, they create the tables first — `diff` reads only, but not from a database it leaves untouched |
+| `cyris sources push\|list` | Make D1's source table match `sources.yaml`; show what it serves. Both create the tables first, `list` included — a `database_id` pointing somewhere else gets them |
 
 ### Configuration Files
 
