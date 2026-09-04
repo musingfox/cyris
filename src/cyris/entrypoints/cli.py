@@ -25,6 +25,15 @@ def main() -> None:
     """Cyris — AI-powered information digest agent."""
 
 
+def _echo_d1_failure(error: Exception) -> None:
+    """What to say when D1 itself is unusable — all three keys can land you here."""
+    typer.echo(f"✗ d1 — {error}")
+    typer.echo(
+        "  Check [store] database_id, CLOUDFLARE_ACCOUNT_ID and "
+        "CLOUDFLARE_API_TOKEN (needs D1 edit)."
+    )
+
+
 def _setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -563,11 +572,7 @@ def doctor(
         # The tables are created here on first boot, so reaching this means D1
         # itself is unusable. A traceback would bury that in a stack the reader
         # has to decode; this check line is the whole answer.
-        typer.echo(f"✗ d1 — {e}")
-        typer.echo(
-            "  Check [store] database_id, CLOUDFLARE_ACCOUNT_ID and "
-            "CLOUDFLARE_API_TOKEN (needs D1 edit)."
-        )
+        _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
     # No green banner here: it used to be true because a missing file raised.
@@ -958,13 +963,18 @@ def _force_d1_client(config_path: Path, sources_path: Path):
     the backend here is what makes the schema apply on this path too; without
     it the first INSERT dies with `no such table`.
     """
-    from cyris.adapters.store.d1 import apply_schema
+    from cyris.adapters.store.d1 import D1Error, apply_schema
     from cyris.bootstrap import build_d1_client, load_effective_config
 
     try:
+        # Already applies the schema when the backend is d1, so an unusable
+        # database surfaces here rather than at the first INSERT.
         cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
     already_applied = cfg.app.store.is_d1  # load_effective_config built a client
@@ -978,7 +988,14 @@ def _force_d1_client(config_path: Path, sources_path: Path):
 
     client = build_d1_client(cfg)
     if not already_applied:
-        apply_schema(client)
+        # Creating the tables is the first thing a new deployment does here, so
+        # an unusable D1 surfaces on this line rather than at the first INSERT.
+        # Same answer `doctor` gives, for the same error.
+        try:
+            apply_schema(client)
+        except D1Error as e:
+            _echo_d1_failure(e)
+            raise typer.Exit(1) from e
     return cfg, client
 
 

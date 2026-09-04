@@ -244,13 +244,16 @@ def _check_store(cfg: Config) -> Check:
         # The tables are created on the way in, so an empty store no longer
         # distinguishes a first boot from a `database_id` pointing at the wrong
         # database — and the run after this one would write there, orphaning the
-        # real store. Say it once rather than let the reader find out from a
-        # digest with no history.
+        # real store. All this check observes is the row count, so that is all it
+        # says: a store emptied by `articles clean` is also legitimately empty,
+        # and telling it its tables are new would send it to change the one
+        # setting that causes the orphaning.
         return Check(
             f"article store ({backend})",
             "warn",
-            "0 articles — this database was empty and its tables were just created",
-            "Expected on a first deploy. If not, check [store] database_id.",
+            "0 articles — nothing in this database",
+            "Expected on a first deploy. Otherwise check [store] database_id "
+            "before the next run writes here.",
         )
     return Check(f"article store ({backend})", "ok", f"{total} articles — {summary}")
 
