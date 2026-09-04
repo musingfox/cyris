@@ -1,0 +1,74 @@
+{
+  "name": "cyris-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "wrangler": "^4.127.1"
+  },
+  "cloudflare": {
+    "bindings": {
+      "CYRIS_UI_TOKEN": {
+        "description": "**Required.** The only lock on the triage UI and the vote API. Generate with `openssl rand -hex 32` — `/login` refuses a secret shorter than 32 characters."
+      },
+      "DIGEST_ORIGIN": {
+        "description": "**Required.** The Pages origin this Worker proxies the public archive from, e.g. `https://your-project.pages.dev`. Create the Pages project first — Deploy buttons cannot. Unset, `/` answers 503."
+      },
+      "CYRIS_STORE_DATABASE_ID": {
+        "description": "**Required.** The D1 database UUID from `wrangler d1 create cyris` or the dashboard. The container reaches D1 over REST rather than through a binding, so this is an id you paste, not a binding the deploy provisions."
+      },
+      "CLOUDFLARE_ACCOUNT_ID": {
+        "description": "**Required.** Your account id, shown in the dashboard URL and on any Workers page."
+      },
+      "CLOUDFLARE_API_TOKEN": {
+        "description": "**Required.** An [API token](https://dash.cloudflare.com/profile/api-tokens) with `D1:Edit` and `Cloudflare Pages:Edit`. This is what publishes the digest and reads the store."
+      },
+      "CYRIS_PROMOTE_PAGES_PROJECT": {
+        "description": "**Required.** The Pages project name the digest deploys to — the same project `DIGEST_ORIGIN` points at."
+      },
+      "ANTHROPIC_API_KEY": {
+        "description": "One LLM key is required; set the one matching your provider. [Anthropic Claude](https://console.anthropic.com/)."
+      },
+      "GEMINI_API_KEY": {
+        "description": "Alternative to `ANTHROPIC_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey)."
+      },
+      "OPENAI_API_KEY": {
+        "description": "Alternative to `ANTHROPIC_API_KEY` — [OpenAI](https://platform.openai.com/api-keys)."
+      },
+      "CYRIS_UI_ACCESS_HOST": {
+        "description": "Optional, and only after Cloudflare Access is verified blocking. The hostname Access is bound to; set it before Access exists and the vote API on that hostname answers 401 to logged-in readers."
+      },
+      "CYRIS_WORKER_TOKEN": {
+        "description": "Optional. The one bearer the rss and newsletter Workers accept. Set it here and in those Workers; leave blank to poll feeds directly at digest time."
+      },
+      "CYRIS_RSS_WORKER_URL": {
+        "description": "Optional. The `workers/rss/` buffer, e.g. `https://cyris-rss.<sub>.workers.dev`. Blank falls back to polling every feed at digest time, which loses articles a busy feed has already rotated out."
+      },
+      "CYRIS_NEWSLETTER_WORKER_URL": {
+        "description": "Optional. The `workers/newsletter/` email ingester. Needs a domain on Cloudflare Email Routing — the one setup step that cannot be automated."
+      },
+      "CYRIS_PROMOTE_WORKER_URL": {
+        "description": "Optional. The `workers/promote/` vote Worker, e.g. `https://cyris-promote.<sub>.workers.dev`. Blank disables the 👍/👎 buttons."
+      },
+      "CYRIS_PROMOTE_TOKEN": {
+        "description": "Optional, and **not** a secret: it is rendered into every published digest page so the vote buttons work in a reader's browser. Keep it distinct from `CYRIS_WORKER_TOKEN`."
+      },
+      "CYRIS_PROMOTE_CUSTOM_DOMAIN": {
+        "description": "Optional. The hostname readers use, if you attached one. On a domainless deploy set it to this Worker's `*.workers.dev` hostname."
+      },
+      "CLOUDFLARE_EMBEDDING_API_TOKEN": {
+        "description": "Optional. A `Workers AI:Read` token for `@cf/baai/bge-m3` vote-similarity filtering. Not the same token as `CLOUDFLARE_API_TOKEN`."
+      },
+      "CYRIS_DISCORD_WEBHOOK_URL": {
+        "description": "Optional. A Discord webhook that gets a line per digest run."
+      }
+    }
+  }
+}

@@ -36,7 +36,7 @@ optional second layer.
 domain from an active zone in your Cloudflare account, or a custom hostname via
 Cloudflare for SaaS" — and `workers.dev` is neither.
 
-This repo's `wrangler.toml` has `workers_dev = true` and no `routes`, so
+This repo's root `wrangler.toml` has `workers_dev = true` and no `routes`, so
 `wrangler deploy` does not need a domain. Attach a custom domain from the
 Cloudflare dashboard (Workers → your worker → Settings → Domains & Routes) or
 the API. **Known cost:** routing then lives in two places — this file for
@@ -66,9 +66,16 @@ third layer.
 ## Deploy
 
 Containers need Workers Paid, and the image is built locally by `wrangler`, so
-Docker must be running. **Run wrangler from this directory** — from the repo
-root it reads `.env` and an expired `CLOUDFLARE_API_TOKEN` there silently
-overrides your OAuth login.
+Docker must be running. **Run wrangler from the repo root**, where this Worker's
+`wrangler.toml` and `package.json` live — a Deploy to Cloudflare button treats
+the directory it points at as the whole repository, and this Worker needs the
+Dockerfile and the Python package outside `workers/app/`.
+
+**Pass `--env-file /dev/null` every time.** Wrangler loads the cwd's `.env`, and
+the repo root's holds a `CLOUDFLARE_API_TOKEN` that silently overrides your OAuth
+login without falling back when it expires. The receipt: `wrangler whoami` from
+the root reports an *Account API Token*; the same command with
+`--env-file /dev/null` reports the *OAuth Token*.
 
 ```sh
 bun install                       # or npm install
@@ -81,10 +88,10 @@ for s in CYRIS_UI_TOKEN DIGEST_ORIGIN \
          CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
          CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL CYRIS_DISCORD_WEBHOOK_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
-  bunx wrangler secret put "$s"
+  bunx wrangler secret put "$s" --env-file /dev/null
 done
 
-bunx wrangler deploy              # builds ../../Dockerfile, pushes, deploys
+bunx wrangler deploy --env-file /dev/null   # builds ./Dockerfile, pushes, deploys
 ```
 
 Grade-B identity is the same names the Python process already reads

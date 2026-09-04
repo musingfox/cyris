@@ -121,12 +121,44 @@ so changing them does not need a rebuild. See [`workers/app/README.md`](workers/
 for the deploy steps, the secret list, and auth (`CYRIS_UI_TOKEN` cookie, with
 optional Cloudflare Access on a hostname you own).
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris)
+
+The button clones this repo into your own GitHub account, builds the container
+image with Workers Builds, and deploys the Worker, its Durable Object and the
+hourly cron. It asks for each secret in [`.env.example`](.env.example), with the
+guidance in `package.json`'s `cloudflare.bindings` shown beside every field.
+
+**Three things it cannot do**, because Cloudflare's automatic provisioning does
+not cover them — do these first and paste the results into the deploy form:
+
+1. **Create the D1 database** (`wrangler d1 create cyris`, or the dashboard) and
+   pass its UUID as `CYRIS_STORE_DATABASE_ID`. The container reaches D1 over
+   REST rather than through a binding, so there is nothing for the deploy to
+   provision. `cyris` creates the tables on first boot.
+2. **Create the Pages project** — Deploy buttons only support Workers. Its name
+   goes in `CYRIS_PROMOTE_PAGES_PROJECT` and its origin in `DIGEST_ORIGIN`.
+3. **Attach a domain and Cloudflare Access**, if you want the second auth layer
+   or email-only newsletters. Both are dashboard steps; see the table above for
+   which features need a domain.
+
+The other three Workers (`workers/rss/`, `workers/promote/`,
+`workers/newsletter/`) are separate deploys — one button deploys one Worker.
+Deploy each from its own directory with `wrangler`, and **point the rss Worker at
+the same D1 database as the app**: give it a fresh one and it reads an empty
+`sources` table, falls back to `feeds.json`, and buffers the wrong feeds without
+saying so.
+
+Deploying by hand instead:
+
 ```bash
 cp .env.example .env        # API keys: ANTHROPIC/GEMINI/OPENAI, CYRIS_WORKER_TOKEN, ...
 # docker build needs no cyris.toml / sources.yaml — the image copies
 # sources.example.yaml to /app/sources.yaml. compose bind-mounts over that path.
 
-cd workers/app && bun install && bunx wrangler deploy
+# From the repo root: this Worker's wrangler.toml lives there, not in
+# workers/app/, because its image is built from the whole repo. `--env-file
+# /dev/null` keeps the .env you just wrote from overriding your wrangler login.
+bun install && bunx wrangler deploy --env-file /dev/null
 ```
 
 The same image runs locally with `docker compose up -d`, where the default `CYRIS_ROLE`

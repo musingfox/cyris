@@ -416,7 +416,7 @@ With `backend = "json"` there is no settings store: the page renders read-only a
 409, exactly as it did with no config file. That deployment edits `cyris.toml` by hand.
 
 The schedule moved with it, and then moved again: the tick is now a Workers Cron Trigger
-(`workers/app/wrangler.toml`) rather than `docker/crontab`, unconditional and hourly, running
+(the repo-root `wrangler.toml`) rather than `docker/crontab`, unconditional and hourly, running
 `cyris run --if-due`, which asks the effective `digest_schedule` whether this hour is a digest hour and derives
 `--period` from which of the two it is. Hour granularity is the contract, not a rounding: the write
 surface refuses `08:30` rather than firing at 08:00 and leaving the reader to work out why.
@@ -534,7 +534,7 @@ hard edges:  M-behaviour → (closes #13)
 | ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | `settings-source-editor` |
 | ~~**M5**~~ | ~~Into the Container~~ — done 2026-08-31 | All four pieces in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran on 08-30 — see §6 on why that is not optional | ✅ **Two digests from a machine that was off.** `usage_log`: `2026-08-30 evening · 61 received · 9 included · $0.025` at 12:01:12Z and `2026-08-31 morning · 42 · 8 · $0.024` at 00:01:12Z, both ~60 s after their cron fired, with the Mac mini down since 08-30 08:29Z; the row above them is its last. Auth: every unauthenticated path answers `401`, and after Access went on, a request carrying a *valid* cyris cookie still redirects to the Access login — the layers are ordered. ✅ The third clause, *the bill shows the instance sleeping*, took a fix to collect. `containersMetricsAdaptiveGroups` (the dataset the first attempt had the wrong name for) showed the `ui` container holding 132 MB at zero CPU for eight straight hours while `run` behaved correctly, because `stop()`'s SIGTERM was landing on a PID 1 with no handler — §6 has the receipt and the four-line repro. With the handler in `cli.py`, the last request at 08:11:18Z was followed by `container stopped { exitCode: 0, reason: 'exit' }` at 08:16:31Z and the instance returned to `inactive` | `cloud-p3` |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | `schema-first-interleave` |
-| **M6** | One-button deploy | Only meaningful once nothing runs locally. First boot creates its own tables since 2026-09-04 — `load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry points. What is still absent is *version evolution*: every statement is `CREATE ... IF NOT EXISTS`, so the next `ADD COLUMN` reaches an existing database with no path to apply it. Do not read "no migration mechanism is needed" as covering that — the sentence it replaces was about first creation, and the two were being conflated | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
+| **M6** | One-button deploy | Only meaningful once nothing runs locally. First boot creates its own tables since 2026-09-04 — `load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry points. What is still absent is *version evolution*: every statement is `CREATE ... IF NOT EXISTS`, so the next `ADD COLUMN` reaches an existing database with no path to apply it. Do not read "no migration mechanism is needed" as covering that — the sentence it replaces was about first creation, and the two were being conflated (`d1-schema-evolution`). The button's shape was settled on 2026-09-04 — see *What the deploy button can and cannot do* below; the config moved to the repo root and the checklist is `.env.example`. What is left is the clean-account run itself | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | `cloud-p4` |
 
 **M-persist shipped** with M-ship's window: rejection reasons are a two-way split
 (`already_known` / `not_interested`), stories and story membership are D1 tables keyed by content
@@ -559,6 +559,48 @@ Two things this table deliberately makes explicit:
   it M2 (its storage) and M5 (its auth) — never an afterthought.
 - **M1 comes before every port.** Eliminate, then simplify, then move. Porting something that should
   have been deleted costs twice.
+
+### What the deploy button can and cannot do (M6, 2026-09-04)
+
+Settled against the [Deploy buttons documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/),
+which contradicts three assumptions the ticket carried:
+
+- **There is no `deploy.json`.** A button is a README link to
+  `deploy.workers.cloudflare.com/?url=<repo>`. Its inputs are the Wrangler config
+  (bindings), `.env.example` (which secrets to ask for), and `package.json`'s
+  `cloudflare.bindings` (the guidance rendered beside each field).
+- **A subdirectory must be self-contained**; Cloudflare treats it as the root of the
+  repo it clones. `workers/app/` is not — its image is built from the repo's Dockerfile
+  and installs the Python package. **That is why `wrangler.toml`, `package.json` and
+  `vitest.config.js` live at the repo root** rather than beside `workers/app/src/`.
+  Copying the Dockerfile down to fake isolation was considered and rejected: it
+  duplicates the thing being deployed.
+- **Workers Builds does build the container image** on the production branch, where it
+  runs `wrangler deploy` (Containers FAQ). This was the gate on the whole shape.
+
+Three steps stay manual, and no restructuring removes them:
+
+| Step | Why it cannot be provisioned |
+|---|---|
+| Create the D1 database, paste the UUID as `CYRIS_STORE_DATABASE_ID` | The container reaches D1 over REST, not through a binding. Adding a `[[d1_databases]]` binding would make the deploy create a database whose id nothing can read at runtime — a provisioning trick that still ends in a paste |
+| Create the Pages project (`CYRIS_PROMOTE_PAGES_PROJECT`, `DIGEST_ORIGIN`) | Deploy buttons support Workers only |
+| Attach a domain, then Cloudflare Access | Neither is in the provisioning list, and Access cannot cover `workers.dev` |
+
+None of these breaks the acceptance condition, which is *no code edits* — an id pasted
+into a secret field is not a code edit.
+
+**Four Workers, four buttons**, and the app is the primary one. The coupling to name in
+any guide: `workers/rss/` and the app share one D1, because the RSS Worker reads the
+`sources` table the app writes. Provisioned separately they get two databases, and the
+buffer silently falls back to `feeds.json` — a fork that polls the wrong feeds and
+reports nothing wrong.
+
+**Running wrangler from the repo root now means running it beside `.env`.** Wrangler
+loads the cwd's dotenv, and an expired `CLOUDFLARE_API_TOKEN` there overrides an OAuth
+login without falling back. Every documented invocation therefore carries
+`--env-file /dev/null`; the receipt is `wrangler whoami`, which reports an *Account API
+Token* without the flag and an *OAuth Token* with it.
+
 
 ### Publishing without a subprocess (M3, 2026-08-27)
 
@@ -718,9 +760,10 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 6 | Three Worker URLs + Pages project name | hand-written in `cyris.toml` | **derived at deploy** | `cloud-p4` |
-| 7 | `deploy.json`, the README button, the secret checklist | absent | present — the checklist is seven variables now, not twelve (§5) | `cloud-p4` |
-| 8 | Three Workers vs one button | undecided | decide **after** `cloud-p3`, with the Container as the primary | `cloud-p4` |
+| ~~6~~ | ~~Three Worker URLs + Pages project name~~ | Done 2026-09-04: all four are deployer-supplied secrets the Worker forwards to the container (`workers/app/src/index.js`), and `.env.example` names every one | — | `cloud-p4` |
+| ~~7~~ | ~~The button and the secret checklist~~ | Done 2026-09-04: `README.md` carries the button, `.env.example` is the checklist the deploy page reads, and `package.json`'s `cloudflare.bindings` is the per-field guidance. There is no `deploy.json` — that file does not exist in this mechanism | — | `cloud-p4` |
+| ~~8~~ | ~~Three Workers vs one button~~ | Decided 2026-09-04: four buttons, the app primary. One button deploys one Worker, and the app's config moved to the repo root so its subdirectory constraint is satisfied | — | `cloud-p4` |
+| 9 | A clean-account run of the button | never done | press it on an account that has never seen cyris, fill the secrets, get a digest | `cloud-p4` |
 
 ### Grade D has a home
 

@@ -1,4 +1,4 @@
-"""Drive workers/app vitest when the JS toolchain is installed."""
+"""Drive the Worker vitest suite when the JS toolchain is installed."""
 
 from __future__ import annotations
 
@@ -8,16 +8,15 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "workers/app"
-VITEST = APP / "node_modules/.bin/vitest"
+VITEST = ROOT / "node_modules/.bin/vitest"
 
 
 def test_worker_vitest_suite():
     if not VITEST.exists():
-        pytest.skip("bun install in workers/app (vitest binary missing)")
+        pytest.skip("bun install at the repo root (vitest binary missing)")
     result = subprocess.run(
         [str(VITEST), "run"],
-        cwd=APP,
+        cwd=ROOT,
         capture_output=True,
         text=True,
     )

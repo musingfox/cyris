@@ -1,5 +1,10 @@
+# This file lives at the repo root, not in workers/app/ beside the Worker it
+# configures. A Deploy to Cloudflare button treats the directory it points at
+# as the whole repository, and this Worker needs two things outside
+# workers/app/: the Dockerfile and the Python package it installs. Moving the
+# config down would make the button build fail, not tidy anything.
 name = "cyris-app"
-main = "src/index.js"
+main = "workers/app/src/index.js"
 compatibility_date = "2026-06-01"
 
 # Fork-neutral top level: a clone deploys to *.workers.dev with no account-
@@ -24,9 +29,9 @@ crons = ["0 * * * *"]
 
 [[containers]]
 class_name = "CyrisContainer"
-# Relative to this file; its directory is the build context, which is why the
-# repo-root Dockerfile is the one that ships.
-image = "../../Dockerfile"
+# Relative to this file; its directory is the build context, so the whole repo
+# is what the image is built from.
+image = "./Dockerfile"
 # One digest run and one triage session at a time — this is a single reader's
 # deployment, and a second instance would be a second publisher.
 max_instances = 2
