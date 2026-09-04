@@ -12,6 +12,9 @@ Cyris is a local-first AI-powered information digest agent. It fetches articles 
 # Install dependencies (dev)
 uv sync --dev
 
+# Everything CI runs — JS tests, ruff, pytest — in one command
+scripts/check.sh
+
 # Run CLI
 uv run cyris
 
@@ -42,11 +45,11 @@ uv run pytest tests/test_newsletter_real_fixtures.py
 
 **Read `docs/architecture.md` before any non-trivial change.** It is the authoritative description of this system, and it is written to be acted on, not just read:
 
-- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. It also names what is *out* of the target architecture, not merely unfinished: Obsidian output is gone, and any edge touching the local filesystem is a defect with a stated destination.
+- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. It also names what is *out* of the target architecture, not merely unfinished: Obsidian output is gone, and the local-filesystem edges are closed — with D1 the only writes left are the `json` backend's, which is the documented fallback.
 - **§3 How a digest is made** — the two ingestion paths and why they have different shapes (RSS is an idempotent buffer, email is a pull/ack queue). Read this before touching a Worker or a `FetchSource`.
 - **§4 Data residency** — every persistent datum, where it lives, where it is going. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
 - **§5 Configuration: four grades** — A baked / B deployment identity / C secrets / D runtime-mutable. Every new setting must be assigned a grade and put in that grade's home. `cyris.toml` is not a default home.
-- **§7 Not built yet** — the single list of outstanding work with its ticket. Work is driven from here. If you name a new destination anywhere in the doc, add it to §7 in the same edit.
+- **§7 Outstanding work** — the open items with their tickets, plus the record of how the closed ones closed. Work is driven from here. If you name a new destination anywhere in the doc, add it to §7 in the same edit.
 
 Keep the document current in the same change that makes it stale — an architecture doc that lags the code is worse than none, because it is still trusted.
 
@@ -78,7 +81,7 @@ src/cyris/
 │   ├── workers_ai_client.py # WorkersAIClient (implements LLMClient) over Cloudflare Workers AI
 │   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL;
 │   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback
-│   ├── fetch/               # RSS sources (direct + Worker buffer), newsletter archive + Cloudflare-worker sources, email parser
+│   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
 │   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST
 │   ├── notify.py            # Discord notifications
@@ -106,7 +109,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 
 `service_layer/run_digest.py` is the single pipeline orchestrator (the CLI only parses args and calls it via `bootstrap.build_deps`):
 
-1. `service_layer/fetching.py` pulls from all FetchSources (the RSS Worker buffer or direct polling, newsletter archive, and the Cloudflare newsletter Worker when configured) within a time window
+1. `service_layer/fetching.py` pulls from all FetchSources (the RSS Worker buffer or direct polling, and the Cloudflare newsletter Worker when configured) within a time window
 2. Articles are saved to the ArticleStore for dedup and persistent lifecycle tracking
 3. `service_layer/scoring.py` scores non-news articles via the LLM for relevance ranking
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
@@ -119,7 +122,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 
 All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or swapping IO, work at these seams — never touch `service_layer/` or `domain/`:
 
-- **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured), `NewsletterArchiveSource`, `CloudflareNewsletterSource`.
+- **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured) and `CloudflareNewsletterSource`.
 - **`Embedder`** (`ports.py`) — vote-similarity embeddings, selected in `build_embedder()`: `WorkersAIEmbedder` (`@cf/baai/bge-m3`, the default) or `GeminiEmbedder`. Neither caches — a run is ~600 texts ≈ 20 neurons. Each provider carries its **own** threshold, in `src/cyris/provider_defaults.json` (reasons in `docs/architecture.md` §5); the cosine scales differ, so reusing one number across providers silently disables the feature.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it).
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation fails at the CLI or the triage UI, not at import.
@@ -150,7 +153,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned state directory. `agent-vault/daily/` holds raw article collections (gitignored). `agent-vault/articles/` holds the persistent article store (gitignored). `agent-vault/events/` holds the timeline files the removed tracked-topics feature wrote (tracked in git, frozen — nothing updates them).
+Agent-owned state directory, entirely gitignored — nothing under it is in version control. `agent-vault/daily/` holds raw article collections and `agent-vault/articles/` the persistent article store, both only while `[store] backend` is `json`; with D1 the directory stays empty.
 
 ## Conventions
 
@@ -170,8 +173,8 @@ Agent-owned state directory. `agent-vault/daily/` holds raw article collections 
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
 - Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
 - Digest output language is configurable via `[digest] output_language`, a **BCP 47 tag** (default `zh-Hant`). `service_layer/languages.json` maps the tag to the wording the model receives; an unlisted tag is substituted verbatim, which is what keeps an older config holding a plain language name working. Prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
-- Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan remain only as fallbacks behind it. **Never make the extractor return a URL that repeats across issues** (a homepage, a `/join` link, an archive URL whose only per-issue param gets stripped): `ArticleStore` dedups by URL, so every later issue would be silently dropped — worse than the synthetic `newsletter:<hash>` URL, which is unique per issue by construction. That constraint is why the `homepage` fallback lands in `ref_urls` rather than in `url`: `DigestItem.link` falls through to `ref_urls[0]`, so the reader gets the publisher's site while the dedup key stays unique. `homepage` skips the `is_content_url` filter on purpose — that filter drops ESP hosts, and a Mailchimp-only newsletter's own site *is* its campaign-archive page — but still gets its tracking params stripped. Real-sample coverage lives in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
-- Link-health counters on `DigestContent` have deliberately different scopes: `synthetic_url_count` covers every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health), `dead_link_count` covers only items that reached the digest with no clickable link (what a reader hits). The Discord stats line labels each — don't "fix" them into agreement
+- Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan are fallbacks behind it. The load-bearing constraint is that a returned URL must never repeat across issues — `ArticleStore` dedups by URL, so a repeated one silently drops every later issue. `tests/test_newsletter.py` enforces it (distinct post URLs, distinct synthetic URLs, and where `homepage` may land); read those before changing the extractor. Real-sample coverage is in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
+- Link-health counters on `DigestContent` measure two different things: `synthetic_url_count` counts every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health); `dead_link_count` counts only items that reached the digest with no clickable link (what a reader hits). Each has its own test, but nothing asserts they disagree on one run — so don't "fix" them into agreement
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers
 - Mock patching: always patch where the function is **used**, not where it is **defined** (e.g. patch `cyris.service_layer.run_digest.now_in_timezone`, not `cyris.utils.timezone.now_in_timezone`)
 - LLM calls in tests: inject `FakeLLM` (tests/fakes.py) instead of patching the Anthropic SDK; only CLI-level e2e tests patch the single adapter point `cyris.adapters.anthropic_client.anthropic.AsyncAnthropic`

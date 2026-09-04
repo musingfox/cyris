@@ -8,8 +8,9 @@
 > contracts), `adapters/store/schema.sql` (what D1 holds), `workers/*/src/index.js` (ingestion).
 >
 > **This document drives the work.** Everything still to be built is listed in
-> [§7 Not built yet](#7-not-built-yet), with its ticket. A destination named anywhere else in this
-> document must appear there too — if it doesn't, the list is stale, not the plan.
+> [§7 Outstanding work](#7-outstanding-work-and-the-record-of-what-closed), with its ticket. A
+> destination named anywhere else in this document must appear there too — if it doesn't, the list
+> is stale, not the plan.
 
 ## 1. Layers
 
@@ -73,7 +74,7 @@ flowchart TB
         FEEDS[("Publisher feeds")]
         CFW{{"Cloudflare · Workers · D1 · KV · Pages"}}
         DISC{{"Discord"}}
-        FS["Local filesystem<br/>must be empty by M3+M4"]
+        FS["Local filesystem<br/>json backend only"]
     end
 
     CLI --> DEPS
@@ -110,20 +111,20 @@ flowchart TB
     TAGS --> CFW
     STORIES --> CFW
     NOTI --> DISC
-    HTML -->|to remove| FS
-    EMB -->|to remove| FS
+    EMB --> CFW
+    HTML -->|json backend only| FS
 
     classDef port fill:#0F6E7A,stroke:#5AC3CC,color:#fff;
-    classDef move fill:#A8590C,stroke:#DFA45E,color:#fff;
+    classDef fallback fill:#A8590C,stroke:#DFA45E,color:#fff;
     classDef bad fill:#98292B,stroke:#E28079,color:#fff;
     classDef cloud fill:#1F4E63,stroke:#7FB6CC,color:#fff;
     class P1,P2,P3 port;
-    class HTML,EMB move;
-    class RSS,FEEDS,FS bad;
-    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES cloud;
+    class HTML,FS fallback;
+    class RSS,FEEDS bad;
+    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,EMB cloud;
 ```
 
-**Legend**: 🟢 Protocol boundary　🟠 still writes local files, must move　🔴 must not exist in the
+**Legend**: 🟢 Protocol boundary　🟠 the `json` backend's fallback path　🔴 must not exist in the
 target architecture　🔵 already on Cloudflare
 
 ### No Obsidian writer — deleted 2026-08-27 (M1)
@@ -139,16 +140,21 @@ triage accept. `--dry-run` renders the HTML instead.
 
 ### Local filesystem is a defect, not a tier
 
-A cloud system has no local disk. Three edges still touch one, and each has a destination:
+A cloud system has no local disk. Three edges once touched one; all three are closed, and none
+closed by moving to the storage product first named for it:
 
-| Edge | What it writes | Destination |
+| Edge | What it wrote | How it closed |
 |---|---|---|
-| `HtmlDigestWriter → FS` | digest + raw pages, then `wrangler pages deploy` | **R2** |
-| `Embedder → FS` | `embeddings.json` (322 MB), rewritten whole every run | **Vectorize** |
-| `NewsletterArchiveSource ← FS` | local maildir, superseded by the newsletter Worker | **deleted** |
+| `HtmlDigestWriter → FS` | digest + raw pages, then `wrangler pages deploy` | **not R2.** Pages Direct Upload over REST (`adapters/output/pages_deploy.py`); with D1 the pages are rendered in memory and never reach a disk — why not R2 is in §7 |
+| `Embedder → FS` | `embeddings.json` (415 MB), rewritten whole every run | **not Vectorize.** The cache was deleted rather than relocated — a run re-embeds ~600 texts for ~20 neurons — why not Vectorize is in §7 |
+| `NewsletterArchiveSource ← FS` | local maildir | **deleted** 2026-08-27 (M1), superseded by the newsletter Worker |
 
-**`cloud-p3` is done exactly when the `Local filesystem` node disappears from the diagram above.**
-That is the acceptance test; anything else is progress reporting.
+One filesystem edge remains, and it is the documented fallback rather than a defect:
+`HtmlDigestWriter` writes `agent-vault/html/` when `[store] backend` is still `json`. With D1 wired,
+the site's file list comes from the `pages_manifest` table and nothing is written locally.
+
+**`cloud-p3` was done when the `Local filesystem` node left the D1 path.** That was the acceptance
+test.
 
 ### Two wiring strengths
 
@@ -293,7 +299,7 @@ Every persistent datum, where it lives now, and where it is going.
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 
-The three D1 tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
+The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
 declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
 provisions from.
 
@@ -341,6 +347,10 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
 | Embedding provider + model | D | `cyris.toml [vote_similarity]` | **D1 `settings`** + `/settings`, as its own `[embedding]` table — §7 #17 |
 | Embedding threshold | **A** | `cyris.toml`, else the provider's own calibration | unchanged — a measured property of the model, not a preference |
+| Discord webhook | C | `CYRIS_DISCORD_WEBHOOK_URL` (`cyris.toml [notify]` fallback) | done — anyone holding it can post to the channel, so it is a secret. Note it is **not** among the seven counted below; that count is of API tokens |
+| Digest window | D | `cyris.toml [general] digest_window_hours` | **D1 `settings`** — moves with the other digest knobs, same row as score thresholds |
+| Vote similarity on/off, `max_seeds` | D | `cyris.toml [vote_similarity]` | **D1 `settings`** + `/settings`, alongside the embedding provider — §7 #17 |
+| Agent vault path, HTML output dir | A | `cyris.toml` | unchanged — both address the `json` backend's fallback tree only; with D1 nothing is written there |
 | **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | undecided. Writing a key into D1 `settings` puts a secret in a readable D-grade row; §7 #17 records the question rather than answering it |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
@@ -530,10 +540,14 @@ silently ignored for two days.
 - `cyris doctor` should report what *this build* supports, not only what the config asks for —
   otherwise it goes green inside a container that is quietly ignoring half the file.
 
-## 7. Not built yet
+## 7. Outstanding work, and the record of what closed
 
-Everything this document describes as a *destination* rather than a *fact*, in one place. Anything
-not on this list is already true of the running system.
+**One item is open: #17, the embedding provider's config home.** Everything else in this chapter is
+history — the milestones as they landed, and the reasoning behind the calls that shaped them
+(why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
+changing one of those decisions means reading why it was made, not because it is pending.
+
+Read the tables for what is open; read the prose for why the closed things closed that way.
 
 ### 7.0 The path
 
