@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -18,6 +19,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 API_ROOT = "https://api.cloudflare.com/client/v4"
+SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 TIMEOUT_SECONDS = 60
 
 # D1 binds at most 100 parameters per statement, so every multi-row write here
@@ -116,3 +118,15 @@ def chunk_rows(rows: list[Any], params_per_row: int) -> list[list[Any]]:
     """Split rows so each statement stays inside D1's bound-parameter budget."""
     per_statement = max(1, MAX_BOUND_PARAMS // params_per_row)
     return [rows[i : i + per_statement] for i in range(0, len(rows), per_statement)]
+
+
+def apply_schema(client: D1Queryable) -> None:
+    """Create this build's tables on a database that does not have them yet.
+
+    A clean Cloudflare account's D1 is empty and nothing else ever builds these
+    tables, so the first boot has to. Every statement is `CREATE ... IF NOT
+    EXISTS` and none of them seed a row, so re-applying is a no-op — cheaper
+    than asking the database whether it is needed. Measured 2026-09-04: the REST
+    query endpoint runs the whole file, comments included, in one POST.
+    """
+    client.query(SCHEMA_PATH.read_text(encoding="utf-8"))

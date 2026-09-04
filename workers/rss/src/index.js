@@ -11,6 +11,16 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
+// The buffer's own tables, and the only definition of them: a clean Cloudflare
+// account provisions an empty D1, and nothing else creates `articles`. Applied
+// on every entry point because `IF NOT EXISTS` makes it a no-op, which is
+// cheaper than asking whether it is needed. One statement per line — that is
+// what `exec()` splits on.
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, guid TEXT, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', author TEXT, published_at TEXT NOT NULL, source_name TEXT NOT NULL, fetched_at TEXT NOT NULL);`,
+  `CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);`,
+].join("\n");
+
 const RETENTION_DAYS = 8; // matches the ArticleStore's dedup scan window
 const FETCH_TIMEOUT_MS = 20000;
 // Substack rate-limits Cloudflare's egress; 10 at once drew HTTP 429s.
@@ -33,6 +43,7 @@ async function fetchFeed(feed) {
 }
 
 async function poll(env, feeds) {
+  await env.DB.exec(SCHEMA);
   feeds = feeds ?? (await loadFeeds(env, BUNDLED_FEEDS));
   const fetchedAt = new Date().toISOString();
   const rows = [];
@@ -104,6 +115,10 @@ export default {
     if (request.headers.get("Authorization") !== `Bearer ${env.RSS_TOKEN}`) {
       return json({ error: "unauthorized" }, 401);
     }
+
+    // The first digest can land before the first cron tick, so the read path
+    // cannot assume the table is already there.
+    await env.DB.exec(SCHEMA);
 
     const url = new URL(request.url);
 

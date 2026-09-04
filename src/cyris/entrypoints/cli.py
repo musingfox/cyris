@@ -549,6 +549,7 @@ def doctor(
         # The report is the output here; a request log per check buries it.
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
     from cyris.service_layer.doctor import run_checks
 
@@ -557,6 +558,13 @@ def doctor(
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
         typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        # The tables are created here on first boot, so reaching this means D1
+        # itself is unusable. A traceback would bury that in a stack the reader
+        # has to decode; this check line is the whole answer.
+        typer.echo(f"✗ d1 — {e}")
+        typer.echo("  Check [store] database_id and CLOUDFLARE_API_TOKEN (needs D1 edit).")
         raise typer.Exit(1) from e
 
     # No green banner here: it used to be true because a missing file raised.

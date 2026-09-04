@@ -59,19 +59,32 @@ class SqliteD1:
     fails here too.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, with_schema: bool = True) -> None:
         import sqlite3
         from pathlib import Path
 
         schema = Path(__file__).parent.parent / "src/cyris/adapters/store/schema.sql"
         self._conn = sqlite3.connect(":memory:")
         self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(schema.read_text(encoding="utf-8"))
+        # `with_schema=False` is what a clean Cloudflare account hands the first
+        # boot: a reachable database with no tables in it.
+        if with_schema:
+            self._conn.executescript(schema.read_text(encoding="utf-8"))
 
     def query(self, sql, params=None):
+        import sqlite3
+
         from cyris.adapters.store.d1 import QueryResult
 
-        cursor = self._conn.execute(sql, params or [])
+        # The REST endpoint runs several statements in one POST (measured
+        # 2026-09-04); sqlite3.execute takes exactly one, so fall back rather
+        # than let the fake reject what production accepts.
+        try:
+            cursor = self._conn.execute(sql, params or [])
+        except sqlite3.ProgrammingError:
+            self._conn.executescript(sql)
+            self._conn.commit()
+            return QueryResult(rows=[], changes=0)
         rows = [dict(row) for row in cursor.fetchall()]
         self._conn.commit()
         return QueryResult(rows=rows, changes=max(cursor.rowcount, 0))
