@@ -259,6 +259,63 @@ def test_an_empty_manifest_refuses_when_receipt_lookup_fails(monkeypatch):
     assert deployed == []
 
 
+def test_the_receipt_is_written_before_upload(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
+    events = []
+
+    class _OrderedReceipt(_Receipt):
+        def record(self, project):
+            events.append("receipt")
+            super().record(project)
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        events.append("deploy")
+        return "dep-1", {**manifest, **{p: "new" for p in new_files}}
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+
+    publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _OrderedReceipt())
+    assert events[:2] == ["receipt", "deploy"]
+
+
+def test_a_failed_upload_still_leaves_the_receipt(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        raise publish_mod.PagesDeployError("upload failed")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+    receipt = _Receipt()
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", receipt)
+
+    assert ok is False
+    assert receipt.present is True
+    assert receipt.records == ["proj"]
+
+
+def test_a_receipt_write_failure_does_not_upload(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    class _WriteFail(_Receipt):
+        def record(self, project):
+            raise RuntimeError("d1 down")
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _WriteFail())
+
+    assert ok is False
+    assert deployed == []
+
+
 def test_record_writes_one_row_with_iso8601_created_at():
     db = SqliteD1()
     D1PagesDeployReceipt(db).record("proj")

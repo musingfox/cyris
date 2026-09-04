@@ -91,7 +91,11 @@ def publish_site(
             except (PagesDeployError, httpx.HTTPError) as e:
                 logger.error("Pages deployment probe failed: %s", e)
                 return False
-            receipt_store.record(pages_project)
+            try:
+                receipt_store.record(pages_project)
+            except Exception as e:
+                logger.error("Pages deploy receipt write failed: %s", e)
+                return False
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
         try:
             deployment, updated = client.deploy_manifest(
