@@ -61,6 +61,7 @@ def publish_site(
     slug: str,
     manifest_store,
     pages_project: str,
+    receipt_store,
 ) -> bool:
     """Publish without a local archive: this run's files plus the D1 manifest.
 
@@ -77,6 +78,10 @@ def publish_site(
         return False
 
     manifest = manifest_store.load()
+    if not manifest and not receipt_store.exists(pages_project):
+        if client.has_deployments():
+            return False
+        receipt_store.record(pages_project)
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
         try:
             deployment, updated = client.deploy_manifest(

@@ -248,10 +248,14 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
                 # to live on this machine. Local files are the no-D1 fallback,
                 # same shape as `sources.yaml` behind the `sources` table.
                 from cyris.adapters.output.pages_manifest import D1PagesManifest
+                from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
 
                 manifest = D1PagesManifest(d1)
                 publish_site = partial(
-                    _site, manifest_store=manifest, pages_project=cfg.app.promote.pages_project
+                    _site,
+                    manifest_store=manifest,
+                    pages_project=cfg.app.promote.pages_project,
+                    receipt_store=D1PagesDeployReceipt(d1),
                 )
                 site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
             else:

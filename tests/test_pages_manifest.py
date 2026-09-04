@@ -43,6 +43,21 @@ def test_an_empty_manifest_is_refused(manifest):
     assert manifest.load() == {"/a.html": "1"}
 
 
+class _Receipt:
+    def __init__(self, present=False):
+        self.present = present
+        self.exists_calls = 0
+        self.records = []
+
+    def exists(self, project):
+        self.exists_calls += 1
+        return self.present
+
+    def record(self, project):
+        self.records.append(project)
+        self.present = True
+
+
 class _Store:
     def __init__(self, manifest):
         self.manifest = manifest
@@ -73,7 +88,11 @@ def test_the_run_deploys_its_pages_plus_the_whole_archive(monkeypatch):
     store = _Store({"/2026-08-26-evening.html": "old"})
 
     ok = publish_mod.publish_site(
-        {"/2026-08-27-morning.html": b"<html>x</html>"}, "2026-08-27-morning", store, "proj"
+        {"/2026-08-27-morning.html": b"<html>x</html>"},
+        "2026-08-27-morning",
+        store,
+        "proj",
+        _Receipt(),
     )
 
     assert ok is True
@@ -90,7 +109,7 @@ def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch)
     _stub_client(monkeypatch, deployed=[])
     store = _Store({"/old.html": "old"})
 
-    assert publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj") is False
+    assert publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt()) is False
     assert store.saved is None
 
 
@@ -126,12 +145,40 @@ def test_bootstrap_partial_accepts_run_digest_calling_convention(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
     _stub_client(monkeypatch, deployed=[])
     store = _Store({})
 
-    wired = partial(publish_mod.publish_site, manifest_store=store, pages_project="proj")
+    wired = partial(
+        publish_mod.publish_site,
+        manifest_store=store,
+        pages_project="proj",
+        receipt_store=_Receipt(),
+    )
 
     assert wired({"/2026-08-28-evening.html": b"<html>x</html>"}, "2026-08-28-evening") is True
+
+
+def test_a_first_ever_deploy_goes_through(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+    store = _Store({})
+
+    ok = publish_mod.publish_site(
+        {"/2026-08-27-morning.html": b"<html>x</html>"},
+        "2026-08-27-morning",
+        store,
+        "proj",
+        _Receipt(),
+    )
+
+    assert ok is True
+    assert deployed[0][1] == {}
+    assert "/2026-08-27-morning.html" in store.saved
 
 
 def test_record_writes_one_row_with_iso8601_created_at():
@@ -194,4 +241,3 @@ def test_exists_is_keyed_by_project():
     store = D1PagesDeployReceipt(SqliteD1())
     store.record("proj")
     assert store.exists("other") is False
-
