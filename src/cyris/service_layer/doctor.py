@@ -240,6 +240,18 @@ def _check_store(cfg: Config) -> Check:
         )
     total = sum(counts.values())
     summary = ", ".join(f"{state} {n}" for state, n in sorted(counts.items())) or "empty"
+    if not total and cfg.app.store.is_d1:
+        # The tables are created on the way in, so an empty store no longer
+        # distinguishes a first boot from a `database_id` pointing at the wrong
+        # database — and the run after this one would write there, orphaning the
+        # real store. Say it once rather than let the reader find out from a
+        # digest with no history.
+        return Check(
+            f"article store ({backend})",
+            "warn",
+            "0 articles — this database was empty and its tables were just created",
+            "Expected on a first deploy. If not, check [store] database_id.",
+        )
     return Check(f"article store ({backend})", "ok", f"{total} articles — {summary}")
 
 

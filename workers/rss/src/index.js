@@ -116,8 +116,10 @@ export default {
       return json({ error: "unauthorized" }, 401);
     }
 
-    // The first digest can land before the first cron tick, so the read path
-    // cannot assume the table is already there.
+    // Every route below reads or writes `articles`, and the first digest — or
+    // `doctor`'s /stats health check — can land before the first cron tick. Per
+    // route was tried and dropped: /stats was missed, and the check it feeds
+    // then reported a clean deployment as an unreachable Worker.
     await env.DB.exec(SCHEMA);
 
     const url = new URL(request.url);

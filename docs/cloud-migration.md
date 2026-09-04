@@ -218,7 +218,9 @@ Done 2026-08-25 — kept as the record of what was run, and as the recipe for
 anyone repeating it. Each step is separately reversible.
 
 1. `wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql`
-   — creates `stored_articles`, `usage_log` and `sources`. Already done 2026-08-25.
+   — creates `stored_articles`, `usage_log` and `sources`. Ran 2026-08-25; **no
+   longer a step**, since 2026-09-04 the tables are created on first boot (see
+   §7, M6). Kept because it is what was actually run that day.
 2. Give `.env`'s `CLOUDFLARE_API_TOKEN` the `D1:Edit` permission — the same token deploys Pages.
 3. `cyris store migrate`, then `cyris store diff` — expect no differences.
 4. Set `[store] backend = "d1"`, run `cyris doctor`, then a full `cyris run`.

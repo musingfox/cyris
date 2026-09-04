@@ -564,7 +564,10 @@ def doctor(
         # itself is unusable. A traceback would bury that in a stack the reader
         # has to decode; this check line is the whole answer.
         typer.echo(f"✗ d1 — {e}")
-        typer.echo("  Check [store] database_id and CLOUDFLARE_API_TOKEN (needs D1 edit).")
+        typer.echo(
+            "  Check [store] database_id, CLOUDFLARE_ACCOUNT_ID and "
+            "CLOUDFLARE_API_TOKEN (needs D1 edit)."
+        )
         raise typer.Exit(1) from e
 
     # No green banner here: it used to be true because a missing file raised.
@@ -964,12 +967,15 @@ def _force_d1_client(config_path: Path, sources_path: Path):
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    if not cfg.app.store.database_id or not cfg.app.store.api_token:
-        typer.echo("No D1 configured: set [store] database_id and CLOUDFLARE_API_TOKEN.")
-        raise typer.Exit(1)
-
     already_applied = cfg.app.store.is_d1  # load_effective_config built a client
     cfg.app.store.backend = "d1"
+    # After the override, so it asks the same question `build_d1_client` will —
+    # the old check omitted CLOUDFLARE_ACCOUNT_ID and let it raise past the try.
+    missing = cfg.missing_store_keys()
+    if missing:
+        typer.echo(f"No D1 configured: set {', '.join(missing)}.")
+        raise typer.Exit(1)
+
     client = build_d1_client(cfg)
     if not already_applied:
         apply_schema(client)

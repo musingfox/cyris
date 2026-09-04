@@ -38,7 +38,6 @@ def test_a_clean_database_gets_its_tables() -> None:
 def test_the_settings_read_finds_its_table_on_first_boot(tmp_path, monkeypatch) -> None:
     """The seam that mattered: `settings` is read before anything else touches D1."""
     from cyris import bootstrap
-
     from cyris.adapters.store import d1 as d1_module
 
     db = SqliteD1(with_schema=False)
@@ -94,3 +93,26 @@ def test_the_fake_still_rejects_a_bound_parameter_mismatch() -> None:
 
     with pytest.raises(sqlite3.ProgrammingError, match="bindings"):
         db.query("INSERT INTO tags (name, created_at) VALUES (?, ?)", ["only-one"])
+
+
+def test_doctor_says_when_the_database_it_just_built_was_empty(tmp_path) -> None:
+    """A wrong `database_id` and a first deploy look identical; say which one is assumed."""
+    from unittest.mock import patch
+
+    from cyris.config import AppConfig, Config
+    from cyris.service_layer import doctor
+
+    cfg = Config(app=AppConfig.model_validate({}), sources={})
+    cfg.app.store.backend = "d1"
+    cfg.app.store.database_id = "db"
+    cfg.app.store.account_id = "acct"
+    cfg.app.store.api_token = "tok"
+
+    db = SqliteD1(with_schema=False)
+    apply_schema(db)
+
+    with patch("cyris.bootstrap.build_store", return_value=D1ArticleStore(db)):
+        check = doctor._check_store(cfg)
+
+    assert check.status == "warn"
+    assert "database_id" in check.fix

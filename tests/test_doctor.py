@@ -307,6 +307,8 @@ async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
         "sources",
         "llm provider",
         "rss buffer",
+        # This fixture's D1 holds no articles, which is its own warning now.
+        "article store (d1)",
     }
 
 
