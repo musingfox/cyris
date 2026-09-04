@@ -303,6 +303,51 @@ def test_the_receipt_is_written_before_upload(monkeypatch):
     assert events[:2] == ["receipt", "deploy"]
 
 
+def test_a_receipt_skips_the_probe_on_the_next_empty_manifest_run(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    probes = []
+
+    def probe(_self):
+        probes.append(True)
+        return False
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probe)
+    _stub_client(monkeypatch, deployed=[])
+    store = _Store({})
+    receipt = _Receipt()
+    live = [False]
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: live[0])
+
+    first = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", receipt)
+    assert first is False
+    assert store.saved is None
+    assert receipt.present is True
+    assert len(probes) == 1
+
+    live[0] = True
+    second = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", receipt)
+    assert second is True
+    assert len(probes) == 1
+
+
+def test_a_preexisting_receipt_does_not_probe(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+
+    def probed(_self):
+        raise AssertionError("probed")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probed)
+    _stub_client(monkeypatch, deployed=[])
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(present=True)
+    )
+    assert ok is True
+
+
 def test_a_failed_upload_still_leaves_the_receipt(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
