@@ -946,10 +946,16 @@ def _newest_by_url(articles: list) -> dict:
     return newest
 
 
-def _load_both_stores(config_path: Path, sources_path: Path):
-    """Return (json_store, d1_store) regardless of which one [store] selects."""
-    from cyris.adapters.store import ArticleStore
-    from cyris.adapters.store.d1_store import D1ArticleStore
+def _force_d1_client(config_path: Path, sources_path: Path):
+    """Return (cfg, D1 client) for the commands that talk to D1 whatever the backend.
+
+    `store migrate` and `sources push` are how an empty D1 is filled for the
+    first time, and they run while `[store] backend` is still json — so
+    `load_effective_config` built no client and created no tables. Overriding
+    the backend here is what makes the schema apply on this path too; without
+    it the first INSERT dies with `no such table`.
+    """
+    from cyris.adapters.store.d1 import apply_schema
     from cyris.bootstrap import build_d1_client, load_effective_config
 
     try:
@@ -962,10 +968,19 @@ def _load_both_stores(config_path: Path, sources_path: Path):
         typer.echo("No D1 configured: set [store] database_id and CLOUDFLARE_API_TOKEN.")
         raise typer.Exit(1)
 
-    # Both stores are needed here whichever backend is live, so D1 is built
-    # directly rather than through the [store] backend switch.
     cfg.app.store.backend = "d1"
-    return ArticleStore(cfg.app.agent_vault.path), D1ArticleStore(build_d1_client(cfg))
+    client = build_d1_client(cfg)
+    apply_schema(client)
+    return cfg, client
+
+
+def _load_both_stores(config_path: Path, sources_path: Path):
+    """Return (json_store, d1_store) regardless of which one [store] selects."""
+    from cyris.adapters.store import ArticleStore
+    from cyris.adapters.store.d1_store import D1ArticleStore
+
+    cfg, client = _force_d1_client(config_path, sources_path)
+    return ArticleStore(cfg.app.agent_vault.path), D1ArticleStore(client)
 
 
 @store_app.command("migrate")
@@ -1041,20 +1056,9 @@ app.add_typer(sources_app, name="sources")
 def _source_store(config_path: Path, sources_path: Path):
     """Return (yaml_sources, D1SourceStore) or exit with what is missing."""
     from cyris.adapters.store.source_store import D1SourceStore
-    from cyris.bootstrap import build_d1_client, load_effective_config
 
-    try:
-        cfg = load_effective_config(config_path, sources_path)
-    except (FileNotFoundError, ValueError) as e:
-        logger.error("Configuration error: %s", e)
-        raise typer.Exit(1) from e
-
-    if not cfg.app.store.database_id or not cfg.app.store.api_token:
-        typer.echo("No D1 configured: set [store] database_id and CLOUDFLARE_API_TOKEN.")
-        raise typer.Exit(1)
-
-    cfg.app.store.backend = "d1"
-    return cfg, D1SourceStore(build_d1_client(cfg))
+    cfg, client = _force_d1_client(config_path, sources_path)
+    return cfg, D1SourceStore(client)
 
 
 @sources_app.command("push")

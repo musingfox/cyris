@@ -7,6 +7,7 @@ read — the first D1 touch in every entrypoint — and aborted there.
 
 from datetime import UTC, datetime
 
+import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.store.d1 import D1Error, apply_schema
@@ -78,3 +79,13 @@ def test_the_second_boot_is_a_no_op() -> None:
     apply_schema(db)
 
     assert sum(D1ArticleStore(db).count_by_state().values()) == 1
+
+
+def test_the_fake_still_rejects_a_bound_parameter_mismatch() -> None:
+    """The multi-statement fallback must not swallow what D1 answers 400 to."""
+    import sqlite3
+
+    db = SqliteD1()
+
+    with pytest.raises(sqlite3.ProgrammingError, match="bindings"):
+        db.query("INSERT INTO tags (name, created_at) VALUES (?, ?)", ["only-one"])

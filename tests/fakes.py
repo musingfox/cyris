@@ -78,10 +78,15 @@ class SqliteD1:
 
         # The REST endpoint runs several statements in one POST (measured
         # 2026-09-04); sqlite3.execute takes exactly one, so fall back rather
-        # than let the fake reject what production accepts.
+        # than let the fake reject what production accepts. Only for *that*
+        # ProgrammingError: the other one it raises is a bound-parameter count
+        # mismatch, which D1 answers with HTTP 400, and executescript would
+        # quietly run it with NULLs — turning a real bug into a passing test.
         try:
             cursor = self._conn.execute(sql, params or [])
-        except sqlite3.ProgrammingError:
+        except sqlite3.ProgrammingError as e:
+            if "one statement at a time" not in str(e):
+                raise
             self._conn.executescript(sql)
             self._conn.commit()
             return QueryResult(rows=[], changes=0)

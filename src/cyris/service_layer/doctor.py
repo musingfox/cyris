@@ -1,6 +1,12 @@
 """Check a deployment before it has to prove itself at 08:00.
 
-Everything here is read-only and cheap. The reason it exists: a Cloudflare API
+The checks themselves are read-only and cheap, but `doctor` as a command is not:
+`load_effective_config` creates the D1 tables if they are absent, so a token
+without D1 edit cannot run it, and a wrong-but-valid `database_id` gets nine
+empty tables. That is the price of the checks working on a clean deployment at
+all — a first boot has nothing to check until the tables exist.
+
+The reason this module exists: a Cloudflare API
 token sat expired in `.env` while `wrangler pages deploy` reported it as its own
 intermittent failure, and nothing in the pipeline ever asked the question
 directly. Silent misconfiguration is the failure mode this closes.
