@@ -542,8 +542,8 @@ silently ignored for two days.
 
 ## 7. Outstanding work, and the record of what closed
 
-**One item is open: #17, the embedding provider's config home.** Everything else in this chapter is
-history — the milestones as they landed, and the reasoning behind the calls that shaped them
+**Seven items are open: #9, #17, and #18–#23 from the 2026-09-05 alignment pass.** Everything
+else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
 (why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
 changing one of those decisions means reading why it was made, not because it is pending.
 
@@ -862,6 +862,20 @@ token.~~ **Done 2026-09-01** (`private-votes-public-archive`), then the domainle
 | ~~15~~ | ~~A write surface for the `sources` table~~ | Done 2026-08-30 (P2): `POST /api/sources` upserts one row and `DELETE /api/sources/{name}` retires it, over the **existing** `sources` row — name, url, type, tier, tags, `homepage`, `email_match`. No new table, no new §4 row. Two shapes worth knowing: a write against an **empty** table seeds it with the run's effective sources first, because an empty table means "use `sources.yaml`" and a single insert would otherwise silently stop every other feed; and `cyris sources push` still replaces the table wholesale, so it clobbers edits made here — the file stays the fallback, not a mirror | `settings-source-editor` |
 | 17 | Embedding provider is not on the page the LLM provider is on | `[vote_similarity] provider`/`model` in `cyris.toml` only; the embedder is a peer of `LLMClient` in `ports.py` but has no config section of its own | `[embedding]` as its own table, `provider` + `model` grade D on `/settings`, verified against the live API before storing — the same shape the LLM half already has. **`threshold` stays grade A**: the cosine scale is a measured property of the model, not a preference, so it follows the provider rather than being typed in | `settings-embedding-provider` |
 | ~~16~~ | ~~One visual system across the three surfaces~~ | Done 2026-08-30: `static/style.css` now carries the digest's token names and values (a digest is a standalone file deployed to Pages, so the copy is the sharing mechanism — the stylesheet's header comment is where the two stay in sync), plus Geist and the grid background. The deck's swipe glows follow `--accent`/`--warn`; `/settings` lost its two hard-coded result colours | — | `ui-one-visual-system` |
+
+### Found by the 2026-09-05 alignment pass
+
+Six things the code and this document disagreed about, none of them urgent, all of them
+the kind that get harder to see the longer they sit. One ticket each.
+
+| # | What | Today | Target | Ticket |
+|---|---|---|---|---|
+| 18 | `doctor` builds adapters inside the service layer | `doctor.py:265,289` construct the two Worker sources, `:326` imports `check_pages_access`; §1 says the core imports nothing from `adapters` and names no exception | Either inject the probes from `build_deps`, or write the exception into §2 with its reason. Not both unstated | `doctor-builds-its-own-adapters` |
+| 19 | The CLI holds pipeline logic | `embed_compare` builds its own embedders and computes margins; `llm_compare` assembles `DigestPipeline` and decides what counts as a result; `articles_score:877-885` is a second copy of `run_digest.py:116`'s scorable filter | Move the rules into `service_layer/`; the duplicated filter first, since two copies of "which articles get scored" drift silently | `cli-holds-pipeline-logic` |
+| 20 | Two callers reach past their Protocol | `cli.py:300` reads `embedder.usage`, `cli.py:522` does `getattr(llm, "neurons", None)`; neither is on `Embedder` or `LLMClient` | Decide whether usage is part of the port. `neurons` is a Cloudflare billing unit, so a shared shape is not free | `embedder-usage-bypasses-its-port` |
+| 21 | §4 does not cover every write | `embed-compare` and `llm-compare` write local files; `bootstrap.py:203` still writes `usage.jsonl` while §4 calls it retired; `CLAUDE.md` describes `agent-vault/daily/`, which nothing writes | Say what §4 covers, then make it true. The `usage.jsonl` row is a contradiction, not a gap | `data-residency-missing-rows` |
+| 22 | `max_featured` has no grade and no home | `selection.py:52`, alone on its line in having neither — `featured_threshold` beside it is pinned to `[routing] score_threshold` by a test | Grade it A or D in §5 with the reason. How many headlines a reader gets is plausibly their choice | `featured-cap-has-no-grade` |
+| 23 | A second architecture diagram nothing reads | `docs/cyris-runtime.architecture.json` and its 735 KB `.html` have no producer, no consumer and no inbound link; §2's own filesystem table went stale without either changing | Delete both, or connect them to something that regenerates them. An unread second source of truth is the failure §2 exists to prevent | `retire-the-orphan-runtime-diagram` |
 
 Two boundaries #15 does **not** cross, both already decided in §5:
 
