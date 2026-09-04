@@ -83,13 +83,19 @@ bun install                       # or npm install
 # CYRIS_UI_TOKEN: openssl rand -hex 32
 # DIGEST_ORIGIN: https://<your-pages-project>.pages.dev
 # CYRIS_UI_ACCESS_HOST: only after Access is verified blocking (step 4 above)
+# The six required ones first — without CYRIS_STORE_DATABASE_ID the container
+# exits 1 on its first tick, because [store] backend defaults to d1.
 for s in CYRIS_UI_TOKEN DIGEST_ORIGIN \
+         CYRIS_STORE_DATABASE_ID CYRIS_PROMOTE_PAGES_PROJECT \
          CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
          CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
          CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL CYRIS_DISCORD_WEBHOOK_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
   bunx wrangler secret put "$s" --env-file /dev/null
 done
+
+# Then choose the LLM provider on /settings — it is a D1 setting, not a secret,
+# and until it is set the digest publishes as plain excerpts.
 
 bunx wrangler deploy --env-file /dev/null   # builds ./Dockerfile, pushes, deploys
 ```
