@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import feedparser
@@ -25,14 +26,20 @@ logger = logging.getLogger(__name__)
 MAX_CONCURRENT_FEEDS = 10
 
 
-def _entry_published(entry: object) -> datetime | None:
+def _entry_published(entry: Mapping[str, object]) -> datetime | None:
     """Return a tz-aware publish time, or None when the entry has no usable date.
 
     feedparser normalises `*_parsed` to UTC but hands back a naive struct_time;
     comparing that against the tz-aware digest window raises TypeError.
     """
     for key in ("published_parsed", "updated_parsed"):
-        parsed = getattr(entry, key, None)
+        # Membership first, not truthiness. An entry whose date failed to parse
+        # carries `published_parsed = None`, and reading `updated_parsed` off it
+        # hits feedparser's issue-310 fallback, which synthesises the value from
+        # `published_parsed` and warns every time it does.
+        if key not in entry:
+            continue
+        parsed = entry[key]
         if parsed:
             return datetime(*parsed[:6], tzinfo=UTC)
     return None
