@@ -19,3 +19,10 @@ class D1PagesDeployReceipt:
             "INSERT OR IGNORE INTO pages_deploy_receipt (project, created_at) VALUES (?, ?)",
             [project, now],
         )
+
+    def exists(self, project: str) -> bool:
+        rows = self._db.query(
+            "SELECT 1 FROM pages_deploy_receipt WHERE project = ? LIMIT 1",
+            [project],
+        ).rows
+        return bool(rows)

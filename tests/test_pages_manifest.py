@@ -178,3 +178,20 @@ def test_the_receipt_table_comes_from_schema_sql():
         row["name"] for row in db.query("SELECT name FROM sqlite_master WHERE type = 'table'").rows
     }
     assert "pages_deploy_receipt" in names
+
+
+def test_exists_is_false_on_an_empty_table():
+    assert D1PagesDeployReceipt(SqliteD1()).exists("proj") is False
+
+
+def test_exists_is_true_after_record():
+    store = D1PagesDeployReceipt(SqliteD1())
+    store.record("proj")
+    assert store.exists("proj") is True
+
+
+def test_exists_is_keyed_by_project():
+    store = D1PagesDeployReceipt(SqliteD1())
+    store.record("proj")
+    assert store.exists("other") is False
+
