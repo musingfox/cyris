@@ -32,6 +32,23 @@ def _slash(path: str) -> str:
     return path if path.startswith("/") else f"/{path}"
 
 
+_HREF_RE = re.compile(r"""href=["']([^"']+)["']""", re.IGNORECASE)
+_DATED_HTML = re.compile(r"^/?\d{4}-\d{2}-\d{2}-.+\.html$")
+
+
+def _parse_archive_anchors(html: str) -> set[str]:
+    """Dated digest hrefs on the live archive index, each with a leading slash."""
+    found: set[str] = set()
+    for href in _HREF_RE.findall(html):
+        if "://" in href or not _DATED_HTML.match(href):
+            continue
+        path = _slash(href)
+        if path.endswith("-raw.html"):
+            continue
+        found.add(path)
+    return found
+
+
 def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
     """Live archive pages this manifest would not put on the next deploy."""
     kept = {_slash(p) for p in manifest_paths}

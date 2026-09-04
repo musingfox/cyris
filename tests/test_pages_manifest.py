@@ -606,3 +606,42 @@ def test_deploy_retries_do_not_reread_the_live_index(monkeypatch):
     assert ok is True
     assert len(calls) == 1
     assert len(deployed) == 1
+
+
+def test_parse_archive_anchors_from_the_real_index_template(tmp_path):
+    from cyris.adapters.output.html_digest import HtmlDigestWriter
+
+    html = HtmlDigestWriter(tmp_path).render_index(
+        [
+            "2026-09-04-morning.html",
+            "2026-09-03-evening.html",
+            "2026-09-03-morning.html",
+            "index.html",
+            "2026-09-03-morning-raw.html",
+        ]
+    )
+
+    assert publish_mod._parse_archive_anchors(html) == {
+        "/2026-09-04-morning.html",
+        "/2026-09-03-evening.html",
+        "/2026-09-03-morning.html",
+    }
+
+
+def test_parse_archive_anchors_from_an_empty_archive_index(tmp_path):
+    from cyris.adapters.output.html_digest import HtmlDigestWriter
+
+    html = HtmlDigestWriter(tmp_path).render_index([])
+
+    assert publish_mod._parse_archive_anchors(html) == set()
+
+
+def test_parse_archive_anchors_does_not_double_slash_an_absolute_href():
+    assert publish_mod._parse_archive_anchors('<a href="/2026-09-04-morning.html">') == {
+        "/2026-09-04-morning.html"
+    }
+
+
+def test_parse_archive_anchors_ignores_undated_hrefs():
+    html = '<a href="/"></a><a href="https://example.com/about.html">'
+    assert publish_mod._parse_archive_anchors(html) == set()
