@@ -164,12 +164,13 @@ class HtmlDigestWriter:
         return index_path
 
     def write_raw(self, date: str, period: str, articles: list[StoredArticle]) -> Path:
-        """Render every collected article, grouped by source, as a companion page.
+        """Render this run's judged and still-pending articles, grouped by source.
 
         Args:
             date: Digest date (``YYYY-MM-DD``).
             period: Digest period (``morning``/``evening``).
-            articles: Every article collected in the digest window.
+            articles: What this run judged, plus whatever is still pending. Rows an
+                earlier run in the overlapping window judged are the caller's to drop.
 
         Returns:
             Path to the written raw page.
@@ -181,7 +182,7 @@ class HtmlDigestWriter:
         return file_path
 
     def render_raw(self, date: str, period: str, articles: list[StoredArticle]) -> str:
-        """The companion page's HTML: every collected article, grouped by source."""
+        """The companion page's HTML: the given articles, grouped by source."""
         groups: dict[str, list[StoredArticle]] = {}
         for a in articles:
             groups.setdefault(a.source_name, []).append(a)

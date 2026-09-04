@@ -416,3 +416,48 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
     assert story_store.calls == 1  # the write was attempted, not skipped
     assert report.status == "ok"
     assert report.html_path is not None and report.html_path.exists()
+
+
+async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None:
+    fetched = Article(
+        id=1,
+        title="Fresh This Run",
+        url="https://example.com/fresh",
+        content="Enterprises accelerate AI adoption.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_tier=Tier.SUMMARIZE,
+        source_tags=["tech"],
+    )
+    earlier = fetched.model_copy(
+        update={"id": 2, "title": "Judged Last Run", "url": "https://example.com/earlier"}
+    )
+    llm = FakeLLM(
+        [
+            json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]}),
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "AI 趨勢",
+                            "summary": "企業加速導入 AI",
+                            "articles": [
+                                {"id": "0", "title": "Fresh This Run", "source": "TechSource"}
+                            ],
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource([fetched]))
+    # The overlapping window still holds a row the previous run accepted.
+    deps.store.save([earlier])
+    deps.store.update_states({earlier.url: (ArticleState.ACCEPTED, None)}, digest_date="2026-01-01")
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
+    assert "Fresh This Run" in raw
+    assert "Judged Last Run" not in raw

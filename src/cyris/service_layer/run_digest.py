@@ -244,11 +244,20 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         updated_count = store.update_states(url_to_state, digest_date=content.date)
         logger.info("Updated states for %d articles", updated_count)
 
-        # Everything collected in the window: uncapped, unfiltered, states included.
+        # The raw page: what this run judged, plus what is still pending. The 24h
+        # window overlaps the previous run's, so rows judged there are left off —
+        # they were on that run's raw page. Nothing in the window escapes every raw
+        # page: a row stays pending (and listed) until some run judges it.
+        # ponytail: a run whose publish failed has judged rows but no live raw page;
+        # they are gone from the listing along with that digest.
         # None of this may raise: the Discord notification still has to go out.
         collected = []
         try:
-            collected = store.load_by_time_range(start=window_start, end=load_end)
+            collected = [
+                a
+                for a in store.load_by_time_range(start=window_start, end=load_end)
+                if a.url in url_to_state or a.state == ArticleState.PENDING
+            ]
         except Exception as e:
             logger.error("Failed to load the window's collected articles: %s", e)
 

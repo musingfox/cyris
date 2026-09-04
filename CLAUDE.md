@@ -112,7 +112,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/html_digest.py` renders the digest page; `domain/selection.py` layers featured articles by score
-7. Alongside each digest, the writer emits a companion listing every article the window collected — uncapped and unfiltered, so what the digest dropped stays visible: `{date}-{period}-raw.html` grouped by source, linked from the digest footer
+7. Alongside each digest, the writer emits a companion listing every article this run judged plus what is still pending — uncapped, so what the digest dropped stays visible; rows an earlier run in the overlapping window already judged are left off: `{date}-{period}-raw.html` grouped by source, linked from the digest footer
 8. Publishing is Pages **direct upload over REST** (`adapters/output/pages_deploy.py`), never a `wrangler` shell-out. With D1 wired, the pages are rendered in memory and the site's file list comes from the `pages_manifest` table — a Pages deployment is a full snapshot, so every deploy names every file. Without D1, the local `agent-vault/html/` directory is the fallback
 
 ### Adapter Extension Points

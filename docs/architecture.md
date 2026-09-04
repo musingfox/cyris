@@ -263,8 +263,10 @@ articles the clustering step grouped, including members the output cap dropped �
 injections built only when D1 is configured; with `backend = "json"` they are absent and the run
 skips the writes.
 
-Output is the HTML digest and a companion raw page listing everything the window collected —
-uncapped and unfiltered, so what the digest dropped stays visible — both deployed to Cloudflare
+Output is the HTML digest and a companion raw page listing what this run judged plus whatever is
+still pending — uncapped, so what the digest dropped stays visible; rows an earlier run in the
+overlapping 24h window already judged are left off, since they were on that run's raw page — both
+deployed to Cloudflare
 Pages, followed by a Discord notification. Votes cast on the published digest go to the promote
 Worker's KV and are drained hourly by `cyris promote-sync`, which is what turns a click into a
 `triaged_at` stamp.
