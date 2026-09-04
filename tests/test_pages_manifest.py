@@ -1,11 +1,14 @@
 """The deployed site's file list, and publishing from it without a local archive."""
 
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.output import publish as publish_mod
 from cyris.adapters.output.pages_manifest import D1PagesManifest
+from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
 
 
 @pytest.fixture
@@ -129,3 +132,49 @@ def test_bootstrap_partial_accepts_run_digest_calling_convention(monkeypatch):
     wired = partial(publish_mod.publish_site, manifest_store=store, pages_project="proj")
 
     assert wired({"/2026-08-28-evening.html": b"<html>x</html>"}, "2026-08-28-evening") is True
+
+
+def test_record_writes_one_row_with_iso8601_created_at():
+    db = SqliteD1()
+    D1PagesDeployReceipt(db).record("proj")
+
+    rows = db.query("SELECT project, created_at FROM pages_deploy_receipt").rows
+    assert len(rows) == 1
+    assert rows[0]["project"] == "proj"
+    assert rows[0]["created_at"]
+    datetime.fromisoformat(rows[0]["created_at"])
+
+
+def test_record_is_idempotent_when_the_clock_moves(monkeypatch):
+    from cyris.adapters.output import pages_receipt as receipt_mod
+
+    times = iter(
+        [
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 6, 1, tzinfo=UTC),
+        ]
+    )
+
+    class _DateTime:
+        @staticmethod
+        def now(tz=None):
+            return next(times)
+
+    monkeypatch.setattr(receipt_mod, "datetime", _DateTime)
+    db = SqliteD1()
+    store = D1PagesDeployReceipt(db)
+    store.record("proj")
+    first = db.query("SELECT created_at FROM pages_deploy_receipt").rows[0]["created_at"]
+    store.record("proj")
+    rows = db.query("SELECT project, created_at FROM pages_deploy_receipt").rows
+    assert len(rows) == 1
+    assert rows[0]["created_at"] == first
+
+
+def test_the_receipt_table_comes_from_schema_sql():
+    """SqliteD1 loads schema.sql; the store issues no DDL."""
+    db = SqliteD1(with_schema=True)
+    names = {
+        row["name"] for row in db.query("SELECT name FROM sqlite_master WHERE type = 'table'").rows
+    }
+    assert "pages_deploy_receipt" in names

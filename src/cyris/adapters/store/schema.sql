@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS pages_manifest (
   updated_at TEXT NOT NULL
 );
 
+-- This D1 has published this Pages project at least once. Survives a wiped
+-- pages_manifest so an empty-manifest run can skip the Cloudflare probe instead
+-- of treating a first-deploy that never went live as a never-deployed project
+-- (or, worse, as someone else's live site).
+CREATE TABLE IF NOT EXISTS pages_deploy_receipt (
+  project     TEXT PRIMARY KEY,    -- Pages project name
+  created_at  TEXT NOT NULL        -- ISO-8601; INSERT OR IGNORE keeps the first
+);
+
 -- Pre-truncation story membership: which articles the clustering step grouped
 -- together, per digest window. A save replaces the (digest_date, period)
 -- window's rows — insert first, then delete what the new set no longer names,

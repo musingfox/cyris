@@ -287,6 +287,7 @@ Every persistent datum, where it lives now, and where it is going.
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
+| Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 
@@ -435,7 +436,7 @@ Cloudflare
 ├── Worker: promote    → KV
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
 │     digest.musingfox.me          └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
-├── D1: stored_articles · usage_log · sources · settings · pages_manifest
+├── D1: stored_articles · usage_log · sources · settings · pages_manifest · pages_deploy_receipt
 └── Pages: cyris-digest
 ```
 
@@ -616,9 +617,14 @@ the `sources` table: `backend = "json"` keeps writing `agent-vault/html/` and de
   just the archive's *home*, it is its only copy. Deleting the Pages project deletes history. This
   is better than what it replaced — one gitignored directory on one Mac mini — and worse than a
   copy in R2. It is a decision, not an oversight; tracked in §7.
-- **Recovery.** If D1 is lost, the manifest is rebuilt rather than gone: the live `index.html` lists
-  every digest, so fetching each page and re-running `asset_hash` reconstructs path → hash exactly.
-  Written down because "recoverable in principle" that nobody has written down is not recoverable.
+- **Recovery.** If D1 is lost, `pages_manifest` is empty and the next deploy would be a full
+  snapshot of this run's files alone — wiping every live page. That is now refused: an empty
+  manifest against a Pages project that already has deployments stops the publish and names the
+  two ways out (`[store] database_id`, `scripts/backfill_pages_manifest.py`). The live
+  `index.html` still lists every digest, so fetching each page and re-running `asset_hash`
+  reconstructs path → hash exactly; that is what the backfill script does. A first deploy whose
+  live-check failed is a different case: `pages_deploy_receipt` records that this D1 already
+  owns the project, so the next run publishes without a probe and without a human backfill.
   The reverse — losing the *site* — is not self-healing: `deploy_manifest` raises rather than
   quietly deploying a truncated archive, which is the right failure but still a failure.
 - **Ceiling.** Every deploy sends a manifest of every file and asks `check-missing` about every
