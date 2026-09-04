@@ -57,8 +57,22 @@ def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
 
 def _fetch_live_index(pages_project: str) -> set[str] | None:
     url = f"https://{pages_project}.pages.dev/"
-    httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
-    return set()
+    for poll in range(1, VERIFY_POLLS + 1):
+        if poll > 1:
+            time.sleep(VERIFY_INTERVAL_SECONDS)
+        try:
+            resp = httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+        except httpx.HTTPError as e:
+            logger.warning("Live archive request failed (poll %d): %s", poll, e)
+            continue
+        if resp.status_code != 200:
+            logger.warning(
+                "Live archive: %s answered %d (poll %d)", url, resp.status_code, poll
+            )
+            continue
+        return _parse_archive_anchors(resp.text)
+    logger.error("Could not read the live archive at %s", url)
+    return None
 
 
 def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:

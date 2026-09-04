@@ -645,3 +645,71 @@ def test_parse_archive_anchors_does_not_double_slash_an_absolute_href():
 def test_parse_archive_anchors_ignores_undated_hrefs():
     html = '<a href="/"></a><a href="https://example.com/about.html">'
     assert publish_mod._parse_archive_anchors(html) == set()
+
+
+def _index_body(*paths: str) -> bytes:
+    return "".join(f'<a href="{p}">' for p in paths).encode()
+
+
+def test_fetch_live_index_returns_anchors_on_the_first_200(monkeypatch):
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs.get("follow_redirects")))
+        return httpx.Response(
+            200, content=_index_body("/2026-09-04-morning.html", "/2026-09-04-evening.html")
+        )
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+
+    assert publish_mod._fetch_live_index("proj") == {
+        "/2026-09-04-morning.html",
+        "/2026-09-04-evening.html",
+    }
+    assert calls == [("https://proj.pages.dev/", True)]
+
+
+def test_fetch_live_index_retries_connect_errors_then_returns_anchors(monkeypatch):
+    monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
+    n = {"i": 0}
+
+    def get(url, **kwargs):
+        n["i"] += 1
+        if n["i"] < 3:
+            raise httpx.ConnectError("boom")
+        return httpx.Response(200, content=_index_body("/2026-09-04-morning.html"))
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+
+    assert publish_mod._fetch_live_index("proj") == {"/2026-09-04-morning.html"}
+    assert n["i"] == 3
+
+
+def test_fetch_live_index_gives_up_after_three_404s(monkeypatch, caplog):
+    monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
+    n = {"i": 0}
+
+    def get(url, **kwargs):
+        n["i"] += 1
+        return httpx.Response(404, content=b"")
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+
+    with caplog.at_level("WARNING"):
+        assert publish_mod._fetch_live_index("proj") is None
+    assert n["i"] == 3
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 3
+
+
+def test_fetch_live_index_empty_archive_is_an_empty_set_not_unread(monkeypatch, tmp_path):
+    from cyris.adapters.output.html_digest import HtmlDigestWriter
+
+    body = HtmlDigestWriter(tmp_path).render_index([]).encode()
+    monkeypatch.setattr(
+        publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(200, content=body)
+    )
+
+    assert publish_mod._fetch_live_index("proj") == set()
