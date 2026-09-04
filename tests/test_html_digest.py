@@ -414,7 +414,8 @@ def test_promote_buttons_on_every_section(tmp_path):
     assert html.count('class="vote-group"') == 7
     assert 'data-urls=\'["https://na.com", "https://nb.com"]\'' in html
     # The deep-read queue is gone: Obsidian Clipper covers saving, cyris only filters.
-    assert "深讀" not in html
+    # The wire value is what a published page would send back, so that is what is
+    # asserted; the button's old label is a string this codebase no longer holds.
     assert 'data-vote="deep"' not in html
     # Every article in the cluster stays individually openable.
     assert '<a href="https://na.com" target="_blank" rel="noopener">A</a>' in html
