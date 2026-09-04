@@ -17,6 +17,7 @@ from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
 from cyris.service_layer.prompts import DEFAULT_LANGUAGE
+from cyris.service_layer.schedule import Period
 from cyris.service_layer.summarize import (
     build_attention_sections,
     build_fan_sections,
@@ -66,7 +67,7 @@ class DigestPipeline:
         self,
         articles: list[Article],
         sources: dict[str, SourceConfig],
-        period: str = "morning",
+        period: Period = "morning",
         timezone: str = "Asia/Taipei",
         article_scores: dict[str, float] | None = None,
     ) -> ProcessResult:

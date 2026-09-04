@@ -11,8 +11,9 @@ Hour granularity is the contract, not a rounding: an hourly tick cannot honour
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-Period = str  # "morning" | "evening"
+Period = Literal["morning", "evening"]
 
 
 def validate_schedule(times: list[str]) -> list[str]:

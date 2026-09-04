@@ -9,6 +9,8 @@ from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
 
 logger = logging.getLogger(__name__)
 
+_DEDUP_SCAN_DAYS = 8
+
 
 class ArticleStore:
     """Persistent storage for articles with state management.
@@ -57,9 +59,12 @@ class ArticleStore:
         if not articles:
             return SaveResult(saved_count=0, skipped_count=0)
 
-        # Build URL index from recent partitions for dedup (today + last 7 days)
+        # Dedup against today plus the last 7 days. The width is one half of a
+        # pair: `RETENTION_DAYS` in workers/rss/src/index.js prunes the buffer on
+        # the same 8 days. Shortening this re-ingests what the buffer still holds;
+        # shortening that drops articles this scan expects to recognise.
         existing_urls: set[str] = set()
-        for i in range(8):
+        for i in range(_DEDUP_SCAN_DAYS):
             scan_date = now.date() - timedelta(days=i)
             scan_path = self._partition_path(datetime.combine(scan_date, datetime.min.time()))
             partition = self._load_partition(scan_path)

@@ -12,6 +12,7 @@ from cyris.domain.selection import count_dead_links, layer_by_score
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
+from cyris.service_layer.schedule import Period
 from cyris.service_layer.scoring import score_in_batches
 from cyris.utils.timezone import now_in_timezone
 
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RunOptions:
-    period: str = "morning"
+    period: Period = "morning"
     dry_run: bool = False
     force: bool = False
 

@@ -190,7 +190,10 @@ class Deps:
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
     embedder: Any | None = None  # None ⇒ vote similarity is switched off
-    embedding_threshold: float = 0.68  # the embedder's own calibration, not a preference
+    # Travels with `embedder`: the cutoff is a measured property of that model, so
+    # no model-agnostic default exists. None makes `down >= threshold` raise rather
+    # than quietly judge one provider's corpus by another's number.
+    embedding_threshold: float | None = None
 
 
 def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) -> Deps:

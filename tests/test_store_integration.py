@@ -136,3 +136,20 @@ def test_store_reload_preserves_ref_urls(vault_path: Path) -> None:
 
     assert len(reloaded) == 1
     assert reloaded[0].ref_urls == ["https://example.com/a"]
+
+
+def test_dedup_window_matches_rss_worker_retention() -> None:
+    """The store's dedup scan and the Worker's prune must span the same days.
+
+    Shortening the scan re-ingests what the buffer still holds; shortening the
+    prune drops articles the scan expects to recognise. Neither side errors.
+    """
+    import re
+    from pathlib import Path
+
+    from cyris.adapters.store.article_store import _DEDUP_SCAN_DAYS
+
+    index_js = Path(__file__).resolve().parents[1] / "workers" / "rss" / "src" / "index.js"
+    match = re.search(r"const RETENTION_DAYS = (\d+)", index_js.read_text())
+    assert match, "RETENTION_DAYS not found in workers/rss/src/index.js"
+    assert int(match.group(1)) == _DEDUP_SCAN_DAYS
