@@ -21,6 +21,7 @@ from cyris.adapters.fetch.email_parser import (
     strip_tracking_params,
     unwrap_tracking_redirect,
 )
+from cyris.adapters.fetch.keywords import view_in_browser_re
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,6 @@ def _find_newsletter_view_url(html: str) -> str | None:
     return None
 
 
-_VIEW_MARKERS = ("網頁版", "線上閱讀", "view in browser", "view this email", "view online")
-_VIEW_MARKER_RE = re.compile("|".join(re.escape(m) for m in _VIEW_MARKERS), re.I)
 _URL_RE = re.compile(r"https?://[^\s()<>\"']+")
 
 
@@ -99,7 +98,7 @@ def select_primary_content_url(candidates: list[str], sender_host: str | None = 
     sender_host (the source's configured homepage host) makes the sender's domain
     known rather than inferred. Without it the most frequent host is only a guess:
     an issue quoting one self link and three from another blog would hand that
-    blog's article to the digest as this issue's 原文.
+    blog's article to the digest as this issue's canonical link.
     """
     content = [url for url in candidates if is_content_url(url)]
     if not content:
@@ -142,11 +141,11 @@ def _find_view_url_in_text(text: str) -> str | None:
     Text/plain newsletters render anchors as "label (url)", so the canonical post URL
     sits on the same line as its "read on the web" label. Take the URL that *follows*
     the label, never the line's first one: footers collapse nav links onto a single
-    "訂閱 (…/join) | 網頁版 (…/posts/1)" line, and a join URL is identical every issue,
+    subscribe-then-web-version line, and a join URL is identical every issue,
     so adopting it would make the store dedup every later issue away as a duplicate.
     """
     for line in (text or "").splitlines():
-        marker = _VIEW_MARKER_RE.search(line)
+        marker = view_in_browser_re().search(line)
         if not marker:
             continue
         url = _URL_RE.search(line, marker.end())

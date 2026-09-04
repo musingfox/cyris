@@ -1,0 +1,12 @@
+{
+  "_comment": "Mail vocabulary the fetch adapters match against, kept out of the code so a new locale is a data edit. Structure stays in code: the separators, the repetition, the ordering of forward-then-reply. Matching is case-insensitive, so list each token once in its usual casing.",
+  "forward_prefixes": ["Fwd", "Fw", "轉寄"],
+  "reply_prefixes": ["Re", "回覆"],
+  "view_in_browser_markers": [
+    "view in browser",
+    "view this email",
+    "view online",
+    "網頁版",
+    "線上閱讀"
+  ]
+}

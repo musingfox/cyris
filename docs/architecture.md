@@ -322,6 +322,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Setting | Grade | Today | Target |
 |---|---|---|---|
 | Tier thresholds, batch sizes, model defaults | A | code | unchanged |
+| Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; file fallback) | done |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |

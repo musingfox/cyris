@@ -10,6 +10,8 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic import BaseModel
 
+from cyris.adapters.fetch.keywords import subject_prefix_re
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,7 +121,7 @@ def is_content_url(url: str) -> bool:
         or is_share
         or "unsubscribe" in path
         # A checkout page is never the article, and its per-subscriber rid would
-        # otherwise be rendered as "原文：" and published to the public digest.
+        # otherwise be offered as this issue's canonical link on the public digest.
         # Match the path segment, not a substring — /checkout-ux-redesign is an article.
         or "checkout" in path.split("/")
         or path.endswith(_IMAGE_SUFFIXES)
@@ -149,7 +151,7 @@ def extract_ref_urls(html: str) -> list[str]:
         if url not in seen:
             seen.add(url)
             ref_urls.append(url)
-            # ponytail: hard cap keeps link-farm newsletters from flooding the 原文 line;
+            # ponytail: hard cap keeps link-farm newsletters from flooding the reference links;
             # make it configurable only if a real source needs more
             if len(ref_urls) >= _MAX_REF_URLS:
                 break
@@ -178,14 +180,9 @@ def parse_newsletter(payload: dict, source_name: str) -> ParsedNewsletter:
         raise ValueError("Missing required field: from")
 
     # Strip common forward/reply prefixes (repeated, case-insens). If strip leaves empty, keep orig.
-    # tolerate leading/trailing ws; support Chinese 轉寄:/回覆: from Gmail
+    # The prefix words come from keywords.json; the repetition and the ws do not.
     original = subject
-    cleaned = re.sub(
-        r"^\s*(?:(?:Re|Fwd|Fw|RE|FW|FWD|轉寄|回覆)[:：]\s*)+",
-        "",
-        subject,
-        flags=re.IGNORECASE,
-    ).strip()
+    cleaned = subject_prefix_re().sub("", subject).strip()
     subject = cleaned if cleaned else original
 
     html_content = payload.get("html", "")

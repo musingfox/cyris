@@ -7,12 +7,12 @@ linked articles -> POST /ack. Sender is matched to a source via `email_match`.
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime
 
 import httpx
 
 from cyris.adapters.fetch.email_parser import parse_newsletter
+from cyris.adapters.fetch.keywords import private_reply_re
 from cyris.adapters.fetch.newsletter import newsletter_article
 from cyris.domain.models import Article, SourceConfig
 
@@ -65,11 +65,9 @@ class CloudflareNewsletterSource:
         subject = subject.strip()
         if not subject:
             return False
-        # support Fw:Re, Fwd:Fwd:Re, 回覆:; tolerate ws
+        # Stacked forwards then a reply, in the words keywords.json lists.
         # (non-str guarded to prevent escape ex from _is_private)
-        return bool(
-            re.match(r"^(?:(?:Fwd?|Fw|轉寄)[:：]\s*)*(?:Re|回覆)[:：]\s*", subject, re.IGNORECASE)
-        )
+        return bool(private_reply_re().match(subject))
 
     async def fetch_articles(
         self,
