@@ -21,6 +21,17 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);`,
 ].join("\n");
 
+// Once per isolate. `exec()` is Cloudflare's maintenance path, not a hot one:
+// re-running it per request put a DDL call in front of a read that has no need
+// of one, so a transient failure would have turned `GET /articles` into a 500
+// and cost that digest every RSS article.
+let schemaApplied = false;
+async function ensureSchema(env) {
+  if (schemaApplied) return;
+  await env.DB.exec(SCHEMA);
+  schemaApplied = true;
+}
+
 const RETENTION_DAYS = 8; // matches the ArticleStore's dedup scan window
 const FETCH_TIMEOUT_MS = 20000;
 // Substack rate-limits Cloudflare's egress; 10 at once drew HTTP 429s.
@@ -43,7 +54,7 @@ async function fetchFeed(feed) {
 }
 
 async function poll(env, feeds) {
-  await env.DB.exec(SCHEMA);
+  await ensureSchema(env);
   feeds = feeds ?? (await loadFeeds(env, BUNDLED_FEEDS));
   const fetchedAt = new Date().toISOString();
   const rows = [];
@@ -120,7 +131,7 @@ export default {
     // `doctor`'s /stats health check — can land before the first cron tick. Per
     // route was tried and dropped: /stats was missed, and the check it feeds
     // then reported a clean deployment as an unreachable Worker.
-    await env.DB.exec(SCHEMA);
+    await ensureSchema(env);
 
     const url = new URL(request.url);
 
