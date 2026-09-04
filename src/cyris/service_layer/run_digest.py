@@ -62,6 +62,16 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     now = now_in_timezone(tz)
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
 
+    # A fresh deploy has no provider until one is chosen on /settings, and the
+    # digest that goes out before then is plain excerpts. Say so on every run:
+    # a quietly worse digest is the failure a first deploy is most likely to hit
+    # and least likely to notice.
+    if deps.llm is None:
+        progress(
+            "WARNING: no LLM provider configured — this digest is plain excerpts, "
+            "unscored and unsummarised. Choose a provider on /settings."
+        )
+
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
     if deps.sync_promotions is not None:
         try:

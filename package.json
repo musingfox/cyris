@@ -34,13 +34,13 @@
         "description": "**Required.** The Pages project name the digest deploys to — the same project `DIGEST_ORIGIN` points at."
       },
       "ANTHROPIC_API_KEY": {
-        "description": "One LLM key is required; set the one matching your provider. [Anthropic Claude](https://console.anthropic.com/)."
+        "description": "One LLM key is required. **After the deploy finishes, open `/settings` and choose the matching provider** — it lives in D1, not in this form, and until you pick one every digest is plain excerpts. [Anthropic Claude](https://console.anthropic.com/)."
       },
       "GEMINI_API_KEY": {
-        "description": "Alternative to `ANTHROPIC_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey)."
+        "description": "Alternative to `ANTHROPIC_API_KEY`; pick `gemini` on `/settings` to use it — [Google AI Studio](https://aistudio.google.com/apikey)."
       },
       "OPENAI_API_KEY": {
-        "description": "Alternative to `ANTHROPIC_API_KEY` — [OpenAI](https://platform.openai.com/api-keys)."
+        "description": "Alternative to `ANTHROPIC_API_KEY`; pick `openai` on `/settings` to use it — [OpenAI](https://platform.openai.com/api-keys)."
       },
       "CYRIS_UI_ACCESS_HOST": {
         "description": "Optional, and only after Cloudflare Access is verified blocking. The hostname Access is bound to; set it before Access exists and the vote API on that hostname answers 401 to logged-in readers."

@@ -128,6 +128,13 @@ image with Workers Builds, and deploys the Worker, its Durable Object and the
 hourly cron. It asks for each secret in [`.env.example`](.env.example), with the
 guidance in `package.json`'s `cloudflare.bindings` shown beside every field.
 
+**One thing to do after it finishes.** The LLM provider is a runtime setting in
+D1, not a deploy field — a deployed container has no `cyris.toml` to read one
+from. Open `/settings`, pick the provider matching the key you pasted, and save.
+Until you do, the hourly run still publishes, but as plain excerpts: unscored,
+unsummarised. Every run logs a warning saying so — `wrangler tail cyris-app`
+shows it.
+
 **Three things it cannot do**, because Cloudflare's automatic provisioning does
 not cover them — do these first and paste the results into the deploy form:
 

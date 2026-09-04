@@ -461,3 +461,28 @@ async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None
     raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
     assert "Fresh This Run" in raw
     assert "Judged Last Run" not in raw
+
+
+async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Path) -> None:
+    """A fresh deploy publishes excerpts until a provider is chosen; say so.
+
+    This is the first-run failure a deploy is least likely to notice: the digest
+    goes out, looks thin, and nothing reports a cause.
+    """
+    article = Article(
+        id=1,
+        title="Enterprise AI Adoption",
+        url="https://example.com/ai",
+        content="Enterprises accelerate AI adoption.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_tier=Tier.SUMMARIZE,
+        source_tags=["tech"],
+    )
+    deps, _ = make_deps(tmp_path, llm=None, source=FakeSource([article]))
+    messages: list[str] = []
+    deps = replace(deps, on_progress=messages.append)
+
+    await run_digest(deps, RunOptions(period="morning"))
+
+    assert any("no LLM provider configured" in m for m in messages), messages
