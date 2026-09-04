@@ -259,6 +259,28 @@ def test_an_empty_manifest_refuses_when_receipt_lookup_fails(monkeypatch):
     assert deployed == []
 
 
+def test_an_empty_manifest_refuses_when_the_project_already_has_deployments(monkeypatch, caplog):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: True)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+    store = _Store({})
+    receipt = _Receipt()
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", receipt)
+
+    assert ok is False
+    assert deployed == []
+    assert store.saved is None
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "[store] database_id" in errors[0].message
+    assert "scripts/backfill_pages_manifest.py" in errors[0].message
+    assert receipt.records == []
+
+
 def test_the_receipt_is_written_before_upload(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")

@@ -87,6 +87,11 @@ def publish_site(
         if not owned:
             try:
                 if client.has_deployments():
+                    logger.error(
+                        "Refusing to deploy an empty pages_manifest onto a Pages project "
+                        "that already has deployments. Check [store] database_id, or "
+                        "backfill with scripts/backfill_pages_manifest.py"
+                    )
                     return False
             except (PagesDeployError, httpx.HTTPError) as e:
                 logger.error("Pages deployment probe failed: %s", e)
