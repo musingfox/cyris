@@ -39,12 +39,17 @@ def test_the_settings_read_finds_its_table_on_first_boot(tmp_path, monkeypatch) 
     """The seam that mattered: `settings` is read before anything else touches D1."""
     from cyris import bootstrap
 
+    from cyris.adapters.store import d1 as d1_module
+
     db = SqliteD1(with_schema=False)
     monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
     monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: db)
+    # `load_config` reads `sources` through a client of its own before this gets
+    # anywhere near D1; unpatched, the suite posts a bearer token to Cloudflare.
+    monkeypatch.setattr(d1_module, "D1Client", lambda **_kwargs: db)
 
     cfg = bootstrap.load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 

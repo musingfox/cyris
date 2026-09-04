@@ -87,6 +87,11 @@ class SqliteD1:
         except sqlite3.ProgrammingError as e:
             if "one statement at a time" not in str(e):
                 raise
+            # executescript takes no bindings and returns no rows, so this branch
+            # can only serve a params-free script whose result nobody reads —
+            # `apply_schema` today. Anything else would read as empty here and
+            # return data in production.
+            assert not params, "multi-statement fallback cannot bind parameters"
             self._conn.executescript(sql)
             self._conn.commit()
             return QueryResult(rows=[], changes=0)

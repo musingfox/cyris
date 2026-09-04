@@ -144,9 +144,10 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     settings = build_settings(cfg, d1)
     if settings is not None:
         # First boot on a clean account: nothing else creates the tables, and the
-        # settings read below is the first thing in every entrypoint to need them
-        # (it propagates errors by design, so an empty D1 used to abort the CLI
-        # before any check could name the cause). Idempotent, one POST.
+        # settings read below is the first thing that *cannot survive* their
+        # absence — `load_config` already asked D1 for `sources` and fell back to
+        # the file, while this one propagates by design, so an empty D1 used to
+        # abort the CLI before any check could name the cause. Idempotent, one POST.
         apply_schema(d1)
         cfg.settings_from_d1 = apply_to(cfg, settings.all())
     return cfg

@@ -968,9 +968,11 @@ def _force_d1_client(config_path: Path, sources_path: Path):
         typer.echo("No D1 configured: set [store] database_id and CLOUDFLARE_API_TOKEN.")
         raise typer.Exit(1)
 
+    already_applied = cfg.app.store.is_d1  # load_effective_config built a client
     cfg.app.store.backend = "d1"
     client = build_d1_client(cfg)
-    apply_schema(client)
+    if not already_applied:
+        apply_schema(client)
     return cfg, client
 
 
