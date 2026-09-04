@@ -100,6 +100,31 @@ def test_the_run_deploys_its_pages_plus_the_whole_archive(monkeypatch):
     assert store.saved == {"/2026-08-26-evening.html": "old", "/2026-08-27-morning.html": "new"}
 
 
+def test_a_populated_manifest_does_not_probe_or_touch_the_receipt(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+
+    def probed(_self):
+        raise AssertionError("probed")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probed)
+    _stub_client(monkeypatch, deployed=[])
+    receipt = _Receipt()
+
+    ok = publish_mod.publish_site(
+        {"/2026-08-27-morning.html": b"<html>x</html>"},
+        "2026-08-27-morning",
+        _Store({"/2026-08-26-evening.html": "old"}),
+        "proj",
+        receipt,
+    )
+
+    assert ok is True
+    assert receipt.exists_calls == 0
+    assert receipt.records == []
+
+
 def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch):
     """The manifest describes the deployed site. Recording a deploy that did not
     land would describe a site that does not exist."""
