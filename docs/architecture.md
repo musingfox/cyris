@@ -804,7 +804,10 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | ~~6~~ | ~~Three Worker URLs + Pages project name~~ | Done 2026-09-04: all four are deployer-supplied secrets the Worker forwards to the container (`workers/app/src/index.js`), and `.env.example` names every one | — | `cloud-p4` |
 | ~~7~~ | ~~The button and the secret checklist~~ | Done 2026-09-04: `README.md` carries the button, `.env.example` is the checklist the deploy page reads, and `package.json`'s `cloudflare.bindings` is the per-field guidance. There is no `deploy.json` — that file does not exist in this mechanism | — | `cloud-p4` |
 | ~~8~~ | ~~Three Workers vs one button~~ | Decided 2026-09-04: four buttons, the app primary. One button deploys one Worker, and the app's config moved to the repo root so its subdirectory constraint is satisfied | — | `cloud-p4` |
-| 9 | A clean-account run of the button | never done | press it on an account that has never seen cyris, fill the secrets, get a digest | `cloud-p4` |
+| ~~8b~~ | ~~Three of the four buttons were never written~~ | Done 2026-09-05: `workers/rss/`, `workers/promote/` and `workers/newsletter/` each have a button, a README and `cloudflare.bindings`; `workers/promote/` had neither README nor `package.json`. `tests/test_deploy_inputs.py` walks `workers/*/wrangler.toml` and requires all three | — | `cloud-p4` |
+| ~~8c~~ | ~~A fork buffered the author's feeds~~ | Done 2026-09-05: `src/feeds.json` held 51 personal feeds and a Mailchimp recipient id, and `feeds.js` falls back to it exactly when a fresh fork's `sources` table is empty. `gen-feeds.py` now always reads `sources.example.yaml`, never the gitignored `sources.yaml` | — | `cloud-p4` |
+| ~~8d~~ | ~~A deployed digest was silently excerpt-only~~ | Done 2026-09-05: the LLM provider is grade D and has no env var, so a container with a pasted API key and no `/settings` visit published raw excerpts without a word. `run_digest` warns every run, `doctor`'s hint names `/settings`, and README, `.env.example` and the deploy form all say the step | — | `cloud-p4` |
+| 9 | A clean-account run of the button | never done — the three failures above were found by reading, not by pressing | press it on an account that has never seen cyris, fill the secrets, get a digest | `cloud-p4` |
 
 ### Grade D has a home
 
