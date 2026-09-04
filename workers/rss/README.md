@@ -45,6 +45,13 @@ digest crashes. Rows age out after 8 days, matching the ArticleStore's dedup sca
 
 ## Deploy
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/rss)
+
+The button provisions a **fresh** D1 database and rewrites the id in
+`wrangler.toml`. Repoint it at the app's database afterwards, or this Worker
+reads an empty `sources` table and buffers the bundled fallback feeds instead
+of yours. By hand:
+
 ```bash
 cd workers/rss
 bun install

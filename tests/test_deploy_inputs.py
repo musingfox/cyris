@@ -63,3 +63,30 @@ def test_manual_deploy_sets_every_required_secret() -> None:
     loop = re.search(r"for s in (.*?); do", readme, re.S)
     assert loop, "the secret-setting loop is gone from workers/app/README.md"
     assert required - set(re.findall(r"[A-Z][A-Z0-9_]+", loop.group(1))) == set()
+
+
+def test_every_worker_is_deployable_by_button() -> None:
+    """Four Workers, four buttons, each with guidance for the secrets it needs.
+
+    A Deploy to Cloudflare button treats the directory it points at as the whole
+    repository, so a subdirectory Worker needs its own wrangler.toml and
+    package.json. Without `cloudflare.bindings` the deploy page renders the
+    fields bare, and an untokened Worker answers 401 to every pull it exists to
+    serve — a fork that looks deployed and returns nothing.
+    """
+    app_button = "?url=https://github.com/musingfox/cyris)"
+    assert app_button in (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for worker in sorted(p.parent for p in ROOT.glob("workers/*/wrangler.toml")):
+        name = worker.name
+        readme = worker / "README.md"
+        assert readme.is_file(), f"workers/{name} has no README"
+        assert (
+            f"?url=https://github.com/musingfox/cyris/tree/main/workers/{name})"
+            in readme.read_text(encoding="utf-8")
+        ), f"workers/{name}/README.md has no deploy button"
+
+        pkg_path = worker / "package.json"
+        assert pkg_path.is_file(), f"workers/{name} has no package.json"
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        assert pkg.get("cloudflare", {}).get("bindings"), f"workers/{name} declares no bindings"

@@ -14,8 +14,9 @@ newsletter email → cyris@<your-domain>
 ```
 
 RSS-capable newsletters (all Substacks, most Ghost/Squarespace sites via
-`?format=rss`) should go through Miniflux instead — only use this for genuinely
-email-only sources.
+`?format=rss`) are just feeds: list them in `sources.yaml` like any other. Use
+this Worker only for genuinely email-only sources, since it is the one part of
+cyris that needs a domain you control.
 
 ## HTTP endpoints (Bearer `NEWSLETTER_TOKEN`)
 
@@ -65,6 +66,11 @@ This preserves header presence for diagnostics without leaking routing/recipient
 Used for throughput and parsing-cost monitoring.
 
 ## Deploy
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/newsletter)
+
+Email Routing still has to be set up by hand — it needs a domain you control,
+and it is the one step no button can do.
 
 Prereqs: a domain on your Cloudflare account (Email Routing does **not** work on
 `*.workers.dev`), and `wrangler` logged in (`npx wrangler whoami`).

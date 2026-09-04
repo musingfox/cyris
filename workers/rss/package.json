@@ -10,5 +10,12 @@
   },
   "scripts": {
     "test": "node --test 'test/*.test.js'"
+  },
+  "cloudflare": {
+    "bindings": {
+      "RSS_TOKEN": {
+        "description": "**Required.** The bearer this Worker accepts. Use the same value you set as `CYRIS_WORKER_TOKEN` on `cyris-app` — that one secret is what the rss and newsletter Workers both check. Without it every pull answers 401 and the digest window comes back empty."
+      }
+    }
   }
 }

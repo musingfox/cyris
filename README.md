@@ -148,12 +148,17 @@ not cover them — do these first and paste the results into the deploy form:
    or email-only newsletters. Both are dashboard steps; see the table above for
    which features need a domain.
 
-The other three Workers (`workers/rss/`, `workers/promote/`,
-`workers/newsletter/`) are separate deploys — one button deploys one Worker.
-Deploy each from its own directory with `wrangler`, and **point the rss Worker at
-the same D1 database as the app**: give it a fresh one and it reads an empty
-`sources` table, falls back to `feeds.json`, and buffers the wrong feeds without
-saying so.
+The other three Workers are separate deploys — one button deploys one Worker —
+and each is optional. Their buttons live in their own READMEs:
+[`workers/rss/`](workers/rss/README.md) (feed buffer),
+[`workers/promote/`](workers/promote/README.md) (vote queue),
+[`workers/newsletter/`](workers/newsletter/README.md) (email ingestion). All
+three accept the same `CYRIS_WORKER_TOKEN`-style bearer you set on the app.
+
+**Point the rss Worker at the same D1 database as the app.** Its button
+provisions a fresh one, and a fresh one has an empty `sources` table — the
+Worker then falls back to the feed list bundled in `src/feeds.json` and buffers
+feeds you never chose, logging one line about it and nothing more.
 
 Deploying by hand instead:
 

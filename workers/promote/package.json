@@ -1,0 +1,15 @@
+{
+  "name": "cyris-promote",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "PROMOTE_TOKEN": {
+        "description": "**Required.** The bearer this Worker accepts. Set the same value as `CYRIS_PROMOTE_TOKEN` on `cyris-app`. It is deliberately **not** the same as `CYRIS_WORKER_TOKEN`: the app attaches this one server-side on behalf of a reader clicking a vote button, so it guards a reader-facing write rather than a server-to-server pull."
+      }
+    }
+  }
+}
