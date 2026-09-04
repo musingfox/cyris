@@ -31,9 +31,9 @@ path = "./agent-vault"
 # Where the article store and the usage log live.
 #   "json" — partition files under [agent_vault] path. No setup, but a dead
 #            machine takes the store with it.
-#   "d1"   — Cloudflare D1. Create the tables with
-#            `wrangler d1 execute <db> --remote --file=src/cyris/adapters/store/schema.sql`,
-#            copy the local store over with `cyris store migrate`, and compare the
+#   "d1"   — Cloudflare D1. The tables are created on the first boot that reaches
+#            the database, so an empty one needs no setup step. Coming from the
+#            JSON store, copy it over with `cyris store migrate` and compare the
 #            two with `cyris store diff` before switching.
 backend = "json"                        # or CYRIS_STORE_BACKEND
 database_id = ""                        # or CYRIS_STORE_DATABASE_ID

@@ -1,11 +1,21 @@
 -- Persistent article store, the pipeline's system of record.
 --
--- Shares the `cyris-rss` D1 database with the feed buffer (workers/rss/schema.sql,
--- table `articles`). Different lifecycles, same database: the buffer is disposable
--- and retention-pruned, this table is not. Kept together because that database is
--- already declared as a binding in workers/rss/wrangler.toml, which is what a
--- Deploy to Cloudflare button provisions from.
+-- Shares the `cyris-rss` D1 database with the feed buffer (table `articles`, which
+-- the Worker creates itself — workers/rss/src/index.js, `SCHEMA`). Different
+-- lifecycles, same database: the buffer is disposable and retention-pruned, this
+-- table is not. Kept together because that database is already declared as a
+-- binding in workers/rss/wrangler.toml, which is what a Deploy to Cloudflare
+-- button provisions from.
 --
+-- Applied automatically: `bootstrap.load_effective_config` sends this whole file
+-- to D1 in one POST before the settings read, on every boot. It is idempotent by
+-- construction — every statement is CREATE ... IF NOT EXISTS and none seed a row
+-- — so do not add anything here that would not survive being re-run hourly.
+-- That covers first creation only. There is no mechanism for evolving a database
+-- that already exists: an ADD COLUMN written here reaches a fresh deployment and
+-- nothing else. See docs/architecture.md §7, M6.
+--
+-- To apply it by hand anyway (inspection, or a database cyris never opens):
 --   wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql
 
 CREATE TABLE IF NOT EXISTS stored_articles (

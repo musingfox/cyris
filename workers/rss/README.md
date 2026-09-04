@@ -55,7 +55,9 @@ uv run --with pyyaml python gen-feeds.py
 
 # 2. Create the D1 database, then paste its id into wrangler.toml
 npx wrangler d1 create cyris-rss           # → copy database_id into wrangler.toml
-npx wrangler d1 execute cyris-rss --remote --file=schema.sql
+#    The `articles` table needs no setup step: the Worker creates it on its
+#    first poll or request (src/index.js, `SCHEMA`), which is also what a
+#    Deploy to Cloudflare button relies on.
 
 # 3. Auth token (same value goes into cyris's .env as CYRIS_WORKER_TOKEN,
 #    the one bearer all three Workers accept)
@@ -75,7 +77,6 @@ worker_url = "https://cyris-rss.<subdomain>.workers.dev"
 ## Local development
 
 ```bash
-npx wrangler d1 execute cyris-rss --local --file=schema.sql
 npx wrangler dev --local --port 8799 --var RSS_TOKEN:devtoken
 
 curl -X POST -H 'Authorization: Bearer devtoken' localhost:8799/poll
