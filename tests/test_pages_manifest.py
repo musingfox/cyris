@@ -727,9 +727,7 @@ def _publish_env(monkeypatch, *, live_paths, deployed):
     _stub_client(monkeypatch, deployed=deployed)
 
 
-def test_publish_refuses_when_the_manifest_would_drop_most_of_the_live_archive(
-    monkeypatch, caplog
-):
+def test_publish_refuses_when_the_manifest_would_drop_most_of_the_live_archive(monkeypatch, caplog):
     live = _dated(62)
     deployed = []
     _publish_env(monkeypatch, live_paths=live, deployed=deployed)
@@ -776,16 +774,22 @@ def test_publish_deploys_when_exactly_four_live_pages_are_missing(monkeypatch):
     assert len(deployed) == 1
 
 
-def test_publish_refuses_when_five_live_pages_are_missing(monkeypatch):
+def test_publish_refuses_when_five_live_pages_are_missing(monkeypatch, caplog):
     live = _dated(62)
     deployed = []
     _publish_env(monkeypatch, live_paths=live, deployed=deployed)
     store = _Store({p: "h" for p in live[5:]})
 
-    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
 
     assert ok is False
     assert deployed == []
+    # A count alone cannot separate a wrong database_id from a deliberate
+    # prune; the names can, so the refusal has to carry some of them.
+    message = caplog.text
+    assert "database_id" in message
+    assert any(page.lstrip("/") in message for page in live[:5])
 
 
 def test_publish_deploys_when_the_live_index_has_no_anchors(monkeypatch):
@@ -799,9 +803,7 @@ def test_publish_deploys_when_the_live_index_has_no_anchors(monkeypatch):
     assert len(deployed) == 1
 
 
-def test_publish_refuses_an_empty_manifest_with_receipt_against_a_full_archive(
-    monkeypatch, caplog
-):
+def test_publish_refuses_an_empty_manifest_with_receipt_against_a_full_archive(monkeypatch, caplog):
     live = _dated(62)
     deployed = []
     _publish_env(monkeypatch, live_paths=live, deployed=deployed)
@@ -861,9 +863,7 @@ def test_publish_refuses_when_the_live_archive_answers_500(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
     monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(
-        publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(500, content=b"")
-    )
+    monkeypatch.setattr(publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(500, content=b""))
     deployed = []
     _stub_client(monkeypatch, deployed=deployed)
 

@@ -19,9 +19,11 @@ from cyris.adapters.output.pages_deploy import PagesClient, PagesDeployError
 logger = logging.getLogger(__name__)
 
 DEPLOY_ATTEMPTS = 3
-# Two days of morning+evening pages. A live-check flake of a few digest pages
-# must not block a deploy; a staging D1 that names a different archive of the
-# same size (62 vs 62 different) must.
+# Two days of morning+evening pages. A deploy that lands while `_page_is_live`
+# says otherwise never reaches `save()`, so the site legitimately leads the
+# manifest by one page per such run; a few of those must not block a deploy. A
+# staging D1 naming a different archive of the same size (62 vs 62 different)
+# must, which is why the check is a set difference and not a count.
 ARCHIVE_SHORTFALL_TOLERANCE = 4
 # Cloudflare Pages serves the extensionless clean URL almost immediately, but
 # not always on the first read.
@@ -70,9 +72,7 @@ def _fetch_live_index(pages_project: str) -> set[str] | None:
             logger.warning("Live archive request failed (poll %d): %s", poll, e)
             continue
         if resp.status_code != 200:
-            logger.warning(
-                "Live archive: %s answered %d (poll %d)", url, resp.status_code, poll
-            )
+            logger.warning("Live archive: %s answered %d (poll %d)", url, resp.status_code, poll)
             continue
         return _parse_archive_anchors(resp.text)
     logger.error("The live archive could not be read at %s", url)
@@ -156,13 +156,17 @@ def publish_site(
     if manifest or owned_at_entry:
         live = _fetch_live_index(pages_project)
         if live is None:
+            logger.error("Refusing to deploy: the live archive could not be read")
             return False
         missing = _archive_shortfall(live, manifest)
         if len(missing) > ARCHIVE_SHORTFALL_TOLERANCE:
+            # The names, not just the count: five filenames tell an operator
+            # whether this is the wrong `database_id` or a prune they meant.
             logger.error(
                 "Refusing to deploy: the live archive still lists %d page(s) "
-                "this manifest would drop. Check [store] database_id",
+                "this manifest would drop, e.g. %s. Check [store] database_id",
                 len(missing),
+                ", ".join(sorted(missing)[:5]),
             )
             return False
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
