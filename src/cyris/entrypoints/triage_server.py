@@ -21,6 +21,13 @@ STATIC_DIR = Path(__file__).parent / "static"
 _IMG_TAG_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
 
+# Every card in the deck asks this service for an icon, so the domain of every
+# article a reader triages is sent to Google. It is decoration: an unreachable
+# service costs a broken image, nothing else. Named here so the call is visible
+# rather than buried in an f-string.
+_FAVICON_SERVICE = "https://www.google.com/s2/favicons?domain={domain}&sz=64"
+
+
 def _extract_first_image(html: str) -> str | None:
     """Extract the first <img src> URL from HTML content."""
     match = _IMG_TAG_RE.search(html)
@@ -38,9 +45,7 @@ def _enrich_article(data: dict) -> dict:
     domain = parsed.netloc or ""
 
     data["domain"] = domain
-    data["favicon_url"] = (
-        f"https://www.google.com/s2/favicons?domain={domain}&sz=64" if domain else ""
-    )
+    data["favicon_url"] = _FAVICON_SERVICE.format(domain=domain) if domain else ""
     data["image_url"] = _extract_first_image(data.get("content", ""))
     return data
 
