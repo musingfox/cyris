@@ -109,3 +109,62 @@ def test_an_empty_directory_is_refused_rather_than_wiping_the_site(tmp_path):
     """A deployment is a full snapshot: an empty manifest deletes every page."""
     with pytest.raises(PagesDeployError, match="no files"):
         PagesClient("a", "t", "p").deploy(tmp_path)
+
+
+def _probe(handler, monkeypatch):
+    original = httpx.Client
+
+    class Patched(original):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **{**kw, "transport": httpx.MockTransport(handler)})
+
+    monkeypatch.setattr(httpx, "Client", Patched)
+    return PagesClient("acct", "tok", "proj")
+
+
+def test_has_deployments_is_true_when_the_list_holds_one(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": True, "result": [{"id": "dep-1"}]})
+
+    assert _probe(handler, monkeypatch).has_deployments() is True
+
+
+def test_has_deployments_is_false_when_the_list_is_empty(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": True, "result": []})
+
+    assert _probe(handler, monkeypatch).has_deployments() is False
+
+
+def test_has_deployments_raises_when_the_project_is_missing(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={"success": False, "errors": [{"message": "Project not found"}]},
+        )
+
+    with pytest.raises(PagesDeployError, match="404"):
+        _probe(handler, monkeypatch).has_deployments()
+
+
+def test_has_deployments_raises_when_result_is_missing(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": True})
+
+    with pytest.raises(PagesDeployError):
+        _probe(handler, monkeypatch).has_deployments()
+
+
+def test_has_deployments_asks_for_one_page_of_the_project_list(monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"success": True, "result": []})
+
+    _probe(handler, monkeypatch).has_deployments()
+
+    assert len(seen) == 1
+    assert seen[0].url.path.endswith("/pages/projects/proj/deployments")
+    assert seen[0].url.params.get("per_page") == "1"
+    assert "env" not in seen[0].url.params

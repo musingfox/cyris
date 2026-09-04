@@ -97,6 +97,22 @@ class PagesClient:
         )
         return body["result"]["jwt"]
 
+    def has_deployments(self) -> bool:
+        """True if this Pages project has at least one deployment."""
+        path = f"/accounts/{self._account}/pages/projects/{self._project}/deployments"
+        with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
+            body = self._call(
+                client,
+                "GET",
+                path,
+                headers={"Authorization": f"Bearer {self._token}"},
+                params={"per_page": 1},
+            )
+        result = body.get("result")
+        if not isinstance(result, list):
+            raise PagesDeployError(f"GET {path} → result is not a list")
+        return bool(result)
+
     # ---- the protocol ---------------------------------------------------
 
     def deploy(self, directory: Path, branch: str = "main") -> str:
