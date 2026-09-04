@@ -16,8 +16,17 @@ TIMEOUT_SECONDS = 15
 
 class PromotedArticle(BaseModel):
     url: str
-    # "up" or "down". Legacy payloads (vote-less, or "deep" from digests published
-    # before the deep-read button was dropped) are anything-but-"down", so they accept.
+    # "up" or "down". Legacy payloads (vote-less, or "deep") are anything-but-"down",
+    # so they accept.
+    #
+    # The "deep" half is permanent, not a transition. The deep-read button shipped
+    # 2026-07-30 (e235cc0) and was dropped 2026-08-08 (6931727), and the pages
+    # published in between are still served: on 2026-09-05 the live archive answered
+    # with 13 deep buttons across seven pages, 2026-07-31-morning through
+    # 2026-08-06-evening. A published digest is never rewritten -- the deployed site
+    # is the archive of record -- so this branch can only go when those seven pages
+    # do. Re-check by grepping the live pages for data-vote="deep", not by counting
+    # days since the removal.
     vote: str = "up"
     digest_date: str | None = None
     ts: str | None = None
