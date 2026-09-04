@@ -4,11 +4,14 @@ from datetime import UTC, datetime
 
 from cyris.domain.models import Article, Tier
 from cyris.service_layer.prompts import (
+    DEFAULT_LANGUAGE,
     FILTER_SYSTEM,
     SUMMARIZE_SYSTEM,
     build_filter_prompt,
+    build_filter_system_prompt,
     build_news_cluster_prompt,
     build_summarize_prompt,
+    language_wording,
 )
 
 
@@ -152,3 +155,24 @@ class TestBuildSummarizePrompt:
         # Content should be truncated to 1500 chars
         assert "C" * 1500 in prompt
         assert "C" * 1501 not in prompt
+
+
+class TestOutputLanguage:
+    """The setting is a BCP 47 tag; the prompt gets a name a model can act on."""
+
+    def test_a_listed_tag_becomes_its_name(self):
+        assert language_wording("zh-Hant") == "繁體中文 (Traditional Chinese)"
+        assert language_wording("en") == "English"
+
+    def test_an_unlisted_tag_is_passed_through(self):
+        # Keeps an unlisted language usable, and keeps a config still holding a
+        # plain language name behaving exactly as it did before the tags landed.
+        assert language_wording("pt-BR") == "pt-BR"
+        assert language_wording("繁體中文") == "繁體中文"
+
+    def test_the_default_tag_reaches_the_system_prompt_as_a_name(self):
+        prompt = build_filter_system_prompt(DEFAULT_LANGUAGE)
+
+        assert "繁體中文 (Traditional Chinese)" in prompt
+        assert "zh-Hant" not in prompt
+        assert "<output_language>" not in prompt

@@ -124,7 +124,7 @@ class DigestConfig(BaseModel):
     scoring_snippet_length: int = 1000
     summarize_snippet_length: int = 1000
     filter_snippet_length: int = Field(default=500, ge=1)
-    output_language: str = "繁體中文"  # language for headlines/summaries in the digest
+    output_language: str = "zh-Hant"  # BCP 47 tag; service_layer/languages.json names it
     style_prompt: str = ""  # optional reader-defined tone/focus injected into prompts
 
 

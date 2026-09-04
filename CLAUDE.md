@@ -155,12 +155,21 @@ Agent-owned state directory. `agent-vault/daily/` holds raw article collections 
 ## Conventions
 
 - Python 3.12+ required
+- **No hardcoded values.** A word the code matches, a label a human reads, a name of a
+  language or a place — all of it is data (`adapters/fetch/keywords.json`,
+  `service_layer/languages.json` are the pattern), reachable without a code edit. What
+  legitimately stays in code is *structure* (a regex's shape, an algorithm's steps) and
+  the tuned constants `docs/architecture.md` §5 grades **A** with a stated reason. If
+  something is a proof of concept, say so in the identifier or the comment above it —
+  an unlabelled placeholder becomes load-bearing by default
+- User-facing strings are English, even while the digest's content is not. i18n has no
+  framework here yet; English is what makes adding one cheap
 - Ruff for linting and formatting (line-length 100, see `pyproject.toml [tool.ruff]` for rule selection)
 - Pydantic v2 for all data models and config validation
 - pytest with `pytest-asyncio` (auto mode) for async tests
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
 - Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
-- Digest output language is configurable via `[digest] output_language` (default 繁體中文); prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
+- Digest output language is configurable via `[digest] output_language`, a **BCP 47 tag** (default `zh-Hant`). `service_layer/languages.json` maps the tag to the wording the model receives; an unlisted tag is substituted verbatim, which is what keeps an older config holding a plain language name working. Prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan remain only as fallbacks behind it. **Never make the extractor return a URL that repeats across issues** (a homepage, a `/join` link, an archive URL whose only per-issue param gets stripped): `ArticleStore` dedups by URL, so every later issue would be silently dropped — worse than the synthetic `newsletter:<hash>` URL, which is unique per issue by construction. That constraint is why the `homepage` fallback lands in `ref_urls` rather than in `url`: `DigestItem.link` falls through to `ref_urls[0]`, so the reader gets the publisher's site while the dedup key stays unique. `homepage` skips the `is_content_url` filter on purpose — that filter drops ESP hosts, and a Mailchimp-only newsletter's own site *is* its campaign-archive page — but still gets its tracking params stripped. Real-sample coverage lives in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
 - Link-health counters on `DigestContent` have deliberately different scopes: `synthetic_url_count` covers every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health), `dead_link_count` covers only items that reached the digest with no clickable link (what a reader hits). The Discord stats line labels each — don't "fix" them into agreement
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers

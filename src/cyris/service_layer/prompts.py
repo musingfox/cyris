@@ -4,11 +4,30 @@ User-facing output language is parameterized via the ``<output_language>``
 placeholder (substituted, not str.format, to avoid clashing with the JSON
 braces in the templates). An optional reader style prompt is appended the
 same way.
+
+The setting is a BCP 47 tag; ``languages.json`` maps it to the wording the model
+is actually given. A tag the file does not list is substituted as-is, which is
+what keeps a config holding a plain language name working.
 """
+
+import json
+from functools import cache
+from importlib.resources import files
 
 from cyris.domain.models import Article
 
-DEFAULT_LANGUAGE = "繁體中文"
+DEFAULT_LANGUAGE = "zh-Hant"
+
+
+@cache
+def _language_names() -> dict[str, str]:
+    raw = (files(__package__) / "languages.json").read_text(encoding="utf-8")
+    return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
+
+
+def language_wording(tag: str) -> str:
+    """The prompt wording for a BCP 47 tag, or the tag itself when unlisted."""
+    return _language_names().get(tag, tag)
 
 
 def _finalize_system(
@@ -17,7 +36,7 @@ def _finalize_system(
     style_prompt: str = "",
 ) -> str:
     """Substitute the output language and append the optional style block."""
-    out = base.replace("<output_language>", language)
+    out = base.replace("<output_language>", language_wording(language))
     if style_prompt.strip():
         out += f"\n\nReader style — apply to tone and focus:\n{style_prompt.strip()}"
     return out

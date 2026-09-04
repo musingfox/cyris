@@ -21,7 +21,7 @@ model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider 
 [digest]
 max_articles_per_digest = 400           # cap fed into the pipeline; set above daily volume or it truncates
 max_articles_per_digest_output = 15     # cap shown in the digest note
-output_language = "繁體中文"             # language for digest headlines/summaries (e.g. "English")
+output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
 style_prompt = ""                       # optional: your tone/focus, injected into the prompts
 
 [agent_vault]

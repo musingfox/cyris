@@ -16,6 +16,7 @@ from cyris.domain.selection import select_digest_articles, split_summarize_tier_
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
+from cyris.service_layer.prompts import DEFAULT_LANGUAGE
 from cyris.service_layer.summarize import (
     build_attention_sections,
     build_fan_sections,
@@ -50,7 +51,7 @@ class DigestPipeline:
         summarize_snippet_length: int = 1000,
         filter_snippet_length: int = 500,
         score_threshold: int = 70,
-        output_language: str = "繁體中文",
+        output_language: str = DEFAULT_LANGUAGE,
         style_prompt: str = "",
     ) -> None:
         self._llm = llm
