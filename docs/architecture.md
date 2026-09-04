@@ -287,7 +287,7 @@ Every persistent datum, where it lives now, and where it is going.
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
-| Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe |
+| Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 
@@ -618,14 +618,23 @@ the `sources` table: `backend = "json"` keeps writing `agent-vault/html/` and de
   is better than what it replaced — one gitignored directory on one Mac mini — and worse than a
   copy in R2. It is a decision, not an oversight; tracked in §7.
 - **Recovery.** If D1 is lost, `pages_manifest` is empty and the next deploy would be a full
-  snapshot of this run's files alone — wiping every live page. That is now refused: an empty
-  manifest against a Pages project that already has deployments stops the publish and names the
-  two ways out (`[store] database_id`, `scripts/backfill_pages_manifest.py`). The live
-  `index.html` still lists every digest, so fetching each page and re-running `asset_hash`
-  reconstructs path → hash exactly; that is what the backfill script does. A first deploy whose
-  live-check failed is a different case: `pages_deploy_receipt` records that this D1 already
-  owns the project, so the next run publishes without a probe and without a human backfill.
-  The reverse — losing the *site* — is not self-healing: `deploy_manifest` raises rather than
+  snapshot of this run's files alone — wiping every live page. That is now refused two ways.
+  An empty manifest against a Pages project that already has deployments (and no receipt)
+  stops the publish and names the two ways out (`[store] database_id`,
+  `scripts/backfill_pages_manifest.py`). A non-empty-but-wrong `pages_manifest` — a staging D1
+  holding a different 62 pages — is the same wipe by set difference, and a count check would
+  miss it: `publish_site` fetches the live archive index and refuses when more than four dated
+  pages listed there are missing from the manifest. `pages_deploy_receipt` means this D1 has
+  published this project before, not that it currently owns the live archive, so a receipt does
+  not skip the archive check (it only skips the Cloudflare deployments probe). Zero dated
+  anchors on the live index is a pass: there is nothing to lose. An unreadable live index fails
+  closed. There is no in-band path for a legitimate prune of more than four digest pages;
+  `-raw.html` pages are not in the signal. The live `index.html` still lists every digest, so
+  fetching each page and re-running `asset_hash` reconstructs path → hash exactly; that is what
+  the backfill script does. A first deploy whose live-check failed is a different case:
+  `pages_deploy_receipt` records that this D1 already owns the project, so the next run skips
+  the deployments probe — the archive-shortfall check still runs against the live index. The
+  reverse — losing the *site* — is not self-healing: `deploy_manifest` raises rather than
   quietly deploying a truncated archive, which is the right failure but still a failure.
 - **Ceiling.** Every deploy sends a manifest of every file and asks `check-missing` about every
   hash. The account's upload token caps a deployment at **20,000 files** (read from the JWT's
@@ -724,6 +733,8 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 | ~~12~~ | ~~Post-rebuild cleanup~~ | Done 2026-08-29 in the same window: `[miniflux]`, both embeddings caches, `agent-vault/html/` and its bind mount are gone. `agent-vault/` now holds ~52KB and no pipeline state |
 | 13 | Replace the absolute similarity threshold with a relative one | Superseded in shape by M-behaviour (`docs/milestones/schema-first-interleave.md`): suppression must carry a reason and a clock, not a recalibrated cosine. `[vote_similarity]` is **off** in production since 2026-08-28 — the stale cutoff was suppressing measurably (2→24 downvote seeds took suppression from 8 to 45 on a fixed window); off is the honest state until the replacement lands |
 | 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Digest HTML holds LLM summaries stored nowhere else, so deleting the Pages project deletes history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`) |
+| — | Legitimate archive prune has no in-band path | The scale guard refuses a deploy that would drop more than four live digest pages. Intentionally shrinking the archive has to go around the guard |
+| — | `-raw.html` is outside the archive-shortfall signal | The live index lists digest pages only. A wrong D1 that kept every dated digest but dropped every `-raw.html` listing would pass |
 
 ### The reader-facing surfaces
 

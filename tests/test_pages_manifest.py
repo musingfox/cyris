@@ -505,7 +505,8 @@ def test_archive_shortfall_treats_an_unslashed_manifest_key_as_the_same_page():
 
 
 def test_archive_shortfall_is_empty_when_the_live_archive_lists_nothing():
-    assert publish_mod._archive_shortfall(set(), {"/a.html": "1", "/b.html": "2", "/c.html": "3"}) == set()
+    manifest = {"/a.html": "1", "/b.html": "2", "/c.html": "3"}
+    assert publish_mod._archive_shortfall(set(), manifest) == set()
 
 
 def _env(monkeypatch):
@@ -713,3 +714,118 @@ def test_fetch_live_index_empty_archive_is_an_empty_set_not_unread(monkeypatch, 
     )
 
     assert publish_mod._fetch_live_index("proj") == set()
+
+
+def _publish_env(monkeypatch, *, live_paths, deployed):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    body = _index_body(*live_paths)
+    monkeypatch.setattr(
+        publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(200, content=body)
+    )
+    _stub_client(monkeypatch, deployed=deployed)
+
+
+def test_publish_refuses_when_the_manifest_would_drop_most_of_the_live_archive(
+    monkeypatch, caplog
+):
+    live = _dated(62)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({**{p: "h" for p in live[:3]}, "/index.html": "i"})
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
+    assert store.saved is None
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "[store] database_id" in errors[0].message
+    assert "59" in errors[0].message
+
+
+def test_publish_deploys_when_the_manifest_holds_the_live_archive(monkeypatch):
+    live = _dated(62)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    manifest = {p: "h" for p in live}
+    for i in range(1, 25):
+        manifest[f"/2026-01-{i:02d}-morning-raw.html"] = "r"
+    manifest["/index.html"] = "i"
+    store = _Store(manifest)
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is True
+    assert len(deployed) == 1
+    assert store.saved is not None
+
+
+def test_publish_deploys_when_exactly_four_live_pages_are_missing(monkeypatch):
+    live = _dated(62)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({p: "h" for p in live[4:]})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is True
+    assert len(deployed) == 1
+
+
+def test_publish_refuses_when_five_live_pages_are_missing(monkeypatch):
+    live = _dated(62)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({p: "h" for p in live[5:]})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
+
+
+def test_publish_deploys_when_the_live_index_has_no_anchors(monkeypatch):
+    deployed = []
+    _publish_env(monkeypatch, live_paths=(), deployed=deployed)
+    store = _Store({"/old.html": "old"})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is True
+    assert len(deployed) == 1
+
+
+def test_publish_refuses_an_empty_manifest_with_receipt_against_a_full_archive(
+    monkeypatch, caplog
+):
+    live = _dated(62)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({})
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site(
+            {"/new.html": b"x"}, "slug", store, "proj", _Receipt(present=True)
+        )
+
+    assert ok is False
+    assert deployed == []
+    errors = [r.message for r in caplog.records if r.levelname == "ERROR"]
+    assert errors
+    assert "[store] database_id" in errors[0]
+
+
+def test_publish_deploys_an_empty_manifest_with_receipt_inside_tolerance(monkeypatch):
+    deployed = []
+    _publish_env(monkeypatch, live_paths=("/2026-09-04-morning.html",), deployed=deployed)
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(present=True)
+    )
+
+    assert ok is True
+    assert len(deployed) == 1

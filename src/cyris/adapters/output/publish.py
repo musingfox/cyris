@@ -19,6 +19,10 @@ from cyris.adapters.output.pages_deploy import PagesClient, PagesDeployError
 logger = logging.getLogger(__name__)
 
 DEPLOY_ATTEMPTS = 3
+# Two days of morning+evening pages. A live-check flake of a few digest pages
+# must not block a deploy; a staging D1 that names a different archive of the
+# same size (62 vs 62 different) must.
+ARCHIVE_SHORTFALL_TOLERANCE = 4
 # Cloudflare Pages serves the extensionless clean URL almost immediately, but
 # not always on the first read.
 VERIFY_POLLS = 3
@@ -150,7 +154,15 @@ def publish_site(
                 logger.error("Pages deploy receipt write failed: %s", e)
                 return False
     if manifest or owned_at_entry:
-        _fetch_live_index(pages_project)
+        live = _fetch_live_index(pages_project)
+        missing = _archive_shortfall(live or set(), manifest)
+        if len(missing) > ARCHIVE_SHORTFALL_TOLERANCE:
+            logger.error(
+                "Refusing to deploy: the live archive still lists %d page(s) "
+                "this manifest would drop. Check [store] database_id",
+                len(missing),
+            )
+            return False
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
         try:
             deployment, updated = client.deploy_manifest(
