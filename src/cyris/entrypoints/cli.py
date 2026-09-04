@@ -245,7 +245,7 @@ def embed_compare(
     from datetime import UTC, datetime, timedelta
 
     from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
-    from cyris.bootstrap import _EMBEDDING_DEFAULTS, build_deps, load_effective_config
+    from cyris.bootstrap import build_deps, embedding_defaults, load_effective_config
     from cyris.service_layer.vote_similarity import judge_by_votes
 
     try:
@@ -268,7 +268,7 @@ def embed_compare(
     arms = {
         "gemini": (
             GeminiEmbedder(api_key=os.environ.get("GEMINI_API_KEY", "")),
-            threshold if threshold is not None else _EMBEDDING_DEFAULTS["gemini"]["threshold"],
+            threshold if threshold is not None else embedding_defaults("gemini")["threshold"],
         ),
         "workers_ai": (
             WorkersAIEmbedder(api_token=token, account_id=account),

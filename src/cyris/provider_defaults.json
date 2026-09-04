@@ -1,0 +1,13 @@
+{
+  "_comment": "What each provider is used with when the config names a provider but no model, and the similarity cutoff each embedding model is calibrated at. These are values, not reasons: why gpt-oss-120b rather than llama-3.3-70b, and why the two thresholds are 0.53 and 0.68 rather than one number, is in docs/architecture.md §5 under 'Provider defaults'. Adding a provider means a row here plus a branch in bootstrap.build_llm.",
+  "llm_models": {
+    "anthropic": "claude-sonnet-4-6",
+    "gemini": "gemini-2.5-flash",
+    "openai": "gpt-5.6-luna",
+    "workers_ai": "@cf/openai/gpt-oss-120b"
+  },
+  "embedding": {
+    "workers_ai": { "model": "@cf/baai/bge-m3", "threshold": 0.53 },
+    "gemini": { "model": "gemini-embedding-001", "threshold": 0.68 }
+  }
+}

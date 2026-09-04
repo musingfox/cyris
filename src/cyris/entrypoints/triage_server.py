@@ -241,12 +241,13 @@ class TriageServer:
 
     async def _handle_get_settings(self, request: web.Request) -> web.Response:
         """What is configured now, and which providers this machine could switch to."""
-        from cyris.bootstrap import _DEFAULT_MODELS
+        from cyris.bootstrap import default_models
         from cyris.config import LLMProviderConfig
 
         current = self._llm_provider
         providers = []
-        for name in _DEFAULT_MODELS:
+        models = default_models()
+        for name in models:
             # Constructing it is what resolves the key from the environment, so
             # `configured` reflects what a run would actually find, not a guess.
             probe_cfg = LLMProviderConfig(provider=name)
@@ -257,7 +258,7 @@ class TriageServer:
                 {
                     "name": name,
                     "env_var": probe_cfg.api_key_env_var,
-                    "default_model": _DEFAULT_MODELS[name],
+                    "default_model": models[name],
                     "configured": ready,
                 }
             )

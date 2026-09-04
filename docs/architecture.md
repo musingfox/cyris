@@ -321,7 +321,8 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 
 | Setting | Grade | Today | Target |
 |---|---|---|---|
-| Tier thresholds, batch sizes, model defaults | A | code | unchanged |
+| Tier thresholds, batch sizes | A | code | unchanged |
+| Per-provider default model, per-model embedding threshold | A | `src/cyris/provider_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; file fallback) | done |
@@ -343,6 +344,31 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | undecided. Writing a key into D1 `settings` puts a secret in a readable D-grade row; §7 #17 records the question rather than answering it |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
+
+### Provider defaults, and why these values
+
+`src/cyris/provider_defaults.json` holds what a provider runs with when the config
+names a provider but no model, plus the similarity cutoff each embedding model is
+calibrated at. The file holds values; the reasons are here, so that changing a number
+means reading why it is that number.
+
+**`workers_ai` defaults to `@cf/openai/gpt-oss-120b`, not `llama-3.3-70b`.** The filter
+tier sends a window's articles as one un-batched prompt, and llama's 24k context leaves
+no headroom on a busy window — the run does not degrade, it fails. gpt-oss has 128k. It
+is also about 3x cheaper on output (68,182 against 204,805 neurons per M output tokens),
+which is the smaller reason but points the same way.
+
+**The two embedding thresholds are 0.53 and 0.68, and they are not interchangeable.**
+Each is a property of its model, measured, not a preference: `bge-m3`'s cosines run
+lower than `gemini-embedding-001`'s across the board, so the same number means different
+things to them. Reusing one across providers does not shift the boundary a little, it
+silently disables the feature in one direction or suppresses indiscriminately in the
+other. Both were calibrated in `docs/vote-signal-measurement.md`, which also records the
+gap they sit in (in-class minimum 0.690 against out-of-class maximum 0.673 for Gemini).
+
+That measured-property status is why the threshold is graded **A** while the embedding
+*provider and model* are graded D: one is a reader's choice, the other is arithmetic
+about the model they chose.
 
 ### Grade C is seven variables (2026-08-30)
 

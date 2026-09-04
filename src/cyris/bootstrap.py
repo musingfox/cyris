@@ -1,9 +1,11 @@
 """Composition root: wire concrete adapters into the dependency container."""
 
+import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import partial
+from functools import cache, partial
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -17,16 +19,27 @@ from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
 from cyris.service_layer.ports import ArticleRepository, FetchSource, LLMClient
 
-_DEFAULT_MODELS = {
-    "anthropic": "claude-sonnet-4-6",
-    "gemini": "gemini-2.5-flash",
-    "openai": "gpt-5.6-luna",
-    # gpt-oss-120b rather than llama-3.3-70b: the filter tier sends its articles as
-    # one un-batched prompt, and llama's 24k context leaves no headroom for a busy
-    # window. gpt-oss has 128k, and its output rate is ~3x cheaper besides
-    # (68,182 vs 204,805 neurons per M output tokens).
-    "workers_ai": "@cf/openai/gpt-oss-120b",
-}
+
+@cache
+def _provider_defaults() -> dict:
+    """Per-provider model and threshold defaults; see docs/architecture.md §5."""
+    raw = (files("cyris") / "provider_defaults.json").read_text(encoding="utf-8")
+    return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
+
+
+def default_model(provider: str) -> str:
+    """The model a provider runs with when the config names no model."""
+    return _provider_defaults()["llm_models"][provider]
+
+
+def default_models() -> dict[str, str]:
+    """Every provider this build can wire, and what it defaults to."""
+    return dict(_provider_defaults()["llm_models"])
+
+
+def embedding_defaults(provider: str) -> dict:
+    """The embedding model and its calibrated cutoff for one provider."""
+    return _provider_defaults()["embedding"][provider]
 
 
 def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
@@ -37,7 +50,7 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     """
     if not cfg.provider or not cfg.api_key:
         return None
-    model = cfg.model or _DEFAULT_MODELS[cfg.provider]
+    model = cfg.model or default_model(cfg.provider)
     if cfg.provider == "gemini":
         return GeminiClient(cfg.api_key, model)
     if cfg.provider == "openai":
@@ -47,14 +60,6 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
             return None  # doctor names the missing CLOUDFLARE_ACCOUNT_ID
         return WorkersAIClient(cfg.api_key, cfg.account_id, model)
     return AnthropicClient(cfg.api_key, model)
-
-
-# Each embedding model has its own calibrated cutoff and its own default model id.
-# See docs/vote-signal-measurement.md — the scales differ, the discrimination does not.
-_EMBEDDING_DEFAULTS = {
-    "workers_ai": {"model": "@cf/baai/bge-m3", "threshold": 0.53},
-    "gemini": {"model": "gemini-embedding-001", "threshold": 0.68},
-}
 
 
 def build_embedder(cfg: Config) -> Any | None:
@@ -67,7 +72,7 @@ def build_embedder(cfg: Config) -> Any | None:
     vote = cfg.app.vote_similarity
     if not vote.enabled:
         return None
-    defaults = _EMBEDDING_DEFAULTS[vote.provider]
+    defaults = embedding_defaults(vote.provider)
     model = vote.model or defaults["model"]
 
     if vote.provider == "gemini":
@@ -92,7 +97,7 @@ def embedding_threshold(cfg: Config) -> float:
     vote = cfg.app.vote_similarity
     if vote.threshold is not None:
         return vote.threshold
-    return _EMBEDDING_DEFAULTS[vote.provider]["threshold"]
+    return embedding_defaults(vote.provider)["threshold"]
 
 
 def build_d1_client(cfg: Config) -> Any | None:
