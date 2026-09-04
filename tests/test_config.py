@@ -1,5 +1,6 @@
 """Tests for configuration loader."""
 
+import inspect
 import logging
 import tomllib
 from pathlib import Path
@@ -525,3 +526,22 @@ class TestLLMProvider:
 
         # No provider ⇒ None (degraded mode)
         assert build_llm(LLMProviderConfig()) is None
+
+
+def test_code_defaults_match_the_config_defaults_they_shadow() -> None:
+    """Two settings state their default twice; neither may drift from the other.
+
+    Both function defaults are only reached by callers that omit the value — the
+    pipeline always passes the configured one — so a drift would show up nowhere
+    except in whatever calls them directly.
+    """
+    from cyris.config import AppConfig
+    from cyris.domain.selection import layer_by_score
+    from cyris.service_layer.prompts import DEFAULT_LANGUAGE
+
+    defaults = AppConfig()
+    assert defaults.digest.output_language == DEFAULT_LANGUAGE
+    assert (
+        inspect.signature(layer_by_score).parameters["featured_threshold"].default
+        == defaults.routing.score_threshold
+    )

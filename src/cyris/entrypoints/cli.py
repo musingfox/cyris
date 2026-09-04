@@ -14,6 +14,7 @@ from typing import Annotated
 
 import typer
 
+from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
@@ -888,7 +889,7 @@ def articles_score(
     # Filter: only non-news articles, and only unscored (unless --force)
     scorable = []
     for a in articles:
-        if "news" in a.source_tags:
+        if NEWS_TAG in a.source_tags:
             continue
         if not force and a.score is not None:
             continue

@@ -3,7 +3,7 @@
 import logging
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
-from cyris.domain.tags import normalize_tags
+from cyris.domain.tags import NEWS_TAG, normalize_tags
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     DEFAULT_LANGUAGE,
@@ -28,7 +28,7 @@ def filter_news(articles: list[Article]) -> tuple[list[Article], list[Article]]:
     non_news_articles = []
 
     for article in articles:
-        if "news" in article.source_tags:
+        if NEWS_TAG in article.source_tags:
             news_articles.append(article)
         else:
             non_news_articles.append(article)

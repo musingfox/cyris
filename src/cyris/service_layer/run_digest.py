@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from cyris.domain.models import ArticleState, Tier, UsageStats
 from cyris.domain.selection import count_dead_links, layer_by_score
+from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
@@ -113,7 +114,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     for a in pending_articles:
         if a.source_tier == Tier.FAN:  # fan tier is never scored
             continue
-        if "news" in a.source_tags:
+        if NEWS_TAG in a.source_tags:
             continue
         if not options.force and a.score is not None:
             continue
