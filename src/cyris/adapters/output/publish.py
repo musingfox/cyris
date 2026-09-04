@@ -93,7 +93,7 @@ def publish_site(
                         "backfill with scripts/backfill_pages_manifest.py"
                     )
                     return False
-            except (PagesDeployError, httpx.HTTPError) as e:
+            except Exception as e:
                 logger.error("Pages deployment probe failed: %s", e)
                 return False
             try:
