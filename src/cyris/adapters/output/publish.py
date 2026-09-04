@@ -19,12 +19,16 @@ from cyris.adapters.output.pages_deploy import PagesClient, PagesDeployError
 logger = logging.getLogger(__name__)
 
 DEPLOY_ATTEMPTS = 3
-# Two days of morning+evening pages. A deploy that lands while `_page_is_live`
-# says otherwise never reaches `save()`, so the site legitimately leads the
-# manifest by one page per such run; a few of those must not block a deploy. A
-# staging D1 naming a different archive of the same size (62 vs 62 different)
-# must, which is why the check is a set difference and not a count.
-ARCHIVE_SHORTFALL_TOLERANCE = 4
+# One page, because one is the largest shortfall this system can legitimately
+# produce. A deploy that lands while `_page_is_live` says otherwise never
+# reaches `save()`, so the site leads the manifest by that run's page — but the
+# lead cannot accumulate: the next deploy is a full snapshot of `new_files` plus
+# the manifest, and that page is in neither, so it is dropped and the count
+# returns to one. Anything above that is a database describing a different
+# archive: a staging clone or a point-in-time restore a few days behind, which
+# is exactly what this guard is for. A same-size-but-different archive is caught
+# regardless, because the check is a set difference and not a count.
+ARCHIVE_SHORTFALL_TOLERANCE = 1
 # Cloudflare Pages serves the extensionless clean URL almost immediately, but
 # not always on the first read.
 VERIFY_POLLS = 3
@@ -156,8 +160,19 @@ def publish_site(
     if manifest or owned_at_entry:
         live = _fetch_live_index(pages_project)
         if live is None:
-            logger.error("Refusing to deploy: the live archive could not be read")
-            return False
+            if manifest:
+                logger.error("Refusing to deploy: the live archive could not be read")
+                return False
+            # Armed only by the receipt, and the receipt is written before the
+            # upload: an upload that failed outright leaves one behind for a
+            # site that was never built. Refusing here would wait forever for
+            # an index that only a deploy can create. A wrong database with a
+            # full archive to lose does not reach this line — its index reads.
+            logger.warning(
+                "The live archive could not be read, but this database has no "
+                "manifest to compare; deploying as a first publish"
+            )
+            live = set()
         missing = _archive_shortfall(live, manifest)
         if len(missing) > ARCHIVE_SHORTFALL_TOLERANCE:
             # The names, not just the count: five filenames tell an operator

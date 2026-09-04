@@ -762,16 +762,30 @@ def test_publish_deploys_when_the_manifest_holds_the_live_archive(monkeypatch):
     assert store.saved is not None
 
 
-def test_publish_deploys_when_exactly_four_live_pages_are_missing(monkeypatch):
+def test_publish_deploys_when_one_live_page_is_missing(monkeypatch):
+    """A deploy that landed while the live check said no leaves exactly this."""
     live = _dated(62)
     deployed = []
     _publish_env(monkeypatch, live_paths=live, deployed=deployed)
-    store = _Store({p: "h" for p in live[4:]})
+    store = _Store({p: "h" for p in live[1:]})
 
     ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
 
     assert ok is True
     assert len(deployed) == 1
+
+
+def test_publish_refuses_a_database_two_pages_behind_the_live_archive(monkeypatch):
+    """A staging clone or a restore is days behind; a flake can never be."""
+    live = _dated(62)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({p: "h" for p in live[2:]})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
 
 
 def test_publish_refuses_when_five_live_pages_are_missing(monkeypatch, caplog):
@@ -824,6 +838,30 @@ def test_publish_refuses_an_empty_manifest_with_receipt_against_a_full_archive(m
 def test_publish_deploys_an_empty_manifest_with_receipt_inside_tolerance(monkeypatch):
     deployed = []
     _publish_env(monkeypatch, live_paths=("/2026-09-04-morning.html",), deployed=deployed)
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(present=True)
+    )
+
+    assert ok is True
+    assert len(deployed) == 1
+
+
+def test_a_receipt_from_a_failed_upload_does_not_wedge_the_next_publish(monkeypatch):
+    """The receipt is written before the upload, so a failed one leaves one
+    behind for a site that was never built. Refusing on the unreadable index
+    of that non-existent site would wait forever for what only a deploy makes."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
+
+    def boom(_u, **_k):
+        raise httpx.ConnectError("no such host")
+
+    monkeypatch.setattr(publish_mod.httpx, "get", boom)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
 
     ok = publish_mod.publish_site(
         {"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(present=True)
