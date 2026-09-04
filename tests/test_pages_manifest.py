@@ -79,10 +79,15 @@ def _stub_client(monkeypatch, *, deployed):
     monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
 
 
+def _skip_live_index(monkeypatch):
+    monkeypatch.setattr(publish_mod, "_fetch_live_index", lambda _p: set())
+
+
 def test_the_run_deploys_its_pages_plus_the_whole_archive(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    _skip_live_index(monkeypatch)
     deployed = []
     _stub_client(monkeypatch, deployed=deployed)
     store = _Store({"/2026-08-26-evening.html": "old"})
@@ -104,6 +109,7 @@ def test_a_populated_manifest_does_not_probe_or_touch_the_receipt(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    _skip_live_index(monkeypatch)
 
     def probed(_self):
         raise AssertionError("probed")
@@ -131,6 +137,7 @@ def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch)
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: False)
+    _skip_live_index(monkeypatch)
     _stub_client(monkeypatch, deployed=[])
     store = _Store({"/old.html": "old"})
 
@@ -306,6 +313,7 @@ def test_the_receipt_is_written_before_upload(monkeypatch):
 def test_a_receipt_skips_the_probe_on_the_next_empty_manifest_run(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    _skip_live_index(monkeypatch)
     probes = []
 
     def probe(_self):
@@ -335,6 +343,7 @@ def test_a_preexisting_receipt_does_not_probe(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    _skip_live_index(monkeypatch)
 
     def probed(_self):
         raise AssertionError("probed")
@@ -497,3 +506,103 @@ def test_archive_shortfall_treats_an_unslashed_manifest_key_as_the_same_page():
 
 def test_archive_shortfall_is_empty_when_the_live_archive_lists_nothing():
     assert publish_mod._archive_shortfall(set(), {"/a.html": "1", "/b.html": "2", "/c.html": "3"}) == set()
+
+
+def _env(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+
+
+def _counting_get(monkeypatch, *, body=b""):
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs.get("follow_redirects")))
+        return httpx.Response(200, content=body)
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+    return calls
+
+
+def test_a_populated_manifest_reads_the_live_index_once_without_the_receipt(monkeypatch):
+    _env(monkeypatch)
+    calls = _counting_get(monkeypatch)
+    _stub_client(monkeypatch, deployed=[])
+    receipt = _Receipt()
+
+    ok = publish_mod.publish_site(
+        {"/2026-08-27-morning.html": b"<html>x</html>"},
+        "2026-08-27-morning",
+        _Store({"/2026-08-26-evening.html": "old"}),
+        "proj",
+        receipt,
+    )
+
+    assert ok is True
+    assert len(calls) == 1
+    assert receipt.exists_calls == 0
+
+
+def test_an_empty_manifest_with_a_preexisting_receipt_reads_the_live_index_once(monkeypatch):
+    _env(monkeypatch)
+    calls = _counting_get(monkeypatch)
+
+    def probed(_self):
+        raise AssertionError("probed")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probed)
+    _stub_client(monkeypatch, deployed=[])
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(present=True)
+    )
+
+    assert ok is True
+    assert len(calls) == 1
+
+
+def test_a_first_ever_deploy_does_not_read_the_live_index(monkeypatch):
+    _env(monkeypatch)
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
+    _stub_client(monkeypatch, deployed=[])
+
+    def fetched(*_a, **_k):
+        raise AssertionError("fetched")
+
+    monkeypatch.setattr(publish_mod.httpx, "get", fetched)
+
+    ok = publish_mod.publish_site(
+        {"/2026-08-27-morning.html": b"<html>x</html>"},
+        "2026-08-27-morning",
+        _Store({}),
+        "proj",
+        _Receipt(),
+    )
+
+    assert ok is True
+
+
+def test_deploy_retries_do_not_reread_the_live_index(monkeypatch):
+    _env(monkeypatch)
+    calls = _counting_get(monkeypatch)
+    deployed = []
+    n = {"i": 0}
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        n["i"] += 1
+        if n["i"] <= 2:
+            raise publish_mod.PagesDeployError("upload failed")
+        deployed.append((new_files, manifest))
+        merged = {**manifest, **{p: "new" for p in new_files}}
+        return "dep-1", merged
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({"/old.html": "old"}), "proj", _Receipt()
+    )
+
+    assert ok is True
+    assert len(calls) == 1
+    assert len(deployed) == 1

@@ -38,6 +38,12 @@ def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
     return {_slash(p) for p in live} - kept
 
 
+def _fetch_live_index(pages_project: str) -> set[str] | None:
+    url = f"https://{pages_project}.pages.dev/"
+    httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+    return set()
+
+
 def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     """Deploy the HTML digest directory to Cloudflare Pages.
 
@@ -88,13 +94,14 @@ def publish_site(
         return False
 
     manifest = manifest_store.load()
+    owned_at_entry = False
     if not manifest:
         try:
-            owned = receipt_store.exists(pages_project)
+            owned_at_entry = receipt_store.exists(pages_project)
         except Exception as e:
             logger.error("Pages deploy receipt lookup failed: %s", e)
             return False
-        if not owned:
+        if not owned_at_entry:
             try:
                 if client.has_deployments():
                     logger.error(
@@ -111,6 +118,8 @@ def publish_site(
             except Exception as e:
                 logger.error("Pages deploy receipt write failed: %s", e)
                 return False
+    if manifest or owned_at_entry:
+        _fetch_live_index(pages_project)
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
         try:
             deployment, updated = client.deploy_manifest(
