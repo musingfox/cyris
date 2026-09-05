@@ -152,8 +152,9 @@ The other three Workers are separate deploys — one button deploys one Worker �
 and each is optional. Their buttons live in their own READMEs:
 [`workers/rss/`](workers/rss/README.md) (feed buffer),
 [`workers/promote/`](workers/promote/README.md) (vote queue),
-[`workers/newsletter/`](workers/newsletter/README.md) (email ingestion). All
-three accept the same `CYRIS_WORKER_TOKEN`-style bearer you set on the app.
+[`workers/newsletter/`](workers/newsletter/README.md) (email ingestion).
+`rss` and `newsletter` accept the `CYRIS_WORKER_TOKEN` you set on the app; `promote` has
+its own `CYRIS_PROMOTE_TOKEN`, kept apart because a vote button is a public capability.
 
 **Point the rss Worker at the same D1 database as the app.** Its button
 provisions a fresh one, and a fresh one has an empty `sources` table — the
@@ -218,6 +219,9 @@ domain/          pure models & rules (no IO)
 adapters/        concrete IO implementing the Protocols
     │
 bootstrap.py     composition root: wires adapters into a Deps container
+
+diagnostics/     off the pipeline: doctor + the two comparisons, whose subject
+                 is the deployment rather than the digest
 ```
 
 Pipeline: **Fetch → Store → Score → Process → Output**.
