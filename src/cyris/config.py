@@ -121,6 +121,9 @@ class LLMProviderConfig(BaseModel):
 class DigestConfig(BaseModel):
     max_articles_per_digest: int = 200
     max_articles_per_digest_output: int = 15
+    # How many featured sections lead the page. A reader preference, not a
+    # measurement — see docs/architecture.md §5.
+    max_featured: int = Field(default=5, ge=1)
     scoring_snippet_length: int = 1000
     summarize_snippet_length: int = 1000
     filter_snippet_length: int = Field(default=500, ge=1)

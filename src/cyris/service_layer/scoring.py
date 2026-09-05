@@ -4,14 +4,36 @@ import logging
 from collections.abc import Callable
 
 from cyris.domain.language import detect_language
-from cyris.domain.models import StoredArticle, UsageStats
-from cyris.domain.tags import normalize_tags
+from cyris.domain.models import StoredArticle, Tier, UsageStats
+from cyris.domain.tags import NEWS_TAG, normalize_tags
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import build_scoring_prompt, build_scoring_system_prompt
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
+
+
+def select_scorable(
+    articles: list[StoredArticle],
+    *,
+    force: bool = False,
+) -> list[StoredArticle]:
+    """The articles a scoring pass should send to the LLM.
+
+    One rule, one implementation: `run_digest` and `cyris articles score` both
+    call this, so neither can drift into scoring what the other skips.
+    """
+    scorable = []
+    for a in articles:
+        if a.source_tier == Tier.FAN:  # fan tier is never scored
+            continue
+        if NEWS_TAG in a.source_tags:
+            continue
+        if not force and a.score is not None:
+            continue
+        scorable.append(a)
+    return scorable
 
 
 async def score_articles_batch(
@@ -101,7 +123,7 @@ async def score_in_batches(
                 llm,
                 snippet_length=snippet_length,
             )
-            total_usage.add(usage.input_tokens, usage.output_tokens)
+            total_usage.merge(usage)
 
             if persist is not None:
                 persist(url_to_score_lang)

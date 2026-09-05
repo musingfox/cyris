@@ -16,12 +16,15 @@
 
 ```
 entrypoints  →  service_layer  →  domain
-                     ↑
-                  adapters   (implement the service layer's Protocols)
+     ↓               ↑
+diagnostics       adapters   (implement the service layer's Protocols)
 ```
 
 `bootstrap.build_deps()` is the only place the three meet. The core (`service_layer` + `domain`)
 imports nothing from `adapters` — it names Protocols, and the composition root supplies bodies.
+
+`diagnostics/` is off the pipeline entirely: `doctor` asks whether this deployment works, `compare` runs one window through two wirings and reports where they differ. It may import everything below it and nothing below it may import it, so deleting the
+package would cost three commands and not one digest.
 
 Pipeline: **Fetch → Store → Score → Process → Output**, orchestrated end to end by
 `service_layer/run_digest.py`. The CLI parses arguments and calls it; it holds no logic of its own.
@@ -160,11 +163,41 @@ test.
 
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
-| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `FetchSource` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, embedder, `D1TagStore`, `D1StoryStore` | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `D1TagStore`, `D1StoryStore` | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
+
+**Spend is part of both provider ports, in each one's own shape.** `llm-compare` and `embed-compare`
+exist to answer "which provider costs less", so the number they read cannot be an undeclared
+attribute a second implementation is free to omit. The two shapes stay separate because the
+lifetimes differ: `LLMResponse.neurons` is what one call cost and `UsageStats.add` sums it, while
+`Embedder.usage` (`ports.EmbeddingUsage`) accumulates across the batches one `embed` run makes.
+`None` is the answer for a provider that reports nothing — Gemini's `batchEmbedContents` returns
+bare vectors, and `0.0` there would read as a measured cost of nothing.
+
+### `diagnostics/` — the tools that inspect the deployment
+
+`cyris doctor` is the one module whose subject is the wiring itself. `_check_build` exists because
+a config asking for `[store] backend = "d1"` ran for two days on an image that had no `[store]`
+table at all (§7, the 08-25→08-27 split), and the only check that catches it is
+`type(build_store(cfg)).__name__` — a direct question to the composition root. The Worker probes
+are the same shape: build the real adapter, call `health_check()`, report what answered.
+
+So `doctor` lives in `src/cyris/diagnostics/`, a layer of its own for the tools whose subject is
+the deployment rather than the digest. `embed-compare` and `llm-compare` are the same shape and sit
+beside it in `compare.py`: each builds *two* wirings on purpose, which no core module may do and no
+single `build_deps` can express. What a comparison row means is decided there; the CLI parses
+`--arm`, prints, and owns every local write — which is what keeps these commands read-only by
+construction and keeps their output out of §4's decision. It is **not** an exception to the rule above — the rule holds
+with none. `tests/test_core_imports.py` fails if `service_layer/` or `domain/` imports
+`cyris.adapters` or `cyris.bootstrap` at runtime, and fails again if anything below `diagnostics/`
+imports it back.
+
+Two properties this preserves, both load-bearing: `doctor` never calls `build_deps`, which raises on
+missing credentials — reporting on missing credentials is the job — and it can report *not
+configured* as its own verdict, which an injected list of probes cannot express.
 
 One constraint shapes the store: **`ArticleRepository` is synchronous.** `run_digest` never awaits
 it, so `D1ArticleStore` uses a blocking HTTP client. Making it async would push `async` through
@@ -281,6 +314,14 @@ Worker's KV and are drained hourly by `cyris promote-sync`, which is what turns 
 
 Every persistent datum, where it lives now, and where it is going.
 
+**What this table covers:** state the pipeline keeps — anything a later run, the triage UI or a
+reader depends on. It does not cover a diagnostic command's output, and it does not need to: the
+comparisons write nothing at all, they emit, and where that lands is the shell's decision.
+`tests/test_local_writes.py` holds the set of files allowed to touch local disk at four, all of
+them a backend the D1 path does not use. A new one fails that test before it can become a row
+nobody added. `tests/test_residency_covers_schema.py` does the same for the other half: every
+table `schema.sql` creates must appear in the rows below, so a new table cannot ship unlisted.
+
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
 | Article store | **D1 `stored_articles`** | same | `url` PRIMARY KEY is the dedup key |
@@ -291,12 +332,13 @@ Every persistent datum, where it lives now, and where it is going.
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention |
 | Source definitions | **D1 `sources`** + `sources.yaml` fallback | same | Both cyris and `workers/rss` read it |
 | Runtime settings | **D1 `settings`** + `cyris.toml` fallback | same | Grade D. D1 first, always — see §5 |
-| LLM spend | **D1 `usage_log`** | same | `usage.jsonl` is its retired predecessor |
+| LLM spend | **D1 `usage_log`** | same | `agent-vault/usage.jsonl` is the no-D1 fallback only, the same alternative the article store has: `build_deps` picks one or the other, never both |
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
+| Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. It carries the two figures no row here holds (embedding spend, and LLM neurons — §7 #28); when either needs to outlive seven days it gets a home in `usage_log`, not a longer retention |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
@@ -339,12 +381,13 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies) | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, two Cloudflare tokens, one Worker bearer, one *published* vote token | C (the vote token is not a secret) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
+| LLM API keys, two Cloudflare tokens, one Worker bearer, one vote token | C (the vote token is not a secret: it is in every digest published before 2026-09-01) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
-| Score thresholds, digest caps, output language, style prompt | D | `cyris.toml` | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
+| Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` fallback | done — a reader preference: how many sections lead the page is not a number this codebase can measure, and `featured_threshold` beside it was already D |
+| Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | `cyris.toml` (`[routing]` for the thresholds, `[digest]` for the rest) | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
 | Embedding provider + model | D | `cyris.toml [vote_similarity]` | **D1 `settings`** + `/settings`, as its own `[embedding]` table — §7 #17 |
 | Embedding threshold | **A** | `cyris.toml`, else the provider's own calibration | unchanged — a measured property of the model, not a preference |
 | Discord webhook | C | `CYRIS_DISCORD_WEBHOOK_URL` (`cyris.toml [notify]` fallback) | done — anyone holding it can post to the channel, so it is a secret. Note it is **not** among the seven counted below; that count is of API tokens |
@@ -417,9 +460,15 @@ lesson.** `rss` and `newsletter` are server-to-server: their tokens live in `.en
 secret store, so whoever reads one reads the other, and holding them apart bought independent
 rotation of keys nobody rotates.
 
-`promote` is different in kind. Its up/down buttons run in the **reader's browser**, so
-`_promote_script.html.j2` renders the token into every digest and raw page, and those pages are
-public — recovering it takes one `curl` of any published digest. It is not a secret and never was.
+`promote` is different in kind. Its up/down buttons run in the **reader's browser**, and until
+`private-votes-public-archive` (M-ship) `_promote_script.html.j2` rendered the token into every
+digest and raw page — public pages, so recovering it took one `curl`. Votes now go through the app
+Worker's `POST /api/vote`, which attaches the token server-side. The renderer was left holding the
+URL and the token as constructor arguments nothing read for four days; both are gone, so the
+invariant is now that no template reaches for a credential at all —
+`tests/test_html_digest.py::test_no_template_reaches_for_a_credential`. The value is still not a
+secret and cannot be treated as one: it is baked into every page published before 2026-09-01, and
+those pages are still served.
 
 **This was merged into `CYRIS_WORKER_TOKEN` on 2026-08-30 and unmerged the same evening**, after the
 20:00 digest published the shared value in plain HTML. For about an hour, the token printed on a
@@ -476,8 +525,18 @@ Cloudflare
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
 │     digest.musingfox.me          └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
 ├── D1: stored_articles · usage_log · sources · settings · pages_manifest · pages_deploy_receipt
-└── Pages: cyris-digest
+├── Pages: cyris-digest
+└── Workers Logs: the container's stdout, 7 days
 ```
+
+**The container's stdout is the only log, and it is kept for seven days.** `[observability]` in
+`wrangler.toml` is what sends it to Workers Logs (Paid plan: 20M events/month included, 7-day
+retention); without that block a finished run's output exists nowhere, which is why the sleep bug
+below had to be chased through billing metrics. `run_digest` emits one `run_summary` JSON line per
+run — status, counts, LLM and embedding spend, wall seconds — on every path including the
+exception one, so "what happened last night" is one query rather than an inference. Longer
+retention is a separate decision and does not need a different log: Workers Logpush (Paid, to R2 or
+another sink) and a Tail Worker can both read this stream later without changing what writes it.
 
 Nothing runs on the Mac mini since 2026-08-30: `docker compose down` was the cutover, and the
 `compose` file survives only as the local development path. `cloud-p4` makes the whole thing
@@ -542,8 +601,9 @@ silently ignored for two days.
 
 ## 7. Outstanding work, and the record of what closed
 
-**One item is open: #17, the embedding provider's config home.** Everything else in this chapter is
-history — the milestones as they landed, and the reasoning behind the calls that shaped them
+**Six numbered items are open — #9, #13, #14, #17, #28 and #29 — plus the two unnumbered rows under
+*Waiting on a receipt*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
+else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
 (why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
 changing one of those decisions means reading why it was made, not because it is pending.
 
@@ -564,8 +624,8 @@ now ─┬─ M6 deploy button
      └─ (weeks of tag data) ─ M-behaviour
 
 shipped: P1, P2, M-persist, M5
-open:    the reader-facing tickets (§7 #15's successors, #17), and one
-         dashboard glance at Containers usage that M5's receipt still wants
+open:    the embedding provider's settings home (§7 #17), and one dashboard
+         glance at Containers usage that M5's receipt still wants
 hard edges:  M-behaviour → (closes #13)
 ```
 
@@ -862,6 +922,37 @@ token.~~ **Done 2026-09-01** (`private-votes-public-archive`), then the domainle
 | ~~15~~ | ~~A write surface for the `sources` table~~ | Done 2026-08-30 (P2): `POST /api/sources` upserts one row and `DELETE /api/sources/{name}` retires it, over the **existing** `sources` row — name, url, type, tier, tags, `homepage`, `email_match`. No new table, no new §4 row. Two shapes worth knowing: a write against an **empty** table seeds it with the run's effective sources first, because an empty table means "use `sources.yaml`" and a single insert would otherwise silently stop every other feed; and `cyris sources push` still replaces the table wholesale, so it clobbers edits made here — the file stays the fallback, not a mirror | `settings-source-editor` |
 | 17 | Embedding provider is not on the page the LLM provider is on | `[vote_similarity] provider`/`model` in `cyris.toml` only; the embedder is a peer of `LLMClient` in `ports.py` but has no config section of its own | `[embedding]` as its own table, `provider` + `model` grade D on `/settings`, verified against the live API before storing — the same shape the LLM half already has. **`threshold` stays grade A**: the cosine scale is a measured property of the model, not a preference, so it follows the provider rather than being typed in | `settings-embedding-provider` |
 | ~~16~~ | ~~One visual system across the three surfaces~~ | Done 2026-08-30: `static/style.css` now carries the digest's token names and values (a digest is a standalone file deployed to Pages, so the copy is the sharing mechanism — the stylesheet's header comment is where the two stay in sync), plus Geist and the grid background. The deck's swipe glows follow `--accent`/`--warn`; `/settings` lost its two hard-coded result colours | — | `ui-one-visual-system` |
+
+### Found by the 2026-09-05 alignment pass
+
+Six things the code and this document disagreed about, none of them urgent, all of them
+the kind that get harder to see the longer they sit. One ticket each.
+
+| # | What | Today | Target | Ticket |
+|---|---|---|---|---|
+| ~~18~~ | ~~`doctor` builds adapters inside the service layer~~ — closed 2026-09-05 | It was six sites, not the three the ticket named: three more called `bootstrap.build_llm`/`build_store`, which imports the composition root into the core — the inversion the rule exists to prevent | ✅ Neither path on the ticket: `doctor`'s subject *is* the wiring, so it moved into a `diagnostics/` layer of its own and the rule now holds with **no** exception. §2 carries the reason; `tests/test_core_imports.py` is the receipt | `doctor-builds-its-own-adapters` |
+| ~~19~~ | ~~The CLI holds pipeline logic~~ — closed 2026-09-05 | Two findings: the scorable filter was not a copy but a *drifted* copy — the CLI scored fan-tier articles `run_digest` skips — and the comparison rules had no test at all because they were unreachable without running a typer command | ✅ Both sides now call `scoring.select_scorable`; the arm building, `margin` and the `api_calls == 0` rule moved to `diagnostics/compare.py` with `tests/test_compare.py`. Not `service_layer/`: a comparison builds two wirings, which the core may not do. `embed_compare` (78), `articles_score` (76) and `llm_compare` (67) are still over the ticket's 60 lines, all of it option declarations and output formatting | `cli-holds-pipeline-logic` |
+| ~~20~~ | ~~Two callers reach past their Protocol~~ — closed 2026-09-05 | The ticket feared `neurons` would force other providers to return a meaningless field; `None` already says "this one does not report", so it did not | ✅ Both declared, each in its own shape: `Embedder.usage: EmbeddingUsage`, and `neurons` moved from an ad-hoc counter on `WorkersAIClient` onto `LLMResponse`, summed by `UsageStats.add`. The `getattr` is gone. §2 carries the reason; three tests cover a provider that reports nothing and the trip from response to run total | `embedder-usage-bypasses-its-port` |
+| ~~21~~ | ~~§4 does not cover every write~~ — closed 2026-09-05 | Three separate things: the `usage.jsonl` row was a contradiction (the code was right, the doc called a live fallback retired), the comparisons wrote local files, and `CLAUDE.md` described an `agent-vault/daily/` nothing has written for a long time | ✅ §4 now says what it covers; the comparisons emit to stdout instead of writing, so there was nothing to add a row for; the `daily/` sentence is gone. Two tests are the receipt: `test_usage_jsonl_row_matches_bootstrap` and `test_only_the_documented_fallbacks_write_to_local_disk`, which pins the writers at four | `data-residency-missing-rows` |
+| ~~22~~ | ~~`max_featured` has no grade and no home~~ — closed 2026-09-05 | It was the last number in the file with neither a grade nor a config key | ✅ Grade D, and given the writer that makes D real: `[digest] max_featured`, D1 `settings`, and a field on `/settings` — a container has no writable `cyris.toml`, so a key graded D without a page is only half graded. Pinned by the same test that pins `featured_threshold` | `featured-cap-has-no-grade` |
+| ~~23~~ | ~~A second architecture diagram nothing reads~~ — closed 2026-09-05 | `docs/cyris-runtime.architecture.json` and its 735 KB `.html`: no producer, no consumer, no inbound link, and §2's filesystem table went stale on 2026-09-05 without either of them noticing | ✅ Both deleted. Not connected to a generator: §2's mermaid diagrams already describe the runtime, and they sit where someone reading this file will actually reach them. A second source of truth nobody reads does not fail loudly — it just stays trusted | `retire-the-orphan-runtime-diagram` |
+
+### The guards themselves, audited 2026-09-05
+
+The pass above closed its findings with tests. This one asked what those tests actually
+check. Four holes, all closed the same day, none of which had ever failed — which is the
+point: a guard with a hole reports green for the case it cannot see.
+
+| # | What | Closed by |
+|---|---|---|
+| ~~24~~ | ~~No Worker JS ran in CI~~ | `tests/test_worker_js_suite.py` shells out to vitest and skips when the binary is absent; `ci.yml` never installed one, so four Worker suites had never run there and the skip said nothing. The workflow installs bun, and the test now refuses to skip when `CI` is set |
+| ~~25~~ | ~~Nothing tied a new D1 table to a §4 row~~ | Four of the ten tables were named in an assertion beside their own store; the eleventh depended on the author remembering. `tests/test_residency_covers_schema.py` reads `schema.sql` instead |
+| ~~26~~ | ~~A Protocol was only enforced by whichever call site ran~~ | No type checker here, so a `ArticleRepository` method the digest run does not touch could be missing until someone opened the triage UI — as `ports.py` itself warned. `tests/test_protocol_conformance.py` checks all eleven implementations against their four Protocols |
+| ~~27~~ | ~~Both AST guards had a form that walked past them~~ | `test_core_imports` collected only `ast.ImportFrom`, so `import cyris.bootstrap` was not a layering violation it could see; `test_local_writes` matched attribute calls only, so `open(p, "a")` was invisible — `usage_log.py` was caught by the `mkdir` on the line above, not by its write. Both now have a test that fails without the fix |
+
+**#28, still open: a run's neuron figure has no persistent home.** `UsageStats.neurons` now survives every aggregation hop and reaches the `run_summary` line, which Workers Logs keeps for seven days — so the question is no longer visibility, it is permanence. The digest footer prints tokens and calls, and `usage_log` has no column for neurons or for embedding spend. One `detail` JSON column takes both, the shape `sources.config` already uses so that a later metric costs no migration — blocked on the manual ALTER that M6's missing schema evolution forces (`usage-log-detail-column`).
+
+**#29, still open: `cost_usd` is a derived number stored beside its inputs.** It has already misled once — `vote-signal.md:146` warns against it, 2× wrong across 49 rows — and the rate card it freezes keeps changing while `model` and the token counts sit in the same row. The fix is to stop writing it and recompute at read time; the column stays as it is, because those rows are history and SQLite cannot drop a NOT NULL without rebuilding the table (`usage-log-cost-recompute`). `cyris llm-compare` is its one reader. Giving it a home means a `usage_log` column **and** a §4 row, which is why it is a ticket rather than a line of code.
 
 Two boundaries #15 does **not** cross, both already decided in §5:
 

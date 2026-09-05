@@ -7,14 +7,13 @@ import logging
 import os
 import signal
 import sys
-import time
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
@@ -219,11 +218,15 @@ def embed_compare(
         float | None, typer.Option("--threshold", help="Gemini cutoff (default: configured)")
     ] = None,
     workers_threshold: Annotated[
-        float, typer.Option("--workers-threshold", help="bge-m3 cutoff; its cosines run lower")
-    ] = 0.53,
-    log: Annotated[
-        Path | None, typer.Option("--log", help="Append one JSON line per run to this file")
+        float | None,
+        typer.Option("--workers-threshold", help="bge-m3 cutoff (default: configured)"),
     ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option(
+            "--json", help="Emit the run as one JSON line on stdout; the report goes to stderr"
+        ),
+    ] = False,
     show: Annotated[int, typer.Option("--show", help="Disagreements to print")] = 15,
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
@@ -239,15 +242,26 @@ def embed_compare(
     single wide-margin downvote class. This keeps the comparison running on real traffic
     and records what a one-off measurement cannot: cost and latency per provider.
 
-    Read-only. Neither result reaches the digest.
+    The per-arm disagreement key is `{arm}_only`, so a series started before
+    2026-09-05 carries `workers_only` where this writes `workers_ai_only`: the
+    name follows the arm now rather than being hardcoded. Nothing reads the old
+    key — it was written by `--log`, removed in the same change — but a hand-kept
+    file from before that date holds both spellings.
+
+    Read-only, and it writes nothing: `--json >> parity.jsonl` is how a series is kept,
+    which leaves where that file lives to whoever is keeping it.
     """
     _setup_logging(verbose)
 
     from datetime import UTC, datetime, timedelta
 
-    from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
-    from cyris.bootstrap import build_deps, embedding_defaults, load_effective_config
-    from cyris.service_layer.vote_similarity import judge_by_votes
+    from cyris.bootstrap import build_deps, load_effective_config
+    from cyris.diagnostics.compare import (
+        NothingToCompareError,
+        build_embedding_arms,
+        compare_embedders,
+        margin,
+    )
 
     try:
         # also loads .env into the environment
@@ -256,127 +270,68 @@ def embed_compare(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-    token = os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", "")
-    if not (account and token):
-        logger.error(
-            "Needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_EMBEDDING_API_TOKEN "
-            "(the token must carry Workers AI -> Read; the wrangler one does not)."
-        )
-        raise typer.Exit(1)
-
     deps = build_deps(cfg)
-    arms = {
-        "gemini": (
-            GeminiEmbedder(
-                api_key=os.environ.get("GEMINI_API_KEY", ""),
-                model=embedding_defaults("gemini")["model"],
-            ),
-            threshold if threshold is not None else embedding_defaults("gemini")["threshold"],
-        ),
-        "workers_ai": (
-            WorkersAIEmbedder(
-                api_token=token,
-                account_id=account,
-                model=embedding_defaults("workers_ai")["model"],
-            ),
-            workers_threshold,
-        ),
-    }
-
     now = datetime.now(UTC)
     candidates = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
-    results = {}
-    for name, (embedder, arm_cut) in arms.items():
-        # Wall-clock, not just api_seconds: Gemini sleeps 1.5s between batches of 50
-        # where bge-m3 batches 100 with no pause, and that gap is the throughput
-        # difference the per-request timer cannot see.
-        started = time.monotonic()
-        report = asyncio.run(
-            judge_by_votes(
+    try:
+        arms = build_embedding_arms(
+            account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
+            workers_api_token=os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", ""),
+            gemini_threshold=threshold,
+            workers_threshold=workers_threshold,
+        )
+        comparison = asyncio.run(
+            compare_embedders(
                 deps.store,
-                embedder,
+                arms,
                 candidates,
-                threshold=arm_cut,
+                hours=hours,
                 max_seeds=cfg.app.vote_similarity.max_seeds,
+                checked_at=now,
             )
         )
-        elapsed = time.monotonic() - started
-        if not report.ran:
-            typer.echo(f"Nothing to compare: {report.skipped_reason}")
-            raise typer.Exit(1)
-        results[name] = (report, arm_cut, embedder.usage, elapsed)
-
-    g_report = results["gemini"][0]
-    sets = {n: set(r.suppressed_urls) for n, (r, *_) in results.items()}
-    only = {
-        "gemini_only": sorted(sets["gemini"] - sets["workers_ai"]),
-        "workers_only": sorted(sets["workers_ai"] - sets["gemini"]),
-    }
-
-    def margin(report) -> dict[str, float | None]:
-        """Where this window's boundary actually fell, per arm.
-
-        The thresholds are pinned constants calibrated against two downvote seeds. As
-        the seed set grows they drift, and by different amounts because the two cosine
-        scales differ — so the first disagreement this log records could just as easily
-        be threshold staleness as a model difference. Recording each side of the
-        boundary is what lets the two be told apart later.
-        """
-        cut_side = [v.down_similarity for v in report.verdicts.values() if v.suppressed]
-        keep_side = [v.down_similarity for v in report.verdicts.values() if not v.suppressed]
-        return {
-            "suppressed_min": round(min(cut_side), 4) if cut_side else None,
-            "kept_max": round(max(keep_side), 4) if keep_side else None,
-        }
+    except NothingToCompareError as e:
+        # stderr, always: with --json a redirected stdout is an append-only series,
+        # and `>>` does not care that the run failed.
+        typer.echo(f"Nothing to compare: {e}", err=True)
+        raise typer.Exit(1) from e
 
     by_url = {a.url: a for a in candidates}
-    typer.echo(
+    first = comparison.arms[0].report
+    # With --json stdout carries the row and nothing else, so the reader's report
+    # goes to stderr and `>> parity.jsonl` stays a clean append.
+    report = partial(typer.echo, err=as_json)
+    report(
         f"\n{len(candidates)} candidate(s) over {hours}h, "
-        f"{g_report.upvote_seeds} up / {g_report.downvote_seeds} down seed(s)\n"
+        f"{first.upvote_seeds} up / {first.downvote_seeds} down seed(s)\n"
     )
-    for name, (report, arm_cut, usage, elapsed) in results.items():
-        u = usage.as_dict()
-        m = margin(report)
+    for arm in comparison.arms:
+        u = arm.usage.as_dict()
+        m = margin(arm.report)
         cost = f", {u['input_tokens']} tokens, {u['neurons']} neurons" if u["neurons"] else ""
-        typer.echo(
-            f"  {name:<11} @ {arm_cut:.2f}  suppresses {len(report.suppressed_urls):>3}   "
+        report(
+            f"  {arm.name:<11} @ {arm.threshold:.2f}  "
+            f"suppresses {len(arm.report.suppressed_urls):>3}   "
             f"margin {m['kept_max']} -> {m['suppressed_min']}   "
             f"({u['embedded']} embedded in {u['requests']} req, "
-            f"{elapsed:.1f}s wall / {u['api_seconds']}s api{cost})"
+            f"{arm.wall_seconds:.1f}s wall / {u['api_seconds']}s api{cost})"
         )
-    typer.echo(
-        f"\n  agree on {len(sets['gemini'] & sets['workers_ai'])}, "
-        f"disagree on {len(only['gemini_only']) + len(only['workers_only'])}"
+    only = comparison.only
+    report(
+        f"\n  agree on {len(comparison.agreed)}, "
+        f"disagree on {sum(len(urls) for urls in only.values())}"
     )
+    # Arm names come from the provider, so the label width is not a constant:
+    # `workers_ai_only` is 15 and overflowed the 13 this used to pad to.
+    width = max((len(label) for label in only), default=0)
     for label, urls in only.items():
         for url in urls[:show]:
             a = by_url[url]
-            typer.echo(f"    {label:<13} [{a.source_name[:18]:18}] {a.title[:48]}")
+            report(f"    {label:<{width}} [{a.source_name[:18]:18}] {a.title[:48]}")
 
-    if log:
-        row = {
-            "checked_at": now.isoformat(),
-            "hours": hours,
-            "candidates": len(candidates),
-            "seeds": {"up": g_report.upvote_seeds, "down": g_report.downvote_seeds},
-            "agree": len(sets["gemini"] & sets["workers_ai"]),
-            **only,
-            **{
-                name: {
-                    "threshold": arm_cut,
-                    "suppressed": len(report.suppressed_urls),
-                    "wall_seconds": round(elapsed, 2),
-                    **margin(report),
-                    **usage.as_dict(),
-                }
-                for name, (report, arm_cut, usage, elapsed) in results.items()
-            },
-        }
-        log.parent.mkdir(parents=True, exist_ok=True)
-        with log.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        typer.echo(f"\nLogged to {log}")
+    if as_json:
+        typer.echo(json.dumps(comparison.log_row(), ensure_ascii=False))
 
 
 def _build_arm(spec: str):
@@ -417,9 +372,6 @@ def llm_compare(
     ] = None,
     hours: Annotated[int, typer.Option("--hours", help="Window to digest")] = 24,
     period: Annotated[str, typer.Option("--period", help="morning or evening")] = "morning",
-    out: Annotated[
-        Path | None, typer.Option("--out", help="Where to write each arm's digest")
-    ] = None,
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
     ),
@@ -441,16 +393,18 @@ def llm_compare(
         cyris llm-compare --arm anthropic:claude-haiku-4-5
         cyris llm-compare --arm anthropic:claude-haiku-4-5 --arm openai:gpt-5.6-luna
 
-    Read-only: no state updates, no usage_log row, no publish, no Discord. Nothing
-    reaches the digest, and the configured provider is left alone — switching is a
-    `cyris.toml` edit you make after reading the output.
+    Read-only: no state updates, no usage_log row, no publish, no Discord, and no
+    file of its own. Every arm's digest goes to stdout under its own heading and
+    the numbers to stderr, so `cyris llm-compare --arm ... > compare.md` is the
+    artifact you read. The configured provider is left alone — switching is a
+    `cyris.toml` edit you make after reading it.
     """
     _setup_logging(verbose)
 
     from datetime import UTC, datetime, timedelta
 
     from cyris.bootstrap import build_deps, load_effective_config
-    from cyris.service_layer.digest_pipeline import DigestPipeline
+    from cyris.diagnostics.compare import compare_llms
 
     if not arm:
         logger.error("Nothing to compare against. Pass at least one --arm provider:model.")
@@ -467,6 +421,12 @@ def llm_compare(
     if deps.llm is None:
         logger.error("No LLM provider configured, so there is nothing to compare against.")
         raise typer.Exit(1)
+    if deps.html_writer is None:
+        # The comparison's output *is* the rendered digests, so there is nothing
+        # to fall back to. `[html_output] enabled = false` is a real configuration
+        # — the D1 path publishes from memory — so this is a message, not a crash.
+        logger.error("Set [html_output] enabled = true: this command prints rendered digests.")
+        raise typer.Exit(1)
 
     # Built before any LLM call, so a typo in the fourth arm fails now rather than
     # after three digests have been paid for.
@@ -476,78 +436,42 @@ def llm_compare(
     now = datetime.now(UTC)
     stored = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
     if not stored:
-        typer.echo(f"No articles in the last {hours}h. Run `cyris run` first.")
+        typer.echo(f"No articles in the last {hours}h. Run `cyris run` first.", err=True)
         raise typer.Exit(1)
 
     articles = [a.to_article() for a in stored]
     scores = {a.url: a.score for a in stored if a.score is not None}
 
-    out_dir = out or cfg.app.agent_vault.path / "llm-compare"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    typer.echo(f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n")
+    typer.echo(
+        f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n", err=True
+    )
 
-    rows = []
-    for label, llm in arms:
-        pipeline = DigestPipeline(
-            llm,
-            max_digest_output=cfg.app.digest.max_articles_per_digest_output,
-            summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
-            filter_snippet_length=cfg.app.digest.filter_snippet_length,
-            score_threshold=cfg.app.routing.summarize_score_threshold,
-            output_language=cfg.app.digest.output_language,
-            style_prompt=cfg.app.digest.style_prompt,
-        )
-        started = time.monotonic()
-        try:
-            result = asyncio.run(
-                pipeline.process(
-                    articles,
-                    cfg.sources,
-                    period=period,
-                    timezone=cfg.app.general.timezone,
-                    article_scores=scores,
-                )
-            )
-        except Exception as e:
-            logger.error("%s failed: %s", label, e)
-            continue
-        elapsed = time.monotonic() - started
+    rows = compare_llms(arms, articles, scores, cfg, period=period, render=deps.html_writer.render)
 
-        content = result.content
-        # The pipeline swallows LLM failures on purpose — `cyris run` would rather
-        # ship excerpts than nothing. For a comparison that is the wrong trade: an
-        # arm that never reached its model still renders a plausible digest, and
-        # printing it as a row invites reading excerpt fallback as this model's
-        # work. Zero calls is the tell, and it is not a result.
-        if content.usage.api_calls == 0:
-            logger.error(
-                "%s made no API calls — every request failed and the pipeline fell back to "
-                "excerpts. Re-run with --verbose for the provider's reason. Not comparable.",
-                label,
-            )
-            continue
-
-        path = out_dir / f"{content.date}-{period}-{label.replace(':', '_').replace('/', '_')}.md"
-        path.write_text(deps.writer.render(content), encoding="utf-8")
-        rows.append((label, content, elapsed, getattr(llm, "neurons", None), path))
-
-    width = max((len(r[0]) for r in rows), default=0)
-    for label, content, elapsed, neurons, path in rows:
-        u = content.usage
-        cost = f", {neurons:.1f} neurons" if neurons is not None else ""
+    width = max((len(row.label) for row in rows), default=0)
+    for row in rows:
+        u = row.content.usage
+        cost = f", {row.neurons:.1f} neurons" if row.neurons is not None else ""
         typer.echo(
-            f"  {label:<{width}} {content.articles_included:>3} included   "
-            f"{len(content.news_clusters)} cluster(s), "
-            f"{len(content.thematic_summaries)} theme(s), "
-            f"{len(content.filtered_headlines)} headline(s)   "
+            f"  {row.label:<{width}} {row.content.articles_included:>3} included   "
+            f"{len(row.content.news_clusters)} cluster(s), "
+            f"{len(row.content.thematic_summaries)} theme(s), "
+            f"{len(row.content.filtered_headlines)} headline(s)   "
             f"({u.input_tokens:,} in / {u.output_tokens:,} out over {u.api_calls} calls, "
-            f"{elapsed:.1f}s{cost})"
+            f"{row.wall_seconds:.1f}s{cost})",
+            err=True,
         )
-        typer.echo(f"  {'':<{width}} {path}")
+
+    for row in rows:
+        typer.echo(f"\n\n# {row.label} — {row.content.date} {period}\n")
+        typer.echo(row.rendered)
 
     if len(rows) > 1:
-        typer.echo("\nRead the files. The numbers say what it costs; only the prose says")
-        typer.echo("whether the summaries are worth reading.")
+        typer.echo(
+            "\nRead the digests on stdout. The numbers say what it costs; only the prose "
+            "says whether the summaries are worth reading.",
+            err=True,
+        )
 
 
 @app.command("doctor")
@@ -568,7 +492,7 @@ def doctor(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.service_layer.doctor import run_checks
+    from cyris.diagnostics.doctor import run_checks
 
     try:
         cfg = load_effective_config(config_path, sources_path)
@@ -635,6 +559,7 @@ def triage_ui(
             settings=build_settings(cfg),
             llm_provider=cfg.app.llm_provider,
             schedule=cfg.app.general.digest_schedule,
+            max_featured=cfg.app.digest.max_featured,
             sources=cfg.sources,
             sources_origin=cfg.sources_origin,
             source_store=D1SourceStore(d1) if d1 else None,
@@ -859,7 +784,7 @@ def articles_score(
 
     from cyris.bootstrap import build_d1_client, build_store, load_effective_config
     from cyris.domain.models import ArticleState
-    from cyris.service_layer.scoring import score_in_batches
+    from cyris.service_layer.scoring import score_in_batches, select_scorable
 
     try:
         cfg = load_effective_config(config_path, sources_path)
@@ -886,14 +811,7 @@ def articles_score(
     else:
         articles = store.list_articles(state=ArticleState.PENDING, limit=limit)
 
-    # Filter: only non-news articles, and only unscored (unless --force)
-    scorable = []
-    for a in articles:
-        if NEWS_TAG in a.source_tags:
-            continue
-        if not force and a.score is not None:
-            continue
-        scorable.append(a)
+    scorable = select_scorable(articles, force=force)
 
     if not scorable:
         typer.echo("No articles to score.")

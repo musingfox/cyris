@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from cyris.config import AppConfig, Config, LLMProviderConfig
+from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig, Tier
-from cyris.service_layer import doctor
 
 
 @pytest.fixture(autouse=True)
@@ -16,11 +16,16 @@ def no_network(monkeypatch):
 
     Without this the backend="d1" cases hit api.cloudflare.com with a bogus
     token and pay the client's full retry backoff for it.
+
+    Patch the name, never `D1Client.__new__`: the class does not define one, so
+    monkeypatch's undo writes `object.__new__` onto it as a real attribute, and
+    from then on constructing a `D1Client` with keywords raises "object.__new__()
+    takes exactly one argument" — in whichever unrelated test happens to run next.
     """
     from fakes import SqliteD1
 
     db = SqliteD1()
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
     return db
 
 
@@ -204,7 +209,7 @@ def test_the_command_renders_every_status_and_exits_nonzero_on_failure(monkeypat
             doctor.Check("broken", "fail", "it is broken", "fix it like this"),
         ]
 
-    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+    monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
     monkeypatch.setattr("cyris.bootstrap.load_effective_config", lambda *a, **k: None)
 
     result = CliRunner().invoke(app, ["doctor"])
@@ -228,7 +233,7 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
     async def fake_checks(_cfg, _path=None):
         return [doctor.Check("fine", "ok", "all good")]
 
-    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+    monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
     monkeypatch.setattr("cyris.bootstrap.load_effective_config", lambda *a, **k: None)
 
     result = CliRunner().invoke(app, ["doctor"])
@@ -246,7 +251,7 @@ def test_the_command_does_not_claim_a_config_file_it_never_read(monkeypatch, tmp
     async def fake_checks(cfg, _path=None):
         return [doctor._check_config_file(cfg, None)]
 
-    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+    monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
 
     result = CliRunner().invoke(
         app,

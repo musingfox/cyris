@@ -1,10 +1,13 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for coding agents working in this repository. `AGENTS.md` is a symlink to this
+file, so a tool that looks for either name reads the same document.
 
 ## Project Overview
 
-Cyris is a local-first AI-powered information digest agent. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic, Gemini, OpenAI or Cloudflare Workers AI) with tier-based filtering/summarization, and publishes an HTML digest to Cloudflare Pages.
+Cyris is an AI-powered information digest agent. The deployment is a Cloudflare Container
+fronted by a Worker; the `json` store plus `docker compose` remain the local development
+path, and a fork can run the whole pipeline that way. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic, Gemini, OpenAI or Cloudflare Workers AI) with tier-based filtering/summarization, and publishes an HTML digest to Cloudflare Pages.
 
 ## Commands
 
@@ -62,6 +65,8 @@ src/cyris/
 ├── domain/           # Pure business models and rules (pydantic/stdlib only)
 │   ├── models.py            # Article, StoredArticle, DigestContent, Tier, ArticleState, ...
 │   ├── selection.py         # Score-based selection: layer_by_score, split_summarize_tier_by_score
+│   ├── similarity.py        # Vote-seeded similarity: judge an article against voted ones
+│   ├── tags.py              # Canonical tag normalization
 │   ├── language.py          # Language detection utilities
 │   └── triage.py            # RejectReason (canonical rejection reasons)
 ├── service_layer/    # Use cases and business services
@@ -73,35 +78,50 @@ src/cyris/
 │   ├── summarize.py         # Summarize tier: per-group thematic summaries
 │   ├── cluster_news.py      # News clustering for news-tagged filter-tier articles
 │   ├── fetching.py          # fetch_all_articles across FetchSources with dedup
-│   ├── prompts.py           # Claude API prompt templates
+│   ├── vote_similarity.py   # Use case: suppress candidates close to a downvoted article
+│   ├── degrade.py           # Fallbacks for a run with no usable LLM (excerpt-only digest)
+│   ├── schedule.py          # Is this hour a digest hour? (`cyris run --if-due`)
+│   ├── prompts.py           # LLM prompt templates (provider-agnostic)
 │   └── parse.py             # AI response JSON extraction
 ├── adapters/         # Concrete IO implementations
 │   ├── anthropic_client.py  # AnthropicClient (implements LLMClient)
+│   ├── gemini_client.py     # GeminiClient (implements LLMClient)
 │   ├── openai_client.py     # OpenAIClient (implements LLMClient)
 │   ├── workers_ai_client.py # WorkersAIClient (implements LLMClient) over Cloudflare Workers AI
+│   ├── embedding.py         # WorkersAIEmbedder + GeminiEmbedder (implement Embedder)
+│   ├── cloudflare.py        # Account-level Cloudflare checks, tied to no single Worker
 │   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL;
-│   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback
+│   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback;
+│   │                        #   source_store.py, tags.py, stories.py = the other D1 tables
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
-│   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST
+│   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST,
+│   │                        #   pages_manifest.py + pages_receipt.py = the site's file list in D1
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   └── http_client.py       # Shared httpx client
+├── diagnostics/      # Off the pipeline: tools whose subject is the deployment, not
+│   │                 #   the digest. May import anything below it; nothing below may
+│   │                 #   import it (tests/test_core_imports.py enforces both)
+│   ├── doctor.py            # `cyris doctor` checks + probe_llm (also used by /settings)
+│   └── compare.py           # `embed-compare` / `llm-compare`: two wirings, one window.
+│                            #   Returns rows; the CLI owns every local write
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
-│   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/
-│   └── webhook_server.py    # Email webhook receiver for newsletter ingestion
+│   └── triage_server.py     # Swipe-based triage web UI + /settings (aiohttp) + static/
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
 ├── app/              # The Container and its door: hourly Cron Trigger runs the pipeline
 │                     #   (CYRIS_ROLE=run, one pass then exits), any HTTP request wakes the
 │                     #   triage UI (CYRIS_ROLE=ui). Auth = Cloudflare Access + CYRIS_UI_TOKEN
-│                     #   cookie. See its README to deploy; wrangler must run from that directory
+│                     #   cookie. Its `wrangler.toml` is at the repo root, because the image is
+│                     #   built from the whole repo — deploy from there, not from this directory
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
 ├── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
 │                     #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
-└── rss/              # Hourly feed buffer: cron polls sources.yaml feeds → D1, cyris pulls
+└── rss/              # Hourly feed buffer: cron polls the D1 `sources` table (falling back to
+                      #   the bundled src/feeds.json) → D1, cyris pulls
                       #   (adapters/fetch/rss_worker_source.py). Needs Workers Paid.
 ```
 
@@ -116,7 +136,8 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/html_digest.py` renders the digest page; `domain/selection.py` layers featured articles by score
 7. Alongside each digest, the writer emits a companion listing every article this run judged plus what is still pending — uncapped, so what the digest dropped stays visible; rows an earlier run in the overlapping window already judged are left off: `{date}-{period}-raw.html` grouped by source, linked from the digest footer
-8. Publishing is Pages **direct upload over REST** (`adapters/output/pages_deploy.py`), never a `wrangler` shell-out. With D1 wired, the pages are rendered in memory and the site's file list comes from the `pages_manifest` table — a Pages deployment is a full snapshot, so every deploy names every file. Without D1, the local `agent-vault/html/` directory is the fallback
+8. `run_digest` emits one `run_summary` JSON line per run — status, counts, LLM and embedding spend, wall seconds — on every path including the exception one. The container's stdout goes to Workers Logs (`[observability]` in `wrangler.toml`), which keeps it 7 days: that is the operational window, not a record. The permanent record stays D1 `usage_log`
+9. Publishing is Pages **direct upload over REST** (`adapters/output/pages_deploy.py`), never a `wrangler` shell-out. With D1 wired, the pages are rendered in memory and the site's file list comes from the `pages_manifest` table — a Pages deployment is a full snapshot, so every deploy names every file. Without D1, the local `agent-vault/html/` directory is the fallback
 
 ### Adapter Extension Points
 
@@ -125,7 +146,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 - **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured) and `CloudflareNewsletterSource`.
 - **`Embedder`** (`ports.py`) — vote-similarity embeddings, selected in `build_embedder()`: `WorkersAIEmbedder` (`@cf/baai/bge-m3`, the default) or `GeminiEmbedder`. Neither caches — a run is ~600 texts ≈ 20 neurons. Each provider carries its **own** threshold, in `src/cyris/provider_defaults.json` (reasons in `docs/architecture.md` §5); the cosine scales differ, so reusing one number across providers silently disables the feature.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it).
-- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation fails at the CLI or the triage UI, not at import.
+- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation would fail at the CLI or the triage UI, not at import, so `tests/test_protocol_conformance.py` checks every implementation against its Protocol instead.
 - **Output sinks** — `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
 `ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map, and what each of these is being replaced by: `docs/architecture.md`.
@@ -149,11 +170,11 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the **fallback**, not the source of truth: `bootstrap.load_effective_config` overlays D1 `settings` on top, always in that order — see `docs/architecture.md` §5
 - `sources.yaml` — RSS/newsletter source definitions with tier and tags. The editable format and the fallback; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table instead, and `cyris sources push` is what fills it. An empty or unreachable table falls back to the file on both sides, so a half-migrated deployment keeps fetching; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
-- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the one bearer all three Workers accept; Discord webhook)
+- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own — kept apart because it is not a secret, see `docs/architecture.md` §5; Discord webhook). `.env.example` is the full list
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned state directory, entirely gitignored — nothing under it is in version control. `agent-vault/daily/` holds raw article collections and `agent-vault/articles/` the persistent article store, both only while `[store] backend` is `json`; with D1 the directory stays empty.
+Agent-owned state directory, entirely gitignored — nothing under it is in version control. `agent-vault/articles/` holds the persistent article store and `usage.jsonl` the LLM spend, both only while `[store] backend` is `json`; `agent-vault/html/` is the no-D1 publishing fallback. With D1 the directory stays empty, and `tests/test_local_writes.py` is what keeps it that way.
 
 ## Conventions
 

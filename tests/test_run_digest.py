@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from fakes import FakeLLM
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
@@ -486,3 +487,58 @@ async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Pat
     await run_digest(deps, RunOptions(period="morning"))
 
     assert any("no LLM provider configured" in m for m in messages), messages
+
+
+def _run_summary(caplog) -> dict:
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("run_summary ")]
+    assert len(lines) == 1, f"expected one run_summary line, got {len(lines)}"
+    return json.loads(lines[0].removeprefix("run_summary "))
+
+
+async def test_every_run_leaves_one_summary_line(tmp_path: Path, caplog) -> None:
+    """The seven-day record: Workers Logs keeps the container's stdout, nothing else does."""
+    source = FakeSource([])
+    deps, _ = make_deps(tmp_path, FakeLLM(), source)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    summary = _run_summary(caplog)
+    assert summary["status"] == "no_articles"
+    assert summary["fetched"] == 0
+    assert "wall_seconds" in summary
+
+
+async def test_a_run_that_raises_still_says_so(tmp_path: Path, caplog) -> None:
+    """A crashed run is the one whose numbers are worth reading.
+
+    `status` starts at "error" and every returning path overwrites it, so the
+    exception path needs no handler of its own — which is what keeps a crash
+    visible in the same query as a successful run. A failing *source* is not the
+    way in: `fetch_all_articles` turns that into `failed_sources` on purpose.
+    """
+    article = Article(
+        id=1,
+        title="T",
+        url="https://example.com/t",
+        content="c",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_tier=Tier.SUMMARIZE,
+    )
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([article]))
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("the store is gone")
+
+    deps.store.save = explode
+
+    with (
+        caplog.at_level("INFO", logger="cyris.service_layer.run_digest"),
+        pytest.raises(RuntimeError),
+    ):
+        await run_digest(deps, RunOptions())
+
+    summary = _run_summary(caplog)
+    assert summary["status"] == "error"
+    assert summary["fetched"] == 1

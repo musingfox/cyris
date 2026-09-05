@@ -90,7 +90,7 @@ class TestLoadConfig:
         assert cfg.sources == {}
 
     def test_missing_sources_fails_doctor(self, tmp_path):
-        from cyris.service_layer.doctor import _check_sources
+        from cyris.diagnostics.doctor import _check_sources
 
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
@@ -544,4 +544,8 @@ def test_code_defaults_match_the_config_defaults_they_shadow() -> None:
     assert (
         inspect.signature(layer_by_score).parameters["featured_threshold"].default
         == defaults.routing.score_threshold
+    )
+    assert (
+        inspect.signature(layer_by_score).parameters["max_featured"].default
+        == defaults.digest.max_featured
     )

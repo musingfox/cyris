@@ -89,3 +89,108 @@ def test_an_unpriced_run_logs_a_null_cost_not_a_zero(tmp_path):
     append_usage(content, log_path)
 
     assert json.loads(log_path.read_text())["estimated_cost_usd"] is None
+
+
+def test_usage_jsonl_row_matches_bootstrap():
+    """§4 called `usage.jsonl` retired while `build_deps` still wrote it.
+
+    Only one of those can be true. The json backend is a supported fallback, so
+    the writer is what stands and §4 has to say so.
+    """
+    from pathlib import Path
+
+    bootstrap = Path("src/cyris/bootstrap.py").read_text()
+    architecture = Path("docs/architecture.md").read_text()
+
+    assert 'log_path=cfg.app.agent_vault.path / "usage.jsonl"' in bootstrap
+    spend_row = next(line for line in architecture.splitlines() if line.startswith("| LLM spend "))
+    assert "usage.jsonl" in spend_row
+    assert "retired" not in spend_row
+    assert "fallback" in spend_row
+
+
+async def test_neurons_survive_the_trip_from_a_response_to_the_run_total():
+    """`complete_json` is the one place every digest call is accounted for.
+
+    Dropping `neurons` there is invisible: the digest still renders and the token
+    counts still add up, and the only symptom is that Workers AI runs report no
+    cost at all — the number the provider is chosen on.
+    """
+    from cyris.domain.models import UsageStats
+    from cyris.service_layer.ports import LLMResponse, complete_json
+
+    class NeuronReportingLLM:
+        model = "@cf/test"
+
+        async def complete(self, prompt, **kwargs):
+            return LLMResponse(text="{}", input_tokens=10, output_tokens=2, neurons=1.25)
+
+    usage = UsageStats(model="@cf/test")
+    await complete_json(NeuronReportingLLM(), "prompt", usage=usage)
+    await complete_json(NeuronReportingLLM(), "prompt", usage=usage)
+
+    assert usage.neurons == 2.5
+    assert usage.api_calls == 2
+
+
+async def test_neurons_and_calls_survive_every_aggregation_hop():
+    """The trip does not end at `complete_json`: a run folds three totals into one.
+
+    Each hop used `add`, which counts one call and takes no accumulated neuron
+    figure, so a Workers AI run reported no scoring spend at all and collapsed
+    the whole scoring stage into a single `api_calls`. The call count is read off
+    the digest footer and the `usage_log` row; the neuron figure reaches neither
+    — `llm-compare` is its only reader today, and giving it a persistent home
+    needs a column and a §4 row (§7 #28).
+    """
+    from cyris.domain.models import UsageStats
+
+    stage = UsageStats(
+        model="@cf/test", input_tokens=300, output_tokens=60, api_calls=3, neurons=9.0
+    )
+    run = UsageStats(model="@cf/test")
+
+    run.merge(stage)
+
+    assert (run.api_calls, run.neurons) == (3, 9.0)
+    assert (run.input_tokens, run.output_tokens) == (300, 60)
+
+
+async def test_a_batched_scoring_stage_reports_what_it_spent():
+    """`score_in_batches` is the hop that hid it, and the one a digest run reads."""
+    import json
+    from datetime import UTC, datetime
+
+    from cyris.domain.models import ArticleState, StoredArticle, Tier
+    from cyris.service_layer.ports import LLMResponse
+    from cyris.service_layer.scoring import score_in_batches
+
+    class NeuronReportingLLM:
+        model = "@cf/test"
+
+        async def complete(self, prompt, **kwargs):
+            scores = [{"id": str(i), "score": 50} for i in range(60)]
+            return LLMResponse(
+                text=json.dumps({"scores": scores}), input_tokens=100, output_tokens=20, neurons=4.0
+            )
+
+    when = datetime(2026, 9, 1, tzinfo=UTC)
+    articles = [
+        StoredArticle(
+            url=f"https://e.test/{i}",
+            original_id=str(i),
+            title=f"T{i}",
+            content="c" * 50,
+            published_at=when,
+            first_seen_at=when,
+            source_name="S",
+            source_tier=Tier.SUMMARIZE,
+            state=ArticleState.PENDING,
+        )
+        for i in range(60)
+    ]
+
+    usage = await score_in_batches(articles, NeuronReportingLLM())
+
+    assert usage.api_calls == 3
+    assert usage.neurons == 12.0

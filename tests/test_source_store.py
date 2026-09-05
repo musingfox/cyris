@@ -96,7 +96,7 @@ def test_d1_sources_win_when_the_table_has_rows(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
     db = SqliteD1()
     D1SourceStore(db).replace_all(_sources(SourceConfig(name="From D1", url="https://d1.test/f")))
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
     config_path, sources_path = _write_config(tmp_path, "d1")
 
     cfg = load_config(config_path=config_path, sources_path=sources_path)
@@ -109,7 +109,7 @@ def test_an_empty_table_falls_back_to_the_file(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
     db = SqliteD1()
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
     config_path, sources_path = _write_config(tmp_path, "d1")
 
     cfg = load_config(config_path=config_path, sources_path=sources_path)
@@ -126,7 +126,7 @@ def test_an_unreachable_d1_falls_back_to_the_file(tmp_path: Path, monkeypatch) -
         def query(self, *_a, **_k):
             raise RuntimeError("connection refused")
 
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: Dead())
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: Dead())
     config_path, sources_path = _write_config(tmp_path, "d1")
 
     cfg = load_config(config_path=config_path, sources_path=sources_path)

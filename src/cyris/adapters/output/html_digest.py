@@ -17,22 +17,20 @@ def _hostname(url: str) -> str:
 class HtmlDigestWriter:
     """Renders DigestContent as a newspaper-style HTML page."""
 
-    def __init__(
-        self,
-        output_dir: Path,
-        promote_worker_url: str = "",
-        promote_token: str = "",
-    ):
+    def __init__(self, output_dir: Path):
         """Initialize writer with output directory.
+
+        The promote Worker's URL and bearer used to be constructor arguments,
+        rendered into the page so a reader's browser could call the Worker
+        directly. `private-votes-public-archive` moved the vote to the app
+        Worker's `POST /api/vote`, which attaches the token server-side, and the
+        buttons now gate on probing that route rather than on anything the
+        renderer knows. Both arguments outlived their last read by four days.
 
         Args:
             output_dir: Directory to write HTML digests
-            promote_worker_url: Promote Worker base URL; empty disables promote buttons
-            promote_token: Bearer token for the promote Worker
         """
         self.output_dir = Path(output_dir)
-        self.promote_worker_url = promote_worker_url.rstrip("/")
-        self.promote_token = promote_token
 
         template_dir = Path(__file__).parent / "templates"
         self.env = Environment(

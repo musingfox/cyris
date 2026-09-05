@@ -58,7 +58,7 @@
         "description": "Optional. The `workers/promote/` vote Worker, e.g. `https://cyris-promote.<sub>.workers.dev`. Blank disables the 👍/👎 buttons."
       },
       "CYRIS_PROMOTE_TOKEN": {
-        "description": "Optional, and **not** a secret: it is rendered into every published digest page so the vote buttons work in a reader's browser. Keep it distinct from `CYRIS_WORKER_TOKEN`."
+        "description": "Optional, and **not** a secret: every digest published before 2026-09-01 has it baked in, so it cannot be rotated without breaking the vote buttons across the archive. Newer pages vote through this Worker's `POST /api/vote`, which attaches it server-side. Keep it distinct from `CYRIS_WORKER_TOKEN`."
       },
       "CYRIS_PROMOTE_CUSTOM_DOMAIN": {
         "description": "Optional. The hostname readers use, if you attached one. On a domainless deploy set it to this Worker's `*.workers.dev` hostname."

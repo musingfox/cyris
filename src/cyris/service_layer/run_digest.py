@@ -1,20 +1,21 @@
 """Use case: full pipeline run — fetch, store, score, digest, output."""
 
 import asyncio
+import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cyris.domain.models import ArticleState, Tier, UsageStats
+from cyris.domain.models import ArticleState, UsageStats
 from cyris.domain.selection import count_dead_links, layer_by_score
-from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.schedule import Period
-from cyris.service_layer.scoring import score_in_batches
+from cyris.service_layer.scoring import score_in_batches, select_scorable
 from cyris.utils.timezone import now_in_timezone
 
 if TYPE_CHECKING:
@@ -52,6 +53,32 @@ def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
 
 
 async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
+    """Run the full pipeline, and leave one line saying what it cost.
+
+    The summary is emitted whatever happens, including the exception path — a
+    run that died is the one whose numbers are worth reading. It is JSON on one
+    line because the container's stdout is the only log this deployment keeps:
+    `wrangler.toml` sends it to Workers Logs, which retains it for seven days.
+    Nothing here is a substitute for `usage_log`, which is the permanent record;
+    this is what the seven-day window is for.
+    """
+    started = time.monotonic()
+    summary: dict[str, object] = {
+        "event": "run_summary",
+        # Overwritten on every path that returns; an exception leaves it as it
+        # is, which is what makes a crash visible in the same query as a run.
+        "status": "error",
+        "period": options.period,
+        "dry_run": options.dry_run,
+    }
+    try:
+        return await _run_digest(deps, options, summary)
+    finally:
+        summary["wall_seconds"] = round(time.monotonic() - started, 2)
+        logger.info("run_summary %s", json.dumps(summary, ensure_ascii=False, default=str))
+
+
+async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunReport:
     """Run the full pipeline: fetch → store → score → digest → output."""
     cfg = deps.cfg
     store = deps.store
@@ -90,12 +117,16 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         limit=cfg.app.digest.max_articles_per_digest,
     )
 
+    summary["fetched"] = len(articles)
+    summary["failed_sources"] = failed_sources
+
     if failed_sources:
         progress(f"WARNING: fetch failed for: {', '.join(failed_sources)}")
 
     if not articles:
         logger.warning("No articles found in time window")
         progress("No articles found. Nothing to process.")
+        summary["status"] = "no_articles"
         return RunReport(status="no_articles", failed_sources=failed_sources)
 
     # Save articles to store
@@ -120,15 +151,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         state_filter=state_filter,
     )[: cfg.app.digest.max_articles_per_digest]
 
-    scorable = []
-    for a in pending_articles:
-        if a.source_tier == Tier.FAN:  # fan tier is never scored
-            continue
-        if NEWS_TAG in a.source_tags:
-            continue
-        if not options.force and a.score is not None:
-            continue
-        scorable.append(a)
+    scorable = select_scorable(pending_articles, force=options.force)
 
     total_usage = UsageStats(model=cfg.app.llm_provider.model or "none")
 
@@ -152,7 +175,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 persist=None if options.dry_run else store.update_scores,
                 persist_tags=persist_tags,
             )
-            total_usage.add(usage.input_tokens, usage.output_tokens)
+            total_usage.merge(usage)
         except Exception:
             logger.warning("Scoring failed; continuing without scores", exc_info=True)
     elif scorable:
@@ -177,6 +200,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             threshold=deps.embedding_threshold,
             max_seeds=cfg.app.vote_similarity.max_seeds,
         )
+        # `Embedder.usage` exists because `embed-compare` needs it; until this
+        # line a digest run embedded ~600 texts and reported none of it.
+        summary["embedding"] = deps.embedder.usage.as_dict()
+        summary["suppressed"] = len(similarity.suppressed_urls)
+
         if similarity.suppressed_urls:
             dropped = set(similarity.suppressed_urls)
             pending_articles = [a for a in pending_articles if a.url not in dropped]
@@ -189,6 +217,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     if not digest_articles:
         progress("No pending articles to process.")
+        summary["status"] = "no_pending"
         return RunReport(status="no_pending", failed_sources=failed_sources)
 
     # Process all articles through digest pipeline
@@ -223,7 +252,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             logger.warning("Failed to persist story membership: %s", e)
 
     # Layer by score to extract featured articles
-    content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)
+    content = layer_by_score(
+        content,
+        featured_threshold=cfg.app.routing.score_threshold,
+        max_featured=cfg.app.digest.max_featured,
+    )
 
     content.synthetic_url_count = sum(1 for a in digest_articles if a.url.startswith("newsletter:"))
     if content.synthetic_url_count:
@@ -236,8 +269,18 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         progress(f"This digest has {content.dead_link_count} dead link(s).")
 
     # Add scoring usage to content
-    content.usage.add(total_usage.input_tokens, total_usage.output_tokens)
-    deps.log_usage(content)
+    content.usage.merge(total_usage)
+    summary["llm"] = content.usage.model_dump()
+    summary["received"] = content.articles_received
+    summary["included"] = content.articles_included
+
+    # Its own try/except, like every call below it: this one used to be the
+    # single unguarded step between a finished digest and its publish, so a D1
+    # hiccup here cost the period its digest rather than its usage row.
+    try:
+        deps.log_usage(content)
+    except Exception as e:
+        logger.error("Failed to log usage: %s", e)
 
     report = RunReport(status="ok", failed_sources=failed_sources)
     digest_url = ""  # online (Cloudflare Pages) URL, set after a successful publish
@@ -326,5 +369,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         digest_url=digest_url,
         publish_failed=publish_failed,
     )
+
+    summary["status"] = "publish_failed" if publish_failed else "ok"
+    summary["digest_url"] = digest_url
 
     return report

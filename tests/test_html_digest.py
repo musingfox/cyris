@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from cyris.adapters.output import html_digest
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import (
     ArticleState,
@@ -65,9 +66,7 @@ def test_render_escapes_feed_controlled_fields(sample_digest_content):
         )
     ]
 
-    html = HtmlDigestWriter(Path("/tmp/html-escape-test"), "https://w.test", "tok").render(
-        sample_digest_content
-    )
+    html = HtmlDigestWriter(Path("/tmp/html-escape-test")).render(sample_digest_content)
 
     injected: list[str] = []
 
@@ -407,7 +406,7 @@ def test_promote_buttons_on_every_section(tmp_path):
         filtered_headlines=[item(6)],
     )
 
-    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    writer = HtmlDigestWriter(tmp_path)
     html = writer.render(content)
 
     # lead + featured + cluster + fan + thematic + attention + headline
@@ -461,7 +460,7 @@ def test_a_crowded_cluster_folds_its_sources(tmp_path):
 
 def test_vote_buttons_use_arrows_not_emoji(tmp_path):
     """Bare emoji ignore `color`, so .done could never tint them to the accent."""
-    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    writer = HtmlDigestWriter(tmp_path)
     html = writer.render(_cluster_digest(2))
 
     assert '<button class="promote-btn" data-vote="up" title="More like this">↑</button>' in html
@@ -475,7 +474,7 @@ def test_news_cluster_vote_group_carries_story_id(tmp_path):
     content = _cluster_digest(2)
     content.news_clusters[0].story_id = "2026-08-28-morning-0"
 
-    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    writer = HtmlDigestWriter(tmp_path)
     html = writer.render(content)
 
     assert 'class="vote-group" data-story-id="2026-08-28-morning-0" data-urls=' in html
@@ -483,7 +482,7 @@ def test_news_cluster_vote_group_carries_story_id(tmp_path):
 
 def test_news_cluster_without_story_id_renders_unchanged(tmp_path):
     """T2: story_id=None emits no data-story-id; the page is otherwise identical."""
-    writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+    writer = HtmlDigestWriter(tmp_path)
     html = writer.render(_cluster_digest(2))
 
     assert "data-story-id" not in html
@@ -510,9 +509,7 @@ def test_fan_item_links_to_newsletter_references_but_votes_on_store_url(tmp_path
         fan_sections=[DigestSection(heading="Fan", items=[item])],
     )
 
-    html = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t").render(
-        content
-    )
+    html = HtmlDigestWriter(tmp_path).render(content)
 
     assert '<a href="https://r1.com/a" target="_blank" rel="noopener">Newsletter item</a>' in html
     assert '<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>' in html
@@ -542,9 +539,7 @@ def test_mixed_cluster_references_render_while_votes_use_store_urls(tmp_path):
         news_clusters=[DigestSection(heading="Mixed", items=[item])],
     )
 
-    html = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t").render(
-        content
-    )
+    html = HtmlDigestWriter(tmp_path).render(content)
 
     for url in item.ref_urls:
         assert f'<a href="{url}" target="_blank" rel="noopener">' in html
@@ -573,9 +568,7 @@ def test_newsletter_references_render_for_every_digest_section(tmp_path):
         filtered_headlines=[item],
     )
 
-    html = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t").render(
-        content
-    )
+    html = HtmlDigestWriter(tmp_path).render(content)
 
     assert html.count('<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>') == 5
     assert html.count('<span class="source-tag">Newsletter</span>') == 3
@@ -717,25 +710,45 @@ def test_index_skips_raw_pages(tmp_path):
     assert "morning-raw" not in index
 
 
-def test_write_raw_renders_vote_buttons_when_promote_configured(tmp_path):
+def test_write_raw_renders_vote_buttons(tmp_path):
     """Rejected articles get up/down buttons so the raw page can pull them back."""
-    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    writer = HtmlDigestWriter(tmp_path)
     articles = [_stored("Dropped", "Src A", state=ArticleState.REJECTED)]
 
     html = writer.write_raw("2026-08-20", "morning", articles).read_text(encoding="utf-8")
 
     assert html.count('class="vote-group"') == 1
     assert 'data-vote="up"' in html and 'data-vote="down"' in html
-    # PROMOTE_TOKEN must not be rendered into HTML
-    assert "tok" not in html
-    assert "PROMOTE_TOKEN" not in html
-    # Vote script now uses /api/vote instead of direct promote Worker calls
+    # The vote goes to the app Worker, which holds the token
     assert '"/api/vote"' in html or "'/api/vote'" in html
 
 
-def test_promote_token_never_rendered_in_digest_or_raw(tmp_path):
-    """PROMOTE_TOKEN must not appear in any published HTML (private-votes-public-archive)."""
-    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "secret-token-12345")
+def test_no_template_reaches_for_a_credential():
+    """The `private-votes-public-archive` invariant, checked where it can still break.
+
+    It used to be checked by handing the writer a token and grepping the output
+    for it. That stopped meaning anything once the writer stopped taking one —
+    a renderer holding no credential cannot leak one, so the assertion could
+    only pass. What can regress is a template reaching for a value again, so
+    the templates are what this reads.
+    """
+    templates = sorted((Path(html_digest.__file__).parent / "templates").glob("*.j2"))
+    assert templates, "no templates found — this test would pass on an empty glob"
+
+    forbidden = ("promote_token", "bearer", "authorization", "api_key", "secret")
+    offenders = [
+        f"{path.name}: {word}"
+        for path in templates
+        for word in forbidden
+        if word in path.read_text().lower()
+    ]
+
+    assert offenders == []
+
+
+def test_the_published_page_votes_through_the_app_worker(tmp_path):
+    """Buttons on the page, and the only route they may call."""
+    writer = HtmlDigestWriter(tmp_path)
     content = DigestContent(
         date="2026-04-15",
         period="evening",
@@ -761,22 +774,16 @@ def test_promote_token_never_rendered_in_digest_or_raw(tmp_path):
     digest_html = writer.render(content)
     raw_html = writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")])
 
-    # Token must not appear in either digest or raw HTML
-    assert "secret-token-12345" not in digest_html
-    assert "secret-token-12345" not in raw_html
-    assert "PROMOTE_TOKEN" not in digest_html
-    assert "PROMOTE_TOKEN" not in raw_html
-    # Vote buttons should still be present (hidden by default)
+    # Present on both surfaces, hidden until the capability probe answers
     assert 'class="vote-group"' in digest_html
     assert 'class="vote-group"' in raw_html
-    # Script should use /api/vote
     assert '"/api/vote"' in digest_html or "'/api/vote'" in digest_html
     assert '"/api/vote"' in raw_html or "'/api/vote'" in raw_html
 
 
 def test_vote_buttons_hidden_by_default_shown_by_capability_probe(tmp_path):
     """Vote buttons are hidden by default and shown by capability probe (Access check)."""
-    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    writer = HtmlDigestWriter(tmp_path)
     content = DigestContent(
         date="2026-04-15",
         period="evening",
@@ -816,7 +823,7 @@ def test_vote_buttons_hidden_by_default_shown_by_capability_probe(tmp_path):
 
 def test_settings_link_hidden_by_default_shown_by_capability_probe(tmp_path):
     """Settings link is hidden by default and shown by same capability probe as votes."""
-    writer = HtmlDigestWriter(tmp_path, "https://promote.example/", "tok")
+    writer = HtmlDigestWriter(tmp_path)
     content = DigestContent(
         date="2026-04-15",
         period="evening",

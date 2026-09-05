@@ -186,7 +186,7 @@ class TestDigestPipeline:
         ]
 
         # (b) The rendered page exposes each of those ids as data-story-id, verbatim.
-        writer = HtmlDigestWriter(tmp_path, promote_worker_url="https://w.dev", promote_token="t")
+        writer = HtmlDigestWriter(tmp_path)
         html = writer.render(result.content)
         for record in result.story_records:
             assert f'data-story-id="{record.id}"' in html

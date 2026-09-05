@@ -80,7 +80,7 @@ class DigestSection(BaseModel):
 # Only models this repo actually runs are here on purpose: a miss returns None,
 # which is the one behaviour that cannot repeat the bug this table replaced.
 # Workers AI is deliberately absent — it bills in neurons rather than tokens,
-# and `WorkersAIClient.neurons` is the receipt for that.
+# and `LLMResponse.neurons` is the receipt for that, summed onto `UsageStats`.
 _PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
@@ -99,6 +99,9 @@ class UsageStats(BaseModel):
     output_tokens: int = 0
     api_calls: int = 0
     model: str = ""
+    # Cloudflare's own billing unit, summed from the responses that reported one.
+    # None means no call reported neurons, which is every provider but Workers AI.
+    neurons: float | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -119,10 +122,28 @@ class UsageStats(BaseModel):
         input_price, output_price = price
         return (self.input_tokens * input_price + self.output_tokens * output_price) / 1_000_000
 
-    def add(self, input_tokens: int, output_tokens: int) -> None:
+    def add(self, input_tokens: int, output_tokens: int, neurons: float | None = None) -> None:
+        """Account for one response. `api_calls` counts this as a single call."""
         self.input_tokens += input_tokens
         self.output_tokens += output_tokens
         self.api_calls += 1
+        if neurons is not None:
+            self.neurons = (self.neurons or 0.0) + neurons
+
+    def merge(self, other: "UsageStats") -> None:
+        """Fold an already-accumulated total into this one.
+
+        Not `add`: that one is per response, so it both counts a single call and
+        cannot be told how many neurons a *stage* spent. Every aggregation hop
+        used it anyway, which cost the run its neurons entirely — the number the
+        provider is chosen on — and collapsed a whole scoring stage into one
+        `api_calls`.
+        """
+        self.input_tokens += other.input_tokens
+        self.output_tokens += other.output_tokens
+        self.api_calls += other.api_calls
+        if other.neurons is not None:
+            self.neurons = (self.neurons or 0.0) + other.neurons
 
 
 class DigestContent(BaseModel):
