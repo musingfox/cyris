@@ -19,7 +19,7 @@ from typing import Any
 from cyris.config import Config
 from cyris.domain.models import Article, DigestContent, StoredArticle
 from cyris.service_layer.digest_pipeline import DigestPipeline
-from cyris.service_layer.ports import LLMClient
+from cyris.service_layer.ports import EmbeddingUsage, LLMClient
 from cyris.service_layer.vote_similarity import judge_by_votes
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class EmbedArm:
     name: str
     threshold: float
     report: Any
-    usage: Any  # `Embedder` does not carry usage — see §7 #20
+    usage: EmbeddingUsage
     wall_seconds: float
 
 
@@ -233,7 +233,7 @@ def compare_llms(
                 label=label,
                 content=content,
                 wall_seconds=elapsed,
-                neurons=getattr(llm, "neurons", None),  # not on `LLMClient` — see §7 #20
+                neurons=content.usage.neurons,
                 markdown=render(content),
             )
         )

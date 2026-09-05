@@ -39,12 +39,7 @@ TIMEOUT_SECONDS = 180
 
 
 class _Usage:
-    """What one provider spent, for the side-by-side log.
-
-    `input_tokens` and `neurons` are None where the API does not report them —
-    Gemini's `batchEmbedContents` returns bare vectors — rather than filled with a
-    guess that would read like a measurement.
-    """
+    """`ports.EmbeddingUsage` — see there for what the fields mean and why None."""
 
     def __init__(self) -> None:
         self.requests = 0

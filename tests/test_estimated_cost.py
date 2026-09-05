@@ -107,3 +107,27 @@ def test_usage_jsonl_row_matches_bootstrap():
     assert "usage.jsonl" in spend_row
     assert "retired" not in spend_row
     assert "fallback" in spend_row
+
+
+async def test_neurons_survive_the_trip_from_a_response_to_the_run_total():
+    """`complete_json` is the one place every digest call is accounted for.
+
+    Dropping `neurons` there is invisible: the digest still renders and the token
+    counts still add up, and the only symptom is that Workers AI runs report no
+    cost at all — the number the provider is chosen on.
+    """
+    from cyris.domain.models import UsageStats
+    from cyris.service_layer.ports import LLMResponse, complete_json
+
+    class NeuronReportingLLM:
+        model = "@cf/test"
+
+        async def complete(self, prompt, **kwargs):
+            return LLMResponse(text="{}", input_tokens=10, output_tokens=2, neurons=1.25)
+
+    usage = UsageStats(model="@cf/test")
+    await complete_json(NeuronReportingLLM(), "prompt", usage=usage)
+    await complete_json(NeuronReportingLLM(), "prompt", usage=usage)
+
+    assert usage.neurons == 2.5
+    assert usage.api_calls == 2

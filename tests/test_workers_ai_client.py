@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from cyris.adapters.workers_ai_client import WorkersAIClient
+from cyris.domain.models import UsageStats
 
 ACCOUNT = "acct-123"
 MODEL = "@cf/openai/gpt-oss-120b"
@@ -38,7 +39,7 @@ async def test_reads_the_openai_shaped_choices_and_usage():
     assert response.text == '{"items": []}'
     assert response.input_tokens == 145
     assert response.output_tokens == 207
-    assert client.neurons == 19.0
+    assert response.neurons == 19.0
 
     request = route.calls[0].request
     assert request.headers["authorization"] == "Bearer test-cf-token"
@@ -116,16 +117,27 @@ async def test_warns_when_the_reply_was_truncated(caplog):
     assert "truncated" in caplog.text
 
 
-async def test_accumulates_neurons_across_calls():
+async def test_neurons_are_reported_per_response_and_summed_by_the_caller():
+    """The client is stateless about spend; `UsageStats.add` is what accumulates it."""
+    usage = UsageStats(model="test")
     async with respx.mock:
         respx.post(RUN_URL).mock(
             return_value=_envelope({"response": "ok", "usage": _usage(neurons=2.5)})
         )
         client = _client()
-        await client.complete("Hi.")
-        await client.complete("Hi again.")
+        for _ in range(2):
+            r = await client.complete("Hi.")
+            usage.add(r.input_tokens, r.output_tokens, r.neurons)
 
-    assert client.neurons == 5.0
+    assert usage.neurons == 5.0
+
+
+async def test_a_provider_that_does_not_bill_in_neurons_reports_none():
+    """None, not 0.0 — a zero would read as a measured cost of nothing."""
+    usage = UsageStats(model="test")
+    usage.add(100, 20)
+
+    assert usage.neurons is None
 
 
 async def test_retries_on_429_then_succeeds():

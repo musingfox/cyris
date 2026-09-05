@@ -49,9 +49,6 @@ class WorkersAIClient:
         timeout: float = 180.0,
     ) -> None:
         self.model = model
-        # What the run actually cost, in Cloudflare's own unit. Reported per
-        # request, so it beats deriving a number from the published rates.
-        self.neurons = 0.0
         self._max_retries = max_retries
         self._url = f"{_API_ROOT}/{account_id}/ai/run/{model}"
         self._client = httpx.AsyncClient(
@@ -108,7 +105,6 @@ class WorkersAIClient:
 
         result = data.get("result") or {}
         usage = result.get("usage") or {}
-        self.neurons += usage.get("neurons") or 0.0
 
         text = _text_of(result)
         finish = (result.get("choices") or [{}])[0].get("finish_reason")
@@ -133,6 +129,8 @@ class WorkersAIClient:
             text=text,
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
+            # Reported per request, which beats deriving a number from published rates.
+            neurons=usage.get("neurons"),
         )
 
 

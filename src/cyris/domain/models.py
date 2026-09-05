@@ -99,6 +99,9 @@ class UsageStats(BaseModel):
     output_tokens: int = 0
     api_calls: int = 0
     model: str = ""
+    # Cloudflare's own billing unit, summed from the responses that reported one.
+    # None means no call reported neurons, which is every provider but Workers AI.
+    neurons: float | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -119,10 +122,12 @@ class UsageStats(BaseModel):
         input_price, output_price = price
         return (self.input_tokens * input_price + self.output_tokens * output_price) / 1_000_000
 
-    def add(self, input_tokens: int, output_tokens: int) -> None:
+    def add(self, input_tokens: int, output_tokens: int, neurons: float | None = None) -> None:
         self.input_tokens += input_tokens
         self.output_tokens += output_tokens
         self.api_calls += 1
+        if neurons is not None:
+            self.neurons = (self.neurons or 0.0) + neurons
 
 
 class DigestContent(BaseModel):
