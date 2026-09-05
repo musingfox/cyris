@@ -590,7 +590,7 @@ silently ignored for two days.
 
 ## 7. Outstanding work, and the record of what closed
 
-**Four numbered items are open — #9, #13, #14 and #17 — plus the two unnumbered rows under
+**Five numbered items are open — #9, #13, #14, #17 and #28 — plus the two unnumbered rows under
 *Waiting on a receipt*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
 else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
 (why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
@@ -938,6 +938,8 @@ point: a guard with a hole reports green for the case it cannot see.
 | ~~25~~ | ~~Nothing tied a new D1 table to a §4 row~~ | Four of the ten tables were named in an assertion beside their own store; the eleventh depended on the author remembering. `tests/test_residency_covers_schema.py` reads `schema.sql` instead |
 | ~~26~~ | ~~A Protocol was only enforced by whichever call site ran~~ | No type checker here, so a `ArticleRepository` method the digest run does not touch could be missing until someone opened the triage UI — as `ports.py` itself warned. `tests/test_protocol_conformance.py` checks all eleven implementations against their four Protocols |
 | ~~27~~ | ~~Both AST guards had a form that walked past them~~ | `test_core_imports` collected only `ast.ImportFrom`, so `import cyris.bootstrap` was not a layering violation it could see; `test_local_writes` matched attribute calls only, so `open(p, "a")` was invisible — `usage_log.py` was caught by the `mkdir` on the line above, not by its write. Both now have a test that fails without the fix |
+
+**#28, still open: a run's neuron figure has no persistent home.** `UsageStats.neurons` now survives every aggregation hop, and then stops — the digest footer prints tokens and calls, and `usage_log` has no column for it, so a Workers AI run's spend is visible only while the process is alive. `cyris llm-compare` is its one reader. Giving it a home means a `usage_log` column **and** a §4 row, which is why it is a ticket rather than a line of code.
 
 Two boundaries #15 does **not** cross, both already decided in §5:
 

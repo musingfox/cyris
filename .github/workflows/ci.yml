@@ -14,11 +14,15 @@ jobs:
         with:
           enable-cache: true
       # Both Worker suites run from pytest (tests/test_worker_js_suite.py):
-      # `workers/app/` under vitest, `workers/rss/` under `node --test`. Each
-      # skips when its runner is missing, so without a toolchain here that skip
-      # was silent and no Worker JS ran in CI at all.
+      # `workers/app/` under vitest from the root, `workers/rss/` under
+      # `node --test` from its own package — hence two installs, since
+      # `fast-xml-parser` is the rss Worker's dependency and not the root's.
+      # Each suite skips when its toolchain is missing, except under CI, where
+      # it fails instead: that silent skip is why no Worker JS ran here at all.
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: workers/rss
       - run: uv sync --dev
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/

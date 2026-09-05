@@ -45,6 +45,10 @@ def test_rss_worker_node_suite():
     """
     if shutil.which("node") is None:
         _skip_unless_ci("node is not on PATH")
+    if not (RSS_WORKER / "node_modules").exists():
+        # Its own package, its own install: `src/parse.js` imports
+        # `fast-xml-parser`, which the root install does not provide.
+        _skip_unless_ci("bun install in workers/rss (node_modules missing)")
 
     # The package script passes a glob for the shell to expand; naming the files
     # keeps that out of `subprocess`, and an empty list would run zero tests and
