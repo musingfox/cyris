@@ -90,7 +90,9 @@ src/cyris/
 ├── diagnostics/      # Off the pipeline: tools whose subject is the deployment, not
 │   │                 #   the digest. May import anything below it; nothing below may
 │   │                 #   import it (tests/test_core_imports.py enforces both)
-│   └── doctor.py            # `cyris doctor` checks + probe_llm (also used by /settings)
+│   ├── doctor.py            # `cyris doctor` checks + probe_llm (also used by /settings)
+│   └── compare.py           # `embed-compare` / `llm-compare`: two wirings, one window.
+│                            #   Returns rows; the CLI owns every local write
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
 │   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/
