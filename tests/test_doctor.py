@@ -16,11 +16,16 @@ def no_network(monkeypatch):
 
     Without this the backend="d1" cases hit api.cloudflare.com with a bogus
     token and pay the client's full retry backoff for it.
+
+    Patch the name, never `D1Client.__new__`: the class does not define one, so
+    monkeypatch's undo writes `object.__new__` onto it as a real attribute, and
+    from then on constructing a `D1Client` with keywords raises "object.__new__()
+    takes exactly one argument" — in whichever unrelated test happens to run next.
     """
     from fakes import SqliteD1
 
     db = SqliteD1()
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client.__new__", lambda _cls, **_kw: db)
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
     return db
 
 

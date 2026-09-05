@@ -276,3 +276,23 @@ def test_scores_survive_a_batch_past_d1s_compound_select_ceiling() -> None:
 
     stored = {a.url: a.score for a in store.list_articles(state=None, limit=100)}
     assert [stored[url] for url in urls] == [float(n) for n in range(len(urls))]
+
+
+def test_no_test_patches_d1client_dunder_new() -> None:
+    """Patching `D1Client.__new__` leaves the class broken for every later test.
+
+    `D1Client` defines no `__new__`, so monkeypatch's undo does not remove the
+    patch — it writes `object.__new__` on as a real class attribute, and
+    `D1Client(account_id=..., ...)` then raises "object.__new__() takes exactly
+    one argument". The failure lands in whatever unrelated test runs next, which
+    is how it went unnoticed. Patch the name instead.
+    """
+    pattern = "D1Client." + "__new__"  # split so this file is not its own offender
+    offenders = [
+        f"{path.name}:{n}"
+        for path in sorted(Path("tests").glob("*.py"))
+        for n, line in enumerate(path.read_text().splitlines(), 1)
+        if pattern in line and "setattr" in line
+    ]
+
+    assert offenders == []
