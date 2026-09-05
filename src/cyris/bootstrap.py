@@ -242,11 +242,7 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
     if cfg.app.html_output.enabled:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
 
-        html_writer = HtmlDigestWriter(
-            Path(cfg.app.html_output.output_dir),
-            promote_worker_url=cfg.app.promote.worker_url,
-            promote_token=cfg.app.promote.token,
-        )
+        html_writer = HtmlDigestWriter(Path(cfg.app.html_output.output_dir))
         if cfg.app.promote.publish_enabled:
             from cyris.adapters.output.publish import publish_html_digest
             from cyris.adapters.output.publish import publish_site as _site
