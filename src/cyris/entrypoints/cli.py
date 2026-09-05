@@ -315,10 +315,13 @@ def embed_compare(
         f"\n  agree on {len(comparison.agreed)}, "
         f"disagree on {sum(len(urls) for urls in only.values())}"
     )
+    # Arm names come from the provider, so the label width is not a constant:
+    # `workers_ai_only` is 15 and overflowed the 13 this used to pad to.
+    width = max((len(label) for label in only), default=0)
     for label, urls in only.items():
         for url in urls[:show]:
             a = by_url[url]
-            report(f"    {label:<13} [{a.source_name[:18]:18}] {a.title[:48]}")
+            report(f"    {label:<{width}} [{a.source_name[:18]:18}] {a.title[:48]}")
 
     if as_json:
         typer.echo(json.dumps(comparison.log_row(), ensure_ascii=False))

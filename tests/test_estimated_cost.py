@@ -138,8 +138,10 @@ async def test_neurons_and_calls_survive_every_aggregation_hop():
 
     Each hop used `add`, which counts one call and takes no accumulated neuron
     figure, so a Workers AI run reported no scoring spend at all and collapsed
-    the whole scoring stage into a single `api_calls`. Both are read off the
-    digest footer and the `usage_log` row, and neither looked wrong.
+    the whole scoring stage into a single `api_calls`. The call count is read off
+    the digest footer and the `usage_log` row; the neuron figure reaches neither
+    — `llm-compare` is its only reader today, and giving it a persistent home
+    needs a column and a §4 row (§7 #28).
     """
     from cyris.domain.models import UsageStats
 
