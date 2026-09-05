@@ -214,7 +214,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             logger.warning("Failed to persist story membership: %s", e)
 
     # Layer by score to extract featured articles
-    content = layer_by_score(content, featured_threshold=cfg.app.routing.score_threshold)
+    content = layer_by_score(
+        content,
+        featured_threshold=cfg.app.routing.score_threshold,
+        max_featured=cfg.app.digest.max_featured,
+    )
 
     content.synthetic_url_count = sum(1 for a in digest_articles if a.url.startswith("newsletter:"))
     if content.synthetic_url_count:

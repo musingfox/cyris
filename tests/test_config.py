@@ -545,3 +545,7 @@ def test_code_defaults_match_the_config_defaults_they_shadow() -> None:
         inspect.signature(layer_by_score).parameters["featured_threshold"].default
         == defaults.routing.score_threshold
     )
+    assert (
+        inspect.signature(layer_by_score).parameters["max_featured"].default
+        == defaults.digest.max_featured
+    )

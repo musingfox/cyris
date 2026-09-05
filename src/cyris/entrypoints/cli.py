@@ -543,6 +543,7 @@ def triage_ui(
             settings=build_settings(cfg),
             llm_provider=cfg.app.llm_provider,
             schedule=cfg.app.general.digest_schedule,
+            max_featured=cfg.app.digest.max_featured,
             sources=cfg.sources,
             sources_origin=cfg.sources_origin,
             source_store=D1SourceStore(d1) if d1 else None,

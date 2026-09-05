@@ -26,9 +26,13 @@ class FakeStore:
     """The settings routes never touch the store."""
 
 
-async def _client(settings=None, llm_provider=None, schedule=None):
+async def _client(settings=None, llm_provider=None, schedule=None, max_featured=5):
     server = TriageServer(
-        FakeStore(), settings=settings, llm_provider=llm_provider, schedule=schedule
+        FakeStore(),
+        settings=settings,
+        llm_provider=llm_provider,
+        schedule=schedule,
+        max_featured=max_featured,
     )
     client = TestClient(TestServer(server._app))
     await client.start_server()
@@ -176,3 +180,48 @@ class TestScheduleApi:
 
         assert res.status == 400
         assert settings.stored == {}
+
+
+class TestFeaturedCap:
+    """`max_featured` is grade D — a reader preference with a writer, not a constant."""
+
+    async def test_the_page_reports_the_cap_a_run_would_use(self, settings):
+        client = await _client(settings, None, max_featured=3)
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["max_featured"] == 3
+
+    async def test_a_new_cap_is_stored_under_the_key_the_config_reads(self, settings):
+        client = await _client(settings, None, max_featured=5)
+
+        res = await client.post("/api/settings/digest", json={"max_featured": 8})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["max_featured"] == 8
+        assert settings.stored == {"digest.max_featured": 8}
+
+    async def test_a_cap_of_zero_is_refused(self, settings):
+        """A featured section of none is an empty band, not a preference."""
+        client = await _client(settings, None)
+
+        res = await client.post("/api/settings/digest", json={"max_featured": 0})
+        await client.close()
+
+        assert res.status == 400
+        assert settings.stored == {}
+
+    async def test_the_key_is_writable_and_reaches_the_config(self):
+        """Storing a key the overlay does not apply would silently change nothing."""
+        from cyris.adapters.store.settings import WRITABLE_KEYS, apply_to
+        from cyris.config import AppConfig, Config
+
+        assert "digest.max_featured" in WRITABLE_KEYS
+
+        cfg = Config(app=AppConfig(), sources={})
+        apply_to(cfg, {"digest.max_featured": 9})
+
+        assert cfg.app.digest.max_featured == 9

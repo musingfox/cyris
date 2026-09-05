@@ -29,6 +29,7 @@ WRITABLE_KEYS = (
     "llm_provider.model",
     "general.digest_schedule",
     "general.timezone",
+    "digest.max_featured",
 )
 
 
