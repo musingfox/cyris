@@ -173,7 +173,7 @@ class ArmDigest:
     content: DigestContent
     wall_seconds: float
     neurons: float | None
-    markdown: str
+    rendered: str  # the arm's digest as HTML; the markdown writer went with the vault
 
 
 def compare_llms(
@@ -234,7 +234,7 @@ def compare_llms(
                 content=content,
                 wall_seconds=elapsed,
                 neurons=content.usage.neurons,
-                markdown=render(content),
+                rendered=render(content),
             )
         )
     return rows
