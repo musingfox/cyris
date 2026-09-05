@@ -338,6 +338,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
+| Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. It carries the two figures no row here holds (embedding spend, and LLM neurons — §7 #28); when either needs to outlive seven days it gets a home in `usage_log`, not a longer retention |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
@@ -524,8 +525,18 @@ Cloudflare
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
 │     digest.musingfox.me          └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
 ├── D1: stored_articles · usage_log · sources · settings · pages_manifest · pages_deploy_receipt
-└── Pages: cyris-digest
+├── Pages: cyris-digest
+└── Workers Logs: the container's stdout, 7 days
 ```
+
+**The container's stdout is the only log, and it is kept for seven days.** `[observability]` in
+`wrangler.toml` is what sends it to Workers Logs (Paid plan: 20M events/month included, 7-day
+retention); without that block a finished run's output exists nowhere, which is why the sleep bug
+below had to be chased through billing metrics. `run_digest` emits one `run_summary` JSON line per
+run — status, counts, LLM and embedding spend, wall seconds — on every path including the
+exception one, so "what happened last night" is one query rather than an inference. Longer
+retention is a separate decision and does not need a different log: Workers Logpush (Paid, to R2 or
+another sink) and a Tail Worker can both read this stream later without changing what writes it.
 
 Nothing runs on the Mac mini since 2026-08-30: `docker compose down` was the cutover, and the
 `compose` file survives only as the local development path. `cloud-p4` makes the whole thing
@@ -939,7 +950,7 @@ point: a guard with a hole reports green for the case it cannot see.
 | ~~26~~ | ~~A Protocol was only enforced by whichever call site ran~~ | No type checker here, so a `ArticleRepository` method the digest run does not touch could be missing until someone opened the triage UI — as `ports.py` itself warned. `tests/test_protocol_conformance.py` checks all eleven implementations against their four Protocols |
 | ~~27~~ | ~~Both AST guards had a form that walked past them~~ | `test_core_imports` collected only `ast.ImportFrom`, so `import cyris.bootstrap` was not a layering violation it could see; `test_local_writes` matched attribute calls only, so `open(p, "a")` was invisible — `usage_log.py` was caught by the `mkdir` on the line above, not by its write. Both now have a test that fails without the fix |
 
-**#28, still open: a run's neuron figure has no persistent home.** `UsageStats.neurons` now survives every aggregation hop, and then stops — the digest footer prints tokens and calls, and `usage_log` has no column for it, so a Workers AI run's spend is visible only while the process is alive. `cyris llm-compare` is its one reader. Giving it a home means a `usage_log` column **and** a §4 row, which is why it is a ticket rather than a line of code.
+**#28, still open: a run's neuron figure has no persistent home.** `UsageStats.neurons` now survives every aggregation hop and reaches the `run_summary` line, which Workers Logs keeps for seven days — so the question is no longer visibility, it is permanence. The digest footer prints tokens and calls, and `usage_log` has no column for neurons or for embedding spend. `cyris llm-compare` is its one reader. Giving it a home means a `usage_log` column **and** a §4 row, which is why it is a ticket rather than a line of code.
 
 Two boundaries #15 does **not** cross, both already decided in §5:
 

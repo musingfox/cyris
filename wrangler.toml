@@ -40,6 +40,19 @@ max_instances = 2
 # a run OOMs; the receipt is an exit before the digest, not a slow one.
 instance_type = "basic"
 
+# The container's stdout and stderr are this deployment's only log. Without
+# this block they are kept nowhere at all — `wrangler tail` shows them live and
+# then they are gone, which is why M5's sleep bug had to be chased through
+# billing metrics instead. Workers Logs retains them for 7 days on the Paid
+# plan, and `run_digest` writes one `run_summary` JSON line per run so that
+# window answers "what did last night cost". The permanent record is still D1
+# `usage_log` — see docs/architecture.md §4.
+[observability]
+enabled = true
+
+[observability.logs]
+invocation_logs = true
+
 [[durable_objects.bindings]]
 class_name = "CyrisContainer"
 name = "CYRIS"
