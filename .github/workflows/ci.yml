@@ -13,6 +13,11 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      # The Worker suites run from pytest (tests/test_worker_js_suite.py), which
+      # skips when the vitest binary is absent. Without this step that skip was
+      # silent and no Worker JS ran in CI at all.
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
       - run: uv sync --dev
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
