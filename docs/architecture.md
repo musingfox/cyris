@@ -319,7 +319,8 @@ reader depends on. It does not cover a diagnostic command's output, and it does 
 comparisons write nothing at all, they emit, and where that lands is the shell's decision.
 `tests/test_local_writes.py` holds the set of files allowed to touch local disk at four, all of
 them a backend the D1 path does not use. A new one fails that test before it can become a row
-nobody added.
+nobody added. `tests/test_residency_covers_schema.py` does the same for the other half: every
+table `schema.sql` creates must appear in the rows below, so a new table cannot ship unlisted.
 
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
