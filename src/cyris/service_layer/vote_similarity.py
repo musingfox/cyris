@@ -1,7 +1,7 @@
 """Use case: judge this run's candidates against what the reader has voted on.
 
 This runs over *every* candidate, not just the scored ones. The scorer skips news
-and fan tiers (`run_digest.py:121-124`), and the class that provoked the first
+and fan tiers (`scoring.select_scorable`), and the class that provoked the first
 downvote — a newswire's lottery draw reports — is news-tagged, so a score adjustment would
 never have reached it. Vote similarity therefore has to be its own pass.
 """
