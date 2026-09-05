@@ -160,3 +160,28 @@ def test_module_default_models_match_provider_defaults() -> None:
 
     assert embedding_defaults("gemini")["model"] == GEMINI_MODEL
     assert embedding_defaults("workers_ai")["model"] == WORKERS_AI_MODEL
+
+
+def test_every_embedder_carries_the_usage_the_port_declares() -> None:
+    """`Embedder.usage` is on the Protocol because `embed-compare` reads it.
+
+    A Protocol only lists what callers use, so an adapter missing a field would
+    otherwise fail mid-comparison — after both providers have been paid for.
+    """
+    from cyris.service_layer.ports import EmbeddingUsage
+
+    declared = set(EmbeddingUsage.__annotations__)
+    for embedder in (
+        GeminiEmbedder(api_key="k"),
+        WorkersAIEmbedder(api_token="t", account_id="a"),
+    ):
+        assert declared <= set(vars(embedder.usage)), type(embedder).__name__
+        assert callable(embedder.usage.as_dict)
+
+
+def test_a_provider_that_reports_no_cost_says_none_rather_than_zero() -> None:
+    """Gemini's batchEmbedContents returns bare vectors: None is the honest answer."""
+    usage = GeminiEmbedder(api_key="k").usage.as_dict()
+
+    assert usage["input_tokens"] is None
+    assert usage["neurons"] is None
