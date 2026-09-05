@@ -28,7 +28,11 @@ class HtmlDigestWriter:
         Args:
             output_dir: Directory to write HTML digests
             promote_worker_url: Promote Worker base URL; empty disables promote buttons
-            promote_token: Bearer token for the promote Worker
+            promote_token: The promote Worker's bearer. Held, never rendered:
+                since `private-votes-public-archive` a vote goes through the app
+                Worker's `POST /api/vote`, which attaches the token server-side.
+                `test_promote_token_never_rendered_in_digest_or_raw` is what
+                keeps it out of the published HTML
         """
         self.output_dir = Path(output_dir)
         self.promote_worker_url = promote_worker_url.rstrip("/")

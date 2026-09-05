@@ -380,7 +380,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies) | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, two Cloudflare tokens, one Worker bearer, one *published* vote token | C (the vote token is not a secret) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
+| LLM API keys, two Cloudflare tokens, one Worker bearer, one vote token | C (the vote token is not a secret: it is in every digest published before 2026-09-01) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
@@ -459,9 +459,13 @@ lesson.** `rss` and `newsletter` are server-to-server: their tokens live in `.en
 secret store, so whoever reads one reads the other, and holding them apart bought independent
 rotation of keys nobody rotates.
 
-`promote` is different in kind. Its up/down buttons run in the **reader's browser**, so
-`_promote_script.html.j2` renders the token into every digest and raw page, and those pages are
-public — recovering it takes one `curl` of any published digest. It is not a secret and never was.
+`promote` is different in kind. Its up/down buttons run in the **reader's browser**, and until
+`private-votes-public-archive` (M-ship) `_promote_script.html.j2` rendered the token into every
+digest and raw page — public pages, so recovering it took one `curl`. Votes now go through the app
+Worker's `POST /api/vote`, which attaches the token server-side, and
+`tests/test_html_digest.py::test_promote_token_never_rendered_in_digest_or_raw` keeps it out of the
+HTML. The value is still not a secret and cannot be treated as one: it is baked into every page
+published before 2026-09-01, and those pages are still served.
 
 **This was merged into `CYRIS_WORKER_TOKEN` on 2026-08-30 and unmerged the same evening**, after the
 20:00 digest published the shared value in plain HTML. For about an hour, the token printed on a
