@@ -14,7 +14,6 @@ from typing import Annotated
 
 import typer
 
-from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
@@ -859,7 +858,7 @@ def articles_score(
 
     from cyris.bootstrap import build_d1_client, build_store, load_effective_config
     from cyris.domain.models import ArticleState
-    from cyris.service_layer.scoring import score_in_batches
+    from cyris.service_layer.scoring import score_in_batches, select_scorable
 
     try:
         cfg = load_effective_config(config_path, sources_path)
@@ -886,14 +885,7 @@ def articles_score(
     else:
         articles = store.list_articles(state=ArticleState.PENDING, limit=limit)
 
-    # Filter: only non-news articles, and only unscored (unless --force)
-    scorable = []
-    for a in articles:
-        if NEWS_TAG in a.source_tags:
-            continue
-        if not force and a.score is not None:
-            continue
-        scorable.append(a)
+    scorable = select_scorable(articles, force=force)
 
     if not scorable:
         typer.echo("No articles to score.")

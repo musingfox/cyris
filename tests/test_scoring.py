@@ -497,3 +497,67 @@ class TestBatchGuard:
         first = {f"http://e.com/{n}" for n in range(BATCH_SIZE)}
         assert set(scored) == first
         assert set(tagged) == first
+
+
+# --- Scorable selection tests ---
+
+
+def _article(
+    url: str,
+    *,
+    tier: Tier = Tier.FILTER,
+    tags: list[str] | None = None,
+    score: float | None = None,
+) -> StoredArticle:
+    return StoredArticle(
+        url=url,
+        original_id=1,
+        title="Title",
+        content="Content",
+        published_at=datetime.now(UTC),
+        source_name="Src",
+        source_tier=tier,
+        source_tags=tags or [],
+        first_seen_at=datetime.now(UTC),
+        score=score,
+    )
+
+
+class TestSelectScorable:
+    def test_keeps_unscored_non_news(self):
+        from cyris.service_layer.scoring import select_scorable
+
+        article = _article("http://a.com")
+        assert select_scorable([article]) == [article]
+
+    def test_skips_fan_tier(self):
+        from cyris.service_layer.scoring import select_scorable
+
+        assert select_scorable([_article("http://a.com", tier=Tier.FAN)]) == []
+        assert select_scorable([_article("http://a.com", tier=Tier.FAN)], force=True) == []
+
+    def test_skips_news_tagged(self):
+        from cyris.service_layer.scoring import select_scorable
+
+        assert select_scorable([_article("http://a.com", tags=["news"])]) == []
+        assert select_scorable([_article("http://a.com", tags=["news"])], force=True) == []
+
+    def test_skips_already_scored_unless_forced(self):
+        from cyris.service_layer.scoring import select_scorable
+
+        scored = _article("http://a.com", score=7.0)
+        assert select_scorable([scored]) == []
+        assert select_scorable([scored], force=True) == [scored]
+
+
+def test_scoring_filter_has_one_implementation() -> None:
+    """`run_digest` and `cyris articles score` share the rule, not a copy of it.
+
+    The two used to filter separately and had already drifted: the CLI scored
+    fan-tier articles that `run_digest` skips.
+    """
+    for path in ("src/cyris/service_layer/run_digest.py", "src/cyris/entrypoints/cli.py"):
+        source = Path(path).read_text()
+        assert "select_scorable" in source, path
+        assert "NEWS_TAG in a.source_tags" not in source, path
+        assert "Tier.FAN" not in source, path
