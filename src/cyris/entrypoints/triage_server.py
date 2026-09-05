@@ -283,12 +283,12 @@ class TriageServer:
         The order is the whole point. A bad provider or a mistyped model saved
         here would not surface until the next scheduled digest, hours later and
         after the fetch — so nothing is stored until a real call comes back.
-        See `service_layer.doctor.probe_llm`.
+        See `cyris.diagnostics.doctor.probe_llm`.
         """
         from pydantic import ValidationError
 
         from cyris.config import LLMProviderConfig
-        from cyris.service_layer.doctor import probe_llm
+        from cyris.diagnostics.doctor import probe_llm
 
         if self._settings is None:
             return web.json_response(

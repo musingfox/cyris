@@ -90,7 +90,7 @@ class TestLoadConfig:
         assert cfg.sources == {}
 
     def test_missing_sources_fails_doctor(self, tmp_path):
-        from cyris.service_layer.doctor import _check_sources
+        from cyris.diagnostics.doctor import _check_sources
 
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
