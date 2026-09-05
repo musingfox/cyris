@@ -159,7 +159,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 ### Agent Vault (`agent-vault/`)
 
-Agent-owned state directory, entirely gitignored — nothing under it is in version control. `agent-vault/daily/` holds raw article collections and `agent-vault/articles/` the persistent article store, both only while `[store] backend` is `json`; with D1 the directory stays empty.
+Agent-owned state directory, entirely gitignored — nothing under it is in version control. `agent-vault/articles/` holds the persistent article store and `usage.jsonl` the LLM spend, both only while `[store] backend` is `json`; `agent-vault/html/` is the no-D1 publishing fallback. With D1 the directory stays empty, and `tests/test_local_writes.py` is what keeps it that way.
 
 ## Conventions
 

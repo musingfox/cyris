@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
@@ -219,9 +220,12 @@ def embed_compare(
     workers_threshold: Annotated[
         float, typer.Option("--workers-threshold", help="bge-m3 cutoff; its cosines run lower")
     ] = 0.53,
-    log: Annotated[
-        Path | None, typer.Option("--log", help="Append one JSON line per run to this file")
-    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option(
+            "--json", help="Emit the run as one JSON line on stdout; the report goes to stderr"
+        ),
+    ] = False,
     show: Annotated[int, typer.Option("--show", help="Disagreements to print")] = 15,
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
@@ -237,7 +241,8 @@ def embed_compare(
     single wide-margin downvote class. This keeps the comparison running on real traffic
     and records what a one-off measurement cannot: cost and latency per provider.
 
-    Read-only. Neither result reaches the digest.
+    Read-only, and it writes nothing: `--json >> parity.jsonl` is how a series is kept,
+    which leaves where that file lives to whoever is keeping it.
     """
     _setup_logging(verbose)
 
@@ -280,12 +285,17 @@ def embed_compare(
             )
         )
     except NothingToCompareError as e:
-        typer.echo(f"Nothing to compare: {e}")
+        # stderr, always: with --json a redirected stdout is an append-only series,
+        # and `>>` does not care that the run failed.
+        typer.echo(f"Nothing to compare: {e}", err=True)
         raise typer.Exit(1) from e
 
     by_url = {a.url: a for a in candidates}
     first = comparison.arms[0].report
-    typer.echo(
+    # With --json stdout carries the row and nothing else, so the reader's report
+    # goes to stderr and `>> parity.jsonl` stays a clean append.
+    report = partial(typer.echo, err=as_json)
+    report(
         f"\n{len(candidates)} candidate(s) over {hours}h, "
         f"{first.upvote_seeds} up / {first.downvote_seeds} down seed(s)\n"
     )
@@ -293,7 +303,7 @@ def embed_compare(
         u = arm.usage.as_dict()
         m = margin(arm.report)
         cost = f", {u['input_tokens']} tokens, {u['neurons']} neurons" if u["neurons"] else ""
-        typer.echo(
+        report(
             f"  {arm.name:<11} @ {arm.threshold:.2f}  "
             f"suppresses {len(arm.report.suppressed_urls):>3}   "
             f"margin {m['kept_max']} -> {m['suppressed_min']}   "
@@ -301,20 +311,17 @@ def embed_compare(
             f"{arm.wall_seconds:.1f}s wall / {u['api_seconds']}s api{cost})"
         )
     only = comparison.only
-    typer.echo(
+    report(
         f"\n  agree on {len(comparison.agreed)}, "
         f"disagree on {sum(len(urls) for urls in only.values())}"
     )
     for label, urls in only.items():
         for url in urls[:show]:
             a = by_url[url]
-            typer.echo(f"    {label:<13} [{a.source_name[:18]:18}] {a.title[:48]}")
+            report(f"    {label:<13} [{a.source_name[:18]:18}] {a.title[:48]}")
 
-    if log:
-        log.parent.mkdir(parents=True, exist_ok=True)
-        with log.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(comparison.log_row(), ensure_ascii=False) + "\n")
-        typer.echo(f"\nLogged to {log}")
+    if as_json:
+        typer.echo(json.dumps(comparison.log_row(), ensure_ascii=False))
 
 
 def _build_arm(spec: str):
@@ -355,9 +362,6 @@ def llm_compare(
     ] = None,
     hours: Annotated[int, typer.Option("--hours", help="Window to digest")] = 24,
     period: Annotated[str, typer.Option("--period", help="morning or evening")] = "morning",
-    out: Annotated[
-        Path | None, typer.Option("--out", help="Where to write each arm's digest")
-    ] = None,
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
     ),
@@ -379,9 +383,11 @@ def llm_compare(
         cyris llm-compare --arm anthropic:claude-haiku-4-5
         cyris llm-compare --arm anthropic:claude-haiku-4-5 --arm openai:gpt-5.6-luna
 
-    Read-only: no state updates, no usage_log row, no publish, no Discord. Nothing
-    reaches the digest, and the configured provider is left alone — switching is a
-    `cyris.toml` edit you make after reading the output.
+    Read-only: no state updates, no usage_log row, no publish, no Discord, and no
+    file of its own. Every arm's digest goes to stdout under its own heading and
+    the numbers to stderr, so `cyris llm-compare --arm ... > compare.md` is the
+    artifact you read. The configured provider is left alone — switching is a
+    `cyris.toml` edit you make after reading it.
     """
     _setup_logging(verbose)
 
@@ -414,24 +420,20 @@ def llm_compare(
     now = datetime.now(UTC)
     stored = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
     if not stored:
-        typer.echo(f"No articles in the last {hours}h. Run `cyris run` first.")
+        typer.echo(f"No articles in the last {hours}h. Run `cyris run` first.", err=True)
         raise typer.Exit(1)
 
     articles = [a.to_article() for a in stored]
     scores = {a.url: a.score for a in stored if a.score is not None}
 
-    out_dir = out or cfg.app.agent_vault.path / "llm-compare"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    typer.echo(f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n")
+    typer.echo(
+        f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n", err=True
+    )
 
     rows = compare_llms(arms, articles, scores, cfg, period=period, render=deps.writer.render)
 
     width = max((len(row.label) for row in rows), default=0)
     for row in rows:
-        stem = row.label.replace(":", "_").replace("/", "_")
-        path = out_dir / f"{row.content.date}-{period}-{stem}.md"
-        path.write_text(row.markdown, encoding="utf-8")
-
         u = row.content.usage
         cost = f", {row.neurons:.1f} neurons" if row.neurons is not None else ""
         typer.echo(
@@ -440,13 +442,20 @@ def llm_compare(
             f"{len(row.content.thematic_summaries)} theme(s), "
             f"{len(row.content.filtered_headlines)} headline(s)   "
             f"({u.input_tokens:,} in / {u.output_tokens:,} out over {u.api_calls} calls, "
-            f"{row.wall_seconds:.1f}s{cost})"
+            f"{row.wall_seconds:.1f}s{cost})",
+            err=True,
         )
-        typer.echo(f"  {'':<{width}} {path}")
+
+    for row in rows:
+        typer.echo(f"\n\n# {row.label} — {row.content.date} {period}\n")
+        typer.echo(row.markdown)
 
     if len(rows) > 1:
-        typer.echo("\nRead the files. The numbers say what it costs; only the prose says")
-        typer.echo("whether the summaries are worth reading.")
+        typer.echo(
+            "\nRead the digests on stdout. The numbers say what it costs; only the prose "
+            "says whether the summaries are worth reading.",
+            err=True,
+        )
 
 
 @app.command("doctor")
