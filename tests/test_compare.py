@@ -167,3 +167,24 @@ def test_the_cli_no_longer_holds_the_comparison_logic() -> None:
     assert "WorkersAIEmbedder(" not in source
     assert "DigestPipeline(" not in source
     assert "api_calls == 0" not in source
+
+
+def test_both_embedding_cutoffs_default_to_the_provider_file() -> None:
+    """A stale cutoff makes the comparison measure drift instead of the models.
+
+    `--workers-threshold` carried 0.53 as a typer default, which matched the
+    file until someone retuned the file.
+    """
+    import json
+    from pathlib import Path
+
+    from cyris.diagnostics.compare import build_embedding_arms
+
+    defaults = json.loads(Path("src/cyris/provider_defaults.json").read_text())["embedding"]
+
+    arms = build_embedding_arms("acct", "gemini-key", "workers-token")
+
+    assert {name: threshold for name, _, threshold in arms} == {
+        "gemini": defaults["gemini"]["threshold"],
+        "workers_ai": defaults["workers_ai"]["threshold"],
+    }

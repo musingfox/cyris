@@ -110,9 +110,15 @@ def build_embedding_arms(
     workers_api_token: str,
     *,
     gemini_threshold: float | None = None,
-    workers_threshold: float,
+    workers_threshold: float | None = None,
 ) -> list[tuple[str, Any, float]]:
-    """Every arm, built before a single embedding is paid for."""
+    """Every arm, built before a single embedding is paid for.
+
+    Both cutoffs default to `provider_defaults.json` rather than to a number
+    written here: each is a measured property of its model, and a comparison
+    running on a stale one measures threshold drift instead of the difference
+    between two models — the confusion `margin()` exists to prevent.
+    """
     from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
     from cyris.bootstrap import embedding_defaults
 
@@ -134,7 +140,7 @@ def build_embedding_arms(
             WorkersAIEmbedder(
                 api_token=workers_api_token, account_id=account_id, model=workers["model"]
             ),
-            workers_threshold,
+            workers_threshold if workers_threshold is not None else workers["threshold"],
         ),
     ]
 
