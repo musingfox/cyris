@@ -44,8 +44,9 @@ class ArticleRepository(Protocol):
 
     Every method a caller actually uses belongs here, not just the ones the
     digest run touches: `ArticleStore` and `D1ArticleStore` both satisfy this
-    structurally, and a replacement that covers less will fail at the CLI or the
-    triage UI rather than at import.
+    structurally, and a replacement that covers less used to fail at the CLI or
+    the triage UI rather than at import — there is no type checker here to say
+    otherwise. `tests/test_protocol_conformance.py` is where it fails now.
     """
 
     def save(self, articles: list[Article], now: datetime | None = None): ...
@@ -145,8 +146,9 @@ class Embedder(Protocol):
     """Text-to-vector boundary, for judging articles against what was voted on."""
 
     # Declared because a caller reads it: `embed-compare` cannot answer "which
-    # provider costs less" without it, and an implementation that omits it fails
-    # there rather than at import.
+    # provider costs less" without it, and an implementation that omits it would
+    # fail there rather than at import — `tests/test_protocol_conformance.py`
+    # catches the omission first.
     usage: EmbeddingUsage
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
