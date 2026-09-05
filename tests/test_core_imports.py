@@ -27,18 +27,29 @@ BELOW_DIAGNOSTICS = (
 )
 
 
-def _runtime_imports(path: Path) -> list[tuple[int, str]]:
-    """Every `from x import y` that actually runs — `if TYPE_CHECKING:` is a name."""
-    tree = ast.parse(path.read_text())
+def _runtime_imports(source: str) -> list[tuple[int, str]]:
+    """Every module named by an import that actually runs.
+
+    Both forms count. `import cyris.adapters.store` is an `ast.Import`, which an
+    earlier version of this file did not collect at all — the whole rule was
+    one keyword away from being unenforced. `if TYPE_CHECKING:` is a name, not
+    a dependency, so it stays out.
+    """
+    tree = ast.parse(source)
     guarded: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.If) and "TYPE_CHECKING" in ast.dump(node.test):
             guarded.update(id(child) for child in ast.walk(node))
-    return [
-        (node.lineno, node.module)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module and id(node) not in guarded
-    ]
+
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if id(node) in guarded:
+            continue
+        if isinstance(node, ast.ImportFrom) and node.module:
+            found.append((node.lineno, node.module))
+        elif isinstance(node, ast.Import):
+            found.extend((node.lineno, alias.name) for alias in node.names)
+    return found
 
 
 def _python_files(target: Path) -> list[Path]:
@@ -49,7 +60,7 @@ def _offenders(targets, forbidden: tuple[str, ...]) -> list[str]:
     found = []
     for target in targets:
         for path in _python_files(target):
-            for lineno, module in _runtime_imports(path):
+            for lineno, module in _runtime_imports(path.read_text()):
                 if module.startswith(forbidden):
                     found.append(f"{path}:{lineno} imports {module}")
     return found
@@ -61,3 +72,21 @@ def test_the_core_imports_no_adapter_and_no_composition_root() -> None:
 
 def test_nothing_below_diagnostics_imports_diagnostics() -> None:
     assert _offenders(BELOW_DIAGNOSTICS, ("cyris.diagnostics",)) == []
+
+
+def test_the_plain_import_form_is_not_a_way_through() -> None:
+    source = "import cyris.adapters.store.d1_store\nimport cyris.bootstrap\n"
+
+    named = [module for _, module in _runtime_imports(source)]
+
+    assert named == ["cyris.adapters.store.d1_store", "cyris.bootstrap"]
+
+
+def test_a_type_checking_import_is_not_an_offence() -> None:
+    source = (
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from cyris.bootstrap import Deps\n"
+    )
+
+    assert "cyris.bootstrap" not in [module for _, module in _runtime_imports(source)]
