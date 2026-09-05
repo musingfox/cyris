@@ -232,7 +232,13 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
 
     # Add scoring usage to content
     content.usage.merge(total_usage)
-    deps.log_usage(content)
+    # Its own try/except, like every call below it: this one used to be the
+    # single unguarded step between a finished digest and its publish, so a D1
+    # hiccup here cost the period its digest rather than its usage row.
+    try:
+        deps.log_usage(content)
+    except Exception as e:
+        logger.error("Failed to log usage: %s", e)
 
     report = RunReport(status="ok", failed_sources=failed_sources)
     digest_url = ""  # online (Cloudflare Pages) URL, set after a successful publish
