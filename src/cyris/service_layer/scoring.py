@@ -123,7 +123,7 @@ async def score_in_batches(
                 llm,
                 snippet_length=snippet_length,
             )
-            total_usage.add(usage.input_tokens, usage.output_tokens)
+            total_usage.merge(usage)
 
             if persist is not None:
                 persist(url_to_score_lang)

@@ -143,7 +143,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 persist=None if options.dry_run else store.update_scores,
                 persist_tags=persist_tags,
             )
-            total_usage.add(usage.input_tokens, usage.output_tokens)
+            total_usage.merge(usage)
         except Exception:
             logger.warning("Scoring failed; continuing without scores", exc_info=True)
     elif scorable:
@@ -231,7 +231,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         progress(f"This digest has {content.dead_link_count} dead link(s).")
 
     # Add scoring usage to content
-    content.usage.add(total_usage.input_tokens, total_usage.output_tokens)
+    content.usage.merge(total_usage)
     deps.log_usage(content)
 
     report = RunReport(status="ok", failed_sources=failed_sources)
