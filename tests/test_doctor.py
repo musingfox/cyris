@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from cyris.config import AppConfig, Config, LLMProviderConfig
+from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig, Tier
-from cyris.service_layer import doctor
 
 
 @pytest.fixture(autouse=True)
@@ -204,7 +204,7 @@ def test_the_command_renders_every_status_and_exits_nonzero_on_failure(monkeypat
             doctor.Check("broken", "fail", "it is broken", "fix it like this"),
         ]
 
-    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+    monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
     monkeypatch.setattr("cyris.bootstrap.load_effective_config", lambda *a, **k: None)
 
     result = CliRunner().invoke(app, ["doctor"])
@@ -228,7 +228,7 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
     async def fake_checks(_cfg, _path=None):
         return [doctor.Check("fine", "ok", "all good")]
 
-    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+    monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
     monkeypatch.setattr("cyris.bootstrap.load_effective_config", lambda *a, **k: None)
 
     result = CliRunner().invoke(app, ["doctor"])
@@ -246,7 +246,7 @@ def test_the_command_does_not_claim_a_config_file_it_never_read(monkeypatch, tmp
     async def fake_checks(cfg, _path=None):
         return [doctor._check_config_file(cfg, None)]
 
-    monkeypatch.setattr("cyris.service_layer.doctor.run_checks", fake_checks)
+    monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
 
     result = CliRunner().invoke(
         app,

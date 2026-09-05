@@ -87,6 +87,10 @@ src/cyris/
 │   ├── notify.py            # Discord notifications
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   └── http_client.py       # Shared httpx client
+├── diagnostics/      # Off the pipeline: tools whose subject is the deployment, not
+│   │                 #   the digest. May import anything below it; nothing below may
+│   │                 #   import it (tests/test_core_imports.py enforces both)
+│   └── doctor.py            # `cyris doctor` checks + probe_llm (also used by /settings)
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
 │   ├── triage_server.py     # Swipe-based triage web UI (aiohttp) + static/

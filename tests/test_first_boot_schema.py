@@ -100,7 +100,7 @@ def test_doctor_says_when_the_database_it_just_built_was_empty(tmp_path) -> None
     from unittest.mock import patch
 
     from cyris.config import AppConfig, Config
-    from cyris.service_layer import doctor
+    from cyris.diagnostics import doctor
 
     cfg = Config(app=AppConfig.model_validate({}), sources={})
     cfg.app.store.backend = "d1"

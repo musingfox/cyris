@@ -16,12 +16,15 @@
 
 ```
 entrypoints  →  service_layer  →  domain
-                     ↑
-                  adapters   (implement the service layer's Protocols)
+     ↓               ↑
+diagnostics       adapters   (implement the service layer's Protocols)
 ```
 
 `bootstrap.build_deps()` is the only place the three meet. The core (`service_layer` + `domain`)
 imports nothing from `adapters` — it names Protocols, and the composition root supplies bodies.
+
+`diagnostics/` is off the pipeline entirely: it inspects the deployment rather than runs it. It may import everything below it and nothing below it may import it, so deleting the
+package would cost three commands and not one digest.
 
 Pipeline: **Fetch → Store → Score → Process → Output**, orchestrated end to end by
 `service_layer/run_digest.py`. The CLI parses arguments and calls it; it holds no logic of its own.
@@ -165,6 +168,24 @@ test.
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
+
+### `diagnostics/` — the tools that inspect the deployment
+
+`cyris doctor` is the one module whose subject is the wiring itself. `_check_build` exists because
+a config asking for `[store] backend = "d1"` ran for two days on an image that had no `[store]`
+table at all (§7, the 08-25→08-27 split), and the only check that catches it is
+`type(build_store(cfg)).__name__` — a direct question to the composition root. The Worker probes
+are the same shape: build the real adapter, call `health_check()`, report what answered.
+
+So `doctor` lives in `src/cyris/diagnostics/`, a layer of its own for the tools whose subject is
+the deployment rather than the digest. It is **not** an exception to the rule above — the rule holds
+with none. `tests/test_core_imports.py` fails if `service_layer/` or `domain/` imports
+`cyris.adapters` or `cyris.bootstrap` at runtime, and fails again if anything below `diagnostics/`
+imports it back.
+
+Two properties this preserves, both load-bearing: `doctor` never calls `build_deps`, which raises on
+missing credentials — reporting on missing credentials is the job — and it can report *not
+configured* as its own verdict, which an injected list of probes cannot express.
 
 One constraint shapes the store: **`ArticleRepository` is synchronous.** `run_digest` never awaits
 it, so `D1ArticleStore` uses a blocking HTTP client. Making it async would push `async` through
@@ -870,7 +891,7 @@ the kind that get harder to see the longer they sit. One ticket each.
 
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
-| 18 | `doctor` builds adapters inside the service layer | `doctor.py:265,289` construct the two Worker sources, `:326` imports `check_pages_access`; §1 says the core imports nothing from `adapters` and names no exception | Either inject the probes from `build_deps`, or write the exception into §2 with its reason. Not both unstated | `doctor-builds-its-own-adapters` |
+| ~~18~~ | ~~`doctor` builds adapters inside the service layer~~ — closed 2026-09-05 | It was six sites, not the three the ticket named: three more called `bootstrap.build_llm`/`build_store`, which imports the composition root into the core — the inversion the rule exists to prevent | ✅ Neither path on the ticket: `doctor`'s subject *is* the wiring, so it moved into a `diagnostics/` layer of its own and the rule now holds with **no** exception. §2 carries the reason; `tests/test_core_imports.py` is the receipt | `doctor-builds-its-own-adapters` |
 | 19 | The CLI holds pipeline logic | `embed_compare` builds its own embedders and computes margins; `llm_compare` assembles `DigestPipeline` and decides what counts as a result. ✅ The scorable filter is closed: it was not a copy but a *drifted* copy — the CLI scored fan-tier articles `run_digest` skips — and both now call `scoring.select_scorable`, pinned by `test_scoring_filter_has_one_implementation` | Move the remaining rules into `service_layer/` | `cli-holds-pipeline-logic` |
 | 20 | Two callers reach past their Protocol | `cli.py:300` reads `embedder.usage`, `cli.py:522` does `getattr(llm, "neurons", None)`; neither is on `Embedder` or `LLMClient` | Decide whether usage is part of the port. `neurons` is a Cloudflare billing unit, so a shared shape is not free | `embedder-usage-bypasses-its-port` |
 | 21 | §4 does not cover every write | `embed-compare` and `llm-compare` write local files; `CLAUDE.md` describes `agent-vault/daily/`, which nothing writes. ✅ The `usage.jsonl` contradiction is closed: the code was right and the row was wrong — it is the no-D1 fallback, not a retired one, and `test_usage_jsonl_row_matches_bootstrap` now fails if the two drift apart again | Say what §4 covers, then make it true | `data-residency-missing-rows` |

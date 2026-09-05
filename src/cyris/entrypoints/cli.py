@@ -567,7 +567,7 @@ def doctor(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.service_layer.doctor import run_checks
+    from cyris.diagnostics.doctor import run_checks
 
     try:
         cfg = load_effective_config(config_path, sources_path)
