@@ -462,10 +462,12 @@ rotation of keys nobody rotates.
 `promote` is different in kind. Its up/down buttons run in the **reader's browser**, and until
 `private-votes-public-archive` (M-ship) `_promote_script.html.j2` rendered the token into every
 digest and raw page — public pages, so recovering it took one `curl`. Votes now go through the app
-Worker's `POST /api/vote`, which attaches the token server-side, and
-`tests/test_html_digest.py::test_promote_token_never_rendered_in_digest_or_raw` keeps it out of the
-HTML. The value is still not a secret and cannot be treated as one: it is baked into every page
-published before 2026-09-01, and those pages are still served.
+Worker's `POST /api/vote`, which attaches the token server-side. The renderer was left holding the
+URL and the token as constructor arguments nothing read for four days; both are gone, so the
+invariant is now that no template reaches for a credential at all —
+`tests/test_html_digest.py::test_no_template_reaches_for_a_credential`. The value is still not a
+secret and cannot be treated as one: it is baked into every page published before 2026-09-01, and
+those pages are still served.
 
 **This was merged into `CYRIS_WORKER_TOKEN` on 2026-08-30 and unmerged the same evening**, after the
 20:00 digest published the shared value in plain HTML. For about an hour, the token printed on a
