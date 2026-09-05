@@ -23,20 +23,44 @@ ALLOWED = {
 }
 
 
-def _writes_to_disk(path: Path) -> bool:
-    for node in ast.walk(ast.parse(path.read_text())):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in WRITERS
-        ):
+def _opened_for_writing(node: ast.Call) -> bool:
+    """`open(p, "a")` and `p.open("w")` — the form that used to slip past.
+
+    `usage_log.py` is the proof it did: it is caught by its `mkdir` on the line
+    above, and its actual `open(log_path, "a")` was invisible. A new file that
+    only opens and writes would have been listed by neither this set nor §4.
+    """
+    if isinstance(node.func, ast.Attribute) and node.func.attr == "open":
+        positional = node.args[0] if node.args else None  # Path.open(mode)
+    elif isinstance(node.func, ast.Name) and node.func.id == "open":
+        positional = node.args[1] if len(node.args) > 1 else None  # open(path, mode)
+    else:
+        return False
+
+    mode = next((kw.value for kw in node.keywords if kw.arg == "mode"), positional)
+    if mode is None:
+        return False  # no mode is read mode
+    if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+        return any(flag in mode.value for flag in "wax+")
+    return True  # a computed mode could be either; assume the worse one
+
+
+def _writes_to_disk(source: str) -> bool:
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute) and node.func.attr in WRITERS:
+            return True
+        if _opened_for_writing(node):
             return True
     return False
 
 
 def test_only_the_documented_fallbacks_write_to_local_disk() -> None:
     writers = {
-        str(path.relative_to(SRC)) for path in sorted(SRC.rglob("*.py")) if _writes_to_disk(path)
+        str(path.relative_to(SRC))
+        for path in sorted(SRC.rglob("*.py"))
+        if _writes_to_disk(path.read_text())
     }
 
     assert writers == ALLOWED
@@ -50,11 +74,23 @@ def test_the_comparisons_write_nothing() -> None:
     store — the confusion §4 is kept to prevent.
     """
     assert "diagnostics/compare.py" not in ALLOWED
-    assert not _writes_to_disk(SRC / "diagnostics/compare.py")
+    assert not _writes_to_disk((SRC / "diagnostics/compare.py").read_text())
 
     cli = (SRC / "entrypoints/cli.py").read_text()
     assert "llm-compare" not in cli or 'agent_vault.path / "llm-compare"' not in cli
     assert '"--log"' not in cli
+
+
+def test_a_plain_open_is_not_a_way_through() -> None:
+    """No `mkdir` beside it, and the old guard saw nothing."""
+    assert _writes_to_disk('with open(path, "a") as f:\n    f.write("x")\n')
+    assert _writes_to_disk('path.open("w").write("x")\n')
+    assert _writes_to_disk("with open(path, mode) as f:\n    f.write('x')\n")
+
+
+def test_reading_a_file_is_not_a_write() -> None:
+    assert not _writes_to_disk('with open(config_path, "rb") as f:\n    tomllib.load(f)\n')
+    assert not _writes_to_disk("with open(sources_path) as f:\n    yaml.safe_load(f)\n")
 
 
 def test_architecture_says_what_the_residency_table_covers() -> None:
