@@ -88,6 +88,21 @@
 
   <div id="sched-result" class="hidden" hidden></div>
 
+  <h2>DIGEST</h2>
+
+  <form id="digest-form">
+    <fieldset>
+      <legend>Featured</legend>
+      <input type="number" id="max-featured" min="1" max="20" style="width:5rem" autocomplete="off">
+      <p class="hint">How many sections lead the page before the rest. Your call, not a measured
+        number — the digest reads differently at 3 than at 8. Takes effect on the next digest.</p>
+    </fieldset>
+
+    <button type="submit" id="save-digest">Save</button>
+  </form>
+
+  <div id="digest-result" class="hidden" hidden></div>
+
   <h2>SOURCES</h2>
 
   <fieldset>
@@ -145,9 +160,11 @@ function render() {
   const [m, e] = state.schedule || [];
   if (m) $("morning").value = parseInt(m, 10);
   if (e) $("evening").value = parseInt(e, 10);
+  if (state.max_featured) $("max-featured").value = state.max_featured;
   if (!state.writable) {
     $("save").disabled = true;
     $("save-sched").disabled = true;
+    $("save-digest").disabled = true;
     show("err", "This deployment has no settings store, so nothing can be saved here. Edit cyris.toml instead.");
   }
 }
@@ -220,6 +237,29 @@ $("sched-form").addEventListener("submit", async (e) => {
     show("err", String(err), "sched-result");
   } finally {
     $("save-sched").disabled = false;
+  }
+});
+
+$("digest-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("save-digest").disabled = true;
+  try {
+    const res = await fetch("/api/settings/digest", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({max_featured: parseInt($("max-featured").value, 10)}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      state.max_featured = data.max_featured;
+      show("ok", `Featured sections: ${data.max_featured}. ${data.note}`, "digest-result");
+    } else {
+      show("err", data.error || `HTTP ${res.status}`, "digest-result");
+    }
+  } catch (err) {
+    show("err", String(err), "digest-result");
+  } finally {
+    $("save-digest").disabled = false;
   }
 });
 

@@ -61,6 +61,7 @@ class TriageServer:
         settings=None,
         llm_provider=None,
         schedule: list[str] | None = None,
+        max_featured: int = 5,
         sources: dict[str, SourceConfig] | None = None,
         sources_origin: str = "",
         source_store=None,
@@ -74,6 +75,7 @@ class TriageServer:
         self._settings = settings
         self._llm_provider = llm_provider
         self._schedule = schedule or []
+        self._max_featured = max_featured
         # Already resolved by `load_effective_config` — D1's `sources` table when
         # it has rows, `sources.yaml` otherwise. The page reports which, so a
         # half-migrated deployment does not look like a stale one.
@@ -91,6 +93,7 @@ class TriageServer:
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
+        self._app.router.add_post("/api/settings/digest", self._handle_post_digest)
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
@@ -273,6 +276,7 @@ class TriageServer:
                 "model": (current.model if current else "") or "",
                 "providers": providers,
                 "schedule": self._schedule,
+                "max_featured": self._max_featured,
                 "writable": self._settings is not None,
             }
         )
@@ -359,6 +363,44 @@ class TriageServer:
         self._schedule = times
         logger.info("Digest schedule set to %s", ", ".join(times))
         return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
+
+    async def _handle_post_digest(self, request: web.Request) -> web.Response:
+        """Set how many featured sections lead the page.
+
+        Graded D because it is a reader's preference, not a measurement: how many
+        headlines you want above the fold is not a number this codebase can derive.
+        """
+        if self._settings is None:
+            return web.json_response(
+                {"ok": False, "error": "this deployment has no settings store to write"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        try:
+            max_featured = int(body.get("max_featured"))
+        except (TypeError, ValueError):
+            return web.json_response(
+                {"ok": False, "error": "max_featured must be a whole number"}, status=400
+            )
+        if max_featured < 1:
+            return web.json_response(
+                {"ok": False, "error": "max_featured must be at least 1"}, status=400
+            )
+
+        try:
+            self._settings.set({"digest.max_featured": max_featured})
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        self._max_featured = max_featured
+        logger.info("Featured cap set to %d", max_featured)
+        return web.json_response(
+            {"ok": True, "max_featured": max_featured, "note": "Effective next digest."}
+        )
 
     async def _handle_get_sources(self, request: web.Request) -> web.Response:
         """What the pipeline is actually fetching, and from which home.

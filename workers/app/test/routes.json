@@ -20,6 +20,7 @@
   {"path": "/api/settings", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/settings"},
   {"path": "/api/settings", "method": "POST", "kind": "container", "unauth_status": 401},
   {"path": "/api/settings/schedule", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/schedule"},
+  {"path": "/api/settings/digest", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/digest"},
   {"path": "/api/sources", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/sources"},
   {"path": "/api/sources", "method": "POST", "kind": "container", "unauth_status": 401},
   {"path": "/api/sources/demo", "method": "DELETE", "kind": "container", "unauth_status": 401, "container_route": "/api/sources/{name}"},
