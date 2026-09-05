@@ -218,8 +218,9 @@ def embed_compare(
         float | None, typer.Option("--threshold", help="Gemini cutoff (default: configured)")
     ] = None,
     workers_threshold: Annotated[
-        float, typer.Option("--workers-threshold", help="bge-m3 cutoff; its cosines run lower")
-    ] = 0.53,
+        float | None,
+        typer.Option("--workers-threshold", help="bge-m3 cutoff (default: configured)"),
+    ] = None,
     as_json: Annotated[
         bool,
         typer.Option(
@@ -240,6 +241,12 @@ def embed_compare(
     The 2026-08-10 evaluation found zero disagreement across the whole store, but on a
     single wide-margin downvote class. This keeps the comparison running on real traffic
     and records what a one-off measurement cannot: cost and latency per provider.
+
+    The per-arm disagreement key is `{arm}_only`, so a series started before
+    2026-09-05 carries `workers_only` where this writes `workers_ai_only`: the
+    name follows the arm now rather than being hardcoded. Nothing reads the old
+    key — it was written by `--log`, removed in the same change — but a hand-kept
+    file from before that date holds both spellings.
 
     Read-only, and it writes nothing: `--json >> parity.jsonl` is how a series is kept,
     which leaves where that file lives to whoever is keeping it.
@@ -439,9 +446,7 @@ def llm_compare(
         f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n", err=True
     )
 
-    rows = compare_llms(
-        arms, articles, scores, cfg, period=period, render=deps.html_writer.render
-    )
+    rows = compare_llms(arms, articles, scores, cfg, period=period, render=deps.html_writer.render)
 
     width = max((len(row.label) for row in rows), default=0)
     for row in rows:
