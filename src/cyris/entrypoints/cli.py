@@ -7,7 +7,6 @@ import logging
 import os
 import signal
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -244,9 +243,13 @@ def embed_compare(
 
     from datetime import UTC, datetime, timedelta
 
-    from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
-    from cyris.bootstrap import build_deps, embedding_defaults, load_effective_config
-    from cyris.service_layer.vote_similarity import judge_by_votes
+    from cyris.bootstrap import build_deps, load_effective_config
+    from cyris.diagnostics.compare import (
+        NothingToCompareError,
+        build_embedding_arms,
+        compare_embedders,
+        margin,
+    )
 
     try:
         # also loads .env into the environment
@@ -255,98 +258,52 @@ def embed_compare(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-    token = os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", "")
-    if not (account and token):
-        logger.error(
-            "Needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_EMBEDDING_API_TOKEN "
-            "(the token must carry Workers AI -> Read; the wrangler one does not)."
-        )
-        raise typer.Exit(1)
-
     deps = build_deps(cfg)
-    arms = {
-        "gemini": (
-            GeminiEmbedder(
-                api_key=os.environ.get("GEMINI_API_KEY", ""),
-                model=embedding_defaults("gemini")["model"],
-            ),
-            threshold if threshold is not None else embedding_defaults("gemini")["threshold"],
-        ),
-        "workers_ai": (
-            WorkersAIEmbedder(
-                api_token=token,
-                account_id=account,
-                model=embedding_defaults("workers_ai")["model"],
-            ),
-            workers_threshold,
-        ),
-    }
-
     now = datetime.now(UTC)
     candidates = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
-    results = {}
-    for name, (embedder, arm_cut) in arms.items():
-        # Wall-clock, not just api_seconds: Gemini sleeps 1.5s between batches of 50
-        # where bge-m3 batches 100 with no pause, and that gap is the throughput
-        # difference the per-request timer cannot see.
-        started = time.monotonic()
-        report = asyncio.run(
-            judge_by_votes(
+    try:
+        arms = build_embedding_arms(
+            account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
+            workers_api_token=os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", ""),
+            gemini_threshold=threshold,
+            workers_threshold=workers_threshold,
+        )
+        comparison = asyncio.run(
+            compare_embedders(
                 deps.store,
-                embedder,
+                arms,
                 candidates,
-                threshold=arm_cut,
+                hours=hours,
                 max_seeds=cfg.app.vote_similarity.max_seeds,
+                checked_at=now,
             )
         )
-        elapsed = time.monotonic() - started
-        if not report.ran:
-            typer.echo(f"Nothing to compare: {report.skipped_reason}")
-            raise typer.Exit(1)
-        results[name] = (report, arm_cut, embedder.usage, elapsed)
-
-    g_report = results["gemini"][0]
-    sets = {n: set(r.suppressed_urls) for n, (r, *_) in results.items()}
-    only = {
-        "gemini_only": sorted(sets["gemini"] - sets["workers_ai"]),
-        "workers_only": sorted(sets["workers_ai"] - sets["gemini"]),
-    }
-
-    def margin(report) -> dict[str, float | None]:
-        """Where this window's boundary actually fell, per arm.
-
-        The thresholds are pinned constants calibrated against two downvote seeds. As
-        the seed set grows they drift, and by different amounts because the two cosine
-        scales differ — so the first disagreement this log records could just as easily
-        be threshold staleness as a model difference. Recording each side of the
-        boundary is what lets the two be told apart later.
-        """
-        cut_side = [v.down_similarity for v in report.verdicts.values() if v.suppressed]
-        keep_side = [v.down_similarity for v in report.verdicts.values() if not v.suppressed]
-        return {
-            "suppressed_min": round(min(cut_side), 4) if cut_side else None,
-            "kept_max": round(max(keep_side), 4) if keep_side else None,
-        }
+    except NothingToCompareError as e:
+        typer.echo(f"Nothing to compare: {e}")
+        raise typer.Exit(1) from e
 
     by_url = {a.url: a for a in candidates}
+    first = comparison.arms[0].report
     typer.echo(
         f"\n{len(candidates)} candidate(s) over {hours}h, "
-        f"{g_report.upvote_seeds} up / {g_report.downvote_seeds} down seed(s)\n"
+        f"{first.upvote_seeds} up / {first.downvote_seeds} down seed(s)\n"
     )
-    for name, (report, arm_cut, usage, elapsed) in results.items():
-        u = usage.as_dict()
-        m = margin(report)
+    for arm in comparison.arms:
+        u = arm.usage.as_dict()
+        m = margin(arm.report)
         cost = f", {u['input_tokens']} tokens, {u['neurons']} neurons" if u["neurons"] else ""
         typer.echo(
-            f"  {name:<11} @ {arm_cut:.2f}  suppresses {len(report.suppressed_urls):>3}   "
+            f"  {arm.name:<11} @ {arm.threshold:.2f}  "
+            f"suppresses {len(arm.report.suppressed_urls):>3}   "
             f"margin {m['kept_max']} -> {m['suppressed_min']}   "
             f"({u['embedded']} embedded in {u['requests']} req, "
-            f"{elapsed:.1f}s wall / {u['api_seconds']}s api{cost})"
+            f"{arm.wall_seconds:.1f}s wall / {u['api_seconds']}s api{cost})"
         )
+    only = comparison.only
     typer.echo(
-        f"\n  agree on {len(sets['gemini'] & sets['workers_ai'])}, "
-        f"disagree on {len(only['gemini_only']) + len(only['workers_only'])}"
+        f"\n  agree on {len(comparison.agreed)}, "
+        f"disagree on {sum(len(urls) for urls in only.values())}"
     )
     for label, urls in only.items():
         for url in urls[:show]:
@@ -354,27 +311,9 @@ def embed_compare(
             typer.echo(f"    {label:<13} [{a.source_name[:18]:18}] {a.title[:48]}")
 
     if log:
-        row = {
-            "checked_at": now.isoformat(),
-            "hours": hours,
-            "candidates": len(candidates),
-            "seeds": {"up": g_report.upvote_seeds, "down": g_report.downvote_seeds},
-            "agree": len(sets["gemini"] & sets["workers_ai"]),
-            **only,
-            **{
-                name: {
-                    "threshold": arm_cut,
-                    "suppressed": len(report.suppressed_urls),
-                    "wall_seconds": round(elapsed, 2),
-                    **margin(report),
-                    **usage.as_dict(),
-                }
-                for name, (report, arm_cut, usage, elapsed) in results.items()
-            },
-        }
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            f.write(json.dumps(comparison.log_row(), ensure_ascii=False) + "\n")
         typer.echo(f"\nLogged to {log}")
 
 
@@ -449,7 +388,7 @@ def llm_compare(
     from datetime import UTC, datetime, timedelta
 
     from cyris.bootstrap import build_deps, load_effective_config
-    from cyris.service_layer.digest_pipeline import DigestPipeline
+    from cyris.diagnostics.compare import compare_llms
 
     if not arm:
         logger.error("Nothing to compare against. Pass at least one --arm provider:model.")
@@ -485,62 +424,23 @@ def llm_compare(
     out_dir.mkdir(parents=True, exist_ok=True)
     typer.echo(f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n")
 
-    rows = []
-    for label, llm in arms:
-        pipeline = DigestPipeline(
-            llm,
-            max_digest_output=cfg.app.digest.max_articles_per_digest_output,
-            summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
-            filter_snippet_length=cfg.app.digest.filter_snippet_length,
-            score_threshold=cfg.app.routing.summarize_score_threshold,
-            output_language=cfg.app.digest.output_language,
-            style_prompt=cfg.app.digest.style_prompt,
-        )
-        started = time.monotonic()
-        try:
-            result = asyncio.run(
-                pipeline.process(
-                    articles,
-                    cfg.sources,
-                    period=period,
-                    timezone=cfg.app.general.timezone,
-                    article_scores=scores,
-                )
-            )
-        except Exception as e:
-            logger.error("%s failed: %s", label, e)
-            continue
-        elapsed = time.monotonic() - started
+    rows = compare_llms(arms, articles, scores, cfg, period=period, render=deps.writer.render)
 
-        content = result.content
-        # The pipeline swallows LLM failures on purpose — `cyris run` would rather
-        # ship excerpts than nothing. For a comparison that is the wrong trade: an
-        # arm that never reached its model still renders a plausible digest, and
-        # printing it as a row invites reading excerpt fallback as this model's
-        # work. Zero calls is the tell, and it is not a result.
-        if content.usage.api_calls == 0:
-            logger.error(
-                "%s made no API calls — every request failed and the pipeline fell back to "
-                "excerpts. Re-run with --verbose for the provider's reason. Not comparable.",
-                label,
-            )
-            continue
+    width = max((len(row.label) for row in rows), default=0)
+    for row in rows:
+        stem = row.label.replace(":", "_").replace("/", "_")
+        path = out_dir / f"{row.content.date}-{period}-{stem}.md"
+        path.write_text(row.markdown, encoding="utf-8")
 
-        path = out_dir / f"{content.date}-{period}-{label.replace(':', '_').replace('/', '_')}.md"
-        path.write_text(deps.writer.render(content), encoding="utf-8")
-        rows.append((label, content, elapsed, getattr(llm, "neurons", None), path))
-
-    width = max((len(r[0]) for r in rows), default=0)
-    for label, content, elapsed, neurons, path in rows:
-        u = content.usage
-        cost = f", {neurons:.1f} neurons" if neurons is not None else ""
+        u = row.content.usage
+        cost = f", {row.neurons:.1f} neurons" if row.neurons is not None else ""
         typer.echo(
-            f"  {label:<{width}} {content.articles_included:>3} included   "
-            f"{len(content.news_clusters)} cluster(s), "
-            f"{len(content.thematic_summaries)} theme(s), "
-            f"{len(content.filtered_headlines)} headline(s)   "
+            f"  {row.label:<{width}} {row.content.articles_included:>3} included   "
+            f"{len(row.content.news_clusters)} cluster(s), "
+            f"{len(row.content.thematic_summaries)} theme(s), "
+            f"{len(row.content.filtered_headlines)} headline(s)   "
             f"({u.input_tokens:,} in / {u.output_tokens:,} out over {u.api_calls} calls, "
-            f"{elapsed:.1f}s{cost})"
+            f"{row.wall_seconds:.1f}s{cost})"
         )
         typer.echo(f"  {'':<{width}} {path}")
 

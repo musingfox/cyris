@@ -23,7 +23,7 @@ diagnostics       adapters   (implement the service layer's Protocols)
 `bootstrap.build_deps()` is the only place the three meet. The core (`service_layer` + `domain`)
 imports nothing from `adapters` — it names Protocols, and the composition root supplies bodies.
 
-`diagnostics/` is off the pipeline entirely: it inspects the deployment rather than runs it. It may import everything below it and nothing below it may import it, so deleting the
+`diagnostics/` is off the pipeline entirely: `doctor` asks whether this deployment works, `compare` runs one window through two wirings and reports where they differ. It may import everything below it and nothing below it may import it, so deleting the
 package would cost three commands and not one digest.
 
 Pipeline: **Fetch → Store → Score → Process → Output**, orchestrated end to end by
@@ -178,7 +178,11 @@ table at all (§7, the 08-25→08-27 split), and the only check that catches it 
 are the same shape: build the real adapter, call `health_check()`, report what answered.
 
 So `doctor` lives in `src/cyris/diagnostics/`, a layer of its own for the tools whose subject is
-the deployment rather than the digest. It is **not** an exception to the rule above — the rule holds
+the deployment rather than the digest. `embed-compare` and `llm-compare` are the same shape and sit
+beside it in `compare.py`: each builds *two* wirings on purpose, which no core module may do and no
+single `build_deps` can express. What a comparison row means is decided there; the CLI parses
+`--arm`, prints, and owns every local write — which is what keeps these commands read-only by
+construction and keeps their output out of §4's decision. It is **not** an exception to the rule above — the rule holds
 with none. `tests/test_core_imports.py` fails if `service_layer/` or `domain/` imports
 `cyris.adapters` or `cyris.bootstrap` at runtime, and fails again if anything below `diagnostics/`
 imports it back.
@@ -892,8 +896,8 @@ the kind that get harder to see the longer they sit. One ticket each.
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
 | ~~18~~ | ~~`doctor` builds adapters inside the service layer~~ — closed 2026-09-05 | It was six sites, not the three the ticket named: three more called `bootstrap.build_llm`/`build_store`, which imports the composition root into the core — the inversion the rule exists to prevent | ✅ Neither path on the ticket: `doctor`'s subject *is* the wiring, so it moved into a `diagnostics/` layer of its own and the rule now holds with **no** exception. §2 carries the reason; `tests/test_core_imports.py` is the receipt | `doctor-builds-its-own-adapters` |
-| 19 | The CLI holds pipeline logic | `embed_compare` builds its own embedders and computes margins; `llm_compare` assembles `DigestPipeline` and decides what counts as a result. ✅ The scorable filter is closed: it was not a copy but a *drifted* copy — the CLI scored fan-tier articles `run_digest` skips — and both now call `scoring.select_scorable`, pinned by `test_scoring_filter_has_one_implementation` | Move the remaining rules into `service_layer/` | `cli-holds-pipeline-logic` |
-| 20 | Two callers reach past their Protocol | `cli.py:300` reads `embedder.usage`, `cli.py:522` does `getattr(llm, "neurons", None)`; neither is on `Embedder` or `LLMClient` | Decide whether usage is part of the port. `neurons` is a Cloudflare billing unit, so a shared shape is not free | `embedder-usage-bypasses-its-port` |
+| ~~19~~ | ~~The CLI holds pipeline logic~~ — closed 2026-09-05 | Two findings: the scorable filter was not a copy but a *drifted* copy — the CLI scored fan-tier articles `run_digest` skips — and the comparison rules had no test at all because they were unreachable without running a typer command | ✅ Both sides now call `scoring.select_scorable`; the arm building, `margin` and the `api_calls == 0` rule moved to `diagnostics/compare.py` with `tests/test_compare.py`. Not `service_layer/`: a comparison builds two wirings, which the core may not do. `embed_compare` (76), `articles_score` (76) and `llm_compare` (64) are still over the ticket's 60 lines, all of it output formatting | `cli-holds-pipeline-logic` |
+| 20 | Two callers reach past their Protocol | `diagnostics/compare.py:163` reads `embedder.usage`, `:236` does `getattr(llm, "neurons", None)`; neither is on `Embedder` or `LLMClient` | Decide whether usage is part of the port. `neurons` is a Cloudflare billing unit, so a shared shape is not free | `embedder-usage-bypasses-its-port` |
 | 21 | §4 does not cover every write | `embed-compare` and `llm-compare` write local files; `CLAUDE.md` describes `agent-vault/daily/`, which nothing writes. ✅ The `usage.jsonl` contradiction is closed: the code was right and the row was wrong — it is the no-D1 fallback, not a retired one, and `test_usage_jsonl_row_matches_bootstrap` now fails if the two drift apart again | Say what §4 covers, then make it true | `data-residency-missing-rows` |
 | 22 | `max_featured` has no grade and no home | `selection.py:52`, alone on its line in having neither — `featured_threshold` beside it is pinned to `[routing] score_threshold` by a test | Grade it A or D in §5 with the reason. How many headlines a reader gets is plausibly their choice | `featured-cap-has-no-grade` |
 | 23 | A second architecture diagram nothing reads | `docs/cyris-runtime.architecture.json` and its 735 KB `.html` have no producer, no consumer and no inbound link; §2's own filesystem table went stale without either changing | Delete both, or connect them to something that regenerates them. An unread second source of truth is the failure §2 exists to prevent | `retire-the-orphan-runtime-diagram` |
