@@ -7,14 +7,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cyris.domain.models import ArticleState, Tier, UsageStats
+from cyris.domain.models import ArticleState, UsageStats
 from cyris.domain.selection import count_dead_links, layer_by_score
-from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.schedule import Period
-from cyris.service_layer.scoring import score_in_batches
+from cyris.service_layer.scoring import score_in_batches, select_scorable
 from cyris.utils.timezone import now_in_timezone
 
 if TYPE_CHECKING:
@@ -120,15 +119,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         state_filter=state_filter,
     )[: cfg.app.digest.max_articles_per_digest]
 
-    scorable = []
-    for a in pending_articles:
-        if a.source_tier == Tier.FAN:  # fan tier is never scored
-            continue
-        if NEWS_TAG in a.source_tags:
-            continue
-        if not options.force and a.score is not None:
-            continue
-        scorable.append(a)
+    scorable = select_scorable(pending_articles, force=options.force)
 
     total_usage = UsageStats(model=cfg.app.llm_provider.model or "none")
 
