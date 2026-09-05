@@ -30,6 +30,7 @@ Thumbs.db
 
 # Runtime config (copy from *.example)
 cyris.toml
+cyris.staging.toml
 sources.yaml
 
 # Agent vault runtime data
