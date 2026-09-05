@@ -414,6 +414,12 @@ def llm_compare(
     if deps.llm is None:
         logger.error("No LLM provider configured, so there is nothing to compare against.")
         raise typer.Exit(1)
+    if deps.html_writer is None:
+        # The comparison's output *is* the rendered digests, so there is nothing
+        # to fall back to. `[html_output] enabled = false` is a real configuration
+        # — the D1 path publishes from memory — so this is a message, not a crash.
+        logger.error("Set [html_output] enabled = true: this command prints rendered digests.")
+        raise typer.Exit(1)
 
     # Built before any LLM call, so a typo in the fourth arm fails now rather than
     # after three digests have been paid for.
@@ -433,7 +439,9 @@ def llm_compare(
         f"\n{len(articles)} article(s) over {hours}h, {len(scores)} already scored\n", err=True
     )
 
-    rows = compare_llms(arms, articles, scores, cfg, period=period, render=deps.writer.render)
+    rows = compare_llms(
+        arms, articles, scores, cfg, period=period, render=deps.html_writer.render
+    )
 
     width = max((len(row.label) for row in rows), default=0)
     for row in rows:
@@ -451,7 +459,7 @@ def llm_compare(
 
     for row in rows:
         typer.echo(f"\n\n# {row.label} — {row.content.date} {period}\n")
-        typer.echo(row.markdown)
+        typer.echo(row.rendered)
 
     if len(rows) > 1:
         typer.echo(

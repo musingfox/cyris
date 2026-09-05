@@ -155,7 +155,7 @@ def test_an_arm_that_never_reached_its_model_is_not_a_row():
     )
 
     assert [row.label for row in rows] == ["alive"]
-    assert rows[0].markdown == "# digest"
+    assert rows[0].rendered == "# digest"
     assert rows[0].content.usage.api_calls > 0
 
 
