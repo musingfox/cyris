@@ -154,27 +154,35 @@ the feed list bundled in `src/feeds.json` and buffers feeds you never chose.
 The same image runs locally with `docker compose up -d`, which is the development path
 only: two schedulers publishing to one Pages project is the failure mode.
 
-## CLI Commands
+## The CLI, and when you reach for it
+
+The deployment already runs this CLI: the hourly tick is `cyris run --if-due` followed
+by `cyris promote-sync` inside the container, and the triage UI is `cyris triage-ui`
+behind the Worker. None of that is yours to type.
+
+What a local clone is for is the part that has no UI. Every command reaches D1 over
+REST, so an `.env` holding the deployment's database id and Cloudflare token is the
+whole setup — nothing has to run next to the data:
 
 ```
-cyris doctor                  Check the config; non-zero exit if a run would break
-cyris run                     Full pipeline: fetch, score, digest
-                              (--if-due only runs on a digest hour; --dry-run previews
-                              without writing or consuming)
-cyris promote-sync            Pull digest votes from the Worker (👍 accepts, 👎 rejects)
-cyris triage-ui               Swipe-based triage web UI; /settings picks the LLM provider
-                              and model, the digest hours, and edits the source list
-cyris articles list           List articles in store
-cyris articles accept|reject  Accept or reject articles by URL
-cyris articles score          Score articles via AI
-cyris articles clean          Delete old articles by state
-cyris sources push|list       Make D1's source table match sources.yaml; show what it serves
-cyris store migrate           Copy the local article store into D1
-cyris store diff              Compare the JSON and D1 stores field by field
-cyris llm-compare             Digest one window with several LLM providers, side by side
-cyris embed-compare           Judge one window with both embedding providers
-cyris vote-sim                Preview what vote similarity would suppress
+cyris doctor                  Before the first run, and after any config change: exits
+                              non-zero on anything that would break a run
+cyris store migrate|diff      One-time move of the JSON store into D1, and the
+                              comparison to run before you trust it
+cyris sources push|list       Make D1 match sources.yaml, removals included; show what
+                              it serves. /settings edits one source, this replaces all
+cyris articles list|accept|   Bulk work on the store, which the swipe UI is too slow
+      reject|score|clean      for — and the only way to delete old rows
+cyris llm-compare             Digest one window with several providers, side by side,
+cyris embed-compare           or judge it with both embedding providers, before
+cyris vote-sim                switching; vote-sim previews what similarity would
+                              suppress before you enable it
 ```
+
+Without Cloudflare at all, `[store] backend = "json"` plus `cyris run` writes the
+digest to disk — the same path the tests and the development loop take.
+
+`cyris --help` lists everything.
 
 ## How sources are processed
 
