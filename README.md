@@ -1,20 +1,38 @@
 # Cyris
 
-AI-powered information digest agent. Fetches articles from RSS feeds and newsletters, processes them through an LLM with tier-based filtering and summarization, and publishes an HTML digest to Cloudflare Pages.
+**Only what matters should reach your brain.**
+
+You already do this for your agents. An LLM is only as good as what makes it into the
+context window, so you curate that ruthlessly — the wrong thousand tokens and the
+answer is worse, not just longer. Your own attention works the same way and gets none
+of the same care: the feeds keep arriving, the good stuff is in there somewhere, and
+the cost of finding it is the whole evening.
+
+Cyris is that curation, pointed at you. It reads the feeds and newsletters you
+subscribed to and stopped opening, scores every article against the topics you said you
+care about, and publishes a digest twice a day that is short enough to actually finish.
+Not drowning and not missing anything are usually a trade; this is the machine that
+takes it.
+
+Nothing is hidden to make it short. Every digest ships with a full listing of what the
+same window collected and what was dropped, so a filtered article is one you can still
+go and read. A 👍 or 👎 on any item is a decision the next run acts on.
+
+Under the hood: RSS feeds and newsletters in, an LLM with tier-based filtering and
+summarization in the middle, an HTML digest on Cloudflare Pages out.
 
 ## What it does
 
-- Subscribes to RSS feeds and newsletters, listed in `sources.yaml` (or the D1
-  `sources` table once you push / edit them)
+- Reads RSS feeds and newsletters, listed in `sources.yaml` (or the D1 `sources` table
+  once you push / edit them)
 - Scores and routes articles: high-relevance to the digest, lower to a triage queue,
-  reducing daily volume by 80%+
-- Publishes twice-daily HTML digests with thematic summaries, each shipping a
-  companion listing of everything the window collected — so what the filters dropped
-  stays inspectable
-- Lets you 👍/👎 items on the published digest; those votes accept or reject in the
-  store, and can optionally suppress later articles sitting close to a downvote
-- Provides a swipe-based web UI for triaging borderline articles, plus `/settings`
-  for the LLM provider, digest hours, and the source list
+  cutting daily volume by 80%+
+- Groups what survives into thematic summaries, and clusters news by topic rather than
+  printing the same story five times
+- Turns a 👍/👎 into an accept or reject in the store, and can suppress later articles
+  sitting close to a downvote
+- Serves a swipe-based UI for triaging the borderline ones, plus `/settings` for the
+  LLM provider, digest hours, and the source list
 
 ## Requirements
 
