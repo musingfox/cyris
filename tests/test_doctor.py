@@ -32,6 +32,9 @@ def no_network(monkeypatch):
 def _config(tmp_path: Path, **app_kwargs) -> Config:
     app = AppConfig(**app_kwargs)
     app.agent_vault.path = tmp_path / "agent-vault"
+    # A setup with neither sink is its own failure (`digest output`), and every
+    # test here is about something else.
+    app.html_output.enabled = True
     return Config(
         app=app,
         sources={"Feed": SourceConfig(name="Feed", url="https://a.test/feed", tier=Tier.FILTER)},
@@ -357,3 +360,24 @@ async def test_settings_without_a_config_file_do_not_claim_cyris_toml(
     check = _by_name(await doctor.run_checks(cfg), "settings")
 
     assert "cyris.toml" not in check.detail
+
+
+async def test_a_run_with_nowhere_to_put_the_digest_is_a_failure(tmp_path: Path) -> None:
+    """Neither sink means the run reports ok and leaves only store rows."""
+    cfg = _config(tmp_path)
+    cfg.app.html_output.enabled = False
+    cfg.app.promote.publish_enabled = False
+
+    check = _by_name(await doctor.run_checks(cfg), "digest output")
+
+    assert check.status == "fail"
+    assert "html_output" in check.fix and "publish_enabled" in check.fix
+
+
+async def test_publishing_alone_is_enough(tmp_path: Path) -> None:
+    """The deployed container writes no local file and is not misconfigured."""
+    cfg = _config(tmp_path)
+    cfg.app.html_output.enabled = False
+    cfg.app.promote.publish_enabled = True
+
+    assert _by_name(await doctor.run_checks(cfg), "digest output").status == "ok"

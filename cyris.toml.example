@@ -46,7 +46,9 @@ score_threshold = 70                    # featured-article cutoff (0-100)
 summarize_score_threshold = 70
 
 [html_output]
-enabled = false                         # or CYRIS_HTML_OUTPUT_ENABLED
+# The local install's only output: without this (or [promote] publish_enabled)
+# a run finishes ok and leaves nothing but store rows.
+enabled = true                          # or CYRIS_HTML_OUTPUT_ENABLED
 output_dir = "agent-vault/html"
 
 [promote]
