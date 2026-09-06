@@ -72,6 +72,15 @@ const json = (body, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
+// Pages serves every project at <name>.pages.dev, so naming the project already
+// names its origin. DIGEST_ORIGIN stays the override — a custom domain, or a
+// project reachable at something other than its own subdomain.
+const archiveOrigin = (env) =>
+  env.DIGEST_ORIGIN ||
+  (env.CYRIS_PROMOTE_PAGES_PROJECT
+    ? `https://${env.CYRIS_PROMOTE_PAGES_PROJECT}.pages.dev`
+    : "");
+
 const onAccessHost = (request, env) =>
   Boolean(env.CYRIS_UI_ACCESS_HOST) &&
   new URL(request.url).hostname === env.CYRIS_UI_ACCESS_HOST;
@@ -122,13 +131,15 @@ export async function handleRequest(request, env, deps) {
 
   // The digest is a static snapshot Cloudflare already holds.
   if (!PROTECTED(url.pathname)) {
-    if (!env.DIGEST_ORIGIN) {
+    const origin = archiveOrigin(env);
+    if (!origin) {
       return new Response(
-        "DIGEST_ORIGIN is not set — point it at your Pages site, e.g. https://<project>.pages.dev",
+        "Neither CYRIS_PROMOTE_PAGES_PROJECT nor DIGEST_ORIGIN is set — name the " +
+          "Pages project the digest deploys to, or point DIGEST_ORIGIN at its site",
         { status: 503, headers: { "Content-Type": "text/plain" } },
       );
     }
-    return fetchImpl(new Request(env.DIGEST_ORIGIN + url.pathname + url.search, request));
+    return fetchImpl(new Request(origin + url.pathname + url.search, request));
   }
 
   if (url.pathname === "/login") {
