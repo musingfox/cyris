@@ -111,6 +111,24 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     return False
 
 
+def _project_exists_with_deployments(client: PagesClient, pages_project: str) -> bool:
+    """The empty-manifest probe, for a project that may not exist yet.
+
+    A 404 here is not the guard's subject: the guard exists to stop a wrong
+    `database_id` from deploying an empty archive over a live site, and a project
+    with nothing behind it is not that. Create it and let the first publish run.
+    Any other failure still refuses — the caller cannot tell an absent site from
+    an unreadable one.
+    """
+    try:
+        return client.has_deployments()
+    except PagesDeployError as e:
+        if e.status != 404:
+            raise
+    client.create_project()
+    return False
+
+
 def publish_site(
     new_files: dict[str, bytes],
     slug: str,
@@ -142,7 +160,7 @@ def publish_site(
             return False
         if not owned_at_entry:
             try:
-                if client.has_deployments():
+                if _project_exists_with_deployments(client, pages_project):
                     logger.error(
                         "Refusing to deploy an empty pages_manifest onto a Pages project "
                         "that already has deployments. Check [store] database_id, or "

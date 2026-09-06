@@ -168,3 +168,40 @@ def test_has_deployments_asks_for_one_page_of_the_project_list(monkeypatch):
     assert seen[0].url.path.endswith("/pages/projects/proj/deployments")
     assert seen[0].url.params.get("per_page") == "1"
     assert "env" not in seen[0].url.params
+
+
+def test_an_error_carries_the_status_it_was_answered_with(monkeypatch):
+    """404 (no such project) and 403 (no such permission) need telling apart."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"success": False, "errors": [{"message": "not found"}]})
+
+    with pytest.raises(PagesDeployError) as caught:
+        _probe(handler, monkeypatch).has_deployments()
+
+    assert caught.value.status == 404
+
+
+def test_creating_the_project_names_it_and_its_production_branch(monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"success": True, "result": {"name": "proj"}})
+
+    _probe(handler, monkeypatch).create_project()
+
+    assert len(seen) == 1
+    assert seen[0].method == "POST"
+    assert seen[0].url.path.endswith("/accounts/acct/pages/projects")
+    assert json.loads(seen[0].content) == {"name": "proj", "production_branch": "main"}
+
+
+def test_a_refused_creation_is_an_error_rather_than_a_silent_no_op(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"success": False, "errors": [{"message": "forbidden"}]})
+
+    with pytest.raises(PagesDeployError) as caught:
+        _probe(handler, monkeypatch).create_project()
+
+    assert caught.value.status == 403
