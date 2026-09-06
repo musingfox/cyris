@@ -60,7 +60,16 @@ def asset_hash(contents: bytes, extension: str) -> str:
 
 
 class PagesDeployError(RuntimeError):
-    """A step of the direct-upload protocol answered something other than success."""
+    """A step of the direct-upload protocol answered something other than success.
+
+    `status` carries the HTTP code so a caller can tell "this project does not
+    exist yet" (404) from "your token cannot see it" (403) without reading the
+    message. It is None when the request never got an answer.
+    """
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class PagesClient:
@@ -83,7 +92,9 @@ class PagesClient:
             body = {}
         if not response.is_success or not body.get("success", False):
             detail = body.get("errors") or response.text[:300]
-            raise PagesDeployError(f"{method} {path} → {response.status_code} {detail}")
+            raise PagesDeployError(
+                f"{method} {path} → {response.status_code} {detail}", response.status_code
+            )
         return body
 
     def _upload_token(self, client: httpx.Client) -> str:
@@ -112,6 +123,23 @@ class PagesClient:
         if not isinstance(result, list):
             raise PagesDeployError(f"GET {path} → result is not a list")
         return bool(result)
+
+    def create_project(self, production_branch: str = "main") -> None:
+        """Create this Pages project. A Deploy button cannot: it deploys Workers only.
+
+        So the one manual step left between a fresh account and a published
+        digest is this call, and the deployment already holds a token that can
+        make it.
+        """
+        with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
+            self._call(
+                client,
+                "POST",
+                f"/accounts/{self._account}/pages/projects",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json={"name": self._project, "production_branch": production_branch},
+            )
+        logger.info("Pages project %s created", self._project)
 
     # ---- the protocol ---------------------------------------------------
 

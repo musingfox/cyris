@@ -136,14 +136,17 @@ unsummarised. Every run logs a warning saying so — `wrangler tail cyris-app`
 shows it.
 
 **Three things it cannot do**, because Cloudflare's automatic provisioning does
-not cover them — do these first and paste the results into the deploy form:
+not cover them. Only the first is a step to take before the deploy form; the
+other two are values you decide there:
 
 1. **Create the D1 database** (`wrangler d1 create cyris`, or the dashboard) and
    pass its UUID as `CYRIS_STORE_DATABASE_ID`. The container reaches D1 over
    REST rather than through a binding, so there is nothing for the deploy to
    provision. `cyris` creates the tables on first boot.
-2. **Create the Pages project** — Deploy buttons only support Workers. Its name
-   goes in `CYRIS_PROMOTE_PAGES_PROJECT` and its origin in `DIGEST_ORIGIN`.
+2. **Name the Pages project** in `CYRIS_PROMOTE_PAGES_PROJECT`, and its origin in
+   `DIGEST_ORIGIN`. Deploy buttons only support Workers, so nothing provisions the
+   project — but you do not have to create it either: the first publish creates it
+   under that name and deploys into it.
 3. **Attach a domain and Cloudflare Access**, if you want the second auth layer
    or email-only newsletters. Both are dashboard steps; see the table above for
    which features need a domain.

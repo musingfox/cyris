@@ -218,7 +218,9 @@ def test_an_empty_manifest_refuses_when_the_probe_fails(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
 
     def probe(_self):
-        raise publish_mod.PagesDeployError("GET ... -> 404 Project not found")
+        # Not a 404: that one means the project is absent, which is a first
+        # publish, not a failure. Anything else leaves the site unreadable.
+        raise publish_mod.PagesDeployError("GET ... -> 500 internal error", 500)
 
     monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probe)
     deployed = []
@@ -908,6 +910,54 @@ def test_publish_refuses_when_the_live_archive_answers_500(monkeypatch):
     ok = publish_mod.publish_site(
         {"/new.html": b"x"}, "slug", _Store({"/old.html": "old"}), "proj", _Receipt()
     )
+
+    assert ok is False
+    assert deployed == []
+
+
+def test_a_project_that_does_not_exist_yet_is_created_and_published_to(monkeypatch):
+    """Deploy buttons create Workers, not Pages projects. The run creates its own."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+
+    def probe(_self):
+        raise publish_mod.PagesDeployError("GET ... -> 404 Project not found", 404)
+
+    created: list[str] = []
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probe)
+    monkeypatch.setattr(
+        publish_mod.PagesClient, "create_project", lambda _self: created.append("proj")
+    )
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+    store = _Store({})
+    receipt = _Receipt()
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", receipt)
+
+    assert ok is True
+    assert created == ["proj"]
+    assert receipt.records == ["proj"]
+    assert deployed[0][1] == {}
+
+
+def test_a_creation_that_fails_does_not_deploy(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+
+    def probe(_self):
+        raise publish_mod.PagesDeployError("GET ... -> 404 Project not found", 404)
+
+    def refuse(_self):
+        raise publish_mod.PagesDeployError("POST ... -> 403 forbidden", 403)
+
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probe)
+    monkeypatch.setattr(publish_mod.PagesClient, "create_project", refuse)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt())
 
     assert ok is False
     assert deployed == []
