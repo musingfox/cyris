@@ -379,7 +379,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (file fallback) | done |
 | UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
-| Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies) | done |
+| Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, two Cloudflare tokens, one Worker bearer, one vote token | C (the vote token is not a secret: it is in every digest published before 2026-09-01) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |

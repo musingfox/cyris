@@ -81,14 +81,15 @@ the root reports an *Account API Token*; the same command with
 bun install                       # or npm install
 
 # CYRIS_UI_TOKEN: openssl rand -hex 32
-# DIGEST_ORIGIN: https://<your-pages-project>.pages.dev
+# DIGEST_ORIGIN: only when the archive is not at
+#   <CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev — a custom domain, say
 # CYRIS_UI_ACCESS_HOST: only after Access is verified blocking (step 4 above)
-# The six required ones first — without CYRIS_STORE_DATABASE_ID the container
+# The five required ones first — without CYRIS_STORE_DATABASE_ID the container
 # exits 1 on its first tick, because [store] backend defaults to d1.
-for s in CYRIS_UI_TOKEN DIGEST_ORIGIN \
+for s in CYRIS_UI_TOKEN \
          CYRIS_STORE_DATABASE_ID CYRIS_PROMOTE_PAGES_PROJECT \
          CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
-         CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
+         DIGEST_ORIGIN CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
          CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL CYRIS_DISCORD_WEBHOOK_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
   bunx wrangler secret put "$s" --env-file /dev/null
@@ -105,7 +106,8 @@ Grade-B identity is the same names the Python process already reads
 `CYRIS_PROMOTE_PUBLISH_ENABLED`, `CYRIS_PROMOTE_PAGES_PROJECT`,
 `CYRIS_PROMOTE_CUSTOM_DOMAIN`, `CYRIS_PROMOTE_WORKER_URL`,
 `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL`) plus two Worker-only
-keys: `DIGEST_ORIGIN` (the Pages origin this Worker proxies) and
+keys: `DIGEST_ORIGIN` (the Pages origin this Worker proxies — only needed when it
+is not `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, which is the fallback) and
 `CYRIS_UI_ACCESS_HOST` (the hostname Access is bound to; unset = cookie-only).
 Set each as a Worker secret or in `[vars]` on your own fork. Leave a name unset
 or empty and the Worker omits it from the container env rather than forwarding

@@ -22,7 +22,10 @@ preview_urls = false
 #
 # DIGEST_ORIGIN is grade B and deployer-supplied (Worker secret or [vars]), e.g.
 #   DIGEST_ORIGIN = "https://<your-pages-project>.pages.dev"
-# No default is shipped. Unset, the Worker answers 503 on the public archive.
+# No default is shipped, and none is needed for the ordinary case: the Worker
+# falls back to <CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev, which is where Pages
+# serves the project the digest deploys to. Set this one when the archive lives
+# somewhere else — a custom domain. With neither, the public archive is 503.
 
 [triggers]
 crons = ["0 * * * *"]

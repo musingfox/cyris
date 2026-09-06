@@ -19,7 +19,7 @@
         "description": "**Required.** The only lock on the triage UI and the vote API. Generate with `openssl rand -hex 32` — `/login` refuses a secret shorter than 32 characters."
       },
       "DIGEST_ORIGIN": {
-        "description": "**Required.** The Pages origin this Worker proxies the public archive from, e.g. `https://your-project.pages.dev`. Create the Pages project first — Deploy buttons cannot. Unset, `/` answers 503."
+        "description": "Optional. The Pages origin this Worker proxies the public archive from, e.g. `https://your-project.pages.dev`. Set it only when the archive lives somewhere other than `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev` — a custom domain, say. Unset with no project named either, `/` answers 503."
       },
       "CYRIS_STORE_DATABASE_ID": {
         "description": "**Required.** The D1 database UUID from `wrangler d1 create cyris` or the dashboard. The container reaches D1 over REST rather than through a binding, so this is an id you paste, not a binding the deploy provisions."
@@ -31,7 +31,7 @@
         "description": "**Required.** An [API token](https://dash.cloudflare.com/profile/api-tokens) with `D1:Edit` and `Cloudflare Pages:Edit`. This is what publishes the digest and reads the store."
       },
       "CYRIS_PROMOTE_PAGES_PROJECT": {
-        "description": "**Required.** The Pages project name the digest deploys to — the same project `DIGEST_ORIGIN` points at."
+        "description": "**Required.** The Pages project name the digest deploys to. The Worker serves the archive from `<name>.pages.dev` unless `DIGEST_ORIGIN` overrides it."
       },
       "ANTHROPIC_API_KEY": {
         "description": "One LLM key is required. **After the deploy finishes, open `/settings` and choose the matching provider** — it lives in D1, not in this form, and until you pick one every digest is plain excerpts. [Anthropic Claude](https://console.anthropic.com/)."

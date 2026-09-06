@@ -425,4 +425,42 @@ describe("DigestOriginRequired", () => {
     const url = typeof call.input === "string" ? call.input : call.input.url;
     expect(url).toBe("https://p.pages.dev/index.html");
   });
+
+  it("the Pages project name is an origin on its own", async () => {
+    const deps = makeDeps({ fetchStatus: 200, fetchBody: "<html>" });
+    const { DIGEST_ORIGIN: _, ...rest } = env();
+    const resp = await handleRequest(
+      request("GET", "/index.html"),
+      { ...rest, CYRIS_PROMOTE_PAGES_PROJECT: "cyris-digest" },
+      deps,
+    );
+    expect(resp.status).toBe(200);
+    const call = deps.fetchImpl.calls[0];
+    const url = typeof call.input === "string" ? call.input : call.input.url;
+    expect(url).toBe("https://cyris-digest.pages.dev/index.html");
+  });
+
+  it("DIGEST_ORIGIN wins, because a custom domain is not a subdomain", async () => {
+    const deps = makeDeps({ fetchStatus: 200, fetchBody: "<html>" });
+    const resp = await handleRequest(
+      request("GET", "/index.html"),
+      env({ CYRIS_PROMOTE_PAGES_PROJECT: "cyris-digest" }),
+      deps,
+    );
+    expect(resp.status).toBe(200);
+    const call = deps.fetchImpl.calls[0];
+    const url = typeof call.input === "string" ? call.input : call.input.url;
+    expect(url).toBe("https://p.pages.dev/index.html");
+  });
+
+  it("neither set is still 503, and names both", async () => {
+    const deps = makeDeps();
+    const { DIGEST_ORIGIN: _, ...rest } = env();
+    const resp = await handleRequest(request("GET", "/"), rest, deps);
+    expect(resp.status).toBe(503);
+    const body = await resp.text();
+    expect(body).toContain("CYRIS_PROMOTE_PAGES_PROJECT");
+    expect(body).toContain("DIGEST_ORIGIN");
+    expect(deps.fetchImpl.calls).toHaveLength(0);
+  });
 });
