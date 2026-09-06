@@ -34,38 +34,30 @@ summarization in the middle, an HTML digest on Cloudflare Pages out.
 - Serves a swipe-based UI for triaging the borderline ones, plus `/settings` for the
   LLM provider, digest hours, and the source list
 
-## Requirements
+## Two ways to run it
 
-- Python 3.12+ and [uv](https://github.com/astral-sh/uv)
-- An LLM API key — Anthropic Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI
-  token. Without one the pipeline still runs, digesting plain excerpts
-- Optional: a Cloudflare account, for everything in the table below
+Pick one before you read further — the rest of this file is written for both, marked as
+such.
 
-## Setup
+|  | **Local** | **On Cloudflare** |
+|---|---|---|
+| What runs it | `cyris run` on your machine, on your own schedule | a Container behind a Worker, on an hourly cron |
+| Where the state lives | JSON files under `agent-vault/` | D1 |
+| Where the digest goes | an HTML file on disk | published to Pages, with an archive |
+| Feeds | polled when the digest runs | buffered hourly, so nothing expires between runs |
+| 👍/👎 on the digest, triage UI | no | yes |
+| Email-only newsletters | no | yes, with your own domain |
+| Needs | Python, uv, an LLM key | the same, plus a Cloudflare account (Workers Paid, US$5/mo, for the schedule and the buffer) |
 
-```bash
-git clone https://github.com/musingfox/cyris.git && cd cyris
-uv sync --dev
-
-cp cyris.toml.example cyris.toml           # LLM provider, store backend, Worker URLs
-cp .env.example .env                       # add API keys
-cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
-
-uv run cyris doctor                # check the config before the first run
-uv run cyris run                   # full pipeline (fetch → score → digest)
-```
-
-`cyris doctor` is the fastest way to find out what is still missing — it checks the
-config, the store, every Worker and every Cloudflare token, and exits non-zero on
-anything that would break a run.
-
-Runtime settings (LLM provider, digest hours) and the source list are **D1 first,
-file fallback**. `cyris.toml` and `sources.yaml` are what a fresh deployment starts
-from; `/settings` and `cyris sources push` write the live copies.
+Local is a complete install, not a demo: same pipeline, same prompts, same digest. What
+it gives up is everything that needs to be *somewhere* — an archive with a URL, buttons
+a reader can press, an inbox that receives mail. You can start local and move later;
+`cyris store migrate` exists for exactly that.
 
 ### What needs what
 
-Nothing below the first row is required. Start at the top and add only what you want.
+Within the Cloudflare track, nothing below the first row is required. Start at the top
+and add only what you want.
 
 | Feature | Needs | Cost |
 |---|---|---|
@@ -87,33 +79,51 @@ if you attach your own hostname.
 
 ### Where RSS comes from
 
-Feeds are listed in `sources.yaml`, and there are two ways to read them.
+This is the sharpest difference between the two tracks.
 
-**Directly** (the default — nothing to set up). At digest time cyris fetches each feed
-and keeps the entries inside the window. Simple, but a feed only publishes its current
-snapshot, and a busy one holds 2–4 hours of it: measured against an hourly aggregator
-over the same 24h window, a digest-time poll saw 176 of 317 articles.
+**Local — polled at digest time.** cyris fetches each feed when the digest runs and
+keeps the entries inside the window. Nothing to set up, but a feed only publishes its
+current snapshot, and a busy one holds 2–4 hours of it. Measured against an hourly
+aggregator over the same 24h window, a digest-time poll saw 176 of 317 articles.
 
-**Through the Cloudflare feed buffer** (recommended, needs a Workers Paid plan). A cron
-Worker polls every feed hourly into D1, and cyris reads a window out of the buffer, so
-nothing expires between runs. Deploy `workers/rss/`, then set `[rss] worker_url` in
-`cyris.toml` and `CYRIS_WORKER_TOKEN` in `.env` — see
-[`workers/rss/README.md`](workers/rss/README.md).
+**Cloudflare — buffered hourly.** `workers/rss` polls every feed on the hour into D1,
+and cyris reads a window out of the buffer, so nothing expires between runs. Deploy
+`workers/rss/`, then set `[rss] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN` in
+`.env` — see [`workers/rss/README.md`](workers/rss/README.md).
 
-### Where the state lives
+## Running it locally
 
-By default the article store is JSON files under `[agent_vault] path`, which is fine
-until the machine holding them dies. `[store] backend = "d1"` moves the store, the
-usage log, sources, settings, tags, news clusters and the Pages file list to Cloudflare
-D1 instead. `cyris store migrate` copies what you have across and `cyris store diff`
-compares the two first. **Pick one backend** — they are alternatives, never a pair.
+Python 3.12+, [uv](https://github.com/astral-sh/uv), and one LLM API key — Anthropic
+Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token. Without a key the
+pipeline still runs and digests plain excerpts.
 
-## Deployment
+```bash
+git clone https://github.com/musingfox/cyris.git && cd cyris
+uv sync --dev
 
-cyris runs as a Cloudflare Container fronted by a Worker: an hourly Cron Trigger runs
+cp cyris.toml.example cyris.toml           # LLM provider, store backend, digest hours
+cp .env.example .env                       # add your API key
+cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
+
+uv run cyris doctor                # says what is still missing before you find out at 08:00
+uv run cyris run                   # fetch → score → digest
+```
+
+Keep `[store] backend = "json"`: the article store and the usage log are files under
+`[agent_vault] path`, and the digest is written to `agent-vault/html/`. Scheduling is
+yours — a cron entry per digest hour, or `docker compose up -d`, which runs the same
+image with supercronic reading `docker/crontab`.
+
+`sources.yaml` is the source list, and `cyris.toml` holds everything else. There is no
+`/settings` here, because there is no server running to serve it.
+
+## Running it on Cloudflare
+
+The deployment is a Container fronted by a Worker: an hourly Cron Trigger runs
 `cyris run --if-due` plus `promote-sync` and the instance exits, while the triage UI
-wakes on request and sleeps again. Digest hours live in D1, so changing them does not
-need a rebuild. Deploy steps, the secret list and auth are in
+wakes on request and sleeps again. State is D1 and the digest is published to Pages.
+Digest hours and the LLM provider live in D1, so changing either is a write on
+`/settings`, not a rebuild. Deploy steps, the secret list and auth are in
 [`workers/app/README.md`](workers/app/README.md).
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris)
@@ -151,24 +161,34 @@ is optional: [`workers/rss/`](workers/rss/README.md) (feed buffer),
 fresh one, and a fresh one has an empty `sources` table — the Worker then falls back to
 the feed list bundled in `src/feeds.json` and buffers feeds you never chose.
 
-The same image runs locally with `docker compose up -d`, which is the development path
-only: two schedulers publishing to one Pages project is the failure mode.
+**Do not leave a local install running against the same Pages project.** Two schedulers
+publishing one archive is the failure mode; `docker compose down` before you cut over.
 
-## The CLI, and when you reach for it
+### Moving from local to Cloudflare
 
-The deployment already runs this CLI: the hourly tick is `cyris run --if-due` followed
-by `cyris promote-sync` inside the container, and the triage UI is `cyris triage-ui`
-behind the Worker. None of that is yours to type.
+`cyris store migrate` copies the JSON store into D1 without overwriting anything, and
+`cyris store diff` compares them article by article before you switch. Then flip
+`[store] backend` to `"d1"` and `cyris sources push` to fill the source table. **Pick
+one backend** — they are alternatives, never a pair; running both splits decisions that
+`INSERT OR IGNORE` cannot heal.
 
-What a local clone is for is the part that has no UI. Every command reaches D1 over
-REST, so an `.env` holding the deployment's database id and Cloudflare token is the
-whole setup — nothing has to run next to the data:
+## The CLI
+
+**On a local install, the CLI is the whole application.** `cyris run` is the pipeline,
+`cyris triage-ui` is the triage deck, `cyris articles ...` is how the store is managed.
+`cyris --help` lists everything.
+
+**On a Cloudflare install, most of it is not yours to type.** The container already runs
+`cyris run --if-due`, `cyris promote-sync` and `cyris triage-ui`, and `/settings` covers
+the provider, the digest hours and editing one source. What is left is the work that has
+no UI — and it runs from a clone anywhere, because every command reaches D1 over REST:
+an `.env` with the deployment's database id and Cloudflare token is the whole setup.
 
 ```
 cyris doctor                  Before the first run, and after any config change: exits
                               non-zero on anything that would break a run
-cyris store migrate|diff      One-time move of the JSON store into D1, and the
-                              comparison to run before you trust it
+cyris store migrate|diff      The move into D1, and the comparison to run before you
+                              trust it
 cyris sources push|list       Make D1 match sources.yaml, removals included; show what
                               it serves. /settings edits one source, this replaces all
 cyris articles list|accept|   Bulk work on the store, which the swipe UI is too slow
@@ -178,11 +198,6 @@ cyris embed-compare           or judge it with both embedding providers, before
 cyris vote-sim                switching; vote-sim previews what similarity would
                               suppress before you enable it
 ```
-
-Without Cloudflare at all, `[store] backend = "json"` plus `cyris run` writes the
-digest to disk — the same path the tests and the development loop take.
-
-`cyris --help` lists everything.
 
 ## How sources are processed
 
