@@ -93,7 +93,7 @@ def run(
             return
         period = due
 
-    deps = build_deps(cfg, on_progress=typer.echo)
+    deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run)
     options = RunOptions(period=period, dry_run=dry_run, force=force)
     report = asyncio.run(run_digest(deps, options))
     if report.rendered:

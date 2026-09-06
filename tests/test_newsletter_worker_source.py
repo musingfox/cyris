@@ -243,3 +243,32 @@ async def test_malformed_item_missing_id_does_not_crash_batch_acks_goods():
     assert articles[0].title == "Weekly #1"
     assert articles[1].title == "Weekly #2"
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:good1", "nl:good2"]}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_preview_pulls_without_acking():
+    """A dry run must leave the queue where it found it.
+
+    `run_digest` skips `store.save` when previewing, so an acked issue would be
+    deleted from KV having been stored nowhere — the one loss no later run can
+    undo.
+    """
+    item = {
+        "id": "nl:abc",
+        "from": "list@benedictevans.com",
+        "subject": "Weekly",
+        "html": "<p>no links here</p>",
+        "text": "no links",
+        "date": "2026-07-13T00:00:00Z",
+    }
+    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
+
+    src = CloudflareNewsletterSource(WORKER, "tok", ack=False)
+    after, before = _now()
+    articles = await src.fetch_articles(after, before, _source())
+
+    # The preview still sees what the run would fetch — only the delete is off.
+    assert len(articles) == 1
+    assert not ack.called
