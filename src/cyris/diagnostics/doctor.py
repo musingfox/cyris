@@ -352,6 +352,24 @@ def _check_publish_token(cfg: Config) -> list[Check]:
     ]
 
 
+def _check_output_sink(cfg: Config) -> Check:
+    """Does the digest reach anywhere a person can read it?
+
+    A run with neither sink still fetches, scores, summarizes and reports
+    `status: ok` — and leaves nothing but store rows. Nothing downstream fails,
+    which is why this belongs here: it is the failure a run cannot report.
+    """
+    if cfg.app.html_output.enabled or cfg.app.promote.publish_enabled:
+        return Check("digest output", "ok", "the digest is written where it can be read")
+    return Check(
+        "digest output",
+        "fail",
+        "nowhere — the run would finish ok and leave no digest",
+        "Set [html_output] enabled = true for a local file, "
+        "or [promote] publish_enabled = true to publish to Pages.",
+    )
+
+
 def _check_notifications(cfg: Config) -> Check:
     if cfg.app.general.notify.discord_webhook_url:
         return Check("discord", "ok", "webhook configured")
@@ -376,5 +394,6 @@ async def run_checks(cfg: Config, config_path: Path | None = None) -> list[Check
     ]
     checks.extend(await _check_workers(cfg))
     checks.extend(_check_publish_token(cfg))
+    checks.append(_check_output_sink(cfg))
     checks.append(_check_notifications(cfg))
     return checks
