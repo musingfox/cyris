@@ -123,8 +123,12 @@ def promote_sync(
 
     deps = build_deps(cfg, on_progress=typer.echo)
     if deps.sync_promotions is None:
+        # The vote Worker is optional, and this command is the last one in the
+        # container's `run` role — so its exit code is the tick's. Not having
+        # deployed one is a deployment shape, the way an hour that is not a
+        # digest hour is a normal outcome of `run --if-due`, not a failure.
         typer.echo("Promotion sync not configured (set promote.worker_url + token).")
-        raise typer.Exit(1)
+        return
 
     count = deps.sync_promotions()
     typer.echo(f"Synced {count} digest vote(s).")
