@@ -359,14 +359,18 @@ def _check_output_sink(cfg: Config) -> Check:
     `status: ok` — and leaves nothing but store rows. Nothing downstream fails,
     which is why this belongs here: it is the failure a run cannot report.
     """
-    if cfg.app.html_output.enabled or cfg.app.promote.publish_enabled:
-        return Check("digest output", "ok", "the digest is written where it can be read")
+    if cfg.app.html_output.enabled:
+        where = "published to Pages" if cfg.app.promote.publish_enabled else "written locally"
+        return Check("digest output", "ok", where)
+    # Not an either/or: `build_deps` constructs the publisher *inside* the
+    # `html_output.enabled` branch, and `run_digest` gates the whole output block
+    # on the writer existing. `publish_enabled` alone publishes nothing.
     return Check(
         "digest output",
         "fail",
         "nowhere — the run would finish ok and leave no digest",
-        "Set [html_output] enabled = true for a local file, "
-        "or [promote] publish_enabled = true to publish to Pages.",
+        "Set [html_output] enabled = true. Publishing is built on top of it, so "
+        "[promote] publish_enabled has no effect while it is false.",
     )
 
 

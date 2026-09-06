@@ -374,10 +374,25 @@ async def test_a_run_with_nowhere_to_put_the_digest_is_a_failure(tmp_path: Path)
     assert "html_output" in check.fix and "publish_enabled" in check.fix
 
 
-async def test_publishing_alone_is_enough(tmp_path: Path) -> None:
-    """The deployed container writes no local file and is not misconfigured."""
+async def test_publishing_alone_is_not_a_sink(tmp_path: Path) -> None:
+    """`build_deps` builds the publisher inside the `html_output.enabled` branch,
+    so publish_enabled on its own publishes nothing — the check has to say so
+    rather than report a sink that does not exist."""
     cfg = _config(tmp_path)
     cfg.app.html_output.enabled = False
     cfg.app.promote.publish_enabled = True
 
-    assert _by_name(await doctor.run_checks(cfg), "digest output").status == "ok"
+    check = _by_name(await doctor.run_checks(cfg), "digest output")
+
+    assert check.status == "fail"
+    assert "no effect" in check.fix
+
+
+async def test_publishing_is_named_when_it_is_on(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.promote.publish_enabled = True
+
+    check = _by_name(await doctor.run_checks(cfg), "digest output")
+
+    assert check.status == "ok"
+    assert "Pages" in check.detail
