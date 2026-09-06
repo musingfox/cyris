@@ -259,6 +259,14 @@ copy overwrites instead of duplicating. `cyris` pulls with `GET /newsletters`, m
 to a source via that source's `email_match`, and then `POST /ack` **deletes** what it processed.
 Unmatched senders and private replies are ACKed without ingesting, so they cannot pile up.
 
+**A preview must not drain a queue.** Because this edge and the vote sync consume rather than
+read, `--dry-run` is decided in `bootstrap.build_deps`, not inside `run_digest`: the preview gets
+a newsletter source constructed with `ack=False` and no `sync_promotions` at all. Until
+2026-09-06 it got neither, so a preview against production deleted the issues it had just
+declined to store, and stamped vote verdicts on their way to draining the vote queue. Skipping
+the writes downstream does not undo an upstream delete — a source that takes has to be wired
+differently, which is why the decision lives at the composition root.
+
 | | RSS | Email |
 |---|---|---|
 | Shape | buffer | queue |

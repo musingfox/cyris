@@ -24,9 +24,12 @@ TIMEOUT_SECONDS = 15
 class CloudflareNewsletterSource:
     """Pull newsletters queued in the Cloudflare Email Worker's KV."""
 
-    def __init__(self, worker_url: str, token: str) -> None:
+    def __init__(self, worker_url: str, token: str, ack: bool = True) -> None:
         self._worker_url = worker_url.rstrip("/")
         self._token = token
+        # A pull queue deletes what it hands over. `ack=False` is how a preview
+        # reads the queue without emptying it; `bootstrap` sets it for a dry run.
+        self._ack_enabled = ack
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"}
@@ -137,6 +140,9 @@ class CloudflareNewsletterSource:
 
     def _ack(self, ids: list[str]) -> None:
         if not ids:
+            return
+        if not self._ack_enabled:
+            logger.info("Preview: leaving %d newsletter(s) queued", len(ids))
             return
         try:
             resp = httpx.post(

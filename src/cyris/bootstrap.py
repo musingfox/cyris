@@ -196,7 +196,18 @@ class Deps:
     embedding_threshold: float | None = None
 
 
-def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) -> Deps:
+def build_deps(
+    cfg: Config, on_progress: Callable[[str], None] | None = None, dry_run: bool = False
+) -> Deps:
+    """Wire the run's IO. `dry_run` decides it here, not deeper.
+
+    A preview skips the writes inside `run_digest`, but two of the edges wired
+    below consume rather than read: the newsletter queue deletes what it hands
+    over, and a vote sync stamps human verdicts before draining its own queue.
+    Neither is undone by not saving afterwards, so a preview must be handed
+    sources that do not consume — which is a wiring decision, and this is where
+    every other one lives.
+    """
     # Spend is logged beside the articles: the same D1 when D1 is on, else usage.jsonl.
     d1 = build_d1_client(cfg)
     store = build_store(cfg, d1)
@@ -219,7 +230,11 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
         from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 
         fetch_sources.append(
-            CloudflareNewsletterSource(cfg.app.newsletter.worker_url, cfg.app.newsletter.token)
+            CloudflareNewsletterSource(
+                cfg.app.newsletter.worker_url,
+                cfg.app.newsletter.token,
+                ack=not dry_run,
+            )
         )
 
     # RSS comes from the Worker's hourly D1 buffer. Without it, direct polling is
@@ -270,7 +285,7 @@ def build_deps(cfg: Config, on_progress: Callable[[str], None] | None = None) ->
                 )
 
     sync = None
-    if cfg.app.promote.worker_url and cfg.app.promote.token:
+    if not dry_run and cfg.app.promote.worker_url and cfg.app.promote.token:
         from cyris.adapters.promotions import sync_promotions
 
         sync = partial(
