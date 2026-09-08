@@ -619,3 +619,92 @@ class TestDeploymentProvenance:
         check = _by_name(checks, "deployment image")
         assert check.status == "skip"
         assert "--deployment" in check.fix
+
+
+def _discord_transport(responses: list, seen: list) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return responses.pop(0)
+
+    return httpx.MockTransport(handler)
+
+
+async def test_a_url_that_is_not_a_webhook_is_rejected_without_a_request() -> None:
+    seen: list[str] = []
+
+    check = await doctor.probe_discord(
+        "https://example.com/foo", transport=_discord_transport([], seen)
+    )
+
+    assert check.name == "discord probe"
+    assert check.status == "fail"
+    assert check.detail == "not a Discord webhook URL"
+    assert seen == []
+
+
+async def test_a_live_webhook_is_named_back_to_the_reader() -> None:
+    seen: list[str] = []
+    responses = [httpx.Response(200, json={"id": "123", "name": "digest-bot"})]
+
+    check = await doctor.probe_discord(
+        "https://discord.com/api/webhooks/123/probe-live",
+        transport=_discord_transport(responses, seen),
+    )
+
+    assert check.status == "ok"
+    assert "digest-bot" in check.detail
+
+
+async def test_a_wrong_token_is_reported_with_its_status() -> None:
+    seen: list[str] = []
+    responses = [httpx.Response(401, json={"message": "Invalid Webhook Token"})]
+
+    check = await doctor.probe_discord(
+        "https://discord.com/api/webhooks/123/probe-bad-token",
+        transport=_discord_transport(responses, seen),
+    )
+
+    assert check.status == "fail"
+    assert "401" in check.detail
+
+
+async def test_a_deleted_webhook_is_reported_with_its_status() -> None:
+    seen: list[str] = []
+    responses = [httpx.Response(404, json={"message": "Unknown Webhook"})]
+
+    check = await doctor.probe_discord(
+        "https://discord.com/api/webhooks/123/probe-deleted",
+        transport=_discord_transport(responses, seen),
+    )
+
+    assert check.status == "fail"
+    assert "404" in check.detail
+
+
+async def test_being_rate_limited_says_so_in_discords_own_words() -> None:
+    """The body carries the reason, so it is read before the status is judged —
+    a 429 with no explanation reads as a broken webhook, which it is not."""
+    seen: list[str] = []
+    responses = [httpx.Response(429, json={"message": "You are being rate limited."})]
+
+    check = await doctor.probe_discord(
+        "https://discord.com/api/webhooks/123/probe-limited",
+        transport=_discord_transport(responses, seen),
+    )
+
+    assert check.status == "fail"
+    assert "You are being rate limited." in check.detail
+    assert len(seen) == 1
+
+
+async def test_an_unreachable_discord_is_a_failed_check_not_an_exception() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom")
+
+    check = await doctor.probe_discord(
+        "https://discord.com/api/webhooks/123/probe-offline",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert check.status == "fail"
+    assert "boom" in check.detail

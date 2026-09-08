@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import httpx
+
 from cyris.config import Config
 from cyris.domain.models import Tier
 
@@ -167,6 +169,56 @@ async def probe_llm(llm_cfg) -> Check:
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
         return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}")
     return Check("llm probe", "ok", f"{llm_cfg.provider} · {llm.model} answered")
+
+
+DISCORD_PROBE_TIMEOUT_SECONDS = 10
+
+
+async def probe_discord(url: str, transport: httpx.AsyncBaseTransport | None = None) -> Check:
+    """Ask Discord whether this webhook exists, without posting to the channel.
+
+    A GET on a webhook URL returns the webhook's own metadata; only a POST writes
+    a message. So the only way to tell a live webhook from a deleted one is worth
+    nothing if the check itself spams the channel — this is what a writer should
+    call before storing a URL. It never raises: a probe that throws is a worse
+    diagnostic than one that reports.
+    """
+    from cyris.adapters.notify import parse_discord_webhook_url
+
+    if parse_discord_webhook_url(url) is None:
+        return Check(
+            "discord probe",
+            "fail",
+            "not a Discord webhook URL",
+            "Copy the URL from the channel's Integrations -> Webhooks page.",
+        )
+
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, timeout=DISCORD_PROBE_TIMEOUT_SECONDS
+        ) as client:
+            resp = await client.get(url)
+        # Read the body before judging the status: Discord puts its own words in
+        # there, and they say more than the code does. A 4xx is never retried —
+        # the URL is wrong, and asking again only takes longer to say so.
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {"message": resp.text[:200]}
+    except Exception as e:  # noqa: BLE001 - the transport's own words are the answer
+        return Check("discord probe", "fail", f"could not reach Discord: {e}")
+
+    if resp.status_code == httpx.codes.OK:
+        name = body.get("name") or body.get("id") or "an unnamed webhook"
+        return Check("discord probe", "ok", f"Discord knows it as {name}")
+
+    message = body.get("message") or "no reason given"
+    return Check(
+        "discord probe",
+        "fail",
+        f"Discord answered {resp.status_code}: {message}",
+        "Check the webhook still exists on the channel's Integrations page.",
+    )
 
 
 def _check_paths(cfg: Config) -> list[Check]:
