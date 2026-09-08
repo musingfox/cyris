@@ -1,6 +1,6 @@
 """Tests for notification senders."""
 
-from cyris.adapters.notify import build_discord_embeds
+from cyris.adapters.notify import build_discord_embeds, mask_discord_webhook_url
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
 
@@ -324,3 +324,21 @@ class TestDiscordEmbeds:
         )
         desc = build_discord_embeds(content)[-1]["description"]
         assert "no canonical link" not in desc
+
+
+class TestMaskDiscordWebhookUrl:
+    def test_replaces_token_keeps_id(self):
+        assert (
+            mask_discord_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN")
+            == "https://discord.com/api/webhooks/123/••••"
+        )
+
+    def test_empty_stays_empty(self):
+        assert mask_discord_webhook_url("") == ""
+
+    def test_unrecognised_is_never_echoed(self):
+        assert mask_discord_webhook_url("garbage") == "••••"
+
+    def test_token_is_not_in_result(self):
+        masked = mask_discord_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN")
+        assert "abcTOKEN" not in masked

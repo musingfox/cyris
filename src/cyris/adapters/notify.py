@@ -1,12 +1,26 @@
 """Notification sender: Discord webhook."""
 
 import logging
+import re
 
 import httpx
 
 from cyris.domain.models import DigestContent, DigestSection
 
 logger = logging.getLogger(__name__)
+
+_DISCORD_WEBHOOK = re.compile(
+    r"^https://(?:discord|discordapp)\.com/api(?:/v\d+)?/webhooks/([^/]+)/([^/]+)$"
+)
+
+
+def mask_discord_webhook_url(url: str) -> str:
+    """Render a webhook URL with its posting token replaced."""
+    if not url:
+        return ""
+    if not _DISCORD_WEBHOOK.match(url):
+        return "••••"
+    return f"{url.rsplit('/', 1)[0]}/••••"
 
 
 def _render_section_embed(section: DigestSection) -> str:
