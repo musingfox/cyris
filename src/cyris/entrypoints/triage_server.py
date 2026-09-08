@@ -465,6 +465,7 @@ class TriageServer:
             {
                 "ok": True,
                 "discord_webhook_url": mask_discord_webhook_url(url),
+                "detail": probe.detail,
                 "note": "Saved. The next digest run picks this up.",
             }
         )

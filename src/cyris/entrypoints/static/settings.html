@@ -109,8 +109,10 @@
     <fieldset>
       <legend>Discord</legend>
       <input type="text" id="discord-webhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
-      <p class="hint">Saved only after Discord confirms the webhook exists. When empty here,
-        a run still uses <code>CYRIS_DISCORD_WEBHOOK_URL</code> if that is set.</p>
+      <p class="hint">Saved only after Discord confirms the webhook exists. A webhook already
+        stored shows with its token masked; to change it, paste the whole URL again — the
+        masked value cannot be resubmitted. When empty here, a run still uses
+        <code>CYRIS_DISCORD_WEBHOOK_URL</code> if that is set.</p>
     </fieldset>
 
     <button type="submit" id="save-notify">Save</button>
@@ -293,7 +295,7 @@ $("notify-form").addEventListener("submit", async (e) => {
     if (data.ok) {
       state.notify_webhook = data.discord_webhook_url;
       $("discord-webhook").value = data.discord_webhook_url;
-      show("ok", `Webhook saved. ${data.note}`, "notify-result");
+      show("ok", `${data.detail} ${data.note}`, "notify-result");
     } else {
       show("err", data.error || `HTTP ${res.status}`, "notify-result");
     }

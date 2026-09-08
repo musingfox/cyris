@@ -305,6 +305,10 @@ class TestNotifyWebhookWrite:
 
         assert res.status == 200 and body["ok"] is True
         assert body["discord_webhook_url"] == "https://discord.com/api/webhooks/1/••••"
+        # The probe's own sentence rides back: it names the webhook Discord
+        # answered for, which is the only confirmation that the URL reached the
+        # channel the reader meant.
+        assert body["detail"] == "Discord knows it as test"
         assert settings.stored == {
             "notify.discord_webhook_url": "https://discord.com/api/webhooks/1/tok"
         }

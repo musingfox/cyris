@@ -154,7 +154,13 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
         # the file, while this one propagates by design, so an empty D1 used to
         # abort the CLI before any check could name the cause. Idempotent, one POST.
         apply_schema(d1)
-        cfg.settings_from_d1 = apply_to(cfg, settings.all())
+        stored = settings.all()
+        applied = apply_to(cfg, stored)
+        # A row holding an empty value overrides nothing — the field falls back to
+        # the file, or to the env var a validator fills it from. Reporting it as a
+        # D1 override would send an operator to /settings to change a value that
+        # is really pinned somewhere else.
+        cfg.settings_from_d1 = [key for key in applied if stored.get(key) not in ("", None)]
     return cfg
 
 
