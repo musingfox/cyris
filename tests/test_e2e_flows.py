@@ -57,7 +57,7 @@ timezone = "Asia/Taipei"
 digest_window_hours = 12
 digest_schedule = ["08:00", "20:00"]
 
-[general.notify]
+[notify]
 discord_webhook_url = ""
 
 [llm_provider]

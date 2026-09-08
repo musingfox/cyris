@@ -82,7 +82,6 @@ class GeneralConfig(BaseModel):
     digest_schedule: list[str] = Field(default_factory=lambda: ["08:00", "20:00"])
     timezone: str = "Asia/Taipei"
     digest_window_hours: int = Field(default=24, ge=1, le=168)
-    notify: NotifyConfig = Field(default_factory=NotifyConfig)
 
 
 class LLMProviderConfig(BaseModel):
@@ -282,6 +281,7 @@ class RssConfig(WorkerConfig):
 
 class AppConfig(BaseModel):
     general: GeneralConfig = Field(default_factory=GeneralConfig)
+    notify: NotifyConfig = Field(default_factory=NotifyConfig)
     llm_provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     digest: DigestConfig = Field(default_factory=DigestConfig)
     agent_vault: AgentVaultConfig = Field(default_factory=AgentVaultConfig)

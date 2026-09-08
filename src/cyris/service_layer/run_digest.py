@@ -85,7 +85,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     progress = deps.on_progress
 
     tz = cfg.app.general.timezone
-    notify = cfg.app.general.notify
+    notify = cfg.app.notify
     now = now_in_timezone(tz)
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
 

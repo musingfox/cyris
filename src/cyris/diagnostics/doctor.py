@@ -509,7 +509,7 @@ def _check_output_sink(cfg: Config) -> Check:
 
 
 def _check_notifications(cfg: Config) -> Check:
-    if cfg.app.general.notify.discord_webhook_url:
+    if cfg.app.notify.discord_webhook_url:
         return Check("discord", "ok", "webhook configured")
     return Check(
         "discord",

@@ -6,7 +6,7 @@ digest_schedule = ["08:00", "20:00"]   # local clock times to run the digest
 timezone = "Asia/Taipei"
 digest_window_hours = 24
 
-[general.notify]
+[notify]
 discord_webhook_url = ""                # optional; falls back to CYRIS_DISCORD_WEBHOOK_URL
 
 [llm_provider]
