@@ -14,11 +14,21 @@ _DISCORD_WEBHOOK = re.compile(
 )
 
 
+def parse_discord_webhook_url(url: str) -> tuple[str, str] | None:
+    """Return (id, token) if url is a Discord webhook, else None. No network."""
+    if not url:
+        return None
+    match = _DISCORD_WEBHOOK.match(url)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
 def mask_discord_webhook_url(url: str) -> str:
     """Render a webhook URL with its posting token replaced."""
     if not url:
         return ""
-    if not _DISCORD_WEBHOOK.match(url):
+    if parse_discord_webhook_url(url) is None:
         return "••••"
     return f"{url.rsplit('/', 1)[0]}/••••"
 

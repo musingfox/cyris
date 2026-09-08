@@ -1,6 +1,10 @@
 """Tests for notification senders."""
 
-from cyris.adapters.notify import build_discord_embeds, mask_discord_webhook_url
+from cyris.adapters.notify import (
+    build_discord_embeds,
+    mask_discord_webhook_url,
+    parse_discord_webhook_url,
+)
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
 
@@ -342,3 +346,29 @@ class TestMaskDiscordWebhookUrl:
     def test_token_is_not_in_result(self):
         masked = mask_discord_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN")
         assert "abcTOKEN" not in masked
+
+
+class TestParseDiscordWebhookUrl:
+    def test_standard_webhook(self):
+        assert parse_discord_webhook_url(
+            "https://discord.com/api/webhooks/123/abcTOKEN"
+        ) == ("123", "abcTOKEN")
+
+    def test_api_versioned_webhook(self):
+        assert parse_discord_webhook_url(
+            "https://discord.com/api/v10/webhooks/123/abcTOKEN"
+        ) == ("123", "abcTOKEN")
+
+    def test_discordapp_host(self):
+        assert parse_discord_webhook_url(
+            "https://discordapp.com/api/webhooks/123/abcTOKEN"
+        ) == ("123", "abcTOKEN")
+
+    def test_foreign_host_is_rejected(self):
+        assert parse_discord_webhook_url("https://example.com/api/webhooks/123/abc") is None
+
+    def test_missing_token_is_rejected(self):
+        assert parse_discord_webhook_url("https://discord.com/api/webhooks/123") is None
+
+    def test_empty_is_rejected(self):
+        assert parse_discord_webhook_url("") is None
