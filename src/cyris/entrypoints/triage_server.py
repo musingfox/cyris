@@ -98,6 +98,7 @@ class TriageServer:
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
         self._app.router.add_post("/api/settings/digest", self._handle_post_digest)
+        self._app.router.add_post("/api/settings/notify", self._handle_post_notify)
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
@@ -421,6 +422,51 @@ class TriageServer:
         logger.info("Featured cap set to %d", max_featured)
         return web.json_response(
             {"ok": True, "max_featured": max_featured, "note": "Effective next digest."}
+        )
+
+    async def _handle_post_notify(self, request: web.Request) -> web.Response:
+        """Store a Discord webhook only after Discord confirms it exists."""
+        from cyris.adapters.notify import mask_discord_webhook_url
+        from cyris.config import DISCORD_WEBHOOK_ENV_VAR
+        from cyris.diagnostics.doctor import probe_discord
+
+        if self._settings is None:
+            return web.json_response(
+                {"ok": False, "error": "this deployment has no settings store to write"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        url = (body.get("discord_webhook_url") or "").strip()
+        if not url:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": (f"paste a Discord webhook URL, or set {DISCORD_WEBHOOK_ENV_VAR}"),
+                },
+                status=400,
+            )
+
+        probe = await probe_discord(url)
+        if probe.status != "ok":
+            return web.json_response({"ok": False, "error": probe.detail}, status=400)
+
+        try:
+            self._settings.set({"notify.discord_webhook_url": url})
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        self._notify_webhook = url
+        logger.info("Discord webhook saved")
+        return web.json_response(
+            {
+                "ok": True,
+                "discord_webhook_url": mask_discord_webhook_url(url),
+                "note": "Saved. The next digest run picks this up.",
+            }
         )
 
     async def _handle_get_sources(self, request: web.Request) -> web.Response:

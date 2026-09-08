@@ -284,3 +284,134 @@ class TestNotifyWebhookMaskedInSettingsPayload:
         await client.close()
 
         assert data["notify_webhook"] == ""
+
+
+class TestNotifyWebhookWrite:
+    async def test_a_live_webhook_is_stored_and_returned_masked(self, settings, monkeypatch):
+        async def ok(url, transport=None):
+            from cyris.diagnostics.doctor import Check
+
+            return Check("discord probe", "ok", "Discord knows it as test")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", ok)
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/notify",
+            json={"discord_webhook_url": "https://discord.com/api/webhooks/1/tok"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200 and body["ok"] is True
+        assert body["discord_webhook_url"] == "https://discord.com/api/webhooks/1/••••"
+        assert settings.stored == {
+            "notify.discord_webhook_url": "https://discord.com/api/webhooks/1/tok"
+        }
+
+    async def test_a_webhook_discord_refuses_is_never_stored(self, settings, monkeypatch):
+        async def nope(url, transport=None):
+            from cyris.diagnostics.doctor import Check
+
+            return Check("discord probe", "fail", "404 Unknown Webhook")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", nope)
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/notify",
+            json={"discord_webhook_url": "https://discord.com/api/webhooks/1/tok"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "404 Unknown Webhook"
+        assert settings.stored == {}
+
+    async def test_whitespace_alone_is_refused_without_asking_discord(self, settings, monkeypatch):
+        called = []
+
+        async def probe(url, transport=None):
+            called.append(url)
+            from cyris.diagnostics.doctor import Check
+
+            return Check("discord probe", "ok", "should not run")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", probe)
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/notify", json={"discord_webhook_url": "   "})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "CYRIS_DISCORD_WEBHOOK_URL" in body["error"]
+        assert settings.stored == {}
+        assert called == []
+
+    async def test_without_a_settings_store_the_page_refuses_to_save(self):
+        client = await _client(None)
+
+        res = await client.post(
+            "/api/settings/notify",
+            json={"discord_webhook_url": "https://discord.com/api/webhooks/1/tok"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 409
+        assert body["error"] == "this deployment has no settings store to write"
+
+    async def test_a_body_that_is_not_json_is_refused(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/notify", data="not-json", headers={"Content-Type": "text/plain"}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "invalid JSON"
+
+    async def test_a_store_failure_is_returned_as_500(self, monkeypatch):
+        class Boom:
+            def set(self, values):
+                raise RuntimeError("d1 down")
+
+        async def ok(url, transport=None):
+            from cyris.diagnostics.doctor import Check
+
+            return Check("discord probe", "ok", "Discord knows it as test")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", ok)
+        client = await _client(Boom())
+
+        res = await client.post(
+            "/api/settings/notify",
+            json={"discord_webhook_url": "https://discord.com/api/webhooks/1/tok"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 500
+        assert "d1 down" in body["error"]
+
+    async def test_a_successful_save_is_what_the_next_get_reports(self, settings, monkeypatch):
+        async def ok(url, transport=None):
+            from cyris.diagnostics.doctor import Check
+
+            return Check("discord probe", "ok", "Discord knows it as test")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", ok)
+        client = await _client(settings)
+
+        await client.post(
+            "/api/settings/notify",
+            json={"discord_webhook_url": "https://discord.com/api/webhooks/1/tok"},
+        )
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["notify_webhook"] == "https://discord.com/api/webhooks/1/••••"
