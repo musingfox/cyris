@@ -69,7 +69,15 @@ def test_an_empty_settings_row_is_not_reported_as_an_override(tmp_path, monkeypa
 
     db = SqliteD1(with_schema=False)
     apply_schema(db)
-    D1Settings(db).set({"notify.discord_webhook_url": "", "digest.max_featured": 4})
+    D1Settings(db).set(
+        {
+            "notify.discord_webhook_url": "",
+            "digest.max_featured": 4,
+            # "" here means "the provider's default", not "unset" — it survives
+            # validation, so it stays an override even though it is falsy.
+            "llm_provider.model": "",
+        }
+    )
     monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
     monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
@@ -80,7 +88,7 @@ def test_an_empty_settings_row_is_not_reported_as_an_override(tmp_path, monkeypa
 
     cfg = bootstrap.load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 
-    assert cfg.settings_from_d1 == ["digest.max_featured"]
+    assert sorted(cfg.settings_from_d1) == ["digest.max_featured", "llm_provider.model"]
     assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/9/env"
 
 

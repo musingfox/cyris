@@ -156,12 +156,23 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
         apply_schema(d1)
         stored = settings.all()
         applied = apply_to(cfg, stored)
-        # A row holding an empty value overrides nothing — the field falls back to
-        # the file, or to the env var a validator fills it from. Reporting it as a
-        # D1 override would send an operator to /settings to change a value that
-        # is really pinned somewhere else.
-        cfg.settings_from_d1 = [key for key in applied if stored.get(key) not in ("", None)]
+        cfg.settings_from_d1 = [key for key in applied if _d1_value_survived(cfg, key, stored[key])]
     return cfg
+
+
+def _d1_value_survived(cfg: Config, key: str, stored: Any) -> bool:
+    """Did the D1 row actually decide this field, or did a validator overwrite it?
+
+    `apply_to` rebuilds each table through `model_validate`, so a validator can
+    replace what D1 stored — `notify.discord_webhook_url` is the case that
+    matters: an empty row is refilled from the env var, and calling that a D1
+    override sends an operator to /settings to change a value pinned by a Worker
+    secret. Comparing the stored value against what survived answers this without
+    a per-key rule: an empty `llm_provider.model` survives as empty and is still
+    an override, because "" there means "the provider's default", not "unset".
+    """
+    table, field = key.split(".", 1)
+    return getattr(getattr(cfg.app, table), field) == stored
 
 
 def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
