@@ -26,13 +26,16 @@ class FakeStore:
     """The settings routes never touch the store."""
 
 
-async def _client(settings=None, llm_provider=None, schedule=None, max_featured=5):
+async def _client(
+    settings=None, llm_provider=None, schedule=None, max_featured=5, notify_webhook=""
+):
     server = TriageServer(
         FakeStore(),
         settings=settings,
         llm_provider=llm_provider,
         schedule=schedule,
         max_featured=max_featured,
+        notify_webhook=notify_webhook,
     )
     client = TestClient(TestServer(server._app))
     await client.start_server()
@@ -256,3 +259,28 @@ class TestNotifySettingsForm:
         await client.close()
 
         assert "notify-result" in body
+
+
+class TestNotifyWebhookMaskedInSettingsPayload:
+    async def test_the_current_webhook_is_returned_with_its_token_replaced(self, settings):
+        client = await _client(
+            settings, notify_webhook="https://discord.com/api/webhooks/123/abcTOKEN"
+        )
+
+        res = await client.get("/api/settings")
+        text = await res.text()
+        await client.close()
+
+        import json
+
+        body = json.loads(text)
+        assert body["notify_webhook"] == "https://discord.com/api/webhooks/123/••••"
+        assert "abcTOKEN" not in text
+
+    async def test_an_empty_webhook_is_reported_as_empty(self, settings):
+        client = await _client(settings)
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["notify_webhook"] == ""

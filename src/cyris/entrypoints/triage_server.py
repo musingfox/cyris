@@ -66,6 +66,7 @@ class TriageServer:
         sources: dict[str, SourceConfig] | None = None,
         sources_origin: str = "",
         source_store=None,
+        notify_webhook: str = "",
     ) -> None:
         self._store = store
         self._host = host
@@ -85,6 +86,7 @@ class TriageServer:
         # The write surface (§7 #15). Absent on a `backend = "json"` deployment,
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
+        self._notify_webhook = notify_webhook
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
@@ -266,6 +268,7 @@ class TriageServer:
 
     async def _handle_get_settings(self, request: web.Request) -> web.Response:
         """What is configured now, and which providers this machine could switch to."""
+        from cyris.adapters.notify import mask_discord_webhook_url
         from cyris.bootstrap import default_models
         from cyris.config import LLMProviderConfig
 
@@ -294,6 +297,7 @@ class TriageServer:
                 "providers": providers,
                 "schedule": self._schedule,
                 "max_featured": self._max_featured,
+                "notify_webhook": mask_discord_webhook_url(self._notify_webhook),
                 "writable": self._settings is not None,
             }
         )

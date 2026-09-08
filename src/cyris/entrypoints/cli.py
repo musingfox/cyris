@@ -571,6 +571,7 @@ def triage_ui(
             llm_provider=cfg.app.llm_provider,
             schedule=cfg.app.general.digest_schedule,
             max_featured=cfg.app.digest.max_featured,
+            notify_webhook=cfg.app.notify.discord_webhook_url,
             sources=cfg.sources,
             sources_origin=cfg.sources_origin,
             source_store=D1SourceStore(d1) if d1 else None,
