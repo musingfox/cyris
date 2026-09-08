@@ -183,7 +183,15 @@ async def probe_discord(url: str, transport: httpx.AsyncBaseTransport | None = N
     call before storing a URL. It never raises: a probe that throws is a worse
     diagnostic than one that reports.
     """
-    from cyris.adapters.notify import parse_discord_webhook_url
+    from cyris.adapters.notify import WEBHOOK_MASK, parse_discord_webhook_url
+
+    if WEBHOOK_MASK[0] in url:
+        return Check(
+            "discord probe",
+            "fail",
+            "that is the masked value, not a webhook URL",
+            "A stored webhook is shown with its token hidden. Paste the whole URL again.",
+        )
 
     if parse_discord_webhook_url(url) is None:
         return Check(
@@ -204,6 +212,11 @@ async def probe_discord(url: str, transport: httpx.AsyncBaseTransport | None = N
         try:
             body = resp.json()
         except ValueError:
+            body = {"message": resp.text[:200]}
+        # A JSON array or bare string parses fine and then has no `.get` — an
+        # intercepting proxy is enough to produce one, and this function's whole
+        # promise is that it reports rather than throws.
+        if not isinstance(body, dict):
             body = {"message": resp.text[:200]}
     except Exception as e:  # noqa: BLE001 - the transport's own words are the answer
         return Check("discord probe", "fail", f"could not reach Discord: {e}")

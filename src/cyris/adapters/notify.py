@@ -13,6 +13,11 @@ _DISCORD_WEBHOOK = re.compile(
     r"^https://(?:discord|discordapp)\.com/api(?:/v\d+)?/webhooks/([^/]+)/([^/]+)$"
 )
 
+# What a masked token renders as. Named because two other modules have to
+# recognise it: the settings page prefills it, and the probe must refuse it
+# before spending a request on a token that was never real.
+WEBHOOK_MASK = "\u2022" * 4
+
 
 def parse_discord_webhook_url(url: str) -> tuple[str, str] | None:
     """Return (id, token) if url is a Discord webhook, else None. No network."""
@@ -29,8 +34,8 @@ def mask_discord_webhook_url(url: str) -> str:
     if not url:
         return ""
     if parse_discord_webhook_url(url) is None:
-        return "••••"
-    return f"{url.rsplit('/', 1)[0]}/••••"
+        return WEBHOOK_MASK
+    return f"{url.rsplit('/', 1)[0]}/{WEBHOOK_MASK}"
 
 
 def _render_section_embed(section: DigestSection) -> str:

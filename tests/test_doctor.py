@@ -642,6 +642,39 @@ async def test_a_url_that_is_not_a_webhook_is_rejected_without_a_request() -> No
     assert seen == []
 
 
+async def test_the_masked_value_is_refused_without_a_request() -> None:
+    """The settings page prefills the mask; saving it unedited must not cost a
+    round-trip to Discord only to be told the token is wrong."""
+    from cyris.adapters.notify import WEBHOOK_MASK
+
+    seen: list[str] = []
+
+    check = await doctor.probe_discord(
+        f"https://discord.com/api/webhooks/1/{WEBHOOK_MASK}",
+        transport=_discord_transport([], seen),
+    )
+
+    assert check.status == "fail"
+    assert check.detail == "that is the masked value, not a webhook URL"
+    assert seen == []
+
+
+async def test_a_json_body_that_is_not_an_object_is_reported_not_raised() -> None:
+    """An intercepting proxy answering with a JSON array is enough: `.get` on it
+    would throw, and a probe that throws is a worse diagnostic than one that
+    reports."""
+    seen: list[str] = []
+    responses = [httpx.Response(500, json=["upstream is unhappy"])]
+
+    check = await doctor.probe_discord(
+        "https://discord.com/api/webhooks/1/tok",
+        transport=_discord_transport(responses, seen),
+    )
+
+    assert check.status == "fail"
+    assert len(seen) == 1
+
+
 async def test_a_live_webhook_is_named_back_to_the_reader() -> None:
     seen: list[str] = []
     responses = [httpx.Response(200, json={"id": "123", "name": "digest-bot"})]
