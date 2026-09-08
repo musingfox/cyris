@@ -71,6 +71,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Discord webhook is set on `/settings` (D1), with `CYRIS_DISCORD_WEBHOOK_URL` as the fallback.
 - **Grade C is seven environment variables, down from twelve.**
   `CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name — the same
   string in `.env` twice, so `StoreConfig`'s fallback chain had never chosen its

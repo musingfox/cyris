@@ -96,7 +96,8 @@ for s in CYRIS_UI_TOKEN \
 done
 
 # Then choose the LLM provider on /settings — it is a D1 setting, not a secret,
-# and until it is set the digest publishes as plain excerpts.
+# and until it is set the digest publishes as plain excerpts. The Discord webhook
+# is the same: /settings is the home; CYRIS_DISCORD_WEBHOOK_URL is the fallback.
 
 bunx wrangler deploy --env-file /dev/null   # builds ./Dockerfile, pushes, deploys
 ```
