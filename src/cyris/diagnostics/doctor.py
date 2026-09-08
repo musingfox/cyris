@@ -268,14 +268,25 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
         import tomllib
 
         with open(config_path, "rb") as f:
-            tables = set(tomllib.load(f))
-        unknown = sorted(tables - set(AppConfig.model_fields))
+            loaded = tomllib.load(f)
+        unknown = [f"[{t}]" for t in sorted(set(loaded) - set(AppConfig.model_fields))]
+        # One level down as well. A table this build moved elsewhere — `notify`
+        # left `[general]` for the top level — stays nested under a table name
+        # that is still valid, so comparing only the top level reports green
+        # while the setting is silently dropped. That is the 2026-08-25 failure
+        # again, one nesting level lower.
+        for table in sorted(set(loaded) & set(AppConfig.model_fields)):
+            body = loaded[table]
+            fields = getattr(AppConfig.model_fields[table].annotation, "model_fields", None)
+            if not isinstance(body, dict) or fields is None:
+                continue
+            unknown += [f"[{table}] {key}" for key in sorted(set(body) - set(fields))]
         if unknown:
             checks.append(
                 Check(
                     "build",
                     "fail",
-                    f"this build ignores {', '.join('[' + t + ']' for t in unknown)}",
+                    f"this build ignores {', '.join(unknown)}",
                     "The config is newer than the code. Rebuild the image, or delete the keys.",
                 )
             )

@@ -789,11 +789,15 @@ async def test_no_webhook_points_at_the_settings_page_before_the_variable(
     assert check.fix.index("/settings") < check.fix.index("CYRIS_DISCORD_WEBHOOK_URL")
 
 
-async def test_a_config_left_on_the_old_stanza_is_a_skip_not_a_broken_build(
+async def test_a_config_left_on_the_old_stanza_fails_the_build_check(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """[general.notify] is a nested key, not a table, so the build check sees
-    nothing wrong — the webhook simply stops arriving, and `discord` says so."""
+    """A stanza this build moved must be loud, even nested one level down.
+
+    `[general.notify]` sits under a table name that is still valid, so a
+    top-level-only comparison reports green while the webhook silently stops
+    arriving — the 2026-08-25 failure the build check exists to prevent.
+    """
     monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(
@@ -812,7 +816,9 @@ async def test_a_config_left_on_the_old_stanza_is_a_skip_not_a_broken_build(
 
     checks = await doctor.run_checks(cfg, config_path)
 
-    assert _by_name(checks, "build").status == "ok"
+    build = _by_name(checks, "build")
+    assert build.status == "fail"
+    assert "[general] notify" in build.detail
     assert _by_name(checks, "discord").status == "skip"
 
 
