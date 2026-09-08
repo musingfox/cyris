@@ -84,3 +84,48 @@ def test_a_provider_from_d1_still_picks_up_its_api_key(monkeypatch):
     assert cfg.app.llm_provider.provider == "gemini"
     assert cfg.app.llm_provider.api_key == "gemini-key-from-env"
     cfg.validate_required_keys()
+
+
+def test_the_discord_webhook_is_writable_from_the_settings_page(settings):
+    settings.set({"notify.discord_webhook_url": "https://discord.com/api/webhooks/1/d1"})
+
+    assert settings.all() == {"notify.discord_webhook_url": "https://discord.com/api/webhooks/1/d1"}
+
+
+def test_a_misspelled_webhook_key_is_refused(settings):
+    with pytest.raises(ValueError, match="notify.discord_webhook_urls"):
+        settings.set({"notify.discord_webhook_urls": "x"})
+
+
+def test_a_stored_webhook_becomes_the_one_the_run_uses():
+    cfg = Config(app=AppConfig(), sources={})
+
+    applied = apply_to(cfg, {"notify.discord_webhook_url": "https://discord.com/api/webhooks/1/d1"})
+
+    assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/1/d1"
+    assert "notify.discord_webhook_url" in applied
+
+
+def test_the_stored_webhook_outranks_both_the_file_and_the_worker_secret(monkeypatch):
+    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/env")
+    cfg = Config(
+        app=AppConfig.model_validate(
+            {"notify": {"discord_webhook_url": "https://discord.com/api/webhooks/1/file"}}
+        ),
+        sources={},
+    )
+
+    apply_to(cfg, {"notify.discord_webhook_url": "https://discord.com/api/webhooks/1/d1"})
+
+    assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/1/d1"
+
+
+def test_an_empty_stored_webhook_does_not_switch_notifications_off(monkeypatch):
+    """Clearing the field on /settings falls back to the environment rather than
+    silencing the run: the env var is how a container is given the webhook."""
+    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/env")
+    cfg = Config(app=AppConfig(), sources={})
+
+    apply_to(cfg, {"notify.discord_webhook_url": ""})
+
+    assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/1/env"

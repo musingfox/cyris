@@ -30,6 +30,7 @@ WRITABLE_KEYS = (
     "general.digest_schedule",
     "general.timezone",
     "digest.max_featured",
+    "notify.discord_webhook_url",
 )
 
 
