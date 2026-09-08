@@ -59,6 +59,11 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
     return data
 
 
+# Grade C. Named here rather than inline because `cyris doctor` reports which
+# home a webhook came from, and has to name the same variable this reads.
+DISCORD_WEBHOOK_ENV_VAR = "CYRIS_DISCORD_WEBHOOK_URL"
+
+
 class NotifyConfig(BaseModel):
     discord_webhook_url: str = ""
 
@@ -67,7 +72,7 @@ class NotifyConfig(BaseModel):
         # A webhook URL is a credential: it must have somewhere to live other than
         # the config file, or a deployment that only ships env has no way to set it.
         if not self.discord_webhook_url:
-            self.discord_webhook_url = os.environ.get("CYRIS_DISCORD_WEBHOOK_URL", "")
+            self.discord_webhook_url = os.environ.get(DISCORD_WEBHOOK_ENV_VAR, "")
         return self
 
 

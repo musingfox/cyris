@@ -708,3 +708,88 @@ async def test_an_unreachable_discord_is_a_failed_check_not_an_exception() -> No
 
     assert check.status == "fail"
     assert "boom" in check.detail
+
+
+async def test_a_webhook_from_d1_is_named_as_such(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/origin-d1"
+    cfg.settings_from_d1 = ["notify.discord_webhook_url"]
+
+    check = _by_name(await doctor.run_checks(cfg), "discord")
+
+    assert check.status == "ok"
+    assert check.detail == "webhook from D1 settings"
+
+
+async def test_a_webhook_from_the_worker_secret_names_the_variable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/origin-env")
+    cfg = _config(tmp_path)
+    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/origin-env"
+
+    check = _by_name(await doctor.run_checks(cfg), "discord")
+
+    assert check.detail == "webhook from CYRIS_DISCORD_WEBHOOK_URL"
+
+
+async def test_a_webhook_the_environment_did_not_supply_is_the_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
+    cfg = _config(tmp_path)
+    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/origin-file"
+
+    check = _by_name(await doctor.run_checks(cfg), "discord")
+
+    assert check.detail == "webhook from cyris.toml [notify]"
+
+
+async def test_no_webhook_points_at_the_settings_page_before_the_variable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
+
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "discord")
+
+    assert check.status == "skip"
+    assert check.fix.index("/settings") < check.fix.index("CYRIS_DISCORD_WEBHOOK_URL")
+
+
+async def test_a_config_left_on_the_old_stanza_is_a_skip_not_a_broken_build(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """[general.notify] is a nested key, not a table, so the build check sees
+    nothing wrong — the webhook simply stops arriving, and `discord` says so."""
+    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(
+        '[general]\ntimezone = "Asia/Taipei"\n\n'
+        '[general.notify]\ndiscord_webhook_url = "https://discord.com/api/webhooks/1/stale"\n\n'
+        f'[agent_vault]\npath = "{tmp_path / "agent-vault"}"\n'
+    )
+    from cyris.config import load_config
+
+    sources_path = tmp_path / "sources.yaml"
+    sources_path.write_text(
+        "sources:\n  - name: Origin Feed\n    url: https://origin.test/feed\n    tier: filter\n"
+    )
+    cfg = load_config(config_path=config_path, sources_path=sources_path)
+    cfg.app.html_output.enabled = True
+
+    checks = await doctor.run_checks(cfg, config_path)
+
+    assert _by_name(checks, "build").status == "ok"
+    assert _by_name(checks, "discord").status == "skip"
+
+
+async def test_the_run_reports_one_discord_check_and_a_missing_webhook_is_not_a_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
+
+    checks = await doctor.run_checks(_config(tmp_path))
+
+    discord = [c for c in checks if c.name == "discord"]
+    assert len(discord) == 1
+    assert discord[0].status == "skip"
