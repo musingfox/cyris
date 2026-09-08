@@ -30,7 +30,7 @@
     }
     button[disabled] { opacity: .5; cursor: default; }
     h2 { font-size: .9rem; letter-spacing: .08em; color: var(--text-dim); font-weight: 600; margin: 2.5rem 0 .5rem; }
-    #result, #sched-result { margin-top: 1rem; padding: .8rem; border-radius: 6px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
+    #result, #sched-result, #notify-result { margin-top: 1rem; padding: .8rem; border-radius: 6px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
     .ok { background: rgba(198, 255, 61, 0.09); color: var(--accent); }
     .err { background: rgba(255, 91, 138, 0.11); color: var(--warn); }
     a.back { color: var(--text-dim); font-size: .8rem; }
@@ -103,6 +103,21 @@
 
   <div id="digest-result" class="hidden" hidden></div>
 
+  <h2>NOTIFY</h2>
+
+  <form id="notify-form">
+    <fieldset>
+      <legend>Discord</legend>
+      <input type="text" id="discord-webhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
+      <p class="hint">Saved only after Discord confirms the webhook exists. When empty here,
+        a run still uses <code>CYRIS_DISCORD_WEBHOOK_URL</code> if that is set.</p>
+    </fieldset>
+
+    <button type="submit" id="save-notify">Save</button>
+  </form>
+
+  <div id="notify-result" class="hidden" hidden></div>
+
   <h2>SOURCES</h2>
 
   <fieldset>
@@ -161,10 +176,12 @@ function render() {
   if (m) $("morning").value = parseInt(m, 10);
   if (e) $("evening").value = parseInt(e, 10);
   if (state.max_featured) $("max-featured").value = state.max_featured;
+  if (state.notify_webhook) $("discord-webhook").value = state.notify_webhook;
   if (!state.writable) {
     $("save").disabled = true;
     $("save-sched").disabled = true;
     $("save-digest").disabled = true;
+    $("save-notify").disabled = true;
     show("err", "This deployment has no settings store, so nothing can be saved here. Edit cyris.toml instead.");
   }
 }
@@ -260,6 +277,30 @@ $("digest-form").addEventListener("submit", async (e) => {
     show("err", String(err), "digest-result");
   } finally {
     $("save-digest").disabled = false;
+  }
+});
+
+$("notify-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("save-notify").disabled = true;
+  try {
+    const res = await fetch("/api/settings/notify", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({discord_webhook_url: $("discord-webhook").value}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      state.notify_webhook = data.discord_webhook_url;
+      $("discord-webhook").value = data.discord_webhook_url;
+      show("ok", `Webhook saved. ${data.note}`, "notify-result");
+    } else {
+      show("err", data.error || `HTTP ${res.status}`, "notify-result");
+    }
+  } catch (err) {
+    show("err", String(err), "notify-result");
+  } finally {
+    $("save-notify").disabled = false;
   }
 });
 

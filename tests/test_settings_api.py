@@ -225,3 +225,34 @@ class TestFeaturedCap:
         apply_to(cfg, {"digest.max_featured": 9})
 
         assert cfg.app.digest.max_featured == 9
+
+
+class TestNotifySettingsForm:
+    async def test_the_page_has_a_notify_form_and_webhook_field(self):
+        client = await _client()
+        body = await (await client.get("/settings")).text()
+        await client.close()
+
+        assert 'id="notify-form"' in body
+        assert 'id="discord-webhook"' in body
+
+    async def test_the_hint_names_the_env_fallback(self):
+        client = await _client()
+        body = await (await client.get("/settings")).text()
+        await client.close()
+
+        assert "CYRIS_DISCORD_WEBHOOK_URL" in body
+
+    async def test_the_form_posts_to_the_notify_route(self):
+        client = await _client()
+        body = await (await client.get("/settings")).text()
+        await client.close()
+
+        assert "/api/settings/notify" in body
+
+    async def test_the_form_has_its_own_result_div(self):
+        client = await _client()
+        body = await (await client.get("/settings")).text()
+        await client.close()
+
+        assert "notify-result" in body
