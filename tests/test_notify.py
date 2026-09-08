@@ -350,19 +350,22 @@ class TestMaskDiscordWebhookUrl:
 
 class TestParseDiscordWebhookUrl:
     def test_standard_webhook(self):
-        assert parse_discord_webhook_url(
-            "https://discord.com/api/webhooks/123/abcTOKEN"
-        ) == ("123", "abcTOKEN")
+        assert parse_discord_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN") == (
+            "123",
+            "abcTOKEN",
+        )
 
     def test_api_versioned_webhook(self):
-        assert parse_discord_webhook_url(
-            "https://discord.com/api/v10/webhooks/123/abcTOKEN"
-        ) == ("123", "abcTOKEN")
+        assert parse_discord_webhook_url("https://discord.com/api/v10/webhooks/123/abcTOKEN") == (
+            "123",
+            "abcTOKEN",
+        )
 
     def test_discordapp_host(self):
-        assert parse_discord_webhook_url(
-            "https://discordapp.com/api/webhooks/123/abcTOKEN"
-        ) == ("123", "abcTOKEN")
+        assert parse_discord_webhook_url("https://discordapp.com/api/webhooks/123/abcTOKEN") == (
+            "123",
+            "abcTOKEN",
+        )
 
     def test_foreign_host_is_rejected(self):
         assert parse_discord_webhook_url("https://example.com/api/webhooks/123/abc") is None
