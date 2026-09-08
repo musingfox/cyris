@@ -363,6 +363,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 else:
                     publish_failed = True
 
+    if not notify.discord_webhook_url:
+        # A run that notifies nobody looks exactly like a run that notified
+        # everybody, from the log. Say which one it was.
+        logger.info("No Discord webhook configured — skipping the digest notification")
+
     await deps.send_discord(
         notify.discord_webhook_url,
         content,

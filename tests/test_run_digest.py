@@ -542,3 +542,77 @@ async def test_a_run_that_raises_still_says_so(tmp_path: Path, caplog) -> None:
     summary = _run_summary(caplog)
     assert summary["status"] == "error"
     assert summary["fetched"] == 1
+
+
+def _notify_llm() -> FakeLLM:
+    return FakeLLM(
+        [
+            json.dumps({"scores": [{"id": 7, "score": 85, "language": "en"}]}),
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "AI 趨勢",
+                            "summary": "企業加速導入 AI",
+                            "articles": [
+                                {"id": 7, "title": "Notify Path", "source": "NotifySource"}
+                            ],
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+
+
+def _notify_article() -> Article:
+    return Article(
+        id=7,
+        title="Notify Path",
+        url="https://example.com/notify",
+        content="Enterprises accelerate AI adoption.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="NotifySource",
+        source_tier=Tier.SUMMARIZE,
+        source_tags=["tech"],
+    )
+
+
+def _skip_records(caplog) -> list:
+    return [r for r in caplog.records if "Discord webhook" in r.getMessage()]
+
+
+async def test_a_run_with_no_webhook_says_it_is_skipping_the_notification(
+    tmp_path: Path, caplog, monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    assert deps.cfg.app.notify.discord_webhook_url == ""
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    records = _skip_records(caplog)
+    assert len(records) == 1
+    assert "skipping" in records[0].getMessage()
+    assert records[0].levelname == "INFO"
+
+
+async def test_a_run_with_a_webhook_stays_quiet_and_still_notifies(
+    tmp_path: Path, caplog, monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/run-log"
+    sent: dict = {}
+
+    async def capture(webhook_url, content, digest_url="", publish_failed=False):
+        sent["webhook_url"] = webhook_url
+
+    deps = replace(deps, send_discord=capture)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert _skip_records(caplog) == []
+    assert sent["webhook_url"] == "https://discord.com/api/webhooks/1/run-log"
