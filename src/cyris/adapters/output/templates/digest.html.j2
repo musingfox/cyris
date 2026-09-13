@@ -25,27 +25,7 @@
 
         html { scroll-behavior: smooth; }
 
-        body {
-            font-family: 'Geist', system-ui, sans-serif;
-            background: var(--bg);
-            background-image:
-                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(198, 255, 61, 0.08), transparent 70%),
-                linear-gradient(var(--grid) 1px, transparent 1px),
-                linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-            background-size: 100% 100%, 32px 32px, 32px 32px;
-            color: var(--text);
-            font-size: 16px;
-            line-height: 1.65;
-            font-feature-settings: "ss01", "ss02", "cv11";
-            min-height: 100vh;
-            padding: 24px 16px 80px;
-        }
-
-        .container {
-            max-width: 1240px;
-            margin: 0 auto;
-            position: relative;
-        }
+        {% with container_width="1240px", container_relative=true, glow="80% 60%", font_size="16px", line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
 
         /* === MASTHEAD === */
         .masthead {

@@ -10,20 +10,7 @@
     <style>
         {% include "_tokens.css.j2" %}
 
-        body {
-            font-family: 'Geist', system-ui, sans-serif;
-            background: var(--bg);
-            background-image:
-                linear-gradient(var(--grid) 1px, transparent 1px),
-                linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-            background-size: 32px 32px, 32px 32px;
-            color: var(--text);
-            line-height: 1.6;
-            min-height: 100vh;
-            padding: 24px 16px 80px;
-        }
-
-        .container { max-width: 900px; margin: 0 auto; }
+        {% with container_width="900px", container_relative=false, glow=none, font_size=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
         .masthead {
             padding: 24px 0 20px;

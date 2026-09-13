@@ -1,0 +1,32 @@
+        body {
+            font-family: 'Geist', system-ui, sans-serif;
+            {# `background` is a shorthand and resets background-image, so it has to
+               come first: emit it after the longhands and the glow and the 32px grid
+               both vanish. #}
+            background: var(--bg);
+            background-image:
+{%- if glow %}
+                radial-gradient(ellipse {{ glow }} at 50% -10%, rgba(198, 255, 61, 0.08), transparent 70%),
+{%- endif %}
+                linear-gradient(var(--grid) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+            background-size: {% if glow %}100% 100%, {% endif %}32px 32px, 32px 32px;
+            color: var(--text);
+{%- if font_size %}
+            font-size: {{ font_size }};
+{%- endif %}
+            line-height: {{ line_height }};
+{%- if font_features %}
+            font-feature-settings: "ss01", "ss02", "cv11";
+{%- endif %}
+            min-height: 100vh;
+            padding: 24px 16px 80px;
+        }
+
+        .container {
+            max-width: {{ container_width }};
+            margin: 0 auto;
+{%- if container_relative %}
+            position: relative;
+{%- endif %}
+        }
