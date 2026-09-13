@@ -6,11 +6,12 @@ decay into a rubber stamp. Nothing here starts a browser, opens a socket, or
 touches the filesystem, so it can run as an ordinary unit test.
 """
 
+import re
 from pathlib import Path
 
 import pytest
 from css_rules import parse_style_block, receipt_fixtures
-from jinja2 import Environment, meta, nodes
+from jinja2 import DebugUndefined, Environment, meta, nodes
 
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
@@ -138,10 +139,33 @@ def test_partial_reaches_the_page_verbatim(
     # an empty value on both sides of the comparison below instead of failing.
     assert not unknown, f"{template_name} passes {unknown} to {partial}, which never reads them"
 
+    # The complement: a parameter the partial reads but the page never passes
+    # renders as an empty value the browser falls back on, and it would do so on
+    # both sides of the comparison below. DebugUndefined leaves the placeholder
+    # in the output instead, wherever in a value it sits, while still testing
+    # false so an `{% if %}`-guarded parameter stays optional.
+    marked = env.overlay(undefined=DebugUndefined).get_template(partial).render(**parameters)
+    omitted = sorted(set(re.findall(r"\{\{ ?(\w+) ?\}\}", marked)))
+    assert not omitted, f"{template_name} omits {omitted}, which {partial} reads"
+
     rendered = env.get_template(partial).render(**parameters)
     assert rendered in _style_text(pages[page]), (
         f"{partial} rendered with {template_name}'s parameters is not in {page}'s <style>"
     )
+
+
+def test_the_omission_check_sees_a_dropped_parameter_and_not_a_guarded_one(
+    env: Environment,
+) -> None:
+    parameters = _include_sites(env, PAGE_TEMPLATES["digest"])["_page.css.j2"]
+    assert "line_height" in parameters and "glow" in parameters
+    strict = env.overlay(undefined=DebugUndefined)
+
+    without_required = {k: v for k, v in parameters.items() if k != "line_height"}
+    assert "{{ line_height }}" in strict.get_template("_page.css.j2").render(**without_required)
+
+    without_guarded = {k: v for k, v in parameters.items() if k != "glow"}
+    assert "{{" not in strict.get_template("_page.css.j2").render(**without_guarded)
 
 
 def test_vote_buttons_are_styled_on_the_pages_that_carry_them(pages: dict[str, str]) -> None:
