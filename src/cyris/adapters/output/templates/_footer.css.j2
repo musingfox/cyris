@@ -24,8 +24,10 @@
 
         .footer a {
             color: var(--text-dim);
-            {# index carries no generic `a` rule, so the footer link states its own
-               reset rather than inheriting one that may not be there. #}
+            {# raw carries no generic `a` rule, so the footer link states its own
+               reset rather than inheriting one that may not be there; digest has
+               one and only needs the colour override. index's footer holds plain
+               text, so this rule matches nothing there. #}
             text-decoration: none;
             border: none;
             background: none;
