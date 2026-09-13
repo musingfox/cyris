@@ -148,6 +148,7 @@ def compare_computed_page(before: dict, after: dict, allowance: dict) -> list[st
     """
     problems: list[str] = []
     measured: set[tuple[str, str]] = set()
+    one_sided = set(before) ^ set(after)
     for key in sorted(set(after) - set(before)):
         problems.append(f"  + {key} was measured only after the change")
     for key in sorted(set(before) - set(after)):
@@ -184,6 +185,10 @@ def compare_computed_page(before: dict, after: dict, allowance: dict) -> list[st
     # Drop that cell from the probe set and the pin would go quiet rather than
     # red, which is the narrowing this layer exists to refuse.
     for key, pins in sorted(allowance.items()):
+        if key in one_sided:
+            # Already reported above as measured on only one side; naming its
+            # pins again would count one problem once per pinned property.
+            continue
         for name in sorted(pins):
             if (key, name) not in measured:
                 problems.append(f"  ! {key} `{name}` is pinned but no longer measured")

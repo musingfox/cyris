@@ -186,6 +186,18 @@ def test_a_changed_allowance_for_body_respects_declaration_order():
     assert compare_page(before, after, {"changed": {"body": ["a: 1", "b: 2"]}}) != []
 
 
+def test_a_pinned_key_reaching_one_snapshot_is_reported_once():
+    pins = {"color": {"before": "red", "after": "blue"}}
+    problems = compare_computed_page({"@1440 | .x": {"color": "red"}}, {}, {"@1440 | .x": pins})
+    assert problems == ["  - @1440 | .x was measured only before the change"]
+
+
+def test_a_pin_naming_a_key_in_neither_snapshot_still_fails():
+    pins = {"color": {"before": "red", "after": "blue"}}
+    problems = compare_computed_page({}, {}, {"@1440 | .x": pins})
+    assert problems == ["  ! @1440 | .x `color` is pinned but no longer measured"]
+
+
 def _write_snapshot(directory: Path, rules: dict, computed_receipt: bool = True) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "rules.json").write_text(json.dumps(rules), encoding="utf-8")
