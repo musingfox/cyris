@@ -20,3 +20,11 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+
+        {# Redefining the animation covers every consumer, including ones added later,
+           without any of them having to remember to opt out. #}
+        @media (prefers-reduced-motion: reduce) {
+            @keyframes pulse {
+                0%, 50%, 100% { opacity: 1; }
+            }
+        }
