@@ -221,24 +221,37 @@ def compare(
     `--allow-computed` is a different object and gets its own file: it pins a
     cell's exact before and after value, which asserts what the change is
     instead of hiding that there was one, and leaves the cell measured.
+
+    Both receipts must be present in both snapshots. A verdict reached without
+    the computed layer answers a different question than the one asked, so a
+    missing computed receipt is a failure rather than a layer quietly skipped.
     """
     allowed = load_allowed(allow_path) if allow_path else {}
     computed_allowed = load_computed_allowed(computed_allow_path) if computed_allow_path else {}
     failures = _compare_receipt(before_dir, after_dir, RULES_RECEIPT, allowed)
 
+    compared = RULES_RECEIPT
     computed = [directory / COMPUTED_RECEIPT for directory in (before_dir, after_dir)]
     if all(path.exists() for path in computed):
         failures += _compare_receipt(
             before_dir, after_dir, COMPUTED_RECEIPT, computed_allowed, compare_computed_page
         )
+        compared = f"{RULES_RECEIPT} and {COMPUTED_RECEIPT}"
     elif any(path.exists() for path in computed):
         print(f"{COMPUTED_RECEIPT}: present in only one snapshot")
+        failures += 1
+    else:
+        # Both layers must run on the same pair of snapshots: the rule
+        # comparison is a set comparison and cannot see a rule moving across
+        # its own `@media`. Passing on the rule layer alone would report a
+        # green for a question that was never asked.
+        print(f"{COMPUTED_RECEIPT}: absent from both snapshots, so that layer did not run")
         failures += 1
 
     if failures:
         print(f"{failures} unallowed difference(s)")
         return 1
-    print("snapshots are equal modulo the allow-list")
+    print(f"snapshots are equal modulo the allow-list, comparing {compared}")
     return 0
 
 
@@ -248,7 +261,8 @@ def main() -> None:
     snapshot_parser = subparsers.add_parser("snapshot", help="write rendered pages and rules JSON")
     snapshot_parser.add_argument("output_dir", type=Path)
     compare_parser = subparsers.add_parser(
-        "compare", help="require two snapshots to be equal modulo an allow-list"
+        "compare",
+        help="require two snapshots, each carrying both receipts, to be equal modulo an allow-list",
     )
     compare_parser.add_argument("before_dir", type=Path, help="snapshot taken before the change")
     compare_parser.add_argument("after_dir", type=Path, help="snapshot taken after the change")

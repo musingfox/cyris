@@ -186,9 +186,13 @@ def test_a_changed_allowance_for_body_respects_declaration_order():
     assert compare_page(before, after, {"changed": {"body": ["a: 1", "b: 2"]}}) != []
 
 
-def _write_snapshot(directory: Path, rules: dict) -> Path:
+def _write_snapshot(directory: Path, rules: dict, computed_receipt: bool = True) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "rules.json").write_text(json.dumps(rules), encoding="utf-8")
+    # `compare` requires both receipts, so a rule-layer test still carries an
+    # empty computed one unless it is the absence itself under test.
+    if computed_receipt:
+        (directory / "computed.json").write_text(json.dumps({}), encoding="utf-8")
     return directory
 
 
@@ -207,9 +211,17 @@ def test_the_computed_receipt_is_compared_strictly_when_both_snapshots_have_one(
 def test_a_computed_receipt_present_in_only_one_snapshot_is_a_failure(tmp_path):
     rules = {"digest": {}}
     before = _write_snapshot(tmp_path / "before", rules)
-    after = _write_snapshot(tmp_path / "after", rules)
+    after = _write_snapshot(tmp_path / "after", rules, computed_receipt=False)
     (before / "computed.json").write_text(json.dumps({"digest": {}}))
     assert compare(before, after, None) == 1
+
+
+def test_a_computed_receipt_absent_from_both_snapshots_is_a_failure(tmp_path, capsys):
+    rules = {"digest": {".x": ["a: 1"]}}
+    before = _write_snapshot(tmp_path / "before", rules, computed_receipt=False)
+    after = _write_snapshot(tmp_path / "after", rules, computed_receipt=False)
+    assert compare(before, after, None) == 1
+    assert "absent from both snapshots" in capsys.readouterr().out
 
 
 def test_an_allow_list_never_excuses_a_computed_difference(tmp_path):
@@ -228,7 +240,9 @@ def test_compare_exits_zero_on_identical_snapshots(tmp_path, capsys):
     before = _write_snapshot(tmp_path / "before", rules)
     after = _write_snapshot(tmp_path / "after", rules)
     assert compare(before, after, None) == 0
-    assert "equal modulo the allow-list" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "equal modulo the allow-list" in output
+    assert "comparing rules.json and computed.json" in output
 
 
 def test_compare_exits_non_zero_and_names_the_page_of_an_unallowed_change(tmp_path, capsys):
@@ -266,6 +280,8 @@ def test_an_allow_list_of_the_wrong_shape_is_rejected(tmp_path):
 def test_a_real_snapshot_pair_compares_clean_and_catches_a_planted_change(tmp_path):
     snapshot(tmp_path / "before")
     snapshot(tmp_path / "after")
+    for directory in (tmp_path / "before", tmp_path / "after"):
+        (directory / "computed.json").write_text(json.dumps({}), encoding="utf-8")
     assert compare(tmp_path / "before", tmp_path / "after", None) == 0
 
     rules_path = tmp_path / "after" / "rules.json"
