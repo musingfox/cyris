@@ -5,6 +5,7 @@
    two stay in sync. Change a value there, change it here. */
 :root {
   --bg: #07070a;
+  --bg-elev: #0d0d12;
   --surface: #11111a;
   --surface-2: #161622;
   --border: #1f1f2e;
@@ -13,8 +14,8 @@
   --text-dim: #8a8aa0;
   --text-faint: #56566e;
   --accent: #c6ff3d;
+  --accent-dim: #8aa829;
   --warn: #ff5b8a;
-  --info: #4ad6ff;
   --grid: rgba(198, 255, 61, 0.035);
 }
 
