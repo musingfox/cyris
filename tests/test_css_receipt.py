@@ -17,7 +17,14 @@ from css_rules import parse_style_block, receipt_fixtures
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from css_computed import BREAKPOINTS, PROBES_PATH, WIDTHS, load_probes  # noqa: E402
-from css_receipt import compare, compare_page, load_allowed, snapshot  # noqa: E402
+from css_receipt import (  # noqa: E402
+    compare,
+    compare_computed_page,
+    compare_page,
+    load_allowed,
+    load_computed_allowed,
+    snapshot,
+)
 
 
 def _style(css: str) -> str:
@@ -285,3 +292,83 @@ def test_the_probe_set_watches_the_masthead_name_on_every_page_that_has_one():
     probes = load_probes(PROBES_PATH)
     for page in ("index", "digest", "raw"):
         assert ".brand-name" in probes[page], page
+
+
+def _pin(before: str, after: str) -> dict[str, str]:
+    return {"before": before, "after": after}
+
+
+def test_a_pinned_cell_passes_only_on_the_exact_pair_it_names():
+    before = {"@880 | .brand": {"color": "rgb(1, 1, 1)"}}
+    after = {"@880 | .brand": {"color": "rgb(2, 2, 2)"}}
+    pins = {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(2, 2, 2)")}}
+    assert compare_computed_page(before, after, pins) == []
+
+
+def test_a_pinned_cell_that_lands_on_another_after_value_fails():
+    before = {"@880 | .brand": {"color": "rgb(1, 1, 1)"}}
+    after = {"@880 | .brand": {"color": "rgb(9, 9, 9)"}}
+    pins = {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(2, 2, 2)")}}
+    problems = compare_computed_page(before, after, pins)
+    assert problems[0] == "  ~ @880 | .brand `color` is not the before -> after pair pinned for it"
+    assert "      measured: rgb(1, 1, 1) -> rgb(9, 9, 9)" in problems
+
+
+def test_a_pin_whose_before_no_longer_holds_fails_too():
+    before = {"@880 | .brand": {"color": "rgb(8, 8, 8)"}}
+    after = {"@880 | .brand": {"color": "rgb(2, 2, 2)"}}
+    pins = {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(2, 2, 2)")}}
+    assert compare_computed_page(before, after, pins) != []
+
+
+def test_a_pin_keeps_the_cell_measured_rather_than_dropping_it():
+    unchanged = {"@880 | .brand": {"color": "rgb(1, 1, 1)"}}
+    pins = {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(2, 2, 2)")}}
+    assert compare_computed_page(unchanged, unchanged, pins) != []
+
+
+def test_a_pin_on_one_property_does_not_cover_its_neighbours():
+    before = {"@880 | .brand": {"color": "rgb(1, 1, 1)", "font-size": "13px"}}
+    after = {"@880 | .brand": {"color": "rgb(2, 2, 2)", "font-size": "16px"}}
+    pins = {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(2, 2, 2)")}}
+    problems = compare_computed_page(before, after, pins)
+    assert problems[0].endswith("is not pinned in this page's computed allowance")
+    assert "      actual only:   font-size: 16px" in problems
+
+
+def test_a_probe_key_on_only_one_side_is_a_failure_no_pin_can_excuse():
+    assert compare_computed_page({}, {"@880 | .new": {"color": "red"}}, {}) == [
+        "  + @880 | .new was measured only after the change"
+    ]
+    assert compare_computed_page({"@880 | .gone": {"color": "red"}}, {}, {}) == [
+        "  - @880 | .gone was measured only before the change"
+    ]
+
+
+def test_a_computed_allowance_weaker_than_a_pinned_pair_is_rejected(tmp_path):
+    path = tmp_path / "allow-computed.json"
+    for payload in (
+        ["@880 | .brand"],
+        {"raw": ["@880 | .brand"]},
+        {"raw": {"@880 | .brand": ["color"]}},
+        {"raw": {"@880 | .brand": {"color": "rgb(2, 2, 2)"}}},
+        {"raw": {"@880 | .brand": {"color": {"after": "rgb(2, 2, 2)"}}}},
+        {"raw": {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(1, 1, 1)")}}},
+    ):
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            load_computed_allowed(path)
+
+
+def test_the_computed_allow_list_is_what_clears_a_computed_difference(tmp_path):
+    rules = {"digest": {}}
+    before = _write_snapshot(tmp_path / "before", rules)
+    after = _write_snapshot(tmp_path / "after", rules)
+    (before / "computed.json").write_text(json.dumps({"digest": {"@880 | .x": {"gap": "4px"}}}))
+    (after / "computed.json").write_text(json.dumps({"digest": {"@880 | .x": {"gap": "8px"}}}))
+    pins = tmp_path / "allow-computed.json"
+    pins.write_text(json.dumps({"digest": {"@880 | .x": {"gap": _pin("4px", "8px")}}}))
+    assert compare(before, after, None, pins) == 0
+
+    (after / "computed.json").write_text(json.dumps({"digest": {"@880 | .x": {"gap": "12px"}}}))
+    assert compare(before, after, None, pins) == 1

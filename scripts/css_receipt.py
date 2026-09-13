@@ -111,12 +111,82 @@ def compare_page(before: dict, after: dict, allowance: dict) -> list[str]:
     return problems
 
 
-def _compare_receipt(before_dir: Path, after_dir: Path, name: str, allowed: dict) -> int:
+def load_computed_allowed(path: Path) -> dict[str, dict[str, dict[str, dict[str, str]]]]:
+    """Read the layer-2 allow-list: {page: {key: {property: {before, after}}}}.
+
+    Every entry must pin both values. A pinned pair is an assertion about what
+    the change is, so the cell stays measured and any other after value stays
+    red; anything weaker -- a bare key, an after value alone -- would be a
+    suppression, and is refused here rather than at compare time.
+    """
+    allowed = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(allowed, dict):
+        raise SystemExit(f"{path}: computed allow-list must be a JSON object keyed by page")
+    for page, keys in allowed.items():
+        if not isinstance(keys, dict):
+            raise SystemExit(f"{path}: {page} must map a probe key to its properties")
+        for key, properties in keys.items():
+            if not isinstance(properties, dict):
+                raise SystemExit(f"{path}: {page}.{key} must map a property to before/after")
+            for name, pinned in properties.items():
+                where = f"{path}: {page}.{key}.{name}"
+                if not isinstance(pinned, dict) or set(pinned) != {"before", "after"}:
+                    raise SystemExit(f"{where} must pin exactly `before` and `after`")
+                if not all(isinstance(value, str) for value in pinned.values()):
+                    raise SystemExit(f"{where} must pin string values")
+                if pinned["before"] == pinned["after"]:
+                    raise SystemExit(f"{where} pins the same value twice, which asserts nothing")
+    return allowed
+
+
+def compare_computed_page(before: dict, after: dict, allowance: dict) -> list[str]:
+    """Report where one page's computed values differ beyond what the allow-list pins.
+
+    There is no added/removed bucket: a probe key that reaches only one snapshot
+    means the two runs measured different things, which no pin can justify.
+    """
+    problems: list[str] = []
+    for key in sorted(set(after) - set(before)):
+        problems.append(f"  + {key} was measured only after the change")
+    for key in sorted(set(before) - set(after)):
+        problems.append(f"  - {key} was measured only before the change")
+
+    for key in sorted(set(before) & set(after)):
+        was, now = before[key] or {}, after[key] or {}
+        pins = allowance.get(key) or {}
+        unpinned: list[str] = []
+        for name in sorted(set(was) | set(now)):
+            old, new = was.get(name), now.get(name)
+            if name in pins:
+                pinned = pins[name]
+                if old == pinned["before"] and new == pinned["after"]:
+                    continue
+                problems.append(f"  ~ {key} `{name}` is not the before -> after pair pinned for it")
+                problems.append(f"      pinned:   {pinned['before']} -> {pinned['after']}")
+                problems.append(f"      measured: {old} -> {new}")
+            elif old != new:
+                unpinned.append(name)
+        if unpinned:
+            problems.append(
+                f"  ~ {key} changed and is not pinned in this page's computed allowance"
+            )
+            problems.extend(
+                f"      expected only: {name}: {was[name]}" for name in unpinned if name in was
+            )
+            problems.extend(
+                f"      actual only:   {name}: {now[name]}" for name in unpinned if name in now
+            )
+    return problems
+
+
+def _compare_receipt(
+    before_dir: Path, after_dir: Path, name: str, allowed: dict, compare_one=compare_page
+) -> int:
     before = json.loads((before_dir / name).read_text(encoding="utf-8"))
     after = json.loads((after_dir / name).read_text(encoding="utf-8"))
     failures = 0
     for page in sorted(set(before) | set(after)):
-        problems = compare_page(before.get(page, {}), after.get(page, {}), allowed.get(page, {}))
+        problems = compare_one(before.get(page, {}), after.get(page, {}), allowed.get(page, {}))
         if problems:
             print(f"{name} :: {page}")
             print("\n".join(problems))
@@ -126,20 +196,30 @@ def _compare_receipt(before_dir: Path, after_dir: Path, name: str, allowed: dict
     return failures
 
 
-def compare(before_dir: Path, after_dir: Path, allow_path: Path | None) -> int:
-    """Require the two snapshots equal modulo the allow-list; return the exit status.
+def compare(
+    before_dir: Path,
+    after_dir: Path,
+    allow_path: Path | None,
+    computed_allow_path: Path | None = None,
+) -> int:
+    """Require the two snapshots equal modulo the allow-lists; return the exit status.
 
-    The computed receipt is compared with no allowance at all. Every allow-list
-    entry is an argument that some declaration change is a computed no-op, so
-    letting a carve-out reach this layer would excuse the very thing it exists
-    to prove.
+    The rule allow-list never reaches the computed receipt. Each of its entries
+    is an argument that some declaration change is a computed no-op, so letting
+    one carry over would excuse the very thing this layer exists to prove.
+    `--allow-computed` is a different object and gets its own file: it pins a
+    cell's exact before and after value, which asserts what the change is
+    instead of hiding that there was one, and leaves the cell measured.
     """
     allowed = load_allowed(allow_path) if allow_path else {}
+    computed_allowed = load_computed_allowed(computed_allow_path) if computed_allow_path else {}
     failures = _compare_receipt(before_dir, after_dir, RULES_RECEIPT, allowed)
 
     computed = [directory / COMPUTED_RECEIPT for directory in (before_dir, after_dir)]
     if all(path.exists() for path in computed):
-        failures += _compare_receipt(before_dir, after_dir, COMPUTED_RECEIPT, {})
+        failures += _compare_receipt(
+            before_dir, after_dir, COMPUTED_RECEIPT, computed_allowed, compare_computed_page
+        )
     elif any(path.exists() for path in computed):
         print(f"{COMPUTED_RECEIPT}: present in only one snapshot")
         failures += 1
@@ -168,12 +248,19 @@ def main() -> None:
         metavar="PATH",
         help="JSON of {page: {added: [key], removed: [key], changed: {key: after value}}}",
     )
+    compare_parser.add_argument(
+        "--allow-computed",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="JSON of {page: {probe key: {property: {before: value, after: value}}}}",
+    )
     args = parser.parse_args()
 
     if args.command == "snapshot":
         snapshot(args.output_dir)
     elif args.command == "compare":
-        raise SystemExit(compare(args.before_dir, args.after_dir, args.allow))
+        raise SystemExit(compare(args.before_dir, args.after_dir, args.allow, args.allow_computed))
 
 
 if __name__ == "__main__":
