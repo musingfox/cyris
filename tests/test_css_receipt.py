@@ -6,9 +6,13 @@ a test. Its verification is a hand-run receipt. What is tested is the part that
 needs no browser -- the probe set it ships and the breakpoints it samples.
 """
 
+import io
 import json
 import re
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -16,7 +20,13 @@ from css_rules import parse_style_block, receipt_fixtures
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from css_computed import BREAKPOINTS, PROBES_PATH, WIDTHS, load_probes  # noqa: E402
+from css_computed import (  # noqa: E402
+    BREAKPOINTS,
+    PROBES_PATH,
+    WIDTHS,
+    _page_socket,
+    load_probes,
+)
 from css_receipt import (  # noqa: E402
     compare,
     compare_computed_page,
@@ -184,6 +194,21 @@ def test_a_changed_allowance_for_body_respects_declaration_order():
     after = {"body": ["b: 2", "a: 1"]}
     assert compare_page(before, after, {"changed": {"body": ["b: 2", "a: 1"]}}) == []
     assert compare_page(before, after, {"changed": {"body": ["a: 1", "b: 2"]}}) != []
+
+
+def test_a_refused_devtools_connection_is_retried_until_the_deadline(monkeypatch):
+    attempts = []
+
+    def fake_urlopen(url, timeout=None):
+        attempts.append(url)
+        if len(attempts) == 1:
+            raise urllib.error.URLError("connection refused")
+        target = [{"type": "page", "webSocketDebuggerUrl": "ws://127.0.0.1:9/page"}]
+        return io.BytesIO(json.dumps(target).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert _page_socket(9, time.monotonic() + 5) == "ws://127.0.0.1:9/page"
+    assert len(attempts) == 2
 
 
 def test_a_pinned_key_reaching_one_snapshot_is_reported_once():

@@ -174,8 +174,15 @@ def _devtools_port(profile_dir: Path, deadline: float) -> int:
 def _page_socket(port: int, deadline: float) -> str:
     """Find the WebSocket URL of the page target Chromium opened at startup."""
     while time.monotonic() < deadline:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=5) as response:
-            targets = json.load(response)
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/json/list", timeout=5
+            ) as response:
+                targets = json.load(response)
+        except OSError:
+            # The port file lands before the HTTP endpoint accepts connections,
+            # and that window is what the deadline is here to wait out.
+            targets = []
         for target in targets:
             if target.get("type") == "page" and target.get("webSocketDebuggerUrl"):
                 return target["webSocketDebuggerUrl"]
