@@ -13,10 +13,12 @@ while the Python standard library has none. No browser-automation package is
 installed for this, and none may be.
 
 Output is ``computed.json`` beside the pages, shaped like ``rules.json`` so that
-``css_receipt.py compare`` reads both the same way.
+``css_receipt.py compare`` reads both the same way. What it measures lives in
+``css_probes.json`` beside this file; ``--probes`` overrides it.
 
 This script must never be collected by pytest: it needs Chromium and a free
-debug port, which makes it a non-hermetic gate rather than a test.
+debug port, which makes it a non-hermetic gate rather than a test. Importing it
+is safe, and ``tests/test_css_receipt.py`` does so to check ``BREAKPOINTS``.
 """
 
 import argparse
@@ -38,10 +40,17 @@ BROWSER_BUNDLES = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 )
 
-# One width above every breakpoint, then each breakpoint the pages declare
-# (digest 880, index 720, raw 640), then a phone. A rule that moved across its
-# own @media block only shows up when a width inside that block is sampled.
-WIDTHS = (1440, 880, 720, 640, 375)
+# The `@media` breakpoint each page declares. These are the templates' own
+# literals restated, and nothing links the two copies at runtime, so
+# `tests/test_css_receipt.py` reads them back out of the rendered pages: a
+# breakpoint that moves without this map moving stops the gate sampling inside
+# its media block, which is the one failure this second receipt exists to catch.
+BREAKPOINTS = {"digest": 880, "index": 720, "raw": 640}
+
+# One width above every breakpoint, then each breakpoint itself, then a phone. A
+# rule that moved across its own @media block only shows up when a width inside
+# that block is sampled.
+WIDTHS = (1440, *sorted(BREAKPOINTS.values(), reverse=True), 375)
 HEIGHT = 900
 
 # The promote buttons only get these classes once the page's script has probed
@@ -51,62 +60,16 @@ FORCED_CLASSES = {".promote-btn": ("done", "error")}
 
 # Probing named selector/property pairs rather than dumping every property is
 # deliberate: a full dump drags in content-sized layout values that drift with
-# webfont loading, and reports the drift as a change.
-PROBES: dict[str, dict[str, list[str]]] = {
-    "digest": {
-        "body": [
-            "background-color",
-            "background-image",
-            "background-size",
-            "color",
-            "font-size",
-            "line-height",
-            "padding",
-        ],
-        ".featured-grid": ["display", "gap", "grid-template-columns"],
-        ".attention-list": ["display", "grid-template-columns"],
-        ".headline-block": ["display", "gap", "grid-template-columns"],
-        ".lead-story": ["padding"],
-        ".meta-strip": ["font-size", "gap"],
-        ".section": ["margin-bottom"],
-        ".stats-card": ["max-width"],
-        ".vote-group": ["display", "gap", "vertical-align"],
-        ".promote-btn": [
-            "background-color",
-            "border-top-color",
-            "color",
-            "display",
-            "font-size",
-            "letter-spacing",
-            "padding",
-        ],
-        ".promote-btn.done": ["border-top-color", "color"],
-        ".promote-btn.error": ["background-color", "border-top-color", "color"],
-    },
-    "index": {
-        "body": ["background-color", "background-image", "background-size", "padding"],
-        ".digest-item a": ["display", "gap", "grid-template-columns", "padding"],
-        ".digest-period": ["grid-column-start"],
-        ".digest-arrow": ["grid-column-start", "grid-row-end", "grid-row-start"],
-    },
-    "raw": {
-        "body": ["background-color", "background-image", "background-size", "padding"],
-        ".article": ["display", "gap", "grid-template-columns", "padding"],
-        ".article a": ["grid-column-end", "grid-column-start"],
-        ".score": ["grid-column-start", "text-align"],
-        ".vote-group": ["display", "gap"],
-        ".promote-btn": [
-            "background-color",
-            "border-top-color",
-            "color",
-            "display",
-            "font-size",
-            "padding",
-        ],
-        ".promote-btn.done": ["border-top-color", "color"],
-        ".promote-btn.error": ["border-top-color", "color"],
-    },
-}
+# webfont loading, and reports the drift as a change. Which pairs is data, not a
+# literal: the set that produced a verdict must be the set the gate keeps
+# watching, and that is too large to read as code.
+PROBES_PATH = Path(__file__).resolve().parent / "css_probes.json"
+
+
+def load_probes(path: Path) -> dict[str, dict[str, list[str]]]:
+    """Read the {page: {selector: [property, ...]}} set the receipt measures."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
 
 PAGE_SCRIPT = """
 (() => {
@@ -315,13 +278,11 @@ def main() -> None:
         "--probes",
         type=Path,
         default=None,
-        help="JSON of {page: {selector: [property, ...]}} replacing the built-in probe set",
+        help=f"JSON of {{page: {{selector: [property, ...]}}}} replacing {PROBES_PATH.name}",
     )
     args = parser.parse_args()
 
-    probes_by_page = PROBES
-    if args.probes:
-        probes_by_page = json.loads(args.probes.read_text(encoding="utf-8"))
+    probes_by_page = load_probes(args.probes or PROBES_PATH)
 
     measured = receipt(args.snapshot_dir, probes_by_page, find_browser(args.browser), WIDTHS)
     destination = args.snapshot_dir / "computed.json"

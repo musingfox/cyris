@@ -1,11 +1,13 @@
 """The CSS receipt tooling is the digest refactor's safety argument, so it is tested.
 
-`scripts/css_computed.py` is deliberately absent here: it needs Chromium and a
-free debug port, which would make it a flaky non-hermetic gate rather than a
-test. Its verification is a hand-run receipt.
+`scripts/css_computed.py` is not exercised end to end here: it needs Chromium
+and a free debug port, which would make it a flaky non-hermetic gate rather than
+a test. Its verification is a hand-run receipt. What is tested is the part that
+needs no browser -- the probe set it ships and the breakpoints it samples.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +16,7 @@ from css_rules import parse_style_block, receipt_fixtures
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+from css_computed import BREAKPOINTS, PROBES_PATH, WIDTHS, load_probes  # noqa: E402
 from css_receipt import compare, compare_page, load_allowed, snapshot  # noqa: E402
 
 
@@ -253,3 +256,32 @@ def test_a_pure_reorder_reports_the_two_orders_rather_than_an_empty_delta():
     problems = compare_page({"body": ["a: 1", "b: 2"]}, {"body": ["b: 2", "a: 1"]}, {})
     assert "      expected order: a: 1, b: 2" in problems
     assert "      actual order:   b: 2, a: 1" in problems
+
+
+def test_the_sampled_widths_cover_every_breakpoint_the_rendered_pages_declare():
+    pages = dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))
+    declared = {
+        name: {
+            int(found.group(1))
+            for key in parse_style_block(html)
+            if (found := re.search(r"@media \(max-width: (\d+)px\)", key))
+        }
+        for name, html in pages.items()
+    }
+    assert declared == {name: {width} for name, width in BREAKPOINTS.items()}
+    assert set(BREAKPOINTS.values()) <= set(WIDTHS)
+
+
+def test_every_probe_names_a_page_the_receipt_renders_and_at_least_one_property():
+    probes = load_probes(PROBES_PATH)
+    assert set(probes) == {"index", "digest", "raw"}
+    for page, selectors in probes.items():
+        assert selectors, page
+        for selector, properties in selectors.items():
+            assert properties, f"{page} | {selector}"
+
+
+def test_the_probe_set_watches_the_masthead_name_on_every_page_that_has_one():
+    probes = load_probes(PROBES_PATH)
+    for page in ("index", "digest", "raw"):
+        assert ".brand-name" in probes[page], page
