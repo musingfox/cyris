@@ -80,6 +80,22 @@ def test_a_rule_inside_a_media_query_never_collides_with_the_top_level_one():
     assert rules["@media (max-width: 880px) | body"] == {"padding: 16px"}
 
 
+def test_a_selector_declared_twice_at_one_path_keeps_both_blocks():
+    rules = parse_style_block(_style(".footer a { color: red; } .footer a { padding: 4px; }"))
+    assert rules[".footer a"] == {"color: red", "padding: 4px"}
+
+
+def test_a_selector_redeclared_inside_the_same_media_query_keeps_both_blocks():
+    css = "@media (max-width: 880px) { .x { color: red; } .x { gap: 8px; } }"
+    rules = parse_style_block(_style(css))
+    assert rules["@media (max-width: 880px) | .x"] == {"color: red", "gap: 8px"}
+
+
+def test_a_second_body_block_extends_the_ordered_declarations():
+    rules = parse_style_block(_style("body { background: red; } body { background-size: 32px; }"))
+    assert rules["body"] == ["background: red", "background-size: 32px"]
+
+
 def test_comments_are_stripped_before_parsing():
     rules = parse_style_block(_style("/* .ghost { color: red; } */ .x { color: blue; }"))
     assert rules == {".x": {"color: blue"}}

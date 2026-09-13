@@ -101,7 +101,14 @@ def _parse_rules(css: str, prefixes: tuple[str, ...], rules: dict[str, RuleDecla
         elif selector:
             key = " | ".join((*prefixes, selector))
             declarations = _split_declarations(contents)
-            rules[key] = declarations if selector == "body" and not prefixes else set(declarations)
+            existing = rules.get(key)
+            if existing is None:
+                ordered = selector == "body" and not prefixes
+                rules[key] = declarations if ordered else set(declarations)
+            elif isinstance(existing, list):
+                existing.extend(declarations)
+            else:
+                existing.update(declarations)
         position = closing + 1
 
 
@@ -111,7 +118,9 @@ def parse_style_block(html: str) -> dict[str, RuleDeclarations]:
     Rules under at-rules retain their complete ancestor path so changes to a media
     query or keyframe scope cannot masquerade as a top-level rule change.
     ``body`` alone preserves declaration order because its background shorthand
-    must precede its background longhands.
+    must precede its background longhands. A selector declared more than once at
+    the same path merges rather than overwrites, so no block can be dropped from
+    the receipt by a later one repeating its selector.
     """
     rules: dict[str, RuleDeclarations] = {}
     for style in re.findall(r"<style\b[^>]*>(.*?)</style\s*>", html, re.DOTALL | re.IGNORECASE):
