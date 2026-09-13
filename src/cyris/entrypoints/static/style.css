@@ -1,8 +1,8 @@
-/* One visual system across the three reader-facing surfaces (§7 #16). These are
-   the digest's tokens, copied from `adapters/output/templates/digest.html.j2`:
-   a digest is a standalone HTML file deployed to Pages, so it cannot link this
-   stylesheet — the copy is the sharing mechanism, and this comment is where the
-   two stay in sync. Change a value there, change it here. */
+/* One visual system across the three reader-facing surfaces (§7 #16). The
+   source of these tokens is `adapters/output/templates/_tokens.css.j2`; a
+   digest is a standalone HTML file deployed to Pages, so it cannot link this
+   stylesheet and carries its own copy. `tests/test_digest_css_partials.py`
+   enforces that the two agree. */
 :root {
   --bg: #07070a;
   --bg-elev: #0d0d12;
