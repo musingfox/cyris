@@ -143,9 +143,11 @@ def compare_computed_page(before: dict, after: dict, allowance: dict) -> list[st
     """Report where one page's computed values differ beyond what the allow-list pins.
 
     There is no added/removed bucket: a probe key that reaches only one snapshot
-    means the two runs measured different things, which no pin can justify.
+    means the two runs measured different things, which no pin can justify. A
+    pin whose cell has left the probe set fails for the same reason.
     """
     problems: list[str] = []
+    measured: set[tuple[str, str]] = set()
     for key in sorted(set(after) - set(before)):
         problems.append(f"  + {key} was measured only after the change")
     for key in sorted(set(before) - set(after)):
@@ -158,6 +160,7 @@ def compare_computed_page(before: dict, after: dict, allowance: dict) -> list[st
         for name in sorted(set(was) | set(now)):
             old, new = was.get(name), now.get(name)
             if name in pins:
+                measured.add((key, name))
                 pinned = pins[name]
                 if old == pinned["before"] and new == pinned["after"]:
                     continue
@@ -176,6 +179,14 @@ def compare_computed_page(before: dict, after: dict, allowance: dict) -> list[st
             problems.extend(
                 f"      actual only:   {name}: {now[name]}" for name in unpinned if name in now
             )
+
+    # A pin is only an argument while the cell it names is still being watched.
+    # Drop that cell from the probe set and the pin would go quiet rather than
+    # red, which is the narrowing this layer exists to refuse.
+    for key, pins in sorted(allowance.items()):
+        for name in sorted(pins):
+            if (key, name) not in measured:
+                problems.append(f"  ! {key} `{name}` is pinned but no longer measured")
     return problems
 
 

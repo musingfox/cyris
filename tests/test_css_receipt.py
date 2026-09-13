@@ -372,3 +372,11 @@ def test_the_computed_allow_list_is_what_clears_a_computed_difference(tmp_path):
 
     (after / "computed.json").write_text(json.dumps({"digest": {"@880 | .x": {"gap": "12px"}}}))
     assert compare(before, after, None, pins) == 1
+
+
+def test_a_pin_whose_cell_left_the_probe_set_fails_rather_than_going_quiet():
+    cell = {"@880 | .brand": {"font-size": "13px"}}
+    pins = {"@880 | .brand": {"color": _pin("rgb(1, 1, 1)", "rgb(2, 2, 2)")}}
+    assert compare_computed_page(cell, cell, pins) == [
+        "  ! @880 | .brand `color` is pinned but no longer measured"
+    ]
