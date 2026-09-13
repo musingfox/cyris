@@ -21,24 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
     <style>
-        :root {
-            --bg: #07070a;
-            --bg-elev: #0d0d12;
-            --surface: #11111a;
-            --surface-2: #161622;
-            --border: #1f1f2e;
-            --border-strong: #2a2a40;
-            --text: #ebebf2;
-            --text-dim: #8a8aa0;
-            --text-faint: #56566e;
-            --accent: #c6ff3d;
-            --accent-dim: #8aa829;
-            --warn: #ff5b8a;
-            --info: #4ad6ff;
-            --grid: rgba(198, 255, 61, 0.035);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        {% include "_tokens.css.j2" %}
 
         html { scroll-behavior: smooth; }
 
@@ -103,11 +86,6 @@
                 0 0 0 4px rgba(198, 255, 61, 0.12),
                 0 0 24px rgba(198, 255, 61, 0.5);
             animation: pulse 2.4s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
         }
 
         .brand-name {

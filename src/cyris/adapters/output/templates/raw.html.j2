@@ -8,19 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap">
     <style>
-        :root {
-            --bg: #07070a;
-            --bg-elev: #0d0d12;
-            --surface: #11111a;
-            --border: #1f1f2e;
-            --text: #ebebf2;
-            --text-dim: #8a8aa0;
-            --text-faint: #56566e;
-            --accent: #c6ff3d;
-            --grid: rgba(198, 255, 61, 0.035);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        {% include "_tokens.css.j2" %}
 
         body {
             font-family: 'Geist', system-ui, sans-serif;
