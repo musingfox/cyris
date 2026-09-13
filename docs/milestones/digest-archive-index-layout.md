@@ -74,8 +74,10 @@ digest 封存首頁（`src/cyris/adapters/output/templates/index.html.j2`）從�
 
 **範圍界線**：masthead、brand、footer、body 背景、token 集合、容器寬度與斷點的共同依據
 都屬於 `digest-shared-css-partial`。這張票只擁有清單本體與頭版卡片。票裡原本列在驗收條件下的
-「`prefers-reduced-motion` 下停止 pulse」與「`--accent-dim` 用上或刪掉」兩項因此移到那張票——
-兩段 CSS 在三個範本各有一份複製，只改首頁不構成收尾。
+「`prefers-reduced-motion` 下停止 pulse」與「宣告後未使用的 token」兩項因此移到那張票——
+兩段 CSS 在三個範本各有一份複製，只改首頁不構成收尾。那張票的調查後來發現「未使用的 token」
+指錯了對象：`--accent-dim` 在 digest 用了三處，真正零使用的是 `--info`，詳見
+`docs/milestones/digest-shared-css-partial.md`。
 
 **動工時會看到的紅燈**：`tests/test_html_digest.py:710` 斷言 `"morning-raw" not in index`，
 `:184` 與 `:211` 斷言 `<a href=` 的精確計數。每列附 raw 連結會同時打到這三條。測試鎖的是舊
