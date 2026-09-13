@@ -1,0 +1,37 @@
+        .footer {
+            margin-top: {{ margin_top }};
+            padding-top: {{ padding_top }};
+            border-top: 1px solid var(--border);
+{%- if layout == "flex" %}
+            display: flex;
+            flex-wrap: wrap;
+{%- if justify %}
+            justify-content: space-between;
+{%- endif %}
+{%- if align_center %}
+            align-items: center;
+{%- endif %}
+{%- if gap %}
+            gap: {{ gap }};
+{%- endif %}
+{%- endif %}
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+            text-transform: uppercase;
+        }
+
+        .footer a {
+            color: var(--text-dim);
+            {# index carries no generic `a` rule, so the footer link states its own
+               reset rather than inheriting one that may not be there. #}
+            text-decoration: none;
+            border: none;
+            background: none;
+{%- if link_transition %}
+            transition: color 0.2s;
+{%- endif %}
+        }
+
+        .footer a:hover { color: var(--accent); }

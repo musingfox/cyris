@@ -88,16 +88,8 @@
             color: var(--accent);
         }
 
-        .footer {
-            margin-top: 56px;
-            padding-top: 24px;
-            border-top: 1px solid var(--border);
-            font-family: 'Geist Mono', monospace;
-            font-size: 11px;
-            letter-spacing: 0.08em;
-            color: var(--text-faint);
-            text-transform: uppercase;
-        }
+        {% with layout="block", justify=false, align_center=false, margin_top="56px",
+                  padding_top="24px", gap=none, link_transition=false  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 720px) {
             .digest-item a {

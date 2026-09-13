@@ -495,30 +495,8 @@
         .headline-item .text a:hover { color: var(--accent); }
 
         /* === FOOTER === */
-        .footer {
-            margin-top: 80px;
-            padding-top: 32px;
-            border-top: 1px solid var(--border);
-            font-family: 'Geist Mono', monospace;
-            font-size: 11px;
-            color: var(--text-faint);
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 18px;
-            align-items: center;
-        }
-
-        .footer a {
-            color: var(--text-dim);
-            border: none;
-            background: none;
-            transition: color 0.2s;
-        }
-
-        .footer a:hover { color: var(--accent); }
+        {% with layout="flex", justify=true, align_center=true, margin_top="80px",
+                  padding_top="32px", gap="18px", link_transition=true  %}{% include "_footer.css.j2" %}{% endwith %}
 
         /* === GENERIC LINK === */
         a {

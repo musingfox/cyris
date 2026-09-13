@@ -104,22 +104,8 @@
             border-bottom-color: var(--accent);
         }
 
-        .footer {
-            margin-top: 48px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            gap: 24px;
-            flex-wrap: wrap;
-            font-family: 'Geist Mono', monospace;
-            font-size: 11px;
-            letter-spacing: 0.08em;
-            color: var(--text-faint);
-            text-transform: uppercase;
-        }
-
-        .footer a { color: var(--text-dim); text-decoration: none; }
-        .footer a:hover { color: var(--accent); }
+        {% with layout="flex", justify=false, align_center=false, margin_top="48px",
+                  padding_top="20px", gap="24px", link_transition=false  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 640px) {
             .article {
