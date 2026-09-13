@@ -2,6 +2,8 @@
 
 **Only what matters should reach your brain.**
 
+[Website](https://cyris.musingfox.com/)
+
 You already do this for your agents. An LLM is only as good as what makes it into the
 context window, so you curate that ruthlessly — the wrong thousand tokens and the
 answer is worse, not just longer. Your own attention works the same way and gets none

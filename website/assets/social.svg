@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Cyris — A reading list with an end.</title>
+  <desc id="desc">Your sources. Less noise. One focused digest.</desc>
+  <rect width="1200" height="630" fill="#07070a"/>
+  <rect x="56" y="56" width="1088" height="518" rx="18" fill="#11111a" stroke="#2a2a40" stroke-width="2"/>
+  <g transform="translate(112 90) scale(2.2)" fill="#c6ff3d">
+    <path transform="rotate(0 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/>
+    <path transform="rotate(120 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/>
+    <path transform="rotate(240 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/>
+    <circle cx="64" cy="64" r="12"/>
+  </g>
+  <text x="430" y="255" fill="#ebebf2" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="82" font-weight="650" letter-spacing="-3">Cyris</text>
+  <text x="116" y="430" fill="#ebebf2" font-family="Georgia, serif" font-size="54" font-weight="400">A reading list with an end.</text>
+  <text x="118" y="485" fill="#8a8aa0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" letter-spacing="2">OPEN SOURCE · SELF-HOSTED · YOURS</text>
+</svg>

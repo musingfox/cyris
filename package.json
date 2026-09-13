@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "deploy:website": "bun --env-file=.env x wrangler pages deploy --cwd website --branch main"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"

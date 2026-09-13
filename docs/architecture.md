@@ -348,6 +348,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. It carries the two figures no row here holds (embedding spend, and LLM neurons — §7 #28); when either needs to outlive seven days it gets a home in `usage_log`, not a longer retention |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
+| Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`** | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
 declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
@@ -383,6 +384,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; file fallback) | done |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |
+| Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
 | HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
 | Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (file fallback) | done |
@@ -741,6 +743,23 @@ Three details are load-bearing and each was verified against the live account:
 
 `_page_is_live` is untouched. The transport changed; the reason for distrusting a success report did
 not — it is the check that caught wrangler exiting 0 having deployed nothing.
+
+### Marketing website (outside the pipeline)
+
+`website/index.html` and `website/assets/` are the public site at `cyris.musingfox.com`.
+The selected M2 mark is a three-blade iris with a solid central pupil; the share image's
+editable source is `assets/social.svg`, with `assets/social.png` rendered at 1200 × 630.
+
+The site has its own Pages Direct Upload project, `cyris-site`, configured by
+`website/wrangler.toml`. From the repository root, run `bun run deploy:website`; it loads
+the local `.env` credentials and publishes the directory to production branch `main`.
+This is a manual deployment, not a Git-connected project; adding native Pages Git
+integration later requires a new project. Do not use the root `bun run deploy` command:
+that deploys the Container Worker, not this site.
+
+This deployment is deliberately independent of the digest Pages project and its D1
+`pages_manifest`: either publisher would replace the other's files in a shared project.
+The personal blog, apex domain, and email records remain outside this deployment.
 
 ### Why M3 did not use R2 either
 
