@@ -40,6 +40,9 @@ COPY docker/entrypoint.sh /app/entrypoint.sh
 # so bake the tracked example. cyris.toml is optional (defaults + env).
 COPY sources.example.yaml /app/sources.yaml
 
+ARG GIT_SHA
+ENV CYRIS_GIT_SHA=${GIT_SHA}
+
 # CYRIS_ROLE picks the role: `run` for the Workers Cron tick, `ui` for the
 # triage server, and the default `cron` for the Mac mini's supercronic loop.
 CMD ["/app/entrypoint.sh"]
