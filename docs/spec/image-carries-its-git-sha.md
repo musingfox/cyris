@@ -6,7 +6,7 @@ scope:
   - "docker/entrypoint.sh"
   - "src/cyris/service_layer/run_digest.py"
   - ".github/workflows/*.yml"
-verify: null
+verify: check:uv run pytest tests/test_release_image.py -q -k git_sha
 related: [release-image-built-in-ci]
 source: release-image-build-in-ci
 adr: null
@@ -36,7 +36,9 @@ lost is only the ability to ask a question, and the question is asked only when
 something is already wrong. That is how production came to run 121 commits
 behind on 2026-09-14 with nobody able to date it.
 
-This entry is prose because the mechanism does not exist yet. It gets a
-`check:` once the Dockerfile carries the `ARG`/`ENV` pair — the binding is a
-grep for both lines plus an assertion that they sit below the `uv sync` layer,
-which is checkable with a line-number comparison and has no false positives.
+The binding now exists: `tests/test_release_image.py` asserts that both directives are present
+and that they sit below the `uv sync` layer, and this entry's `verify:` runs the `git_sha`
+selection of that module. The selection is deliberate — the module also guards the release
+workflow and the documentation prose, and binding this entry to all of it would report the
+spec as violated when an unrelated sentence changes, which is the false positive this entry
+ruled out when it was written.

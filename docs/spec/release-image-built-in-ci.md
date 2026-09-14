@@ -6,7 +6,7 @@ scope:
   - "wrangler.toml"
   - "Dockerfile"
   - "docs/architecture.md"
-verify: null
+verify: check:uv run pytest tests/test_release_image.py -q -k release_workflow
 related: [wrangler-toml-stays-fork-neutral, image-carries-its-git-sha]
 source: release-image-build-in-ci
 adr: null
@@ -36,8 +36,9 @@ installations fighting over a credential-helper symlink — each of which blocks
 release entirely while leaving no trace in the repository, since nothing here
 observes what a laptop can do.
 
-This entry is prose because the workflow does not exist yet. Its binding, once
-it does, is an assertion that the tracked `wrangler.toml` and the release
-configuration disagree about `image` in exactly the documented way — which
-`wrangler-toml-stays-fork-neutral` already half-checks; a `check:` here would
-duplicate it until the deploy path is in scope and can be asserted directly.
+The binding now exists: the `release_workflow` selection of `tests/test_release_image.py`
+asserts that the dispatch-only trigger, the check gate, the build, both pushes and the
+registry read-back are all in the workflow and in that order. The selection is narrow on
+purpose — the same module also guards the Dockerfile invariant and the documentation
+prose, and binding this entry to all of it would report the spec as violated when an
+unrelated sentence changes.
