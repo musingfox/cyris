@@ -381,7 +381,9 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Tier thresholds, batch sizes | A | code | unchanged |
 | Per-provider default model, per-model embedding threshold | A | `src/cyris/provider_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
+| Image's build commit | A | `GIT_SHA` build arg, baked as `CYRIS_GIT_SHA` by the `Dockerfile` | unchanged — the release workflow supplies it; a local `docker build` legitimately leaves it empty |
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
+| Cloudflare account id, for CI | B | GitHub Actions repository **variable** `CLOUDFLARE_ACCOUNT_ID` | done — a variable, not a secret: it is deployer identity, and keeping it readable makes a wrong registry path a visible 404 rather than `***` |
 | Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; file fallback) | done |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
@@ -391,7 +393,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, two Cloudflare tokens, one Worker bearer, one vote token | C (the vote token is not a secret: it is in every digest published before 2026-09-01) | `.env` locally, **`cyris-app` Worker secrets in production** | done — see below |
+| LLM API keys, two Cloudflare tokens, one Worker bearer, one vote token | C (the vote token is not a secret: it is in every digest published before 2026-09-01) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` fallback | done |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` fallback | done |
@@ -434,6 +436,9 @@ That measured-property status is why the threshold is graded **A** while the emb
 about the model they chose.
 
 ### Grade C is seven variables (2026-08-30)
+
+The seven are the container's grade-C variables. `CLOUDFLARE_CONTAINERS_TOKEN` is a separate
+GitHub Actions secret used only to push a release image, so it is not an eighth container variable.
 
 It was twelve that morning. Two of them were not separate secrets at all, and the reduction is
 worth writing down because both mistakes regrow on their own.
@@ -539,6 +544,13 @@ Cloudflare
 └── Workers Logs: the container's stdout, 7 days
 ```
 
+**The release image is built by CI, not by a workstation.** `.github/workflows/release-image.yml`
+is dispatched by hand, bakes the commit into the image and pushes it to the Cloudflare registry
+under `:<sha>` and `:release`. A plain `wrangler deploy` against the tracked `wrangler.toml` still
+builds `./Dockerfile` locally — that config stays fork-neutral by
+`docs/spec/wrangler-toml-stays-fork-neutral.md`, so deploying from the registry image needs the
+derived config that §7 #30 tracks.
+
 **The container's stdout is the only log, and it is kept for seven days.** `[observability]` in
 `wrangler.toml` is what sends it to Workers Logs (Paid plan: 20M events/month included, 7-day
 retention); without that block a finished run's output exists nowhere, which is why the sleep bug
@@ -611,7 +623,7 @@ silently ignored for two days.
 
 ## 7. Outstanding work, and the record of what closed
 
-**Six numbered items are open — #9, #13, #14, #17, #28 and #29 — plus the two unnumbered rows under
+**Seven numbered items are open — #9, #13, #14, #17, #28, #29 and #30 — plus the two unnumbered rows under
 *Waiting on a receipt*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
 else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
 (why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
@@ -897,6 +909,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | ~~8b~~ | ~~Three of the four buttons were never written~~ | Done 2026-09-05: `workers/rss/`, `workers/promote/` and `workers/newsletter/` each have a button, a README and `cloudflare.bindings`; `workers/promote/` had neither README nor `package.json`. `tests/test_deploy_inputs.py` walks `workers/*/wrangler.toml` and requires all three | — | `cloud-p4` |
 | ~~8c~~ | ~~A fork buffered the author's feeds~~ | Done 2026-09-05: `src/feeds.json` held 51 personal feeds and a Mailchimp recipient id, and `feeds.js` falls back to it exactly when a fresh fork's `sources` table is empty. `gen-feeds.py` now always reads `sources.example.yaml`, never the gitignored `sources.yaml` | — | `cloud-p4` |
 | ~~8d~~ | ~~A deployed digest was silently excerpt-only~~ | Done 2026-09-05: the LLM provider is grade D and has no env var, so a container with a pasted API key and no `/settings` visit published raw excerpts without a word. `run_digest` warns every run, `doctor`'s hint names `/settings`, and README, `.env.example` and the deploy form all say the step | — | `cloud-p4` |
+| 30 | CI release image | GitHub Actions must build the amd64 image, bake `CYRIS_GIT_SHA`, push immutable and `release` registry tags, and annotate the source commit. The deploy remains separate: `wrangler deploy` still builds locally until that path changes | `release-image-build-in-ci` workflow dispatch publishes and verifies both tags; pointing a deploy at it remains open | `release-image-build-in-ci` |
 | 9 | A clean-account run of the button | never done — the three failures above were found by reading, not by pressing | press it on an account that has never seen cyris, fill the secrets, get a digest | `cloud-p4` |
 
 ### Grade D has a home

@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **CI release workflow for container images.** A manually dispatched GitHub Actions
+  workflow builds and verifies the release image before pushing the immutable commit
+  tag and mutable `release` tag to Cloudflare's registry.
 - **cyris runs in a Cloudflare Container.** `workers/app/` fronts the existing
   image with a Worker: an hourly Cron Trigger replaces `docker/crontab`
   (`--if-due` reads its schedule from D1, so the logic moved unchanged), and any
