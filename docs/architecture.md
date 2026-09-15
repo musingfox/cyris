@@ -549,7 +549,10 @@ is dispatched by hand, bakes the commit into the image and pushes it to the Clou
 under `:<sha>` and `:release`. A plain `wrangler deploy` against the tracked `wrangler.toml` still
 builds `./Dockerfile` locally — that config stays fork-neutral by
 `docs/spec/wrangler-toml-stays-fork-neutral.md`, so deploying from the registry image needs the
-derived config that §7 #30 tracks.
+derived config that §7 #30 tracks. Going back is a reference to an image already in the
+registry, never a rebuild of the old commit — the workflow refuses to republish a commit because
+the image is not reproducible — and whether the platform's own rollback moves that reference is
+unverified: `docs/spec/revert-carries-the-image.md` holds the rule, §7 #31 holds the experiment.
 
 **The container's stdout is the only log, and it is kept for seven days.** `[observability]` in
 `wrangler.toml` is what sends it to Workers Logs (Paid plan: 20M events/month included, 7-day
@@ -623,7 +626,7 @@ silently ignored for two days.
 
 ## 7. Outstanding work, and the record of what closed
 
-**Seven numbered items are open — #9, #13, #14, #17, #28, #29 and #30 — plus the two unnumbered rows under
+**Nine numbered items are open — #9, #13, #14, #17, #28, #29, #30, #31 and #32 — plus the two unnumbered rows under
 *Waiting on a receipt*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
 else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
 (why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
@@ -910,6 +913,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | ~~8c~~ | ~~A fork buffered the author's feeds~~ | Done 2026-09-05: `src/feeds.json` held 51 personal feeds and a Mailchimp recipient id, and `feeds.js` falls back to it exactly when a fresh fork's `sources` table is empty. `gen-feeds.py` now always reads `sources.example.yaml`, never the gitignored `sources.yaml` | — | `cloud-p4` |
 | ~~8d~~ | ~~A deployed digest was silently excerpt-only~~ | Done 2026-09-05: the LLM provider is grade D and has no env var, so a container with a pasted API key and no `/settings` visit published raw excerpts without a word. `run_digest` warns every run, `doctor`'s hint names `/settings`, and README, `.env.example` and the deploy form all say the step | — | `cloud-p4` |
 | 30 | CI release image | GitHub Actions must build the amd64 image, bake `CYRIS_GIT_SHA`, push immutable and `release` registry tags, and annotate the source commit. The deploy remains separate: `wrangler deploy` still builds locally until that path changes | `release-image-build-in-ci` workflow dispatch publishes and verifies both tags; pointing a deploy at it remains open | `release-image-build-in-ci` |
+| 31 | Whether a revert carries the image | Unverified, and assumed. A Worker version records the container image's digest — watched on 2026-09-14 moving from `sha256:73970d66…` to `sha256:5808999a…` — so `wrangler rollback` should restore the image with the version. The same day produced one documented-but-absent feature already (`[observability]` has been in `wrangler.toml` throughout and Workers Logs held nothing), which is why this one is not taken on the documentation's word. Rebuilding the old commit is not an alternative: #30's workflow refuses to republish a published commit, so going back is a reference to an image already in the registry or it is nothing | Perform one real revert; record the Worker version id and the image digest before and after, and read back from the deployment itself which image it now serves — a delivery-side question, answered without waiting for a digest run, so that a failed revert and a quiet hour stay distinguishable. Whichever command moves the reference becomes the documented procedure. Re-run after #30's deploy path names a registry image — the reference model changes the semantics | `verify-container-rollback` |
 | 9 | A clean-account run of the button | never done — the three failures above were found by reading, not by pressing | press it on an account that has never seen cyris, fill the secrets, get a digest | `cloud-p4` |
 
 ### Grade D has a home
@@ -925,6 +929,7 @@ thresholds, digest caps, output language, style prompt, none of which has a writ
 | ~~12~~ | ~~Post-rebuild cleanup~~ | Done 2026-08-29 in the same window: `[miniflux]`, both embeddings caches, `agent-vault/html/` and its bind mount are gone. `agent-vault/` now holds ~52KB and no pipeline state |
 | 13 | Replace the absolute similarity threshold with a relative one | Superseded in shape by M-behaviour (`docs/milestones/schema-first-interleave.md`): suppression must carry a reason and a clock, not a recalibrated cosine. `[vote_similarity]` is **off** in production since 2026-08-28 — the stale cutoff was suppressing measurably (2→24 downvote seeds took suppression from 8 to 45 on a fixed window); off is the honest state until the replacement lands |
 | 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Digest HTML holds LLM summaries stored nowhere else, so deleting the Pages project deletes history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`) |
+| 32 | Every run leaves a D1 row — the empty ones and the exceptions included | On 2026-09-14 the 08:00 run left nothing: no `usage_log` row, no page, no notification. `no_articles` returns before storing, writing usage, publishing and notifying, so "ran and fetched an empty set" and "never started" leave the same trace — nothing — and telling them apart meant chasing a stream that expires in seven days. `run_summary` already has the right semantics (emitted in a `finally`, `status=error` on the exception path) but reaches only stdout, which is the operational window and not the record. A new table, not a new column: `schema.sql` is all `CREATE ... IF NOT EXISTS` applied at every entrypoint, so an existing deployment gets it on the next boot. The build sha rides along and corroborates #31 after the fact; it is not what a revert is judged by | `run-receipt-in-d1` |
 | — | Legitimate archive prune has no in-band path | The scale guard refuses a deploy that would drop more than one live digest page. Intentionally shrinking the archive has to go around the guard |
 | — | `-raw.html` is outside the archive-shortfall signal | The live index lists digest pages only. A wrong D1 that kept every dated digest but dropped every `-raw.html` listing would pass |
 

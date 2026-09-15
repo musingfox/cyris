@@ -7,7 +7,7 @@ scope:
   - "src/cyris/service_layer/run_digest.py"
   - ".github/workflows/*.yml"
 verify: check:uv run pytest tests/test_release_image.py -q -k git_sha
-related: [release-image-built-in-ci]
+related: [release-image-built-in-ci, revert-carries-the-image]
 source: release-image-build-in-ci
 adr: null
 ---

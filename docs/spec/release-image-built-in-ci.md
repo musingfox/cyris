@@ -7,7 +7,7 @@ scope:
   - "Dockerfile"
   - "docs/architecture.md"
 verify: check:uv run pytest tests/test_release_image.py -q -k release_workflow
-related: [wrangler-toml-stays-fork-neutral, image-carries-its-git-sha]
+related: [wrangler-toml-stays-fork-neutral, image-carries-its-git-sha, revert-carries-the-image]
 source: release-image-build-in-ci
 adr: null
 ---
