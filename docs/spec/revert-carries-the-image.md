@@ -1,6 +1,6 @@
 ---
 id: revert-carries-the-image
-status: proposed
+status: accepted
 scope:
   - ".github/workflows/*.yml"
   - "wrangler.toml"
@@ -52,10 +52,11 @@ identity, and nobody asks for it until something has already gone wrong — whic
 is how production came to run 121 commits behind on 2026-09-14, undatable until
 someone went looking.
 
-The binding is partial on purpose. The half that exists today is the premise:
+The binding is partial on purpose. The half that exists is the premise:
 `test_release_workflow_refuses_to_republish_a_published_commit` holds the workflow
 to refusing a rebuild, which is what leaves a reference as the only way back. The
-delivery-side read cannot be bound yet, because nothing reads the baked sha — the
-`Dockerfile` sets it and no code consumes it — and the revert procedure is not
-chosen. When `verify-container-rollback` reports which command carries the image
-and something reads that sha, this `verify` moves to a check on it.
+other half cannot be bound from this repository at all — whether a given
+deployment runs the image it was asked to run is a question about an account, not
+about a file, and the check that asks it is `cyris doctor --deployment`, which
+needs a URL and a token no test has. That command is the binding; this `verify`
+stays on the half a test can hold.
