@@ -124,6 +124,34 @@ project can come from the bindings above without a rebuild.
 The image must be `linux/amd64`. On an Apple Silicon machine that is emulation,
 so the first build is slow.
 
+## Going back
+
+**`wrangler rollback` does not bring the container image with it.** Measured on
+2026-09-15: production was on version `0c91b494` running image `b208f09`, the
+Worker was rolled back to `d6ada284` — a version created before that image was
+ever deployed — and 37 minutes later the deployment still reported `b208f09`.
+The version object has no image in it either; `wrangler versions view --json`
+shows a container's `class_name` and `name` and nothing else. The image belongs
+to a separate container application that only `wrangler deploy` updates, which
+is also why `--containers-rollout` exists on that command and on no other.
+
+So a rollback restores the Worker's code and configuration. To put an earlier
+*image* back, deploy it by digest — the image cannot be rebuilt, because the
+base is a moving tag and the apt packages are unpinned, so the release workflow
+refuses to republish a commit:
+
+```sh
+git fetch --tags
+git tag -l --format='%(contents)' image/<short-sha>   # digest=sha256:…
+gh workflow run "Deploy the container Worker" -f image_tag=sha256:<digest>
+```
+
+Confirm with `cyris doctor --deployment https://<worker>.workers.dev`, and
+allow for the lag: the answer is the image the instance that replied was
+started from, so a warm instance keeps reporting the old sha until it sleeps
+(five idle minutes). Asking repeatedly is what stops that happening — each
+request renews the timer.
+
 ## Cutting over
 
 The Mac mini and this Worker run the same pipeline against the same D1 and the

@@ -30,10 +30,13 @@ stays warm, which is the truth about what is running and not a fault to correct;
 asking repeatedly is what prevents it resolving, since every request renews the
 idle timer that would have retired the old instance.
 
-Out of scope: which command moves the reference. Whether `wrangler rollback`
-restores the image alongside the Worker version, or the reference has to be moved
-by a pinned deploy naming the digest, is what `verify-container-rollback` settles.
-Out of scope too, and deliberately so: whether the reverted code then produces a
+The command that moves the reference is a deploy naming the digest, never
+`wrangler rollback`: measured on 2026-09-15, a Worker rolled back to a version
+created before an image existed went on running that image, and a version object
+carries no image field at all. A rollback restores code and configuration; the
+image belongs to a container application that only a deploy updates.
+
+Out of scope, and deliberately so: whether the reverted code then produces a
 good digest. That is a different question with a different failure, and a revert
 judged by a pipeline run would read an hour with nothing to fetch as a failed
 revert — leaving nobody able to say whether the deploy or the product was at
