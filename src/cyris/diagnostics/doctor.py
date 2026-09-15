@@ -361,6 +361,16 @@ _WORKERS_DEV_HINT = (
 )
 
 
+class _EndpointAbsentError(RuntimeError):
+    """The deployment answered, and has no `/api/build`.
+
+    Not the same failure as an unreachable host: the sign-in succeeded, so the
+    deployment is alive and reachable — it is simply older than the endpoint,
+    which is itself a date for it. Observed on 2026-09-15 against the image
+    production had been running since 2026-09-14.
+    """
+
+
 def _git(*args: str) -> str | None:
     """Run git in the working tree; None when there is no answer to be had."""
     import subprocess
@@ -391,6 +401,8 @@ async def _fetch_build_sha(base: str) -> str:
         # The cookie the 302 set is in the client's jar; the Worker checks it
         # before anything reaches the container.
         build = await client.get(f"{base}/api/build")
+        if build.status_code == 404:
+            raise _EndpointAbsentError(base)
         if build.status_code != 200:
             raise RuntimeError(f"/api/build answered {build.status_code}")
         return str(build.json().get("git_sha", "")).strip()
@@ -446,7 +458,17 @@ async def _check_deployment(url: str) -> Check:
         )
     try:
         online = await _fetch_build_sha(base)
-    except Exception as e:  # noqa: BLE001 - every failure here is the same answer: unknown
+    except _EndpointAbsentError:
+        # The hostname hint below would be a wrong cause: this deployment signed
+        # us in, so the host is right and the image is simply older than the
+        # endpoint. Say that, since it is the closest thing to a date it has.
+        return Check(
+            "deployment image",
+            "fail",
+            f"{base} signed in but serves no /api/build — that image predates the endpoint",
+            "Deploy a build that carries it; until then production cannot name its commit.",
+        )
+    except Exception as e:  # noqa: BLE001 - every other failure is the same answer: unknown
         return Check("deployment image", "fail", f"{base} did not answer — {e}", _WORKERS_DEV_HINT)
     return _compare_build_sha(base, online)
 

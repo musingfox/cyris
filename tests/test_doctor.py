@@ -544,6 +544,26 @@ class TestDeploymentProvenance:
         finally:
             await server.close()
 
+    async def test_a_deployment_older_than_the_endpoint_is_not_blamed_on_its_hostname(
+        self, monkeypatch
+    ) -> None:
+        """The 2026-09-15 observation against the real deployment.
+
+        Sign-in succeeded and `/api/build` answered 404, so the host is right
+        and the image is simply older than the endpoint. Answering that with
+        the workers.dev hint would send the reader after the wrong cause.
+        """
+
+        async def absent(_base: str) -> str:
+            raise doctor._EndpointAbsentError("https://x.workers.dev")
+
+        monkeypatch.setenv("CYRIS_UI_TOKEN", "t" * 32)
+        monkeypatch.setattr(doctor, "_fetch_build_sha", absent)
+        check = await doctor._check_deployment("https://x.workers.dev")
+        assert check.status == "fail"
+        assert "predates the endpoint" in check.detail
+        assert "workers.dev" not in check.fix
+
     async def test_a_missing_ui_token_is_named_rather_than_blamed_on_the_hostname(
         self, monkeypatch
     ) -> None:
