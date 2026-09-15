@@ -383,9 +383,7 @@ async def _fetch_build_sha(base: str) -> str:
     """
     import httpx
 
-    token = os.environ.get("CYRIS_UI_TOKEN", "")
-    if not token:
-        raise RuntimeError("CYRIS_UI_TOKEN is not set")
+    token = os.environ["CYRIS_UI_TOKEN"]
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
         login = await client.post(f"{base}/login", data={"token": token})
         if login.status_code != 302:
@@ -437,6 +435,15 @@ def _compare_build_sha(where: str, online: str) -> Check:
 
 async def _check_deployment(url: str) -> Check:
     base = url.rstrip("/")
+    # Before any request: a missing token is a fault in this machine's .env, and
+    # answering it with the hostname hint below would send the reader elsewhere.
+    if not os.environ.get("CYRIS_UI_TOKEN"):
+        return Check(
+            "deployment image",
+            "fail",
+            f"cannot sign in to {base} — CYRIS_UI_TOKEN is not set here",
+            "Put the deployment's UI token in .env as CYRIS_UI_TOKEN.",
+        )
     try:
         online = await _fetch_build_sha(base)
     except Exception as e:  # noqa: BLE001 - every failure here is the same answer: unknown

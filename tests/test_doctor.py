@@ -503,10 +503,26 @@ class TestDeploymentProvenance:
         async def refuse(_base: str) -> str:
             raise RuntimeError("/login answered 302, not a session")
 
+        monkeypatch.setenv("CYRIS_UI_TOKEN", "t" * 32)
         monkeypatch.setattr(doctor, "_fetch_build_sha", refuse)
         check = await doctor._check_deployment("https://digest.example.com/")
         assert check.status == "fail"
         assert "workers.dev" in check.fix
+
+    async def test_a_missing_ui_token_is_named_rather_than_blamed_on_the_hostname(
+        self, monkeypatch
+    ) -> None:
+        """A fault in this machine's .env must not read as a fault in the URL."""
+
+        async def never_called(_base: str) -> str:
+            raise AssertionError("no request should be made without a token")
+
+        monkeypatch.delenv("CYRIS_UI_TOKEN", raising=False)
+        monkeypatch.setattr(doctor, "_fetch_build_sha", never_called)
+        check = await doctor._check_deployment("https://x.workers.dev")
+        assert check.status == "fail"
+        assert "CYRIS_UI_TOKEN" in check.fix
+        assert "workers.dev" not in check.fix
 
     async def test_not_passing_a_deployment_skips_rather_than_guessing(
         self, tmp_path: Path
