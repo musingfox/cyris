@@ -352,6 +352,98 @@ def _check_publish_token(cfg: Config) -> list[Check]:
     ]
 
 
+# Access cannot cover *.workers.dev, which is exactly why it is the hostname to
+# ask: on the custom domain the request meets an Access login this command has no
+# way to pass, and the failure reads as a dead deployment.
+_WORKERS_DEV_HINT = (
+    "Use the deployment's workers.dev hostname — a custom domain sits behind "
+    "Cloudflare Access, which this command cannot log in to."
+)
+
+
+def _git(*args: str) -> str | None:
+    """Run git in the working tree; None when there is no answer to be had."""
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", *args], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+async def _fetch_build_sha(base: str) -> str:
+    """Sign in to the deployment and ask which image it starts.
+
+    Every request wakes the `ui` instance, so this answers on demand rather than
+    at the next cron hour — which is what keeps a deploy that never landed
+    distinguishable from an hour that had nothing to fetch.
+    """
+    import httpx
+
+    token = os.environ.get("CYRIS_UI_TOKEN", "")
+    if not token:
+        raise RuntimeError("CYRIS_UI_TOKEN is not set")
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+        login = await client.post(f"{base}/login", data={"token": token})
+        if login.status_code != 302:
+            raise RuntimeError(f"/login answered {login.status_code}, not a session")
+        # The cookie the 302 set is in the client's jar; the Worker checks it
+        # before anything reaches the container.
+        build = await client.get(f"{base}/api/build")
+        if build.status_code != 200:
+            raise RuntimeError(f"/api/build answered {build.status_code}")
+        return str(build.json().get("git_sha", "")).strip()
+
+
+def _compare_build_sha(where: str, online: str) -> Check:
+    """The comparison is the point: this command on a laptop reports the laptop."""
+    name = "deployment image"
+    if not online:
+        return Check(
+            name,
+            "fail",
+            f"{where} runs an image that cannot name its commit",
+            "It was built without --build-arg GIT_SHA, so nothing can date what "
+            "production runs. Release through .github/workflows/release-image.yml.",
+        )
+    short = online[:7]
+    local = _git("rev-parse", "HEAD")
+    if local is None:
+        return Check(name, "ok", f"{where} runs {short} — no checkout here to compare it against")
+    if local == online:
+        return Check(name, "ok", f"{where} runs {short}, the commit this checkout is on")
+    if _git("cat-file", "-e", f"{online}^{{commit}}") is None:
+        return Check(
+            name,
+            "fail",
+            f"{where} runs {short}, a commit this checkout does not have",
+            "Fetch it, or check the deployment is built from this repository.",
+        )
+    ahead = _git("rev-list", "--count", f"{online}..HEAD") or "0"
+    behind = _git("rev-list", "--count", f"HEAD..{online}") or "0"
+    if behind != "0" and ahead != "0":
+        detail = f"{where} runs {short} — diverged from HEAD by {ahead} and {behind} commits"
+    elif behind != "0":
+        detail = f"{where} runs {short}, {behind} commits ahead of HEAD"
+    else:
+        detail = f"{where} runs {short} — HEAD is {ahead} commits ahead of it"
+    # Not a failure: a checkout ahead of production is the ordinary state of any
+    # working day, and a check that is red every day is a check nobody reads.
+    return Check(name, "warn", detail)
+
+
+async def _check_deployment(url: str) -> Check:
+    base = url.rstrip("/")
+    try:
+        online = await _fetch_build_sha(base)
+    except Exception as e:  # noqa: BLE001 - every failure here is the same answer: unknown
+        return Check("deployment image", "fail", f"{base} did not answer — {e}", _WORKERS_DEV_HINT)
+    return _compare_build_sha(base, online)
+
+
 def _check_output_sink(cfg: Config) -> Check:
     """Does the digest reach anywhere a person can read it?
 
@@ -385,7 +477,9 @@ def _check_notifications(cfg: Config) -> Check:
     )
 
 
-async def run_checks(cfg: Config, config_path: Path | None = None) -> list[Check]:
+async def run_checks(
+    cfg: Config, config_path: Path | None = None, deployment_url: str = ""
+) -> list[Check]:
     """Every check, in the order a reader would want to see them."""
     checks = [
         *_check_build(cfg, config_path),
@@ -400,4 +494,15 @@ async def run_checks(cfg: Config, config_path: Path | None = None) -> list[Check
     checks.extend(_check_publish_token(cfg))
     checks.append(_check_output_sink(cfg))
     checks.append(_check_notifications(cfg))
+    checks.append(
+        await _check_deployment(deployment_url)
+        if deployment_url
+        else Check(
+            "deployment image",
+            "skip",
+            "not asked — this report is about the machine it ran on",
+            "Pass --deployment https://<worker>.workers.dev to date the image "
+            "production runs against this checkout.",
+        )
+    )
     return checks

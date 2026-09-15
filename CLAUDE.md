@@ -156,7 +156,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest. `--if-due` makes the hourly cron tick a no-op except on the two scheduled hours |
-| `cyris doctor` | Health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand. Its checks read only, but the command creates the D1 tables if they are missing (every entrypoint does), so it needs a token with D1 edit |
+| `cyris doctor` | Health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand. Its checks read only, but the command creates the D1 tables if they are missing (every entrypoint does), so it needs a token with D1 edit. `--deployment <url>` adds the one question a local report cannot answer: which image production starts, read from its own `/api/build`, and how far ahead this checkout is |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |

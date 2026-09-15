@@ -486,6 +486,13 @@ def doctor(
     sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
         "sources.yaml"
     ),
+    deployment: Annotated[
+        str,
+        typer.Option(
+            "--deployment",
+            help="Deployment URL to date against this checkout, e.g. https://cyris-app.you.workers.dev",
+        ),
+    ] = "",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Check the configuration before a run has to prove it at 08:00."""
@@ -514,7 +521,7 @@ def doctor(
     # No green banner here: it used to be true because a missing file raised.
     # It no longer does, and `_check_config_file` reports which file was read.
     marks = {"ok": "✓", "warn": "!", "fail": "✗", "skip": "–"}
-    checks = asyncio.run(run_checks(cfg, config_path))
+    checks = asyncio.run(run_checks(cfg, config_path, deployment))
     for check in checks:
         typer.echo(f"{marks[check.status]} {check.name} — {check.detail}")
         if check.fix and check.status != "ok":

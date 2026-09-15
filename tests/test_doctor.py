@@ -204,7 +204,7 @@ def test_the_command_renders_every_status_and_exits_nonzero_on_failure(monkeypat
 
     from cyris.entrypoints.cli import app
 
-    async def fake_checks(_cfg, _path=None):
+    async def fake_checks(_cfg, _path=None, _deployment=""):
         return [
             doctor.Check("fine", "ok", "all good"),
             doctor.Check("partial", "warn", "degraded", "do this"),
@@ -233,7 +233,7 @@ def test_the_command_exits_zero_when_nothing_is_broken(monkeypatch) -> None:
 
     from cyris.entrypoints.cli import app
 
-    async def fake_checks(_cfg, _path=None):
+    async def fake_checks(_cfg, _path=None, _deployment=""):
         return [doctor.Check("fine", "ok", "all good")]
 
     monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
@@ -251,7 +251,7 @@ def test_the_command_does_not_claim_a_config_file_it_never_read(monkeypatch, tmp
 
     from cyris.entrypoints.cli import app
 
-    async def fake_checks(cfg, _path=None):
+    async def fake_checks(cfg, _path=None, _deployment=""):
         return [doctor._check_config_file(cfg, None)]
 
     monkeypatch.setattr("cyris.diagnostics.doctor.run_checks", fake_checks)
@@ -396,3 +396,123 @@ async def test_publishing_is_named_when_it_is_on(tmp_path: Path) -> None:
 
     assert check.status == "ok"
     assert "Pages" in check.detail
+
+
+class TestDeploymentProvenance:
+    """`doctor` on a laptop reports the laptop, so dating production is a comparison.
+
+    The online half has one source — the deployment reporting the sha baked into
+    its own image — because Cloudflare documents no way to read the image a
+    Worker version references (docs/spec/revert-carries-the-image.md).
+    """
+
+    @staticmethod
+    def _repo(tmp_path: Path, commits: int) -> list[str]:
+        import subprocess
+
+        run = lambda *a: subprocess.run(  # noqa: E731 - one line, used four times below
+            a, cwd=tmp_path, check=True, capture_output=True, text=True
+        )
+        run("git", "init", "-q", "-b", "main")
+        run("git", "config", "user.email", "t@test")
+        run("git", "config", "user.name", "t")
+        shas = []
+        for i in range(commits):
+            (tmp_path / f"{i}.txt").write_text(str(i), encoding="utf-8")
+            run("git", "add", "-A")
+            # --no-verify: a global hook may reject a subject that is not
+            # Conventional Commits, and these messages are fixture noise.
+            run("git", "commit", "-qm", f"chore: c{i}", "--no-verify")
+            shas.append(
+                subprocess.run(
+                    ("git", "rev-parse", "HEAD"),
+                    cwd=tmp_path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            )
+        return shas
+
+    def test_the_same_commit_is_reported_as_the_same_commit(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        head = self._repo(tmp_path, 1)[-1]
+        monkeypatch.chdir(tmp_path)
+        check = doctor._compare_build_sha("https://x.workers.dev", head)
+        assert check.status == "ok"
+        assert head[:7] in check.detail
+
+    def test_a_checkout_ahead_of_production_counts_the_commits_and_warns(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Warn, not fail: local ahead of production is every working day.
+
+        A check that is red every day is a check nobody reads, and this one has
+        to be worth pasting into a support conversation.
+        """
+        shas = self._repo(tmp_path, 4)
+        monkeypatch.chdir(tmp_path)
+        check = doctor._compare_build_sha("https://x.workers.dev", shas[0])
+        assert check.status == "warn"
+        assert "3 commits ahead" in check.detail
+
+    def test_a_deployment_newer_than_the_checkout_says_so(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import subprocess
+
+        shas = self._repo(tmp_path, 3)
+        subprocess.run(
+            ("git", "checkout", "-q", shas[0]), cwd=tmp_path, check=True, capture_output=True
+        )
+        monkeypatch.chdir(tmp_path)
+        check = doctor._compare_build_sha("https://x.workers.dev", shas[-1])
+        assert check.status == "warn"
+        assert "2 commits ahead of HEAD" in check.detail
+
+    def test_an_image_with_no_sha_is_the_failure_this_check_exists_for(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        self._repo(tmp_path, 1)
+        monkeypatch.chdir(tmp_path)
+        check = doctor._compare_build_sha("https://x.workers.dev", "")
+        assert check.status == "fail"
+        assert "--build-arg" in check.fix
+
+    def test_a_commit_this_checkout_never_had_is_unanswerable(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        self._repo(tmp_path, 1)
+        monkeypatch.chdir(tmp_path)
+        check = doctor._compare_build_sha("https://x.workers.dev", "0" * 40)
+        assert check.status == "fail"
+
+    def test_without_a_checkout_the_sha_is_still_reported(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Inside the container there is no git tree — the sha alone still answers."""
+        monkeypatch.chdir(tmp_path)
+        check = doctor._compare_build_sha("https://x.workers.dev", "a" * 40)
+        assert check.status == "ok"
+        assert "aaaaaaa" in check.detail
+
+    async def test_a_deployment_that_does_not_answer_fails_and_names_the_hostname_to_use(
+        self, monkeypatch
+    ) -> None:
+        async def refuse(_base: str) -> str:
+            raise RuntimeError("/login answered 302, not a session")
+
+        monkeypatch.setattr(doctor, "_fetch_build_sha", refuse)
+        check = await doctor._check_deployment("https://digest.example.com/")
+        assert check.status == "fail"
+        assert "workers.dev" in check.fix
+
+    async def test_not_passing_a_deployment_skips_rather_than_guessing(
+        self, tmp_path: Path
+    ) -> None:
+        cfg = _config(tmp_path)
+        checks = await doctor.run_checks(cfg)
+        check = _by_name(checks, "deployment image")
+        assert check.status == "skip"
+        assert "--deployment" in check.fix
