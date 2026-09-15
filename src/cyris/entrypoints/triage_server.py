@@ -1,6 +1,7 @@
 """Lightweight triage web server for article classification."""
 
 import logging
+import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,6 +91,7 @@ class TriageServer:
         self._app.router.add_post("/api/articles/accept", self._handle_accept)
         self._app.router.add_post("/api/articles/reject", self._handle_reject)
         self._app.router.add_post("/api/articles/undo", self._handle_undo)
+        self._app.router.add_get("/api/build", self._handle_build)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
@@ -108,6 +110,21 @@ class TriageServer:
     async def _handle_index(self, request: web.Request) -> web.Response:
         index_path = STATIC_DIR / "index.html"
         return web.FileResponse(index_path)
+
+    async def _handle_build(self, request: web.Request) -> web.Response:
+        """Which image this deployment starts, asked without waiting for a run.
+
+        Cloudflare documents no way to read the image a Worker version
+        references and injects no image identity into a running container, so
+        the deployment saying so itself is the only answer there is. Waking this
+        instance is what makes the question answerable on demand: the `run` role
+        only speaks at its cron hours, and a deployment that has not run yet
+        would otherwise be indistinguishable from one that never deployed.
+
+        An empty sha is a real answer, not a missing one — a local `docker
+        build` with no `--build-arg` produces exactly that.
+        """
+        return web.json_response({"git_sha": os.environ.get("CYRIS_GIT_SHA", "")})
 
     async def _handle_list(self, request: web.Request) -> web.Response:
         try:

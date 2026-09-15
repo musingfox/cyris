@@ -254,6 +254,31 @@ class TestIndexPage:
         assert "Cyris Triage" in text
 
 
+class TestBuildEndpoint:
+    """The only surface that can say which image a deployment starts (§7 #33)."""
+
+    async def test_reports_the_sha_baked_into_the_image(
+        self, client: TestClient, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("CYRIS_GIT_SHA", "0123456789abcdef0123456789abcdef01234567")
+        resp = await client.get("/api/build")
+        assert resp.status == 200
+        assert (await resp.json())["git_sha"] == "0123456789abcdef0123456789abcdef01234567"
+
+    async def test_an_unbaked_image_answers_with_an_empty_sha(
+        self, client: TestClient, monkeypatch
+    ) -> None:
+        """A local `docker build` with no --build-arg is a legitimate image.
+
+        The endpoint must still answer — `doctor` reads the empty string as the
+        finding it is, and cannot do that against a 404 or a 500.
+        """
+        monkeypatch.delenv("CYRIS_GIT_SHA", raising=False)
+        resp = await client.get("/api/build")
+        assert resp.status == 200
+        assert (await resp.json())["git_sha"] == ""
+
+
 class TestSourcesEndpoint:
     """The settings page's source list and its write surface (§7 #15)."""
 

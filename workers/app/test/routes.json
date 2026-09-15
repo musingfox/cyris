@@ -13,6 +13,7 @@
   {"path": "/settings", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/settings"},
   {"path": "/static/index.html", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/static"},
   {"path": "/api/articles", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/articles"},
+  {"path": "/api/build", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/build"},
   {"path": "/api/stats", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/stats"},
   {"path": "/api/articles/accept", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/articles/accept"},
   {"path": "/api/articles/reject", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/articles/reject"},
