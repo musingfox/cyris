@@ -509,6 +509,41 @@ class TestDeploymentProvenance:
         assert check.status == "fail"
         assert "workers.dev" in check.fix
 
+    async def test_the_login_cookie_carries_to_the_build_read(self, monkeypatch) -> None:
+        """The handshake over real HTTP, because the rest of this class stubs it.
+
+        `router.js` answers /login with a 302 that sets the session cookie and
+        then checks that cookie on /api/build. The client must not follow the
+        redirect and must still carry the cookie forward — one assumption about
+        httpx's jar that no amount of monkeypatching would catch.
+        """
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        async def login(request: web.Request) -> web.Response:
+            form = await request.post()
+            if form.get("token") != "s3cret":
+                return web.Response(status=401)
+            return web.Response(
+                status=302, headers={"Location": "/", "Set-Cookie": "cyris_session=ok; Path=/"}
+            )
+
+        async def build(request: web.Request) -> web.Response:
+            if request.cookies.get("cyris_session") != "ok":
+                return web.json_response({"error": "unauthorized"}, status=401)
+            return web.json_response({"git_sha": "f" * 40})
+
+        app = web.Application()
+        app.router.add_post("/login", login)
+        app.router.add_get("/api/build", build)
+        server = TestServer(app)
+        await server.start_server()
+        try:
+            monkeypatch.setenv("CYRIS_UI_TOKEN", "s3cret")
+            assert await doctor._fetch_build_sha(str(server.make_url("")).rstrip("/")) == "f" * 40
+        finally:
+            await server.close()
+
     async def test_a_missing_ui_token_is_named_rather_than_blamed_on_the_hostname(
         self, monkeypatch
     ) -> None:
