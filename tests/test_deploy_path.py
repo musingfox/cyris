@@ -127,6 +127,19 @@ def test_the_deploy_never_uses_the_tracked_config() -> None:
     assert "--env-file /dev/null" in run
 
 
+def test_the_worker_bundle_has_its_dependencies_before_the_deploy() -> None:
+    """`wrangler deploy` bundles the Worker, which imports @cloudflare/containers.
+
+    The first dispatch failed here: the image resolved, the config rendered, and
+    the bundle then died on a missing module — a deploy path that gets all the
+    way to the last step before discovering it cannot run.
+    """
+    steps = _deploy_steps()
+
+    assert "bun install --frozen-lockfile" in steps["deps"][1]["run"]
+    assert steps["deps"][0] < steps["deploy"][0]
+
+
 def test_the_digest_is_read_back_before_the_deploy() -> None:
     """`release` says nothing six months later about what went live today."""
     steps = _deploy_steps()

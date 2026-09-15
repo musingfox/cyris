@@ -34,6 +34,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      # `wrangler deploy` bundles the Worker, and workers/app/src/index.js imports
+      # @cloudflare/containers. Without this the bundle fails on a missing module
+      # — the first dispatch died exactly here, after the image had been resolved.
+      - id: deps
+        run: bun install --frozen-lockfile
       # `wrangler containers push` resolves the account from the API token when
       # this is empty, so a deploy would render "registry.cloudflare.com//…" and
       # fail somewhere less legible. Refuse before anything is rendered.
