@@ -434,12 +434,16 @@ def _compare_build_sha(where: str, online: str) -> Check:
         )
     ahead = _git("rev-list", "--count", f"{online}..HEAD") or "0"
     behind = _git("rev-list", "--count", f"HEAD..{online}") or "0"
+
+    def commits(n: str) -> str:
+        return f"{n} commit" if n == "1" else f"{n} commits"
+
     if behind != "0" and ahead != "0":
         detail = f"{where} runs {short} — diverged from HEAD by {ahead} and {behind} commits"
     elif behind != "0":
-        detail = f"{where} runs {short}, {behind} commits ahead of HEAD"
+        detail = f"{where} runs {short}, {commits(behind)} ahead of HEAD"
     else:
-        detail = f"{where} runs {short} — HEAD is {ahead} commits ahead of it"
+        detail = f"{where} runs {short} — HEAD is {commits(ahead)} ahead of it"
     # Not a failure: a checkout ahead of production is the ordinary state of any
     # working day, and a check that is red every day is a check nobody reads.
     return Check(name, "warn", detail)

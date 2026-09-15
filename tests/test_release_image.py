@@ -38,19 +38,29 @@ def test_architecture_records_release_image_path() -> None:
     assert "release-image-build-in-ci" in text
 
 
-def test_blocking_deploy_table_keeps_release_image_open() -> None:
+def test_the_release_item_closed_on_an_observed_deploy() -> None:
+    """§7 #30 may be struck through only while it carries what was seen.
+
+    It replaces the guard that kept the item open: the row was closed on
+    2026-09-15 by a dispatch that put a named digest live, and the digest is
+    what makes the claim checkable later. A strike-through with no receipt is
+    how this chapter would start describing intentions again.
+    """
     text = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     after_heading = text.split("### Blocking one-button deploy", 1)[1]
     section = after_heading.split("### Grade D has a home", 1)[0]
-    row = next(row for row in section.splitlines() if row.startswith("| 30 |"))
-    assert "~~" not in row
+    row = next(row for row in section.splitlines() if row.startswith("| ~~30~~ |"))
+
+    assert "sha256:" in row
+    assert "doctor --deployment" in row
 
 
-def test_outstanding_work_names_release_image_item() -> None:
+def test_outstanding_work_no_longer_counts_the_release_item() -> None:
     text = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     section = text.split("## 7. Outstanding work", 1)[1]
     opening = next(line for line in section.splitlines() if "numbered items are open" in line)
-    assert "#30" in opening
+
+    assert "#30" not in opening
 
 
 def test_local_docker_instructions_are_unchanged() -> None:

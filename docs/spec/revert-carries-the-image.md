@@ -22,10 +22,13 @@ rebuild an already-published `:<sha>` rather than publish a different image unde
 the same name. Going back is therefore always a reference to an image already in
 the registry — the immutable `:<sha>`, whose digest the `image/<short-sha>` git
 tag records — never a rebuild of the old commit. The question is answered by the
-deployment reporting the sha of the image it starts — `CYRIS_GIT_SHA`, baked in
-for exactly this — and by nothing else: Cloudflare documents no way to read the
-image a Worker version references, and injects no image identity into a running
-container.
+deployment reporting the sha baked into the image the instance answering was
+started from — `CYRIS_GIT_SHA` — and by nothing else: Cloudflare documents no
+way to read the image a Worker version references, and injects no image identity
+into a running container. That answer lags a deploy by as long as an instance
+stays warm, which is the truth about what is running and not a fault to correct;
+asking repeatedly is what prevents it resolving, since every request renews the
+idle timer that would have retired the old instance.
 
 Out of scope: which command moves the reference. Whether `wrangler rollback`
 restores the image alongside the Worker version, or the reference has to be moved
