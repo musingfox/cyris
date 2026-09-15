@@ -21,9 +21,11 @@ packages are unpinned, so the release workflow's `existing` step refuses to
 rebuild an already-published `:<sha>` rather than publish a different image under
 the same name. Going back is therefore always a reference to an image already in
 the registry — the immutable `:<sha>`, whose digest the `image/<short-sha>` git
-tag records — never a rebuild of the old commit. The question is answered on the
-delivery side, from the image the deployed version serves or the sha the
-container reports of itself; `CYRIS_GIT_SHA` is baked into the image for that.
+tag records — never a rebuild of the old commit. The question is answered by the
+deployment reporting the sha of the image it starts — `CYRIS_GIT_SHA`, baked in
+for exactly this — and by nothing else: Cloudflare documents no way to read the
+image a Worker version references, and injects no image identity into a running
+container.
 
 Out of scope: which command moves the reference. Whether `wrangler rollback`
 restores the image alongside the Worker version, or the reference has to be moved
