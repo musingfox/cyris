@@ -240,7 +240,7 @@ def test_release_workflow_pushes_sha_then_release_tag() -> None:
     for step_id in ("push_sha", "push_release"):
         comment = " ".join(comments_above(text, step_id))
         assert "container-registry-push" in comment
-        assert "unverified" in comment
+        assert "Workers Scripts:Edit" in comment
 
 
 def test_release_workflow_smokes_baked_sha_in_container() -> None:

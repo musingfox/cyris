@@ -42,7 +42,9 @@ jobs:
             echo "repository variable CLOUDFLARE_ACCOUNT_ID is unset" >&2
             exit 1
           fi
-      # Requires the container-registry-push permission; the exact Cloudflare scope name is unverified.
+      # Needs the container-registry-push permission. Verified sufficient on 2026-09-15 by
+      # a real dispatch: Account -> Workers Scripts:Edit plus the Containers entry in the
+      # token picker. The picker's exact label for that second entry is not recorded here.
       - id: registry_login
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_CONTAINERS_TOKEN }}
@@ -82,7 +84,9 @@ jobs:
         run: >-
           docker run --rm --entrypoint sh "$IMAGE_NAME:${{ github.sha }}" -c
           'test "$CYRIS_GIT_SHA" = "${{ github.sha }}"'
-      # Requires the container-registry-push permission; the exact Cloudflare scope name is unverified.
+      # Needs the container-registry-push permission. Verified sufficient on 2026-09-15 by
+      # a real dispatch: Account -> Workers Scripts:Edit plus the Containers entry in the
+      # token picker. The picker's exact label for that second entry is not recorded here.
       - id: push_sha
         if: steps.existing.outputs.published != 'true'
         env:
@@ -105,7 +109,9 @@ jobs:
             exit 1
           fi
           echo "digest=$sha_digest" >> "$GITHUB_OUTPUT"
-      # Requires the container-registry-push permission; the exact Cloudflare scope name is unverified.
+      # Needs the container-registry-push permission. Verified sufficient on 2026-09-15 by
+      # a real dispatch: Account -> Workers Scripts:Edit plus the Containers entry in the
+      # token picker. The picker's exact label for that second entry is not recorded here.
       - id: push_release
         if: steps.existing.outputs.published != 'true'
         env:
