@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Deploying is now a reference to a published image.** A second dispatch-only
+  workflow renders a derived Wrangler config whose `image` names
+  `registry.cloudflare.com/<account>/cyris-app` at a tag or a digest, and deploys
+  with `--config`; the tracked `wrangler.toml` still builds `./Dockerfile` and
+  stays free of any account identity. It is separate from the build because the
+  two fail differently, and because pinning to an already-published image is this
+  path's job — the build workflow refuses to republish a commit.
+- **`cyris doctor --deployment <url>`.** Signs in to a deployment, asks it which
+  image it starts (`/api/build`, answered by the `ui` role from the `CYRIS_GIT_SHA`
+  baked into the image) and counts the distance to local HEAD. Cloudflare exposes
+  no way to read the image a Worker version references, so the deployment saying
+  so itself is the only answer there is.
 - **CI release workflow for container images.** A manually dispatched GitHub Actions
   workflow builds and verifies the release image before pushing the immutable commit
   tag and mutable `release` tag to Cloudflare's registry.

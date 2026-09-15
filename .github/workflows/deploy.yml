@@ -1,0 +1,101 @@
+name: Deploy the container Worker
+
+# Dispatch-only, and separate from the image build on purpose. Building and
+# deploying fail in different ways — "the image cannot be made" and "the image
+# cannot go live" — and chaining them would collapse both into one red X.
+# Separate also means the timing is chosen: `wrangler.toml` runs a cron every
+# hour, and a deploy rolls the container, so landing one at 07:59 is a choice
+# nobody should make by accident.
+#
+# Pinning is this workflow, not a re-dispatch of the build: release-image.yml
+# refuses to republish a commit, because the image is not reproducible. Going
+# back means naming an image already in the registry — pass its digest as
+# image_tag, and this deploys that exact image with no build at all.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Registry tag, or sha256:… digest to pin to one exact image'
+        required: true
+        default: release
+
+# Two dispatches would race each other's `wrangler deploy` and the container
+# rollout behind it. Serialise rather than cancel: cancelling mid-deploy is
+# what would leave the Worker and its container application disagreeing.
+concurrency:
+  group: deploy-app
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: cyris-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `wrangler containers push` resolves the account from the API token when
+      # this is empty, so a deploy would render "registry.cloudflare.com//…" and
+      # fail somewhere less legible. Refuse before anything is rendered.
+      - id: preflight
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "repository variable CLOUDFLARE_ACCOUNT_ID is unset" >&2
+            exit 1
+          fi
+      - id: registry_login
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_CONTAINERS_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          credentials=$(npx wrangler containers registries credentials registry.cloudflare.com --pull --json)
+          printf '%s' "$credentials" | jq -r .password | docker login registry.cloudflare.com \
+            --username "$(printf '%s' "$credentials" | jq -r .username)" --password-stdin
+      # The digest is read before the deploy so the run records which image went
+      # live even when `image_tag` was the mutable `release` — six months later
+      # that tag says nothing about what was deployed today.
+      - id: resolve
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$IMAGE_NAME"
+          case "${{ inputs.image_tag }}" in
+            sha256:*) ref="$image@${{ inputs.image_tag }}" ;;
+            *) ref="$image:${{ inputs.image_tag }}" ;;
+          esac
+          # -v yields an array when a reference resolves to an index.
+          descriptor='if type == "array" then .[0] else . end | .Descriptor.digest // empty'
+          digest=$(docker manifest inspect -v "$ref" | jq -r "$descriptor")
+          if [ -z "$digest" ]; then
+            echo "the registry serves no image for $ref" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "deploying $ref ($digest)"
+      - id: derive
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          scripts/derive-wrangler-config.sh "$CLOUDFLARE_ACCOUNT_ID" "$IMAGE_NAME" \
+            "${{ inputs.image_tag }}" wrangler.deploy.toml
+          grep '^image = ' wrangler.deploy.toml
+      # --containers-rollout immediate: the instance types and limits are
+      # unchanged by a deploy that only moves the image, and a gradual rollout
+      # would leave two images serving at once — which is exactly the state
+      # `cyris doctor --deployment` could not describe.
+      - id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_CONTAINERS_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: >-
+          npx wrangler deploy --config wrangler.deploy.toml
+          --containers-rollout immediate --env-file /dev/null
+      # The derived file is a build artifact. Nothing here commits it, and
+      # nothing should: it carries the account id the tracked config must not.
+      - id: receipt
+        run: |
+          echo "deployed $IMAGE_NAME@${{ steps.resolve.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Confirm with: cyris doctor --deployment https://<worker>.workers.dev" \
+            >> "$GITHUB_STEP_SUMMARY"

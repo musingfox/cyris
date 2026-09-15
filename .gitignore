@@ -73,3 +73,7 @@ node_modules/
 
 # `cyris llm-compare` renders, one digest per provider arm.
 agent-vault/llm-compare/
+
+# Rendered at deploy time by scripts/derive-wrangler-config.sh; carries the
+# account id the tracked wrangler.toml must not.
+wrangler.deploy.toml
