@@ -57,6 +57,20 @@ class GeminiClient:
             if response.status_code not in _RETRYABLE_STATUS or attempt == self._max_retries:
                 break
             await asyncio.sleep(attempt + 1)
+        if 400 <= response.status_code < 500:
+            try:
+                error = response.json()["error"]
+                code = error["code"]
+                status = error["status"]
+                message = error["message"]
+            except (KeyError, TypeError, ValueError):
+                pass
+            else:
+                raise httpx.HTTPStatusError(
+                    f"Gemini API error: code={code}, status={status}, message={message}",
+                    request=response.request,
+                    response=response,
+                )
         response.raise_for_status()
 
         data = response.json()

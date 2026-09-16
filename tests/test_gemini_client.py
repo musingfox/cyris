@@ -91,3 +91,30 @@ async def test_raises_on_client_error_without_retry():
             await client.complete("hi")
 
     assert route.call_count == 1
+
+async def test_structured_client_error_includes_safe_gemini_details():
+    api_key = "secret-gemini-key"
+    prompt = "private prompt text"
+    async with respx.mock:
+        respx.post(GENERATE_URL).mock(
+            return_value=httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": 400,
+                        "status": "INVALID_ARGUMENT",
+                        "message": "The model is invalid.",
+                    }
+                },
+            )
+        )
+        client = GeminiClient(api_key=api_key, model="gemini-2.5-flash")
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            await client.complete(prompt)
+
+    error_text = str(exc_info.value)
+    assert "400" in error_text
+    assert "INVALID_ARGUMENT" in error_text
+    assert "The model is invalid." in error_text
+    assert api_key not in error_text
+    assert prompt not in error_text
