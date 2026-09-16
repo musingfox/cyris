@@ -5,6 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+import httpx
+
+from cyris.adapters.gemini_client import GeminiAPIError
 from cyris.config import AppConfig, Config, LLMProviderConfig
 from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig, Tier
@@ -118,6 +121,35 @@ async def test_no_provider_is_a_warning_not_a_failure(tmp_path: Path) -> None:
     check = _by_name(await doctor.run_checks(_config(tmp_path)), "llm provider")
 
     assert check.status == "warn"
+
+async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) -> None:
+    request = httpx.Request("POST", "https://generativelanguage.googleapis.com")
+    response = httpx.Response(400, request=request)
+
+    class FakeLLM:
+        model = "gemini-2.5-flash"
+
+        async def complete(self, prompt, *, max_tokens):
+            raise GeminiAPIError(
+                code=400,
+                status="INVALID_ARGUMENT",
+                message="The model is invalid; ping ping. Keep this context.",
+                request=request,
+                response=response,
+            )
+
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: FakeLLM())
+    cfg = LLMProviderConfig(provider="gemini", api_key="key")
+
+    check = await doctor.probe_llm(cfg)
+
+    assert check.status == "fail"
+    assert "ping" not in check.detail
+    assert "[probe text redacted]" in check.detail
+    assert "code=400" in check.detail
+    assert "status=INVALID_ARGUMENT" in check.detail
+    assert "The model is invalid;" in check.detail
+    assert "Keep this context." in check.detail
 
 
 async def test_an_unwired_rss_buffer_warns_with_the_measured_cost(tmp_path: Path) -> None:

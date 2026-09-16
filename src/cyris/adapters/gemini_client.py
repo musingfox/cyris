@@ -13,6 +13,24 @@ _RETRYABLE_STATUS = (429, 500, 502, 503)
 _MAX_OUTPUT_TOKENS = 65536
 
 
+class GeminiAPIError(httpx.HTTPStatusError):
+    """A safe, structured error returned by the Gemini API."""
+
+    def __init__(
+        self,
+        *,
+        code: int,
+        status: str,
+        message: str,
+        request: httpx.Request,
+        response: httpx.Response,
+    ) -> None:
+        super().__init__("Gemini API request failed", request=request, response=response)
+        self.code = code
+        self.status = status
+        self.message = message
+
+
 class GeminiClient:
     def __init__(
         self,
@@ -66,8 +84,10 @@ class GeminiClient:
             except (KeyError, TypeError, ValueError):
                 pass
             else:
-                raise httpx.HTTPStatusError(
-                    f"Gemini API error: code={code}, status={status}, message={message}",
+                raise GeminiAPIError(
+                    code=code,
+                    status=status,
+                    message=message,
                     request=response.request,
                     response=response,
                 )

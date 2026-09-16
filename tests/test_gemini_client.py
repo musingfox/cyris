@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from cyris.adapters.gemini_client import GeminiClient
+from cyris.adapters.gemini_client import GeminiAPIError, GeminiClient
 
 GENERATE_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
@@ -92,9 +92,10 @@ async def test_raises_on_client_error_without_retry():
 
     assert route.call_count == 1
 
-async def test_structured_client_error_includes_safe_gemini_details():
-    api_key = "secret-gemini-key"
+async def test_structured_client_error_keeps_details_out_of_exception_text():
     prompt = "private prompt text"
+    system = "private system text"
+    google_message = "The model is invalid."
     async with respx.mock:
         respx.post(GENERATE_URL).mock(
             return_value=httpx.Response(
@@ -103,18 +104,23 @@ async def test_structured_client_error_includes_safe_gemini_details():
                     "error": {
                         "code": 400,
                         "status": "INVALID_ARGUMENT",
-                        "message": "The model is invalid.",
+                        "message": google_message,
                     }
                 },
             )
         )
-        client = GeminiClient(api_key=api_key, model="gemini-2.5-flash")
+        client = GeminiClient(api_key="secret-gemini-key", model="gemini-2.5-flash")
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
-            await client.complete(prompt)
+            await client.complete(prompt, system=system)
 
-    error_text = str(exc_info.value)
-    assert "400" in error_text
-    assert "INVALID_ARGUMENT" in error_text
-    assert "The model is invalid." in error_text
-    assert api_key not in error_text
+    error = exc_info.value
+    assert isinstance(error, GeminiAPIError)
+    assert error.code == 400
+    assert error.status == "INVALID_ARGUMENT"
+    assert error.message == google_message
+    error_text = str(error)
+    assert "400" not in error_text
+    assert "INVALID_ARGUMENT" not in error_text
+    assert google_message not in error_text
     assert prompt not in error_text
+    assert system not in error_text

@@ -136,6 +136,7 @@ async def probe_llm(llm_cfg) -> Check:
     fetch has already happened — so anything that *writes* the provider config
     should call this before saving, not after.
     """
+    from cyris.adapters.gemini_client import GeminiAPIError
     from cyris.bootstrap import build_llm
 
     llm = build_llm(llm_cfg)
@@ -151,10 +152,18 @@ async def probe_llm(llm_cfg) -> Check:
                 else ""
             ),
         )
+    probe_text = "ping"
     try:
         # 16 was not enough: a reasoning model can spend the entire budget
         # thinking and return an empty candidate, which reads as a broken model.
-        await llm.complete("ping", max_tokens=128)
+        await llm.complete(probe_text, max_tokens=128)
+    except GeminiAPIError as e:
+        detail = e.message.replace(probe_text, "[probe text redacted]")
+        return Check(
+            "llm probe",
+            "fail",
+            f"{llm.model} refused: code={e.code}, status={e.status}, message={detail}",
+        )
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
         return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}")
     return Check("llm probe", "ok", f"{llm_cfg.provider} · {llm.model} answered")
