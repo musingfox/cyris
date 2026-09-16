@@ -120,6 +120,17 @@ async function handleVote(request, env, fetchImpl) {
   }
 }
 
+const GEMINI_MODEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+async function handleGeminiProbe(url, deps) {
+  const model = url.searchParams.get("model") ?? "";
+  if (!GEMINI_MODEL.test(model)) {
+    return json({ error: "model must contain only letters, numbers, dots, underscores, or hyphens" }, 400);
+  }
+  const result = await deps.probeGemini(model);
+  return json(result.body, result.status);
+}
+
 export async function handleRequest(request, env, deps) {
   const url = new URL(request.url);
   const fetchImpl = deps.fetchImpl;
@@ -182,6 +193,10 @@ export async function handleRequest(request, env, deps) {
   if (!(await authorized(request, env))) {
     const wantsHtml = (request.headers.get("Accept") || "").includes("text/html");
     return wantsHtml ? html(LOGIN_PAGE(""), 401) : json({ error: "unauthorized" }, 401);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/diagnostics/gemini") {
+    return handleGeminiProbe(url, deps);
   }
 
   if (request.method === "POST" && url.pathname === "/run") {

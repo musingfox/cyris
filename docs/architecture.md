@@ -567,6 +567,11 @@ exception one, so "what happened last night" is one query rather than an inferen
 retention is a separate decision and does not need a different log: Workers Logpush (Paid, to R2 or
 another sink) and a Tail Worker can both read this stream later without changing what writes it.
 
+`POST /api/diagnostics/gemini?model=<model>` is a cookie-protected, on-demand Worker-only
+probe: it sends a fixed minimal `generateContent` request with the Worker-bound
+`GEMINI_API_KEY`, returns only status, model, latency and a truncated provider error, and writes no
+state. It proves the Worker egress path, not the Container's separate egress path.
+
 Nothing runs on the Mac mini since 2026-08-30: `docker compose down` was the cutover, and the
 `compose` file survives only as the local development path. `cloud-p4` makes the whole thing
 deployable by someone else with one button.

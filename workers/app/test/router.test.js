@@ -29,6 +29,15 @@ function makeDeps({ fetchStatus = 200, fetchBody = "<html>", fetchThrow = false 
   };
   startRun.calls = [];
 
+  const probeGemini = async (model) => {
+    probeGemini.calls.push(model);
+    return {
+      status: 200,
+      body: { ok: true, provider: "gemini", model, latency_ms: 1 },
+    };
+  };
+  probeGemini.calls = [];
+
   const fetchImpl = async (input, init) => {
     fetchImpl.calls.push({ input, init });
     if (fetchThrow) throw new Error("upstream");
@@ -40,7 +49,7 @@ function makeDeps({ fetchStatus = 200, fetchBody = "<html>", fetchThrow = false 
   };
   fetchImpl.calls = [];
 
-  return { container: wrappedContainer, startRun, fetchImpl };
+  return { container: wrappedContainer, startRun, probeGemini, fetchImpl };
 }
 
 function env(extra = {}) {
@@ -179,7 +188,46 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
         expect(deps.container.calls, row.path).toHaveLength(0);
         expect(deps.startRun.calls, row.path).toHaveLength(0);
       }
+      if (row.kind === "worker") {
+        expect(deps.probeGemini.calls, row.path).toHaveLength(0);
+      }
     }
+  });
+});
+
+describe("GeminiProbeIsWorkerLocal", () => {
+  it("POST /api/diagnostics/gemini invokes the Worker probe after cookie authentication", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("POST", "/api/diagnostics/gemini?model=gemini-3.7-flash", {
+        cookie: await sessionCookie(),
+      }),
+      env(),
+      deps,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(await resp.json()).toMatchObject({
+      ok: true,
+      provider: "gemini",
+      model: "gemini-3.7-flash",
+    });
+    expect(deps.probeGemini.calls).toEqual(["gemini-3.7-flash"]);
+    expect(deps.container.calls).toHaveLength(0);
+  });
+
+  it("rejects an invalid model before probing Gemini", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("POST", "/api/diagnostics/gemini?model=not/a-model", {
+        cookie: await sessionCookie(),
+      }),
+      env(),
+      deps,
+    );
+
+    expect(resp.status).toBe(400);
+    expect(deps.probeGemini.calls).toHaveLength(0);
   });
 });
 

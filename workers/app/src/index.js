@@ -46,6 +46,69 @@ const present = (vars) =>
 
 const containerEnv = (role) => ({ ...present(SECRETS), ...present(DEPLOYMENT), CYRIS_ROLE: role });
 
+const GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+
+async function probeGemini(model) {
+  const started = Date.now();
+  if (!env.GEMINI_API_KEY) {
+    return {
+      status: 503,
+      body: {
+        ok: false,
+        provider: "gemini",
+        model,
+        latency_ms: Date.now() - started,
+        error: { code: 503, status: "UNAVAILABLE", message: "GEMINI_API_KEY is not configured" },
+      },
+    };
+  }
+
+  try {
+    const response = await fetch(`${GEMINI_GENERATE_URL}/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: "ping" }] }],
+        generationConfig: { maxOutputTokens: 128 },
+      }),
+    });
+    const latency_ms = Date.now() - started;
+    if (response.ok) {
+      return { status: 200, body: { ok: true, provider: "gemini", model, latency_ms } };
+    }
+    const payload = await response.json().catch(() => ({}));
+    const error = payload.error ?? {};
+    return {
+      status: response.status,
+      body: {
+        ok: false,
+        provider: "gemini",
+        model,
+        latency_ms,
+        error: {
+          code: error.code ?? response.status,
+          status: error.status ?? "UNKNOWN",
+          message: String(error.message ?? `Gemini returned HTTP ${response.status}`).slice(0, 300),
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        provider: "gemini",
+        model,
+        latency_ms: Date.now() - started,
+        error: { code: 502, status: "UNAVAILABLE", message: String(error).slice(0, 300) },
+      },
+    };
+  }
+}
+
 export class CyrisContainer extends Container {
   defaultPort = 8766;
   // Idle time is billed. §7 called the default 10 minutes ~10 container-hours
@@ -87,6 +150,7 @@ export default {
     return handleRequest(request, env, {
       container: (r) => getContainer(env.CYRIS, "ui").fetch(r),
       startRun,
+      probeGemini,
       fetchImpl: (input, init) => fetch(input, init),
     });
   },

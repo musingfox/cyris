@@ -10,6 +10,7 @@
   {"path": "/api/vote", "method": "HEAD", "kind": "vote", "unauth_status": 401},
   {"path": "/api/vote", "method": "POST", "kind": "vote", "unauth_status": 401},
   {"path": "/run", "method": "POST", "kind": "run", "unauth_status": 401},
+  {"path": "/api/diagnostics/gemini", "method": "POST", "kind": "worker", "unauth_status": 401},
   {"path": "/settings", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/settings"},
   {"path": "/static/index.html", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/static"},
   {"path": "/api/articles", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/articles"},
