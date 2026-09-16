@@ -77,11 +77,9 @@ export class CyrisContainer extends Container {
 
 // A separate instance from the UI: this one runs the pipeline once and exits,
 // so it stops billing without waiting for a sleep timer.
-async function startRun({ egressProbe = false } = {}) {
-  await getContainer(env.CYRIS, "run").start({
-    envVars: { ...containerEnv("run"), ...(egressProbe && { CYRIS_EGRESS_PROBE: "true" }) },
-  });
-  return { started: egressProbe ? "egress-probe" : "run", at: new Date().toISOString() };
+async function startRun() {
+  await getContainer(env.CYRIS, "run").start({ envVars: containerEnv("run") });
+  return { started: "run", at: new Date().toISOString() };
 }
 
 export default {
