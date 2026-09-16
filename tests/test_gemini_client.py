@@ -92,6 +92,7 @@ async def test_raises_on_client_error_without_retry():
 
     assert route.call_count == 1
 
+
 async def test_structured_client_error_keeps_details_out_of_exception_text():
     prompt = "private prompt text"
     system = "private system text"

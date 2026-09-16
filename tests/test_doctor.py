@@ -121,6 +121,7 @@ async def test_no_provider_is_a_warning_not_a_failure(tmp_path: Path) -> None:
 
     assert check.status == "warn"
 
+
 async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) -> None:
     request = httpx.Request("POST", "https://generativelanguage.googleapis.com")
     response = httpx.Response(400, request=request)
