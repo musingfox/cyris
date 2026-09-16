@@ -3,9 +3,8 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 import httpx
+import pytest
 
 from cyris.adapters.gemini_client import GeminiAPIError
 from cyris.config import AppConfig, Config, LLMProviderConfig
