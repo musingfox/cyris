@@ -23,8 +23,8 @@ function makeDeps({ fetchStatus = 200, fetchBody = "<html>", fetchThrow = false 
   };
   wrappedContainer.calls = [];
 
-  const startRun = async () => {
-    startRun.calls.push(true);
+  const startRun = async (options) => {
+    startRun.calls.push(options);
     return { started: "run", at: "t" };
   };
   startRun.calls = [];
@@ -324,6 +324,20 @@ describe("VoteAccessHostPostForwards", () => {
     );
     expect(resp.status).toBe(502);
     expect(await resp.json()).toEqual({ error: "promote worker failed" });
+  });
+});
+
+describe("RunStartsAuthenticatedContainer", () => {
+  it("POST /run?egress_probe=1 passes an explicit probe flag", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("POST", "/run?egress_probe=1", { cookie: await sessionCookie() }),
+      env(),
+      deps,
+    );
+    expect(resp.status).toBe(200);
+    expect(deps.startRun.calls).toHaveLength(1);
+    expect(deps.startRun.calls).toEqual([{ egressProbe: true }]);
   });
 });
 

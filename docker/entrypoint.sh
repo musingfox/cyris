@@ -9,6 +9,20 @@ case "${CYRIS_ROLE:-cron}" in
   # Cloudflare Workers Cron fires the hourly tick, so the container's own job is
   # one pass and exit — the instance stops and stops billing.
   run)
+    if [ "${CYRIS_EGRESS_PROBE:-}" = "true" ]; then
+      python - <<'PY'
+import json
+from urllib.request import urlopen
+
+trace = dict(
+    line.split("=", 1)
+    for line in urlopen("https://cloudflare.com/cdn-cgi/trace", timeout=10).read().decode().splitlines()
+    if "=" in line
+)
+print(json.dumps({"event": "egress_probe", **{key: trace.get(key) for key in ("ip", "colo", "loc")}}))
+PY
+      exit
+    fi
     export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
     export CYRIS_HTML_OUTPUT_ENABLED=${CYRIS_HTML_OUTPUT_ENABLED:-true}
     export CYRIS_PROMOTE_PUBLISH_ENABLED=${CYRIS_PROMOTE_PUBLISH_ENABLED:-true}

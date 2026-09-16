@@ -185,8 +185,9 @@ export async function handleRequest(request, env, deps) {
   }
 
   if (request.method === "POST" && url.pathname === "/run") {
-    return json(await deps.startRun());
+    return json(await deps.startRun({ egressProbe: url.searchParams.get("egress_probe") === "1" }));
   }
+
 
   return deps.container(request);
 }
