@@ -43,6 +43,13 @@ max_instances = 2
 # a run OOMs; the receipt is an exit before the digest, not a slow one.
 instance_type = "basic"
 
+# Placement is nearest-to-request by default, and from Taiwan that can be Hong
+# Kong, where Gemini and OpenAI both refuse the API ("User location is not
+# supported"). North America is on both providers' lists and prices egress
+# lowest; the cost is D1 round trips across the Pacific, seconds per run.
+[containers.constraints]
+regions = ["WNAM", "ENAM"]
+
 # The container's stdout and stderr are this deployment's only log. Without
 # this block they are kept nowhere at all — `wrangler tail` shows them live and
 # then they are gone, which is why M5's sleep bug had to be chased through
