@@ -5,7 +5,7 @@ import re
 
 import httpx
 
-from cyris.domain.models import DigestContent, DigestSection
+from cyris.domain.models import DigestContent, DigestSection, is_degraded_run
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +201,19 @@ def build_discord_embeds(
     return embeds
 
 
+def build_discord_payload(
+    content: DigestContent, digest_url: str = "", publish_failed: bool = False
+) -> dict:
+    """Build the Discord webhook payload for a digest."""
+    payload = {"embeds": build_discord_embeds(content, digest_url, publish_failed)}
+    if is_degraded_run(content.usage):
+        payload["content"] = (
+            f"⚠️ Degraded digest: LLM {content.usage.model} was configured but this run used 0 "
+            "input tokens, so scores and summaries are excerpts."
+        )
+    return payload
+
+
 async def send_discord(
     webhook_url: str,
     content: DigestContent,
@@ -217,13 +230,12 @@ async def send_discord(
     if not webhook_url:
         return
 
-    embeds = build_discord_embeds(content, digest_url, publish_failed)
-    payload = {"embeds": embeds}
+    payload = build_discord_payload(content, digest_url, publish_failed)
 
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(webhook_url, json=payload)
             resp.raise_for_status()
-            logger.debug("Discord webhook sent: %d embeds", len(embeds))
+            logger.debug("Discord webhook sent: %d embeds", len(payload["embeds"]))
     except httpx.HTTPError:
         logger.warning("Discord webhook failed", exc_info=True)

@@ -1,12 +1,18 @@
 """Tests for notification senders."""
 
+import json
+
+import httpx
+
 from cyris.adapters.notify import (
     build_discord_embeds,
+    build_discord_payload,
     is_masked_webhook_url,
     mask_discord_webhook_url,
     parse_discord_webhook_url,
+    send_discord,
 )
-from cyris.domain.models import DigestContent, DigestItem, DigestSection
+from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
 
 
 class TestDiscordEmbeds:
@@ -329,6 +335,139 @@ class TestDiscordEmbeds:
         )
         desc = build_discord_embeds(content)[-1]["description"]
         assert "no canonical link" not in desc
+
+
+class TestDiscordPayload:
+    def test_degraded_usage_adds_factual_content_line(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(model="gemini-3-flash", input_tokens=0),
+        )
+
+        payload = build_discord_payload(content)
+
+        assert payload["content"] == (
+            "⚠️ Degraded digest: LLM gemini-3-flash was configured but this run used 0 input "
+            "tokens, so scores and summaries are excerpts."
+        )
+
+    def test_healthy_usage_omits_content_line(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(model="gemini-3-flash", input_tokens=12000, api_calls=3),
+        )
+
+        assert "content" not in build_discord_payload(content)
+
+    def test_degraded_payload_preserves_embeds_and_stats_order(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(model="gemini-3-flash", input_tokens=0),
+        )
+
+        payload = build_discord_payload(content)
+
+        assert payload["embeds"] == build_discord_embeds(content)
+        assert payload["embeds"][-1]["title"] == "Morning 2026-04-10"
+
+    def test_default_usage_has_only_embeds(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+        )
+
+        assert build_discord_payload(content) == {"embeds": build_discord_embeds(content)}
+
+
+class TestSendDiscord:
+    async def test_posts_degraded_payload(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        client = httpx.AsyncClient
+        monkeypatch.setattr(
+            "cyris.adapters.notify.httpx.AsyncClient",
+            lambda: client(transport=httpx.MockTransport(handler)),
+        )
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(model="gemini-3-flash", input_tokens=0),
+        )
+
+        await send_discord("https://discord.com/api/webhooks/123/token", content)
+
+        assert json.loads(requests[0].content)["content"].startswith("⚠️ Degraded digest")
+
+    async def test_posts_healthy_payload_without_content(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        client = httpx.AsyncClient
+        monkeypatch.setattr(
+            "cyris.adapters.notify.httpx.AsyncClient",
+            lambda: client(transport=httpx.MockTransport(handler)),
+        )
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(model="gemini-3-flash", input_tokens=12000, api_calls=3),
+        )
+
+        await send_discord("https://discord.com/api/webhooks/123/token", content)
+
+        assert "content" not in json.loads(requests[0].content)
+
+    async def test_empty_webhook_posts_nothing(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        client = httpx.AsyncClient
+        monkeypatch.setattr(
+            "cyris.adapters.notify.httpx.AsyncClient",
+            lambda: client(transport=httpx.MockTransport(handler)),
+        )
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+        )
+
+        await send_discord("", content)
+
+        assert requests == []
 
 
 class TestMaskDiscordWebhookUrl:
