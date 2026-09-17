@@ -294,7 +294,7 @@ class TestNotifyWebhookWrite:
 
             return Check("discord probe", "ok", "Discord knows it as test")
 
-        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", ok)
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", ok)
         client = await _client(settings)
 
         res = await client.post(
@@ -320,7 +320,7 @@ class TestNotifyWebhookWrite:
 
             return Check("discord probe", "fail", "404 Unknown Webhook")
 
-        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", nope)
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", nope)
         client = await _client(settings)
 
         res = await client.post(
@@ -343,7 +343,7 @@ class TestNotifyWebhookWrite:
 
             return Check("discord probe", "ok", "should not run")
 
-        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", probe)
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", probe)
         client = await _client(settings)
 
         res = await client.post("/api/settings/notify", json={"discord_webhook_url": "   "})
@@ -392,7 +392,7 @@ class TestNotifyWebhookWrite:
 
             return Check("discord probe", "ok", "Discord knows it as test")
 
-        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", ok)
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", ok)
         client = await _client(Boom())
 
         res = await client.post(
@@ -411,7 +411,7 @@ class TestNotifyWebhookWrite:
 
             return Check("discord probe", "ok", "Discord knows it as test")
 
-        monkeypatch.setattr("cyris.diagnostics.doctor.probe_discord", ok)
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", ok)
         client = await _client(settings)
 
         await client.post(

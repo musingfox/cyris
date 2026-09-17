@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from aiohttp import web
 from pydantic import ValidationError
 
+from cyris.diagnostics.doctor import probe_discord
 from cyris.domain.language import language_sort_key
 from cyris.domain.models import ArticleState, SourceConfig
 from cyris.domain.triage import RejectReason
@@ -428,7 +429,6 @@ class TriageServer:
         """Store a Discord webhook only after Discord confirms it exists."""
         from cyris.adapters.notify import mask_discord_webhook_url
         from cyris.config import DISCORD_WEBHOOK_ENV_VAR
-        from cyris.diagnostics.doctor import probe_discord
 
         if self._settings is None:
             return web.json_response(
