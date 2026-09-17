@@ -24,6 +24,7 @@ def _recorded_env(
     script = bin_dir / stub
     script.write_text(f"#!/bin/sh\nenv > '{rec}'\n")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    _stub(bin_dir, "python", "exit 0")
 
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
@@ -43,6 +44,46 @@ def _recorded_env(
         key, _, value = line.partition("=")
         recorded[key] = value
     return recorded
+
+
+def _stub(bin_dir: Path, name: str, body: str) -> None:
+    script = bin_dir / name
+    script.write_text(f"#!/bin/sh\n{body}\n")
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+
+
+def _run_role(tmp_path: Path, role: str, python_body: str) -> tuple[int, list[str]]:
+    """Run the entrypoint with `python` and `cyris` stubbed; return exit code and call order."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls.log"
+    _stub(bin_dir, "python", f"echo python >> '{calls}'\n{python_body}")
+    _stub(bin_dir, "cyris", f"echo \"cyris $1\" >> '{calls}'")
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["CYRIS_ROLE"] = role
+    result = subprocess.run(["sh", str(ENTRYPOINT)], env=env, cwd=tmp_path)
+    lines = calls.read_text().splitlines() if calls.exists() else []
+    return result.returncode, lines
+
+
+class TestRunRoleProbesEgress:
+    """Gemini and OpenAI refuse by egress location, and placement moves between runs."""
+
+    def test_probe_runs_before_the_pipeline(self, tmp_path: Path) -> None:
+        code, calls = _run_role(tmp_path, "run", "exit 0")
+        assert code == 0
+        assert calls == ["python", "cyris run", "cyris promote-sync"]
+
+    def test_a_failed_probe_does_not_stop_the_run(self, tmp_path: Path) -> None:
+        code, calls = _run_role(tmp_path, "run", "exit 1")
+        assert code == 0
+        assert calls == ["python", "cyris run", "cyris promote-sync"]
+
+    def test_ui_role_does_not_probe(self, tmp_path: Path) -> None:
+        # `exec` hands the process to the stub, so the ui role records one call.
+        _, calls = _run_role(tmp_path, "ui", "exit 0")
+        assert calls == ["cyris triage-ui"]
 
 
 class TestContainerRoleDefaultsToD1Store:

@@ -12,6 +12,19 @@ case "${CYRIS_ROLE:-cron}" in
     export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
     export CYRIS_HTML_OUTPUT_ENABLED=${CYRIS_HTML_OUTPUT_ENABLED:-true}
     export CYRIS_PROMOTE_PUBLISH_ENABLED=${CYRIS_PROMOTE_PUBLISH_ENABLED:-true}
+    # LLM providers refuse by egress location, and placement can move between
+    # runs, so each run logs where it left from. Never fatal.
+    python - <<'PY' || true
+import json
+from urllib.request import urlopen
+
+try:
+    body = urlopen("https://cloudflare.com/cdn-cgi/trace", timeout=5).read().decode()
+    trace = dict(line.split("=", 1) for line in body.splitlines() if "=" in line)
+    print(json.dumps({"event": "egress_probe", "colo": trace.get("colo"), "loc": trace.get("loc")}))
+except Exception as e:
+    print(json.dumps({"event": "egress_probe", "error": str(e)[:200]}))
+PY
     cyris run --if-due $CONF
     cyris promote-sync $CONF
     ;;
