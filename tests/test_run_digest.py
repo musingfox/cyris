@@ -16,7 +16,13 @@ from cyris.config import (
     AppConfig,
     Config,
 )
-from cyris.domain.models import Article, ArticleState, Tier
+from cyris.domain.models import (
+    NO_LLM_MODEL,
+    Article,
+    ArticleState,
+    Tier,
+    is_degraded_run,
+)
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 
@@ -544,7 +550,7 @@ async def test_a_run_that_raises_still_says_so(tmp_path: Path, caplog) -> None:
     assert summary["fetched"] == 1
 
 
-def _notify_llm() -> FakeLLM:
+def _notify_llm(**kwargs) -> FakeLLM:
     return FakeLLM(
         [
             json.dumps({"scores": [{"id": 7, "score": 85, "language": "en"}]}),
@@ -561,7 +567,8 @@ def _notify_llm() -> FakeLLM:
                     ]
                 }
             ),
-        ]
+        ],
+        **kwargs,
     )
 
 
@@ -580,6 +587,77 @@ def _notify_article() -> Article:
 
 def _skip_records(caplog) -> list:
     return [r for r in caplog.records if "Discord webhook" in r.getMessage()]
+
+
+async def test_notification_marks_a_quota_exhausted_configured_llm_as_degraded(
+    tmp_path: Path,
+) -> None:
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        FakeLLM(error=RuntimeError("quota"), model="test-model"),
+        FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/quota"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert contents[0].usage.model == "test-model"
+    assert contents[0].usage.input_tokens == 0
+    assert is_degraded_run(contents[0].usage)
+
+
+async def test_notification_marks_zero_token_llm_usage_as_degraded(tmp_path: Path) -> None:
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        _notify_llm(input_tokens=0, model="test-model"),
+        FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/zero"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert is_degraded_run(contents[0].usage)
+
+
+async def test_notification_keeps_actual_llm_model_when_config_model_is_empty(
+    tmp_path: Path,
+) -> None:
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        _notify_llm(model="test-model"),
+        FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/used"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert contents[0].usage.model == "test-model"
+    assert not is_degraded_run(contents[0].usage)
+
+
+async def test_notification_marks_no_llm_as_not_degraded(tmp_path: Path) -> None:
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        llm=None,
+        source=FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/no-llm"
+
+    await run_digest(deps, RunOptions())
+
+    assert contents[0].usage.model == NO_LLM_MODEL
+    assert not is_degraded_run(contents[0].usage)
 
 
 async def test_a_run_with_no_webhook_says_it_is_skipping_the_notification(
