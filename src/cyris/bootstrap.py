@@ -237,12 +237,15 @@ def build_deps(
     )
     tag_store = None
     story_store = None
+    record_run = None
     if d1 is not None:
+        from cyris.adapters.store.runs import D1RunLog
         from cyris.adapters.store.stories import D1StoryStore
         from cyris.adapters.store.tags import D1TagStore
 
         tag_store = D1TagStore(d1)
         story_store = D1StoryStore(d1)
+        record_run = D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record
 
     fetch_sources: list[FetchSource] = []
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
@@ -330,4 +333,5 @@ def build_deps(
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
         embedding_threshold=embedding_threshold(cfg),
+        record_run=record_run,
     )
