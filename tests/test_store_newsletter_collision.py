@@ -107,3 +107,28 @@ def test_d1_pre_read_stays_under_the_compound_select_ceiling() -> None:
     result = store.save(articles, now=NOW)
 
     assert result.saved_count == 96
+
+
+def test_a_redelivered_issue_is_skipped(store) -> None:
+    store.save([_issue("a", "Issue 1")], now=NOW)
+
+    result = store.save([_issue("a", "Issue 1")], now=NOW)
+
+    assert (result.saved_count, result.skipped_count) == (0, 1)
+
+
+def test_a_redelivered_rekeyed_issue_is_skipped(store) -> None:
+    store.save([_issue("a", "Issue 1"), _issue("b", "Issue 2", url="newsletter:b")], now=NOW)
+
+    result = store.save([_issue("b", "Issue 2")], now=NOW)
+
+    assert (result.saved_count, result.skipped_count) == (0, 1)
+    assert len(_rows(store)) == 2
+
+
+def test_the_same_colliding_issue_twice_in_one_batch_is_saved_once(store) -> None:
+    store.save([_issue("a", "Issue 1")], now=NOW)
+
+    result = store.save([_issue("b", "Issue 2"), _issue("b", "Issue 2")], now=NOW)
+
+    assert (result.saved_count, result.skipped_count) == (1, 1)
