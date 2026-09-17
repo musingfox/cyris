@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from fakes import CompoundSelectLimitedD1, SqliteD1
+from fakes import CompoundSelectLimitedD1, CountingD1, SqliteD1
 
 from cyris.adapters.fetch.email_parser import ParsedNewsletter
 from cyris.adapters.fetch.newsletter import newsletter_article
@@ -132,3 +132,43 @@ def test_the_same_colliding_issue_twice_in_one_batch_is_saved_once(store) -> Non
     result = store.save([_issue("b", "Issue 2"), _issue("b", "Issue 2")], now=NOW)
 
     assert (result.saved_count, result.skipped_count) == (1, 1)
+
+
+def _rss(title: str, source_name: str = "R") -> Article:
+    return Article(
+        id=1,
+        title=title,
+        url="https://b.com/1",
+        content="c",
+        published_at=NOW,
+        source_name=source_name,
+        source_tier=Tier.FILTER,
+    )
+
+
+def test_a_non_newsletter_duplicate_url_is_skipped_whatever_its_title(store) -> None:
+    store.save([_rss("Old")], now=NOW)
+
+    result = store.save([_rss("New")], now=NOW)
+
+    assert (result.saved_count, result.skipped_count) == (0, 1)
+
+
+def test_a_newsletter_link_held_by_another_source_is_skipped(store) -> None:
+    store.save([_rss("Post")], now=NOW)
+
+    result = store.save([_issue("n9", "Issue 9", url="https://b.com/1")], now=NOW)
+
+    assert (result.saved_count, result.skipped_count) == (0, 1)
+
+
+def test_a_batch_without_newsletters_issues_no_pre_read() -> None:
+    db = CountingD1()
+    store = D1ArticleStore(db)
+    articles = [
+        _rss(f"Post {i}").model_copy(update={"url": f"https://b.com/{i}"}) for i in range(3)
+    ]
+
+    store.save(articles, now=NOW)
+
+    assert db.query_count == 1
