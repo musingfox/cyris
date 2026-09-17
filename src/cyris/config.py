@@ -59,8 +59,9 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
     return data
 
 
-# Grade C. Named here rather than inline because `cyris doctor` reports which
-# home a webhook came from, and has to name the same variable this reads.
+# The env fallback of a grade-D setting (read after D1 `settings` and `[notify]`).
+# Named here rather than inline because `cyris doctor` reports which home a webhook
+# came from, and has to name the same variable this reads.
 DISCORD_WEBHOOK_ENV_VAR = "CYRIS_DISCORD_WEBHOOK_URL"
 
 
