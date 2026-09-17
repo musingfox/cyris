@@ -145,3 +145,22 @@ CREATE TABLE IF NOT EXISTS article_tags (
 );
 
 CREATE INDEX IF NOT EXISTS idx_article_tags_tag ON article_tags(tag);
+
+-- One row per digest run, on every path: an empty window and an exception leave
+-- a row too, so "ran and found nothing" is distinguishable from "never started".
+-- `summary` is the whole run_summary dict, so a later field needs no migration.
+CREATE TABLE IF NOT EXISTS digest_runs (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  finished_at    TEXT NOT NULL,
+  status         TEXT NOT NULL,
+  period         TEXT NOT NULL,
+  dry_run        INTEGER NOT NULL,
+  wall_seconds   REAL,
+  fetched        INTEGER,
+  failed_sources TEXT,               -- JSON array; NULL when the run died before fetching
+  build_sha      TEXT NOT NULL DEFAULT '',
+  degraded       INTEGER,            -- NULL unless the run produced digest content
+  summary        TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_digest_runs_finished ON digest_runs(finished_at);

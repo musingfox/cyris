@@ -345,9 +345,10 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
+| Digest runs | **D1 `digest_runs`** | same | One row per `run_digest` call on every path — `no_articles`, `no_pending`, `error` included — with status, period, dry-run flag, fetch counts, the image's `CYRIS_GIT_SHA`, the degraded judgement and the whole `run_summary` as JSON. Written after the log line, inside its own guard. D1 only: a `json` run writes nothing and keeps only stdout |
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
-| Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. It carries the two figures no row here holds (embedding spend, and LLM neurons — §7 #28); when either needs to outlive seven days it gets a home in `usage_log`, not a longer retention |
+| Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; the deployed site is the archive |
 | Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`** | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
@@ -541,7 +542,7 @@ Cloudflare
 ├── Worker: promote    → KV
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
 │     digest.musingfox.me          └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
-├── D1: stored_articles · usage_log · sources · settings · pages_manifest · pages_deploy_receipt
+├── D1: stored_articles · usage_log · sources · settings · pages_manifest · pages_deploy_receipt · digest_runs
 ├── Pages: cyris-digest
 └── Workers Logs: the container's stdout, 7 days
 ```

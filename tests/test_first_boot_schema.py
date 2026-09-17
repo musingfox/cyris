@@ -152,3 +152,24 @@ def test_doctor_says_when_the_database_it_just_built_was_empty(tmp_path) -> None
 
     assert check.status == "warn"
     assert "database_id" in check.fix
+
+
+def test_a_clean_database_gets_the_run_table() -> None:
+    db = SqliteD1(with_schema=False)
+
+    apply_schema(db)
+
+    assert len(db.query("SELECT name FROM sqlite_master WHERE name = 'digest_runs'").rows) == 1
+
+
+def test_the_second_boot_keeps_recorded_runs() -> None:
+    db = SqliteD1(with_schema=False)
+    apply_schema(db)
+    db.query(
+        "INSERT INTO digest_runs (finished_at, status, period, dry_run) VALUES (?, ?, ?, ?)",
+        ["2026-09-17T00:00:00+00:00", "ok", "morning", 0],
+    )
+
+    apply_schema(db)
+
+    assert db.query("SELECT COUNT(*) AS n FROM digest_runs").rows[0]["n"] == 1
