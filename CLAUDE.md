@@ -92,7 +92,8 @@ src/cyris/
 │   ├── cloudflare.py        # Account-level Cloudflare checks, tied to no single Worker
 │   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL;
 │   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback;
-│   │                        #   source_store.py, tags.py, stories.py = the other D1 tables
+│   │                        #   source_store.py, tags.py, stories.py = the other D1 tables;
+│   │                        #   runs.py = one `digest_runs` row per run, every path
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
 │   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST,
@@ -156,7 +157,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest. `--if-due` makes the hourly cron tick a no-op except on the two scheduled hours |
-| `cyris doctor` | Health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand. Its checks read only, but the command creates the D1 tables if they are missing (every entrypoint does), so it needs a token with D1 edit. `--deployment <url>` adds the one question a local report cannot answer: which image production starts, read from its own `/api/build`, and how far ahead this checkout is |
+| `cyris doctor` | Health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand. Its checks read only, but the command creates the D1 tables if they are missing (every entrypoint does), so it needs a token with D1 edit. `--deployment <url>` adds the one question a local report cannot answer: which image production starts, read from its own `/api/build`, and how far ahead this checkout is — plus a `last run` line: the sha, time and status of production's last non-preview run from D1 `digest_runs`, warning (never failing) when it differs from the image |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |

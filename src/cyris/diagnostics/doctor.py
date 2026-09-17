@@ -535,6 +535,12 @@ def _compare_build_sha(where: str, online: str) -> Check:
 
 
 async def _check_deployment(url: str) -> Check:
+    check, _online = await _deployment(url)
+    return check
+
+
+async def _deployment(url: str) -> tuple[Check, str]:
+    """The image verdict, plus the sha it was judged on ("" when none was read)."""
     base = url.rstrip("/")
     # Before any request: a missing token is a fault in this machine's .env, and
     # answering it with the hostname hint below would send the reader elsewhere.
@@ -544,7 +550,7 @@ async def _check_deployment(url: str) -> Check:
             "fail",
             f"cannot sign in to {base} — CYRIS_UI_TOKEN is not set here",
             "Put the deployment's UI token in .env as CYRIS_UI_TOKEN.",
-        )
+        ), ""
     try:
         online = await _fetch_build_sha(base)
     except _EndpointAbsentError:
@@ -556,10 +562,42 @@ async def _check_deployment(url: str) -> Check:
             "fail",
             f"{base} signed in but serves no /api/build — that image predates the endpoint",
             "Deploy a build that carries it; until then production cannot name its commit.",
-        )
+        ), ""
     except Exception as e:  # noqa: BLE001 - every other failure is the same answer: unknown
-        return Check("deployment image", "fail", f"{base} did not answer — {e}", _WORKERS_DEV_HINT)
-    return _compare_build_sha(base, online)
+        return Check(
+            "deployment image", "fail", f"{base} did not answer — {e}", _WORKERS_DEV_HINT
+        ), ""
+    return _compare_build_sha(base, online), online
+
+
+def _check_last_run(cfg: Config, online_sha: str) -> Check:
+    """Which sha production's last real run executed, beside the one it now starts.
+
+    Never a failure: the run's sha lags a deploy until the next cron hour, so a
+    mismatch is the ordinary state right after a release, not a broken deploy.
+    """
+    from cyris import bootstrap
+    from cyris.adapters.store.runs import D1RunLog
+
+    name = "last run"
+    try:
+        client = bootstrap.build_d1_client(cfg)
+        if client is None:
+            return Check(name, "skip", "run history lives only in D1, and this store is json")
+        last = D1RunLog(client, "").last()
+    except Exception as e:  # noqa: BLE001 - an unreadable history is unknown, not broken
+        return Check(name, "warn", f"could not read digest_runs — {e}")
+    if last is None:
+        return Check(name, "skip", "no run recorded in this D1 yet")
+    sha = last["build_sha"]
+    detail = f"last run {sha[:7] or 'no sha'} at {last['finished_at']} ({last['status']})"
+    if not sha:
+        return Check(name, "warn", f"{detail} — the image that ran could not name its commit")
+    if not online_sha:
+        return Check(name, "warn", f"{detail} — the deployment's sha is unknown")
+    if sha != online_sha:
+        return Check(name, "warn", f"{detail} — deployment starts {online_sha[:7]}")
+    return Check(name, "ok", detail)
 
 
 def _check_output_sink(cfg: Config) -> Check:
@@ -626,15 +664,19 @@ async def run_checks(
     checks.extend(_check_publish_token(cfg))
     checks.append(_check_output_sink(cfg))
     checks.append(_check_notifications(cfg))
-    checks.append(
-        await _check_deployment(deployment_url)
-        if deployment_url
-        else Check(
-            "deployment image",
-            "skip",
-            "not asked — this report is about the machine it ran on",
-            "Pass --deployment https://<worker>.workers.dev to date the image "
-            "production runs against this checkout.",
+    if deployment_url:
+        image, online = await _deployment(deployment_url)
+        checks.append(image)
+        checks.append(_check_last_run(cfg, online))
+    else:
+        checks.append(
+            Check(
+                "deployment image",
+                "skip",
+                "not asked — this report is about the machine it ran on",
+                "Pass --deployment https://<worker>.workers.dev to date the image "
+                "production runs against this checkout.",
+            )
         )
-    )
+        checks.append(Check("last run", "skip", "not asked — pass --deployment to compare"))
     return checks

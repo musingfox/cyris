@@ -832,3 +832,93 @@ async def test_the_run_reports_one_discord_check_and_a_missing_webhook_is_not_a_
     discord = [c for c in checks if c.name == "discord"]
     assert len(discord) == 1
     assert discord[0].status == "skip"
+
+
+class TestLastRun:
+    """`--deployment` also says which sha production's last run executed."""
+
+    @staticmethod
+    def _d1_config(tmp_path: Path) -> Config:
+        cfg = _config(tmp_path)
+        cfg.app.store.backend = "d1"
+        cfg.app.store.database_id = "db"
+        cfg.app.store.account_id = "acct"
+        cfg.app.store.api_token = "tok"
+        return cfg
+
+    @staticmethod
+    def _with_run(monkeypatch, build_sha: str | None):
+        from fakes import SqliteD1
+
+        from cyris.adapters.store.runs import D1RunLog
+
+        db = SqliteD1()
+        if build_sha is not None:
+            D1RunLog(db, build_sha).record({"status": "ok", "period": "morning", "dry_run": False})
+        monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda _cfg: db)
+        return db
+
+    async def test_not_asked_skips(self, tmp_path: Path) -> None:
+        checks = await doctor.run_checks(_config(tmp_path), deployment_url="")
+        assert _by_name(checks, "last run").status == "skip"
+
+    def test_a_json_store_has_no_run_history(self, tmp_path: Path) -> None:
+        assert doctor._check_last_run(_config(tmp_path), "abc").status == "skip"
+
+    def test_no_recorded_run_skips(self, tmp_path: Path, monkeypatch) -> None:
+        self._with_run(monkeypatch, None)
+        assert doctor._check_last_run(self._d1_config(tmp_path), "abc").status == "skip"
+
+    def test_a_last_run_on_the_deployed_sha_is_ok(self, tmp_path: Path, monkeypatch) -> None:
+        from cyris.adapters.store.runs import D1RunLog
+
+        db = self._with_run(monkeypatch, "abc1234def")
+        check = doctor._check_last_run(self._d1_config(tmp_path), "abc1234def")
+        assert check.status == "ok"
+        assert "abc1234" in check.detail
+        assert D1RunLog(db, "").last()["finished_at"] in check.detail
+
+    def test_a_last_run_on_another_sha_warns(self, tmp_path: Path, monkeypatch) -> None:
+        self._with_run(monkeypatch, "aaaaaaa1")
+        check = doctor._check_last_run(self._d1_config(tmp_path), "bbbbbbb2")
+        assert check.status == "warn"
+        assert "aaaaaaa" in check.detail
+        assert "bbbbbbb" in check.detail
+
+    def test_a_last_run_without_a_sha_warns(self, tmp_path: Path, monkeypatch) -> None:
+        self._with_run(monkeypatch, "")
+        assert doctor._check_last_run(self._d1_config(tmp_path), "abc1234").status == "warn"
+
+    def test_an_unreadable_run_table_warns(self, tmp_path: Path, monkeypatch) -> None:
+        from cyris.adapters.store.d1 import D1Error
+
+        class Down:
+            def query(self, sql, params=None):
+                raise D1Error("HTTP 500")
+
+        monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda _cfg: Down())
+        check = doctor._check_last_run(self._d1_config(tmp_path), "abc1234")
+        assert check.status == "warn"
+        assert "HTTP 500" in check.detail
+
+    async def test_the_line_follows_the_deployment_image_from_one_fetch(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        calls: list[str] = []
+
+        async def fetch(base: str) -> str:
+            calls.append(base)
+            return "abc1234def"
+
+        monkeypatch.setenv("CYRIS_UI_TOKEN", "t" * 32)
+        monkeypatch.setattr(doctor, "_fetch_build_sha", fetch)
+        self._with_run(monkeypatch, "abc1234def")
+
+        checks = await doctor.run_checks(
+            self._d1_config(tmp_path), deployment_url="https://x.workers.dev"
+        )
+
+        names = [c.name for c in checks]
+        assert names.index("last run") == names.index("deployment image") + 1
+        assert _by_name(checks, "last run").status == "ok"
+        assert len(calls) == 1
