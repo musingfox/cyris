@@ -17,6 +17,7 @@ def _usage(model: str, input_tokens: int = 1_000_000, output_tokens: int = 1_000
 def test_a_priced_model_uses_its_own_rate_card():
     """One million of each token is just the per-MTok pair, added up."""
     assert _usage("gemini-3.6-flash").estimated_cost == 0.75 + 3.75
+    assert _usage("gemini-3.8-flash").estimated_cost == 0.75 + 3.75
     assert _usage("gpt-5.6-luna").estimated_cost == 0.20 + 1.20
     assert _usage("claude-haiku-4-5").estimated_cost == 1.00 + 5.00
 

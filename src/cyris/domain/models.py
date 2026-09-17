@@ -91,6 +91,7 @@ class DigestSection(BaseModel):
 _PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
+    "gemini-3.8-flash": (0.75, 3.75),  # promotional, read 2026-09-17; 1.50/7.50 from 2027-01-01
     "gemini-3.7-flash": (0.75, 3.75),  # promotional; 1.50/7.50 from 2027-01-01
     "gemini-3.6-flash": (0.75, 3.75),  # same, and same expiry
     "gemini-2.5-flash": (0.30, 2.50),
