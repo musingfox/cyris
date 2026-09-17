@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cyris UI Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+/* Reference implementation of docs/design/ui-language.md. Sample data only. */
+
+/* ---- tokens: existing (unchanged) ---- */
+:root {
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #56566e;
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --grid: rgba(198, 255, 61, 0.035);
+/* ---- tokens: added by §2 ---- */
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --t-fast: 150ms ease-out;
+  --type-scale: 1;
+  --r-control: 6px;
+  --r-tag: 999px;
+  --bar-h: 60px;
+  --measure: 640px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "ss02", "cv11";
+  background: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px;
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* ---- roles ---- */
+.label {
+  font-family: var(--font-mono); font-weight: 500; font-size: calc(14px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint);
+}
+.data { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); font-variant-numeric: tabular-nums; }
+.display {
+  font-family: var(--font-serif); font-weight: 400;
+  font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale)); line-height: 1; letter-spacing: -.03em;
+  text-wrap: balance;
+}
+.display em { font-style: italic; color: var(--accent); }
+.heading { font-weight: 600; font-size: calc(28px * var(--type-scale)); letter-spacing: -.015em; line-height: 1.3; }
+.small { font-size: calc(16px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+
+/* ---- site bar ---- */
+.site-bar {
+  position: sticky; top: 0; z-index: 10;
+  height: var(--bar-h);
+  background: rgba(7, 7, 10, .88);
+  border-bottom: 1px solid var(--border);
+}
+.site-bar-inner {
+  height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--s-4);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-4);
+}
+.brand { display: flex; align-items: center; gap: var(--s-3); text-decoration: none; }
+.brand-mark { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); animation: pulse 2.4s ease-in-out infinite; }
+.brand-name { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); letter-spacing: .18em; font-weight: 600; }
+.site-nav { display: flex; gap: var(--s-5); }
+.site-nav a {
+  text-decoration: none; padding: var(--s-1) 0;
+  border-bottom: 1px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.site-nav a:hover { color: var(--text); }
+.site-nav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
+.gated-note { color: var(--text-faint); font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); letter-spacing: .08em; }
+
+/* ---- page ---- */
+.page { max-width: 960px; margin: 0 auto; padding: var(--s-12) var(--s-4) var(--s-20); }
+.page.wide { max-width: 1240px; }
+.page-head { display: grid; gap: var(--s-4); margin-bottom: var(--s-12); }
+
+/* ---- issue bar ---- */
+.issue-bar { border-bottom: 1px solid var(--border); background: var(--bg-elev); }
+.issue-bar-inner {
+  max-width: 1240px; margin: 0 auto; padding: var(--s-3) var(--s-4);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap;
+}
+.issue-id { display: flex; gap: var(--s-3); align-items: baseline; }
+
+/* ---- segmented control ---- */
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-control); overflow: hidden; }
+.seg > * {
+  font-family: var(--font-mono); font-weight: 500; font-size: calc(14px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em;
+  padding: 0 var(--s-4); height: 44px; display: inline-flex; align-items: center;
+  color: var(--text-dim); background: transparent; border: 0; text-decoration: none; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast);
+}
+.seg > * + * { border-left: 1px solid var(--border-strong); }
+.seg > *:hover { color: var(--text); }
+.seg > [aria-current="page"], .seg > [aria-pressed="true"] {
+  background: var(--surface-2); color: var(--accent); border-bottom-color: var(--accent);
+}
+
+/* ---- buttons ---- */
+.btn {
+  height: 44px; padding: 0 var(--s-5);
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-mono); font-weight: 500; font-size: calc(14px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em;
+  border: 1px solid transparent; border-radius: var(--r-control); cursor: pointer; text-decoration: none;
+  transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast);
+}
+.btn.sm { height: 34px; padding: 0 var(--s-2); letter-spacing: .06em; }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn.danger { background: transparent; border-color: var(--warn); color: var(--warn); }
+.btn.danger:hover, .btn.danger.armed { background: var(--warn-tint); }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* ---- panels, rows, pills, states ---- */
+.panel { background: var(--bg-elev); border: 1px solid var(--border); }
+.panel + .panel { margin-top: var(--s-5); }
+.panel-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  padding: var(--s-3) var(--s-5); background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.row {
+  display: grid; align-items: center; gap: var(--s-4);
+  padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  transition: background-color var(--t-fast);
+}
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--surface); }
+.pill {
+  font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .04em;
+  padding: 2px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-tag); background: var(--surface-2); color: var(--text-dim);
+  white-space: nowrap;
+}
+.pill.score { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-tint); }
+.state { font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; }
+.state.accepted { color: var(--accent); }
+.state.pending { color: var(--text-dim); }
+.state.rejected { color: var(--text-faint); }
+
+.notice {
+  border-left: 2px solid var(--accent); background: var(--accent-tint);
+  padding: var(--s-2) var(--s-3); font-size: calc(16px * var(--type-scale)); line-height: 1.5; white-space: pre-wrap;
+}
+.notice.err { border-left-color: var(--warn); background: var(--warn-tint); }
+
+.footer {
+  margin-top: var(--s-16); padding-top: var(--s-5); border-top: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint);
+}
+
+/* ---- archive ---- */
+.archive-row { grid-template-columns: 170px 110px 1fr auto; }
+.archive-row .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
+.archive-row .actions { display: flex; gap: var(--s-2); }
+.latest { color: var(--accent); }
+
+/* ---- digest excerpt ---- */
+.digest-head { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale)); line-height: .92; letter-spacing: -.04em; }
+.issue-title em { font-style: italic; color: var(--accent); }
+.stats { background: var(--surface); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); }
+.stats div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); }
+.stats div:last-child { border-bottom: 0; }
+.stats .v.hl { color: var(--accent); }
+.section-tag { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-5); }
+.section-tag::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.lead { border: 1px solid var(--border); background: linear-gradient(180deg, var(--surface), var(--bg-elev)); padding: var(--s-8) var(--s-12); position: relative; }
+.lead::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
+.lead h2 { font-weight: 600; font-size: calc(clamp(32px, 4.5vw, 52px) * var(--type-scale)); line-height: 1.1; letter-spacing: -.025em; margin: var(--s-3) 0 var(--s-5); }
+.lead p { font-size: calc(22px * var(--type-scale)); line-height: 1.7; color: var(--text-dim); max-width: 70ch; }
+.lead .meta { display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px dashed var(--border-strong); align-items: center; }
+.elided { margin-top: var(--s-8); padding: var(--s-8); border: 1px dashed var(--border-strong); text-align: center; }
+
+/* ---- raw ---- */
+.raw-row { grid-template-columns: 96px 56px 1fr auto; align-items: baseline; }
+.raw-row a { text-decoration: none; border-bottom: 1px solid transparent; transition: color var(--t-fast), border-color var(--t-fast); }
+.raw-row a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.raw-row .score { font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); color: var(--text-dim); text-align: right; }
+.votes { display: inline-flex; gap: var(--s-1); }
+
+/* ---- settings ---- */
+.settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-12); align-items: start; }
+.settings-nav { position: sticky; top: calc(var(--bar-h) + var(--s-6)); display: grid; border-left: 1px solid var(--border); }
+.settings-nav a {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--s-2) var(--s-4); margin-left: -1px; text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.settings-nav a:hover { color: var(--text); }
+.settings-nav a[aria-current="page"] { color: var(--accent); border-left-color: var(--accent); }
+.dirty-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; visibility: hidden; }
+.settings-nav a.dirty .dirty-dot { visibility: visible; }
+.tab-head { display: grid; gap: var(--s-2); margin-bottom: var(--s-8); max-width: var(--measure); }
+.tab-head .origin { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
+.req { color: var(--warn); font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); letter-spacing: .06em; }
+
+.form { display: grid; gap: var(--s-6); max-width: var(--measure); }
+.field { display: grid; gap: var(--s-2); }
+.field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-4); }
+.input, .select {
+  height: 48px; width: 100%; padding: 0 var(--s-4);
+  background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--r-control);
+  font-size: calc(18px * var(--type-scale)); color: var(--text);
+  transition: border-color var(--t-fast);
+}
+.input:focus, .select:focus { border-color: var(--accent); outline: none; }
+.input.narrow { width: 96px; }
+.input.invalid { border-color: var(--warn); }
+details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); list-style: none; }
+details.more summary::before { content: "+ "; }
+details.more[open] summary::before { content: "− "; }
+details.more p { margin-top: var(--s-2); }
+.actions-line { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+
+.choices { display: grid; border: 1px solid var(--border); border-radius: var(--r-control); overflow: hidden; background: var(--bg-elev); }
+.choice {
+  display: grid; grid-template-columns: auto 1fr auto; gap: var(--s-3); align-items: center;
+  padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); cursor: pointer;
+  transition: background-color var(--t-fast);
+}
+.choice:last-child { border-bottom: 0; }
+.choice:hover { background: var(--surface); }
+.choice input { accent-color: var(--accent); }
+.choice.unavailable { cursor: not-allowed; opacity: .5; }
+.choice.unavailable:hover { background: transparent; }
+.choice .name { font-weight: 600; font-size: calc(20px * var(--type-scale)); }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-4); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); background: var(--bg-elev); }
+table.src { width: 100%; border-collapse: collapse; min-width: 640px; }
+table.src th { text-align: left; padding: var(--s-2) var(--s-4); background: var(--surface); border-bottom: 1px solid var(--border); }
+table.src td { padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); font-size: calc(16px * var(--type-scale)); vertical-align: middle; }
+table.src tr.src-row { cursor: pointer; transition: background-color var(--t-fast); }
+table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
+table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
+table.src .target { font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
+table.src tr.editor > td { background: var(--surface); padding: var(--s-5); border-bottom: 1px solid var(--border-strong); }
+.editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
+
+/* ---- system overview ---- */
+.sys-section { margin-bottom: var(--s-16); }
+.sys-section > .label { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-5); }
+.sys-section > .label::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.sys-rule { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+.sys-rule > div { background: var(--bg-elev); padding: var(--s-5); display: grid; gap: var(--s-2); align-content: start; }
+.sys-rule strong { font-weight: 600; font-size: calc(20px * var(--type-scale)); }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s-3); }
+.swatch { border: 1px solid var(--border); background: var(--bg-elev); }
+.swatch .chip { height: 56px; border-bottom: 1px solid var(--border); }
+.swatch .meta { padding: var(--s-2) var(--s-3); display: grid; gap: 2px; }
+.swatch .tok { font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); color: var(--text); }
+.swatch .hex { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-faint); }
+.type-row { grid-template-columns: minmax(0, 1fr) 300px; align-items: baseline; padding-block: var(--s-5); }
+.type-row .spec { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-faint); line-height: 1.6; }
+.scale { display: grid; gap: var(--s-2); }
+.scale div { display: grid; grid-template-columns: 72px 48px 1fr; align-items: center; gap: var(--s-3); }
+.scale i { display: block; height: 8px; background: var(--accent-dim); }
+.demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+.demo { background: var(--bg-elev); padding: var(--s-6) var(--s-5); display: grid; gap: var(--s-4); align-content: start; }
+.demo .line { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: center; }
+.fake-focus { outline: 1px solid var(--accent); outline-offset: 2px; }
+.input.fake-focus { outline: none; border-color: var(--accent); }
+
+/* ---- triage deck ---- */
+.deck-wrap { max-width: 600px; margin: 0 auto; display: grid; gap: var(--s-6); }
+.deck-top { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+.seg .count { margin-left: var(--s-2); color: var(--text-faint); letter-spacing: .04em; }
+.seg [aria-pressed="true"] .count { color: var(--accent-dim); }
+.deck { position: relative; height: 500px; }
+.card {
+  position: absolute; inset: 0; background: var(--surface); border: 1px solid var(--border-strong);
+  padding: var(--s-6); display: grid; grid-template-rows: auto auto 1fr auto; gap: var(--s-4);
+  cursor: grab; transition: border-color var(--t-fast);
+}
+.card.behind { transform: translate(8px, 8px); background: var(--bg-elev); border-color: var(--border); z-index: 0; cursor: default; }
+.card.front { z-index: 1; }
+.card.front:hover { border-color: var(--text-faint); }
+.card.lean-right { border-color: var(--accent); }
+.card-meta { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
+.card h2 { font-weight: 600; font-size: calc(30px * var(--type-scale)); line-height: 1.3; letter-spacing: -.015em; text-wrap: balance; }
+.card p { font-size: calc(20px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); }
+.card-foot { display: flex; justify-content: space-between; align-items: center; padding-top: var(--s-4); border-top: 1px dashed var(--border-strong); }
+.deck-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+.deck-actions .btn { justify-content: center; height: 56px; }
+.undo { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); }
+.kbd { font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); padding: 1px 6px; border: 1px solid var(--border-strong); border-radius: var(--r-control); color: var(--text-faint); }
+
+@media (max-width: 720px) {
+  .type-row { grid-template-columns: 1fr; row-gap: var(--s-2); }
+  .deck { height: 560px; }
+}
+
+/* ---- prototype chrome ---- */
+.proto-strip {
+  background: var(--surface-2); border-bottom: 1px dashed var(--border-strong);
+  padding: 6px var(--s-4); display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center;
+  font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-faint);
+}
+.proto-strip a { color: var(--text-dim); }
+.proto-strip label { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+
+[hidden] { display: none !important; }
+
+@media (max-width: 720px) {
+  .site-nav { gap: var(--s-3); }
+  .brand-name { display: none; }
+  .page { padding-top: var(--s-8); }
+  .archive-row { grid-template-columns: 1fr auto; row-gap: var(--s-2); }
+  .archive-row .actions { grid-column: 1 / -1; }
+  .digest-head { grid-template-columns: 1fr; gap: var(--s-6); }
+  .lead { padding: var(--s-6) var(--s-5); }
+  .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
+  .raw-row .score { text-align: left; }
+  .raw-row a { grid-column: 1 / -1; }
+  .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+  .site-nav .label { letter-spacing: .08em; }
+  .settings-nav { position: static; display: flex; overflow-x: auto; border-left: 0; border-bottom: 1px solid var(--border); }
+  .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; gap: var(--s-2); }
+  .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
+}
+</style>
+</head>
+<body>
+
+<div class="proto-strip">
+  <span>PROTOTYPE · sample data ·</span>
+  <a href="#system">system</a><a href="#archive">archive</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a><a href="#triage">triage</a>
+  <label><input type="checkbox" id="authorized" checked> signed in (shows Triage, Settings, votes)</label>
+</div>
+
+<header class="site-bar">
+  <div class="site-bar-inner">
+    <a class="brand" href="#archive"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a class="label" href="#archive" data-nav="archive">Archive</a>
+      <a class="label gated" href="#triage" data-nav="triage">Triage</a>
+      <a class="label gated" href="#settings/model" data-nav="settings">Settings</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ ARCHIVE ============ -->
+<section data-view="archive" hidden>
+  <main class="page">
+    <div class="page-head">
+      <span class="label">Archive</span>
+      <h1 class="display">Every <em>issue</em></h1>
+      <p class="small">Newest first. Each issue has the digest and the full list of articles it judged.</p>
+    </div>
+    <div class="panel" id="archive-list"></div>
+    <div class="footer">// cyris · 48 issues</div>
+  </main>
+</section>
+
+<!-- ============ DIGEST (masthead + first section only) ============ -->
+<section data-view="digest" hidden>
+  <div class="issue-bar">
+    <div class="issue-bar-inner">
+      <div class="issue-id"><span class="data">2026-09-17</span><span class="label">Morning</span></div>
+      <nav class="seg" aria-label="Issue views">
+        <a href="#digest" aria-current="page">Digest</a>
+        <a href="#raw">All articles</a>
+      </nav>
+    </div>
+  </div>
+  <main class="page wide">
+    <div class="digest-head">
+      <h1 class="issue-title">Signal<em>/</em>Noise</h1>
+      <aside class="stats">
+        <div><span class="label">Sources</span><span class="v">31</span></div>
+        <div><span class="label">Received</span><span class="v">214</span></div>
+        <div><span class="label">Included</span><span class="v hl">22</span></div>
+      </aside>
+    </div>
+    <div class="section-tag"><span class="label">Top story</span></div>
+    <article class="lead">
+      <span class="pill score">0.94</span>
+      <h2>Cloudflare Containers 進入 GA，冷啟動降到兩秒內</h2>
+      <p>容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。對排程型工作負載來說，按秒計費與 Worker 前門的組合，讓「每小時醒來一次」的部署不再需要常駐主機。</p>
+      <div class="meta">
+        <span class="label">blog.cloudflare.com</span>
+        <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+      </div>
+    </article>
+    <div class="elided small">The rest of the digest body is unchanged by this proposal.</div>
+    <div class="footer">// generated by cyris · 48,210 tokens · 17 api calls</div>
+  </main>
+</section>
+
+<!-- ============ RAW ============ -->
+<section data-view="raw" hidden>
+  <div class="issue-bar">
+    <div class="issue-bar-inner">
+      <div class="issue-id"><span class="data">2026-09-17</span><span class="label">Morning</span></div>
+      <nav class="seg" aria-label="Issue views">
+        <a href="#digest">Digest</a>
+        <a href="#raw" aria-current="page">All articles</a>
+      </nav>
+    </div>
+  </div>
+  <main class="page">
+    <div class="page-head">
+      <span class="label">All articles · 214 articles · 31 sources</span>
+      <h1 class="display">What this run <em>judged</em></h1>
+      <p class="small">Everything the run decided on, plus what is still pending. The digest shows a selection of it.</p>
+    </div>
+    <div id="raw-groups"></div>
+    <div class="footer">// cyris</div>
+  </main>
+</section>
+
+<!-- ============ SYSTEM ============ -->
+<section data-view="system" hidden>
+  <main class="page wide">
+    <div class="page-head">
+      <span class="label">Design language</span>
+      <h1 class="display">One system, <em>two densities</em></h1>
+      <p class="small" style="max-width:var(--measure)">The digest is the reference. Archive, digest and raw read at a loose density; triage and settings operate at a tight one. Same tokens, same components: rounded controls inside square surfaces. Browse the pages from the bar above.</p>
+    </div>
+
+    <div class="sys-section">
+      <span class="label">Rules</span>
+      <div class="sys-rule">
+        <div><strong>Round controls, square surfaces</strong><p class="small">Buttons, inputs, segmented controls take 6px; tags are fully round. Panels, cards, tables and notices stay square.</p></div>
+        <div><strong>Layers, not shadows</strong><p class="small">Depth comes from bg → bg-elev → surface → surface-2 and a 1px border.</p></div>
+        <div><strong>One label voice</strong><p class="small">Geist Mono, uppercase in CSS, 0.1em tracking. Navigation, tabs, buttons, field names.</p></div>
+        <div><strong>Two meanings of colour</strong><p class="small">Green is the main action, the selection, a good result. Pink is destructive or an error. Neutral outcomes stay grey.</p></div>
+      </div>
+    </div>
+
+    <div class="sys-section">
+      <span class="label">Colour</span>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="sys-section">
+      <span class="label">Type roles</span>
+      <div class="panel">
+        <div class="row type-row"><span class="display">Signal <em>/</em> Noise</span><span class="spec">display · Instrument Serif 400<br>clamp(52–96px) · −0.03em</span></div>
+        <div class="row type-row"><span class="heading">Sources</span><span class="spec">heading · Geist 600 · 28px</span></div>
+        <div class="row type-row"><span style="font-weight:600;font-size: calc(22px * var(--type-scale))">Nvidia 的護城河真的在 CUDA 嗎</span><span class="spec">title · Geist 600 · 20–22px</span></div>
+        <div class="row type-row"><span style="font-size: calc(20px * var(--type-scale));line-height:1.65;color:var(--text-dim)">Containers can now follow a Durable Object's lifecycle and sleep when idle.</span><span class="spec">body · Geist 400 · 20px / 1.65</span></div>
+        <div class="row type-row"><span class="small">Saving makes one real call to the provider first.</span><span class="spec">small · Geist 400 · 16px / 1.5</span></div>
+        <div class="row type-row"><span class="label">Publish hours</span><span class="spec">label · Geist Mono 500 · 14px · upper · 0.1em</span></div>
+        <div class="row type-row"><span class="data">2026-09-17 · 0.94 · 214</span><span class="spec">data · Geist Mono · 15–16px · tabular</span></div>
+      </div>
+    </div>
+
+    <div class="sys-section">
+      <span class="label">Spacing · px</span>
+      <div class="scale" id="scale"></div>
+    </div>
+
+    <div class="sys-section">
+      <span class="label">Components</span>
+      <div class="demo-grid">
+        <div class="demo">
+          <span class="label">Buttons</span>
+          <div class="line"><button class="btn primary" type="button">Save</button><button class="btn secondary" type="button">Cancel</button><button class="btn danger" type="button">Retire</button></div>
+          <div class="line"><button class="btn primary" type="button" disabled>Save</button><button class="btn danger armed" type="button">Confirm retire</button></div>
+          <div class="line"><button class="btn secondary sm" type="button">↑</button><button class="btn secondary sm" type="button">↓</button><button class="btn secondary sm fake-focus" type="button">Focused</button></div>
+        </div>
+        <div class="demo">
+          <span class="label">Segmented · tabs</span>
+          <div class="seg" role="group" aria-label="Example"><button type="button" aria-pressed="true">Digest</button><button type="button" aria-pressed="false">All articles</button></div>
+          <div class="seg" role="group" aria-label="Example filter"><button type="button" aria-pressed="false">All</button><button type="button" aria-pressed="true">RSS</button><button type="button" aria-pressed="false">Newsletter</button></div>
+        </div>
+        <div class="demo">
+          <span class="label">Fields</span>
+          <div class="field"><label class="label" for="demo-a">Model</label><input class="input" id="demo-a" type="text" placeholder="Empty uses the default"></div>
+          <div class="field"><label class="label" for="demo-b">Focused</label><input class="input fake-focus" id="demo-b" type="text" value="gemini-2.5-pro"></div>
+          <div class="field"><label class="label" for="demo-c">Invalid</label><input class="input invalid" id="demo-c" type="text" value="gemni-2.5"><div class="notice err">gemini answered 404: no model named gemni-2.5.</div></div>
+        </div>
+        <div class="demo">
+          <span class="label">Pills · states · notices</span>
+          <div class="line"><span class="pill score">0.94</span><span class="pill">summarize</span><span class="pill">blog.cloudflare.com</span></div>
+          <div class="line"><span class="state accepted">accepted</span><span class="state pending">pending</span><span class="state rejected">rejected</span></div>
+          <div class="notice">Verified with gemini. Applies from the next run.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ============ TRIAGE ============ -->
+<section data-view="triage" hidden>
+  <main class="page">
+    <div class="deck-wrap">
+      <div class="deck-top">
+        <div class="seg" role="group" aria-label="Triage state">
+          <button type="button" aria-pressed="true">Pending<span class="count">12</span></button>
+          <button type="button" aria-pressed="false">Accepted<span class="count">340</span></button>
+          <button type="button" aria-pressed="false">Rejected<span class="count">911</span></button>
+        </div>
+        <span class="label">3 / 12</span>
+      </div>
+      <div class="deck">
+        <article class="card behind" aria-hidden="true"></article>
+        <article class="card front" id="triage-card">
+          <div class="card-meta"><span class="pill score">0.71</span><span class="label">Simon Willison</span><span class="label">· 2h</span></div>
+          <h2>Notes on the new sqlite-vec release</h2>
+          <p>Vector search inside SQLite now supports metadata filtering and partition keys, which removes the main reason to reach for a separate vector store in small projects.</p>
+          <div class="card-foot"><span class="label">simonwillison.net ↗</span><span class="label">ai · tools</span></div>
+        </article>
+      </div>
+      <div class="deck-actions">
+        <button class="btn danger" type="button" id="t-reject">← Reject <span class="kbd">←</span></button>
+        <button class="btn primary" type="button" id="t-accept">Accept → <span class="kbd" style="color:var(--bg);border-color:var(--bg)">→</span></button>
+      </div>
+      <div class="notice undo" id="t-undo" hidden><span>Rejected “Notes on the new sqlite-vec release”.</span><button class="btn secondary sm" type="button">Undo</button></div>
+      <p class="small">Swipe or use the arrow keys. The card borders green while it leans toward accept.</p>
+    </div>
+  </main>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section data-view="settings" hidden>
+  <main class="page wide">
+    <div class="page-head">
+      <span class="label">Settings</span>
+      <h1 class="display">How cyris <em>runs</em></h1>
+    </div>
+
+    <div class="settings">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a class="label" href="#settings/model" data-tab="model">Model <span class="dirty-dot"></span></a>
+        <a class="label" href="#settings/digest" data-tab="digest">Digest <span class="dirty-dot"></span></a>
+        <a class="label" href="#settings/notifications" data-tab="notifications">Notifications <span class="dirty-dot"></span></a>
+        <a class="label" href="#settings/sources" data-tab="sources">Sources <span class="dirty-dot"></span></a>
+      </nav>
+
+      <div>
+        <!-- MODEL -->
+        <form class="tab" data-tab="model" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Model</h2>
+            <p class="small">The LLM that scores, filters and summarizes. A change applies from the next run.</p>
+            <div class="origin"><span class="pill">Stored in D1</span><span class="req">needs per-key origin from /api/settings</span></div>
+          </div>
+          <div class="form">
+            <fieldset class="field" style="border:0">
+              <legend class="label" style="margin-bottom:8px">Provider</legend>
+              <div class="choices">
+                <label class="choice"><input type="radio" name="provider" id="p-anthropic" value="anthropic"><span class="name">anthropic</span><span class="label">Key ready</span></label>
+                <label class="choice"><input type="radio" name="provider" id="p-gemini" value="gemini" checked><span class="name">gemini</span><span class="label">Key ready</span></label>
+                <label class="choice"><input type="radio" name="provider" id="p-workers" value="workers_ai"><span class="name">workers_ai</span><span class="label">Key ready</span></label>
+                <label class="choice unavailable"><input type="radio" name="provider" id="p-openai" value="openai" disabled><span class="name">openai</span><span class="label" style="color:var(--warn)">OPENAI_API_KEY missing</span></label>
+              </div>
+            </fieldset>
+            <div class="field">
+              <label class="label" for="model">Model</label>
+              <input class="input" id="model" type="text" placeholder="Empty uses gemini-2.5-flash" autocomplete="off">
+              <p class="small">Saving makes one real call to the provider first, so a typo is rejected here.</p>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" disabled>Save</button>
+              <div class="notice" hidden>Verified with gemini. Applies from the next run.</div>
+            </div>
+          </div>
+        </form>
+
+        <!-- DIGEST -->
+        <form class="tab" data-tab="digest" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Digest</h2>
+            <p class="small">When issues are published and how the page is laid out.</p>
+            <div class="origin"><span class="pill">Fallback: cyris.toml</span><span class="small">Saving stores it in D1.</span></div>
+          </div>
+          <div class="form">
+            <div class="field">
+              <span class="label">Publish hours</span>
+              <div class="field-row">
+                <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" value="8"></div>
+                <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" value="20"></div>
+              </div>
+              <details class="more"><summary>More</summary><p class="small">Whole hours in the timezone from <code>[general]</code>. The tick is hourly, so half hours are refused rather than rounded down.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="featured">Featured sections</label>
+              <input class="input narrow" id="featured" type="number" min="1" max="20" value="5">
+              <p class="small">How many sections lead the page before the rest.</p>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" disabled>Save</button>
+              <div class="notice" hidden>Publish hours 08:00 and 20:00. Applies from the next tick.</div>
+            </div>
+          </div>
+        </form>
+
+        <!-- NOTIFICATIONS -->
+        <form class="tab" data-tab="notifications" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Notifications</h2>
+            <p class="small">Where a finished issue is announced.</p>
+            <div class="origin"><span class="pill">Stored in D1</span></div>
+          </div>
+          <div class="form">
+            <div class="field">
+              <label class="label" for="webhook">Discord webhook</label>
+              <input class="input" id="webhook" type="text" value="https://discord.com/api/webhooks/1398…/••••••••" autocomplete="off">
+              <p class="small">To change it, paste the whole URL. It is saved only after Discord confirms it exists.</p>
+              <details class="more"><summary>More</summary><p class="small">When empty here, a run falls back to <code>[notify]</code> in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: remove that Worker secret and any <code>[notify]</code> value.</p></details>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" disabled>Save</button>
+              <div class="notice err" hidden>Discord answered 404: this webhook does not exist. Copy it again from the channel's Integrations page.</div>
+            </div>
+          </div>
+        </form>
+
+        <!-- SOURCES -->
+        <div class="tab" data-tab="sources" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Sources</h2>
+            <p class="small">Feeds and newsletter senders. A change applies from the next run.</p>
+            <div class="origin"><span class="pill">Served from D1</span></div>
+          </div>
+          <div class="toolbar">
+            <div class="seg" role="group" aria-label="Filter by type">
+              <button type="button" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" data-filter="rss" aria-pressed="false">RSS</button>
+              <button type="button" data-filter="newsletter" aria-pressed="false">Newsletter</button>
+            </div>
+            <button class="btn primary" type="button" id="add-source">+ Add source</button>
+          </div>
+          <div class="table-wrap">
+            <table class="src">
+              <thead><tr><th class="label">Name</th><th class="label">Type</th><th class="label">Tier</th><th class="label">Feed or sender</th><th class="label">Tags</th></tr></thead>
+              <tbody id="src-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<template id="editor-tpl">
+  <tr class="editor"><td colspan="5">
+    <div class="form" style="max-width:none">
+      <div class="field-row">
+        <div class="field"><label class="label" for="e-name">Name</label><input class="input" id="e-name" type="text"></div>
+        <div class="field"><span class="label">Type</span>
+          <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
+        </div>
+        <div class="field"><label class="label" for="e-tier">Tier</label>
+          <select class="select" id="e-tier"><option>filter</option><option>summarize</option><option>fan</option></select>
+        </div>
+      </div>
+      <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text"></div>
+      <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@letter.com">
+        <p class="small">Maps a sender to this source. Email routing itself stays in the Cloudflare dashboard.</p></div>
+      <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text"></div>
+      <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" type="text" placeholder="comma separated"></div>
+    </div>
+    <div class="editor-foot">
+      <div class="actions-line"><button class="btn primary" type="button" data-act="save">Save source</button><button class="btn secondary" type="button" data-act="cancel">Cancel</button></div>
+      <button class="btn danger" type="button" data-act="retire">Retire</button>
+    </div>
+  </td></tr>
+</template>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/* ---- sample data ---- */
+const issues = [
+  ["2026-09-17", "morning"], ["2026-09-16", "evening"], ["2026-09-16", "morning"],
+  ["2026-09-15", "evening"], ["2026-09-15", "morning"], ["2026-09-14", "evening"],
+];
+const rawGroups = [
+  ["Simon Willison", [["accepted", .91, "Structured outputs are finally boring"], ["pending", null, "Notes on the new sqlite-vec release"], ["rejected", .22, "Weeknotes: a quiet week"]]],
+  ["曼報", [["accepted", .84, "Nvidia 的護城河真的在 CUDA 嗎"], ["rejected", .31, "本週精選連結"]]],
+  ["Hacker News", [["accepted", .77, "Show HN: A 400-line Datalog in Rust"], ["rejected", .12, "Ask HN: Who is hiring? (September)"], ["pending", null, "The case against microservices, again"]]],
+];
+let sources = [
+  {name: "Simon Willison", type: "rss", tier: "summarize", url: "https://simonwillison.net/atom/everything/", tags: ["ai", "tools"]},
+  {name: "Hacker News", type: "rss", tier: "filter", url: "https://hnrss.org/frontpage?points=200", tags: ["news", "tech"]},
+  {name: "曼報", type: "newsletter", tier: "summarize", email_match: "from:manpao@substack.com", homepage: "https://manpaoreport.com", tags: ["business"]},
+  {name: "Cloudflare Blog", type: "rss", tier: "filter", url: "https://blog.cloudflare.com/rss/", tags: ["infra"]},
+  {name: "IEO", type: "newsletter", tier: "fan", email_match: "from:news@ieo.example", homepage: "", tags: []},
+];
+
+/* ---- archive ---- */
+$("#archive-list").innerHTML = issues.map(([d, p], i) => `
+  <div class="row archive-row">
+    <span class="date">${d}</span>
+    <span class="label">${p}</span>
+    <span class="label latest">${i === 0 ? "Latest" : ""}</span>
+    <span class="actions"><a class="btn secondary sm" href="#digest">Digest →</a><a class="btn secondary sm" href="#raw">All articles</a></span>
+  </div>`).join("");
+
+/* ---- raw ---- */
+$("#raw-groups").innerHTML = rawGroups.map(([name, arts]) => `
+  <section class="panel">
+    <div class="panel-head"><span style="font-weight:600;font-size: calc(20px * var(--type-scale))">${esc(name)}</span><span class="label">${arts.length}</span></div>
+    ${arts.map(([st, sc, t]) => `
+      <div class="row raw-row">
+        <span class="state ${st}">${st}</span>
+        <span class="score">${sc == null ? "—" : sc.toFixed(2)}</span>
+        <a href="#raw">${esc(t)}</a>
+        <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+      </div>`).join("")}
+  </section>`).join("");
+
+/* ---- sources ---- */
+let filter = "all", openName = null;
+function renderSources() {
+  const rows = sources.filter((s) => filter === "all" || s.type === filter);
+  $("#src-body").innerHTML = rows.map((s) => `
+    <tr class="src-row ${openName === s.name ? "open" : ""}" data-name="${esc(s.name)}" tabindex="0">
+      <td class="name">${esc(s.name)}</td>
+      <td><span class="label">${s.type}</span></td>
+      <td><span class="pill ${s.tier === "summarize" ? "score" : ""}">${s.tier}</span></td>
+      <td class="target">${esc(s.url || s.email_match || "—")}</td>
+      <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
+    </tr>`).join("");
+  if (openName !== null) openEditor(openName);
+}
+function openEditor(name) {
+  const s = sources.find((x) => x.name === name) || {name: "", type: "rss", tier: "filter", tags: []};
+  const ed = $("#editor-tpl").content.firstElementChild.cloneNode(true);
+  const anchor = name ? $(`tr.src-row[data-name="${CSS.escape(name)}"]`) : null;
+  anchor ? anchor.after(ed) : $("#src-body").prepend(ed);
+  $("#e-name", ed).value = s.name;
+  $("#e-tier", ed).value = s.tier;
+  $("#e-url", ed).value = s.url || "";
+  $("#e-email", ed).value = s.email_match || "";
+  $("#e-home", ed).value = s.homepage || "";
+  $("#e-tags", ed).value = (s.tags || []).join(", ");
+  const setType = (t) => {
+    $$("[data-type]", ed).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.type === t)));
+    $$("[data-for]", ed).forEach((f) => f.hidden = f.dataset.for !== t);
+  };
+  setType(s.type);
+  $$("[data-type]", ed).forEach((b) => b.onclick = () => setType(b.dataset.type));
+  const retire = $('[data-act="retire"]', ed);
+  retire.hidden = !name;
+  let armTimer;
+  retire.onclick = () => {
+    if (!retire.classList.contains("armed")) {
+      retire.classList.add("armed"); retire.textContent = "Confirm retire";
+      armTimer = setTimeout(() => { retire.classList.remove("armed"); retire.textContent = "Retire"; }, 3000);
+      return;
+    }
+    clearTimeout(armTimer);
+    sources = sources.filter((x) => x.name !== name); openName = null; renderSources();
+  };
+  $('[data-act="cancel"]', ed).onclick = () => { openName = null; renderSources(); };
+  $('[data-act="save"]', ed).onclick = () => { openName = null; renderSources(); };
+  $("#e-name", ed).focus();
+}
+$("#src-body").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr.src-row");
+  if (!tr) return;
+  openName = openName === tr.dataset.name ? null : tr.dataset.name;
+  renderSources();
+});
+$("#src-body").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches("tr.src-row")) e.target.click();
+});
+$$("[data-filter]").forEach((b) => b.onclick = () => {
+  filter = b.dataset.filter; openName = null;
+  $$("[data-filter]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  renderSources();
+});
+$("#add-source").onclick = () => { openName = null; renderSources(); openEditor(""); };
+renderSources();
+
+/* ---- settings forms: dirty tracking + save ---- */
+$$("form.tab").forEach((form) => {
+  const snapshot = () => $$("input, select", form).map((i) => i.type === "radio" ? i.checked : i.value).join("|");
+  let saved = snapshot();
+  const save = $('button[type="submit"]', form);
+  const navLink = $(`.settings-nav a[data-tab="${form.dataset.tab}"]`);
+  form.addEventListener("input", () => {
+    const dirty = snapshot() !== saved;
+    save.disabled = !dirty;
+    navLink.classList.toggle("dirty", dirty);
+    $(".notice", form).hidden = true;
+  });
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    saved = snapshot(); save.disabled = true; navLink.classList.remove("dirty");
+    $(".notice", form).hidden = false;
+  });
+});
+
+/* ---- system overview data ---- */
+const tokens = [
+  ["--bg", "Page ground"], ["--bg-elev", "Panels, lists"], ["--surface", "Panel heads, hover"], ["--surface-2", "Pills, selected tab"],
+  ["--border", "Hairlines"], ["--border-strong", "Controls"], ["--text", "Primary text"], ["--text-dim", "Body, secondary"],
+  ["--text-faint", "Labels, rejected"], ["--accent", "Action, selection"], ["--accent-dim", "Score borders"], ["--warn", "Destructive, error"],
+  ["--accent-tint", "Success notice (new)"], ["--warn-tint", "Error notice (new)"],
+];
+const css = getComputedStyle(document.documentElement);
+$("#swatches").innerHTML = tokens.map(([t, role]) => `
+  <div class="swatch"><div class="chip" style="background:var(${t})"></div>
+  <div class="meta"><span class="tok">${t}</span><span class="hex">${css.getPropertyValue(t).trim()}</span><span class="small">${role}</span></div></div>`).join("");
+$("#scale").innerHTML = [1,2,3,4,5,6,8,12,16,20].map((n) => {
+  const px = css.getPropertyValue(`--s-${n}`).trim();
+  return `<div><span class="data">--s-${n}</span><span class="label">${parseInt(px)}</span><i style="width:${px}"></i></div>`;
+}).join("");
+
+/* ---- triage demo ---- */
+const card = $("#triage-card");
+$("#t-accept").addEventListener("mouseenter", () => card.classList.add("lean-right"));
+$("#t-accept").addEventListener("mouseleave", () => card.classList.remove("lean-right"));
+$("#t-reject").addEventListener("click", () => { $("#t-undo").hidden = false; });
+$("#t-undo button").addEventListener("click", () => { $("#t-undo").hidden = true; });
+
+/* ---- router ---- */
+function route() {
+  const [view, tab] = (location.hash.slice(1) || "system").split("/");
+  $$("[data-view]").forEach((v) => v.hidden = v.dataset.view !== view);
+  $$(".site-nav a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === view || (["archive","digest","raw"].includes(view) && a.dataset.nav === "archive")));
+  $$(".site-nav a[aria-current]").forEach((a) => a.setAttribute("aria-current", "page"));
+  if (view === "settings") {
+    const t = tab || "model";
+    $$(".tab").forEach((p) => p.hidden = p.dataset.tab !== t);
+    $$(".settings-nav a").forEach((a) => a.dataset.tab === t ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  }
+  window.scrollTo(0, 0);
+  const activeTab = $('.settings-nav a[aria-current]');
+  if (view === "settings" && activeTab) activeTab.parentElement.scrollLeft = activeTab.offsetLeft - 16;
+}
+addEventListener("hashchange", route);
+route();
+
+/* ---- signed-in toggle mirrors the /api/vote probe ---- */
+const applyAuth = () => $$(".gated").forEach((g) => g.hidden = !$("#authorized").checked);
+$("#authorized").addEventListener("change", applyAuth);
+applyAuth();
+</script>
+</body>
+</html>

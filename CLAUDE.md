@@ -188,6 +188,10 @@ Agent-owned state directory, entirely gitignored — nothing under it is in vers
   the tuned constants `docs/architecture.md` §5 grades **A** with a stated reason. If
   something is a proof of concept, say so in the identifier or the comment above it —
   an unlabelled placeholder becomes load-bearing by default
+- **UI changes follow `docs/design/ui-language.md`.** It covers every reader-facing page — the
+  digest templates, triage, `/settings` — with the tokens, type scale, components and a checklist;
+  `docs/design/prototype.html` is its reference implementation. The code does not fully conform yet
+  (the spec's §8): restyle a component to the spec when you touch it, never copy the old style
 - User-facing strings are English, even while the digest's content is not. i18n has no
   framework here yet; English is what makes adding one cheap
 - Ruff for linting and formatting (line-length 100, see `pyproject.toml [tool.ruff]` for rule selection)
