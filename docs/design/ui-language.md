@@ -206,13 +206,13 @@ site bar 與其他頁相同。上方是分段控制 `Pending` / `Accepted` / `Re
 - 現行字級比 §3 小，也還沒有乘上 `--type-scale`。
 - CSS 比對測試只比對 token。
 
-落地順序，每一步都能單獨上線：
+落地順序，每一步都能單獨上線。括號裡是 Obsidian vault `pm/cyris/tasks/` 的票：
 
-1. §2 token、§3 字級、focus 與 reduced-motion、刪除兩個硬寫顏色，並把 CSS 比對測試擴大到元件
-2. site bar 與 issue bar 上 archive、digest、raw；archive 列加入兩個入口；頁尾導覽移除
-3. settings 依 §6 重做
-4. triage 依 §6 對齊
-5. `/api/settings` 逐鍵回傳值的來源，settings 顯示來源 pill
+1. §2 token、§3 字級、focus 與 reduced-motion、刪除兩個硬寫顏色，並把 CSS 比對測試擴大到元件（`ui-spec-tokens-and-type`）
+2. site bar 與 issue bar 上 archive、digest、raw；archive 列加入兩個入口；頁尾導覽移除（`ui-site-bar-and-issue-bar`）
+3. settings 依 §6 重做（`settings-page-layout`）
+4. triage 依 §6 對齊（`ui-triage-deck-conformance`；若 `raw-page-triage-view` 決定讓 deck 退場則取消）
+5. `/api/settings` 逐鍵回傳值的來源，settings 顯示來源 pill（`settings-value-origin-per-key`）
 
 ## 9. 改介面前的檢查清單
 
