@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 NO_LLM_MODEL = "none"
 
+NEWSLETTER_SOURCE_TYPE = "newsletter"
+
 
 class Tier(StrEnum):
     """Content processing tier determining filtering depth."""
@@ -44,6 +46,9 @@ class Article(BaseModel):
     source_tier: Tier
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
+    # Not persisted: only the store's save needs it, to tell a newsletter issue's
+    # repeated link apart from an ordinary duplicate URL.
+    source_type: str = "rss"
 
 
 class DigestItem(BaseModel):

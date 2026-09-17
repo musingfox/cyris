@@ -17,7 +17,7 @@ from cyris.adapters.fetch.newsletter import (
     newsletter_article,
     select_primary_content_url,
 )
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Article, SourceConfig, StoredArticle, Tier
 
 
 @pytest.fixture
@@ -334,6 +334,36 @@ class TestNewsletterIssueUrlUniqueness:
         assert a.url.startswith("newsletter:")
         assert b.url.startswith("newsletter:")
         assert a.url != b.url
+
+
+class TestArticleSourceType:
+    def test_newsletter_article_says_it_came_from_a_newsletter(self):
+        source = SourceConfig(name="NL", type="newsletter", email_match="from:a@s.com")
+        parsed = _make_parsed(subject="Issue 1", text_content="body")
+        art = newsletter_article(parsed, source)
+        assert art is not None
+        assert art.source_type == "newsletter"
+        assert art.id == _generate_article_id("NL", "Issue 1")
+        assert art.url == f"newsletter:{art.id}"
+
+    def test_article_defaults_to_rss(self):
+        art = Article(
+            id=1,
+            title="t",
+            url="https://a.com/1",
+            content="c",
+            published_at=datetime(2026, 9, 1),
+            source_name="R",
+            source_tier=Tier.FILTER,
+        )
+        assert art.source_type == "rss"
+
+    def test_source_type_is_not_persisted(self):
+        source = SourceConfig(name="NL", type="newsletter", email_match="from:a@s.com")
+        art = newsletter_article(_make_parsed(subject="Issue 1", text_content="body"), source)
+        assert art is not None
+        stored = StoredArticle.from_article(art, first_seen_at=datetime(2026, 9, 1))
+        assert stored.to_article().source_type == "rss"
 
 
 class TestHarvestUrlCandidates:

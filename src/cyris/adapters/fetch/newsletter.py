@@ -207,4 +207,5 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
         source_tier=source.tier,
         source_tags=source.tags,
         ref_urls=ref_urls,
+        source_type=source.type,
     )
