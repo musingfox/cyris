@@ -128,6 +128,11 @@ def _check_llm(cfg: Config) -> Check:
     return Check("llm provider", "ok", f"{llm.provider} · {llm.model or 'default model'}")
 
 
+# OpenAIClient always asks for `json_object`, which OpenAI refuses unless the
+# messages mention JSON.
+LLM_PROBE_PROMPT = 'Reply with JSON: {"ok": true}'
+
+
 async def probe_llm(llm_cfg) -> Check:
     """Ask the provider whether this model actually answers, with a real call.
 
@@ -154,13 +159,12 @@ async def probe_llm(llm_cfg) -> Check:
                 else ""
             ),
         )
-    probe_text = "ping"
     try:
         # 16 was not enough: a reasoning model can spend the entire budget
         # thinking and return an empty candidate, which reads as a broken model.
-        await llm.complete(probe_text, max_tokens=128)
+        await llm.complete(LLM_PROBE_PROMPT, max_tokens=128)
     except GeminiAPIError as e:
-        detail = e.message.replace(probe_text, "[probe text redacted]")
+        detail = e.message.replace(LLM_PROBE_PROMPT, "[probe text redacted]")
         return Check(
             "llm probe",
             "fail",

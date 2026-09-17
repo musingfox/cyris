@@ -133,7 +133,7 @@ async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) ->
             raise GeminiAPIError(
                 code=400,
                 status="INVALID_ARGUMENT",
-                message="The model is invalid; ping ping. Keep this context.",
+                message=f"The model is invalid; {doctor.LLM_PROBE_PROMPT}. Keep this context.",
                 request=request,
                 response=response,
             )
@@ -144,7 +144,7 @@ async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) ->
     check = await doctor.probe_llm(cfg)
 
     assert check.status == "fail"
-    assert "ping" not in check.detail
+    assert doctor.LLM_PROBE_PROMPT not in check.detail
     assert "[probe text redacted]" in check.detail
     assert "code=400" in check.detail
     assert "status=INVALID_ARGUMENT" in check.detail
@@ -922,3 +922,23 @@ class TestLastRun:
         assert names.index("last run") == names.index("deployment image") + 1
         assert _by_name(checks, "last run").status == "ok"
         assert len(calls) == 1
+
+
+async def test_llm_probe_prompt_satisfies_openai_json_mode(monkeypatch) -> None:
+    """OpenAIClient always sends `response_format: json_object`, and OpenAI 400s
+    any such request whose messages never say "json" — so a bare "ping" made
+    every OpenAI model look broken."""
+    prompts = []
+
+    class FakeLLM:
+        model = "gpt-5-mini"
+
+        async def complete(self, prompt, *, max_tokens):
+            prompts.append(prompt)
+
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: FakeLLM())
+
+    check = await doctor.probe_llm(LLMProviderConfig(provider="openai", api_key="key"))
+
+    assert check.status == "ok"
+    assert "json" in prompts[0].lower()
