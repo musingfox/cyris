@@ -572,6 +572,13 @@ probe: it sends a fixed minimal `generateContent` request with the Worker-bound
 `GEMINI_API_KEY`, returns only status, model, latency and a truncated provider error, and writes no
 state. It proves the Worker egress path, not the Container's separate egress path.
 
+The Container's egress path gets its own receipt: the `run` role prints one `egress_probe` line
+(`colo`, `loc` from `cloudflare.com/cdn-cgi/trace`) before every tick, never fatal. It exists
+because placement is nearest-to-request and moves between runs: from 2026-09-08 every Gemini call
+from the Container returned `400 FAILED_PRECONDITION: User location is not supported`, while the
+same key answered from the Worker, and each LLM stage fell back until every article was accepted.
+The fix is `[containers.constraints]`; this line is how a later run shows the constraint held.
+
 Nothing runs on the Mac mini since 2026-08-30: `docker compose down` was the cutover, and the
 `compose` file survives only as the local development path. `cloud-p4` makes the whole thing
 deployable by someone else with one button.
