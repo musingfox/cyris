@@ -4,6 +4,7 @@ import hashlib
 import logging
 
 from cyris.domain.models import (
+    NO_LLM_MODEL,
     Article,
     DigestContent,
     ProcessResult,
@@ -114,7 +115,7 @@ class DigestPipeline:
             len(fan_tier),
         )
 
-        usage = UsageStats(model=self._llm.model if self._llm else "none")
+        usage = UsageStats(model=self._llm.model if self._llm else NO_LLM_MODEL)
 
         # Split filter tier into news and non-news
         news_articles, non_news_articles = filter_news(filter_tier)

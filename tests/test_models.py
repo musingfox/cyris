@@ -1,17 +1,21 @@
 """Tests for data models."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from cyris.domain.models import (
+    NO_LLM_MODEL,
     Article,
     DigestContent,
     DigestItem,
     SourceConfig,
     StoredArticle,
     Tier,
+    UsageStats,
+    is_degraded_run,
 )
 
 
@@ -122,6 +126,27 @@ class TestSourceConfig:
         )
         assert source.tier == Tier.SUMMARIZE
         assert source.url == "https://stratechery.com/feed/"
+
+
+class TestUsageStats:
+    @pytest.mark.parametrize(
+        ("usage", "expected"),
+        [
+            (UsageStats(model="gemini-3-flash", input_tokens=0, api_calls=0), True),
+            (UsageStats(model="gemini-3-flash", input_tokens=0, api_calls=1), True),
+            (UsageStats(model="gemini-3-flash", input_tokens=15000, api_calls=4), False),
+            (UsageStats(model=NO_LLM_MODEL, input_tokens=0), False),
+            (UsageStats(), False),
+        ],
+    )
+    def test_degraded_run_requires_a_configured_model_with_no_input_tokens(self, usage, expected):
+        assert is_degraded_run(usage) is expected
+
+    def test_no_llm_model_constant_replaces_pipeline_sentinels(self):
+        assert NO_LLM_MODEL == "none"
+        service_layer = Path(__file__).parents[1] / "src/cyris/service_layer"
+        for name in ("digest_pipeline.py", "run_digest.py"):
+            assert '"none"' not in (service_layer / name).read_text()
 
 
 class TestDigestContent:

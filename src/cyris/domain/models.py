@@ -5,6 +5,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+NO_LLM_MODEL = "none"
+
 
 class Tier(StrEnum):
     """Content processing tier determining filtering depth."""
@@ -144,6 +146,16 @@ class UsageStats(BaseModel):
         self.api_calls += other.api_calls
         if other.neurons is not None:
             self.neurons = (self.neurons or 0.0) + other.neurons
+
+
+def is_degraded_run(usage: UsageStats) -> bool:
+    """Whether a configured LLM consumed no input tokens during a run.
+
+    `api_calls` is ignored: a call that raised still counts as a call, so the
+    2026-09 excerpt-only runs reported calls with zero tokens. A configured LLM
+    that had nothing to do this run is also flagged; that false positive is accepted.
+    """
+    return usage.model not in ("", NO_LLM_MODEL) and usage.input_tokens == 0
 
 
 class DigestContent(BaseModel):

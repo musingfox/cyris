@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cyris.domain.models import ArticleState, UsageStats
+from cyris.domain.models import NO_LLM_MODEL, ArticleState, UsageStats
 from cyris.domain.selection import count_dead_links, layer_by_score
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -153,7 +153,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
 
     scorable = select_scorable(pending_articles, force=options.force)
 
-    total_usage = UsageStats(model=cfg.app.llm_provider.model or "none")
+    total_usage = UsageStats(model=cfg.app.llm_provider.model or NO_LLM_MODEL)
 
     persist_tags = None
     if not options.dry_run and deps.tag_store is not None:
