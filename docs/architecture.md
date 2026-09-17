@@ -340,7 +340,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention |
 | Source definitions | **D1 `sources`** + `sources.yaml` fallback | same | Both cyris and `workers/rss` read it |
 | Runtime settings | **D1 `settings`** + `cyris.toml` fallback | same | Grade D. D1 first, always — see §5 |
-| Discord webhook | **D1 `settings`** | same | written by `/settings`; `CYRIS_DISCORD_WEBHOOK_URL` and `cyris.toml [notify]` are fallbacks |
+| Discord webhook | **D1 `settings`** | same | written by `/settings`; `cyris.toml [notify]`, then `CYRIS_DISCORD_WEBHOOK_URL`, are fallbacks |
 | LLM spend | **D1 `usage_log`** | same | `agent-vault/usage.jsonl` is the no-D1 fallback only, the same alternative the article store has: `build_deps` picks one or the other, never both |
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained hourly |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
@@ -404,11 +404,11 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | `cyris.toml` (`[routing]` for the thresholds, `[digest]` for the rest) | **D1 `settings`** — mechanism exists; each key moves when it gets a writer |
 | Embedding provider + model | D | `cyris.toml [vote_similarity]` | **D1 `settings`** + `/settings`, as its own `[embedding]` table — §7 #17 |
 | Embedding threshold | **A** | `cyris.toml`, else the provider's own calibration | unchanged — a measured property of the model, not a preference |
-| Discord webhook | D | **D1 `settings`**, written by `/settings`; `CYRIS_DISCORD_WEBHOOK_URL` and `cyris.toml [notify]` fallback | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the seven counted below; those are API tokens, which stay C |
+| Discord webhook | D | **D1 `settings`**, written by `/settings`; `cyris.toml [notify]`, then `CYRIS_DISCORD_WEBHOOK_URL`, fallback | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the seven counted below; those are API tokens, which stay C. `/settings` cannot turn notifications off: an empty value is refused, and stopping them means removing the `CYRIS_DISCORD_WEBHOOK_URL` Worker secret and any `[notify]` value |
 | Digest window | D | `cyris.toml [general] digest_window_hours` | **D1 `settings`** — moves with the other digest knobs, same row as score thresholds |
 | Vote similarity on/off, `max_seeds` | D | `cyris.toml [vote_similarity]` | **D1 `settings`** + `/settings`, alongside the embedding provider — §7 #17 |
 | Agent vault path, HTML output dir | A | `cyris.toml` | unchanged — both address the `json` backend's fallback tree only; with D1 nothing is written there |
-| **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | undecided. Writing a key into D1 `settings` puts a secret in a readable D-grade row; §7 #17 records the question rather than answering it |
+| **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | partly ruled: a channel-address credential such as the Discord webhook is grade D (see its row above). API keys remain undecided. Writing a key into D1 `settings` puts a secret in a readable D-grade row; §7 #17 records the question rather than answering it |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
 
@@ -936,8 +936,10 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 
 ### Grade D has a home
 
-Both closed by M2 on 2026-08-27 — see §5. The Discord webhook joined them: it now lives in D1
-`settings`, written by `/settings`. What remains grade-D-homeless is listed there: score
+Both closed by M2 on 2026-08-27 — see §5. The Discord webhook joined them — Done 2026-09-17,
+ticket `notify-credentials-to-d1-settings`: it now lives in D1 `settings`, written by `/settings`,
+which asks Discord whether the webhook exists before saving it, and `cyris doctor` reports which
+home the running value came from. What remains grade-D-homeless is listed there: score
 thresholds, digest caps, output language, style prompt, none of which has a writer yet.
 
 ### Waiting on a receipt
