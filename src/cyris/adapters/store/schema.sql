@@ -19,7 +19,8 @@
 --   wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql
 
 CREATE TABLE IF NOT EXISTS stored_articles (
-  url              TEXT PRIMARY KEY,     -- dedup key, same as the JSON store's
+  url              TEXT PRIMARY KEY,     -- dedup key, same as the JSON store's (newsletter
+                                         -- collisions are re-keyed to newsletter:{id})
   original_id,                           -- feed ids are ints, newsletter ids are strings;
                                          -- no declared type, so SQLite keeps each as given
   title            TEXT NOT NULL DEFAULT '',

@@ -232,7 +232,7 @@ flowchart LR
     RUN -->|POST /ack · deletes| KV
 
     STORE[("D1 stored_articles")]
-    RUN -->|"dedup by URL"| STORE
+    RUN -->|"dedup by URL (newsletters: URL + subject)"| STORE
 
     classDef cloud fill:#1F4E63,stroke:#7FB6CC,color:#fff;
     classDef ext fill:#4A4A4A,stroke:#9E9E9E,color:#fff;
@@ -282,11 +282,17 @@ hostname allowlist, and has its own rule set — see
 
 ### 3.2 From articles to a digest
 
-`fetch_all_articles` merges every `FetchSource`, **deduplicating by URL — last source wins**. A
-source that throws is logged and skipped; the run continues degraded rather than failing.
+`fetch_all_articles` merges every `FetchSource`, **deduplicating by URL — last source wins**,
+except that two newsletter issues with different ids sharing one URL are both kept. A source that
+throws is logged and skipped; the run continues degraded rather than failing.
 
 Everything then goes to the store, and the store's `url` PRIMARY KEY is the second dedup: an article
-seen in a previous window is not processed again.
+seen in a previous window is not processed again. A newsletter issue is deduplicated by URL plus
+subject, realised without changing the key (`adapters/store/newsletter_dedup.py`): when its URL is
+already held by an issue of the same source with a different subject — a sender's repeated nav link
+— it is stored under its synthetic `newsletter:{id}` URL and loses that link. Same URL and same
+subject is a re-delivery and is skipped. The extractor's `Article.url` may repeat across issues; the
+stored URL cannot.
 
 Each source carries a **tier**, which decides how much attention it gets:
 
@@ -332,7 +338,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
-| Article store | **D1 `stored_articles`** | same | `url` PRIMARY KEY is the dedup key |
+| Article store | **D1 `stored_articles`** | same | `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}` |
 | Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
 | Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window |

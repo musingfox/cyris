@@ -1,7 +1,9 @@
-"""D1-backed ArticleStore: the same 13 methods, one SQL query each.
+"""D1-backed ArticleStore: the same 13 methods, one SQL query each — except `save`,
+which reads before it writes when the batch holds newsletter issues.
 
-Behaviour matches `ArticleStore` with one deliberate difference: dedup is by URL
-across the whole table, not across the last 8 days of partitions. The window in
+Behaviour matches `ArticleStore` with one deliberate difference: dedup (URL, plus
+the `newsletter_dedup` re-key) is across the whole table, not across the last 8
+days of partitions. The window in
 the JSON store is a scan-cost optimisation, not a rule — a URL primary key does
 what it was approximating, and does it exactly.
 """
@@ -15,8 +17,15 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from cyris.adapters.store.d1 import D1Queryable, chunk_rows
+from cyris.adapters.store.newsletter_dedup import Holders, resolve_stored_url, synthetic_url
 from cyris.domain.language import LANGUAGE_SORT_ORDER
-from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
+from cyris.domain.models import (
+    NEWSLETTER_SOURCE_TYPE,
+    Article,
+    ArticleState,
+    SaveResult,
+    StoredArticle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +114,24 @@ class D1ArticleStore:
     # ---- write ----------------------------------------------------------
 
     def save(self, articles: list[Article], now: datetime | None = None) -> SaveResult:
-        """Insert new articles, ignoring URLs already stored."""
+        """Insert new articles, ignoring URLs already stored.
+
+        `INSERT OR IGNORE` cannot say which rows it ignored, so a batch holding
+        newsletter issues first reads the rows their URLs collide with and applies
+        `newsletter_dedup` in Python. A batch without newsletters issues no read.
+        """
         if not articles:
             return SaveResult(saved_count=0, skipped_count=0)
 
         now = now or datetime.now(UTC)
-        rows = [_to_row(StoredArticle.from_article(a, first_seen_at=now)) for a in articles]
+        newsletters = [a for a in articles if a.source_type == NEWSLETTER_SOURCE_TYPE]
+        if newsletters:
+            articles_to_insert = self._resolve_newsletter_urls(articles, newsletters)
+        else:
+            articles_to_insert = articles
+        rows = [
+            _to_row(StoredArticle.from_article(a, first_seen_at=now)) for a in articles_to_insert
+        ]
 
         placeholders = "(" + ", ".join("?" * len(COLUMNS)) + ")"
         saved = 0
@@ -123,6 +144,29 @@ class D1ArticleStore:
 
         logger.info("Saved %d new articles to D1 (%d skipped)", saved, len(articles) - saved)
         return SaveResult(saved_count=saved, skipped_count=len(articles) - saved)
+
+    def _resolve_newsletter_urls(
+        self, articles: list[Article], newsletters: list[Article]
+    ) -> list[Article]:
+        urls = [a.url for a in newsletters] + [synthetic_url(a) for a in newsletters]
+        holders: Holders = {
+            row.url: (row.title, row.source_name)
+            for row in self.get_by_urls(list(dict.fromkeys(urls)))
+        }
+        resolved: list[Article] = []
+        for article in articles:
+            if article.source_type != NEWSLETTER_SOURCE_TYPE:
+                # INSERT OR IGNORE still dedups these; recorded so a later
+                # newsletter in the batch sees the row that will win the URL.
+                holders.setdefault(article.url, (article.title, article.source_name))
+                resolved.append(article)
+                continue
+            url = resolve_stored_url(article, holders)
+            if url is None:
+                continue
+            holders[url] = (article.title, article.source_name)
+            resolved.append(article.model_copy(update={"url": url}))
+        return resolved
 
     def import_articles(
         self, articles: list[StoredArticle], on_progress: Callable[[int, int], None] | None = None

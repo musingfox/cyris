@@ -1,10 +1,11 @@
-"""Persistent article store with URL-based deduplication."""
+"""Persistent article store with URL-based deduplication (see newsletter_dedup)."""
 
 import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from cyris.adapters.store.newsletter_dedup import Holders, resolve_stored_url
 from cyris.domain.language import language_sort_key
 from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
 
@@ -16,7 +17,9 @@ _DEDUP_SCAN_DAYS = 8
 class ArticleStore:
     """Persistent storage for articles with state management.
 
-    Articles are partitioned by date into JSON files. Deduplication is based on URL.
+    Articles are partitioned by date into JSON files. Deduplication is based on URL,
+    except that a same-source newsletter issue with a different subject is re-keyed
+    to its synthetic URL instead of skipped (`newsletter_dedup`).
     """
 
     def __init__(self, vault_path: Path) -> None:
@@ -47,6 +50,9 @@ class ArticleStore:
     def save(self, articles: list[Article], now: datetime | None = None) -> SaveResult:
         """Save new articles to store with deduplication by URL.
 
+        Only the last 8 days are scanned, so a newsletter collision is also only
+        detected against issues stored in that window.
+
         Args:
             articles: Articles to save.
             now: Timestamp for first_seen_at (defaults to UTC now).
@@ -64,12 +70,13 @@ class ArticleStore:
         # pair: `RETENTION_DAYS` in workers/rss/src/index.js prunes the buffer on
         # the same 8 days. Shortening this re-ingests what the buffer still holds;
         # shortening that drops articles this scan expects to recognise.
-        existing_urls: set[str] = set()
+        holders: Holders = {}
         for i in range(_DEDUP_SCAN_DAYS):
             scan_date = now.date() - timedelta(days=i)
             scan_path = self._partition_path(datetime.combine(scan_date, datetime.min.time()))
             partition = self._load_partition(scan_path)
-            existing_urls.update(a.url for a in partition)
+            for a in partition:
+                holders.setdefault(a.url, (a.title, a.source_name))
 
         # Load today's partition
         today_path = self._partition_path(now)
@@ -80,13 +87,16 @@ class ArticleStore:
         skipped = 0
 
         for article in articles:
-            if article.url in existing_urls:
+            url = resolve_stored_url(article, holders)
+            if url is None:
                 skipped += 1
                 continue
 
-            stored = StoredArticle.from_article(article, first_seen_at=now)
+            stored = StoredArticle.from_article(
+                article.model_copy(update={"url": url}), first_seen_at=now
+            )
             new_articles.append(stored)
-            existing_urls.add(article.url)
+            holders[url] = (article.title, article.source_name)
 
         # Append to today's partition
         if new_articles:
