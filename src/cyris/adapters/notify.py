@@ -9,6 +9,7 @@ from cyris.domain.models import DigestContent, DigestSection
 
 logger = logging.getLogger(__name__)
 
+# The hosts are Discord's API endpoints, i.e. protocol structure, not vocabulary.
 _DISCORD_WEBHOOK = re.compile(
     r"^https://(?:discord|discordapp)\.com/api(?:/v\d+)?/webhooks/([^/]+)/([^/]+)$"
 )
@@ -27,6 +28,11 @@ def parse_discord_webhook_url(url: str) -> tuple[str, str] | None:
     if not match:
         return None
     return match.group(1), match.group(2)
+
+
+def is_masked_webhook_url(url: str) -> bool:
+    """True if url carries the mask, i.e. came back from this module rather than Discord."""
+    return WEBHOOK_MASK[0] in url
 
 
 def mask_discord_webhook_url(url: str) -> str:

@@ -183,9 +183,9 @@ async def probe_discord(url: str, transport: httpx.AsyncBaseTransport | None = N
     call before storing a URL. It never raises: a probe that throws is a worse
     diagnostic than one that reports.
     """
-    from cyris.adapters.notify import WEBHOOK_MASK, parse_discord_webhook_url
+    from cyris.adapters.notify import is_masked_webhook_url, parse_discord_webhook_url
 
-    if WEBHOOK_MASK[0] in url:
+    if is_masked_webhook_url(url):
         return Check(
             "discord probe",
             "fail",

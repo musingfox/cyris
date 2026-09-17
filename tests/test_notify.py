@@ -2,6 +2,7 @@
 
 from cyris.adapters.notify import (
     build_discord_embeds,
+    is_masked_webhook_url,
     mask_discord_webhook_url,
     parse_discord_webhook_url,
 )
@@ -346,6 +347,15 @@ class TestMaskDiscordWebhookUrl:
     def test_token_is_not_in_result(self):
         masked = mask_discord_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN")
         assert "abcTOKEN" not in masked
+
+
+class TestIsMaskedWebhookUrl:
+    def test_a_masked_url_is_recognised(self):
+        masked = mask_discord_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN")
+        assert is_masked_webhook_url(masked)
+
+    def test_a_real_url_is_not(self):
+        assert not is_masked_webhook_url("https://discord.com/api/webhooks/123/abcTOKEN")
 
 
 class TestParseDiscordWebhookUrl:
