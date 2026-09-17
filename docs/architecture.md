@@ -581,6 +581,12 @@ probe: it sends a fixed minimal `generateContent` request with the Worker-bound
 `GEMINI_API_KEY`, returns only status, model, latency and a truncated provider error, and writes no
 state. It proves the Worker egress path, not the Container's separate egress path.
 
+`POST /api/diagnostics/llm` with `{"provider", "model"}` is its Container-side counterpart, served
+by `triage_server` behind the same cookie: it runs `probe_llm` for any provider with the key the
+Container holds, adds the Cloudflare trace's `colo`/`loc` for that request, and stores nothing.
+It answers from the `ui` instance; the `run` instance shares its placement constraints but is
+placed on its own, which only its `egress_probe` log line records.
+
 The Container's egress path gets its own receipt: the `run` role prints one `egress_probe` line
 (`colo`, `loc` from `cloudflare.com/cdn-cgi/trace`) before every tick, never fatal. It exists
 because placement is nearest-to-request and moves between runs: from 2026-09-08 every Gemini call

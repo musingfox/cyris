@@ -924,6 +924,25 @@ class TestLastRun:
         assert len(calls) == 1
 
 
+async def test_egress_probe_reads_colo_and_location_from_the_trace() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="fl=1\ncolo=YVR\nloc=CA\nip=1.2.3.4\n")
+
+    assert await doctor.probe_egress(httpx.MockTransport(handler)) == {
+        "colo": "YVR",
+        "loc": "CA",
+    }
+
+
+async def test_egress_probe_reports_rather_than_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route")
+
+    result = await doctor.probe_egress(httpx.MockTransport(handler))
+
+    assert "no route" in result["error"]
+
+
 async def test_llm_probe_prompt_satisfies_openai_json_mode(monkeypatch) -> None:
     """OpenAIClient always sends `response_format: json_object`, and OpenAI 400s
     any such request whose messages never say "json" — so a bare "ping" made

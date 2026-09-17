@@ -238,6 +238,27 @@ async def probe_discord(url: str, transport: httpx.AsyncBaseTransport | None = N
     )
 
 
+EGRESS_TRACE_URL = "https://cloudflare.com/cdn-cgi/trace"
+EGRESS_PROBE_TIMEOUT_SECONDS = 5
+
+
+async def probe_egress(transport: httpx.AsyncBaseTransport | None = None) -> dict[str, str]:
+    """Where this process's requests leave from, as Cloudflare's edge sees them.
+
+    Providers refuse by location, so an LLM probe's verdict means little without
+    it. Never raises: `{"error": ...}` is the answer when the trace is unreachable.
+    """
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, timeout=EGRESS_PROBE_TIMEOUT_SECONDS
+        ) as client:
+            resp = await client.get(EGRESS_TRACE_URL)
+        trace = dict(line.split("=", 1) for line in resp.text.splitlines() if "=" in line)
+        return {"colo": trace.get("colo", ""), "loc": trace.get("loc", "")}
+    except Exception as e:  # noqa: BLE001 - the transport's own words are the answer
+        return {"error": str(e)[:200]}
+
+
 def _check_paths(cfg: Config) -> list[Check]:
     # With D1 the vault has no writer left — articles are a table and spend goes
     # to `usage_log` — so there is nothing to check. Probing anyway would *create*

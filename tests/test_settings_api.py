@@ -422,3 +422,88 @@ class TestNotifyWebhookWrite:
         await client.close()
 
         assert data["notify_webhook"] == "https://discord.com/api/webhooks/1/••••"
+
+
+class TestLlmDiagnostics:
+    """Asking the Container's own egress whether a provider answers, without saving.
+
+    The Worker has its own probe, but the Container leaves from a different place,
+    and that is where providers refused by location.
+    """
+
+    @pytest.fixture(autouse=True)
+    def egress(self, monkeypatch):
+        async def fake_egress():
+            return {"colo": "SEA", "loc": "US"}
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_egress", fake_egress)
+
+    async def test_a_provider_that_answers_reports_ok_with_the_egress(self, settings, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "o")
+
+        async def ok(self, *a, **kw):
+            from cyris.service_layer.ports import LLMResponse
+
+            return LLMResponse(text="pong", input_tokens=1, output_tokens=1)
+
+        monkeypatch.setattr("cyris.adapters.openai_client.OpenAIClient.complete", ok)
+        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+
+        res = await client.post(
+            "/api/diagnostics/llm", json={"provider": "openai", "model": "gpt-5-mini"}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["ok"] is True
+        assert body["provider"] == "openai"
+        assert body["egress"] == {"colo": "SEA", "loc": "US"}
+        assert settings.stored == {}
+
+    async def test_a_refusal_carries_the_provider_words_and_the_egress(self, settings, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "g")
+
+        async def refused(*a, **kw):
+            raise RuntimeError("User location is not supported for the API use")
+
+        monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", refused)
+        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+
+        res = await client.post(
+            "/api/diagnostics/llm", json={"provider": "gemini", "model": "gemini-3.7-flash"}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 502
+        assert body["ok"] is False
+        assert "User location is not supported" in body["detail"]
+        assert body["egress"] == {"colo": "SEA", "loc": "US"}
+        assert settings.stored == {}
+
+    async def test_it_works_without_a_settings_store(self, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "g")
+
+        async def ok(self, *a, **kw):
+            from cyris.service_layer.ports import LLMResponse
+
+            return LLMResponse(text="pong", input_tokens=1, output_tokens=1)
+
+        monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", ok)
+        client = await _client(None, None)
+
+        res = await client.post("/api/diagnostics/llm", json={"provider": "gemini"})
+        await client.close()
+
+        assert res.status == 200
+
+    async def test_an_unknown_provider_is_rejected_before_any_call(self, settings):
+        client = await _client(settings, None)
+
+        res = await client.post("/api/diagnostics/llm", json={"provider": "mistral"})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "mistral" in body["error"]

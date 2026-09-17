@@ -97,6 +97,7 @@ class TriageServer:
         self._app.router.add_get("/api/build", self._handle_build)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
+        self._app.router.add_post("/api/diagnostics/llm", self._handle_diagnose_llm)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
         self._app.router.add_post("/api/settings/digest", self._handle_post_digest)
         self._app.router.add_post("/api/settings/notify", self._handle_post_notify)
@@ -357,6 +358,44 @@ class TriageServer:
                 # fresh, so the change lands on the next digest.
                 "note": "Saved. The next digest run picks this up.",
             }
+        )
+
+    async def _handle_diagnose_llm(self, request: web.Request) -> web.Response:
+        """Probe a provider from this instance's egress, and store nothing.
+
+        The Worker's `/api/diagnostics/gemini` proves the Worker's path; providers
+        refused the Container's, which leaves from somewhere else.
+        """
+        from pydantic import ValidationError
+
+        from cyris.config import LLMProviderConfig
+        from cyris.diagnostics import doctor
+
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        provider = (body.get("provider") or "").strip()
+        model = (body.get("model") or "").strip()
+        try:
+            candidate = LLMProviderConfig(provider=provider, model=model)
+        except ValidationError:
+            return web.json_response(
+                {"ok": False, "error": f"unknown provider {provider!r}"}, status=400
+            )
+
+        probe = await doctor.probe_llm(candidate)
+        ok = probe.status == "ok"
+        return web.json_response(
+            {
+                "ok": ok,
+                "provider": provider,
+                "model": model,
+                "detail": probe.detail,
+                "egress": await doctor.probe_egress(),
+            },
+            status=200 if ok else 502,
         )
 
     async def _handle_post_schedule(self, request: web.Request) -> web.Response:

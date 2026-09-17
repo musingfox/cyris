@@ -21,6 +21,7 @@
   {"path": "/api/articles/undo", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/articles/undo"},
   {"path": "/api/settings", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/settings"},
   {"path": "/api/settings", "method": "POST", "kind": "container", "unauth_status": 401},
+  {"path": "/api/diagnostics/llm", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/diagnostics/llm"},
   {"path": "/api/settings/schedule", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/schedule"},
   {"path": "/api/settings/digest", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/digest"},
   {"path": "/api/settings/notify", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/notify"},
