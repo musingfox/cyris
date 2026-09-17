@@ -694,3 +694,210 @@ async def test_a_run_with_a_webhook_stays_quiet_and_still_notifies(
 
     assert _skip_records(caplog) == []
     assert sent["webhook_url"] == "https://discord.com/api/webhooks/1/run-log"
+
+
+def _recording(deps: Deps) -> tuple[Deps, list[dict]]:
+    recorded: list[dict] = []
+    return replace(deps, record_run=recorded.append), recorded
+
+
+async def test_an_empty_window_hands_its_summary_to_the_recorder(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, recorded = _recording(deps)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["status"] == "no_articles"
+    assert summary["fetched"] == 0
+    assert "wall_seconds" in summary
+
+
+async def test_a_run_with_nothing_pending_is_recorded(tmp_path: Path) -> None:
+    # A preview saves nothing, so an article the store never held is not pending.
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps, recorded = _recording(deps)
+
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    [summary] = recorded
+    assert summary["status"] == "no_pending"
+
+
+async def test_a_finished_digest_is_recorded(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, recorded = _recording(deps)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["status"] == "ok"
+
+
+def _exploding_store(deps: Deps) -> None:
+    def explode(*args, **kwargs):
+        raise RuntimeError("the store is gone")
+
+    deps.store.save = explode
+
+
+async def test_a_run_that_raises_is_recorded_as_an_error(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps, recorded = _recording(deps)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError):
+        await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["status"] == "error"
+    assert summary["fetched"] == 1
+
+
+async def test_a_run_that_dies_before_fetching_is_recorded(tmp_path: Path, monkeypatch) -> None:
+    async def refuse(**kwargs):
+        raise RuntimeError("no network")
+
+    monkeypatch.setattr("cyris.service_layer.run_digest.fetch_all_articles", refuse)
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, recorded = _recording(deps)
+
+    with pytest.raises(RuntimeError):
+        await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["status"] == "error"
+    assert "fetched" not in summary
+
+
+async def test_a_preview_is_recorded_as_one(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, recorded = _recording(deps)
+
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    [summary] = recorded
+    assert summary["dry_run"] is True
+
+
+async def test_no_recorder_is_no_error(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+
+
+async def test_an_empty_window_leaves_a_d1_row(tmp_path: Path) -> None:
+    from fakes import SqliteD1
+
+    from cyris.adapters.store.runs import D1RunLog
+
+    db = SqliteD1()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, record_run=D1RunLog(db, "sha1").record)
+
+    await run_digest(deps, RunOptions())
+
+    [row] = db.query("SELECT status, build_sha FROM digest_runs").rows
+    assert row == {"status": "no_articles", "build_sha": "sha1"}
+
+
+def _down(_summary: dict) -> None:
+    from cyris.adapters.store.d1 import D1Error
+
+    raise D1Error("down")
+
+
+async def test_a_failed_run_row_write_leaves_the_result_and_the_log_line(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, record_run=_down)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+    assert _run_summary(caplog)["status"] == "no_articles"
+
+
+async def test_a_failed_run_row_write_does_not_replace_the_runs_exception(
+    tmp_path: Path,
+) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = replace(deps, record_run=_down)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+
+async def test_a_failed_run_row_write_is_logged_as_an_error(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, record_run=_down)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert any(
+        r.levelname == "ERROR" and r.name == "cyris.service_layer.run_digest"
+        for r in caplog.records
+    )
+
+
+async def test_a_zero_token_run_records_the_degraded_verdict_discord_shows(
+    tmp_path: Path,
+) -> None:
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        _notify_llm(input_tokens=0, model="test-model"),
+        FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps, recorded = _recording(deps)
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/zero"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[0]["degraded"] is True
+    assert recorded[0]["degraded"] == is_degraded_run(contents[0].usage)
+
+
+async def test_a_run_that_used_its_llm_records_not_degraded(tmp_path: Path) -> None:
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        _notify_llm(model="test-model"),
+        FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps, recorded = _recording(deps)
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/used"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[0]["degraded"] is False
+    assert recorded[0]["degraded"] == is_degraded_run(contents[0].usage)
+
+
+async def test_a_run_with_no_llm_records_not_degraded(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, llm=None, source=FakeSource([_notify_article()]))
+    deps, recorded = _recording(deps)
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/no-llm"
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[0]["degraded"] is False
+
+
+async def test_a_run_without_content_records_no_degraded_verdict(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, recorded = _recording(deps)
+
+    await run_digest(deps, RunOptions())
+
+    assert "degraded" not in recorded[0]

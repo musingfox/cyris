@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cyris.domain.models import NO_LLM_MODEL, ArticleState, UsageStats
+from cyris.domain.models import NO_LLM_MODEL, ArticleState, UsageStats, is_degraded_run
 from cyris.domain.selection import count_dead_links, layer_by_score
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -76,6 +76,13 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     finally:
         summary["wall_seconds"] = round(time.monotonic() - started, 2)
         logger.info("run_summary %s", json.dumps(summary, ensure_ascii=False, default=str))
+        if deps.record_run is not None:
+            # Raising in `finally` would replace the run's own exception, or turn
+            # a return into one; the line above already holds the result.
+            try:
+                deps.record_run(summary)
+            except Exception as e:
+                logger.error("Failed to record the run: %s", e)
 
 
 async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunReport:
@@ -271,6 +278,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     # Add scoring usage to content
     content.usage.merge(total_usage)
     summary["llm"] = content.usage.model_dump()
+    # Only this path has usage to judge; the early returns leave the key absent.
+    summary["degraded"] = is_degraded_run(content.usage)
     summary["received"] = content.articles_received
     summary["included"] = content.articles_included
 

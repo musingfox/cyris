@@ -211,6 +211,8 @@ class Deps:
     # no model-agnostic default exists. None makes `down >= threshold` raise rather
     # than quietly judge one provider's corpus by another's number.
     embedding_threshold: float | None = None
+    # Takes the final `run_summary` dict; None under json, where no run row is kept.
+    record_run: Callable[[dict], None] | None = None
 
 
 def build_deps(
