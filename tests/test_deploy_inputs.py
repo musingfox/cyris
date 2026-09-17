@@ -9,6 +9,7 @@ Both fail at the stranger's first run, not here — hence this test.
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,3 +91,16 @@ def test_every_worker_is_deployable_by_button() -> None:
         assert pkg_path.is_file(), f"workers/{name} has no package.json"
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
         assert pkg.get("cloudflare", {}).get("bindings"), f"workers/{name} declares no bindings"
+
+
+def test_container_placement_excludes_asia_pacific() -> None:
+    """Gemini and OpenAI refuse requests from Hong Kong, which `APAC` placement includes.
+
+    On 2026-09-08 every Gemini call from the Container started failing with
+    `FAILED_PRECONDITION: User location is not supported`, while the same key
+    answered from the Worker; unconstrained placement is nearest-to-request.
+    """
+    config = tomllib.loads((ROOT / "wrangler.toml").read_text(encoding="utf-8"))
+    regions = config["containers"][0]["constraints"]["regions"]
+    assert regions
+    assert set(regions) <= {"ENAM", "WNAM", "EEUR", "WEUR"}
