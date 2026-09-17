@@ -111,8 +111,10 @@
       <input type="text" id="discord-webhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
       <p class="hint">Saved only after Discord confirms the webhook exists. A webhook already
         stored shows with its token masked; to change it, paste the whole URL again — the
-        masked value cannot be resubmitted. When empty here, a run still uses
-        <code>CYRIS_DISCORD_WEBHOOK_URL</code> if that is set.</p>
+        masked value cannot be resubmitted. When empty here, a run still uses the
+        <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>.
+        This page cannot turn notifications off: to stop them, remove that Worker secret and
+        any <code>[notify]</code> value.</p>
     </fieldset>
 
     <button type="submit" id="save-notify">Save</button>

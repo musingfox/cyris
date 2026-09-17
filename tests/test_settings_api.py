@@ -245,6 +245,7 @@ class TestNotifySettingsForm:
         await client.close()
 
         assert "CYRIS_DISCORD_WEBHOOK_URL" in body
+        assert "cannot turn notifications off" in body
 
     async def test_the_form_posts_to_the_notify_route(self):
         client = await _client()
@@ -350,7 +351,9 @@ class TestNotifyWebhookWrite:
         await client.close()
 
         assert res.status == 400
-        assert "CYRIS_DISCORD_WEBHOOK_URL" in body["error"]
+        assert "cannot be turned off from /settings" in body["error"]
+        assert "remove the CYRIS_DISCORD_WEBHOOK_URL Worker secret" in body["error"]
+        assert "[notify]" in body["error"]
         assert settings.stored == {}
         assert called == []
 

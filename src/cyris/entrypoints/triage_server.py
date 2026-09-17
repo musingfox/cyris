@@ -445,7 +445,11 @@ class TriageServer:
             return web.json_response(
                 {
                     "ok": False,
-                    "error": (f"paste a Discord webhook URL, or set {DISCORD_WEBHOOK_ENV_VAR}"),
+                    "error": (
+                        "paste a Discord webhook URL. Notifications cannot be turned off "
+                        f"from /settings: to stop them, remove the {DISCORD_WEBHOOK_ENV_VAR} "
+                        "Worker secret and any [notify] value in cyris.toml"
+                    ),
                 },
                 status=400,
             )
