@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 
-from cyris.domain.models import Article, SourceConfig
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, SourceConfig
 from cyris.service_layer.ports import FetchSource
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,15 @@ async def fetch_all_articles(
         sources: Source configs keyed by name.
         limit: Max articles per source. Defaults to 200.
 
+    Two newsletter issues with different ids that share a URL are both kept: a
+    sender's repeated nav link must not swallow an issue before the store, which
+    decides how to key the second one.
+
     Returns:
         Tuple of (deduplicated articles — last source wins, names of sources that failed).
     """
     by_url: dict[str, Article] = {}
+    siblings: dict[int | str, Article] = {}
     failed_sources: list[str] = []
 
     for source in fetch_sources:
@@ -41,7 +46,16 @@ async def fetch_all_articles(
             )
             # Deduplicate by URL (last source wins)
             for article in articles:
-                by_url[article.url] = article
+                held = by_url.get(article.url)
+                if (
+                    held is not None
+                    and held.id != article.id
+                    and held.source_type == article.source_type == NEWSLETTER_SOURCE_TYPE
+                ):
+                    siblings[article.id] = article
+                else:
+                    siblings.pop(article.id, None)
+                    by_url[article.url] = article
         except Exception as e:
             # ponytail: log the message, not the stack — this failure is handled (the
             # source is skipped and the pipeline degrades gracefully). A leaked traceback
@@ -55,5 +69,6 @@ async def fetch_all_articles(
             failed_sources.append(type(source).__name__)
             continue
 
-    logger.info("Fetched %d unique articles from %d sources", len(by_url), len(fetch_sources))
-    return list(by_url.values()), failed_sources
+    unique = [*by_url.values(), *siblings.values()]
+    logger.info("Fetched %d unique articles from %d sources", len(unique), len(fetch_sources))
+    return unique, failed_sources

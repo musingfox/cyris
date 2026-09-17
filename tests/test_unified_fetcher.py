@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, Tier
 from cyris.service_layer.fetching import fetch_all_articles
 
 
@@ -101,6 +101,64 @@ async def test_deduplicates_by_url(newsletter_articles):
     # Newsletter version should win (last source wins)
     assert len(result) == 1
     assert result[0].source_name == "NL"
+
+
+def _issue(article_id: str, title: str, url: str = "https://s.com/account/settings/email"):
+    return Article(
+        id=article_id,
+        title=title,
+        url=url,
+        content="C",
+        published_at=datetime(2026, 9, 1),
+        source_name="NL",
+        source_tier=Tier.SUMMARIZE,
+        source_type=NEWSLETTER_SOURCE_TYPE,
+    )
+
+
+async def _fetch(*batches: list[Article]) -> list[Article]:
+    fetch_sources = []
+    for batch in batches:
+        source = AsyncMock()
+        source.fetch_articles.return_value = batch
+        fetch_sources.append(source)
+    result, _ = await fetch_all_articles(
+        fetch_sources=fetch_sources,
+        after=datetime(2026, 8, 31),
+        before=datetime(2026, 9, 2),
+        sources={},
+    )
+    return result
+
+
+async def test_sibling_newsletter_issues_sharing_a_link_both_survive():
+    result = await _fetch([_issue("a", "Issue 1"), _issue("b", "Issue 2")])
+    assert {a.id for a in result} == {"a", "b"}
+
+
+async def test_rss_then_newsletter_with_the_same_url_still_collapses():
+    rss = Article(
+        id=1,
+        title="RSS version",
+        url="https://b.com/1",
+        content="RSS",
+        published_at=datetime(2026, 3, 18),
+        source_name="RSS",
+        source_tier=Tier.FILTER,
+    )
+    result = await _fetch([rss], [_issue("nl", "NL 1", url="https://b.com/1")])
+    assert len(result) == 1
+    assert result[0].source_name == "NL"
+
+
+async def test_the_same_newsletter_issue_twice_collapses():
+    result = await _fetch([_issue("a", "Issue 1"), _issue("a", "Issue 1")])
+    assert len(result) == 1
+
+
+async def test_a_redelivered_sibling_is_not_kept_twice():
+    result = await _fetch([_issue("a", "Issue 1"), _issue("b", "Issue 2"), _issue("b", "Issue 2")])
+    assert sorted(a.id for a in result) == ["a", "b"]
 
 
 @pytest.mark.asyncio
