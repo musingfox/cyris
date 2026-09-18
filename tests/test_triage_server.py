@@ -22,14 +22,6 @@ async def client() -> TestClient:
 
 
 class TestNoArticleStore:
-    async def test_the_server_starts_with_no_argument(self) -> None:
-        test_client = TestClient(TestServer(TriageServer()._app))
-        await test_client.start_server()
-        try:
-            assert (await test_client.get("/settings")).status == 200
-        finally:
-            await test_client.close()
-
     def test_a_positional_argument_is_refused(self, tmp_path: Path) -> None:
         with pytest.raises(TypeError):
             TriageServer(ArticleStore(tmp_path))
@@ -53,21 +45,17 @@ class TestTheDeckIsNotServed:
     async def test_a_deck_read_is_a_404(self, client: TestClient, path: str) -> None:
         assert (await client.get(path)).status == 404
 
-    @pytest.mark.parametrize("action", ["accept", "reject", "undo"])
-    async def test_a_deck_write_is_a_404(self, client: TestClient, action: str) -> None:
-        resp = await client.post(f"/api/articles/{action}", json={"url": "https://example.com/1"})
-        assert resp.status == 404
+    def test_no_article_route_is_registered(self) -> None:
+        # A POST to a deleted route and one for an unknown article both answer 404,
+        # so only the route table tells the deck's write paths are really gone.
+        paths = [r.canonical for r in TriageServer()._app.router.resources()]
+        assert [p for p in paths if p.startswith("/api/articles")] == []
 
     @pytest.mark.parametrize("path", ["/settings", "/static/style.css", "/static/settings.js"])
     async def test_the_settings_page_and_its_files_still_answer(
         self, client: TestClient, path: str
     ) -> None:
         assert (await client.get(path)).status == 200
-
-    async def test_the_build_endpoint_still_answers(self, client: TestClient) -> None:
-        resp = await client.get("/api/build")
-        assert resp.status == 200
-        assert "git_sha" in await resp.json()
 
 
 class TestBuildEndpoint:
