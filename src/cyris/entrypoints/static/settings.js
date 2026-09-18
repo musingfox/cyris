@@ -24,6 +24,31 @@ function route() {
 addEventListener("hashchange", route);
 route();
 
+// A category's Save is live only while its form differs from what was last
+// loaded or saved, and the category list marks that form with a dot.
+const clean = new Map();
+const snapshot = (form) => [...form.querySelectorAll("input, select")]
+  .map((input) => input.type === "radio" ? input.checked : input.value)
+  .join("|");
+const saveButton = (form) => form.querySelector('button[type="submit"]');
+const navLink = (form) => document.querySelector(`.settings-nav a[data-tab="${form.dataset.tab}"]`);
+
+function refresh(form) {
+  const dirty = clean.has(form) && snapshot(form) !== clean.get(form);
+  saveButton(form).disabled = !dirty;
+  navLink(form).classList.toggle("dirty", dirty);
+}
+
+function markClean(form) {
+  clean.set(form, snapshot(form));
+  refresh(form);
+}
+
+document.querySelectorAll("form.tab").forEach((form) => {
+  form.addEventListener("input", () => refresh(form));
+  form.addEventListener("change", () => refresh(form));
+});
+
 function render() {
   $("providers").innerHTML = state.providers.map((p) => `
     <label class="choice${p.configured ? "" : " unavailable"}">
@@ -43,10 +68,9 @@ function render() {
   if (e) $("evening").value = parseInt(e, 10);
   if (state.max_featured) $("max-featured").value = state.max_featured;
   if (state.notify_webhook) $("discord-webhook").value = state.notify_webhook;
-  if (!state.writable) {
-    $("save").disabled = true;
-    $("save-digest").disabled = true;
-    $("save-notify").disabled = true;
+  if (state.writable) {
+    document.querySelectorAll("form.tab").forEach(markClean);
+  } else {
     show("err", "This deployment has no settings store, so nothing can be saved here. Edit cyris.toml instead.");
   }
 }
@@ -87,6 +111,7 @@ $("form").addEventListener("submit", async (e) => {
     if (data.ok) {
       state.provider = data.provider;
       state.model = data.model;
+      markClean($("form"));
       show("ok", `${data.detail}\n${data.note}`);
     } else {
       show("err", data.error || `HTTP ${res.status}`);
@@ -94,7 +119,7 @@ $("form").addEventListener("submit", async (e) => {
   } catch (err) {
     show("err", String(err));
   } finally {
-    $("save").disabled = false;
+    refresh($("form"));
   }
 });
 
@@ -119,12 +144,13 @@ $("digest-form").addEventListener("submit", async (e) => {
     const digest = await post("/api/settings/digest",
       {max_featured: parseInt($("max-featured").value, 10)});
     state.max_featured = digest.max_featured;
+    markClean($("digest-form"));
     show("ok", `Digest hours: ${sched.times.join(" and ")}. ${sched.note}\n` +
       `Featured sections: ${digest.max_featured}. ${digest.note}`, "digest-result");
   } catch (err) {
     show("err", err.message || String(err), "digest-result");
   } finally {
-    $("save-digest").disabled = false;
+    refresh($("digest-form"));
   }
 });
 
@@ -141,6 +167,7 @@ $("notify-form").addEventListener("submit", async (e) => {
     if (data.ok) {
       state.notify_webhook = data.discord_webhook_url;
       $("discord-webhook").value = data.discord_webhook_url;
+      markClean($("notify-form"));
       show("ok", `${data.detail} ${data.note}`, "notify-result");
     } else {
       show("err", data.error || `HTTP ${res.status}`, "notify-result");
@@ -148,7 +175,7 @@ $("notify-form").addEventListener("submit", async (e) => {
   } catch (err) {
     show("err", String(err), "notify-result");
   } finally {
-    $("save-notify").disabled = false;
+    refresh($("notify-form"));
   }
 });
 

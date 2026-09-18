@@ -72,7 +72,7 @@
               <p class="small" id="model-hint"></p>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save">Save</button>
+              <button class="btn primary" type="submit" id="save" disabled>Save</button>
               <div class="notice" id="result" hidden></div>
             </div>
           </div>
@@ -99,7 +99,7 @@
               <details class="more"><summary>More</summary><p class="small">Your call, not a measured number — the digest reads differently at 3 than at 8. It takes effect on the next digest.</p></details>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-digest">Save</button>
+              <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
               <div class="notice" id="digest-result" hidden></div>
             </div>
           </div>
@@ -118,7 +118,7 @@
               <details class="more"><summary>More</summary><p class="small">A stored webhook shows with its token masked, and the masked value cannot be resubmitted. When empty here, a run still uses the <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: to stop them, remove that Worker secret and any <code>[notify]</code> value.</p></details>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-notify">Save</button>
+              <button class="btn primary" type="submit" id="save-notify" disabled>Save</button>
               <div class="notice" id="notify-result" hidden></div>
             </div>
           </div>

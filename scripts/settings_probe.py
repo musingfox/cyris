@@ -214,6 +214,15 @@ class Check:
         return (self.path,) if isinstance(self.path, str) else self.path
 
 
+# Installed before the page loads: the settings request never answers.
+HOLD_SETTINGS = """
+const realFetch = window.fetch;
+window.fetch = (input, init) =>
+  String(input).endsWith("/api/settings") && !(init && init.method)
+    ? new Promise(() => {})
+    : realFetch(input, init);
+"""
+
 CHECKS: list[Check] = [
     Check(
         id="site-bar-current",
@@ -315,6 +324,66 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$("#model-input").placeholder = "";""",
     ),
+    Check(
+        id="save-disabled-while-loading",
+        fixture="writable",
+        path="/settings",
+        preload=HOLD_SETTINGS,
+        act="await sleep(300);",
+        script="""
+            const live = ["model", "digest", "notifications"].filter((t) => !saveOf(t).disabled);
+            expect(live.length === 0, `enabled before settings loaded: ${live}`);
+        """,
+        sabotage="""saveOf("digest").disabled = false;""",
+    ),
+    Check(
+        id="dirty-enables-save",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#max-featured"), "7");
+        """,
+        script="""
+            expect(!saveOf("digest").disabled, "the digest Save is disabled");
+            expect(navOf("digest").classList.contains("dirty"), "Digest has no dirty mark");
+            const dot = getComputedStyle($(".dirty-dot", navOf("digest"))).visibility;
+            expect(dot === "visible", `the dot is ${dot}`);
+            expect(saveOf("model").disabled, "the Model Save is enabled");
+        """,
+        sabotage="""saveOf("digest").disabled = true;""",
+    ),
+    Check(
+        id="revert-disables-save",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#max-featured"), "7");
+            setValue($("#max-featured"), "5");
+        """,
+        script="""
+            expect(saveOf("digest").disabled, "the digest Save is enabled");
+            expect(!navOf("digest").classList.contains("dirty"), "Digest is still marked");
+        """,
+        sabotage="""navOf("digest").classList.add("dirty");""",
+    ),
+    Check(
+        id="dirty-radio",
+        fixture="writable",
+        path="/settings#model",
+        act="""
+            await settingsLoaded();
+            $('input[value="anthropic"]').click();
+            ctx.enabledByAnthropic = !saveOf("model").disabled;
+            $('input[value="gemini"]').click();
+        """,
+        script="""
+            expect(ctx.enabledByAnthropic, "choosing anthropic left Save disabled");
+            expect(saveOf("model").disabled, "choosing gemini again left Save enabled");
+        """,
+        sabotage="""saveOf("model").disabled = false;""",
+    ),
 ]
 
 PRELUDE = """
@@ -342,6 +411,9 @@ const currentTabs = () =>
 const same = (actual, wanted) => JSON.stringify(actual) === JSON.stringify(wanted);
 const choice = (name) => $(`input[name=provider][value="${name}"]`).closest("label.choice");
 const providersLoaded = () => waitFor(() => $$("input[name=provider]").length, "providers");
+const saveOf = (tab) => $(`form.tab[data-tab="${tab}"] button[type="submit"]`);
+const navOf = (tab) => $(`.settings-nav a[data-tab="${tab}"]`);
+const settingsLoaded = () => waitFor(() => $("#max-featured").value, "settings");
 const ctx = {};
 """
 

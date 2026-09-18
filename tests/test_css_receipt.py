@@ -488,6 +488,10 @@ EXPECTED_IDS = {
     "hash-nav-click",
     "model-readiness",
     "model-placeholder",
+    "save-disabled-while-loading",
+    "dirty-enables-save",
+    "revert-disables-save",
+    "dirty-radio",
 }
 
 
