@@ -501,6 +501,8 @@ EXPECTED_IDS = {
     "editor-heading-escapes",
     "editor-add-at-top",
     "editor-type-fields",
+    "source-save-nulls-hidden-fields",
+    "source-save-tags",
 }
 
 

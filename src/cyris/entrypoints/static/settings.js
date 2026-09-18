@@ -345,13 +345,18 @@ async function writeSource(url, method, body, button) {
 async function saveSource(ed, button) {
   const q = (selector) => ed.querySelector(selector);
   const name = q("#e-name").value.trim();
+  const type = q('[data-type][aria-pressed="true"]').dataset.type;
+  // Only the fields this type shows: a stale URL on a newsletter, or a sender
+  // on a feed, would be stored with nothing on the page to reveal it.
+  const shown = (selector) =>
+    q(selector).closest("[data-for]").dataset.for === type ? q(selector).value.trim() || null : null;
   const data = await writeSource("/api/sources", "POST", {
     name,
-    type: q('[data-type][aria-pressed="true"]').dataset.type,
+    type,
     tier: q("#e-tier").value,
-    url: q("#e-url").value.trim() || null,
-    email_match: q("#e-email").value.trim() || null,
-    homepage: q("#e-home").value.trim() || null,
+    url: shown("#e-url"),
+    email_match: shown("#e-email"),
+    homepage: shown("#e-home"),
     tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
   }, button);
   if (!data) return;

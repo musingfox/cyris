@@ -223,6 +223,35 @@ window.fetch = (input, init) =>
     : realFetch(input, init);
 """
 
+
+def rewrite_source_post(mutation: str) -> str:
+    """A preload that changes the body of the page's POST /api/sources before it leaves."""
+    return f"""
+const realFetch = window.fetch;
+window.fetch = (input, init) => {{
+  if (String(input).endsWith("/api/sources") && init && init.method === "POST") {{
+    const body = JSON.parse(init.body);
+    {mutation}
+    init = {{...init, body: JSON.stringify(body)}};
+  }}
+  return realFetch(input, init);
+}};
+"""
+
+
+def _stored(name: str, **wanted) -> Callable[[Fixture], str | None]:
+    """A receipt: the source store holds `name` with exactly these field values."""
+
+    def receipt(fixture: Fixture) -> str | None:
+        source = fixture.sources.get(name)
+        if source is None:
+            return f"{name} is not stored"
+        wrong = {k: getattr(source, k) for k, v in wanted.items() if getattr(source, k) != v}
+        return f"{name} stored {wrong}" if wrong else None
+
+    return receipt
+
+
 CHECKS: list[Check] = [
     Check(
         id="site-bar-current",
@@ -540,6 +569,43 @@ CHECKS: list[Check] = [
             expect(same(shownFields(), ["e-url"]), `rss shows ${shownFields()}`);
         """,
         sabotage="""$("#e-home", editor()).closest("[data-for]").hidden = false;""",
+    ),
+    Check(
+        id="source-save-nulls-hidden-fields",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("Hacker News");
+            $('[data-type="newsletter"]', editor()).click();
+            setValue($("#e-email", editor()), "from:hn@example.com");
+            editorAct("save").click();
+            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+        """,
+        script="",
+        sabotage_preload=rewrite_source_post(
+            'body.url = "https://hnrss.org/frontpage?points=200";'
+        ),
+        receipt=_stored(
+            "Hacker News",
+            type="newsletter",
+            url=None,
+            email_match="from:hn@example.com",
+            homepage=None,
+        ),
+    ),
+    Check(
+        id="source-save-tags",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("Simon Willison");
+            setValue($("#e-tags", editor()), " ai, , tools ");
+            editorAct("save").click();
+            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+        """,
+        script="",
+        sabotage_preload=rewrite_source_post('body.tags = ["ai", "", "tools"];'),
+        receipt=_stored("Simon Willison", tags=["ai", "tools"], email_match=None, homepage=None),
     ),
 ]
 
