@@ -717,6 +717,12 @@ def test_the_settings_page_scales_its_text_without_a_body_gutter() -> None:
     assert [d for d in body if d.startswith("padding")] == []
 
 
+def test_a_settings_source_name_takes_the_title_role() -> None:
+    """§3 gives source names the title role, 20–22px."""
+    name = parse_style_block(_source("settings"))["table.src .name"]
+    assert "font-size: calc(20px * var(--type-scale))" in name
+
+
 # The old page's inline form and table rules, which the ticket moved to shared components.
 OLD_SETTINGS_RULES = {
     "fieldset",
