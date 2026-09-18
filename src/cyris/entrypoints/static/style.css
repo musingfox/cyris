@@ -1,9 +1,8 @@
-/* The rules every reader-facing surface shares, for the two pages served from
-   here (/settings and the deck). A copy of `_tokens.css.j2` and
-   `_components.css.j2` in `adapters/output/templates/`: a digest is a
-   standalone HTML file deployed to Pages, so it cannot link this stylesheet and
-   carries the partials instead. `tests/test_digest_css_partials.py` enforces
-   that the two agree. Deck-only rules live in `deck.css`. */
+/* The rules every reader-facing surface shares, for the page served from
+   here (/settings). A copy of `_tokens.css.j2` and `_components.css.j2` in
+   `adapters/output/templates/`: a digest is a standalone HTML file deployed to
+   Pages, so it cannot link this stylesheet and carries the partials instead.
+   `tests/test_digest_css_partials.py` enforces that the two agree. */
 :root {
     --bg: #07070a;
     --bg-elev: #0d0d12;

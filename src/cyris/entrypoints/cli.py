@@ -546,7 +546,7 @@ def triage_ui(
     ),
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
-    """Start the triage web UI for article classification."""
+    """Start the settings web UI: LLM provider, digest hours, notifications, sources."""
     _setup_logging(verbose)
 
     from cyris.adapters.store.source_store import D1SourceStore
@@ -577,7 +577,6 @@ def triage_ui(
             source_store=D1SourceStore(d1) if d1 else None,
         )
         await server.start()
-        typer.echo(f"Triage UI: http://{host}:{port}")
         typer.echo(f"Settings:  http://{host}:{port}/settings")
         typer.echo("Press Ctrl+C to stop")
 

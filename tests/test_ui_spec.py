@@ -105,18 +105,8 @@ async def _served_rules(client: TestClient, href: str) -> dict[str, set[str] | l
     return parse_style_block(f"<style>{await response.text()}</style>")
 
 
-async def test_the_deck_links_the_shared_stylesheet_then_its_own(triage: TestClient) -> None:
-    assert await _stylesheet_hrefs(triage, "/triage") == ["/static/style.css", "/static/deck.css"]
-
-
 async def test_settings_links_only_the_shared_stylesheet(triage: TestClient) -> None:
     assert await _stylesheet_hrefs(triage, "/settings") == ["/static/style.css"]
-
-
-async def test_the_deck_stylesheet_carries_the_deck_rules(triage: TestClient) -> None:
-    rules = await _served_rules(triage, "/static/deck.css")
-    assert "transform: translateX(-150vw) rotate(-20deg)" in rules[".card.fly-left"]
-    assert {"overflow: hidden", "touch-action: pan-y"} <= set(rules["body"])
 
 
 async def test_the_shared_stylesheet_carries_no_deck_rule(triage: TestClient) -> None:
@@ -170,7 +160,7 @@ def test_every_digest_page_shows_keyboard_focus(page: int) -> None:
     assert _focus_problems(receipt_fixtures()[page]) == []
 
 
-async def test_settings_and_the_deck_show_keyboard_focus(triage: TestClient) -> None:
+async def test_settings_shows_keyboard_focus(triage: TestClient) -> None:
     assert (await _served_rules(triage, "/static/style.css"))[":focus-visible"] == FOCUS
 
 
@@ -183,7 +173,7 @@ def test_every_digest_page_stops_motion_on_request(page: int) -> None:
     assert parse_style_block(receipt_fixtures()[page])[REDUCED_MOTION] == STILL
 
 
-async def test_settings_and_the_deck_stop_motion_on_request(triage: TestClient) -> None:
+async def test_settings_stops_motion_on_request(triage: TestClient) -> None:
     assert (await _served_rules(triage, "/static/style.css"))[REDUCED_MOTION] == STILL
 
 

@@ -142,8 +142,8 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
     expect(resp.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
   });
 
-  it("GET /static/index.html with no cookie is 401", async () => {
-    const resp = await handleRequest(request("GET", "/static/index.html"), env(), makeDeps());
+  it("GET /static/settings.js with no cookie is 401", async () => {
+    const resp = await handleRequest(request("GET", "/static/settings.js"), env(), makeDeps());
     expect(resp.status).toBe(401);
   });
 

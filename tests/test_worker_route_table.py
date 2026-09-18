@@ -51,6 +51,16 @@ def assert_triage_covered(fixture: list[dict], triage_src: str) -> None:
     assert not missing, "uncovered triage routes: " + ", ".join(missing)
 
 
+def assert_no_stale_container_route(fixture: list[dict], triage_src: str) -> None:
+    registered = set(triage_route_literals(triage_src))
+    stale = [
+        row["container_route"]
+        for row in fixture
+        if "container_route" in row and row["container_route"] not in registered
+    ]
+    assert not stale, "container_route not registered by triage_server: " + ", ".join(stale)
+
+
 def _router_lit_covered(lit: str, paths: list[str]) -> bool:
     for path in paths:
         if lit == path:
@@ -94,6 +104,18 @@ def test_missing_schedule_row_is_named():
     ]
     with pytest.raises(AssertionError, match=r"/api/settings/schedule"):
         assert_triage_covered(fixture, TRIAGE.read_text())
+
+
+def test_every_container_route_is_one_triage_server_registers():
+    assert_no_stale_container_route(load_fixture(), TRIAGE.read_text())
+
+
+def test_a_container_route_triage_server_no_longer_registers_is_named():
+    fixture = load_fixture() + [
+        {"path": "/api/gone", "method": "GET", "kind": "container", "container_route": "/api/gone"}
+    ]
+    with pytest.raises(AssertionError, match=r"/api/gone"):
+        assert_no_stale_container_route(fixture, TRIAGE.read_text())
 
 
 def test_new_router_path_without_fixture_row_is_named():
