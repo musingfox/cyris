@@ -127,14 +127,23 @@ $("form").addEventListener("submit", async (e) => {
   }
 });
 
+// Rejects with what the reader needs: the server's own explanation when it
+// gives one, otherwise what happened and what to do next.
 async function post(url, body, method = "POST") {
-  const res = await fetch(url, {
-    method,
-    headers: {"Content-Type": "application/json"},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json();
-  return data.ok ? data : Promise.reject(new Error(data.error || `HTTP ${res.status}`));
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {"Content-Type": "application/json"},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (data.ok) return data;
+  throw new Error(data.error || `cyris answered ${res.status} without saying why. ` +
+    "Try again; if it keeps failing, check the server log.");
 }
 
 // One Save, two endpoints: only a changed part is sent, the hours first, and

@@ -510,6 +510,8 @@ EXPECTED_IDS = {
     "notice-hides-on-edit",
     "model-notice-ok",
     "notify-notice-masked",
+    "notice-unreachable",
+    "notice-unexplained-refusal",
     "source-notice-beside-save",
     "source-notice-outside-filter",
     "settings-load-failure",

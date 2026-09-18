@@ -298,6 +298,17 @@ window.fetch = (input, init) =>
 """
 
 
+def answer_post(path: str, answer: str) -> str:
+    """A preload under which the page's POST to `path` gets `answer`, a JS promise, instead."""
+    return f"""
+const realFetch = window.fetch;
+window.fetch = (input, init) =>
+  String(input).endsWith({json.dumps(path)}) && init && init.method === "POST"
+    ? {answer}
+    : realFetch(input, init);
+"""
+
+
 def also_post(when: str, path: str, body: dict) -> str:
     """A preload that sends an extra POST to `path` whenever the page POSTs to `when`."""
     return f"""
@@ -822,6 +833,54 @@ CHECKS: list[Check] = [
         """,
         sabotage=f"""$("#discord-webhook").value = {json.dumps(NEW_WEBHOOK)};""",
         receipt=_last_call({"notify.discord_webhook_url": NEW_WEBHOOK}),
+    ),
+    Check(
+        id="notice-unreachable",
+        fixture="writable",
+        path="/settings#notifications",
+        preload=answer_post("/api/settings/notify", 'Promise.reject(new TypeError("offline"))'),
+        act=f"""
+            await settingsLoaded();
+            setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});
+            saveOf("notifications").click();
+            await waitFor(() => visible($("#notify-result")), "the notice");
+        """,
+        script="""
+            const notice = $("#notify-result"), text = notice.textContent;
+            expect(notice.classList.contains("err"), `not an error: ${text}`);
+            const wanted = "Could not reach cyris (offline). Check the connection and try again.";
+            expect(text === wanted, `notice: ${text}`);
+            expect(!saveOf("notifications").disabled, "the Save was disabled");
+        """,
+        sabotage="""$("#notify-result").textContent = "TypeError: offline";""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="notice-unexplained-refusal",
+        fixture="writable",
+        path="/settings#sources",
+        preload=answer_post(
+            "/api/sources", 'Promise.resolve(new Response("<h1>Bad gateway</h1>", {status: 502}))'
+        ),
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => visible($(".notice", editor())), "the notice");
+        """,
+        script="""
+            const notice = editorAct("save").parentElement.querySelector(".notice");
+            const text = notice.textContent;
+            expect(notice.classList.contains("err"), `not an error: ${text}`);
+            const wanted = "cyris answered 502 without saying why. "
+              + "Try again; if it keeps failing, check the server log.";
+            expect(text === wanted, `notice: ${text}`);
+            expect(!editorAct("save").disabled, "Save source was disabled");
+        """,
+        sabotage="""
+            editorAct("save").parentElement.querySelector(".notice").textContent = "HTTP 502";
+        """,
+        receipt=_stored("Hacker News", tags=["news", "tech"]),
     ),
     Check(
         id="source-notice-beside-save",
