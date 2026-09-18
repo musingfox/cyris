@@ -152,11 +152,15 @@
     const card = document.getElementById('t-card');
     const deckButtons = [...document.querySelectorAll('#t-actions button')];
     const enableDeck = (on) => deckButtons.forEach((b) => { b.disabled = !on; });
+    // One card, one vote: set before the first await, so a second press or a drag
+    // while the vote is in flight finds the deck taken.
+    let busy = false;
 
     // Vote first, then fly: the card leaves only once its vote has landed.
     async function voteCard(dir) {
         const [row] = pool();
-        if (!row) return;
+        if (busy || !row) return;
+        busy = true;
         enableDeck(false);
         if (await castVote(row.querySelector('.vote-group'), dir)) fly(dir);
     }
@@ -175,6 +179,7 @@
         card.style.transform = '';
         void card.offsetWidth;
         card.classList.remove('dragging');
+        busy = false;
         enableDeck(true);
         renderDeck();
     }

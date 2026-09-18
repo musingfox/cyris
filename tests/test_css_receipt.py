@@ -693,6 +693,7 @@ EXPECTED_RAW_IDS = {
     "button-up-votes",
     "button-down-votes",
     "vote-post-carries-no-credential",
+    "double-press-one-vote",
 }
 
 PENDING_TWO_UP = {

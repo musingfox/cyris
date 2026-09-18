@@ -465,6 +465,21 @@ window.fetch = (input, init) => init && init.method === "POST"
 }""",
         receipt=_bare_votes,
     ),
+    Check(
+        id="double-press-one-vote",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            await showView("triage");
+            $("#t-up").click();
+            $("#t-up").click();
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+            await sleep(300);
+        """,
+        script="""expect(deck()[0] === "3 remaining", `count: ${deck()[0]}`);""",
+        sabotage="""await castVote($(".vote-group", rowOf("Pending Two")), "up");""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]
