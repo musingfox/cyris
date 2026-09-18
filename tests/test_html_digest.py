@@ -1014,7 +1014,7 @@ def _issue_pages(tmp_path) -> dict[str, str]:
     )
     return {
         "index": writer.render_index(["2026-04-15-evening.html", "2026-04-15-evening-raw.html"]),
-        "digest": writer.render(content),
+        "digest": writer.render(content, raw_page=True),
         "raw": writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")]),
     }
 
@@ -1096,6 +1096,24 @@ def test_the_digest_switches_to_its_raw_page_from_the_issue_bar(tmp_path):
     assert '<span class="data">2026-04-15</span><span class="label">evening</span>' in digest
     assert '<a href="2026-04-15-evening.html" aria-current="page">Digest</a>' in digest
     assert '<a href="2026-04-15-evening-raw.html">All articles</a>' in digest
+
+
+def test_a_digest_without_a_raw_page_offers_no_all_articles(tmp_path):
+    """The raw page is only emitted when the run collected something; no dead link."""
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+    )
+
+    digest = HtmlDigestWriter(tmp_path).render(content)
+
+    assert '<a href="2026-04-15-evening.html" aria-current="page">Digest</a>' in digest
+    assert ">All articles</a>" not in digest
+    assert "-raw.html" not in digest
 
 
 def test_the_raw_page_switches_back_to_its_digest_from_the_issue_bar(tmp_path):

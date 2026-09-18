@@ -47,11 +47,13 @@ class HtmlDigestWriter:
         )
         self.env.filters["hostname"] = _hostname
 
-    def render(self, content: DigestContent) -> str:
+    def render(self, content: DigestContent, raw_page: bool = False) -> str:
         """Transform DigestContent into complete HTML document.
 
         Args:
             content: Digest content to render
+            raw_page: Whether this issue's raw page is emitted; only then does the
+                issue bar link to it
 
         Returns:
             Complete HTML string with inline styles
@@ -87,14 +89,16 @@ class HtmlDigestWriter:
             fan_sections=content.fan_sections,
             attention_sections=content.attention_sections,
             filtered_headlines=content.filtered_headlines,
+            raw_page=raw_page,
         )
 
-    def write(self, content: DigestContent, dry_run: bool = False) -> Path:
+    def write(self, content: DigestContent, dry_run: bool = False, raw_page: bool = False) -> Path:
         """Persist rendered HTML to disk and regenerate index.
 
         Args:
             content: Digest content to write
             dry_run: If True, print to stdout instead of writing
+            raw_page: Whether this issue's raw page was written
 
         Returns:
             Path to written file (or would-be path in dry_run mode)
@@ -102,7 +106,7 @@ class HtmlDigestWriter:
         Raises:
             OSError: If output directory cannot be created
         """
-        html = self.render(content)
+        html = self.render(content, raw_page=raw_page)
         filename = f"{content.date}-{content.period}.html"
         file_path = self.output_dir / filename
 

@@ -3,7 +3,7 @@
             <div class="issue-id"><span class="data">{{ date }}</span><span class="label">{{ period }}</span></div>
             <nav class="seg" aria-label="Issue views">
                 <a href="{{ date }}-{{ period }}.html"{% if view == "digest" %} aria-current="page"{% endif %}>Digest</a>
-                <a href="{{ date }}-{{ period }}-raw.html"{% if view == "raw" %} aria-current="page"{% endif %}>All articles</a>
+                {% if view == "raw" or raw_page %}<a href="{{ date }}-{{ period }}-raw.html"{% if view == "raw" %} aria-current="page"{% endif %}>All articles</a>{% endif %}
             </nav>
         </div>
     </div>

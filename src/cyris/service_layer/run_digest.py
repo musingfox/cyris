@@ -43,7 +43,7 @@ def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
     """This run's pages as bytes, keyed by the path Pages will serve them at."""
     writer = deps.html_writer
     slug = f"{content.date}-{content.period}"
-    pages = {f"/{slug}.html": writer.render(content)}
+    pages = {f"/{slug}.html": writer.render(content, raw_page=bool(collected))}
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
@@ -342,15 +342,17 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 # Raw goes first so the archive index the digest write regenerates
                 # already sees it and offers its All articles entry. Own try/except:
                 # a broken raw page must not cost the digest its publish.
+                raw_written = False
                 if collected:
                     try:
                         raw = deps.html_writer.write_raw(content.date, content.period, collected)
+                        raw_written = True
                         progress(f"Raw page written to {raw}")
                     except Exception as e:
                         logger.error("Failed to write raw HTML page: %s", e)
 
                 try:
-                    report.html_path = deps.html_writer.write(content)
+                    report.html_path = deps.html_writer.write(content, raw_page=raw_written)
                     progress(f"HTML digest written to {report.html_path}")
                 except Exception as e:
                     logger.error("Failed to write HTML digest: %s", e)

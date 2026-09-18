@@ -209,7 +209,7 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
         )
 
     class StubHtmlWriter:
-        def write(self, content) -> Path:
+        def write(self, content, raw_page: bool = False) -> Path:
             path = tmp_path / f"{content.date}-{content.period}.html"
             path.write_text("<html></html>")
             return path
@@ -486,6 +486,24 @@ async def test_the_local_archive_links_this_runs_raw_page(tmp_path: Path) -> Non
     assert '-raw.html">All articles</a>' in index
 
 
+@pytest.mark.parametrize("raw_written", [True, False])
+async def test_the_local_digest_links_all_articles_only_when_its_raw_page_was_written(
+    tmp_path: Path, raw_written: bool
+) -> None:
+    deps = _fresh_and_earlier_deps(tmp_path)
+    if not raw_written:
+
+        def refuse(*_args):
+            raise OSError("disk full")
+
+        deps.html_writer.write_raw = refuse
+
+    report = await run_digest(deps, RunOptions())
+
+    digest = report.html_path.read_text()
+    assert ('-raw.html">All articles</a>' in digest) is raw_written
+
+
 def _stored_article() -> StoredArticle:
     now = datetime.now(UTC)
     return StoredArticle(
@@ -520,6 +538,9 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
     index = pages["/index.html"].decode("utf-8")
     assert ('href="2026-04-15-evening-raw.html">All articles</a>' in index) is linked
     assert (">All articles</a>" in index) is linked
+    digest = pages["/2026-04-15-evening.html"].decode("utf-8")
+    assert ('<a href="2026-04-15-evening-raw.html">All articles</a>' in digest) is linked
+    assert (">All articles</a>" in digest) is linked
 
 
 async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Path) -> None:
