@@ -13,11 +13,15 @@ from css_rules import (
     include_sites,
     parse_style_block,
     receipt_fixtures,
+    unscaled_font_sizes,
 )
 
+import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store.article_store import ArticleStore
 from cyris.entrypoints.triage_server import TriageServer
+
+STYLE = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"
 
 
 def _render_partial(name: str) -> str:
@@ -231,7 +235,124 @@ def _parsed(page: str) -> dict[str, set[str] | list[str]]:
     return parse_style_block({"index": index, "digest": digest, "raw": raw}[page])
 
 
+# The signed-off role table: (row, pages, key, base). Every base is multiplied by
+# --type-scale on the page.
+TYPE_ROLES = [
+    (1, "index digest raw", "body", "16px"),
+    (2, "index digest raw", ".brand-name", "14px"),
+    (3, "index digest raw", ".subtitle", "14px"),
+    (4, "index raw", "h1", "clamp(52px, 8vw, 96px)"),
+    (5, "index digest raw", ".footer", "14px"),
+    (6, "digest raw", ".btn", "14px"),
+    (7, "digest", ".meta-strip", "14px"),
+    (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
+    (10, "digest", ".stats-card", "16px"),
+    (11, "digest", ".stats-card .label", "14px"),
+    (12, "digest", ".section-tag", "14px"),
+    (13, "digest", ".section-heading", "28px"),
+    (14, "digest", ".section-description", "20px"),
+    (15, "digest", ".lead-story::before", "14px"),
+    (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
+    (18, "digest", ".lead-story .summary", "20px"),
+    (19, "digest", ".lead-story .meta", "14px"),
+    (20, "digest", ".featured-item h3", "22px"),
+    (21, "digest", ".featured-item .summary", "20px"),
+    (22, "digest", ".featured-item .meta", "14px"),
+    (23, "digest", ".pill", "14px"),
+    (24, "digest", ".news-cluster h4", "22px"),
+    (25, "digest", ".news-cluster .summary", "20px"),
+    (26, "digest", ".thematic-block h3", "22px"),
+    (27, "digest", ".thematic-block h3::before", "14px"),
+    (28, "digest", ".article-item h4", "20px"),
+    (29, "digest", ".article-item .summary", "20px"),
+    (30, "digest", ".article-item .meta", "14px"),
+    (31, "digest", ".attention-item h5", "20px"),
+    (32, "digest", ".attention-item .snippet", "20px"),
+    (33, "digest", ".news-cluster .meta, .attention-item .meta", "14px"),
+    (34, "digest", ".headline-item", "16px"),
+    (35, "digest", ".headline-item .idx", "16px"),
+    (36, "index", ".digest-date", "22px"),
+    (37, "index", ".digest-period", "14px"),
+    (38, "index", ".digest-arrow", "14px"),
+    (39, "index", ".empty-message", "16px"),
+    (40, "raw", ".source-name", "20px"),
+    (41, "raw", ".source-count", "14px"),
+    (42, "raw", ".state", "13px"),
+    (43, "raw", ".score", "16px"),
+]
+TYPE_CASES = [
+    (row, page, key, base) for row, pages, key, base in TYPE_ROLES for page in pages.split()
+]
+
+
+@pytest.mark.parametrize(
+    ("row", "page", "key", "base"), TYPE_CASES, ids=[f"{r}-{p}-{k}" for r, p, k, _ in TYPE_CASES]
+)
+def test_each_font_size_follows_the_role_table(row: int, page: str, key: str, base: str) -> None:
+    assert f"font-size: calc({base} * var(--type-scale))" in _parsed(page)[key], f"row {row}"
+
+
+def test_the_issue_title_takes_the_issue_title_role() -> None:
+    assert (
+        "font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale))"
+        in _parsed("digest")[".issue-title"]
+    )
+
+
+@pytest.mark.parametrize("page", ["index", "raw"])
+def test_the_page_title_takes_the_display_role(page: str) -> None:
+    assert {
+        "font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale))",
+        "line-height: 1",
+        "letter-spacing: -0.03em",
+    } <= set(_parsed(page)["h1"])
+
+
+@pytest.mark.parametrize("key", [".meta-strip", ".lead-story::before"])
+def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
+    declarations = _parsed("digest")[f"@media (max-width: 880px) | {key}"]
+    assert [d for d in declarations if d.startswith("font-size")] == []
+
+
+def test_the_empty_archive_message_takes_the_small_role() -> None:
+    assert "font-size: calc(16px * var(--type-scale))" in _parsed("index")[".empty-message"]
+
+
 def test_the_raw_state_column_fits_the_larger_state_label() -> None:
     raw = _parsed("raw")
     assert "grid-template-columns: 96px 46px 1fr auto" in raw[".article"]
     assert "grid-template-columns: 96px 1fr auto" in raw["@media (max-width: 640px) | .article"]
+
+
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_every_page_scales_its_inherited_text(page: str) -> None:
+    body = _parsed(page)["body"]
+    assert "font-size: calc(16px * var(--type-scale))" in body
+    assert isinstance(body, list) and body[0].startswith("font-family")
+
+
+@pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
+def test_no_font_size_escapes_the_type_scale(source: str) -> None:
+    index, digest, raw = receipt_fixtures()
+    text = {"index": index, "digest": digest, "raw": raw, "style.css": STYLE.read_text()}[source]
+    assert unscaled_font_sizes(text) == []
+
+
+@pytest.mark.parametrize(
+    "css",
+    [
+        ".x{font-size:11px}",
+        ".x{font-size:clamp(28px, 3.5vw, 40px)}",
+        "@media (max-width: 880px){.x{font-size:9px}}",
+        ".x{font:600 14px Geist}",
+        ".x{font-size:calc(14px * 1)}",
+    ],
+)
+def test_an_unscaled_font_size_is_reported(css: str) -> None:
+    assert len(unscaled_font_sizes(css)) == 1
+
+
+def test_a_scaled_clamp_is_not_reported() -> None:
+    assert (
+        unscaled_font_sizes(".x{font-size:calc(clamp(52px, 8vw, 96px) * var(--type-scale))}") == []
+    )

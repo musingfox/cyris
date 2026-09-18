@@ -280,6 +280,28 @@ def rule_occurrences(css_source: str) -> Counter[str]:
     return counts
 
 
+_SCALED = re.compile(r"calc\(.+\*\s*var\(--type-scale\)\)")
+_LENGTH = re.compile(r"(?<![\w-])\d*\.?\d+(?:px|r?em|%|pt|v[wh]|ch|ex)\b")
+
+
+def unscaled_font_sizes(css_source: str) -> list[str]:
+    """Name every font size a source sets without multiplying ``--type-scale``.
+
+    Reads every rule, at-rule scopes included: a ``font-size`` whose value is not
+    ``calc(<base> * var(--type-scale))``, and a ``font`` shorthand carrying a
+    length, since that length is a font size too.
+    """
+    found = []
+    for key, declarations in _rules(css_source).items():
+        for declaration in declarations:
+            prop, value = (part.strip() for part in declaration.split(":", 1))
+            if (prop == "font-size" and not _SCALED.fullmatch(value)) or (
+                prop == "font" and _LENGTH.search(value)
+            ):
+                found.append(f"{key} | {declaration}")
+    return found
+
+
 def _item(title: str, url: str, source: str) -> DigestItem:
     return DigestItem(title=title, summary=f"{title} summary.", sources=[source], urls=[url])
 

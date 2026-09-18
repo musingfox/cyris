@@ -12,12 +12,12 @@
 
         {% include "_components.css.j2" %}
 
-        {% with container_width="960px", container_relative=false, glow="80% 50%", font_size=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
+        {% with container_width="960px", container_relative=false, glow="80% 50%", line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
         {% with masthead_padding="28px 0 24px", masthead_margin="56px", masthead_rule=true,
                   brand_margin="32px", mark_size="14px", mark_glow=true, mark_pulse=true,
                   brand_weight=none, subtitle_margin="18px",
-                  h1_size="clamp(56px, 9vw, 110px)", h1_line_height="0.95", h1_tracking="-0.04em"  %}{% include "_masthead.css.j2" %}{% endwith %}
+                  display_h1=true  %}{% include "_masthead.css.j2" %}{% endwith %}
 
         .digest-list {
             list-style: none;
@@ -46,7 +46,7 @@
 
         .digest-date {
             font-family: 'Geist Mono', monospace;
-            font-size: 18px;
+            font-size: calc(22px * var(--type-scale));
             font-weight: 500;
             color: var(--text);
             letter-spacing: -0.01em;
@@ -54,7 +54,7 @@
 
         .digest-period {
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(14px * var(--type-scale));
             text-transform: uppercase;
             letter-spacing: 0.14em;
             color: var(--text-faint);
@@ -63,7 +63,7 @@
 
         .digest-arrow {
             font-family: 'Geist Mono', monospace;
-            font-size: 14px;
+            font-size: calc(14px * var(--type-scale));
             color: var(--text-faint);
             transition: color 0.15s, transform 0.15s;
         }
@@ -79,7 +79,7 @@
             color: var(--text-dim);
             border: 1px dashed var(--border-strong);
             font-family: 'Geist Mono', monospace;
-            font-size: 13px;
+            font-size: calc(16px * var(--type-scale));
             letter-spacing: 0.04em;
         }
 

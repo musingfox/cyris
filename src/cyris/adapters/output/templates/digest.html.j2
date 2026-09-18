@@ -27,7 +27,7 @@
 
         html { scroll-behavior: smooth; }
 
-        {% with container_width="1240px", container_relative=true, glow="80% 60%", font_size="16px", line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
+        {% with container_width="1240px", container_relative=true, glow="80% 60%", line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
 
         /* === MASTHEAD === */
         {% with masthead_padding="28px 0 24px", masthead_margin="48px", masthead_rule=true,
@@ -44,7 +44,7 @@
 
         .meta-strip {
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(14px * var(--type-scale));
             letter-spacing: 0.08em;
             color: var(--text-faint);
             text-transform: uppercase;
@@ -71,7 +71,7 @@
         .issue-title {
             font-family: 'Instrument Serif', 'Geist', serif;
             font-weight: 400;
-            font-size: clamp(56px, 9vw, 120px);
+            font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale));
             line-height: 0.92;
             letter-spacing: -0.04em;
             color: var(--text);
@@ -88,7 +88,7 @@
             background: var(--surface);
             padding: 18px 20px;
             font-family: 'Geist Mono', monospace;
-            font-size: 12px;
+            font-size: calc(16px * var(--type-scale));
             color: var(--text-dim);
         }
 
@@ -102,6 +102,7 @@
         .stats-card .row:last-child { border-bottom: none; }
 
         .stats-card .label {
+            font-size: calc(14px * var(--type-scale));
             text-transform: uppercase;
             letter-spacing: 0.08em;
             color: var(--text-faint);
@@ -125,7 +126,7 @@
             align-items: center;
             gap: 12px;
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(14px * var(--type-scale));
             letter-spacing: 0.16em;
             color: var(--text-faint);
             text-transform: uppercase;
@@ -146,7 +147,7 @@
 
         .section-heading {
             font-family: 'Geist', sans-serif;
-            font-size: clamp(28px, 3.5vw, 40px);
+            font-size: calc(28px * var(--type-scale));
             font-weight: 600;
             letter-spacing: -0.02em;
             line-height: 1.05;
@@ -156,7 +157,7 @@
 
         .section-description {
             color: var(--text-dim);
-            font-size: 15px;
+            font-size: calc(20px * var(--type-scale));
             margin-bottom: 24px;
             max-width: 70ch;
         }
@@ -177,7 +178,7 @@
             top: 20px;
             right: 28px;
             font-family: 'Geist Mono', monospace;
-            font-size: 10px;
+            font-size: calc(14px * var(--type-scale));
             letter-spacing: 0.22em;
             color: var(--accent);
             border: 1px solid var(--accent-dim);
@@ -196,7 +197,7 @@
 
         .lead-story h2 {
             font-family: 'Geist', sans-serif;
-            font-size: clamp(32px, 4vw, 52px);
+            font-size: calc(clamp(32px, 4.5vw, 52px) * var(--type-scale));
             font-weight: 600;
             line-height: 1.05;
             letter-spacing: -0.025em;
@@ -215,7 +216,7 @@
         .lead-story h2 a:hover { color: var(--accent); }
 
         .lead-story .summary {
-            font-size: 17px;
+            font-size: calc(20px * var(--type-scale));
             line-height: 1.7;
             color: var(--text);
             max-width: 70ch;
@@ -224,7 +225,7 @@
 
         .lead-story .meta {
             font-family: 'Geist Mono', monospace;
-            font-size: 12px;
+            font-size: calc(14px * var(--type-scale));
             color: var(--text-faint);
             text-transform: uppercase;
             letter-spacing: 0.08em;
@@ -259,7 +260,7 @@
 
         .featured-item h3 {
             font-family: 'Geist', sans-serif;
-            font-size: 22px;
+            font-size: calc(22px * var(--type-scale));
             font-weight: 600;
             letter-spacing: -0.015em;
             line-height: 1.2;
@@ -275,7 +276,7 @@
         .featured-item h3 a:hover { color: var(--accent); }
 
         .featured-item .summary {
-            font-size: 15px;
+            font-size: calc(20px * var(--type-scale));
             line-height: 1.65;
             color: var(--text-dim);
             margin-bottom: 18px;
@@ -283,7 +284,7 @@
 
         .featured-item .meta {
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(14px * var(--type-scale));
             color: var(--text-faint);
             letter-spacing: 0.06em;
             text-transform: uppercase;
@@ -310,7 +311,7 @@
         }
 
         .news-cluster h4 {
-            font-size: 18px;
+            font-size: calc(22px * var(--type-scale));
             font-weight: 600;
             letter-spacing: -0.01em;
             margin-bottom: 10px;
@@ -318,7 +319,7 @@
         }
 
         .news-cluster .summary {
-            font-size: 15px;
+            font-size: calc(20px * var(--type-scale));
             color: var(--text-dim);
             line-height: 1.65;
         }
@@ -332,7 +333,7 @@
 
         .thematic-block h3 {
             font-family: 'Geist', sans-serif;
-            font-size: 20px;
+            font-size: calc(22px * var(--type-scale));
             font-weight: 600;
             letter-spacing: -0.015em;
             margin-bottom: 18px;
@@ -345,7 +346,7 @@
         .thematic-block h3::before {
             content: "▸";
             color: var(--accent);
-            font-size: 14px;
+            font-size: calc(14px * var(--type-scale));
         }
 
         .article-item {
@@ -356,7 +357,7 @@
         .article-item:last-child { border-bottom: none; }
 
         .article-item h4 {
-            font-size: 17px;
+            font-size: calc(20px * var(--type-scale));
             font-weight: 600;
             line-height: 1.35;
             margin-bottom: 10px;
@@ -372,7 +373,7 @@
         .article-item h4 a:hover { color: var(--accent); }
 
         .article-item .summary {
-            font-size: 15px;
+            font-size: calc(20px * var(--type-scale));
             color: var(--text-dim);
             margin-bottom: 12px;
             line-height: 1.65;
@@ -380,7 +381,7 @@
 
         .article-item .meta {
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(14px * var(--type-scale));
             color: var(--text-faint);
             text-transform: uppercase;
             letter-spacing: 0.06em;
@@ -407,7 +408,7 @@
         .attention-item:hover { border-color: var(--border-strong); }
 
         .attention-item h5 {
-            font-size: 15px;
+            font-size: calc(20px * var(--type-scale));
             font-weight: 600;
             margin-bottom: 8px;
             letter-spacing: -0.005em;
@@ -422,16 +423,15 @@
         .attention-item h5 a:hover { color: var(--accent); }
 
         .attention-item .snippet {
-            font-size: 13px;
+            font-size: calc(20px * var(--type-scale));
             color: var(--text-dim);
             line-height: 1.55;
             margin-bottom: 10px;
         }
 
-        .news-cluster .meta,
-        .attention-item .meta {
+        .news-cluster .meta, .attention-item .meta {
             font-family: 'Geist Mono', monospace;
-            font-size: 10px;
+            font-size: calc(14px * var(--type-scale));
             color: var(--text-faint);
             letter-spacing: 0.08em;
             text-transform: uppercase;
@@ -449,7 +449,7 @@
             align-items: baseline;
             gap: 14px;
             padding: 10px 22px;
-            font-size: 14px;
+            font-size: calc(16px * var(--type-scale));
             line-height: 1.5;
             border-bottom: 1px dashed var(--border);
             transition: background 0.15s;
@@ -460,7 +460,7 @@
 
         .headline-item .idx {
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(16px * var(--type-scale));
             color: var(--accent-dim);
             min-width: 36px;
             letter-spacing: 0.05em;
@@ -496,11 +496,11 @@
             .headline-block { grid-template-columns: 1fr; gap: 24px; }
             .stats-card { max-width: 100%; }
             .lead-story { padding: 28px 24px; }
-            .lead-story::before { top: 14px; right: 16px; font-size: 9px; }
+            .lead-story::before { top: 14px; right: 16px; }
             .featured-grid { grid-template-columns: 1fr; }
             .attention-list { grid-template-columns: 1fr; }
             .section { margin-bottom: 48px; }
-            .meta-strip { gap: 12px; font-size: 10px; }
+            .meta-strip { gap: 12px; }
         }
         {% include "_promote.css.j2" %}
 

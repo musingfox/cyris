@@ -12,12 +12,12 @@
 
         {% include "_components.css.j2" %}
 
-        {% with container_width="900px", container_relative=false, glow=none, font_size=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
+        {% with container_width="900px", container_relative=false, glow=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
         {% with masthead_padding="24px 0 20px", masthead_margin="40px", masthead_rule=false,
                   brand_margin="24px", mark_size="12px", mark_glow=false, mark_pulse=false,
                   brand_weight=none, subtitle_margin="14px",
-                  h1_size="clamp(40px, 7vw, 72px)", h1_line_height="1", h1_tracking="-0.03em"  %}{% include "_masthead.css.j2" %}{% endwith %}
+                  display_h1=true  %}{% include "_masthead.css.j2" %}{% endwith %}
 
         .source-group {
             border: 1px solid var(--border);
@@ -37,13 +37,13 @@
 
         .source-name {
             font-weight: 600;
-            font-size: 15px;
+            font-size: calc(20px * var(--type-scale));
             letter-spacing: -0.01em;
         }
 
         .source-count {
             font-family: 'Geist Mono', monospace;
-            font-size: 11px;
+            font-size: calc(14px * var(--type-scale));
             letter-spacing: 0.12em;
             color: var(--text-faint);
             text-transform: uppercase;
@@ -65,7 +65,7 @@
 
         .score {
             font-family: 'Geist Mono', monospace;
-            font-size: 12px;
+            font-size: calc(16px * var(--type-scale));
             color: var(--text-dim);
             text-align: right;
         }
