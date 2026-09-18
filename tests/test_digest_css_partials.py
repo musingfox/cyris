@@ -7,6 +7,7 @@ touches the filesystem, so it can run as an ordinary unit test.
 """
 
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -218,12 +219,23 @@ def test_a_rule_only_the_partials_have_is_named(shared_partials: str) -> None:
     assert missing and all(key.startswith("@keyframes pulse | ") for key in missing)
 
 
-def _component_definition_problems(source: str) -> list[str]:
-    """Name each component selector a source defines other than exactly once."""
+def _component_definition_problems(
+    source: str, selectors: frozenset[str] = COMPONENT_SELECTORS
+) -> list[str]:
+    """Name each component selector a source defines other than as often as listed.
+
+    A key may carry an at-rule prefix (``@media (...) | .x``); each key naming a
+    bare selector is one block the source is expected to hold, so a listed media
+    copy is expected and any other copy pushes the count past it.
+    """
     counts = rule_occurrences(source)
-    selectors = {part for key in COMPONENT_SELECTORS for part in split_selector_list(key)}
+    expected = Counter(
+        part for key in selectors for part in split_selector_list(key.rsplit(" | ", 1)[-1])
+    )
     return sorted(
-        f"{selector} x{counts[selector]}" for selector in selectors if counts[selector] != 1
+        f"{selector} x{counts[selector]}"
+        for selector, times in expected.items()
+        if counts[selector] != times
     )
 
 
@@ -249,3 +261,24 @@ def test_a_component_repeated_inside_a_selector_list_is_counted() -> None:
 def test_a_component_repeated_inside_a_media_query_is_counted() -> None:
     page = "<style>.pill{a:1} @media (max-width: 880px){.pill{b:2}}</style>"
     assert rule_occurrences(page)[".pill"] == 2
+    assert ".pill x2" in _component_definition_problems(page)
+
+
+LISTED_TWICE = frozenset({".x", "@media (max-width: 720px) | .x"})
+
+
+def test_a_media_copy_the_component_list_names_is_expected() -> None:
+    page = "<style>.x{a:1} @media (max-width: 720px){.x{b:2}}</style>"
+    assert _component_definition_problems(page, LISTED_TWICE) == []
+
+
+def test_a_missing_listed_media_copy_is_reported() -> None:
+    assert _component_definition_problems("<style>.x{a:1}</style>", LISTED_TWICE) == [".x x1"]
+
+
+def test_a_media_copy_the_component_list_does_not_name_is_reported() -> None:
+    page = (
+        "<style>.x{a:1} @media (max-width: 720px){.x{b:2}}"
+        " @media (max-width: 880px){.x{c:3}}</style>"
+    )
+    assert _component_definition_problems(page, LISTED_TWICE) == [".x x3"]
