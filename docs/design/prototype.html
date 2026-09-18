@@ -833,27 +833,28 @@ card.addEventListener("transitionend", (e) => {
 });
 let drag = null;
 card.addEventListener("pointerdown", (e) => {
-  if (card.dataset.flying) return;
-  drag = {x: e.clientX, dx: 0};
+  if (card.dataset.flying || e.button !== 0) return;
+  drag = {x: e.clientX, y: e.clientY, dx: 0, dy: 0};
   card.setPointerCapture(e.pointerId);
   card.classList.add("dragging");
 });
 card.addEventListener("pointermove", (e) => {
   if (!drag) return;
   drag.dx = e.clientX - drag.x;
+  drag.dy = e.clientY - drag.y;
   lean(dirOf(drag.dx, LEAN_PX));
   card.style.transform = `translateX(${drag.dx}px) rotate(${drag.dx / 20}deg)`;
 });
 const endDrag = (e) => {
   if (!drag) return;
-  const {dx} = drag;
+  const {dx, dy} = drag;
   drag = null;
   card.classList.remove("dragging");
   const swipe = e.type === "pointerup" && dirOf(dx, SWIPE_PX);
   if (swipe) return fly(swipe);
   card.style.transform = "";
   lean(null);
-  if (e.type === "pointerup" && Math.abs(dx) < TAP_PX) window.open("#raw", "_blank", "noopener");
+  if (e.type === "pointerup" && Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX) window.open("#raw", "_blank", "noopener");
 };
 card.addEventListener("pointerup", endDrag);
 card.addEventListener("pointercancel", endDrag);
