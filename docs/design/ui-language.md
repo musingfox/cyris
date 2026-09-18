@@ -211,16 +211,12 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 
 ## 8. 現況差距與落地順序
 
-2026-09-17 盤點的差距：
+2026-09-17 盤點的差距（第 1 步已於 2026-09-18 落地，補上 §2 token、§3 字級、focus 與 reduced-motion、
+兩個硬寫顏色，以及元件 CSS 比對測試；以下是還沒解決的）：
 
-- digest 三頁是方角與 px；triage 與 settings 用 4/6/8/16px 圓角與 rem（`style.css:80,122,282`、
-  `settings.html:17,23,28`）。
-- 破壞性顏色有三種：`--warn`、`#e06c75`（`_promote.css.j2:23`）、`#6b4a4a`（`raw.html.j2:74`）。
-  後兩者分別改為 `--warn` 與 `--text-faint`。
-- 沒有任何 `:focus-visible`；`prefers-reduced-motion` 只蓋到 pulse（`_tokens.css.j2:26`）。
-- 導覽在頁尾；settings 唯一的返回連結指向 404 的 `/triage`（`settings.html:143`）。
-- 現行字級比 §3 小，也還沒有乘上 `--type-scale`。
-- CSS 比對測試只比對 token。
+- settings 仍用 8px 圓角與 rem（`settings.html` 的內嵌樣式），第 3 步重寫。deck 的規則移到
+  `static/deck.css`，不做對齊。
+- 導覽在頁尾；settings 唯一的返回連結指向 404 的 `/triage`（`settings.html:161`）。
 
 落地順序，每一步都能單獨上線。括號裡是 Obsidian vault `pm/cyris/tasks/` 的票：
 
