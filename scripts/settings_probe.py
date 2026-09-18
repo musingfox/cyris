@@ -344,6 +344,24 @@ CHECKS: list[Check] = [
         sabotage="""$('.site-nav a[aria-current="page"]').removeAttribute("aria-current");""",
     ),
     Check(
+        id="site-bar-links-align",
+        fixture="readonly",
+        path="/settings",
+        script="""
+            const bottoms = $$(".site-nav a").map((a) => a.getBoundingClientRect().bottom);
+            expect(bottoms.length === 2 && bottoms[0] === bottoms[1], `bottoms: ${bottoms}`);
+        """,
+        # The shape the bar had before: the gate on a wrapper, the link inside it.
+        sabotage="""
+            const link = $('.site-nav a[href="/settings"]');
+            const wrapper = document.createElement("span");
+            wrapper.className = "label";
+            link.classList.remove("label");
+            link.replaceWith(wrapper);
+            wrapper.append(link);
+        """,
+    ),
+    Check(
         id="no-credential-in-dom",
         fixture="writable",
         path="/settings#notifications",

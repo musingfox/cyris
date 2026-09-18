@@ -862,7 +862,7 @@ def test_settings_link_hidden_by_default_shown_by_capability_probe(tmp_path):
     html = writer.render(content)
 
     # Settings link should be present but hidden by default
-    assert '<a href="/settings">Settings' in html
+    assert '<a class="label settings-link" href="/settings">Settings' in html
     assert ".settings-link { display: none;" in html
     # Capability probe must parse JSON and check authorized, not just 2xx
     assert "await resp.json()" in html or "await resp.json ()" in html
@@ -930,11 +930,11 @@ def test_every_page_opens_with_the_site_bar(tmp_path, page):
     assert html.index('<header class="site-bar">') < html.index('class="container"')
     bar = _site_bar(html)
     assert 'aria-current="page">Archive</a>' in bar
-    assert '<span class="label settings-link"><a href="/settings">Settings</a></span>' in bar
+    assert '<a class="label settings-link" href="/settings">Settings</a>' in bar
     assert 'class="brand-name">CYRIS<' in bar
 
 
-# The partial's output before it took a `current` parameter, line for line.
+# The partial's output when no page names itself current, line for line.
 SITE_BAR_ON_THE_ARCHIVE = "\n".join(
     [
         '    <header class="site-bar">',
@@ -943,7 +943,7 @@ SITE_BAR_ON_THE_ARCHIVE = "\n".join(
         '<span class="brand-name">CYRIS</span></a>',
         '            <nav class="site-nav" aria-label="Site">',
         '                <a class="label" href="index.html" aria-current="page">Archive</a>',
-        '                <span class="label settings-link"><a href="/settings">Settings</a></span>',
+        '                <a class="label settings-link" href="/settings">Settings</a>',
         "            </nav>",
         "        </div>",
         "    </header>",
@@ -963,7 +963,7 @@ def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):
 
     bar = env.from_string(wrapper).render()
 
-    assert '<a href="/settings" aria-current="page">Settings</a>' in bar
+    assert '<a class="label settings-link" href="/settings" aria-current="page">Settings</a>' in bar
     assert '<a class="label" href="index.html">Archive</a>' in bar
     assert bar.count("aria-current") == 1
 
