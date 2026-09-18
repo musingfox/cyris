@@ -28,14 +28,17 @@ route();
 // A category's Save is live only while its form differs from what was last
 // loaded or saved, and the category list marks that form with a dot.
 const clean = new Map();
-const snapshot = (form) => [...form.querySelectorAll("input, select")]
-  .map((input) => input.type === "radio" ? input.checked : input.value)
-  .join("|");
+// Keyed by field, so a save can tell which part of its form changed.
+const snapshot = (form) => Object.fromEntries([...form.querySelectorAll("input, select")]
+  .map((input) => input.type === "radio"
+    ? [`${input.name}=${input.value}`, input.checked]
+    : [input.id, input.value]));
 const saveButton = (form) => form.querySelector('button[type="submit"]');
 const navLink = (form) => document.querySelector(`.settings-nav a[data-tab="${form.dataset.tab}"]`);
 
 function refresh(form) {
-  const dirty = clean.has(form) && snapshot(form) !== clean.get(form);
+  const dirty = clean.has(form)
+    && JSON.stringify(snapshot(form)) !== JSON.stringify(clean.get(form));
   // With no provider chosen, there is nothing a model could be checked against.
   const blocked = form.dataset.tab === "model" && !chosen();
   saveButton(form).disabled = !dirty || blocked;
@@ -154,32 +157,32 @@ $("digest-form").addEventListener("submit", async (e) => {
   const form = $("digest-form");
   const [morning, evening, featured] = [$("morning"), $("evening"), $("max-featured")]
     .map((input) => input.value);
-  const saved = clean.get(form).split("|");
+  const saved = {...clean.get(form)};
   const lines = [];
   let failed = false;
   $("save-digest").disabled = true;
-  if (morning !== saved[0] || evening !== saved[1]) {
+  if (morning !== saved.morning || evening !== saved.evening) {
     const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
     try {
       const data = await post("/api/settings/schedule", {times});
       lines.push(`Digest hours: ${data.times.join(" and ")}. ${data.note}`);
-      [saved[0], saved[1]] = [morning, evening];
+      Object.assign(saved, {morning, evening});
     } catch (err) {
       failed = true;
       lines.push(`Digest hours not saved: ${err.message || err}`);
     }
   }
-  if (featured !== saved[2]) {
+  if (featured !== saved["max-featured"]) {
     try {
       const data = await post("/api/settings/digest", {max_featured: parseInt(featured, 10)});
       lines.push(`Featured sections: ${data.max_featured}. ${data.note}`);
-      saved[2] = featured;
+      saved["max-featured"] = featured;
     } catch (err) {
       failed = true;
       lines.push(`Featured sections not saved: ${err.message || err}`);
     }
   }
-  clean.set(form, saved.join("|"));
+  clean.set(form, saved);
   show(failed ? "err" : "ok", lines.join("\n"), "digest-result");
   refresh(form);
 });
