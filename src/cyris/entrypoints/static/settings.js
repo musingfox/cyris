@@ -78,7 +78,10 @@ function render() {
   if (state.writable) {
     document.querySelectorAll("form.tab").forEach(markClean);
   } else {
-    show("err", "This deployment has no settings store, so nothing can be saved here. Edit cyris.toml instead.");
+    ["result", "digest-result", "notify-result"].forEach((id) => {
+      show("err", "This deployment has no settings store, so nothing can be saved here. " +
+        "Edit cyris.toml instead.", id);
+    });
   }
 }
 

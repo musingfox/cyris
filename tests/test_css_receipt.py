@@ -517,6 +517,7 @@ EXPECTED_IDS = {
     "retire-arms",
     "retire-reverts",
     "retire-deletes",
+    "readonly-settings",
 }
 
 

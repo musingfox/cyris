@@ -921,6 +921,31 @@ CHECKS: list[Check] = [
         sabotage_preload=IGNORE_ARMED_RETIRE,
         receipt=lambda fixture: "曼報 is still listed" if "曼報" in fixture.sources else None,
     ),
+    Check(
+        id="readonly-settings",
+        fixture="readonly",
+        path="/settings#model",
+        act="""
+            await settingsLoaded();
+            ctx.notices = {};
+            for (const tab of ["model", "digest", "notifications"]) {
+              location.hash = tab;
+              await waitFor(() => same(panels(), [tab]), tab);
+              const notice = noticeOf(tab);
+              ctx.notices[tab] = visible(notice) && notice.classList.contains("err")
+                && notice.textContent.includes("Edit cyris.toml instead.");
+            }
+            setValue($("#max-featured"), "9");
+        """,
+        script="""
+            const unexplained = Object.keys(ctx.notices).filter((tab) => !ctx.notices[tab]);
+            expect(unexplained.length === 0, `no read-only notice: ${unexplained}`);
+            const live = ["model", "digest", "notifications"].filter((t) => !saveOf(t).disabled);
+            expect(live.length === 0, `enabled: ${live}`);
+            expect(!$(".settings-nav a.dirty"), "a category is marked unsaved");
+        """,
+        sabotage="""saveOf("digest").disabled = false;""",
+    ),
 ]
 
 PRELUDE = """
