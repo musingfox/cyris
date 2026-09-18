@@ -361,7 +361,7 @@ def test_the_sampled_widths_cover_every_breakpoint_the_rendered_pages_declare():
 
 
 def test_the_sampled_widths_are_every_breakpoint_between_a_desktop_and_a_phone():
-    assert WIDTHS == (1440, 880, 720, 640, 375)
+    assert WIDTHS == (1440, 880, 720, 375)
 
 
 def test_every_probe_names_a_page_the_receipt_renders_and_at_least_one_property():
@@ -676,6 +676,8 @@ def test_the_driver_emulates_media_before_it_loads_the_page():
 EXPECTED_RAW_IDS = {
     "list-vote-marks-done",
     "list-vote-failure-marks-error",
+    "row-title-wraps-400",
+    "fits-400-list",
 }
 
 PENDING_TWO_UP = {

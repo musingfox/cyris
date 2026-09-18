@@ -640,7 +640,13 @@ def test_the_empty_archive_message_takes_the_small_role() -> None:
 def test_the_raw_state_column_fits_the_larger_state_label() -> None:
     raw = _parsed("raw")
     assert "grid-template-columns: 96px 56px 1fr auto" in raw[".raw-row"]
-    assert "grid-template-columns: 96px 1fr auto" in raw["@media (max-width: 640px) | .raw-row"]
+    assert "grid-template-columns: 96px 1fr auto" in raw["@media (max-width: 720px) | .raw-row"]
+
+
+def test_raw_rows_put_the_title_on_its_own_line_at_the_one_breakpoint() -> None:
+    raw = _parsed("raw")
+    assert "grid-column: 1 / -1" in raw["@media (max-width: 720px) | .raw-row a"]
+    assert [key for key in raw if key.startswith("@media (max-width: 640px)")] == []
 
 
 def test_raw_rows_are_the_prototype_rows() -> None:

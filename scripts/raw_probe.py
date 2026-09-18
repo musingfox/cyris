@@ -211,6 +211,29 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$$(".promote-btn").forEach((b) => b.classList.remove("error"));""",
     ),
+    Check(
+        id="row-title-wraps-400",
+        fixture="signed-in",
+        path=PAGE,
+        width=400,
+        act="await signedIn();",
+        script="""
+            const row = rowOf("Pending Two");
+            const title = $("a", row).getBoundingClientRect();
+            const state = $(".state", row).getBoundingClientRect();
+            expect(title.top >= state.bottom, `title at ${title.top}, state ends ${state.bottom}`);
+        """,
+        sabotage="""$$(".raw-row a").forEach((a) => { a.style.gridColumn = "auto"; });""",
+    ),
+    Check(
+        id="fits-400-list",
+        fixture="signed-in",
+        path=PAGE,
+        width=400,
+        act="await signedIn();",
+        script="""const problem = overflow("list"); expect(!problem, problem);""",
+        sabotage="""$(".container").style.minWidth = "600px";""",
+    ),
 ]
 
 

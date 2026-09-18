@@ -55,14 +55,10 @@
         {% with layout="block", justify=false, align_center=false, margin_top="48px",
                   padding_top="20px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
-        @media (max-width: 640px) {
-            .raw-row {
-                grid-template-columns: 96px 1fr auto;
-                gap: 4px 14px;
-                padding: 12px 16px;
-            }
-            .score { grid-column: 2; text-align: left; }
-            .raw-row a { grid-column: 1 / span 3; }
+        @media (max-width: 720px) {
+            .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
+            .score { text-align: left; }
+            .raw-row a { grid-column: 1 / -1; }
         }
     </style>
 </head>
