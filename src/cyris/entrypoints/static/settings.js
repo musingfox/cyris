@@ -381,11 +381,20 @@ const loadSources = () =>
   fetch("/api/sources")
     .then((r) => r.json())
     .then(loaded)
-    .catch((e) => show("err", `Could not load sources: ${e}`, "sources-notice"));
+    .catch((e) => {
+      $("add-source").disabled = true;
+      show("err", `Could not load sources: ${e}. Reload the page to try again.`,
+           "sources-notice");
+    });
 
 loadSources();
 
 fetch("/api/settings")
   .then((r) => r.json())
   .then((d) => { state = d; render(); })
-  .catch((e) => show("err", `Could not load settings: ${e}`));
+  .catch((e) => {
+    // Every Save stays disabled: tracking only starts once the values are known.
+    ["result", "digest-result", "notify-result"].forEach((id) => {
+      show("err", `Could not load settings: ${e}. Reload the page to try again.`, id);
+    });
+  });

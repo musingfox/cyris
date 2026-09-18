@@ -273,6 +273,18 @@ saveOf("digest").click();
 await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled, "the save");
 """
 
+
+def reject_get(path: str) -> str:
+    """A preload under which the page's GET of `path` fails as a network error would."""
+    return f"""
+const realFetch = window.fetch;
+window.fetch = (input, init) =>
+  String(input).endsWith({json.dumps(path)}) && !(init && init.method)
+    ? Promise.reject(new TypeError("boom"))
+    : realFetch(input, init);
+"""
+
+
 CHECKS: list[Check] = [
     Check(
         id="site-bar-current",
@@ -732,6 +744,37 @@ CHECKS: list[Check] = [
             expect(editorAct("save").disabled, "Save source is still enabled");
         """,
         sabotage="""editor().remove();""",
+    ),
+    Check(
+        id="settings-load-failure",
+        fixture="writable",
+        path="/settings",
+        preload=reject_get("/api/settings"),
+        act="""await waitFor(() => $$("form.tab .notice.err").length === 3, "three notices");""",
+        script="""
+            const tabs = ["model", "digest", "notifications"];
+            const wrong = tabs.filter((t) => !noticeOf(t).classList.contains("err")
+              || !noticeOf(t).textContent.startsWith("Could not load settings: TypeError: boom"));
+            expect(wrong.length === 0, `wrong notices: ${wrong}`);
+            const live = tabs.filter((t) => !saveOf(t).disabled);
+            expect(live.length === 0, `enabled: ${live}`);
+        """,
+        sabotage="""saveOf("digest").disabled = false;""",
+    ),
+    Check(
+        id="sources-load-failure",
+        fixture="writable",
+        path="/settings#sources",
+        preload=reject_get("/api/sources"),
+        act="""await waitFor(() => visible($("#sources-notice")), "the notice");""",
+        script="""
+            const notice = $("#sources-notice");
+            expect(notice.classList.contains("err"), "not an error");
+            expect(notice.textContent.startsWith("Could not load sources:"), notice.textContent);
+            expect($("#add-source").disabled, "Add source is enabled");
+            expect($$("tr.src-row").length === 0, "rows were listed");
+        """,
+        sabotage="""$("#add-source").disabled = false;""",
     ),
 ]
 
