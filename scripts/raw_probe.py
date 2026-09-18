@@ -20,7 +20,7 @@ and `tests/test_css_receipt.py` does so to check its fixtures and registry.
 import argparse
 import asyncio
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -154,9 +154,64 @@ window.__opened = [];
 window.open = (...args) => { window.__opened.push(args); return null; };
 """
 
-RAW_PRELUDE = base_prelude()
+RAW_PRELUDE = (
+    base_prelude()
+    + """
+const rowOf = (title) => $$("a[target=_blank]").find((a) => a.textContent === title).parentElement;
+const voteButton = (title, vote) => $(`.promote-btn[data-vote="${vote}"]`, rowOf(title));
+const marked = (title, vote, mark) => voteButton(title, vote).classList.contains(mark);
+const storedVotes = () => JSON.parse(localStorage.getItem("cyris-votes") || "{}");
+const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
+"""
+)
 
-CHECKS: list[Check] = []
+
+def vote_body(slug: str, vote: str) -> dict:
+    return {"url": url_of(slug), "vote": vote, "digest_date": DATE}
+
+
+def _posted(*wanted: dict) -> Callable[[Fixture], str | None]:
+    """A receipt: the stand-in `/api/vote` took exactly these vote bodies, in order."""
+    return lambda fixture: None if fixture.posts == list(wanted) else f"posts: {fixture.posts}"
+
+
+CHECKS: list[Check] = [
+    Check(
+        id="list-vote-marks-done",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").click();
+            await waitFor(() => marked("Pending Two", "up", "done"), "the vote marked done");
+        """,
+        script="""
+            expect(voteButton("Pending Two", "up").classList.contains("done"), "up is not done");
+            const stored = storedVotes()["https://example.test/pending-two"];
+            expect(stored === "up", `stored: ${stored}`);
+        """,
+        sabotage="""$$(".promote-btn").forEach((b) => b.classList.remove("done"));""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    Check(
+        id="list-vote-failure-marks-error",
+        fixture="vote-fails",
+        path=PAGE,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").click();
+            await waitFor(() => marked("Pending Two", "up", "error"), "the vote marked failed");
+        """,
+        script="""
+            const up = voteButton("Pending Two", "up");
+            expect(up.classList.contains("error"), "up is not marked failed");
+            expect(!up.classList.contains("done"), "up is marked done");
+            const stored = JSON.stringify(storedVotes());
+            expect(!stored.includes("pending-two"), `stored: ${stored}`);
+        """,
+        sabotage="""$$(".promote-btn").forEach((b) => b.classList.remove("error"));""",
+    ),
+]
 
 
 def main() -> None:

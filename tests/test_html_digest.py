@@ -898,6 +898,14 @@ def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
         assert "DIGEST_DATE" in html
 
 
+@pytest.mark.parametrize("page", ["digest", "raw"])
+def test_every_vote_goes_through_the_one_cast_vote_path(tmp_path, page):
+    html = _issue_pages(tmp_path)[page]
+
+    assert html.count("async function castVote(group, vote)") == 1
+    assert html.count("method: 'POST'") == 1
+
+
 def _issue_pages(tmp_path) -> dict[str, str]:
     """Archive, digest and raw for one 2026-04-15 evening issue."""
     writer = HtmlDigestWriter(tmp_path)

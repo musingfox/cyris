@@ -643,7 +643,10 @@ def test_the_driver_emulates_media_before_it_loads_the_page():
 
 # The checks `scripts/raw_probe.py` must carry. Each raw-page change adds the ids
 # of the checks that hold it.
-EXPECTED_RAW_IDS: set[str] = set()
+EXPECTED_RAW_IDS = {
+    "list-vote-marks-done",
+    "list-vote-failure-marks-error",
+}
 
 PENDING_TWO_UP = {
     "url": "https://example.test/pending-two",

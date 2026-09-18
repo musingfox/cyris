@@ -22,26 +22,35 @@
         if (votes[key]) paint(group, votes[key]);
     }
 
-    document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.promote-btn');
-        if (!btn) return;
-        const group = btn.closest('.vote-group');
+    // The one vote path: true only when every url took the vote, and only then is it
+    // remembered and painted. It never rejects, so a caller can decide what failure shows.
+    async function castVote(group, vote) {
         const urls = groupUrls(group);
-        const vote = btn.dataset.vote;
-        btn.disabled = true;
         try {
             const results = await Promise.all(urls.map((u) => fetch('/api/vote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
             })));
-            if (results.some((r) => !r.ok)) throw new Error('promote failed');
-            votes[urls[0]] = vote;
-            // The server already took the vote; a full quota must not show it as failed.
-            try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
-            paint(group, vote);
+            if (results.some((r) => !r.ok)) return false;
         } catch {
-            btn.classList.add('error');
+            return false;
+        }
+        votes[urls[0]] = vote;
+        // The server already took the vote; a full quota must not show it as failed.
+        try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
+        paint(group, vote);
+        return true;
+    }
+
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.promote-btn');
+        if (!btn) return;
+        btn.disabled = true;
+        try {
+            if (!await castVote(btn.closest('.vote-group'), btn.dataset.vote)) {
+                btn.classList.add('error');
+            }
         } finally {
             btn.disabled = false;
         }
