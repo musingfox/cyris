@@ -45,7 +45,8 @@ def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
     slug = f"{content.date}-{content.period}"
     pages = {f"/{slug}.html": writer.render(content)}
     if collected:
-        pages[f"/{slug}-raw.html"] = writer.render_raw(content.date, content.period, collected)
+        raw = "/" + writer.raw_filename(content.date, content.period)
+        pages[raw] = writer.render_raw(content.date, content.period, collected)
     # The archive page lists every digest the site holds, this run's included.
     known = sorted({*deps.site_filenames(), *(p.lstrip("/") for p in pages)})
     pages["/index.html"] = writer.render_index(known)

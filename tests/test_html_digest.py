@@ -727,6 +727,15 @@ def test_an_issue_without_a_raw_page_offers_only_its_digest(tmp_path):
     assert ">All articles</a>" not in index
 
 
+def test_the_archive_links_the_raw_page_under_the_name_write_raw_gave_it(tmp_path):
+    writer = HtmlDigestWriter(tmp_path)
+    raw = writer.write_raw("2026-08-20", "morning", [_stored("Article", "Src")])
+
+    index = writer.render_index(["2026-08-20-morning.html", raw.name])
+
+    assert f'href="{raw.name}">All articles</a>' in index
+
+
 def test_write_raw_renders_vote_buttons(tmp_path):
     """Rejected articles get up/down buttons so the raw page can pull them back."""
     writer = HtmlDigestWriter(tmp_path)

@@ -17,6 +17,11 @@ def _hostname(url: str) -> str:
 class HtmlDigestWriter:
     """Renders DigestContent as a newspaper-style HTML page."""
 
+    @staticmethod
+    def raw_filename(date: str, period: str) -> str:
+        """The raw page's file name; the archive links to it only under this name."""
+        return f"{date}-{period}-raw.html"
+
     def __init__(self, output_dir: Path):
         """Initialize writer with output directory.
 
@@ -132,7 +137,7 @@ class HtmlDigestWriter:
             match = digest_pattern.match(name)
             if match:
                 date, period = match.groups()
-                raw = f"{date}-{period}-raw.html"
+                raw = self.raw_filename(date, period)
                 digests.append(
                     {
                         "date": date,
@@ -179,7 +184,7 @@ class HtmlDigestWriter:
         """
         html = self.render_raw(date, period, articles)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = self.output_dir / f"{date}-{period}-raw.html"
+        file_path = self.output_dir / self.raw_filename(date, period)
         file_path.write_text(html, encoding="utf-8")
         return file_path
 
