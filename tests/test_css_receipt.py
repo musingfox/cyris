@@ -492,6 +492,9 @@ EXPECTED_IDS = {
     "dirty-enables-save",
     "revert-disables-save",
     "dirty-radio",
+    "sources-columns",
+    "sources-filter",
+    "sources-empty-filter",
 }
 
 

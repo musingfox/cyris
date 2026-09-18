@@ -30,6 +30,15 @@
     .input.narrow { width: 96px; }
     .key-missing { color: var(--warn); }
     .actions-line { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-4); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); background: var(--bg-elev); }
+    table.src { width: 100%; border-collapse: collapse; min-width: 640px; }
+    table.src th { text-align: left; padding: var(--s-2) var(--s-5); background: var(--surface); border-bottom: 1px solid var(--border); }
+    table.src td { padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border); font-size: calc(16px * var(--type-scale)); vertical-align: middle; }
+    table.src tr.src-row { cursor: pointer; transition: background-color var(--t-fast); }
+    table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
+    table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
+    table.src .target { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
     @media (max-width: 720px) {
       .page { padding-top: var(--s-8); }
       .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
@@ -130,7 +139,19 @@
             <p class="small">Feeds and newsletter senders. A change applies from the next run.</p>
             <p class="small" id="sources-origin"></p>
           </div>
-          <div id="src-list"></div>
+          <div class="toolbar">
+            <div class="seg" role="group" aria-label="Filter by type">
+              <button type="button" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" data-filter="rss" aria-pressed="false">RSS</button>
+              <button type="button" data-filter="newsletter" aria-pressed="false">Newsletter</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="src">
+              <thead><tr><th class="label">Name</th><th class="label">Type</th><th class="label">Tier</th><th class="label">Feed or sender</th><th class="label">Tags</th></tr></thead>
+              <tbody id="src-body"></tbody>
+            </table>
+          </div>
           <form id="src-form" class="form">
             <div class="field-row">
               <div class="field"><label class="label" for="src-name">Name</label><input class="input" id="src-name" type="text" autocomplete="off"></div>
@@ -147,6 +168,7 @@
               <p class="small">The name is the key: saving an existing name edits that source.</p></div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-src">Save source</button>
+              <button class="btn danger" type="button" id="retire-src">Retire</button>
               <div class="notice" id="src-result" hidden></div>
             </div>
           </form>

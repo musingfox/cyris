@@ -180,47 +180,71 @@ $("notify-form").addEventListener("submit", async (e) => {
 });
 
 let sources = [];
+let filter = "all";
 
-function renderSources(d) {
+const EMPTY = {
+  all: "No sources configured.",
+  rss: "No RSS sources.",
+  newsletter: "No newsletter sources.",
+};
+
+function renderSources() {
+  const rows = sources.filter((s) => filter === "all" || s.type === filter);
+  $("src-body").innerHTML = rows.length
+    ? rows.map((s) => `
+      <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
+        <td class="name">${esc(s.name)}</td>
+        <td><span class="label">${esc(s.type)}</span></td>
+        <td><span class="pill${s.tier === "summarize" ? " score" : ""}">${esc(s.tier)}</span></td>
+        <td class="target">${esc(s.url || s.email_match || "—")}</td>
+        <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="small">${EMPTY[sources.length ? filter : "all"]}</td></tr>`;
+}
+
+function loaded(d) {
   sources = d.sources;
   $("sources-origin").textContent = `Served from ${d.origin}.`;
   if (!d.writable) {
     $("save-src").disabled = true;
     show("err", "No writable source table here — this deployment reads sources.yaml.", "src-result");
   }
-  if (!d.sources.length) return $("src-list").textContent = "No sources configured.";
-  $("src-list").innerHTML = `<table>
-    <tr><th>name</th><th>tier</th><th>type</th><th>url / email_match</th><th></th></tr>
-    ${d.sources.map((s, i) => `<tr>
-      <td>${esc(s.name)}</td>
-      <td>${esc(s.tier)}</td>
-      <td>${esc(s.type)}</td>
-      <td>${esc(s.email_match || s.url || "—")}</td>
-      <td>
-        <button class="btn sm secondary" type="button" data-edit="${i}">edit</button>
-        <button class="btn sm danger" type="button" data-retire="${i}">retire</button>
-      </td>
-    </tr>`).join("")}</table>`;
+  renderSources();
 }
 
-$("src-list").addEventListener("click", async (e) => {
-  const edit = e.target.dataset.edit, retire = e.target.dataset.retire;
-  if (edit !== undefined) {
-    const s = sources[edit];
-    $("src-name").value = s.name;
-    $("src-type").value = s.type;
-    $("src-tier").value = s.tier;
-    $("src-url").value = s.url || "";
-    $("src-email").value = s.email_match || "";
-    $("src-homepage").value = s.homepage || "";
-    $("src-tags").value = (s.tags || []).join(", ");
-    $("src-form").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
-  } else if (retire !== undefined) {
-    const s = sources[retire];
-    if (!confirm(`Stop fetching ${s.name}?`)) return;
-    await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
-                      `${s.name} retired.`);
-  }
+document.querySelectorAll("[data-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    filter = button.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b === button));
+    });
+    renderSources();
+  });
+});
+
+$("src-body").addEventListener("click", (e) => {
+  const row = e.target.closest("tr.src-row");
+  if (!row) return;
+  const s = sources.find((x) => x.name === row.dataset.name);
+  $("src-name").value = s.name;
+  $("src-type").value = s.type;
+  $("src-tier").value = s.tier;
+  $("src-url").value = s.url || "";
+  $("src-email").value = s.email_match || "";
+  $("src-homepage").value = s.homepage || "";
+  $("src-tags").value = (s.tags || []).join(", ");
+  $("src-form").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+});
+
+$("src-body").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches("tr.src-row")) e.target.click();
+});
+
+$("retire-src").addEventListener("click", async () => {
+  const name = $("src-name").value.trim();
+  if (!name || !confirm(`Stop fetching ${name}?`)) return;
+  await writeSource(`/api/sources/${encodeURIComponent(name)}`, "DELETE", null,
+                    `${name} retired.`);
 });
 
 async function writeSource(url, method, body, okText) {
@@ -264,8 +288,8 @@ $("src-form").addEventListener("submit", (e) => {
 const loadSources = () =>
   fetch("/api/sources")
     .then((r) => r.json())
-    .then(renderSources)
-    .catch((e) => { $("src-list").textContent = `Could not load sources: ${e}`; });
+    .then(loaded)
+    .catch((e) => show("err", `Could not load sources: ${e}`, "src-result"));
 
 loadSources();
 

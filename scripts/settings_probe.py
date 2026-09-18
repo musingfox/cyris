@@ -384,6 +384,56 @@ CHECKS: list[Check] = [
         """,
         sabotage="""saveOf("model").disabled = false;""",
     ),
+    Check(
+        id="sources-columns",
+        fixture="writable",
+        path="/settings#sources",
+        act="await sourcesLoaded();",
+        script="""
+            const heads = $$("table.src th").map((th) => th.textContent);
+            const wanted = ["Name", "Type", "Tier", "Feed or sender", "Tags"];
+            expect(same(heads, wanted), `headers: ${heads}`);
+            expect(rowNames().length === 4, `rows: ${rowNames()}`);
+            expect(rowNames().includes("<b>x</b>"), `names: ${rowNames()}`);
+            expect(!$("table.src b"), "a source name was parsed as markup");
+        """,
+        sabotage="""$("tr.src-row td").innerHTML = "<b>x</b>";""",
+    ),
+    Check(
+        id="sources-filter",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await sourcesLoaded();
+            $('[data-filter="newsletter"]').click();
+        """,
+        script="""
+            expect(same(rowNames(), ["曼報"]), `rows: ${rowNames()}`);
+            const pressed = (f) => $(`[data-filter="${f}"]`).getAttribute("aria-pressed");
+            expect(pressed("newsletter") === "true", "Newsletter is not pressed");
+            expect(pressed("all") === "false", "All is still pressed");
+        """,
+        sabotage="""
+            const row = $("#src-body").insertRow();
+            row.className = "src-row";
+            row.insertCell().textContent = "Hacker News";
+        """,
+    ),
+    Check(
+        id="sources-empty-filter",
+        fixture="writable",
+        path="/settings#sources",
+        setup=lambda fixture: fixture.sources.pop("曼報"),
+        act="""
+            await sourcesLoaded();
+            $('[data-filter="newsletter"]').click();
+        """,
+        script="""
+            const rows = $$("#src-body tr").map((row) => row.textContent.trim());
+            expect(same(rows, ["No newsletter sources."]), `rows: ${rows}`);
+        """,
+        sabotage="""$("#src-body").replaceChildren();""",
+    ),
 ]
 
 PRELUDE = """
@@ -414,6 +464,8 @@ const providersLoaded = () => waitFor(() => $$("input[name=provider]").length, "
 const saveOf = (tab) => $(`form.tab[data-tab="${tab}"] button[type="submit"]`);
 const navOf = (tab) => $(`.settings-nav a[data-tab="${tab}"]`);
 const settingsLoaded = () => waitFor(() => $("#max-featured").value, "settings");
+const rowNames = () => $$("tr.src-row").map((row) => $("td", row).textContent);
+const sourcesLoaded = () => waitFor(() => $$("tr.src-row").length, "source rows");
 const ctx = {};
 """
 
