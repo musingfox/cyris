@@ -25,6 +25,11 @@
         }
 
         .digest-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 24px;
+            padding: 20px 28px;
             border-bottom: 1px solid var(--border);
             transition: background-color var(--t-fast);
         }
@@ -32,16 +37,6 @@
         .digest-item:last-child { border-bottom: none; }
 
         .digest-item:hover { background: var(--surface); }
-
-        .digest-item a {
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
-            gap: 24px;
-            padding: 20px 28px;
-            text-decoration: none;
-            color: var(--text);
-        }
 
         .digest-date {
             font-family: var(--font-mono);
@@ -60,16 +55,7 @@
             justify-self: start;
         }
 
-        .digest-arrow {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            color: var(--text-faint);
-            transition: color var(--t-fast);
-        }
-
-        .digest-item:hover .digest-arrow {
-            color: var(--accent);
-        }
+        .digest-item .actions { display: flex; gap: var(--s-2); }
 
         .empty-message {
             text-align: center;
@@ -92,13 +78,12 @@
                   padding_top="24px", gap=none, link_transition=false  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 720px) {
-            .digest-item a {
+            .digest-item {
                 grid-template-columns: 1fr auto;
                 gap: 8px 16px;
                 padding: 16px 18px;
             }
-            .digest-period { grid-column: 1; }
-            .digest-arrow { grid-column: 2; grid-row: 1 / span 2; }
+            .digest-item .actions { grid-column: 1 / -1; }
         }
     </style>
 </head>
@@ -117,11 +102,9 @@
         <ul class="digest-list">
             {% for digest in digests %}
             <li class="digest-item">
-                <a href="{{ digest.filename }}">
-                    <span class="digest-date">{{ digest.date }}</span>
-                    <span class="digest-period">{{ digest.period }}</span>
-                    <span class="digest-arrow">→</span>
-                </a>
+                <span class="digest-date">{{ digest.date }}</span>
+                <span class="digest-period">{{ digest.period }}</span>
+                <span class="actions"><a class="btn secondary sm" href="{{ digest.filename }}">Digest</a>{% if digest.raw_filename %}<a class="btn secondary sm" href="{{ digest.raw_filename }}">All articles</a>{% endif %}</span>
             </li>
             {% endfor %}
         </ul>

@@ -1,5 +1,6 @@
 """Tests for HTML digest rendering."""
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -180,8 +181,8 @@ def test_render_index_with_digests(tmp_path):
     html = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "<!DOCTYPE html>" in html
-    # Should have three links
-    assert html.count("<a href=") == 3
+    # One Digest entry per issue
+    assert html.count(">Digest</a>") == 3
     # First link should be most recent (2026-04-15-morning.html)
     assert html.index("2026-04-15-morning.html") < html.index("2026-04-14-evening.html")
 
@@ -192,7 +193,8 @@ def test_render_index_empty(tmp_path):
     html = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "<!DOCTYPE html>" in html
-    assert "<a href=" not in html
+    assert ">Digest</a>" not in html
+    assert not re.search(r'href="\d{4}-', html)
     assert "No digests yet" in html
 
 
@@ -207,8 +209,8 @@ def test_render_index_ignores_non_digests(tmp_path):
     html = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
     assert "<!DOCTYPE html>" in html
-    # Should only have one link (2026-04-15-morning.html)
-    assert html.count("<a href=") == 1
+    # Should only have one entry (2026-04-15-morning.html)
+    assert html.count(">Digest</a>") == 1
     assert "2026-04-15-morning.html" in html
 
 
@@ -700,15 +702,24 @@ def test_write_raw_groups_by_source_and_escapes(tmp_path):
 
 
 def test_index_skips_raw_pages(tmp_path):
-    """Archive index lists digests only — raw companions are not issues."""
+    """A raw companion is an entry on its issue's row, not an issue of its own."""
     writer = HtmlDigestWriter(tmp_path)
     (tmp_path / "2026-08-20-morning.html").write_text("x")
     (tmp_path / "2026-08-20-morning-raw.html").write_text("x")
 
     index = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
-    assert "2026-08-20-morning.html" in index
-    assert "morning-raw" not in index
+    assert index.count('class="digest-item"') == 1
+    assert 'href="2026-08-20-morning.html">Digest</a>' in index
+    assert 'href="2026-08-20-morning-raw.html">All articles</a>' in index
+
+
+def test_an_issue_without_a_raw_page_offers_only_its_digest(tmp_path):
+    """No dead link: All articles appears only when the raw page exists."""
+    index = HtmlDigestWriter(tmp_path).render_index(["2026-08-20-morning.html"])
+
+    assert 'href="2026-08-20-morning.html">Digest</a>' in index
+    assert ">All articles</a>" not in index
 
 
 def test_write_raw_renders_vote_buttons(tmp_path):

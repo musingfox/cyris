@@ -360,7 +360,7 @@ TYPE_ROLES = [
     (3, "index digest raw", ".subtitle", "14px"),
     (4, "index raw", "h1", "clamp(52px, 8vw, 96px)"),
     (5, "index digest raw", ".footer", "14px"),
-    (6, "digest raw", ".btn", "14px"),
+    (6, "index digest raw", ".btn", "14px"),
     (7, "digest", ".meta-strip", "14px"),
     (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
     (10, "digest", ".stats-card", "16px"),
@@ -390,7 +390,6 @@ TYPE_ROLES = [
     (35, "digest", ".headline-item .idx", "16px"),
     (36, "index", ".digest-date", "22px"),
     (37, "index", ".digest-period", "14px"),
-    (38, "index", ".digest-arrow", "14px"),
     (39, "index", ".empty-message", "16px"),
     (40, "raw", ".source-name", "20px"),
     (41, "raw", ".source-count", "14px"),
@@ -431,6 +430,13 @@ def test_the_page_title_takes_the_display_role(page: str) -> None:
 def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
     declarations = _parsed("digest")[f"@media (max-width: 880px) | {key}"]
     assert [d for d in declarations if d.startswith("font-size")] == []
+
+
+def test_archive_rows_hold_their_entries_and_wrap_them_on_phones() -> None:
+    index = _parsed("index")
+    assert ".digest-arrow" not in index
+    assert ".digest-item a" not in index
+    assert "grid-column: 1 / -1" in index["@media (max-width: 720px) | .digest-item .actions"]
 
 
 def test_the_empty_archive_message_takes_the_small_role() -> None:

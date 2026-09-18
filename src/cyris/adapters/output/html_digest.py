@@ -124,6 +124,7 @@ class HtmlDigestWriter:
         template = self.env.get_template("index.html.j2")
 
         digest_pattern = re.compile(r"(\d{4}-\d{2}-\d{2})-(.+)\.html$")
+        present = set(filenames)
         digests = []
         for name in filenames:
             if name.endswith("-raw.html"):
@@ -131,7 +132,16 @@ class HtmlDigestWriter:
             match = digest_pattern.match(name)
             if match:
                 date, period = match.groups()
-                digests.append({"date": date, "period": period, "filename": name})
+                raw = f"{date}-{period}-raw.html"
+                digests.append(
+                    {
+                        "date": date,
+                        "period": period,
+                        "filename": name,
+                        # Only an issue whose raw page exists links to it: no dead entries.
+                        "raw_filename": raw if raw in present else None,
+                    }
+                )
 
         digests.sort(key=lambda d: (d["date"], d["period"]), reverse=True)
 
