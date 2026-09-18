@@ -33,6 +33,7 @@ from aiohttp import web
 from css_computed import _devtools_port, _page_socket
 
 CHECK_TIMEOUT_S = 30
+POINTERS = ("mouse", "touch")
 HEIGHT = 900
 MINIMUM_NODE = 22
 
@@ -48,9 +49,14 @@ class Check:
     """One behaviour, read from the DOM and, where something was written, the fixture.
 
     `act` performs the steps and may record observations in `ctx`; `sabotage`
-    runs after it in a self-test; `script` then asserts with `expect`. A
-    sabotage that cannot be applied through the page is a `sabotage_preload`
-    instead, installed before the page loads.
+    runs after it in a self-test; `gestures` are then sent as real browser
+    input; `script` then asserts with `expect`. A sabotage that cannot be
+    applied through the page is a `sabotage_preload` instead, installed before
+    the page loads.
+
+    A gesture step is `{"press": selector, "pointer": "mouse" | "touch"}`,
+    `{"move": dx}`, `{"release": True}` or `{"hover": selector}`; a move or a
+    release belongs to the press before it.
     """
 
     id: str
@@ -65,6 +71,20 @@ class Check:
     reload: bool = False
     setup: Callable[[Any], None] | None = None
     receipt: Callable[[Any], str | None] | None = None
+    gestures: tuple[dict, ...] = ()
+
+    def __post_init__(self) -> None:
+        pressed = False
+        for step in self.gestures:
+            keys = set(step)
+            if keys == {"press", "pointer"} and step["pointer"] in POINTERS:
+                pressed = True
+            elif keys == {"move"} and isinstance(step["move"], int) and pressed:
+                pass
+            elif keys == {"release"} and pressed:
+                pressed = False
+            elif keys != {"hover"}:
+                raise ValueError(f"{self.id}: gesture step {step} is unknown or has no press")
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -107,18 +127,30 @@ const overflow = (where) => document.documentElement.scrollWidth > viewport()
 """
 
 
-def check_expression(check: Check, sabotaged: bool, prelude: str) -> str:
-    """The page-side program: act, maybe sabotage, then assert."""
+def act_expression(check: Check, sabotaged: bool, prelude: str) -> str:
+    """The page-side program run before the gestures: act, then maybe sabotage.
+
+    What the act records in `ctx` is kept on the window for the script.
+    """
     sabotage = check.sabotage if sabotaged else ""
     return f"""(async () => {{
 {prelude}
-const ctx = {{}};
+const ctx = window.__probeCtx = {{}};
 try {{ {{ {check.act} }} }} catch (error) {{
   return JSON.stringify({{ok: false, detail: `act: ${{error.message || error}}`}});
 }}
 try {{ {{ {sabotage} }} }} catch (error) {{
   return JSON.stringify({{ok: false, sabotageError: String(error.message || error)}});
 }}
+return JSON.stringify({{ok: true}});
+}})()"""
+
+
+def script_expression(check: Check, prelude: str) -> str:
+    """The page-side program run after the gestures: assert."""
+    return f"""(async () => {{
+{prelude}
+const ctx = window.__probeCtx || {{}};
 try {{ {{ {check.script} }} }} catch (error) {{
   return JSON.stringify({{ok: false, detail: String(error.message || error)}});
 }}
@@ -164,6 +196,59 @@ await new Promise((resolve, reject) => {
   socket.addEventListener('error', reject);
 });
 const job = JSON.parse(process.env.PROBE_JOB);
+// Input goes through CDP rather than in-page events: only a real pointer is one
+// setPointerCapture accepts.
+const touch = job.gestures.some((step) => step.pointer === 'touch');
+const centre = async (selector) => {
+  const box = await evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  if (!box) throw new Error(`gesture: no element ${selector}`);
+  return box;
+};
+const mouse = (type, x, y, held) => call('Input.dispatchMouseEvent',
+  { type, x, y, button: held || type !== 'mouseMoved' ? 'left' : 'none',
+    buttons: held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
+const perform = async (gestures) => {
+  let at = null, pointer = 'mouse';
+  for (const step of gestures) {
+    if ('hover' in step) {
+      const { x, y } = await centre(step.hover);
+      await mouse('mouseMoved', x, y, false);
+    } else if ('press' in step) {
+      at = await centre(step.press);
+      pointer = step.pointer;
+      if (pointer === 'touch') {
+        await call('Input.dispatchTouchEvent',
+          { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y, id: 1 }] });
+      } else {
+        await mouse('mouseMoved', at.x, at.y, false);
+        await mouse('mousePressed', at.x, at.y, true);
+      }
+    } else if ('move' in step) {
+      const from = at.x;
+      for (let i = 1; i <= 10; i++) {
+        at = { x: from + (step.move * i) / 10, y: at.y };
+        if (pointer === 'touch') {
+          await call('Input.dispatchTouchEvent',
+            { type: 'touchMove', touchPoints: [{ x: at.x, y: at.y, id: 1 }] });
+        } else {
+          await mouse('mouseMoved', at.x, at.y, true);
+        }
+      }
+    } else if ('release' in step) {
+      if (pointer === 'touch') {
+        await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else {
+        await call('Input.dispatchMouseEvent',
+          { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+      }
+    }
+  }
+};
 await call('Page.enable');
 await call('Network.enable');
 // Fonts come from Google; the checks read layout, not type, and wait on nothing.
@@ -171,6 +256,7 @@ await call('Network.setBlockedURLs', { urls: ['*fonts.googleapis.com*', '*fonts.
 // --window-size has a ~500px floor; the emulation override reaches a phone.
 await call('Emulation.setDeviceMetricsOverride',
   { width: job.width, height: job.height, deviceScaleFactor: 1, mobile: false });
+if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
 const results = [];
 try {
   for (const url of job.urls) {
@@ -187,13 +273,23 @@ try {
       await call('Page.reload');
       await settled('window.__probeBeforeReload === undefined');
     }
-    results.push(JSON.parse(await evaluate(job.expression)));
+    let result = JSON.parse(await evaluate(job.act));
+    if (result.ok) {
+      try {
+        await perform(job.gestures);
+        result = JSON.parse(await evaluate(job.script));
+      } catch (error) {
+        result = { ok: false, detail: error.message };
+      }
+    }
+    results.push(result);
     for (const identifier of added) {
       await call('Page.removeScriptToEvaluateOnNewDocument', { identifier });
     }
-    if (!results.at(-1).ok) break;
+    if (!result.ok) break;
   }
 } finally {
+  if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: false });
   await call('Emulation.clearDeviceMetricsOverride');
 }
 process.stdout.write(JSON.stringify(results));
@@ -219,7 +315,9 @@ def build_job(check: Check, base: str, sabotaged: bool, prelude: str) -> dict:
         "height": HEIGHT,
         "preloads": preloads,
         "reload": check.reload,
-        "expression": check_expression(check, sabotaged, prelude),
+        "act": act_expression(check, sabotaged, prelude),
+        "gestures": list(check.gestures),
+        "script": script_expression(check, prelude),
     }
 
 

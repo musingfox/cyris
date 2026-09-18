@@ -603,3 +603,22 @@ def test_the_shared_probe_core_knows_no_page():
     source = Path(cdp_probe.__file__).read_text()
     for word in ("TriageServer", "FakeSettings", "providersLoaded", ".settings-nav"):
         assert word not in source, word
+
+
+DRAG = ({"press": "#c", "pointer": "mouse"}, {"move": 200}, {"release": True})
+
+
+def test_a_probe_job_carries_its_gestures_in_declared_order():
+    check = cdp_probe.Check(id="x", fixture="k", path="/p", script="", gestures=DRAG)
+    assert cdp_probe.build_job(check, "http://h", False, "")["gestures"] == list(DRAG)
+
+
+def test_a_probe_job_without_gestures_carries_none():
+    check = cdp_probe.Check(id="x", fixture="k", path="/p", script="")
+    assert cdp_probe.build_job(check, "http://h", False, "")["gestures"] == []
+
+
+@pytest.mark.parametrize("gestures", [({"fling": 1},), ({"move": 10},), ({"release": True},)])
+def test_a_gesture_step_that_is_unknown_or_has_no_press_is_refused(gestures):
+    with pytest.raises(ValueError):
+        cdp_probe.Check(id="x", fixture="k", path="/p", script="", gestures=gestures)
