@@ -1041,6 +1041,36 @@ def test_the_raw_subtitle_leaves_date_and_period_to_the_issue_bar(tmp_path):
     assert "· EVENING ·" not in raw
 
 
+@pytest.mark.parametrize(
+    ("articles", "label"),
+    [
+        (
+            [("A", "Src A"), ("B", "Src A"), ("C", "Src B")],
+            '<span class="label">All articles · 3 articles · 2 sources</span>',
+        ),
+        ([("A", "Src A")], '<span class="label">All articles · 1 article · 1 source</span>'),
+        ([], '<span class="label">All articles · 0 articles · 0 sources</span>'),
+    ],
+)
+def test_the_raw_page_head_counts_articles_and_sources(tmp_path, articles, label):
+    stored = [_stored(title, source) for title, source in articles]
+    raw = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "evening", stored)
+
+    assert label in raw
+
+
+def test_the_raw_page_opens_with_the_spec_page_head(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+
+    assert '<h1 class="display">What this run <em>judged</em></h1>' in raw
+    assert (
+        '<p class="small">Everything the run decided on, plus what is still pending.'
+        " The digest shows a selection of it.</p>"
+    ) in raw
+    assert 'class="masthead"' not in raw
+    assert 'class="subtitle"' not in raw
+
+
 def _footer(html: str) -> str:
     """Everything from the footer to the page's scripts."""
     return html[html.index('class="footer"') :].split("<script", 1)[0]

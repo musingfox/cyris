@@ -14,9 +14,7 @@
 
         {% with container_width="900px", container_relative=false, glow=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
-        {% with masthead_padding="24px 0 20px", masthead_margin="40px", masthead_rule=false,
-                  subtitle_margin="14px",
-                  display_h1=true  %}{% include "_masthead.css.j2" %}{% endwith %}
+        .page-head { display: grid; gap: var(--s-4); margin-bottom: var(--s-12); }
 
         .source-group {
             border: 1px solid var(--border);
@@ -98,10 +96,11 @@
     {% include "_site_bar.html.j2" %}
     {% with view="raw" %}{% include "_issue_bar.html.j2" %}{% endwith %}
     <div class="container">
-        <header class="masthead">
-            <h1>This run's <em>verdicts</em>, plus pending</h1>
-            <div class="subtitle">{{ total }} articles · {{ groups | length }} sources</div>
-        </header>
+        <div class="page-head">
+            <span class="label">All articles · {{ total }} article{{ "" if total == 1 else "s" }} · {{ groups | length }} source{{ "" if groups | length == 1 else "s" }}</span>
+            <h1 class="display">What this run <em>judged</em></h1>
+            <p class="small">Everything the run decided on, plus what is still pending. The digest shows a selection of it.</p>
+        </div>
 
         {% for group in groups %}
         <section class="source-group">

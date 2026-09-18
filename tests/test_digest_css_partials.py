@@ -47,7 +47,8 @@ EXPECTED_INCLUDES = {
         "_footer.css.j2",
     ),
     "digest": CSS_PARTIALS,
-    "raw": CSS_PARTIALS,
+    # The page head is §4's `.page-head` of components, so no masthead.
+    "raw": tuple(partial for partial in CSS_PARTIALS if partial != "_masthead.css.j2"),
 }
 
 STYLE_CSS = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"

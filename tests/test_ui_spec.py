@@ -527,8 +527,9 @@ def _parsed(page: str) -> dict[str, set[str] | list[str]]:
 TYPE_ROLES = [
     (1, "index digest raw", "body", "16px"),
     (2, "index digest raw", ".brand-name", "16px"),
-    (3, "index digest raw", ".subtitle", "14px"),
-    (4, "index raw", "h1", "clamp(52px, 8vw, 96px)"),
+    (3, "index digest", ".subtitle", "14px"),
+    (4, "index", "h1", "clamp(52px, 8vw, 96px)"),
+    (4, "raw", ".display", "clamp(52px, 8vw, 96px)"),
     (5, "index digest raw", ".footer", "14px"),
     (6, "index digest raw", ".btn", "14px"),
     (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
@@ -586,13 +587,28 @@ def test_the_issue_title_takes_the_issue_title_role() -> None:
     )
 
 
-@pytest.mark.parametrize("page", ["index", "raw"])
-def test_the_page_title_takes_the_display_role(page: str) -> None:
+def test_the_page_title_takes_the_display_role() -> None:
     assert {
         "font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale))",
         "line-height: 1",
         "letter-spacing: -0.03em",
-    } <= set(_parsed(page)["h1"])
+    } <= set(_parsed("index")["h1"])
+
+
+def test_the_raw_page_title_is_the_display_component() -> None:
+    assert {
+        "font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale))",
+        "line-height: 1",
+        "letter-spacing: -.03em",
+    } <= set(_parsed("raw")[".display"])
+
+
+def test_the_raw_page_head_is_the_prototype_page_head() -> None:
+    assert _parsed("raw")[".page-head"] == {
+        "display: grid",
+        "gap: var(--s-4)",
+        "margin-bottom: var(--s-12)",
+    }
 
 
 @pytest.mark.parametrize(

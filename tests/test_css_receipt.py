@@ -373,6 +373,13 @@ def test_every_probe_names_a_page_the_receipt_renders_and_at_least_one_property(
             assert properties, f"{page} | {selector}"
 
 
+def test_the_raw_probe_set_watches_the_page_head_not_the_masthead_it_replaced():
+    raw = load_probes(PROBES_PATH)["raw"]
+    assert ".page-head" in raw
+    assert ".masthead" not in raw
+    assert ".subtitle" not in raw
+
+
 def test_the_probe_set_watches_the_masthead_name_on_every_page_that_has_one():
     probes = load_probes(PROBES_PATH)
     for page in ("index", "digest", "raw"):
