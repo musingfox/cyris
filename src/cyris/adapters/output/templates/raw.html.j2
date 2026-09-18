@@ -186,6 +186,8 @@
     }
     function fly(dir) {
         card.dataset.flying = dir;
+        // Reduced motion stops every transition, so no transitionend would ever come.
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) return settle();
         card.classList.remove('dragging');
         // A card dealt in this same frame has no style yet to move from; without one no
         // transition runs, and no transitionend would ever settle the vote.

@@ -169,6 +169,15 @@ FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
 
 REDUCED_MOTION = (("prefers-reduced-motion", "reduce"),)
 
+# Installed before the page loads: the page's script is told motion is fine while
+# the browser still stops every transition, so a fly-out never ends.
+MOTION_ALLOWED = """{
+const realMatch = window.matchMedia.bind(window);
+window.matchMedia = (query) => query.includes("prefers-reduced-motion")
+  ? {matches: false, media: query, addEventListener() {}, removeEventListener() {}}
+  : realMatch(query);
+}"""
+
 RAW_PRELUDE = (
     base_prelude()
     + """
@@ -619,6 +628,33 @@ window.fetch = (input, init) => init && init.method === "POST"
             expect(moved === "none", `the card moved: ${moved}`);
         """,
         sabotage="""dropRule(".card", "(prefers-reduced-motion: reduce)");""",
+    ),
+    *(
+        Check(
+            id=check_id,
+            fixture="signed-in",
+            path=PAGE,
+            media=REDUCED_MOTION,
+            act=act,
+            gestures=gestures,
+            script="""
+                await waitFor(() => deck()[0] === "3 remaining", "the next card", 2000);
+                expect(deck()[2] === "Pending Three", `title: ${deck()[2]}`);
+            """,
+            sabotage_preload=MOTION_ALLOWED,
+        )
+        for check_id, act, gestures in (
+            (
+                "reduced-motion-advances",
+                """await pressDeck("up");""",
+                (),
+            ),
+            (
+                "reduced-motion-swipe-advances",
+                """await showView("triage");""",
+                ({"press": "#t-card", "pointer": "mouse"}, {"move": 200}, {"release": True}),
+            ),
+        )
     ),
 ]
 
