@@ -309,6 +309,28 @@ def _calls(wanted: list[dict]) -> Callable[[Fixture], str | None]:
     return receipt
 
 
+ARM_RETIRE = """
+await openRow("Hacker News");
+editorAct("retire").click();
+"""
+
+# A browser dialog would block the page, so calling one is recorded and refused.
+REFUSE_CONFIRM = """
+window.confirm = () => { window.__confirmCalled = true; throw new Error("confirm called"); };
+"""
+
+# Swallows a press on an armed Retire, so the second press does nothing.
+IGNORE_ARMED_RETIRE = """
+document.addEventListener("click", (event) => {
+  if (event.target.closest('[data-act="retire"].armed')) event.stopImmediatePropagation();
+}, true);
+"""
+
+
+def _still_listed(name: str) -> Callable[[Fixture], str | None]:
+    return lambda fixture: None if name in fixture.sources else f"{name} was retired"
+
+
 CHECKS: list[Check] = [
     Check(
         id="site-bar-current",
@@ -851,6 +873,53 @@ CHECKS: list[Check] = [
         """,
         sabotage="""noticeOf("digest").classList.remove("err");""",
         receipt=_calls([{"digest.max_featured": 7}]),
+    ),
+    Check(
+        id="retire-arms",
+        fixture="writable",
+        path="/settings#sources",
+        act=ARM_RETIRE,
+        script="""
+            const retire = editorAct("retire");
+            expect(retire.textContent === "Confirm retire", `text: ${retire.textContent}`);
+            expect(retire.classList.contains("armed"), "not armed");
+        """,
+        sabotage="""editorAct("retire").classList.remove("armed");""",
+        receipt=_still_listed("Hacker News"),
+    ),
+    Check(
+        id="retire-reverts",
+        fixture="writable",
+        path="/settings#sources",
+        act=ARM_RETIRE + "await sleep(3300);",
+        script="""
+            const retire = editorAct("retire");
+            expect(retire.textContent === "Retire", `text: ${retire.textContent}`);
+            expect(!retire.classList.contains("armed"), "still armed");
+        """,
+        sabotage="""editorAct("retire").classList.add("armed");""",
+        receipt=_still_listed("Hacker News"),
+    ),
+    Check(
+        id="retire-deletes",
+        fixture="writable",
+        path="/settings#sources",
+        preload=REFUSE_CONFIRM,
+        act="""
+            await openRow("曼報");
+            editorAct("retire").click();
+            await sleep(200);
+            editorAct("retire").click();
+            await waitFor(() => visible($("#sources-notice")), "the toolbar notice");
+        """,
+        script="""
+            expect(!window.__confirmCalled, "window.confirm was called");
+            expect(!rowNames().includes("曼報"), `rows: ${rowNames()}`);
+            const text = $("#sources-notice").textContent;
+            expect(text === "曼報 retired. Effective next run.", `notice: ${text}`);
+        """,
+        sabotage_preload=IGNORE_ARMED_RETIRE,
+        receipt=lambda fixture: "曼報 is still listed" if "曼報" in fixture.sources else None,
     ),
 ]
 

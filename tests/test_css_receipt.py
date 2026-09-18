@@ -514,6 +514,9 @@ EXPECTED_IDS = {
     "digest-posts-featured-only",
     "digest-posts-hours-only",
     "digest-partial-failure",
+    "retire-arms",
+    "retire-reverts",
+    "retire-deletes",
 }
 
 

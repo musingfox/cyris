@@ -296,8 +296,22 @@ function openEditor(name) {
     renderSources();
   });
   save.addEventListener("click", () => saveSource(ed, save));
+  // The spec's destructive confirm: the first press arms the button in place,
+  // and only a second press within three seconds retires.
+  let armTimer;
+  const disarm = () => {
+    clearTimeout(armTimer);
+    retire.classList.remove("armed");
+    retire.textContent = "Retire";
+  };
   retire.addEventListener("click", async () => {
-    if (!confirm(`Stop fetching ${s.name}?`)) return;
+    if (!retire.classList.contains("armed")) {
+      retire.classList.add("armed");
+      retire.textContent = "Confirm retire";
+      armTimer = setTimeout(disarm, 3000);
+      return;
+    }
+    disarm();
     const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
                                    retire);
     if (data) {

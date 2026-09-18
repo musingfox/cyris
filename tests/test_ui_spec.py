@@ -367,6 +367,20 @@ async def test_every_settings_scroll_asks_for_the_reduced_motion_preference(
     assert _motion_without_preference(script) == []
 
 
+def _uses_confirm(script: str) -> bool:
+    return re.search(r"\bconfirm\(", script) is not None
+
+
+def test_a_browser_confirm_dialog_is_reported() -> None:
+    assert _uses_confirm("if (!confirm(x)) return;")
+    assert not _uses_confirm('retire.textContent = "Confirm retire";')
+
+
+@pytest.mark.parametrize("path", ["/settings", "/static/settings.js"])
+async def test_settings_never_asks_the_browser_to_confirm(triage: TestClient, path: str) -> None:
+    assert not _uses_confirm(await _served(triage, path))
+
+
 SETTINGS_HASHES = ["#model", "#digest", "#notifications", "#sources"]
 
 
