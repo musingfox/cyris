@@ -214,24 +214,27 @@
     // The card follows the pointer, leans once it points somewhere, and released far
     // enough to one side votes that way; released where it was pressed, it opens the
     // article. Distances are prototype.html#raw's, the spec's reference for this card.
+    // Only the primary button drags: a touch or pen contact reports it too, and a
+    // right or middle press keeps its own meaning.
     const SWIPE_PX = 120, LEAN_PX = 40, TAP_PX = 5;
     const dirOf = (dx, min) => dx > min ? 'up' : dx < -min ? 'down' : null;
     let drag = null;
     card.addEventListener('pointerdown', (e) => {
-        if (busy) return;
-        drag = { x: e.clientX, dx: 0 };
+        if (busy || e.button !== 0) return;
+        drag = { x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
         card.setPointerCapture(e.pointerId);
         card.classList.add('dragging');
     });
     card.addEventListener('pointermove', (e) => {
         if (!drag) return;
         drag.dx = e.clientX - drag.x;
+        drag.dy = e.clientY - drag.y;
         lean(dirOf(drag.dx, LEAN_PX));
         card.style.transform = `translateX(${drag.dx}px) rotate(${drag.dx / 20}deg)`;
     });
     function endDrag(e) {
         if (!drag) return;
-        const { dx } = drag;
+        const { dx, dy } = drag;
         drag = null;
         card.classList.remove('dragging');
         const swipe = e.type === 'pointerup' && dirOf(dx, SWIPE_PX);
@@ -239,7 +242,7 @@
         card.style.transform = '';
         lean(null);
         const [row] = pool();
-        if (e.type === 'pointerup' && Math.abs(dx) < TAP_PX && row) {
+        if (e.type === 'pointerup' && Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX && row) {
             window.open(row.querySelector('a').href, '_blank', 'noopener');
         }
     }

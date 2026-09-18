@@ -683,6 +683,60 @@ window.fetch = (input, init) => init && init.method === "POST"
         receipt=_posted(),
     ),
     Check(
+        id="tap-touch-opens-article",
+        fixture="signed-in",
+        path=PAGE,
+        width=400,
+        preload=RECORD_OPEN,
+        act="""await showView("triage");""",
+        gestures=({"press": "#t-card", "pointer": "touch"}, {"release": True}),
+        script="""
+            const opened = window.__opened;
+            const wanted = [["https://example.test/pending-two", "_blank", "noopener"]];
+            expect(same(opened, wanted), `opened: ${JSON.stringify(opened)}`);
+        """,
+        sabotage="""$("#t-card").style.pointerEvents = "none";""",
+        receipt=_posted(),
+    ),
+    *(
+        Check(
+            id=check_id,
+            fixture="signed-in",
+            path=PAGE,
+            preload=RECORD_OPEN,
+            act="""await showView("triage");""",
+            gestures=gestures,
+            script="""
+                await sleep(200);
+                expect(same(window.__opened, []), `opened: ${JSON.stringify(window.__opened)}`);
+                expect(deck()[0] === "4 remaining", `count: ${deck()[0]}`);
+            """,
+            sabotage=sabotage,
+            receipt=_posted(),
+        )
+        for check_id, gestures, sabotage in (
+            *(
+                (
+                    f"{button}-click-no-open",
+                    ({"press": "#t-card", "pointer": "mouse", "button": button}, {"release": True}),
+                    # The page can no longer tell which button was pressed.
+                    """Object.defineProperty(MouseEvent.prototype, "button", {get: () => 0});""",
+                )
+                for button in ("right", "middle")
+            ),
+            (
+                "vertical-drag-no-open",
+                (
+                    {"press": "#t-card", "pointer": "mouse"},
+                    {"move": 0, "dy": 200},
+                    {"release": True},
+                ),
+                # The page can no longer see vertical movement.
+                """Object.defineProperty(MouseEvent.prototype, "clientY", {get: () => 0});""",
+            ),
+        )
+    ),
+    Check(
         id="reduced-motion-still",
         fixture="signed-in",
         path=PAGE,

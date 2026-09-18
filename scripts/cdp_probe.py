@@ -34,6 +34,7 @@ from css_computed import _devtools_port, _page_socket
 
 CHECK_TIMEOUT_S = 30
 POINTERS = ("mouse", "touch")
+MOUSE_BUTTONS = ("left", "middle", "right")
 HEIGHT = 900
 MINIMUM_NODE = 22
 
@@ -59,7 +60,9 @@ class Check:
 
     A gesture step is `{"press": selector, "pointer": "mouse" | "touch"}`,
     `{"move": dx}`, `{"release": True}` or `{"hover": selector}`; a move or a
-    release belongs to the press before it.
+    release belongs to the press before it. A mouse press may name its
+    `"button"` (`MOUSE_BUTTONS`, default left), and a move may add a vertical
+    `"dy"`.
     """
 
     id: str
@@ -81,9 +84,18 @@ class Check:
         pressed = False
         for step in self.gestures:
             keys = set(step)
-            if keys == {"press", "pointer"} and step["pointer"] in POINTERS:
+            if (
+                keys - {"button"} == {"press", "pointer"}
+                and step["pointer"] in POINTERS
+                and step.get("button", "left") in MOUSE_BUTTONS
+                and ("button" not in keys or step["pointer"] == "mouse")
+            ):
                 pressed = True
-            elif keys == {"move"} and isinstance(step["move"], int) and pressed:
+            elif (
+                keys in ({"move"}, {"move", "dy"})
+                and all(isinstance(value, int) for value in step.values())
+                and pressed
+            ):
                 pass
             elif keys == {"release"} and pressed:
                 pressed = False
@@ -214,19 +226,20 @@ const centre = async (selector) => {
   if (!box) throw new Error(`gesture: no element ${selector}`);
   return box;
 };
-const mouse = (type, x, y, held) => call('Input.dispatchMouseEvent',
-  { type, x, y, button: held || type !== 'mouseMoved' ? 'left' : 'none',
-    buttons: held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
+const BUTTONS = { left: 1, right: 2, middle: 4 };
+const mouse = (type, x, y, held, button = 'left') => call('Input.dispatchMouseEvent',
+  { type, x, y, button: held || type !== 'mouseMoved' ? button : 'none',
+    buttons: held ? BUTTONS[button] : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
 const touchEvent = (type, touchPoints) => call('Input.dispatchTouchEvent', { type, touchPoints });
 // Keyed by the POINTERS a Check accepts.
 const input = {
   mouse: {
-    press: async ({ x, y }) => {
+    press: async ({ x, y }, button) => {
       await mouse('mouseMoved', x, y, false);
-      await mouse('mousePressed', x, y, true);
+      await mouse('mousePressed', x, y, true, button);
     },
-    move: ({ x, y }) => mouse('mouseMoved', x, y, true),
-    release: ({ x, y }) => mouse('mouseReleased', x, y, false),
+    move: ({ x, y }, button) => mouse('mouseMoved', x, y, true, button),
+    release: ({ x, y }, button) => mouse('mouseReleased', x, y, false, button),
   },
   touch: {
     press: ({ x, y }) => touchEvent('touchStart', [{ x, y, id: 1 }]),
@@ -235,7 +248,7 @@ const input = {
   },
 };
 const perform = async (gestures) => {
-  let at = null, pointer = input.mouse;
+  let at = null, pointer = input.mouse, button = 'left';
   for (const step of gestures) {
     if ('hover' in step) {
       const { x, y } = await centre(step.hover);
@@ -243,15 +256,16 @@ const perform = async (gestures) => {
     } else if ('press' in step) {
       at = await centre(step.press);
       pointer = input[step.pointer];
-      await pointer.press(at);
+      button = step.button || 'left';
+      await pointer.press(at, button);
     } else if ('move' in step) {
-      const from = at.x;
+      const from = at, dy = step.dy || 0;
       for (let i = 1; i <= 10; i++) {
-        at = { x: from + (step.move * i) / 10, y: at.y };
-        await pointer.move(at);
+        at = { x: from.x + (step.move * i) / 10, y: from.y + (dy * i) / 10 };
+        await pointer.move(at, button);
       }
     } else if ('release' in step) {
-      await pointer.release(at);
+      await pointer.release(at, button);
     }
   }
 };

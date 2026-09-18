@@ -656,7 +656,28 @@ def test_a_probe_job_without_gestures_carries_none():
     assert cdp_probe.build_job(check, "http://h", False, "")["gestures"] == []
 
 
-@pytest.mark.parametrize("gestures", [({"fling": 1},), ({"move": 10},), ({"release": True},)])
+def test_a_probe_job_carries_a_mouse_button_and_a_vertical_move():
+    gestures = (
+        {"press": "#c", "pointer": "mouse", "button": "right"},
+        {"move": 0, "dy": 60},
+        {"release": True},
+    )
+    check = cdp_probe.Check(id="x", fixture="k", path="/p", script="", gestures=gestures)
+    assert cdp_probe.build_job(check, "http://h", False, "")["gestures"] == list(gestures)
+
+
+@pytest.mark.parametrize(
+    "gestures",
+    [
+        ({"fling": 1},),
+        ({"move": 10},),
+        ({"release": True},),
+        ({"press": "#c", "pointer": "touch", "button": "right"},),
+        ({"press": "#c", "pointer": "mouse", "button": "back"},),
+        ({"press": "#c", "pointer": "mouse"}, {"move": 0, "dy": "60"}),
+        ({"press": "#c", "pointer": "mouse"}, {"dy": 60}),
+    ],
+)
 def test_a_gesture_step_that_is_unknown_or_has_no_press_is_refused(gestures):
     with pytest.raises(ValueError):
         cdp_probe.Check(id="x", fixture="k", path="/p", script="", gestures=gestures)
@@ -714,6 +735,10 @@ EXPECTED_RAW_IDS = {
     "lean-down-drag",
     "lean-button-hover",
     "tap-opens-article",
+    "tap-touch-opens-article",
+    "right-click-no-open",
+    "middle-click-no-open",
+    "vertical-drag-no-open",
     "reduced-motion-still",
     "reduced-motion-advances",
     "reduced-motion-swipe-advances",
