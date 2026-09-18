@@ -1,6 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
+updated: 2026-09-18
 ---
 
 # cyris 介面設計規範
@@ -9,7 +10,7 @@ accepted: 2026-09-17
 （archive、digest、raw）、`src/cyris/entrypoints/static/`（triage、settings），以及之後新增的頁面。
 
 - **規範是這份文件。** `docs/design/prototype.html` 是它的參考實作，用瀏覽器直接打開：
-  `#system` 是 token 與元件總覽，`#archive`、`#digest`、`#raw`、`#triage`、`#settings/model`
+  `#system` 是 token 與元件總覽，`#archive`、`#digest`、`#raw`（含 triage view）、`#settings/model`
   是各頁。兩者不一致時以這份文件為準，並在同一次修改裡把原型改掉。
 - **程式碼還沒有跟上。** §8 列出現況差距與落地順序。落地完成之前，碰到哪個元件就把哪個元件改成
   規範的樣子，不要照著現有的舊樣式再寫一份。
@@ -17,7 +18,7 @@ accepted: 2026-09-17
 
 ## 1. 原則
 
-1. **一套語言，兩種密度。** 閱讀面（archive、digest、raw）寬鬆，操作面（triage、settings）緊湊。
+1. **一套語言，兩種密度。** 閱讀面（archive、digest、raw）寬鬆，操作面（raw 的 triage view、settings）緊湊。
    兩者共用 token 與元件，只差間距的選段。
 2. **分層靠底色與細線，不靠陰影。** 由深到淺是 `--bg` → `--bg-elev` → `--surface` → `--surface-2`，
    物件邊界用 1px `--border`。唯一的光暈是品牌方塊。
@@ -72,7 +73,9 @@ accepted: 2026-09-17
 ```
 
 - **單位一律 px。** 不用 rem 表示尺寸；em 只用在字距。
-- **斷點只有一個：720px。** 容器寬度：archive 與 raw 960px，digest 與 settings 1240px。
+- **斷點只有一個：720px。** 容器寬度：archive 與 raw 960px，digest 與 settings 1240px。720px 以上各寬度的
+  版面問題（例如 digest 在 880–1160px 的欄數死區）用流體寫法解決，例如 `auto-fit`、`minmax`、`clamp`，
+  不新增第二個斷點。
 - **允許的字面值例外：** 品牌方塊光暈 `rgba(198,255,61,.45)`、site bar 半透明底 `rgba(7,7,10,.88)`、
   primary 按鈕 hover 底 `#d4ff66`、圓點的 `border-radius: 50%`。新增例外要寫進這一條。
 - **digest 內文的間距暫不搬到刻度上。** 它現有的 14/18/22/28/36/44/56px 等值維持原樣，直到那個區塊
@@ -105,13 +108,14 @@ accepted: 2026-09-17
 
 | 元件 | 規格 |
 |---|---|
-| **site bar** | 全寬、sticky、高 `--bar-h`、底部 1px `--border`。左邊是品牌方塊（12px `--accent`，pulse 動畫）加 `CYRIS`；右邊是 label 角色的連結 `Archive` · `Triage` · `Settings`，間距 `--s-5`。目前所在頁為 `--text` 加 1px `--accent` 底線。`Triage` 與 `Settings` 沿用 `/api/vote` 探測，未授權時隱藏。手機寬度隱藏 `CYRIS` 字樣 |
+| **site bar** | 全寬、sticky、高 `--bar-h`、底部 1px `--border`。左邊是品牌方塊（12px `--accent`，pulse 動畫）加 `CYRIS`；右邊是 label 角色的連結 `Archive` · `Settings`，間距 `--s-5`。目前所在頁為 `--text` 加 1px `--accent` 底線。`Settings` 沿用 `/api/vote` 探測，未授權時隱藏。手機寬度隱藏 `CYRIS` 字樣 |
 | **issue bar** | digest 與 raw 共用，位於 site bar 下方，`--bg-elev` 底。左邊是日期（data）與時段（label），右邊是分段控制 `Digest` / `All articles`。兩者是同一期的兩個檢視 |
 | **分段控制** | 外框 1px `--border-strong`、`--r-control`、格間 1px 分隔線；每格高 44px、左右 `--s-4`、label 角色、`--text-dim`。選中：`--surface-2` 底、`--accent` 字、2px `--accent` 底線。連結用 `aria-current="page"`，切換鈕用 `aria-pressed` |
 | **按鈕** | 高 44px、左右 `--s-5`、label 角色、`--r-control`。**primary**：`--accent` 底、`--bg` 字。**secondary**：`--surface-2` 底、`--border-strong` 框、`--text-dim` 字，hover 字變 `--text`。**danger**：透明底、`--warn` 字與框，hover 為 `--warn-tint` 底。小尺寸高 34px、左右 `--s-2`、字距 0.06em。disabled 一律 opacity .4 |
 | **輸入框 / 下拉** | 高 48px、左右 `--s-4`、`--bg-elev` 底、1px `--border-strong` 框、`--r-control`、Geist 18px。focus 時框變 `--accent`；驗證失敗時框變 `--warn`，下方接 notice |
 | **欄位** | 由上而下是 label 角色的欄位名、控制項、small 角色的說明，間距 `--s-2`。超過一句的說明收進 `<details>`，摘要文字為 `More` |
 | **選項清單** | 單選的多個選項（例如 provider）：`--bg-elev` 底、1px `--border` 框、`--r-control`；每列上下 `--s-3`、左右 `--s-4`、底線分隔、hover `--surface`。右側用 label 角色表示狀態；不可選的列 opacity .5 |
+| **頭版卡片** | archive 最新一期專用。`--surface` 底、1px `--border-strong` 框、方角、內距 `--s-6`。由上而下：`--accent` 的 `Latest` label 加日期（data）與時段（label）；當期第一篇的標題（title 角色）；篇數（data）與主題 pill；兩個 secondary 小按鈕 `Digest` 與 `All articles`。沒有資料的欄位直接省略，不顯示佔位字 |
 | **面板** | `--bg-elev` 底、1px `--border` 框、方角。可選的頭列：`--surface` 底、底線、上下 `--s-3` 左右 `--s-5`，左放標題、右放數量或動作。相鄰面板間距 `--s-5` |
 | **列表列 / 表格列** | 上下 `--s-3`、左右 `--s-5`、底線分隔、hover `--surface`。表頭用 label 角色、`--surface` 底。表格放在自己的 `overflow-x: auto` 容器裡 |
 | **pill** | Geist Mono 14px、`2px 10px`、1px `--border-strong` 框、`--surface-2` 底、`--r-tag`。score 變體為 `--accent` 字、`--accent-dim` 框、`--accent-tint` 底 |
@@ -134,12 +138,15 @@ accepted: 2026-09-17
 
 ```
 Archive (/) ──► 一期 ─┬─ Digest       ◄── Discord 通知的連結落在這裡
-                      └─ All articles (raw)
-Triage (/static/index.html)、Settings (/settings)：site bar 上，授權後才出現
+                      └─ All articles (raw) ─┬─ List（預設）
+                                             └─ Triage（授權後才出現）
+Settings (/settings)：site bar 上，授權後才出現
 ```
 
 - 所有頁面頂部都有 site bar；digest 與 raw 另有 issue bar。導覽不放在頁尾。
-- archive 每一列有 `Digest` 與 `All articles` 兩個入口；第一列加上 `--accent` 的 `Latest` label。
+- archive 的頭版卡片與每一列都有 `Digest` 與 `All articles` 兩個入口。
+- 沒有獨立的 triage 頁。判定文章在 raw 的 triage view 做，`/static/index.html` 的 deck 退場
+  （`triage-raw-list-merge`）。
 - 不做上一期與下一期。使用情境是當天讀完當天那期。
 - 返回連結必須指向實際存在的路徑。`/triage` 在正式環境是 404。
 
@@ -147,8 +154,14 @@ Triage (/static/index.html)、Settings (/settings)：site bar 上，授權後才
 
 ### archive
 
-page head（label、display、small 說明）加一個面板，每期一列：日期、時段（label）、`Latest`、
-兩個 secondary 小按鈕。手機寬度時兩個按鈕換到下一行。
+page head（label、display、small 說明）之下，最新一期是頭版卡片，其餘期數依年月分成多個面板。
+面板頭列左邊是年月（data），右邊是期數。每期一列：日期、時段（label）、篇數與主題（small）、
+兩個 secondary 小按鈕；手機寬度時兩個按鈕換到下一行。
+
+- 每一期都要列出，不截斷、不分頁、不摺疊，因為 Pages 的復原機制靠首頁列出的每一期重建。
+- 期別直接印標籤原文，不做顏色編碼，版面不假設一天只有兩期。同一天第二期以後用一個與標籤無關的
+  結構訊號區分，形式在實作時依真實資料決定。
+- 資料來源與取捨記在 `docs/milestones/digest-archive-index-layout.md`；斷點以本文件 §2 為準。
 
 ### digest
 
@@ -156,15 +169,18 @@ page head（label、display、small 說明）加一個面板，每期一列：�
 
 ### raw
 
-page head 的 label 寫出文章數與來源數。每個來源一個面板；每列依序是狀態字、分數（data）、
-標題連結、投票小按鈕。手機寬度時標題換到下一行。
+page head 的 label 寫出文章數與來源數，下方是分段控制 `List` / `Triage`，預設 `List`。`Triage`
+沿用 `/api/vote` 探測，未授權時整個分段控制隱藏，頁面只剩 list。兩個 view 共用同一份資料，
+切換不重新載入。
 
-### triage
-
-site bar 與其他頁相同。上方是分段控制 `Pending` / `Accepted` / `Rejected`（附數量）與進度 label。
-卡片方角、`--surface` 底、1px `--border-strong` 框、不用陰影，向 accept 傾斜時框變 `--accent`。
-下方並排 danger `Reject` 與 primary `Accept` 兩個高 56px 的按鈕；復原用 notice 加 secondary
-小按鈕。滑動手勢與鍵盤操作不變。
+- **list view：** 每個來源一個面板；每列依序是狀態字、分數（data）、標題連結、投票小按鈕。
+  手機寬度時標題換到下一行。
+- **triage view：** 一次一張卡片，卡面是來源（label）與標題（title 角色，30px）。卡片方角、
+  `--surface` 底、1px `--border-strong` 框、不用陰影；向 up 傾斜時框變 `--accent`，向 down 傾斜時
+  框變 `--warn`。左滑 down、右滑 up、點擊在新分頁開原文。下方並排 danger `Down` 與 primary `Up`
+  兩個高 56px 的按鈕，補足沒有觸控的桌機；上方以 label 顯示 `N remaining`。
+- 已投的文章在兩個 view 都看得出狀態，投票走既有的 promote Worker，不新增後端。
+- 拖曳與飛出是全站唯一用 transform 的動作，reduced-motion 下取消。
 
 ### settings
 
@@ -211,8 +227,12 @@ site bar 與其他頁相同。上方是分段控制 `Pending` / `Accepted` / `Re
 1. §2 token、§3 字級、focus 與 reduced-motion、刪除兩個硬寫顏色，並把 CSS 比對測試擴大到元件（`ui-spec-tokens-and-type`）
 2. site bar 與 issue bar 上 archive、digest、raw；archive 列加入兩個入口；頁尾導覽移除（`ui-site-bar-and-issue-bar`）
 3. settings 依 §6 重做（`settings-page-layout`）
-4. triage 依 §6 對齊（`ui-triage-deck-conformance`；若 `raw-page-triage-view` 決定讓 deck 退場則取消）
+4. raw 加上 triage view（`raw-page-triage-view`），之後刪掉 deck（`triage-raw-list-merge`）
 5. `/api/settings` 逐鍵回傳值的來源，settings 顯示來源 pill（`settings-value-origin-per-key`）
+6. archive 改成頭版卡片加年月分段（`digest-index-archive-layout`）
+7. digest 內文的層級、`.meta` 與寬度死區，內文間距在這一步搬上刻度（`digest-issue-page-layout`）
+
+deck 不做對齊。2026-09-01 已決定它退場，對齊一個要刪的頁面沒有價值。
 
 ## 9. 改介面前的檢查清單
 

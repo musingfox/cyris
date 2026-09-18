@@ -11,6 +11,10 @@ depends: [digest-shared-css-partial]
 收斂成一份 Jinja partial，這張票才動得了。frontmatter 的 `depends` 指的是那張**票**，
 不是另一個里程碑；它沒有自己的里程碑檔案。
 
+> 2026-09-18：這個版面已寫進 `docs/design/ui-language.md` §4（頭版卡片）與 §6 archive。元件、
+> 間距與斷點以規範為準，下文「收斂為單一個 640px」由規範的 720px 取代；資料來源與不截斷的約束
+> 仍以本文為準。
+
 ## 這個里程碑定下什麼
 
 digest 封存首頁（`src/cyris/adapters/output/templates/index.html.j2`）從一疊等寬無層級的列，

@@ -65,6 +65,7 @@ button, input, select { font: inherit; color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  .card { transform: none !important; }
 }
 
 /* ---- roles ---- */
@@ -191,9 +192,15 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---- archive ---- */
 .archive-row { grid-template-columns: 170px 110px 1fr auto; }
-.archive-row .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
-.archive-row .actions { display: flex; gap: var(--s-2); }
+.archive-row .date, .front-card .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
+.archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
 .latest { color: var(--accent); }
+.front-card {
+  background: var(--surface); border: 1px solid var(--border-strong); padding: var(--s-6);
+  display: grid; gap: var(--s-4); margin-bottom: var(--s-5);
+}
+.front-card .line { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline; }
+.front-card h2 { font-weight: 600; font-size: calc(22px * var(--type-scale)); line-height: 1.3; text-wrap: balance; }
 
 /* ---- digest excerpt ---- */
 .digest-head { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); }
@@ -218,6 +225,7 @@ button, input, select { font: inherit; color: inherit; }
 .raw-row a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .raw-row .score { font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); color: var(--text-dim); text-align: right; }
 .votes { display: inline-flex; gap: var(--s-1); }
+.page-head .seg { justify-self: start; }
 
 /* ---- settings ---- */
 .settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-12); align-items: start; }
@@ -303,33 +311,24 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 .fake-focus { outline: 1px solid var(--accent); outline-offset: 2px; }
 .input.fake-focus { outline: none; border-color: var(--accent); }
 
-/* ---- triage deck ---- */
+/* ---- raw: triage view ---- */
 .deck-wrap { max-width: 600px; margin: 0 auto; display: grid; gap: var(--s-6); }
-.deck-top { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
-.seg .count { margin-left: var(--s-2); color: var(--text-faint); letter-spacing: .04em; }
-.seg [aria-pressed="true"] .count { color: var(--accent-dim); }
-.deck { position: relative; height: 500px; }
 .card {
-  position: absolute; inset: 0; background: var(--surface); border: 1px solid var(--border-strong);
-  padding: var(--s-6); display: grid; grid-template-rows: auto auto 1fr auto; gap: var(--s-4);
-  cursor: grab; transition: border-color var(--t-fast);
+  min-height: 320px; background: var(--surface); border: 1px solid var(--border-strong);
+  padding: var(--s-6); display: grid; align-content: start; gap: var(--s-4);
+  cursor: grab; touch-action: pan-y; user-select: none;
+  transition: border-color var(--t-fast), transform var(--t-fast);
 }
-.card.behind { transform: translate(8px, 8px); background: var(--bg-elev); border-color: var(--border); z-index: 0; cursor: default; }
-.card.front { z-index: 1; }
-.card.front:hover { border-color: var(--text-faint); }
-.card.lean-right { border-color: var(--accent); }
-.card-meta { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
+.card.dragging { cursor: grabbing; transition: border-color var(--t-fast); }
+.card:hover { border-color: var(--text-faint); }
+.card.lean-up { border-color: var(--accent); }
+.card.lean-down { border-color: var(--warn); }
 .card h2 { font-weight: 600; font-size: calc(30px * var(--type-scale)); line-height: 1.3; letter-spacing: -.015em; text-wrap: balance; }
-.card p { font-size: calc(20px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); }
-.card-foot { display: flex; justify-content: space-between; align-items: center; padding-top: var(--s-4); border-top: 1px dashed var(--border-strong); }
 .deck-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
 .deck-actions .btn { justify-content: center; height: 56px; }
-.undo { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); }
-.kbd { font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); padding: 1px 6px; border: 1px solid var(--border-strong); border-radius: var(--r-control); color: var(--text-faint); }
 
 @media (max-width: 720px) {
   .type-row { grid-template-columns: 1fr; row-gap: var(--s-2); }
-  .deck { height: 560px; }
 }
 
 /* ---- prototype chrome ---- */
@@ -348,7 +347,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
   .brand-name { display: none; }
   .page { padding-top: var(--s-8); }
   .archive-row { grid-template-columns: 1fr auto; row-gap: var(--s-2); }
-  .archive-row .actions { grid-column: 1 / -1; }
+  .archive-row .small, .archive-row .actions { grid-column: 1 / -1; }
   .digest-head { grid-template-columns: 1fr; gap: var(--s-6); }
   .lead { padding: var(--s-6) var(--s-5); }
   .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
@@ -366,8 +365,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
 <div class="proto-strip">
   <span>PROTOTYPE · sample data ·</span>
-  <a href="#system">system</a><a href="#archive">archive</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a><a href="#triage">triage</a>
-  <label><input type="checkbox" id="authorized" checked> signed in (shows Triage, Settings, votes)</label>
+  <a href="#system">system</a><a href="#archive">archive</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a>
+  <label><input type="checkbox" id="authorized" checked> signed in (shows Settings, votes, List/Triage)</label>
 </div>
 
 <header class="site-bar">
@@ -375,7 +374,6 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
     <a class="brand" href="#archive"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></a>
     <nav class="site-nav" aria-label="Site">
       <a class="label" href="#archive" data-nav="archive">Archive</a>
-      <a class="label gated" href="#triage" data-nav="triage">Triage</a>
       <a class="label gated" href="#settings/model" data-nav="settings">Settings</a>
     </nav>
   </div>
@@ -389,8 +387,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
       <h1 class="display">Every <em>issue</em></h1>
       <p class="small">Newest first. Each issue has the digest and the full list of articles it judged.</p>
     </div>
-    <div class="panel" id="archive-list"></div>
-    <div class="footer">// cyris · 48 issues</div>
+    <div id="archive-list"></div>
+    <div class="footer" id="archive-footer"></div>
   </main>
 </section>
 
@@ -445,8 +443,24 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
       <span class="label">All articles · 214 articles · 31 sources</span>
       <h1 class="display">What this run <em>judged</em></h1>
       <p class="small">Everything the run decided on, plus what is still pending. The digest shows a selection of it.</p>
+      <div class="seg gated" role="group" aria-label="Article view" id="raw-views">
+        <button type="button" data-raw-view="list" aria-pressed="true">List</button>
+        <button type="button" data-raw-view="triage" aria-pressed="false">Triage</button>
+      </div>
     </div>
     <div id="raw-groups"></div>
+    <div class="deck-wrap" id="raw-triage" hidden>
+      <span class="label" id="t-remaining"></span>
+      <article class="card" id="t-card">
+        <span class="label" id="t-source"></span>
+        <h2 id="t-title"></h2>
+      </article>
+      <div class="deck-actions" id="t-actions">
+        <button class="btn danger" type="button" id="t-down">Down</button>
+        <button class="btn primary" type="button" id="t-up">Up</button>
+      </div>
+      <p class="small">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
+    </div>
     <div class="footer">// cyris</div>
   </main>
 </section>
@@ -457,7 +471,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
     <div class="page-head">
       <span class="label">Design language</span>
       <h1 class="display">One system, <em>two densities</em></h1>
-      <p class="small" style="max-width:var(--measure)">The digest is the reference. Archive, digest and raw read at a loose density; triage and settings operate at a tight one. Same tokens, same components: rounded controls inside square surfaces. Browse the pages from the bar above.</p>
+      <p class="small" style="max-width:var(--measure)">The digest is the reference. Archive, digest and raw read at a loose density; the raw page's triage view and settings operate at a tight one. Same tokens, same components: rounded controls inside square surfaces. Browse the pages from the bar above.</p>
     </div>
 
     <div class="sys-section">
@@ -520,37 +534,6 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
           <div class="notice">Verified with gemini. Applies from the next run.</div>
         </div>
       </div>
-    </div>
-  </main>
-</section>
-
-<!-- ============ TRIAGE ============ -->
-<section data-view="triage" hidden>
-  <main class="page">
-    <div class="deck-wrap">
-      <div class="deck-top">
-        <div class="seg" role="group" aria-label="Triage state">
-          <button type="button" aria-pressed="true">Pending<span class="count">12</span></button>
-          <button type="button" aria-pressed="false">Accepted<span class="count">340</span></button>
-          <button type="button" aria-pressed="false">Rejected<span class="count">911</span></button>
-        </div>
-        <span class="label">3 / 12</span>
-      </div>
-      <div class="deck">
-        <article class="card behind" aria-hidden="true"></article>
-        <article class="card front" id="triage-card">
-          <div class="card-meta"><span class="pill score">0.71</span><span class="label">Simon Willison</span><span class="label">· 2h</span></div>
-          <h2>Notes on the new sqlite-vec release</h2>
-          <p>Vector search inside SQLite now supports metadata filtering and partition keys, which removes the main reason to reach for a separate vector store in small projects.</p>
-          <div class="card-foot"><span class="label">simonwillison.net ↗</span><span class="label">ai · tools</span></div>
-        </article>
-      </div>
-      <div class="deck-actions">
-        <button class="btn danger" type="button" id="t-reject">← Reject <span class="kbd">←</span></button>
-        <button class="btn primary" type="button" id="t-accept">Accept → <span class="kbd" style="color:var(--bg);border-color:var(--bg)">→</span></button>
-      </div>
-      <div class="notice undo" id="t-undo" hidden><span>Rejected “Notes on the new sqlite-vec release”.</span><button class="btn secondary sm" type="button">Undo</button></div>
-      <p class="small">Swipe or use the arrow keys. The card borders green while it leans toward accept.</p>
     </div>
   </main>
 </section>
@@ -709,12 +692,19 @@ const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0
 
 /* ---- sample data ---- */
 const issues = [
-  ["2026-09-17", "morning"], ["2026-09-16", "evening"], ["2026-09-16", "morning"],
-  ["2026-09-15", "evening"], ["2026-09-15", "morning"], ["2026-09-14", "evening"],
+  {date: "2026-09-17", period: "morning", count: 22, topics: ["ai", "infra", "business"], lead: "Cloudflare Containers 進入 GA，冷啟動降到兩秒內"},
+  {date: "2026-09-16", period: "evening", count: 18, topics: ["ai", "tools"]},
+  {date: "2026-09-16", period: "morning", count: 25, topics: ["news", "tech"]},
+  {date: "2026-09-15", period: "evening", count: 16, topics: ["business"]},
+  {date: "2026-09-02", period: "morning", count: 21, topics: ["infra", "ai"]},
+  {date: "2026-09-01", period: "evening", count: 19, topics: ["tech"]},
+  {date: "2026-08-31", period: "evening", count: 17, topics: ["ai", "business"]},
+  {date: "2026-08-31", period: "morning", count: 23, topics: ["news"]},
+  {date: "2026-08-30", period: "morning", count: 20, topics: ["tools", "infra"]},
 ];
 const rawGroups = [
   ["Simon Willison", [["accepted", .91, "Structured outputs are finally boring"], ["pending", null, "Notes on the new sqlite-vec release"], ["rejected", .22, "Weeknotes: a quiet week"]]],
-  ["曼報", [["accepted", .84, "Nvidia 的護城河真的在 CUDA 嗎"], ["rejected", .31, "本週精選連結"]]],
+  ["曼報", [["accepted", .84, "Nvidia 的護城河真的在 CUDA 嗎"], ["pending", null, "台積電的定價權還剩多少"], ["rejected", .31, "本週精選連結"]]],
   ["Hacker News", [["accepted", .77, "Show HN: A 400-line Datalog in Rust"], ["rejected", .12, "Ask HN: Who is hiring? (September)"], ["pending", null, "The case against microservices, again"]]],
 ];
 let sources = [
@@ -726,26 +716,137 @@ let sources = [
 ];
 
 /* ---- archive ---- */
-$("#archive-list").innerHTML = issues.map(([d, p], i) => `
-  <div class="row archive-row">
-    <span class="date">${d}</span>
-    <span class="label">${p}</span>
-    <span class="label latest">${i === 0 ? "Latest" : ""}</span>
-    <span class="actions"><a class="btn secondary sm" href="#digest">Digest →</a><a class="btn secondary sm" href="#raw">All articles</a></span>
-  </div>`).join("");
+const issueActions = `<span class="actions"><a class="btn secondary sm" href="#digest">Digest</a><a class="btn secondary sm" href="#raw">All articles</a></span>`;
+const [latest, ...older] = issues;
+const months = Map.groupBy(older, (i) => i.date.slice(0, 7));
+$("#archive-list").innerHTML = `
+  <article class="front-card">
+    <div class="line"><span class="label latest">Latest</span><span class="date">${latest.date}</span><span class="label">${latest.period}</span></div>
+    ${latest.lead ? `<h2>${esc(latest.lead)}</h2>` : ""}
+    ${latest.count ? `<div class="line"><span class="data">${latest.count} articles</span>${latest.topics.map((t) => `<span class="pill">${esc(t)}</span>`).join("")}</div>` : ""}
+    ${issueActions}
+  </article>
+  ${[...months].map(([month, list]) => `
+    <section class="panel">
+      <div class="panel-head"><span class="data">${month}</span><span class="label">${list.length} issues</span></div>
+      ${list.map((i) => `
+        <div class="row archive-row">
+          <span class="date">${i.date}</span>
+          <span class="label">${i.period}</span>
+          <span class="small">${i.count} articles · ${esc(i.topics.join(", "))}</span>
+          ${issueActions}
+        </div>`).join("")}
+    </section>`).join("")}`;
+$("#archive-footer").textContent = `// cyris · ${issues.length} issues`;
 
-/* ---- raw ---- */
-$("#raw-groups").innerHTML = rawGroups.map(([name, arts]) => `
+/* ---- raw: one data set behind both views ---- */
+const articles = rawGroups.flatMap(([source, arts]) => arts.map(([state, score, title]) => ({source, state, score, title})));
+function renderRaw() {
+  $("#raw-groups").innerHTML = rawGroups.map(([name]) => {
+    const arts = articles.filter((a) => a.source === name);
+    return `
   <section class="panel">
     <div class="panel-head"><span style="font-weight:600;font-size: calc(20px * var(--type-scale))">${esc(name)}</span><span class="label">${arts.length}</span></div>
-    ${arts.map(([st, sc, t]) => `
+    ${arts.map((a) => `
       <div class="row raw-row">
-        <span class="state ${st}">${st}</span>
-        <span class="score">${sc == null ? "—" : sc.toFixed(2)}</span>
-        <a href="#raw">${esc(t)}</a>
-        <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+        <span class="state ${a.state}">${a.state}</span>
+        <span class="score">${a.score == null ? "—" : a.score.toFixed(2)}</span>
+        <a href="#raw">${esc(a.title)}</a>
+        <span class="votes gated"><button class="btn secondary sm" title="More like this" data-vote="up" data-i="${articles.indexOf(a)}">↑</button><button class="btn secondary sm" title="Less like this" data-vote="down" data-i="${articles.indexOf(a)}">↓</button></span>
       </div>`).join("")}
-  </section>`).join("");
+  </section>`;
+  }).join("");
+  applyAuth();
+}
+const pending = () => articles.filter((a) => a.state === "pending");
+function renderDeck() {
+  const [next] = pending();
+  $("#t-remaining").textContent = `${pending().length} remaining`;
+  $("#t-card").hidden = $("#t-actions").hidden = !next;
+  if (!next) return;
+  $("#t-source").textContent = next.source;
+  $("#t-title").textContent = next.title;
+}
+function vote(article, dir) {
+  article.state = dir === "up" ? "accepted" : "rejected";
+  renderRaw();
+  renderDeck();
+}
+$("#raw-groups").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-vote]");
+  if (b) vote(articles[b.dataset.i], b.dataset.vote);
+});
+function setRawView(view) {
+  $$("[data-raw-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.rawView === view)));
+  $("#raw-groups").hidden = view !== "list";
+  $("#raw-triage").hidden = view !== "triage";
+}
+$$("[data-raw-view]").forEach((b) => b.onclick = () => setRawView(b.dataset.rawView));
+
+/* ---- raw: triage card. Drag and fly-out are the only transforms; reduced motion drops them. ---- */
+const card = $("#t-card");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const SWIPE_PX = 120, LEAN_PX = 40, TAP_PX = 5;
+const lean = (dir) => {
+  card.classList.toggle("lean-up", dir === "up");
+  card.classList.toggle("lean-down", dir === "down");
+};
+const dirOf = (dx, min) => dx > min ? "up" : dx < -min ? "down" : null;
+function settle() {
+  const dir = card.dataset.flying;
+  delete card.dataset.flying;
+  card.classList.add("dragging");
+  card.style.transform = "";
+  lean(null);
+  vote(pending()[0], dir);
+  void card.offsetWidth;
+  card.classList.remove("dragging");
+}
+function fly(dir) {
+  if (!pending().length || card.dataset.flying) return;
+  card.dataset.flying = dir;
+  if (reducedMotion.matches) return settle();
+  card.classList.remove("dragging");
+  lean(dir);
+  card.style.transform = `translateX(${dir === "up" ? 120 : -120}vw) rotate(${dir === "up" ? 12 : -12}deg)`;
+}
+card.addEventListener("transitionend", (e) => {
+  if (e.propertyName === "transform" && card.dataset.flying) settle();
+});
+let drag = null;
+card.addEventListener("pointerdown", (e) => {
+  if (card.dataset.flying) return;
+  drag = {x: e.clientX, dx: 0};
+  card.setPointerCapture(e.pointerId);
+  card.classList.add("dragging");
+});
+card.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  drag.dx = e.clientX - drag.x;
+  lean(dirOf(drag.dx, LEAN_PX));
+  card.style.transform = `translateX(${drag.dx}px) rotate(${drag.dx / 20}deg)`;
+});
+const endDrag = (e) => {
+  if (!drag) return;
+  const {dx} = drag;
+  drag = null;
+  card.classList.remove("dragging");
+  const swipe = e.type === "pointerup" && dirOf(dx, SWIPE_PX);
+  if (swipe) return fly(swipe);
+  card.style.transform = "";
+  lean(null);
+  if (e.type === "pointerup" && Math.abs(dx) < TAP_PX) window.open("#raw", "_blank", "noopener");
+};
+card.addEventListener("pointerup", endDrag);
+card.addEventListener("pointercancel", endDrag);
+[["#t-up", "up"], ["#t-down", "down"]].forEach(([id, dir]) => {
+  const b = $(id);
+  b.onclick = () => fly(dir);
+  b.addEventListener("mouseenter", () => lean(dir));
+  b.addEventListener("mouseleave", () => card.dataset.flying || lean(null));
+});
+renderRaw();
+renderDeck();
 
 /* ---- sources ---- */
 let filter = "all", openName = null;
@@ -846,13 +947,6 @@ $("#scale").innerHTML = [1,2,3,4,5,6,8,12,16,20].map((n) => {
   return `<div><span class="data">--s-${n}</span><span class="label">${parseInt(px)}</span><i style="width:${px}"></i></div>`;
 }).join("");
 
-/* ---- triage demo ---- */
-const card = $("#triage-card");
-$("#t-accept").addEventListener("mouseenter", () => card.classList.add("lean-right"));
-$("#t-accept").addEventListener("mouseleave", () => card.classList.remove("lean-right"));
-$("#t-reject").addEventListener("click", () => { $("#t-undo").hidden = false; });
-$("#t-undo button").addEventListener("click", () => { $("#t-undo").hidden = true; });
-
 /* ---- router ---- */
 function route() {
   const [view, tab] = (location.hash.slice(1) || "system").split("/");
@@ -872,7 +966,11 @@ addEventListener("hashchange", route);
 route();
 
 /* ---- signed-in toggle mirrors the /api/vote probe ---- */
-const applyAuth = () => $$(".gated").forEach((g) => g.hidden = !$("#authorized").checked);
+function applyAuth() {
+  const signedIn = $("#authorized").checked;
+  $$(".gated").forEach((g) => g.hidden = !signedIn);
+  if (!signedIn) setRawView("list");
+}
 $("#authorized").addEventListener("change", applyAuth);
 applyAuth();
 </script>
