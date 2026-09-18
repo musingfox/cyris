@@ -140,25 +140,41 @@ async function post(url, body) {
   return data.ok ? data : Promise.reject(new Error(data.error || `HTTP ${res.status}`));
 }
 
+// One Save, two endpoints: only a changed part is sent, the hours first, and
+// both are tried. A part that saved becomes clean; one that failed stays dirty.
 $("digest-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const times = [$("morning").value, $("evening").value]
-    .map((h) => `${String(h).padStart(2, "0")}:00`);
+  const form = $("digest-form");
+  const [morning, evening, featured] = [$("morning"), $("evening"), $("max-featured")]
+    .map((input) => input.value);
+  const saved = clean.get(form).split("|");
+  const lines = [];
+  let failed = false;
   $("save-digest").disabled = true;
-  try {
-    const sched = await post("/api/settings/schedule", {times});
-    state.schedule = sched.times;
-    const digest = await post("/api/settings/digest",
-      {max_featured: parseInt($("max-featured").value, 10)});
-    state.max_featured = digest.max_featured;
-    markClean($("digest-form"));
-    show("ok", `Digest hours: ${sched.times.join(" and ")}. ${sched.note}\n` +
-      `Featured sections: ${digest.max_featured}. ${digest.note}`, "digest-result");
-  } catch (err) {
-    show("err", err.message || String(err), "digest-result");
-  } finally {
-    refresh($("digest-form"));
+  if (morning !== saved[0] || evening !== saved[1]) {
+    const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
+    try {
+      const data = await post("/api/settings/schedule", {times});
+      lines.push(`Digest hours: ${data.times.join(" and ")}. ${data.note}`);
+      [saved[0], saved[1]] = [morning, evening];
+    } catch (err) {
+      failed = true;
+      lines.push(`Digest hours not saved: ${err.message || err}`);
+    }
   }
+  if (featured !== saved[2]) {
+    try {
+      const data = await post("/api/settings/digest", {max_featured: parseInt(featured, 10)});
+      lines.push(`Featured sections: ${data.max_featured}. ${data.note}`);
+      saved[2] = featured;
+    } catch (err) {
+      failed = true;
+      lines.push(`Featured sections not saved: ${err.message || err}`);
+    }
+  }
+  clean.set(form, saved.join("|"));
+  show(failed ? "err" : "ok", lines.join("\n"), "digest-result");
+  refresh(form);
 });
 
 $("notify-form").addEventListener("submit", async (e) => {

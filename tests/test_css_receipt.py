@@ -511,6 +511,9 @@ EXPECTED_IDS = {
     "source-notice-beside-save",
     "settings-load-failure",
     "sources-load-failure",
+    "digest-posts-featured-only",
+    "digest-posts-hours-only",
+    "digest-partial-failure",
 }
 
 

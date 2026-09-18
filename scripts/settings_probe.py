@@ -285,6 +285,30 @@ window.fetch = (input, init) =>
 """
 
 
+def also_post(when: str, path: str, body: dict) -> str:
+    """A preload that sends an extra POST to `path` whenever the page POSTs to `when`."""
+    return f"""
+const realFetch = window.fetch;
+window.fetch = async (input, init) => {{
+  if (String(input).endsWith({json.dumps(when)}) && init && init.method === "POST") {{
+    await realFetch({json.dumps(path)}, {{method: "POST",
+      headers: {{"Content-Type": "application/json"}}, body: {json.dumps(json.dumps(body))}}});
+  }}
+  return realFetch(input, init);
+}};
+"""
+
+
+def _calls(wanted: list[dict]) -> Callable[[Fixture], str | None]:
+    """A receipt: the settings store received exactly these writes, in order."""
+
+    def receipt(fixture: Fixture) -> str | None:
+        calls = fixture.settings.calls
+        return None if calls == wanted else f"settings writes: {calls}"
+
+    return receipt
+
+
 CHECKS: list[Check] = [
     Check(
         id="site-bar-current",
@@ -775,6 +799,58 @@ CHECKS: list[Check] = [
             expect($$("tr.src-row").length === 0, "rows were listed");
         """,
         sabotage="""$("#add-source").disabled = false;""",
+    ),
+    Check(
+        id="digest-posts-featured-only",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_FEATURED_7,
+        script="",
+        sabotage_preload=also_post(
+            "/api/settings/digest", "/api/settings/schedule", {"times": ["08:00", "20:00"]}
+        ),
+        receipt=_calls([{"digest.max_featured": 7}]),
+    ),
+    Check(
+        id="digest-posts-hours-only",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#morning"), "9");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the save");
+        """,
+        script="",
+        sabotage_preload=also_post(
+            "/api/settings/schedule", "/api/settings/digest", {"max_featured": 5}
+        ),
+        receipt=_calls([{"general.digest_schedule": ["09:00", "20:00"]}]),
+    ),
+    Check(
+        id="digest-partial-failure",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#morning"), "25");
+            setValue($("#max-featured"), "7");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the save");
+        """,
+        script="""
+            const notice = noticeOf("digest"), lines = notice.textContent.split("\\n");
+            expect(notice.classList.contains("err"), `not an error: ${notice.textContent}`);
+            expect(lines.length === 2 && lines[0].startsWith("Digest hours not saved: ")
+              && lines[0].length > "Digest hours not saved: ".length, `lines: ${lines}`);
+            expect(lines[1].startsWith("Featured sections: 7."), `lines: ${lines}`);
+            expect(!saveOf("digest").disabled, "the digest Save was disabled");
+            expect($("#morning").value === "25", `morning: ${$("#morning").value}`);
+            setValue($("#max-featured"), "5");
+            expect(navOf("digest").classList.contains("dirty"), "the failed hours look saved");
+        """,
+        sabotage="""noticeOf("digest").classList.remove("err");""",
+        receipt=_calls([{"digest.max_featured": 7}]),
     ),
 ]
 
