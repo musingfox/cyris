@@ -104,19 +104,24 @@ def test_every_implementation_satisfies_its_protocol() -> None:
     assert found == []
 
 
-def test_a_store_missing_a_triage_only_method_is_named() -> None:
+def test_a_store_missing_a_doctor_only_method_is_named() -> None:
     """The failure mode the `ArticleRepository` docstring describes.
 
-    `reset_to_pending` is called by the triage UI and by nothing in a digest
+    `count_by_state` is called only by `doctor` and by nothing in a digest
     run, so a backend without it passes every pipeline test.
     """
 
     class PartialStore(D1ArticleStore):
-        reset_to_pending = None
+        count_by_state = None
 
-    assert "PartialStore is missing reset_to_pending()" in shortfalls(
-        ArticleRepository, PartialStore
-    )
+    assert "PartialStore is missing count_by_state()" in shortfalls(ArticleRepository, PartialStore)
+
+
+def test_no_store_offers_reset_to_pending() -> None:
+    """Its only caller was the retired deck's undo."""
+    assert "reset_to_pending" not in ArticleRepository.__protocol_attrs__
+    assert not hasattr(ArticleStore, "reset_to_pending")
+    assert not hasattr(D1ArticleStore, "reset_to_pending")
 
 
 def test_an_embedder_without_usage_is_named() -> None:

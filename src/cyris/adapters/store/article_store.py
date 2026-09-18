@@ -363,10 +363,6 @@ class ArticleStore:
             self.update_article_state(url, ArticleState.REJECTED, reason=reason) for url in urls
         )
 
-    def reset_to_pending(self, url: str) -> bool:
-        """Return an article to the pending state (undo a triage decision)."""
-        return self.update_article_state(url, ArticleState.PENDING)
-
     def update_scores(
         self,
         url_to_score_lang: dict[str, tuple[float, str]],

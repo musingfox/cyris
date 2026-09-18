@@ -74,8 +74,6 @@ class ArticleRepository(Protocol):
 
     def reject(self, urls: list[str], reason: str) -> int: ...
 
-    def reset_to_pending(self, url: str) -> bool: ...
-
     def list_articles(
         self,
         state: ArticleState | list[ArticleState] | None = None,
@@ -97,8 +95,8 @@ class ArticleRepository(Protocol):
         """Delete matching articles, except human-triaged ones.
 
         Rows with a non-null `triaged_at` are never deleted regardless of the
-        filters: that stamp marks a real human decision (digest vote, triage
-        UI, `cyris articles accept|reject`), and those rows are the training
+        filters: that stamp marks a real human decision (digest or raw-page
+        vote, `cyris articles accept|reject`), and those rows are the training
         signal that seeds vote similarity. Every implementation must honor
         this exclusion — a backend that deletes stamped rows silently erodes
         the corpus.

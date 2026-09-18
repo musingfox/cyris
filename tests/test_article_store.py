@@ -476,8 +476,8 @@ def test_update_article_state_not_found(store: ArticleStore) -> None:
     assert success is False
 
 
-def test_accept_reject_reset_semantics(store: ArticleStore, sample_articles: list[Article]) -> None:
-    """accept/reject/reset_to_pending drive the article lifecycle."""
+def test_accept_reject_semantics(store: ArticleStore, sample_articles: list[Article]) -> None:
+    """accept/reject drive the article lifecycle."""
     from cyris.domain.triage import RejectReason
 
     now = datetime.now(UTC)
@@ -489,14 +489,9 @@ def test_accept_reject_reset_semantics(store: ArticleStore, sample_articles: lis
     rejected = store.list_articles(state=ArticleState.REJECTED)
     assert rejected[0].rejection_reason == "manual_triage"
 
-    assert store.reset_to_pending("https://example.com/1") is True
-    accepted = store.list_articles(state=ArticleState.ACCEPTED)
-    assert accepted == []
-
     # Unknown URLs count as zero updates
     assert store.accept(["https://nonexistent.com"]) == 0
     assert store.reject(["https://nonexistent.com"], reason="x") == 0
-    assert store.reset_to_pending("https://nonexistent.com") is False
 
 
 # --- Contract 3: delete_articles ---

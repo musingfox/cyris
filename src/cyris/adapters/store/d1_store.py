@@ -243,9 +243,6 @@ class D1ArticleStore:
             self.update_article_state(url, ArticleState.REJECTED, reason=reason) for url in urls
         )
 
-    def reset_to_pending(self, url: str) -> bool:
-        return self.update_article_state(url, ArticleState.PENDING)
-
     def update_scores(
         self, url_to_score_lang: dict[str, tuple[float, str]], scan_days: int = 30
     ) -> int:
