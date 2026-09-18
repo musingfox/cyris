@@ -588,6 +588,21 @@ window.fetch = (input, init) => init && init.method === "POST"
         script="""await waitFor(() => same(leaning(), ["lean-up"]), `lean ${leaning()}`, 2000);""",
         sabotage="""$("#t-up").style.pointerEvents = "none";""",
     ),
+    Check(
+        id="tap-opens-article",
+        fixture="signed-in",
+        path=PAGE,
+        preload=RECORD_OPEN,
+        act="""await showView("triage");""",
+        gestures=({"press": "#t-card", "pointer": "mouse"}, {"release": True}),
+        script="""
+            const opened = window.__opened;
+            const wanted = [["https://example.test/pending-two", "_blank", "noopener"]];
+            expect(same(opened, wanted), `opened: ${JSON.stringify(opened)}`);
+        """,
+        sabotage="""$("#t-card").style.pointerEvents = "none";""",
+        receipt=_posted(),
+    ),
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]

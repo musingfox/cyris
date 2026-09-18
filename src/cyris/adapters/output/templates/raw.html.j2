@@ -207,9 +207,9 @@
     });
 
     // The card follows the pointer, leans once it points somewhere, and released far
-    // enough to one side votes that way. Distances are prototype.html#raw's, the
-    // spec's reference for this card.
-    const SWIPE_PX = 120, LEAN_PX = 40;
+    // enough to one side votes that way; released where it was pressed, it opens the
+    // article. Distances are prototype.html#raw's, the spec's reference for this card.
+    const SWIPE_PX = 120, LEAN_PX = 40, TAP_PX = 5;
     const dirOf = (dx, min) => dx > min ? 'up' : dx < -min ? 'down' : null;
     let drag = null;
     card.addEventListener('pointerdown', (e) => {
@@ -233,6 +233,10 @@
         if (swipe) return voteCard(swipe);
         card.style.transform = '';
         lean(null);
+        const [row] = pool();
+        if (e.type === 'pointerup' && Math.abs(dx) < TAP_PX && row) {
+            window.open(row.querySelector('a').href, '_blank', 'noopener');
+        }
     }
     card.addEventListener('pointerup', endDrag);
     card.addEventListener('pointercancel', endDrag);
