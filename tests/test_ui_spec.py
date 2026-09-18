@@ -715,3 +715,31 @@ def test_the_settings_page_scales_its_text_without_a_body_gutter() -> None:
     body = parse_style_block(_source("settings"))["body"]
     assert "font-size: calc(16px * var(--type-scale))" in body
     assert [d for d in body if d.startswith("padding")] == []
+
+
+# The old page's inline form and table rules, which the ticket moved to shared components.
+OLD_SETTINGS_RULES = {
+    "fieldset",
+    "legend",
+    "label.provider",
+    "input[type=text]",
+    "select",
+    "button",
+    "button[disabled]",
+    "table.sources",
+}
+
+
+def _inline_rules_shared_with_the_stylesheet(page: str) -> list[str]:
+    inline = set(parse_style_block(page)) - {"body"}
+    shared = set(parse_style_block(f"<style>{STYLE.read_text()}</style>"))
+    return sorted(inline & (shared | OLD_SETTINGS_RULES))
+
+
+def test_an_inline_copy_of_a_shared_rule_is_reported() -> None:
+    planted = _source("settings") + "<style>.btn { color: var(--text); }</style>"
+    assert _inline_rules_shared_with_the_stylesheet(planted) == [".btn"]
+
+
+def test_the_settings_page_keeps_only_its_own_layout_inline() -> None:
+    assert _inline_rules_shared_with_the_stylesheet(_source("settings")) == []
