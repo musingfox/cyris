@@ -301,6 +301,19 @@ def test_raw_states_are_the_component() -> None:
     assert "#6b4a4a" not in raw
 
 
+SETTINGS = STYLE.with_name("settings.html")
+
+
+def test_settings_never_forces_a_smooth_scroll() -> None:
+    assert 'scrollIntoView({behavior: "smooth"})' not in SETTINGS.read_text()
+
+
+def test_the_settings_scroll_asks_for_the_reduced_motion_preference() -> None:
+    lines = [line for line in SETTINGS.read_text().splitlines() if "scrollIntoView" in line]
+    assert lines
+    assert all("prefers-reduced-motion: reduce" in line for line in lines)
+
+
 def _declared(rules: set[str] | list[str], prop: str) -> list[str]:
     return [d.split(":", 1)[1].strip() for d in rules if d.split(":", 1)[0] == prop]
 

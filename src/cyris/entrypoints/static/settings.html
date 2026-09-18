@@ -345,7 +345,7 @@ $("sources").addEventListener("click", async (e) => {
     $("src-email").value = s.email_match || "";
     $("src-homepage").value = s.homepage || "";
     $("src-tags").value = (s.tags || []).join(", ");
-    $("src-form").scrollIntoView({behavior: "smooth"});
+    $("src-form").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
   } else if (retire !== undefined) {
     const s = sources[retire];
     if (!confirm(`Stop fetching ${s.name}?`)) return;
