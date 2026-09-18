@@ -696,6 +696,7 @@ EXPECTED_RAW_IDS = {
     "double-press-one-vote",
     "vote-failure-stays",
     "vote-retry-clears-notice",
+    "switch-away-during-vote",
     "swipe-right-up",
     "swipe-left-down",
     "swipe-touch",
@@ -732,7 +733,12 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
 
 @pytest.mark.parametrize(
     ("kind", "status", "authorized"),
-    [("signed-in", 200, True), ("signed-out", 401, False), ("no-worker", 404, None)],
+    [
+        ("signed-in", 200, True),
+        ("signed-out", 401, False),
+        ("no-worker", 404, None),
+        ("slow-vote", 200, True),
+    ],
 )
 async def test_the_raw_probe_fixture_answers_the_vote_probe_per_kind(kind, status, authorized):
     [(answered, body)] = await _raw_answers(raw_probe.build_fixture(kind), [("GET", "/api/vote")])

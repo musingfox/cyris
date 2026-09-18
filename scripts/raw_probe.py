@@ -38,7 +38,11 @@ DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{DATE}-{PERIOD}-raw.html"
 
-KINDS = ("signed-in", "signed-out", "no-worker", "vote-fails", "fails-once")
+KINDS = ("signed-in", "signed-out", "no-worker", "vote-fails", "fails-once", "slow-vote")
+
+# How long `slow-vote` holds each vote: long enough for a check to act, and for
+# CDP input to land, while the vote is still in flight.
+SLOW_VOTE_S = 1.0
 
 # (source, title, state, score, slug): two sources of three, so the deck deals
 # Pending Two, Pending Three, Pending Four, then the title written as markup.
@@ -94,7 +98,8 @@ def build_fixture(kind: str) -> Fixture:
 
     `signed-in` answers the probe and takes votes; `signed-out` refuses the
     probe; `no-worker` has no route at all, as on bare pages.dev; `vote-fails`
-    signs in but refuses every vote; `fails-once` refuses only the first vote.
+    signs in but refuses every vote; `fails-once` refuses only the first vote;
+    `slow-vote` takes every vote, each only after `SLOW_VOTE_S`.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
@@ -113,6 +118,8 @@ def build_fixture(kind: str) -> Fixture:
     async def vote(request: web.Request) -> web.Response:
         fixture.posts.append(await request.json())
         fixture.post_headers.append(dict(request.headers))
+        if kind == "slow-vote":
+            await asyncio.sleep(SLOW_VOTE_S)
         refused = kind == "vote-fails" or (kind == "fails-once" and len(fixture.posts) == 1)
         if refused:
             return web.json_response({"ok": False}, status=502)
@@ -502,6 +509,32 @@ window.fetch = (input, init) => init && init.method === "POST"
         """,
         script="""expect(deck()[0] === "3 remaining", `count: ${deck()[0]}`);""",
         sabotage="""await castVote($(".vote-group", rowOf("Pending Two")), "up");""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    Check(
+        id="switch-away-during-vote",
+        fixture="slow-vote",
+        path=PAGE,
+        preload=RECORD_FETCHES,
+        act="""
+            await pressDeck("up");
+            await showView("list");
+            await waitFor(() => window.__fetches.some((f) => f.method === "POST" && f.settled),
+              "the vote to land", 3000);
+            await sleep(50);
+        """,
+        script="""
+            await showView("triage");
+            const shown = deck();
+            expect(same(shown, ["3 remaining", "Source A", "Pending Three"]), `deck: ${shown}`);
+            const card = $("#t-card");
+            expect(card.style.transform === "", `the card is at ${card.style.transform}`);
+            expect(!card.dataset.flying, `the card is still flying ${card.dataset.flying}`);
+            const off = $$("#t-actions button").filter((b) => b.disabled).map((b) => b.id);
+            expect(off.length === 0, `disabled: ${off}`);
+        """,
+        # A flight nothing settles is the jam itself.
+        sabotage="""settle = () => {};""",
         receipt=_posted(vote_body("pending-two", "up")),
     ),
     Check(

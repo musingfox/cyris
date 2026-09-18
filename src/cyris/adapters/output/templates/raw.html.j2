@@ -145,6 +145,9 @@
 
     // List and Triage are two views of the same rows; switching never reloads.
     function setRawView(view) {
+        // A hidden card runs no transition, so a flight the switch cut short, or one
+        // that began while the deck was hidden, would never reach transitionend.
+        if (card.dataset.flying) settle();
         for (const b of document.querySelectorAll('[data-raw-view]')) {
             b.setAttribute('aria-pressed', String(b.dataset.rawView === view));
         }
