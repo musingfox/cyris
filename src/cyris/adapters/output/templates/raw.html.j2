@@ -75,6 +75,7 @@
             <div class="seg gated" role="group" aria-label="Article view" id="raw-views" hidden><button type="button" data-raw-view="list" aria-pressed="true">List</button><button type="button" data-raw-view="triage" aria-pressed="false">Triage</button></div>
         </div>
 
+        <div id="raw-groups">
         {% for group in groups %}
         <section class="panel">
             <div class="panel-head"><span class="source-name">{{ group.name }}</span><span class="label">{{ group.articles | length }}</span></div>
@@ -88,10 +89,25 @@
             {% endfor %}
         </section>
         {% endfor %}
+        </div>
+        <div class="deck-wrap" id="raw-triage" hidden></div>
 
         <div class="footer">// cyris</div>
     </div>
     {% include "_promote_script.html.j2" %}
+    <script>
+    // List and Triage are two views of the same rows; switching never reloads.
+    function setRawView(view) {
+        for (const b of document.querySelectorAll('[data-raw-view]')) {
+            b.setAttribute('aria-pressed', String(b.dataset.rawView === view));
+        }
+        document.getElementById('raw-groups').hidden = view !== 'list';
+        document.getElementById('raw-triage').hidden = view !== 'triage';
+    }
+    for (const b of document.querySelectorAll('[data-raw-view]')) {
+        b.addEventListener('click', () => setRawView(b.dataset.rawView));
+    }
+    </script>
     {% include "_probe_script.html.j2" %}
 </body>
 </html>

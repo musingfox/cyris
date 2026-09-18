@@ -945,6 +945,22 @@ def test_the_raw_view_switch_sits_hidden_at_the_end_of_the_page_head(tmp_path):
     assert parse_style_block(raw)["[hidden]"] == {"display: none !important"}
 
 
+def test_the_raw_page_holds_both_views_before_its_footer(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+
+    assert '<div class="deck-wrap" id="raw-triage" hidden>' in raw
+    assert (
+        raw.index('id="raw-groups"')
+        < raw.index('id="raw-triage"')
+        < raw.index('<div class="footer">// cyris</div>')
+    )
+    assert raw.index('id="raw-groups"') < raw.index('<section class="panel">')
+
+
+def test_the_raw_page_fetches_only_to_vote_and_to_probe(tmp_path):
+    assert _issue_pages(tmp_path)["raw"].count("fetch(") == 2
+
+
 def test_the_issue_bar_switch_is_never_gated(tmp_path):
     raw = _issue_pages(tmp_path)["raw"]
 

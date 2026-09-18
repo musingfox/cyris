@@ -681,6 +681,9 @@ EXPECTED_RAW_IDS = {
     "gate-signed-out",
     "gate-no-worker",
     "gate-signed-in",
+    "default-list",
+    "switch-to-triage",
+    "switch-back-to-list",
 }
 
 PENDING_TWO_UP = {

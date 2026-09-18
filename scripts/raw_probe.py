@@ -166,6 +166,12 @@ const probeAnswered = async () => {
     (f) => f.url.endsWith("/api/vote") && f.method === "GET" && f.settled), "the vote probe");
   await sleep(50);
 };
+const pressed = (view) => $(`[data-raw-view="${view}"]`).getAttribute("aria-pressed");
+const switchReady = () => waitFor(() => visible($("#raw-views")), "the view switch");
+const showView = async (view) => {
+  await switchReady();
+  $(`[data-raw-view="${view}"]`).click();
+};
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
 """
 )
@@ -263,6 +269,50 @@ CHECKS: list[Check] = [
         act="""await waitFor(() => visible($("#raw-views")), "the view switch");""",
         script="""expect(visible($("#raw-views")), "the view switch is hidden");""",
         sabotage="""$("#raw-views").hidden = true;""",
+    ),
+    Check(
+        id="default-list",
+        fixture="signed-in",
+        path=PAGE,
+        act="await switchReady();",
+        script="""
+            expect(pressed("list") === "true", `List pressed: ${pressed("list")}`);
+            expect(visible($("#raw-groups")), "the list is hidden");
+            expect(!visible($("#raw-triage")), "the triage view shows");
+        """,
+        sabotage="""$("#raw-triage").hidden = false;""",
+    ),
+    Check(
+        id="switch-to-triage",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            window.__marker = 1;
+            await showView("triage");
+        """,
+        script="""
+            expect(pressed("triage") === "true", `Triage pressed: ${pressed("triage")}`);
+            expect(pressed("list") === "false", `List pressed: ${pressed("list")}`);
+            expect(visible($("#raw-triage")), "the triage view is hidden");
+            expect(!visible($("#raw-groups")), "the list shows");
+            expect(window.__marker === 1, "the page reloaded");
+        """,
+        sabotage="""$("#raw-groups").hidden = false;""",
+    ),
+    Check(
+        id="switch-back-to-list",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            await showView("triage");
+            await showView("list");
+        """,
+        script="""
+            expect(visible($("#raw-groups")), "the list is hidden");
+            expect(!visible($("#raw-triage")), "the triage view shows");
+            expect(pressed("list") === "true", `List pressed: ${pressed("list")}`);
+        """,
+        sabotage="""$("#raw-triage").hidden = false;""",
     ),
 ]
 
