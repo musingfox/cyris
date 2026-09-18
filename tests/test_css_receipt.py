@@ -697,6 +697,8 @@ EXPECTED_RAW_IDS = {
     "vote-failure-stays",
     "vote-retry-clears-notice",
     "switch-away-during-vote",
+    "inflight-disabled",
+    "swipe-during-button-vote",
     "swipe-right-up",
     "swipe-left-down",
     "swipe-touch",

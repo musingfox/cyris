@@ -511,6 +511,41 @@ window.fetch = (input, init) => init && init.method === "POST"
         sabotage="""await castVote($(".vote-group", rowOf("Pending Two")), "up");""",
         receipt=_posted(vote_body("pending-two", "up")),
     ),
+    # Two guards keep one card to one vote, and each check below holds one of them:
+    # the buttons turn disabled at once, and `busy` turns a drag on the card away.
+    Check(
+        id="inflight-disabled",
+        fixture="slow-vote",
+        path=PAGE,
+        act="""
+            await showView("triage");
+            $("#t-up").click();
+        """,
+        script="""
+            const on = $$("#t-actions button").filter((b) => !b.disabled).map((b) => b.id);
+            expect(on.length === 0, `enabled while the vote is in flight: ${on}`);
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+        """,
+        sabotage="""enableDeck(true);""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    Check(
+        id="swipe-during-button-vote",
+        fixture="slow-vote",
+        path=PAGE,
+        act="""
+            await showView("triage");
+            $("#t-up").click();
+        """,
+        gestures=({"press": "#t-card", "pointer": "mouse"}, {"move": 200}, {"release": True}),
+        script="""
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+            await sleep(300);
+            expect(deck()[0] === "3 remaining", `count: ${deck()[0]}`);
+        """,
+        sabotage="""busy = false;""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
     Check(
         id="switch-away-during-vote",
         fixture="slow-vote",
