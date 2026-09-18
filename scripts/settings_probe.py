@@ -434,6 +434,73 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$("#src-body").replaceChildren();""",
     ),
+    Check(
+        id="editor-opens-under-row",
+        fixture="writable",
+        path="/settings#sources",
+        act="""await openRow("Hacker News");""",
+        script="""
+            expect(rowOf("Hacker News").nextElementSibling === editor(), "not under its row");
+            const title = $(".editor-title", editor()).textContent;
+            expect(title === "Editing Hacker News", `heading: ${title}`);
+            const name = $("#e-name", editor());
+            expect(name.readOnly && name.value === "Hacker News", "the name is editable");
+            expect(visible(editorAct("retire")), "Retire is hidden");
+            expect($$("tr.editor").length === 1, "more than one editor");
+        """,
+        sabotage="""$("#src-body").prepend(editor());""",
+    ),
+    Check(
+        id="editor-cancel",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "changed");
+            editorAct("cancel").click();
+        """,
+        script="""
+            expect(!editor(), "the editor is still open");
+            expect(!$("tr.src-row.open"), "a row is still marked open");
+            expect(!navOf("sources").classList.contains("dirty"), "Sources is still marked");
+        """,
+        sabotage="""
+            $("#src-body").append($("#editor-tpl").content.firstElementChild.cloneNode(true));
+        """,
+        receipt=lambda fixture: (
+            None
+            if fixture.sources["Hacker News"].tags == ["news", "tech"]
+            else f"Hacker News changed: {fixture.sources['Hacker News']}"
+        ),
+    ),
+    Check(
+        id="editor-dirty",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("Hacker News");
+            ctx.disabledUntouched = editorAct("save").disabled;
+            setValue($("#e-tags", editor()), "news, tech, x");
+        """,
+        script="""
+            expect(ctx.disabledUntouched, "Save source was enabled before any change");
+            expect(!editorAct("save").disabled, "Save source stayed disabled");
+            expect(navOf("sources").classList.contains("dirty"), "Sources is not marked");
+        """,
+        sabotage="""editorAct("save").disabled = true;""",
+    ),
+    Check(
+        id="editor-heading-escapes",
+        fixture="writable",
+        path="/settings#sources",
+        act="""await openRow("<b>x</b>");""",
+        script="""
+            const title = $(".editor-title", editor());
+            expect(title.textContent === "Editing <b>x</b>", `heading: ${title.textContent}`);
+            expect(!$("b", title), "the name was parsed as markup");
+        """,
+        sabotage="""$(".editor-title", editor()).innerHTML = "Editing <b>x</b>";""",
+    ),
 ]
 
 PRELUDE = """
@@ -466,6 +533,14 @@ const navOf = (tab) => $(`.settings-nav a[data-tab="${tab}"]`);
 const settingsLoaded = () => waitFor(() => $("#max-featured").value, "settings");
 const rowNames = () => $$("tr.src-row").map((row) => $("td", row).textContent);
 const sourcesLoaded = () => waitFor(() => $$("tr.src-row").length, "source rows");
+const rowOf = (name) => $(`tr.src-row[data-name="${CSS.escape(name)}"]`);
+const editor = () => $("tr.editor");
+const editorAct = (act) => $(`[data-act="${act}"]`, editor());
+const openRow = async (name) => {
+  await sourcesLoaded();
+  rowOf(name).click();
+  return waitFor(editor, "the editor");
+};
 const ctx = {};
 """
 

@@ -495,6 +495,10 @@ EXPECTED_IDS = {
     "sources-columns",
     "sources-filter",
     "sources-empty-filter",
+    "editor-opens-under-row",
+    "editor-cancel",
+    "editor-dirty",
+    "editor-heading-escapes",
 }
 
 

@@ -88,8 +88,8 @@ function updateHint() {
     : "Pick a provider whose key is present.";
 }
 
-function show(kind, text, id = "result") {
-  const el = $(id);
+function show(kind, text, target = "result") {
+  const el = typeof target === "string" ? $(target) : target;
   el.className = kind === "err" ? "notice err" : "notice";
   el.textContent = text;
   el.hidden = false;
@@ -180,13 +180,18 @@ $("notify-form").addEventListener("submit", async (e) => {
 });
 
 let sources = [];
+let sourcesWritable = false;
 let filter = "all";
+// Which editor is open: null for none, "" for a new source, else its name.
+let openName = null;
 
 const EMPTY = {
   all: "No sources configured.",
   rss: "No RSS sources.",
   newsletter: "No newsletter sources.",
 };
+
+const sourcesNav = () => document.querySelector('.settings-nav a[data-tab="sources"]');
 
 function renderSources() {
   const rows = sources.filter((s) => filter === "all" || s.type === filter);
@@ -200,14 +205,88 @@ function renderSources() {
         <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
       </tr>`).join("")
     : `<tr><td colspan="5" class="small">${EMPTY[sources.length ? filter : "all"]}</td></tr>`;
+  sourcesNav().classList.remove("dirty");
+  if (openName !== null) openEditor(openName);
+}
+
+function editorValues(ed) {
+  return JSON.stringify([...ed.querySelectorAll("input, select")].map((i) => i.value)
+    .concat(ed.querySelector('[data-type][aria-pressed="true"]').dataset.type));
+}
+
+function openEditor(name) {
+  const adding = name === "";
+  const s = adding
+    ? {name: "", type: "rss", tier: "filter", tags: []}
+    : sources.find((x) => x.name === name);
+  const anchor = adding ? null
+    : document.querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
+  if (!adding && !(s && anchor)) {
+    openName = null;
+    return null;
+  }
+  const ed = $("editor-tpl").content.firstElementChild.cloneNode(true);
+  const q = (selector) => ed.querySelector(selector);
+  if (anchor) {
+    anchor.after(ed);
+    anchor.classList.add("open");
+  } else {
+    $("src-body").prepend(ed);
+  }
+  q(".editor-title").textContent = adding ? "New source" : `Editing ${s.name}`;
+  q("#e-name").value = s.name;
+  q("#e-name").readOnly = !adding;
+  q("#e-tier").value = s.tier;
+  q("#e-url").value = s.url || "";
+  q("#e-email").value = s.email_match || "";
+  q("#e-home").value = s.homepage || "";
+  q("#e-tags").value = (s.tags || []).join(", ");
+  const save = q('[data-act="save"]'), retire = q('[data-act="retire"]');
+  const setType = (type) => {
+    ed.querySelectorAll("[data-type]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.type === type));
+    });
+  };
+  setType(s.type);
+  const initial = editorValues(ed);
+  const refreshEditor = () => {
+    const dirty = editorValues(ed) !== initial;
+    save.disabled = !sourcesWritable || !dirty || !q("#e-name").value.trim();
+    sourcesNav().classList.toggle("dirty", dirty);
+  };
+  ed.querySelectorAll("[data-type]").forEach((b) => {
+    b.addEventListener("click", () => { setType(b.dataset.type); refreshEditor(); });
+  });
+  ed.addEventListener("input", refreshEditor);
+  ed.addEventListener("change", refreshEditor);
+  refreshEditor();
+  retire.hidden = adding;
+  q('[data-act="cancel"]').addEventListener("click", () => {
+    openName = null;
+    renderSources();
+  });
+  save.addEventListener("click", () => saveSource(ed, save));
+  retire.addEventListener("click", async () => {
+    if (!confirm(`Stop fetching ${s.name}?`)) return;
+    const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
+                                   retire);
+    if (data) {
+      openName = null;
+      await loadSources();
+      show("ok", `${s.name} retired. ${data.note}`, "sources-notice");
+    }
+  });
+  if (adding) q("#e-name").focus();
+  return ed;
 }
 
 function loaded(d) {
   sources = d.sources;
+  sourcesWritable = d.writable;
   $("sources-origin").textContent = `Served from ${d.origin}.`;
   if (!d.writable) {
-    $("save-src").disabled = true;
-    show("err", "No writable source table here — this deployment reads sources.yaml.", "src-result");
+    show("err", "No writable source table here — this deployment reads sources.yaml.",
+         "sources-notice");
   }
   renderSources();
 }
@@ -215,6 +294,7 @@ function loaded(d) {
 document.querySelectorAll("[data-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     filter = button.dataset.filter;
+    openName = null;
     document.querySelectorAll("[data-filter]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b === button));
     });
@@ -225,30 +305,19 @@ document.querySelectorAll("[data-filter]").forEach((button) => {
 $("src-body").addEventListener("click", (e) => {
   const row = e.target.closest("tr.src-row");
   if (!row) return;
-  const s = sources.find((x) => x.name === row.dataset.name);
-  $("src-name").value = s.name;
-  $("src-type").value = s.type;
-  $("src-tier").value = s.tier;
-  $("src-url").value = s.url || "";
-  $("src-email").value = s.email_match || "";
-  $("src-homepage").value = s.homepage || "";
-  $("src-tags").value = (s.tags || []).join(", ");
-  $("src-form").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  openName = openName === row.dataset.name ? null : row.dataset.name;
+  renderSources();
 });
 
 $("src-body").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.matches("tr.src-row")) e.target.click();
 });
 
-$("retire-src").addEventListener("click", async () => {
-  const name = $("src-name").value.trim();
-  if (!name || !confirm(`Stop fetching ${name}?`)) return;
-  await writeSource(`/api/sources/${encodeURIComponent(name)}`, "DELETE", null,
-                    `${name} retired.`);
-});
-
-async function writeSource(url, method, body, okText) {
-  $("save-src").disabled = true;
+// Resolves to the response on success, or null once the failure is shown
+// beside the pressed button.
+async function writeSource(url, method, body, button) {
+  const notice = button.parentElement.querySelector(".notice");
+  button.disabled = true;
   try {
     const res = await fetch(url, {
       method,
@@ -256,40 +325,39 @@ async function writeSource(url, method, body, okText) {
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json();
-    if (data.ok) {
-      show("ok", `${okText} ${data.note}`, "src-result");
-      await loadSources();
-    } else {
-      show("err", data.error || `HTTP ${res.status}`, "src-result");
-    }
+    if (data.ok) return data;
+    show("err", data.error || `HTTP ${res.status}`, notice);
   } catch (err) {
-    show("err", String(err), "src-result");
-  } finally {
-    $("save-src").disabled = false;
+    show("err", String(err), notice);
   }
+  button.disabled = false;
+  return null;
 }
 
-$("src-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const name = $("src-name").value.trim();
-  if (!name) return show("err", "A source needs a name.", "src-result");
-  const tags = $("src-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
-  return writeSource("/api/sources", "POST", {
+async function saveSource(ed, button) {
+  const q = (selector) => ed.querySelector(selector);
+  const name = q("#e-name").value.trim();
+  const data = await writeSource("/api/sources", "POST", {
     name,
-    type: $("src-type").value,
-    tier: $("src-tier").value,
-    url: $("src-url").value.trim() || null,
-    email_match: $("src-email").value.trim() || null,
-    homepage: $("src-homepage").value.trim() || null,
-    tags,
-  }, `${name} saved.`);
-});
+    type: q('[data-type][aria-pressed="true"]').dataset.type,
+    tier: q("#e-tier").value,
+    url: q("#e-url").value.trim() || null,
+    email_match: q("#e-email").value.trim() || null,
+    homepage: q("#e-home").value.trim() || null,
+    tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+  }, button);
+  if (!data) return;
+  openName = data.name;
+  await loadSources();
+  const reopened = document.querySelector("tr.editor");
+  if (reopened) show("ok", `${data.name} saved. ${data.note}`, reopened.querySelector(".notice"));
+}
 
 const loadSources = () =>
   fetch("/api/sources")
     .then((r) => r.json())
     .then(loaded)
-    .catch((e) => show("err", `Could not load sources: ${e}`, "src-result"));
+    .catch((e) => show("err", `Could not load sources: ${e}`, "sources-notice"));
 
 loadSources();
 

@@ -38,6 +38,10 @@
     table.src tr.src-row { cursor: pointer; transition: background-color var(--t-fast); }
     table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
     table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
+    table.src tr.editor > td { background: var(--surface); padding: var(--s-5); border-bottom: 1px solid var(--border-strong); }
+    tr.editor .form { max-width: none; }
+    .editor-title { margin-bottom: var(--s-4); }
+    .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
     table.src .target { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
     @media (max-width: 720px) {
       .page { padding-top: var(--s-8); }
@@ -145,6 +149,9 @@
               <button type="button" data-filter="rss" aria-pressed="false">RSS</button>
               <button type="button" data-filter="newsletter" aria-pressed="false">Newsletter</button>
             </div>
+            <div class="actions-line">
+              <div class="notice" id="sources-notice" hidden></div>
+            </div>
           </div>
           <div class="table-wrap">
             <table class="src">
@@ -152,30 +159,43 @@
               <tbody id="src-body"></tbody>
             </table>
           </div>
-          <form id="src-form" class="form">
-            <div class="field-row">
-              <div class="field"><label class="label" for="src-name">Name</label><input class="input" id="src-name" type="text" autocomplete="off"></div>
-              <div class="field"><label class="label" for="src-type">Type</label>
-                <select class="select" id="src-type"><option value="rss">rss</option><option value="newsletter">newsletter</option></select></div>
-              <div class="field"><label class="label" for="src-tier">Tier</label>
-                <select class="select" id="src-tier"><option value="filter">filter</option><option value="summarize">summarize</option><option value="fan">fan</option></select></div>
-            </div>
-            <div class="field"><label class="label" for="src-url">Feed URL</label><input class="input" id="src-url" type="text" autocomplete="off"></div>
-            <div class="field"><label class="label" for="src-email">Sender match</label><input class="input" id="src-email" type="text" placeholder="from:hi@letter.com" autocomplete="off">
-              <p class="small">Maps a sender to this source. Email routing itself stays in the Cloudflare dashboard.</p></div>
-            <div class="field"><label class="label" for="src-homepage">Homepage</label><input class="input" id="src-homepage" type="text" autocomplete="off"></div>
-            <div class="field"><label class="label" for="src-tags">Tags</label><input class="input" id="src-tags" type="text" placeholder="comma separated" autocomplete="off">
-              <p class="small">The name is the key: saving an existing name edits that source.</p></div>
-            <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-src">Save source</button>
-              <button class="btn danger" type="button" id="retire-src">Retire</button>
-              <div class="notice" id="src-result" hidden></div>
-            </div>
-          </form>
         </div>
       </div>
     </div>
   </main>
+
+  <template id="editor-tpl">
+    <tr class="editor"><td colspan="5">
+      <h3 class="label editor-title"></h3>
+      <div class="form">
+        <div class="field-row">
+          <div class="field"><label class="label" for="e-name">Name</label><input class="input" id="e-name" type="text" autocomplete="off"></div>
+          <div class="field"><span class="label">Type</span>
+            <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
+          </div>
+          <div class="field"><label class="label" for="e-tier">Tier</label>
+            <select class="select" id="e-tier"><option>filter</option><option>summarize</option><option>fan</option></select>
+          </div>
+        </div>
+        <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text" autocomplete="off"></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@letter.com" autocomplete="off">
+          <p class="small">Maps a sender to this source. Email routing itself stays in the Cloudflare dashboard.</p></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text" autocomplete="off"></div>
+        <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" type="text" placeholder="comma separated" autocomplete="off"></div>
+      </div>
+      <div class="editor-foot">
+        <div class="actions-line">
+          <button class="btn primary" type="button" data-act="save" disabled>Save source</button>
+          <button class="btn secondary" type="button" data-act="cancel">Cancel</button>
+          <div class="notice" hidden></div>
+        </div>
+        <div class="actions-line">
+          <button class="btn danger" type="button" data-act="retire">Retire</button>
+          <div class="notice" hidden></div>
+        </div>
+      </div>
+    </td></tr>
+  </template>
 
 <script src="/static/settings.js"></script>
 </body>
