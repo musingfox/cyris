@@ -121,8 +121,7 @@
     // The rows are the only copy of the data, so the deck reads them: what is still
     // pending and not yet voted in this browser, in list order.
     const pool = () => [...document.querySelectorAll('.raw-row')].filter((row) =>
-        row.querySelector('.state.pending')
-        && !Object.hasOwn(votes, groupUrls(row.querySelector('.vote-group'))[0]));
+        row.querySelector('.state.pending') && !votedOn(row.querySelector('.vote-group')));
 
     function renderDeck() {
         const rows = pool();

@@ -16,10 +16,13 @@
     }
     // A news cluster is one vote-group over every article in it, so urls is a list.
     const groupUrls = (group) => JSON.parse(group.dataset.urls);
+    // A group's vote is remembered under its first url; this is the one place that says so.
+    const voteKey = (group) => groupUrls(group)[0];
+    const votedOn = (group) => votes[voteKey(group)];
 
     for (const group of document.querySelectorAll('.vote-group')) {
-        const key = groupUrls(group)[0];
-        if (votes[key]) paint(group, votes[key]);
+        const vote = votedOn(group);
+        if (vote) paint(group, vote);
     }
 
     // The one vote path: true only when every url took the vote, and only then is it
@@ -36,7 +39,7 @@
         } catch {
             return false;
         }
-        votes[urls[0]] = vote;
+        votes[voteKey(group)] = vote;
         // The server already took the vote; a full quota must not show it as failed.
         try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
         paint(group, vote);
