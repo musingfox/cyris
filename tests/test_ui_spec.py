@@ -29,7 +29,7 @@ from css_rules import (
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store.article_store import ArticleStore
-from cyris.entrypoints.triage_server import TriageServer, _render_settings_page
+from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
 STYLE = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"
 
@@ -39,7 +39,7 @@ def _source(name: str) -> str:
     if name == "style.css":
         return STYLE.read_text()
     if name == "settings":
-        return _render_settings_page()
+        return render_settings_page()
     return dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[name]
 
 

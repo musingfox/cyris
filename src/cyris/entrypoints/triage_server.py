@@ -55,7 +55,7 @@ def _enrich_article(data: dict) -> dict:
     return data
 
 
-def _render_settings_page() -> str:
+def render_settings_page() -> str:
     """Render /settings with the digest pages' own site bar.
 
     The page lives outside `static/` so no unrendered copy is served, and the
@@ -110,7 +110,7 @@ class TriageServer:
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
         self._notify_webhook = notify_webhook
-        self._settings_page = _render_settings_page()
+        self._settings_page = render_settings_page()
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
