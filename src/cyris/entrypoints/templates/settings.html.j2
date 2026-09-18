@@ -6,158 +6,153 @@
   <title>Cyris Settings</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
   <link rel="stylesheet" href="/static/style.css">
   <style>
-    /* Its own page rather than a view inside app.js: the deck is a swipe
-       surface with global key and touch handlers, and a form has no business
-       sharing them. body there is overflow:hidden, which a form must undo. */
-    body { overflow: auto; display: block; padding: 1.5rem; max-width: 34rem; margin: 0 auto; }
-    h1 { font-size: 1.2rem; color: var(--text-dim); letter-spacing: .05em; margin-bottom: 1.5rem; }
-    fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-    legend { color: var(--text-dim); font-size: .8rem; padding: 0 .4rem; }
-    label.provider { display: flex; align-items: baseline; gap: .6rem; padding: .5rem 0; cursor: pointer; }
-    label.provider.unavailable { opacity: .45; cursor: not-allowed; }
-    .env { color: var(--text-dim); font-size: .75rem; margin-left: auto; }
-    input[type=text] {
-      width: 100%; padding: .6rem; border-radius: 6px; font: inherit;
-      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    /* This page's own layout. Every shared control and role comes from
+       style.css; a rule here that another page also needs belongs there. */
+    body { font-size: calc(16px * var(--type-scale)); line-height: 1.6; min-height: 100vh; }
+    a { color: inherit; }
+    button, input, select { font: inherit; color: inherit; }
+    [hidden] { display: none !important; }
+    .page { max-width: 1240px; margin: 0 auto; padding: var(--s-12) var(--s-4) var(--s-20); }
+    .page-head { display: grid; gap: var(--s-4); margin-bottom: var(--s-12); }
+    .settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-12); align-items: start; }
+    .settings-nav { position: sticky; top: calc(var(--bar-h) + var(--s-6)); display: grid; border-left: 1px solid var(--border); }
+    .settings-nav a { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-4); margin-left: -1px; text-decoration: none; border-left: 2px solid transparent; transition: color var(--t-fast), border-color var(--t-fast); }
+    .settings-nav a:hover { color: var(--text); }
+    .settings-nav a[aria-current="page"] { color: var(--accent); border-left-color: var(--accent); }
+    .dirty-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; visibility: hidden; }
+    .settings-nav a.dirty .dirty-dot { visibility: visible; }
+    .tab-head { display: grid; gap: var(--s-2); margin-bottom: var(--s-8); max-width: var(--measure); }
+    .form { display: grid; gap: var(--s-6); max-width: var(--measure); }
+    .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-4); }
+    .input.narrow { width: 96px; }
+    .actions-line { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+    @media (max-width: 720px) {
+      .page { padding-top: var(--s-8); }
+      .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+      .settings-nav { position: static; display: flex; overflow-x: auto; border-left: 0; border-bottom: 1px solid var(--border); }
+      .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; gap: var(--s-2); }
+      .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
     }
-    .hint { color: var(--text-dim); font-size: .78rem; margin-top: .4rem; line-height: 1.5; }
-    button {
-      background: var(--accent); color: var(--bg); border: 0; border-radius: 6px;
-      padding: .7rem 1.4rem; font: inherit; font-weight: 600; cursor: pointer;
-    }
-    button[disabled] { opacity: .5; cursor: default; }
-    h2 { font-size: .9rem; letter-spacing: .08em; color: var(--text-dim); font-weight: 600; margin: 2.5rem 0 .5rem; }
-    #result, #sched-result, #notify-result { margin-top: 1rem; padding: .8rem; border-radius: 6px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
-    .ok { background: rgba(198, 255, 61, 0.09); color: var(--accent); }
-    .err { background: rgba(255, 91, 138, 0.11); color: var(--warn); }
-    a.back { color: var(--text-dim); font-size: .8rem; }
-    table.sources { width: 100%; border-collapse: collapse; font-size: .8rem; }
-    table.sources th { text-align: left; color: var(--text-faint); font-weight: 500; padding: .3rem .5rem .3rem 0; }
-    table.sources td { padding: .35rem .5rem .35rem 0; border-top: 1px solid var(--border); vertical-align: top; }
-    table.sources .mono { font-family: 'Geist Mono', ui-monospace, monospace; color: var(--text-dim); word-break: break-all; }
-    table.sources .tier { color: var(--accent); }
-    table.sources button { padding: .2rem .5rem; font-size: .72rem; font-weight: 500; }
-    table.sources button.retire { background: var(--warn); }
-    select, input[type=text] { font: inherit; }
-    select {
-      padding: .5rem; border-radius: 6px;
-      background: var(--surface); color: var(--text); border: 1px solid var(--border);
-    }
-    .row { display: flex; gap: .5rem; margin-bottom: .5rem; }
-    .row > input { flex: 1; }
   </style>
 </head>
 <body>
 {% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}
-  <h1>SETTINGS</h1>
+  <main class="page">
+    <div class="page-head">
+      <span class="label">Settings</span>
+      <h1 class="display">How cyris <em>runs</em></h1>
+    </div>
 
-  <h2 style="margin-top:1.5rem">LLM PROVIDER</h2>
+    <div class="settings">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a class="label" href="#model" data-tab="model">Model <span class="dirty-dot"></span></a>
+        <a class="label" href="#digest" data-tab="digest">Digest <span class="dirty-dot"></span></a>
+        <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="dirty-dot"></span></a>
+        <a class="label" href="#sources" data-tab="sources">Sources <span class="dirty-dot"></span></a>
+      </nav>
 
-  <form id="form">
-    <fieldset>
-      <legend>Provider</legend>
-      <div id="providers"></div>
-    </fieldset>
+      <div>
+        <form class="tab" data-tab="model" id="form" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Model</h2>
+            <p class="small">The LLM that scores, filters and summarizes. A change applies from the next run.</p>
+          </div>
+          <div class="form">
+            <div class="field">
+              <span class="label" id="provider-label">Provider</span>
+              <div class="choices" id="providers" role="radiogroup" aria-labelledby="provider-label"></div>
+            </div>
+            <div class="field">
+              <label class="label" for="model-input">Model</label>
+              <input class="input" id="model-input" type="text" autocomplete="off">
+              <p class="small" id="model-hint"></p>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" id="save">Save</button>
+              <div class="notice" id="result" hidden></div>
+            </div>
+          </div>
+        </form>
 
-    <fieldset>
-      <legend>Model</legend>
-      <input type="text" id="model" placeholder="leave empty for the provider's default" autocomplete="off">
-      <p class="hint" id="model-hint"></p>
-    </fieldset>
+        <form class="tab" data-tab="digest" id="digest-form" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Digest</h2>
+            <p class="small">When issues are published and how the page is laid out.</p>
+          </div>
+          <div class="form">
+            <div class="field">
+              <span class="label">Publish hours</span>
+              <div class="field-row">
+                <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
+                <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
+              </div>
+              <details class="more"><summary>More</summary><p class="small">Two whole hours, in the timezone from <code>[general]</code>. The tick is hourly, so half hours are refused rather than quietly rounded down.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="max-featured">Featured sections</label>
+              <input class="input narrow" id="max-featured" type="number" min="1" max="20" autocomplete="off">
+              <p class="small">How many sections lead the page before the rest.</p>
+              <details class="more"><summary>More</summary><p class="small">Your call, not a measured number — the digest reads differently at 3 than at 8. It takes effect on the next digest.</p></details>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" id="save-digest">Save</button>
+              <div class="notice" id="digest-result" hidden></div>
+            </div>
+          </div>
+        </form>
 
-    <button type="submit" id="save">Save</button>
-  </form>
+        <form class="tab" data-tab="notifications" id="notify-form" action="/api/settings/notify" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Notifications</h2>
+            <p class="small">Where a finished issue is announced.</p>
+          </div>
+          <div class="form">
+            <div class="field">
+              <label class="label" for="discord-webhook">Discord webhook</label>
+              <input class="input" id="discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
+              <p class="small">To change it, paste the whole URL. It is saved only after Discord confirms it exists.</p>
+              <details class="more"><summary>More</summary><p class="small">A stored webhook shows with its token masked, and the masked value cannot be resubmitted. When empty here, a run still uses the <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: to stop them, remove that Worker secret and any <code>[notify]</code> value.</p></details>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" id="save-notify">Save</button>
+              <div class="notice" id="notify-result" hidden></div>
+            </div>
+          </div>
+        </form>
 
-  <div id="result" class="hidden" hidden></div>
-
-  <h2>DIGEST SCHEDULE</h2>
-
-  <form id="sched-form">
-    <fieldset>
-      <legend>Hours</legend>
-      <input type="number" id="morning" min="0" max="23" style="width:5rem" autocomplete="off">
-      <input type="number" id="evening" min="0" max="23" style="width:5rem" autocomplete="off">
-      <p class="hint">Two whole hours, in the timezone from <code>[general]</code>. The tick is
-        hourly, so half hours are refused rather than quietly rounded down.</p>
-    </fieldset>
-
-    <button type="submit" id="save-sched">Save</button>
-  </form>
-
-  <div id="sched-result" class="hidden" hidden></div>
-
-  <h2>DIGEST</h2>
-
-  <form id="digest-form">
-    <fieldset>
-      <legend>Featured</legend>
-      <input type="number" id="max-featured" min="1" max="20" style="width:5rem" autocomplete="off">
-      <p class="hint">How many sections lead the page before the rest. Your call, not a measured
-        number — the digest reads differently at 3 than at 8. Takes effect on the next digest.</p>
-    </fieldset>
-
-    <button type="submit" id="save-digest">Save</button>
-  </form>
-
-  <div id="digest-result" class="hidden" hidden></div>
-
-  <h2>NOTIFY</h2>
-
-  <form id="notify-form" action="/api/settings/notify">
-    <fieldset>
-      <legend>Discord</legend>
-      <input type="text" id="discord-webhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
-      <p class="hint">Saved only after Discord confirms the webhook exists. A webhook already
-        stored shows with its token masked; to change it, paste the whole URL again — the
-        masked value cannot be resubmitted. When empty here, a run still uses the
-        <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>.
-        This page cannot turn notifications off: to stop them, remove that Worker secret and
-        any <code>[notify]</code> value.</p>
-    </fieldset>
-
-    <button type="submit" id="save-notify">Save</button>
-  </form>
-
-  <div id="notify-result" class="hidden" hidden></div>
-
-  <h2>SOURCES</h2>
-
-  <fieldset>
-    <legend id="sources-origin">Feeds and senders</legend>
-    <div id="sources"></div>
-  </fieldset>
-
-  <form id="src-form">
-    <fieldset>
-      <legend>Add or edit</legend>
-      <div class="row">
-        <input type="text" id="src-name" placeholder="name (the key)" autocomplete="off">
-        <select id="src-type">
-          <option value="rss">rss</option>
-          <option value="newsletter">newsletter</option>
-        </select>
-        <select id="src-tier">
-          <option value="filter">filter</option>
-          <option value="summarize">summarize</option>
-          <option value="fan">fan</option>
-        </select>
+        <div class="tab" data-tab="sources" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Sources</h2>
+            <p class="small">Feeds and newsletter senders. A change applies from the next run.</p>
+            <p class="small" id="sources-origin"></p>
+          </div>
+          <div id="src-list"></div>
+          <form id="src-form" class="form">
+            <div class="field-row">
+              <div class="field"><label class="label" for="src-name">Name</label><input class="input" id="src-name" type="text" autocomplete="off"></div>
+              <div class="field"><label class="label" for="src-type">Type</label>
+                <select class="select" id="src-type"><option value="rss">rss</option><option value="newsletter">newsletter</option></select></div>
+              <div class="field"><label class="label" for="src-tier">Tier</label>
+                <select class="select" id="src-tier"><option value="filter">filter</option><option value="summarize">summarize</option><option value="fan">fan</option></select></div>
+            </div>
+            <div class="field"><label class="label" for="src-url">Feed URL</label><input class="input" id="src-url" type="text" autocomplete="off"></div>
+            <div class="field"><label class="label" for="src-email">Sender match</label><input class="input" id="src-email" type="text" placeholder="from:hi@letter.com" autocomplete="off">
+              <p class="small">Maps a sender to this source. Email routing itself stays in the Cloudflare dashboard.</p></div>
+            <div class="field"><label class="label" for="src-homepage">Homepage</label><input class="input" id="src-homepage" type="text" autocomplete="off"></div>
+            <div class="field"><label class="label" for="src-tags">Tags</label><input class="input" id="src-tags" type="text" placeholder="comma separated" autocomplete="off">
+              <p class="small">The name is the key: saving an existing name edits that source.</p></div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" id="save-src">Save source</button>
+              <div class="notice" id="src-result" hidden></div>
+            </div>
+          </form>
+        </div>
       </div>
-      <div class="row"><input type="text" id="src-url" placeholder="url (rss feed)" autocomplete="off"></div>
-      <div class="row"><input type="text" id="src-email" placeholder="email_match, e.g. from:hi@letter.com" autocomplete="off"></div>
-      <div class="row"><input type="text" id="src-homepage" placeholder="homepage (where it publishes)" autocomplete="off"></div>
-      <div class="row"><input type="text" id="src-tags" placeholder="tags, comma separated" autocomplete="off"></div>
-      <p class="hint">The name is the key: saving an existing name edits that source.
-        <code>email_match</code> is the sender→source mapping, not Cloudflare Email Routing — the
-        domain and the route stay in the dashboard. A change takes effect on the next run.</p>
-    </fieldset>
-
-    <button type="submit" id="save-src">Save source</button>
-  </form>
-
-  <div id="src-result" class="hidden" hidden></div>
+    </div>
+  </main>
 
 <script src="/static/settings.js"></script>
 </body>

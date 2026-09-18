@@ -482,6 +482,10 @@ def test_the_probe_set_watches_no_footer_link():
 EXPECTED_IDS = {
     "site-bar-current",
     "no-credential-in-dom",
+    "hash-direct",
+    "hash-refresh",
+    "hash-default",
+    "hash-nav-click",
 }
 
 

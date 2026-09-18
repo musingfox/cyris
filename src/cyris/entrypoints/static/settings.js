@@ -1,6 +1,28 @@
 const $ = (id) => document.getElementById(id);
 let state = null;
 
+const TABS = ["model", "digest", "notifications", "sources"];
+
+// The category lives in the hash, not the path: the Worker guards /settings by
+// exact match, and a hash never leaves the browser.
+function route() {
+  const hash = location.hash.slice(1);
+  const tab = TABS.includes(hash) ? hash : "model";
+  document.querySelectorAll(".tab").forEach((panel) => {
+    panel.hidden = panel.dataset.tab !== tab;
+  });
+  document.querySelectorAll(".settings-nav a").forEach((link) => {
+    if (link.dataset.tab === tab) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  window.scrollTo(0, 0);
+  const active = document.querySelector(".settings-nav a[aria-current]");
+  active.parentElement.scrollLeft = active.offsetLeft - 16;
+}
+
+addEventListener("hashchange", route);
+route();
+
 function render() {
   $("providers").innerHTML = state.providers.map((p) => `
     <label class="provider ${p.configured ? "" : "unavailable"}">
@@ -10,7 +32,7 @@ function render() {
       <span>${p.name}</span>
       <span class="env">${p.configured ? "key ready" : `${p.env_var} missing`}</span>
     </label>`).join("");
-  $("model").value = state.model;
+  $("model-input").value = state.model;
   updateHint();
   $("providers").addEventListener("change", updateHint);
   const [m, e] = state.schedule || [];
@@ -20,7 +42,6 @@ function render() {
   if (state.notify_webhook) $("discord-webhook").value = state.notify_webhook;
   if (!state.writable) {
     $("save").disabled = true;
-    $("save-sched").disabled = true;
     $("save-digest").disabled = true;
     $("save-notify").disabled = true;
     show("err", "This deployment has no settings store, so nothing can be saved here. Edit cyris.toml instead.");
@@ -41,7 +62,7 @@ function updateHint() {
 
 function show(kind, text, id = "result") {
   const el = $(id);
-  el.className = kind;
+  el.className = kind === "err" ? "notice err" : "notice";
   el.textContent = text;
   el.hidden = false;
 }
@@ -56,7 +77,7 @@ $("form").addEventListener("submit", async (e) => {
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({provider: p.name, model: $("model").value.trim()}),
+      body: JSON.stringify({provider: p.name, model: $("model-input").value.trim()}),
     });
     const data = await res.json();
     if (data.ok) {
@@ -73,49 +94,31 @@ $("form").addEventListener("submit", async (e) => {
   }
 });
 
-$("sched-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const times = [$("morning").value, $("evening").value]
-    .map((h) => `${String(h).padStart(2, "0")}:00`);
-  $("save-sched").disabled = true;
-  try {
-    const res = await fetch("/api/settings/schedule", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({times}),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      state.schedule = data.times;
-      show("ok", `Digest hours: ${data.times.join(" and ")}. ${data.note}`, "sched-result");
-    } else {
-      show("err", data.error || `HTTP ${res.status}`, "sched-result");
-    }
-  } catch (err) {
-    show("err", String(err), "sched-result");
-  } finally {
-    $("save-sched").disabled = false;
-  }
-});
+async function post(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return data.ok ? data : Promise.reject(new Error(data.error || `HTTP ${res.status}`));
+}
 
 $("digest-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const times = [$("morning").value, $("evening").value]
+    .map((h) => `${String(h).padStart(2, "0")}:00`);
   $("save-digest").disabled = true;
   try {
-    const res = await fetch("/api/settings/digest", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({max_featured: parseInt($("max-featured").value, 10)}),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      state.max_featured = data.max_featured;
-      show("ok", `Featured sections: ${data.max_featured}. ${data.note}`, "digest-result");
-    } else {
-      show("err", data.error || `HTTP ${res.status}`, "digest-result");
-    }
+    const sched = await post("/api/settings/schedule", {times});
+    state.schedule = sched.times;
+    const digest = await post("/api/settings/digest",
+      {max_featured: parseInt($("max-featured").value, 10)});
+    state.max_featured = digest.max_featured;
+    show("ok", `Digest hours: ${sched.times.join(" and ")}. ${sched.note}\n` +
+      `Featured sections: ${digest.max_featured}. ${digest.note}`, "digest-result");
   } catch (err) {
-    show("err", String(err), "digest-result");
+    show("err", err.message || String(err), "digest-result");
   } finally {
     $("save-digest").disabled = false;
   }
@@ -151,27 +154,27 @@ let sources = [];
 
 function renderSources(d) {
   sources = d.sources;
-  $("sources-origin").textContent = `Feeds and senders — served from ${d.origin}`;
+  $("sources-origin").textContent = `Served from ${d.origin}.`;
   if (!d.writable) {
     $("save-src").disabled = true;
     show("err", "No writable source table here — this deployment reads sources.yaml.", "src-result");
   }
-  if (!d.sources.length) return $("sources").textContent = "No sources configured.";
-  $("sources").innerHTML = `<table class="sources">
+  if (!d.sources.length) return $("src-list").textContent = "No sources configured.";
+  $("src-list").innerHTML = `<table>
     <tr><th>name</th><th>tier</th><th>type</th><th>url / email_match</th><th></th></tr>
     ${d.sources.map((s, i) => `<tr>
       <td>${esc(s.name)}</td>
-      <td class="tier">${esc(s.tier)}</td>
+      <td>${esc(s.tier)}</td>
       <td>${esc(s.type)}</td>
-      <td class="mono">${esc(s.email_match || s.url || "—")}</td>
-      <td style="white-space:nowrap">
-        <button type="button" data-edit="${i}">edit</button>
-        <button type="button" class="retire" data-retire="${i}">retire</button>
+      <td>${esc(s.email_match || s.url || "—")}</td>
+      <td>
+        <button class="btn sm secondary" type="button" data-edit="${i}">edit</button>
+        <button class="btn sm danger" type="button" data-retire="${i}">retire</button>
       </td>
     </tr>`).join("")}</table>`;
 }
 
-$("sources").addEventListener("click", async (e) => {
+$("src-list").addEventListener("click", async (e) => {
   const edit = e.target.dataset.edit, retire = e.target.dataset.retire;
   if (edit !== undefined) {
     const s = sources[edit];
@@ -233,7 +236,7 @@ const loadSources = () =>
   fetch("/api/sources")
     .then((r) => r.json())
     .then(renderSources)
-    .catch((e) => { $("sources").textContent = `Could not load sources: ${e}`; });
+    .catch((e) => { $("src-list").textContent = `Could not load sources: ${e}`; });
 
 loadSources();
 

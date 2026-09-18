@@ -345,13 +345,56 @@ async def test_settings_never_forces_a_smooth_scroll(triage: TestClient) -> None
     )
 
 
-async def test_the_settings_scroll_asks_for_the_reduced_motion_preference(
+def _motion_without_preference(script: str) -> list[str]:
+    """Name each line that sets a scroll behaviour without asking about reduced motion."""
+    return [
+        line.strip()
+        for line in script.splitlines()
+        if "behavior" in line and "prefers-reduced-motion: reduce" not in line
+    ]
+
+
+def test_a_scroll_that_ignores_reduced_motion_is_reported() -> None:
+    planted = 'el.scrollIntoView({behavior: "smooth"});'
+    assert _motion_without_preference(planted) == [planted]
+    assert _motion_without_preference("route();") == []
+
+
+async def test_every_settings_scroll_asks_for_the_reduced_motion_preference(
     triage: TestClient,
 ) -> None:
     script = await _served(triage, "/static/settings.js")
-    lines = [line for line in script.splitlines() if "scrollIntoView" in line]
-    assert lines
-    assert all("prefers-reduced-motion: reduce" in line for line in lines)
+    assert _motion_without_preference(script) == []
+
+
+SETTINGS_HASHES = ["#model", "#digest", "#notifications", "#sources"]
+
+
+def _hash_targets(html: str) -> set[str]:
+    """The element ids a category hash would scroll to, which it must never do."""
+    ids = set(re.findall(r'\bid="([^"]+)"', html))
+    return ids & {category.lstrip("#") for category in SETTINGS_HASHES}
+
+
+def test_an_element_named_like_a_category_is_reported() -> None:
+    assert _hash_targets('<input id="model">') == {"model"}
+
+
+async def test_the_category_list_links_the_four_hashes(triage: TestClient) -> None:
+    page = await _served(triage, "/settings")
+    nav = re.search(r'<nav class="settings-nav".*?</nav>', page, re.DOTALL)
+    assert nav, "no category list"
+    assert re.findall(r'href="([^"]+)"', nav.group(0)) == SETTINGS_HASHES
+
+
+async def test_no_settings_element_is_a_category_hash_target(triage: TestClient) -> None:
+    assert _hash_targets(await _served(triage, "/settings")) == set()
+
+
+async def test_settings_loads_the_display_font(triage: TestClient) -> None:
+    page = await _served(triage, "/settings")
+    fonts = re.search(r'href="(https://fonts\.googleapis\.com/css2[^"]+)"', page)
+    assert fonts and "Instrument+Serif" in fonts.group(1)
 
 
 def _declared(rules: set[str] | list[str], prop: str) -> list[str]:

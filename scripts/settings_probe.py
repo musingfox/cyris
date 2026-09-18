@@ -241,6 +241,49 @@ CHECKS: list[Check] = [
         """,
         sabotage=f"""$("#discord-webhook").value = {json.dumps(STORED_WEBHOOK)};""",
     ),
+    Check(
+        id="hash-direct",
+        fixture="readonly",
+        path="/settings#digest",
+        script="""
+            expect(same(panels(), ["digest"]), `visible panels: ${panels()}`);
+            expect(same(currentTabs(), ["#digest"]), `current: ${currentTabs()}`);
+        """,
+        sabotage="""$('.tab[data-tab="model"]').hidden = false;""",
+    ),
+    Check(
+        id="hash-refresh",
+        fixture="readonly",
+        path="/settings#sources",
+        reload=True,
+        script="""expect(same(panels(), ["sources"]), `visible panels: ${panels()}`);""",
+        sabotage="""$('.tab[data-tab="sources"]').hidden = true;""",
+    ),
+    Check(
+        id="hash-default",
+        fixture="readonly",
+        path=("/settings", "/settings#nope"),
+        script="""
+            expect(same(panels(), ["model"]), `visible panels: ${panels()}`);
+            expect(same(currentTabs(), ["#model"]), `current: ${currentTabs()}`);
+        """,
+        sabotage="""$('.tab[data-tab="digest"]').hidden = false;""",
+    ),
+    Check(
+        id="hash-nav-click",
+        fixture="readonly",
+        path="/settings",
+        act="""
+            $('.settings-nav a[href="#notifications"]').click();
+            await waitFor(() => same(panels(), ["notifications"]), "the notifications panel");
+        """,
+        script="""
+            expect(location.hash === "#notifications", `hash: ${location.hash}`);
+            expect(same(panels(), ["notifications"]), `visible panels: ${panels()}`);
+            expect(same(currentTabs(), ["#notifications"]), `current: ${currentTabs()}`);
+        """,
+        sabotage="""$('.settings-nav a[aria-current]').removeAttribute("aria-current");""",
+    ),
 ]
 
 PRELUDE = """
@@ -262,6 +305,10 @@ const setValue = (el, value) => {
   el.dispatchEvent(new Event("input", {bubbles: true}));
   el.dispatchEvent(new Event("change", {bubbles: true}));
 };
+const panels = () => $$(".tab").filter(visible).map((panel) => panel.dataset.tab);
+const currentTabs = () =>
+  $$(".settings-nav a[aria-current]").map((link) => link.getAttribute("href"));
+const same = (actual, wanted) => JSON.stringify(actual) === JSON.stringify(wanted);
 const ctx = {};
 """
 
