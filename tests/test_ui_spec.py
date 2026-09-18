@@ -187,9 +187,39 @@ async def test_settings_and_the_deck_stop_motion_on_request(triage: TestClient) 
     assert (await _served_rules(triage, "/static/style.css"))[REDUCED_MOTION] == STILL
 
 
+# Section 4 allows one transform: the raw triage card's drag and fly-out.
+RAW_CARD_MOTION = frozenset(
+    {(".card", "transition: border-color var(--t-fast), transform var(--t-fast)")}
+)
+
+
 @pytest.mark.parametrize("page", ["index", "digest", "raw", "settings"])
 def test_every_transition_changes_colour_over_the_fast_token(page: str) -> None:
-    assert off_spec_transitions(_source(page)) == []
+    exempt = RAW_CARD_MOTION if page == "raw" else frozenset()
+    assert off_spec_transitions(_source(page), exempt) == []
+
+
+CARD_MOTION = ".card{transition:border-color var(--t-fast), transform var(--t-fast)}"
+
+
+def test_the_card_transform_is_off_spec_without_its_exemption() -> None:
+    assert len(off_spec_transitions(CARD_MOTION)) == 1
+
+
+def test_the_card_transform_passes_only_with_its_exemption() -> None:
+    assert off_spec_transitions(CARD_MOTION, RAW_CARD_MOTION) == []
+
+
+@pytest.mark.parametrize(
+    "css",
+    [
+        ".card{transition:all var(--t-fast)}",
+        ".card{transition:border-color 150ms, transform 150ms}",
+        ".card.dragging{transition:transform var(--t-fast)}",
+    ],
+)
+def test_the_card_exemption_covers_no_other_transition(css: str) -> None:
+    assert len(off_spec_transitions(css, RAW_CARD_MOTION)) == 1
 
 
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])

@@ -421,16 +421,22 @@ def font_stack_literals(css_source: str) -> list[str]:
 _OFF_SPEC_MOTION = re.compile(r"(?<![\w-])(?:all|transform)(?![\w-])|(?<![\w-])\d*\.?\d+m?s\b")
 
 
-def off_spec_transitions(css_source: str) -> list[str]:
+def off_spec_transitions(
+    css_source: str, exempt: frozenset[tuple[str, str]] = frozenset()
+) -> list[str]:
     """Name every transition that moves ``transform`` or ``all``, or times itself.
 
     The spec's section 4 lets a transition change colours and opacity only, over
     ``--t-fast``, so a literal duration is as much a miss as a forbidden property.
+    ``exempt`` lets through exact ``(rule key, declaration)`` pairs the spec
+    allows by name, and nothing near them.
     """
     found = []
     for key, declarations in _rules(css_source).items():
         for declaration in declarations:
             prop, value = (part.strip() for part in declaration.split(":", 1))
+            if (key, declaration) in exempt:
+                continue
             if prop.startswith("transition") and _OFF_SPEC_MOTION.search(value):
                 found.append(f"{key} | {declaration}")
     return found
