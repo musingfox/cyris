@@ -29,7 +29,7 @@
             width: {{ mark_size }};
             height: {{ mark_size }};
             background: var(--accent);
-            box-shadow: 0 0 0 4px rgba(198, 255, 61, 0.12){% if mark_glow %}, 0 0 24px rgba(198, 255, 61, 0.5){% endif %};
+{% if mark_glow %}            box-shadow: 0 0 12px rgba(198,255,61,.45);{% endif %}
 {%- if mark_pulse %}
             animation: pulse 2.4s ease-in-out infinite;
 {%- endif %}

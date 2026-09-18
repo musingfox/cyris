@@ -10,9 +10,13 @@ from aiohttp.test_utils import TestClient, TestServer
 from css_rules import (
     COMPONENT_SELECTORS,
     PROTOTYPE,
+    UI_SPEC,
+    canonical_colour,
+    colour_literals,
     include_sites,
     parse_style_block,
     receipt_fixtures,
+    spec_colour_exceptions,
     unscaled_font_sizes,
 )
 
@@ -108,6 +112,41 @@ async def test_the_shared_body_rule_has_no_deck_layout(triage: TestClient) -> No
     assert {"background: var(--bg)", "color: var(--text)"} <= set(body)
     properties = {declaration.split(":", 1)[0] for declaration in body}
     assert not properties & {"display", "overflow", "touch-action", "min-height", "font-size"}
+
+
+def test_the_allowed_colours_are_the_spec_exceptions() -> None:
+    assert spec_colour_exceptions(UI_SPEC.read_text()) == {
+        "rgba(198,255,61,.45)",
+        "rgba(7,7,10,.88)",
+        "#d4ff66",
+    }
+
+
+@pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
+def test_no_colour_literal_outside_the_spec_exceptions(source: str) -> None:
+    index, digest, raw = receipt_fixtures()
+    text = {"index": index, "digest": digest, "raw": raw, "style.css": STYLE.read_text()}[source]
+    assert colour_literals(text) == []
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{color:#e06c75}", ["#e06c75"]),
+        (".x{background:rgba(198, 255, 61, 0.5)}", ["rgba(198,255,61,.5)"]),
+        (".x{border:1px solid var(--x, #fff)}", ["#fff"]),
+        (".x{box-shadow:0 0 12px rgba(198, 255, 61, 0.45)}", []),
+        (":root{--bg:#07070a}", []),
+        (".x{border-color:transparent}", []),
+        (".x{color:white}", ["white"]),
+        (".x{border:1px solid Red}", ["red"]),
+        (".x{outline:2px solid black}", ["black"]),
+        (".x{color:currentColor;background:inherit}", []),
+        (".x{color:var(--red-ish)}", []),
+    ],
+)
+def test_colour_literals_are_reported_in_canonical_form(css: str, reported: list[str]) -> None:
+    assert colour_literals(css) == reported
 
 
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
@@ -227,6 +266,43 @@ def test_raw_states_are_the_component() -> None:
     assert rules[".state.rejected"] == {"color: var(--text-faint)"}
     assert rules[".state.pending"] == {"color: var(--text-dim)"}
     assert "#6b4a4a" not in raw
+
+
+def _declared(rules: set[str] | list[str], prop: str) -> list[str]:
+    return [d.split(":", 1)[1].strip() for d in rules if d.split(":", 1)[0] == prop]
+
+
+@pytest.mark.parametrize(
+    ("page", "glow"), [(0, "80% 50%"), (1, "80% 60%")], ids=["index", "digest"]
+)
+def test_the_page_glow_is_the_accent_tint(page: int, glow: str) -> None:
+    (image,) = _declared(parse_style_block(receipt_fixtures()[page])["body"], "background-image")
+    tint = f"radial-gradient(ellipse {glow} at 50% -10%, var(--accent-tint), transparent 70%)"
+    assert tint in image
+    assert "rgba(" not in image
+
+
+def test_the_top_story_badge_is_the_accent_tint() -> None:
+    _, digest, _ = receipt_fixtures()
+    assert "background: var(--accent-tint)" in parse_style_block(digest)[".lead-story::before"]
+
+
+@pytest.mark.parametrize("page", [0, 1], ids=["index", "digest"])
+def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
+    rules = parse_style_block(receipt_fixtures()[page])
+    assert [canonical_colour(v) for v in _declared(rules[".brand-mark"], "box-shadow")] == [
+        canonical_colour("0 0 12px rgba(198,255,61,.45)")
+    ]
+
+
+def test_the_raw_brand_mark_does_not_glow() -> None:
+    _, _, raw = receipt_fixtures()
+    assert _declared(parse_style_block(raw)[".brand-mark"], "box-shadow") == []
+
+
+@pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
+def test_no_page_rings_the_brand_mark(page: int) -> None:
+    assert "0 0 0 4px" not in receipt_fixtures()[page]
 
 
 @functools.cache

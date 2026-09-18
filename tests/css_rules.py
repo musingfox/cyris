@@ -206,6 +206,60 @@ def parse_style_block(html: str) -> dict[str, RuleDeclarations]:
     return rules
 
 
+# Keywords such as transparent, currentColor and inherit are not colours of their
+# own, so they stay out of this list.
+_NAMED_COLOURS = (
+    "aqua|black|blue|fuchsia|gray|grey|green|lime|maroon|navy|olive|orange|purple|red|"
+    "silver|teal|white|yellow|beige|brown|coral|crimson|cyan|gold|indigo|ivory|khaki|"
+    "magenta|orchid|pink|plum|salmon|tan|tomato|violet|wheat"
+)
+_COLOUR = re.compile(
+    rf"#[0-9a-fA-F]{{3,8}}\b|\b(?:rgba?|hsla?)\([^)]*\)|(?<![\w-])(?:{_NAMED_COLOURS})(?![\w-])",
+    re.IGNORECASE,
+)
+
+
+def canonical_colour(literal: str) -> str:
+    """Lowercase, drop whitespace, and write ``0.5`` as ``.5``."""
+    return re.sub(r"(?<![\d.])0\.", ".", _WHITESPACE.sub("", literal.lower()))
+
+
+def spec_colour_exceptions(markdown: str) -> set[str]:
+    """Read the colour literals the spec's ``允許的字面值例外`` bullet allows."""
+    lines = markdown.splitlines()
+    start = next((i for i, line in enumerate(lines) if "允許的字面值例外" in line), None)
+    if start is None:
+        raise ValueError("the spec has no 允許的字面值例外 line")
+    bullet = [lines[start]]
+    for line in lines[start + 1 :]:
+        if not line.strip() or not line[0].isspace() or line.lstrip().startswith("- "):
+            break
+        bullet.append(line)
+    spans = re.findall(r"`([^`]+)`", " ".join(bullet))
+    allowed = {canonical_colour(span) for span in spans if _COLOUR.fullmatch(span)}
+    if not allowed:
+        raise ValueError("the spec's 允許的字面值例外 line names no colour")
+    return allowed
+
+
+def colour_literals(css_source: str) -> list[str]:
+    """Return every colour literal outside ``:root`` that the spec does not allow.
+
+    Declaration values are scanned in canonical form, so ``rgba(198, 255, 61,
+    0.45)`` and ``rgba(198,255,61,.45)`` are one literal.
+    """
+    allowed = spec_colour_exceptions(UI_SPEC.read_text())
+    found = []
+    for key, declarations in _rules(css_source).items():
+        if key == ":root":
+            continue
+        for declaration in declarations:
+            for literal in _COLOUR.findall(declaration.split(":", 1)[1]):
+                if (colour := canonical_colour(literal)) not in allowed:
+                    found.append(colour)
+    return found
+
+
 def mirror_diff(style_css: str, partial_css: str) -> list[str]:
     """Name rules whose declarations differ between static and partial CSS."""
     style = _rules(style_css)
