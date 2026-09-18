@@ -23,6 +23,8 @@
     <style>
         {% include "_tokens.css.j2" %}
 
+        {% include "_components.css.j2" %}
+
         html { scroll-behavior: smooth; }
 
         {% with container_width="1240px", container_relative=true, glow="80% 60%", font_size="16px", line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
@@ -289,26 +291,6 @@
             flex-wrap: wrap;
             gap: 12px;
             align-items: center;
-        }
-
-        /* === SCORE / META PILLS === */
-        .pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            border: 1px solid var(--border-strong);
-            padding: 2px 8px;
-            background: var(--surface-2);
-            color: var(--text-dim);
-            font-family: 'Geist Mono', monospace;
-            font-size: 11px;
-            letter-spacing: 0.04em;
-        }
-
-        .pill.score {
-            border-color: var(--accent-dim);
-            color: var(--accent);
-            background: rgba(198, 255, 61, 0.06);
         }
 
         .source-tag {

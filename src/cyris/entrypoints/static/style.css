@@ -1,8 +1,9 @@
-/* One visual system across the three reader-facing surfaces (§7 #16). The
-   source of these tokens is `adapters/output/templates/_tokens.css.j2`; a
-   digest is a standalone HTML file deployed to Pages, so it cannot link this
-   stylesheet and carries its own copy. `tests/test_digest_css_partials.py`
-   enforces that the two agree. Deck-only rules live in `deck.css`. */
+/* The rules every reader-facing surface shares, for the two pages served from
+   here (/settings and the deck). A copy of `_tokens.css.j2` and
+   `_components.css.j2` in `adapters/output/templates/`: a digest is a
+   standalone HTML file deployed to Pages, so it cannot link this stylesheet and
+   carries the partials instead. `tests/test_digest_css_partials.py` enforces
+   that the two agree. Deck-only rules live in `deck.css`. */
 :root {
     --bg: #07070a;
     --bg-elev: #0d0d12;
@@ -32,11 +33,43 @@
     --measure: 640px;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
 }
+
+.btn { display: inline-flex; align-items: center; gap: var(--s-2); height: 44px; padding: 0 var(--s-5); border: 1px solid transparent; border-radius: var(--r-control); font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-weight: 500; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; cursor: pointer; transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.sm { height: 34px; padding: 0 var(--s-2); letter-spacing: .06em; }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn.danger { background: transparent; border-color: var(--warn); color: var(--warn); }
+.btn.danger:hover, .btn.danger.armed { background: var(--warn-tint); }
+.btn:disabled { cursor: default; opacity: .4; }
+.input, .select { width: 100%; height: 48px; padding: 0 var(--s-4); border: 1px solid var(--border-strong); border-radius: var(--r-control); background: var(--bg-elev); color: var(--text); font-size: calc(18px * var(--type-scale)); transition: border-color var(--t-fast); }
+.input:focus, .select:focus { border-color: var(--accent); outline: none; }
+.input.invalid { border-color: var(--warn); }
+.seg { display: inline-flex; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--r-control); }
+.seg > * { display: inline-flex; align-items: center; height: 44px; padding: 0 var(--s-4); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-dim); font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-weight: 500; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; cursor: pointer; transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast); }
+.seg > * + * { border-left: 1px solid var(--border-strong); }
+.seg > *:hover { color: var(--text); }
+.seg > [aria-current="page"], .seg > [aria-pressed="true"] { background: var(--surface-2); border-bottom-color: var(--accent); color: var(--accent); }
+.panel { background: var(--bg-elev); border: 1px solid var(--border); }
+.panel + .panel { margin-top: var(--s-5); }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); background: var(--surface); border-bottom: 1px solid var(--border); }
+.pill { padding: 2px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-tag); background: var(--surface-2); color: var(--text-dim); font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .04em; white-space: nowrap; }
+.pill.score { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-tint); }
+.state { font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; }
+.state.accepted { color: var(--accent); }
+.state.pending { color: var(--text-dim); }
+.state.rejected { color: var(--text-faint); }
+.notice { padding: var(--s-2) var(--s-3); border-left: 2px solid var(--accent); background: var(--accent-tint); font-size: calc(16px * var(--type-scale)); line-height: 1.5; white-space: pre-wrap; }
+.notice.err { border-left-color: var(--warn); background: var(--warn-tint); }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 
 body {
   font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;

@@ -11,24 +11,22 @@ from pathlib import Path
 
 import pytest
 from css_rules import (
+    COMPONENT_SELECTORS,
+    CSS_PARTIALS,
     UI_SPEC,
+    include_sites,
+    mirror_diff,
     parse_style_block,
     receipt_fixtures,
     root_declarations,
+    rule_occurrences,
     spec_token_fence,
+    split_selector_list,
 )
-from jinja2 import DebugUndefined, Environment, meta, nodes
+from jinja2 import DebugUndefined, Environment, meta
 
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-
-CSS_PARTIALS = (
-    "_tokens.css.j2",
-    "_page.css.j2",
-    "_masthead.css.j2",
-    "_footer.css.j2",
-    "_promote.css.j2",
-)
 
 PAGE_TEMPLATES = {
     "index": "index.html.j2",
@@ -40,7 +38,13 @@ PAGE_TEMPLATES = {
 # than read back out of the templates: derived expectations would silently accept
 # a page that stopped including a partial and inlined the rules again.
 EXPECTED_INCLUDES = {
-    "index": ("_tokens.css.j2", "_page.css.j2", "_masthead.css.j2", "_footer.css.j2"),
+    "index": (
+        "_tokens.css.j2",
+        "_components.css.j2",
+        "_page.css.j2",
+        "_masthead.css.j2",
+        "_footer.css.j2",
+    ),
     "digest": CSS_PARTIALS,
     "raw": CSS_PARTIALS,
 }
@@ -68,31 +72,6 @@ def _style_text(html: str) -> str:
     return "\n".join(
         block for block in html.split("<style>")[1:] for block in [block.split("</style>")[0]]
     )
-
-
-def _include_sites(env: Environment, template_name: str) -> dict[str, dict[str, object]]:
-    """Map each CSS partial a template includes to the parameters it passes.
-
-    Parameters are read from the template's own syntax tree, so a renamed or
-    retyped one is seen exactly as Jinja sees it.
-    """
-    source = env.loader.get_source(env, template_name)[0]
-    tree = env.parse(source)
-    sites: dict[str, dict[str, object]] = {}
-    wrapped: set[int] = set()
-    for with_node in tree.find_all(nodes.With):
-        parameters = {
-            target.name: value.as_const()
-            for target, value in zip(with_node.targets, with_node.values, strict=True)
-        }
-        for include in with_node.find_all(nodes.Include):
-            wrapped.add(id(include))
-            if (name := include.template.as_const()) in CSS_PARTIALS:
-                sites[name] = parameters
-    for include in tree.find_all(nodes.Include):
-        if id(include) not in wrapped and (name := include.template.as_const()) in CSS_PARTIALS:
-            sites[name] = {}
-    return sites
 
 
 @pytest.fixture(scope="module")
@@ -142,7 +121,7 @@ def test_partial_reaches_the_page_verbatim(
     env: Environment, pages: dict[str, str], page: str, partial: str
 ) -> None:
     template_name = PAGE_TEMPLATES[page]
-    sites = _include_sites(env, template_name)
+    sites = include_sites(env, template_name)
     assert partial in sites, f"{template_name} no longer includes {partial}"
 
     parameters = sites[partial]
@@ -168,10 +147,15 @@ def test_partial_reaches_the_page_verbatim(
     )
 
 
+@pytest.mark.parametrize("page", sorted(PAGE_TEMPLATES))
+def test_the_components_partial_takes_no_parameters(env: Environment, page: str) -> None:
+    assert include_sites(env, PAGE_TEMPLATES[page])["_components.css.j2"] == {}
+
+
 def test_the_omission_check_sees_a_dropped_parameter_and_not_a_guarded_one(
     env: Environment,
 ) -> None:
-    parameters = _include_sites(env, PAGE_TEMPLATES["digest"])["_page.css.j2"]
+    parameters = include_sites(env, PAGE_TEMPLATES["digest"])["_page.css.j2"]
     assert "line_height" in parameters and "glow" in parameters
     strict = env.overlay(undefined=DebugUndefined)
 
@@ -201,3 +185,67 @@ def test_body_background_shorthand_precedes_its_longhand(pages: dict[str, str], 
     assert properties.index("background") < properties.index("background-image"), (
         f"{page}'s body emits background-image before the background shorthand"
     )
+
+
+@pytest.fixture(scope="module")
+def shared_partials(env: Environment) -> str:
+    return "".join(
+        env.get_template(name).render() for name in ("_tokens.css.j2", "_components.css.j2")
+    )
+
+
+def test_the_static_stylesheet_is_the_shared_partials(shared_partials: str) -> None:
+    assert mirror_diff(STYLE_CSS.read_text(), shared_partials) == []
+
+
+def test_a_restyled_component_in_the_static_stylesheet_is_named(shared_partials: str) -> None:
+    style = STYLE_CSS.read_text()
+    assert style.count("padding: 2px 10px") == 1
+    changed = style.replace("padding: 2px 10px", "padding: 2px 8px")
+    assert mirror_diff(changed, shared_partials) == [".pill"]
+
+
+def test_a_rule_only_the_static_stylesheet_has_is_named(shared_partials: str) -> None:
+    extra = STYLE_CSS.read_text() + "\n.card { color: red; }\n"
+    assert mirror_diff(extra, shared_partials) == [".card"]
+
+
+def test_a_rule_only_the_partials_have_is_named(shared_partials: str) -> None:
+    style = STYLE_CSS.read_text()
+    start = style.index("@keyframes pulse")
+    end = style.index("}\n}", start) + 3
+    missing = mirror_diff(style[:start] + style[end:], shared_partials)
+    assert missing and all(key.startswith("@keyframes pulse | ") for key in missing)
+
+
+def _component_definition_problems(source: str) -> list[str]:
+    """Name each component selector a source defines other than exactly once."""
+    counts = rule_occurrences(source)
+    selectors = {part for key in COMPONENT_SELECTORS for part in split_selector_list(key)}
+    return sorted(
+        f"{selector} x{counts[selector]}" for selector in selectors if counts[selector] != 1
+    )
+
+
+@pytest.mark.parametrize("page", sorted(PAGE_TEMPLATES))
+def test_every_page_defines_each_component_once(pages: dict[str, str], page: str) -> None:
+    assert _component_definition_problems(pages[page]) == []
+
+
+def test_the_static_stylesheet_defines_each_component_once() -> None:
+    assert _component_definition_problems(STYLE_CSS.read_text()) == []
+
+
+def test_a_second_block_for_a_component_is_reported() -> None:
+    page = "<style>.pill{a:1} .pill{b:2}</style>"
+    assert rule_occurrences(page)[".pill"] == 2
+    assert ".pill x2" in _component_definition_problems(page)
+
+
+def test_a_component_repeated_inside_a_selector_list_is_counted() -> None:
+    assert rule_occurrences("<style>.pill, .x{a:1} .pill{b:2}</style>")[".pill"] == 2
+
+
+def test_a_component_repeated_inside_a_media_query_is_counted() -> None:
+    page = "<style>.pill{a:1} @media (max-width: 880px){.pill{b:2}}</style>"
+    assert rule_occurrences(page)[".pill"] == 2

@@ -1,8 +1,11 @@
 """CSS rule receipts and deterministic render fixtures for digest templates."""
 
 import re
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+
+from jinja2 import Environment, nodes
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import (
@@ -19,6 +22,78 @@ _COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _WHITESPACE = re.compile(r"\s+")
 
 UI_SPEC = Path(__file__).resolve().parents[1] / "docs" / "design" / "ui-language.md"
+PROTOTYPE = UI_SPEC.with_name("prototype.html")
+
+# The section 4 components `_components.css.j2` defines, keyed as parse_style_block
+# keys them. Listed rather than derived so a component that goes missing, or a
+# prototype-only selector that slips in, is a difference instead of a new truth.
+COMPONENT_SELECTORS = frozenset(
+    {
+        ".btn",
+        ".btn.sm",
+        ".btn.primary",
+        ".btn.primary:hover",
+        ".btn.secondary",
+        ".btn.secondary:hover",
+        ".btn.danger",
+        ".btn.danger:hover, .btn.danger.armed",
+        ".btn:disabled",
+        ".input, .select",
+        ".input:focus, .select:focus",
+        ".input.invalid",
+        ".seg",
+        ".seg > *",
+        ".seg > * + *",
+        ".seg > *:hover",
+        '.seg > [aria-current="page"], .seg > [aria-pressed="true"]',
+        ".panel",
+        ".panel + .panel",
+        ".panel-head",
+        ".pill",
+        ".pill.score",
+        ".state",
+        ".state.accepted",
+        ".state.pending",
+        ".state.rejected",
+        ".notice",
+        ".notice.err",
+    }
+)
+
+
+CSS_PARTIALS = (
+    "_tokens.css.j2",
+    "_components.css.j2",
+    "_page.css.j2",
+    "_masthead.css.j2",
+    "_footer.css.j2",
+    "_promote.css.j2",
+)
+
+
+def include_sites(env: Environment, template_name: str) -> dict[str, dict[str, object]]:
+    """Map each CSS partial a template includes to the parameters it passes.
+
+    Parameters are read from the template's own syntax tree, so a renamed or
+    retyped one is seen exactly as Jinja sees it.
+    """
+    source = env.loader.get_source(env, template_name)[0]
+    tree = env.parse(source)
+    sites: dict[str, dict[str, object]] = {}
+    wrapped: set[int] = set()
+    for with_node in tree.find_all(nodes.With):
+        parameters = {
+            target.name: value.as_const()
+            for target, value in zip(with_node.targets, with_node.values, strict=True)
+        }
+        for include in with_node.find_all(nodes.Include):
+            wrapped.add(id(include))
+            if (name := include.template.as_const()) in CSS_PARTIALS:
+                sites[name] = parameters
+    for include in tree.find_all(nodes.Include):
+        if id(include) not in wrapped and (name := include.template.as_const()) in CSS_PARTIALS:
+            sites[name] = {}
+    return sites
 
 
 RuleDeclarations = set[str] | list[str]
@@ -131,6 +206,14 @@ def parse_style_block(html: str) -> dict[str, RuleDeclarations]:
     return rules
 
 
+def mirror_diff(style_css: str, partial_css: str) -> list[str]:
+    """Name rules whose declarations differ between static and partial CSS."""
+    style = _rules(style_css)
+    partial = _rules(partial_css)
+    style.pop("body", None)
+    return sorted(key for key in set(style) | set(partial) if style.get(key) != partial.get(key))
+
+
 def _rules(source: str) -> dict[str, RuleDeclarations]:
     """Parse an HTML page's style blocks, or bare CSS when there are none."""
     return parse_style_block(source if "<style" in source else f"<style>{source}</style>")
@@ -152,6 +235,49 @@ def root_declarations(css_source: str) -> list[str]:
     declarations = _rules(css_source)[":root"]
     assert isinstance(declarations, list)
     return declarations
+
+
+def split_selector_list(selector: str) -> list[str]:
+    """Split a selector list on its top-level commas, normalizing whitespace."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for index, character in enumerate(selector):
+        if character in "([":
+            depth += 1
+        elif character in ")]":
+            depth -= 1
+        elif character == "," and depth == 0:
+            parts.append(selector[start:index])
+            start = index + 1
+    parts.append(selector[start:])
+    return [key for part in parts if (key := _WHITESPACE.sub(" ", part).strip())]
+
+
+def _count_selectors(css: str, counts: Counter[str]) -> None:
+    position = 0
+    while (opening := css.find("{", position)) != -1:
+        selector = css[position:opening].strip()
+        closing = _matching_brace(css, opening)
+        if selector.startswith("@"):
+            _count_selectors(css[opening + 1 : closing], counts)
+        else:
+            counts.update(split_selector_list(selector))
+        position = closing + 1
+
+
+def rule_occurrences(css_source: str) -> Counter[str]:
+    """Count how many rule blocks name each selector, at-rule scopes included.
+
+    ``parse_style_block`` merges a repeated selector into one key, which is what
+    a receipt wants and exactly what hides a page restyling a shared component
+    with a second block of its own. This counts the blocks instead.
+    """
+    counts: Counter[str] = Counter()
+    styles = re.findall(r"<style\b[^>]*>(.*?)</style\s*>", css_source, re.DOTALL | re.IGNORECASE)
+    for style in styles or [css_source]:
+        _count_selectors(_COMMENT.sub("", style), counts)
+    return counts
 
 
 def _item(title: str, url: str, source: str) -> DigestItem:

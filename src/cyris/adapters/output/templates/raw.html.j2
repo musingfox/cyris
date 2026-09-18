@@ -10,6 +10,8 @@
     <style>
         {% include "_tokens.css.j2" %}
 
+        {% include "_components.css.j2" %}
+
         {% with container_width="900px", container_relative=false, glow=none, font_size=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
         {% with masthead_padding="24px 0 20px", masthead_margin="40px", masthead_rule=false,
@@ -52,7 +54,7 @@
 
         .article {
             display: grid;
-            grid-template-columns: 74px 46px 1fr auto;
+            grid-template-columns: 96px 46px 1fr auto;
             align-items: baseline;
             gap: 14px;
             padding: 11px 20px;
@@ -61,17 +63,6 @@
 
         .article:last-child { border-bottom: none; }
         .article:hover { background: var(--surface); }
-
-        .state {
-            font-family: 'Geist Mono', monospace;
-            font-size: 10px;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--text-faint);
-        }
-
-        .state.accepted { color: var(--accent); }
-        .state.rejected { color: #6b4a4a; }
 
         .score {
             font-family: 'Geist Mono', monospace;
@@ -96,7 +87,7 @@
 
         @media (max-width: 640px) {
             .article {
-                grid-template-columns: 74px 1fr auto;
+                grid-template-columns: 96px 1fr auto;
                 gap: 4px 14px;
                 padding: 12px 16px;
             }
