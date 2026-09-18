@@ -519,6 +519,8 @@ EXPECTED_IDS = {
     "retire-deletes",
     "readonly-settings",
     "readonly-sources",
+    "fits-400",
+    "fits-1440",
 }
 
 

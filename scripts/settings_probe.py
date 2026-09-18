@@ -967,6 +967,51 @@ CHECKS: list[Check] = [
         """,
         sabotage="""editorAct("retire").disabled = false;""",
     ),
+    Check(
+        id="fits-400",
+        fixture="writable",
+        path="/settings",
+        width=400,
+        act="""
+            await settingsLoaded();
+            const measure = (where) => {
+              const nav = $(".settings-nav"), style = getComputedStyle(nav);
+              const problems = [overflow(where)];
+              if (style.display !== "flex") problems.push(`${where}: nav is ${style.display}`);
+              if (nav.getBoundingClientRect().bottom > visiblePanel().getBoundingClientRect().top)
+                problems.push(`${where}: the nav is not above the panel`);
+              return problems.filter(Boolean);
+            };
+            ctx.problems = await eachCategory(measure);
+            await openRow("Hacker News");
+            ctx.problems.push(...measure("the open editor"));
+        """,
+        script="""
+            const problems = [...ctx.problems, overflow("now")].filter(Boolean);
+            expect(problems.length === 0, problems.join("; "));
+        """,
+        sabotage="""
+            const wide = document.createElement("div");
+            wide.textContent = "wide";
+            wide.className = "probe-wide";
+            wide.style.width = "2000px";
+            visiblePanel().append(wide);
+        """,
+    ),
+    Check(
+        id="fits-1440",
+        fixture="writable",
+        path="/settings",
+        act="""
+            await settingsLoaded();
+            ctx.problems = await eachCategory(layout1440);
+        """,
+        script="""
+            const problems = [...ctx.problems, ...layout1440("now")];
+            expect(problems.length === 0, problems.join("; "));
+        """,
+        sabotage="""$(".settings-nav").style.display = "none";""",
+    ),
 ]
 
 PRELUDE = """
@@ -1010,6 +1055,38 @@ const openRow = async (name) => {
 const shownFields = () =>
   $$("[data-for]", editor()).filter(visible).map((field) => $("input", field).id);
 const noticeOf = (tab) => $(".actions-line .notice", $(`form.tab[data-tab="${tab}"]`));
+// Only these two may scroll sideways; anything else past the viewport is overflow.
+// clientWidth, not innerWidth: a classic scrollbar takes its width out of the
+// viewport, and content under it would otherwise pass.
+const viewport = () => document.documentElement.clientWidth;
+const escaping = () => $$("body *")
+  .filter((el) => !el.closest(".table-wrap, .settings-nav"))
+  .filter((el) => el.getBoundingClientRect().right > viewport() + 0.5)
+  .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join(".")}`);
+const overflow = (where) => document.documentElement.scrollWidth > viewport()
+  ? `${where}: ${document.documentElement.scrollWidth}px wide, past ${escaping().join(" ")}`
+  : "";
+const eachCategory = async (measure) => {
+  const problems = [];
+  for (const tab of ["model", "digest", "notifications", "sources"]) {
+    location.hash = tab;
+    await waitFor(() => same(panels(), [tab]), tab);
+    problems.push(...measure(tab));
+  }
+  return problems;
+};
+const visiblePanel = () => $$(".tab").find(visible);
+const layout1440 = (where) => {
+  const nav = $(".settings-nav").getBoundingClientRect();
+  const panel = visiblePanel().getBoundingClientRect();
+  const page = $(".page"), style = getComputedStyle(page);
+  const content = page.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const problems = [overflow(where)];
+  if (nav.width !== 220) problems.push(`${where}: nav is ${nav.width}px wide`);
+  if (!(nav.right < panel.left)) problems.push(`${where}: nav is not left of the panel`);
+  if (content > 1240) problems.push(`${where}: page content is ${content}px`);
+  return problems.filter(Boolean);
+};
 const ctx = {};
 """
 
