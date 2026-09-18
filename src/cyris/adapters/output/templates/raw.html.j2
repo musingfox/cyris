@@ -198,6 +198,34 @@
     card.addEventListener('transitionend', (e) => {
         if (e.propertyName === 'transform' && card.dataset.flying) settle();
     });
+
+    // The card follows the pointer; released far enough to one side, it votes that way.
+    // The distance is prototype.html#raw's, the spec's reference for this card.
+    const SWIPE_PX = 120;
+    const dirOf = (dx, min) => dx > min ? 'up' : dx < -min ? 'down' : null;
+    let drag = null;
+    card.addEventListener('pointerdown', (e) => {
+        if (busy) return;
+        drag = { x: e.clientX, dx: 0 };
+        card.setPointerCapture(e.pointerId);
+        card.classList.add('dragging');
+    });
+    card.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        drag.dx = e.clientX - drag.x;
+        card.style.transform = `translateX(${drag.dx}px) rotate(${drag.dx / 20}deg)`;
+    });
+    function endDrag(e) {
+        if (!drag) return;
+        const { dx } = drag;
+        drag = null;
+        card.classList.remove('dragging');
+        const swipe = e.type === 'pointerup' && dirOf(dx, SWIPE_PX);
+        if (swipe) return voteCard(swipe);
+        card.style.transform = '';
+    }
+    card.addEventListener('pointerup', endDrag);
+    card.addEventListener('pointercancel', endDrag);
     for (const b of deckButtons) b.addEventListener('click', () => voteCard(b.dataset.dir));
     </script>
     {% include "_probe_script.html.j2" %}

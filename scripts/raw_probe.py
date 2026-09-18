@@ -189,6 +189,7 @@ const pressDeck = async (dir) => {
   await showView("triage");
   $(`#t-${dir}`).click();
 };
+const leaning = () => ["lean-up", "lean-down"].filter((c) => $("#t-card").classList.contains(c));
 const deck = () => ["#t-remaining", "#t-source", "#t-title"].map((id) => $(id).textContent);
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
 """
@@ -514,6 +515,39 @@ window.fetch = (input, init) => init && init.method === "POST"
         """,
         script="""expect(!visible($("#t-error")), "the failure notice stays");""",
         sabotage="""$("#t-error").hidden = false;""",
+    ),
+    *(
+        Check(
+            id=check_id,
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="""await showView("triage");""",
+            gestures=({"press": "#t-card", "pointer": pointer}, {"move": dx}, {"release": True}),
+            script="""await waitFor(() => deck()[0] === "3 remaining", "the next card");""",
+            sabotage="""$("#t-card").style.pointerEvents = "none";""",
+            receipt=_posted(vote_body("pending-two", vote)),
+        )
+        for check_id, width, pointer, dx, vote in (
+            ("swipe-right-up", 1440, "mouse", 200, "up"),
+            ("swipe-left-down", 1440, "mouse", -200, "down"),
+            ("swipe-touch", 400, "touch", 200, "up"),
+        )
+    ),
+    Check(
+        id="short-drag-no-vote",
+        fixture="signed-in",
+        path=PAGE,
+        act="""await showView("triage");""",
+        gestures=({"press": "#t-card", "pointer": "mouse"}, {"move": 60}, {"release": True}),
+        script="""
+            await sleep(400);
+            expect(deck()[0] === "4 remaining", `count: ${deck()[0]}`);
+            expect($("#t-card").style.transform === "", "the card did not snap back");
+            expect(leaning().length === 0, `leaning: ${leaning()}`);
+        """,
+        sabotage="""await castVote($(".vote-group", rowOf("Pending Two")), "up");""",
+        receipt=_posted(),
     ),
 ]
 

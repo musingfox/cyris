@@ -696,6 +696,10 @@ EXPECTED_RAW_IDS = {
     "double-press-one-vote",
     "vote-failure-stays",
     "vote-retry-clears-notice",
+    "swipe-right-up",
+    "swipe-left-down",
+    "swipe-touch",
+    "short-drag-no-vote",
 }
 
 PENDING_TWO_UP = {
