@@ -23,6 +23,8 @@ from css_rules import parse_style_block, receipt_fixtures
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import cdp_probe  # noqa: E402
+import settings_probe  # noqa: E402
 from css_computed import (  # noqa: E402
     BREAKPOINTS,
     PROBES_PATH,
@@ -590,3 +592,14 @@ def test_every_probe_check_is_named_once_and_can_be_sabotaged():
     assert [c.id for c in CHECKS if not (c.sabotage.strip() or c.sabotage_preload)] == []
     assert {c.fixture for c in CHECKS} <= {"readonly", "writable"}
     assert set(ids) >= EXPECTED_IDS
+
+
+def test_the_settings_probe_runs_on_the_shared_core():
+    assert settings_probe.Check is cdp_probe.Check
+    assert getattr(settings_probe, "DRIVER", cdp_probe.DRIVER) is cdp_probe.DRIVER
+
+
+def test_the_shared_probe_core_knows_no_page():
+    source = Path(cdp_probe.__file__).read_text()
+    for word in ("TriageServer", "FakeSettings", "providersLoaded", ".settings-nav"):
+        assert word not in source, word

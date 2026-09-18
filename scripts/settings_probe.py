@@ -12,10 +12,8 @@ Every check carries a sabotage that breaks the thing it reads. `--self-test`
 runs each check clean, where it must pass, and sabotaged, where it must fail,
 so a check that cannot fail is reported rather than trusted.
 
-Chromium is driven over the DevTools Protocol through a short Node script, as
-`css_computed.py` does and for the same reason: Node 22+ ships a WebSocket
-client and Python's standard library has none. No browser-automation package is
-installed for this, and none may be.
+The browser half, which knows no page, is `cdp_probe.py`, shared with the raw
+page's probe.
 
 This script must never be collected by pytest: it needs Chromium and Node,
 which makes it a reviewer-run gate rather than a test. Importing it is safe,
@@ -27,20 +25,17 @@ import asyncio
 import contextlib
 import json
 import os
-import re
-import subprocess
 import sys
 import tempfile
-import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 import aiohttp
 from aiohttp import web
-from css_computed import _devtools_port, _page_socket, find_browser
+from cdp_probe import Check, base_prelude, chromium, require_node, run_all, serve
+from css_computed import find_browser
 
 from cyris.adapters.notify import mask_discord_webhook_url
 from cyris.config import LLMProviderConfig
@@ -57,10 +52,6 @@ OFFLINE_DETAIL = "cyris-probe: answered offline"
 # server's answer, not from the variables this script set, because a key can
 # also arrive from somewhere this script does not control.
 EXPECTED_READINESS = {"anthropic": True, "gemini": True, "openai": False, "workers_ai": False}
-
-CHECK_TIMEOUT_S = 30
-HEIGHT = 900
-MINIMUM_NODE = 22
 
 
 class FakeSettings:
@@ -185,34 +176,6 @@ def probe_environment() -> Iterator[SimpleNamespace]:
         for name in absent:
             os.environ.pop(name, None)
         yield SimpleNamespace(llm=llm, discord=discord)
-
-
-@dataclass(frozen=True)
-class Check:
-    """One behaviour, read from the DOM and, where something was written, the stores.
-
-    `act` performs the steps and may record observations in `ctx`; `sabotage`
-    runs after it in a self-test; `script` then asserts with `expect`. A
-    sabotage that cannot be applied through the page is a `sabotage_preload`
-    instead, installed before the page loads.
-    """
-
-    id: str
-    fixture: str
-    path: str | tuple[str, ...]
-    script: str
-    sabotage: str = ""
-    width: int = 1440
-    act: str = ""
-    preload: str = ""
-    sabotage_preload: str = ""
-    reload: bool = False
-    setup: Callable[[Fixture], None] | None = None
-    receipt: Callable[[Fixture], str | None] | None = None
-
-    @property
-    def paths(self) -> tuple[str, ...]:
-        return (self.path,) if isinstance(self.path, str) else self.path
 
 
 # Installed before the page loads: the settings request never answers.
@@ -1149,20 +1112,10 @@ CHECKS: list[Check] = [
     ),
 ]
 
-PRELUDE = """
-const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const visible = (el) => !!el && el.offsetParent !== null;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const expect = (condition, detail) => { if (!condition) throw new Error(detail); };
-const waitFor = async (probe, what, ms = 5000) => {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try { const value = probe(); if (value) return value; } catch {}
-    await sleep(25);
-  }
-  throw new Error(`timed out waiting for ${what}`);
-};
+# Only these two may scroll sideways; anything else past the viewport is overflow.
+PRELUDE = (
+    base_prelude((".table-wrap", ".settings-nav"))
+    + """
 const setValue = (el, value) => {
   el.value = value;
   el.dispatchEvent(new Event("input", {bubbles: true}));
@@ -1171,7 +1124,6 @@ const setValue = (el, value) => {
 const panels = () => $$(".tab").filter(visible).map((panel) => panel.dataset.tab);
 const currentTabs = () =>
   $$(".settings-nav a[aria-current]").map((link) => link.getAttribute("href"));
-const same = (actual, wanted) => JSON.stringify(actual) === JSON.stringify(wanted);
 const choice = (name) => $(`input[name=provider][value="${name}"]`).closest("label.choice");
 const providersLoaded = () => waitFor(() => $$("input[name=provider]").length, "providers");
 const saveOf = (tab) => $(`form.tab[data-tab="${tab}"] button[type="submit"]`);
@@ -1190,17 +1142,6 @@ const openRow = async (name) => {
 const shownFields = () =>
   $$("[data-for]", editor()).filter(visible).map((field) => $("input", field).id);
 const noticeOf = (tab) => $(".actions-line .notice", $(`form.tab[data-tab="${tab}"]`));
-// Only these two may scroll sideways; anything else past the viewport is overflow.
-// clientWidth, not innerWidth: a classic scrollbar takes its width out of the
-// viewport, and content under it would otherwise pass.
-const viewport = () => document.documentElement.clientWidth;
-const escaping = () => $$("body *")
-  .filter((el) => !el.closest(".table-wrap, .settings-nav"))
-  .filter((el) => el.getBoundingClientRect().right > viewport() + 0.5)
-  .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join(".")}`);
-const overflow = (where) => document.documentElement.scrollWidth > viewport()
-  ? `${where}: ${document.documentElement.scrollWidth}px wide, past ${escaping().join(" ")}`
-  : "";
 const eachCategory = async (measure) => {
   const problems = [];
   for (const tab of ["model", "digest", "notifications", "sources"]) {
@@ -1222,173 +1163,8 @@ const layout1440 = (where) => {
   if (content > 1240) problems.push(`${where}: page content is ${content}px`);
   return problems.filter(Boolean);
 };
-const ctx = {};
 """
-
-
-def check_expression(check: Check, sabotaged: bool) -> str:
-    """The page-side program: act, maybe sabotage, then assert."""
-    sabotage = check.sabotage if sabotaged else ""
-    return f"""(async () => {{
-{PRELUDE}
-try {{ {{ {check.act} }} }} catch (error) {{
-  return JSON.stringify({{ok: false, detail: `act: ${{error.message || error}}`}});
-}}
-try {{ {{ {sabotage} }} }} catch (error) {{
-  return JSON.stringify({{ok: false, sabotageError: String(error.message || error)}});
-}}
-try {{ {{ {check.script} }} }} catch (error) {{
-  return JSON.stringify({{ok: false, detail: String(error.message || error)}});
-}}
-return JSON.stringify({{ok: true}});
-}})()"""
-
-
-DRIVER = """
-const socket = new WebSocket(process.env.CDP_WS);
-const pending = new Map();
-let nextId = 0;
-socket.addEventListener('message', (event) => {
-  const message = JSON.parse(event.data);
-  const settle = pending.get(message.id);
-  if (settle) { pending.delete(message.id); settle(message); }
-});
-const call = (method, params = {}) => new Promise((resolve, reject) => {
-  const id = ++nextId;
-  pending.set(id, (message) => message.error
-    ? reject(new Error(`${method}: ${message.error.message}`))
-    : resolve(message.result));
-  socket.send(JSON.stringify({ id, method, params }));
-});
-const evaluate = async (expression) => {
-  const answer = await call('Runtime.evaluate',
-    { expression, awaitPromise: true, returnByValue: true });
-  if (answer.exceptionDetails) throw new Error(JSON.stringify(answer.exceptionDetails));
-  return answer.result.value;
-};
-// A navigation that has not committed yet still reports the old document as
-// complete, so each wait also names what the new document must be.
-const settled = async (condition) => {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    try {
-      if (await evaluate(`(${condition}) && document.readyState === 'complete'`)) return;
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`page never settled: ${condition}`);
-};
-await new Promise((resolve, reject) => {
-  socket.addEventListener('open', resolve);
-  socket.addEventListener('error', reject);
-});
-const job = JSON.parse(process.env.PROBE_JOB);
-await call('Page.enable');
-await call('Network.enable');
-// Fonts come from Google; the checks read layout, not type, and wait on nothing.
-await call('Network.setBlockedURLs', { urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*'] });
-// --window-size has a ~500px floor; the emulation override reaches a phone.
-await call('Emulation.setDeviceMetricsOverride',
-  { width: job.width, height: job.height, deviceScaleFactor: 1, mobile: false });
-const results = [];
-try {
-  for (const url of job.urls) {
-    await call('Page.navigate', { url: 'about:blank' });
-    await settled(`location.href === 'about:blank'`);
-    const added = [];
-    for (const source of job.preloads) {
-      added.push((await call('Page.addScriptToEvaluateOnNewDocument', { source })).identifier);
-    }
-    await call('Page.navigate', { url });
-    await settled(`location.origin === ${JSON.stringify(new URL(url).origin)}`);
-    if (job.reload) {
-      await evaluate('window.__probeBeforeReload = true');
-      await call('Page.reload');
-      await settled('window.__probeBeforeReload === undefined');
-    }
-    results.push(JSON.parse(await evaluate(job.expression)));
-    for (const identifier of added) {
-      await call('Page.removeScriptToEvaluateOnNewDocument', { identifier });
-    }
-    if (!results.at(-1).ok) break;
-  }
-} finally {
-  await call('Emulation.clearDeviceMetricsOverride');
-}
-process.stdout.write(JSON.stringify(results));
-socket.close();
-"""
-
-
-@dataclass(frozen=True)
-class Outcome:
-    ok: bool
-    detail: str = ""
-    sabotage_error: str = ""
-
-
-async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
-    runner = web.AppRunner(app)
-    await runner.setup()
-    await web.TCPSite(runner, "127.0.0.1", 0).start()
-    host, port = runner.addresses[0][:2]
-    return runner, f"http://{host}:{port}"
-
-
-async def _drive(socket_url: str, job: dict) -> list[dict]:
-    # Spawned from the loop that serves the fixture: a blocking subprocess call
-    # would freeze the server the page is talking to.
-    process = await asyncio.create_subprocess_exec(
-        "node",
-        "--input-type=module",
-        "-e",
-        DRIVER,
-        env={**os.environ, "CDP_WS": socket_url, "PROBE_JOB": json.dumps(job)},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), CHECK_TIMEOUT_S)
-    except TimeoutError:
-        process.kill()
-        await process.wait()
-        raise
-    if process.returncode != 0:
-        raise RuntimeError(f"driver failed: {stderr.decode().strip()}")
-    return json.loads(stdout)
-
-
-async def run_check(check: Check, socket_url: str, sabotaged: bool) -> Outcome:
-    """Serve a fresh fixture, drive the page through the check, then read the receipt."""
-    fixture = build_fixture(check.fixture)
-    if check.setup:
-        check.setup(fixture)
-    runner, base = await _serve(fixture.app)
-    try:
-        preloads = [check.preload] if check.preload else []
-        if sabotaged and check.sabotage_preload:
-            preloads.append(check.sabotage_preload)
-        job = {
-            "urls": [base + path for path in check.paths],
-            "width": check.width,
-            "height": HEIGHT,
-            "preloads": preloads,
-            "reload": check.reload,
-            "expression": check_expression(check, sabotaged),
-        }
-        try:
-            results = await _drive(socket_url, job)
-        except TimeoutError:
-            return Outcome(False, "timeout")
-        for result in results:
-            if error := result.get("sabotageError"):
-                return Outcome(False, f"sabotage failed to apply: {error}", error)
-            if not result["ok"]:
-                return Outcome(False, result["detail"])
-        if check.receipt and (problem := check.receipt(fixture)):
-            return Outcome(False, f"receipt: {problem}")
-        return Outcome(True)
-    finally:
-        await runner.cleanup()
+)
 
 
 async def resolved_readiness(base: str) -> dict[str, bool]:
@@ -1398,7 +1174,7 @@ async def resolved_readiness(base: str) -> dict[str, bool]:
 
 
 async def _assert_readiness() -> None:
-    runner, base = await _serve(build_fixture("writable").app)
+    runner, base = await serve(build_fixture("writable").app)
     try:
         resolved = await resolved_readiness(base)
     finally:
@@ -1411,62 +1187,6 @@ async def _assert_readiness() -> None:
         ]
         print(f"provider readiness is not the fixture's: {'; '.join(wrong)}", file=sys.stderr)
         raise SystemExit(2)
-
-
-def _require_node() -> None:
-    try:
-        version = subprocess.run(
-            ["node", "--version"], capture_output=True, text=True, check=True
-        ).stdout
-    except (OSError, subprocess.CalledProcessError):
-        version = ""
-    match = re.match(r"v(\d+)", version.strip())
-    if not match or int(match.group(1)) < MINIMUM_NODE:
-        print("settings_probe needs Node 22+ (global WebSocket)", file=sys.stderr)
-        raise SystemExit(2)
-
-
-@contextlib.contextmanager
-def _chromium(browser: str) -> Iterator[str]:
-    with tempfile.TemporaryDirectory(prefix="settings-probe-chromium-") as profile:
-        profile_dir = Path(profile)
-        process = subprocess.Popen(
-            [
-                browser,
-                "--headless",
-                f"--user-data-dir={profile_dir}",
-                "--remote-debugging-port=0",
-                "--disable-remote-fonts",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-gpu",
-                "about:blank",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        try:
-            deadline = time.monotonic() + 60
-            yield _page_socket(_devtools_port(profile_dir, deadline), deadline)
-        finally:
-            process.terminate()
-            process.wait(timeout=30)
-
-
-async def _run(checks: list[Check], socket_url: str, self_test: bool) -> bool:
-    await _assert_readiness()
-    all_good = True
-    for check in checks:
-        clean = await run_check(check, socket_url, sabotaged=False)
-        print(f"PASS {check.id}" if clean.ok else f"FAIL {check.id}: {clean.detail}", flush=True)
-        all_good &= clean.ok
-        if self_test:
-            broken = await run_check(check, socket_url, sabotaged=True)
-            caught = not broken.ok and not broken.sabotage_error
-            detail = "" if caught else f": {broken.detail or 'passed while sabotaged'}"
-            print(f"{'CAUGHT' if caught else 'MISSED'} {check.id}{detail}", flush=True)
-            all_good &= caught
-    return all_good
 
 
 def main() -> None:
@@ -1484,9 +1204,11 @@ def main() -> None:
     checks = [check for check in CHECKS if not args.only or check.id in args.only]
 
     browser = find_browser(args.browser)
-    _require_node()
-    with probe_environment(), _chromium(browser) as socket_url:
-        good = asyncio.run(_run(checks, socket_url, args.self_test))
+    require_node()
+    with probe_environment(), chromium(browser) as socket_url:
+        good = asyncio.run(
+            run_all(checks, socket_url, args.self_test, build_fixture, PRELUDE, _assert_readiness)
+        )
     raise SystemExit(0 if good else 1)
 
 
