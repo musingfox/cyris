@@ -1,5 +1,5 @@
 {% macro promote_btn(item, story_id=None) -%}
-{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="promote-btn" data-vote="up" title="More like this">↑</button><button class="promote-btn" data-vote="down" title="Less like this">↓</button></span>{% endif %}
+{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>{% endif %}
 {%- endmacro -%}
 {#- Sources of a news cluster: one link per article, so a busy topic renders five of
     them and wraps into a mess on a phone. Fold past two behind a native <details>. -#}
@@ -502,8 +502,7 @@
             .section { margin-bottom: 48px; }
             .meta-strip { gap: 12px; font-size: 10px; }
         }
-        {% with display_inline_flex=true, border_token="--border-strong", bg_token="--surface-2",
-                  padding="2px 8px", tracking="0.04em", error_bg=true, valign=true  %}{% include "_promote.css.j2" %}{% endwith %}
+        {% include "_promote.css.j2" %}
 
         /* Folded cluster sources. inline-block keeps the vote buttons on the same row. */
         .src-fold { display: inline-block; }

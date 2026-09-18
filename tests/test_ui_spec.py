@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
-from css_rules import COMPONENT_SELECTORS, PROTOTYPE, parse_style_block, receipt_fixtures
+from css_rules import (
+    COMPONENT_SELECTORS,
+    PROTOTYPE,
+    include_sites,
+    parse_style_block,
+    receipt_fixtures,
+)
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store.article_store import ArticleStore
@@ -126,6 +132,65 @@ def test_no_keyframes_override_is_left_under_reduced_motion() -> None:
     _, digest, _ = receipt_fixtures()
     prefix = "@media (prefers-reduced-motion: reduce) | @keyframes"
     assert [key for key in parse_style_block(digest) if key.startswith(prefix)] == []
+
+
+PROMOTE_KEYS = (
+    ".promote-btn.done",
+    ".promote-btn.error",
+    ".vote-group",
+    ".settings-link",
+)
+
+
+@pytest.mark.parametrize("page", ["digest", "raw"])
+def test_a_failed_vote_is_marked_in_warn(page: str) -> None:
+    html = dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[page]
+    assert parse_style_block(html)[".promote-btn.error"] == {
+        "color: var(--warn)",
+        "border-color: var(--warn)",
+        "background: var(--warn-tint)",
+    }
+    assert "#e06c75" not in html
+    assert "224, 108, 117" not in html
+
+
+@pytest.mark.parametrize("page", ["digest", "raw"])
+@pytest.mark.parametrize("state", ["done", "error"])
+def test_hover_keeps_a_voted_buttons_state_colour(page: str, state: str) -> None:
+    # .btn.secondary:hover outranks .promote-btn.done by specificity alone, so the
+    # state has to name :hover itself or hovering repaints a cast vote as unvoted.
+    html = dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[page]
+    rules = parse_style_block(html)
+    colour = next(d for d in rules[f".promote-btn.{state}"] if d.startswith("color:"))
+    assert rules[f".promote-btn.{state}:hover"] == {colour}
+
+
+@pytest.mark.parametrize("key", PROMOTE_KEYS)
+def test_digest_and_raw_style_votes_identically(key: str) -> None:
+    _, digest, raw = receipt_fixtures()
+    assert parse_style_block(digest)[key] == parse_style_block(raw)[key]
+
+
+@pytest.mark.parametrize("page", [1, 2], ids=["digest", "raw"])
+def test_vote_buttons_are_small_secondary_buttons(page: int) -> None:
+    html = receipt_fixtures()[page]
+    buttons = re.findall(r"<button\b[^>]*data-vote=[^>]*>", html)
+    assert buttons
+    assert all('class="btn sm secondary promote-btn"' in button for button in buttons)
+    copied = {".promote-btn", ".promote-btn:hover", ".promote-btn:disabled"}
+    assert sorted(copied & set(parse_style_block(html))) == []
+
+
+def test_votes_stay_hidden_until_authorized() -> None:
+    _, digest, _ = receipt_fixtures()
+    assert ".vote-group { display: none;" in digest
+    assert ".settings-link { display: none;" in digest
+
+
+@pytest.mark.parametrize("template", ["digest.html.j2", "raw.html.j2"])
+def test_the_vote_partial_takes_no_parameters(template: str) -> None:
+    env = HtmlDigestWriter("unused-by-these-tests").env
+    assert include_sites(env, template)["_promote.css.j2"] == {}
 
 
 def test_the_components_partial_defines_exactly_the_listed_components() -> None:

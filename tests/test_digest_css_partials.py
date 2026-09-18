@@ -168,7 +168,7 @@ def test_the_omission_check_sees_a_dropped_parameter_and_not_a_guarded_one(
 
 def test_vote_buttons_are_styled_on_the_pages_that_carry_them(pages: dict[str, str]) -> None:
     for page in ("digest", "raw"):
-        assert ".promote-btn" in parse_style_block(pages[page]), f"{page} lost .promote-btn"
+        assert ".promote-btn.done" in parse_style_block(pages[page]), f"{page} lost .promote-btn"
     index_rules = [rule for rule in parse_style_block(pages["index"]) if "promote-btn" in rule]
     assert not index_rules, f"index styles vote buttons it never renders: {index_rules}"
 

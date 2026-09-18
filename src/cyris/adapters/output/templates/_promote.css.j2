@@ -1,25 +1,9 @@
-        .promote-btn {
-{%- if display_inline_flex %}
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-{%- endif %}
-            border: 1px solid var({{ border_token }});
-            padding: {{ padding }};
-            background: var({{ bg_token }});
-            color: var(--text-dim);
-            font-family: 'Geist Mono', monospace;
-            font-size: 11px;
-{%- if tracking %}
-            letter-spacing: {{ tracking }};
-{%- endif %}
-            cursor: pointer;
-        }
         /* The ↑/↓ glyphs fall back to the generic monospace: Google Fonts serves no
            unicode-range covering U+2191-2193 for Geist Mono. Fine, and the same thing
            the ↗ link marks already do — unlike emoji they still take `color` below. */
-        .promote-btn:hover { color: var(--text); }
         .promote-btn.done { color: var(--accent); border-color: var(--accent); }
-        .promote-btn.error { color: #e06c75; border-color: #e06c75;{% if error_bg %} background: rgba(224, 108, 117, 0.14);{% endif %} }
-        .vote-group { display: none; gap: 4px;{% if valign %} vertical-align: middle;{% endif %} }
+        .promote-btn.error { color: var(--warn); border-color: var(--warn); background: var(--warn-tint); }
+        .promote-btn.done:hover { color: var(--accent); }
+        .promote-btn.error:hover { color: var(--warn); }
+        .vote-group { display: none; gap: var(--s-1); vertical-align: middle; }
         .settings-link { display: none; }

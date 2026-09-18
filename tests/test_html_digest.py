@@ -463,8 +463,9 @@ def test_vote_buttons_use_arrows_not_emoji(tmp_path):
     writer = HtmlDigestWriter(tmp_path)
     html = writer.render(_cluster_digest(2))
 
-    assert '<button class="promote-btn" data-vote="up" title="More like this">↑</button>' in html
-    assert '<button class="promote-btn" data-vote="down" title="Less like this">↓</button>' in html
+    button = '<button class="btn sm secondary promote-btn" data-vote="{}" title="{}">{}</button>'
+    assert button.format("up", "More like this", "↑") in html
+    assert button.format("down", "Less like this", "↓") in html
     assert "👍" not in html
     assert "👎" not in html
 

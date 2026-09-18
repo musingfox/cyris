@@ -49,8 +49,7 @@
             text-transform: uppercase;
         }
 
-        {% with display_inline_flex=false, border_token="--border", bg_token="--surface",
-                  padding="1px 7px", tracking=none, error_bg=false, valign=false  %}{% include "_promote.css.j2" %}{% endwith %}
+        {% include "_promote.css.j2" %}
 
         .article {
             display: grid;
@@ -118,7 +117,7 @@
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>
-                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="promote-btn" data-vote="up" title="More like this">↑</button><button class="promote-btn" data-vote="down" title="Less like this">↓</button></span>
+                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>
             </div>
             {% endfor %}
         </section>
