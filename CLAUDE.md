@@ -110,7 +110,8 @@ src/cyris/
 │                            #   Returns rows; the CLI owns every local write
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
-│   └── triage_server.py     # Swipe-based triage web UI + /settings (aiohttp) + static/
+│   ├── triage_server.py     # Swipe-based triage web UI + /settings (aiohttp) + static/
+│   └── templates/           # settings.html.j2: /settings, rendered with the digest's site bar
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)

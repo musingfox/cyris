@@ -308,15 +308,48 @@ def test_raw_states_are_the_component() -> None:
     assert "#6b4a4a" not in raw
 
 
-SETTINGS = STYLE.with_name("settings.html")
+async def _served(client: TestClient, path: str) -> str:
+    response = await client.get(path)
+    assert response.status == 200, f"{path} answered {response.status}"
+    return await response.text()
 
 
-def test_settings_never_forces_a_smooth_scroll() -> None:
-    assert 'scrollIntoView({behavior: "smooth"})' not in SETTINGS.read_text()
+def _site_bar(html: str) -> str:
+    match = re.search(r'<header class="site-bar">.*?</header>', html, re.DOTALL)
+    assert match, "no site bar"
+    return match.group(0)
 
 
-def test_the_settings_scroll_asks_for_the_reduced_motion_preference() -> None:
-    lines = [line for line in SETTINGS.read_text().splitlines() if "scrollIntoView" in line]
+async def test_settings_opens_with_the_digest_site_bar_marking_settings(
+    triage: TestClient,
+) -> None:
+    env = HtmlDigestWriter("unused-by-these-tests").env
+    expected = env.get_template("_site_bar.html.j2").render(current="settings")
+    page = await _served(triage, "/settings")
+    assert page.count('<header class="site-bar">') == 1
+    assert _site_bar(page) == _site_bar(expected)
+    assert '<script src="/static/settings.js"></script>' in page
+
+
+async def test_settings_links_nowhere_near_triage(triage: TestClient) -> None:
+    assert "/triage" not in await _served(triage, "/settings")
+
+
+async def test_the_settings_template_is_not_served_as_a_static_file(triage: TestClient) -> None:
+    assert (await triage.get("/static/settings.html")).status == 404
+
+
+async def test_settings_never_forces_a_smooth_scroll(triage: TestClient) -> None:
+    assert 'scrollIntoView({behavior: "smooth"})' not in await _served(
+        triage, "/static/settings.js"
+    )
+
+
+async def test_the_settings_scroll_asks_for_the_reduced_motion_preference(
+    triage: TestClient,
+) -> None:
+    script = await _served(triage, "/static/settings.js")
+    lines = [line for line in script.splitlines() if "scrollIntoView" in line]
     assert lines
     assert all("prefers-reduced-motion: reduce" in line for line in lines)
 

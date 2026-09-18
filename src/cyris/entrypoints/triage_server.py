@@ -8,8 +8,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from aiohttp import web
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
 
+from cyris.adapters.output import html_digest
 from cyris.diagnostics.doctor import probe_discord
 from cyris.domain.language import language_sort_key
 from cyris.domain.models import ArticleState, SourceConfig
@@ -19,6 +21,7 @@ from cyris.service_layer.ports import ArticleRepository
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 _IMG_TAG_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
@@ -50,6 +53,25 @@ def _enrich_article(data: dict) -> dict:
     data["favicon_url"] = _FAVICON_SERVICE.format(domain=domain) if domain else ""
     data["image_url"] = _extract_first_image(data.get("content", ""))
     return data
+
+
+def _render_settings_page() -> str:
+    """Render /settings with the digest pages' own site bar.
+
+    The page lives outside `static/` so no unrendered copy is served, and the
+    loader also reads the digest templates, where the site bar partial is.
+    Autoescaping matches `HtmlDigestWriter`: these templates end in `.j2`.
+    """
+    env = Environment(
+        loader=ChoiceLoader(
+            [
+                FileSystemLoader(TEMPLATES_DIR),
+                FileSystemLoader(Path(html_digest.__file__).parent / "templates"),
+            ]
+        ),
+        autoescape=select_autoescape(["html", "xml"], default=True),
+    )
+    return env.get_template("settings.html.j2").render()
 
 
 class TriageServer:
@@ -88,6 +110,7 @@ class TriageServer:
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
         self._notify_webhook = notify_webhook
+        self._settings_page = _render_settings_page()
         self._app = web.Application()
         self._app.router.add_get("/api/articles", self._handle_list)
         self._app.router.add_get("/api/stats", self._handle_stats)
@@ -606,7 +629,7 @@ class TriageServer:
         return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:
-        return web.FileResponse(STATIC_DIR / "settings.html")
+        return web.Response(text=self._settings_page, content_type="text/html")
 
     async def start(self) -> None:
         self._runner = web.AppRunner(self._app)

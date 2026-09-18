@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyris Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* Its own page rather than a view inside app.js: the deck is a swipe
+       surface with global key and touch handlers, and a form has no business
+       sharing them. body there is overflow:hidden, which a form must undo. */
+    body { overflow: auto; display: block; padding: 1.5rem; max-width: 34rem; margin: 0 auto; }
+    h1 { font-size: 1.2rem; color: var(--text-dim); letter-spacing: .05em; margin-bottom: 1.5rem; }
+    fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    legend { color: var(--text-dim); font-size: .8rem; padding: 0 .4rem; }
+    label.provider { display: flex; align-items: baseline; gap: .6rem; padding: .5rem 0; cursor: pointer; }
+    label.provider.unavailable { opacity: .45; cursor: not-allowed; }
+    .env { color: var(--text-dim); font-size: .75rem; margin-left: auto; }
+    input[type=text] {
+      width: 100%; padding: .6rem; border-radius: 6px; font: inherit;
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    }
+    .hint { color: var(--text-dim); font-size: .78rem; margin-top: .4rem; line-height: 1.5; }
+    button {
+      background: var(--accent); color: var(--bg); border: 0; border-radius: 6px;
+      padding: .7rem 1.4rem; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button[disabled] { opacity: .5; cursor: default; }
+    h2 { font-size: .9rem; letter-spacing: .08em; color: var(--text-dim); font-weight: 600; margin: 2.5rem 0 .5rem; }
+    #result, #sched-result, #notify-result { margin-top: 1rem; padding: .8rem; border-radius: 6px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
+    .ok { background: rgba(198, 255, 61, 0.09); color: var(--accent); }
+    .err { background: rgba(255, 91, 138, 0.11); color: var(--warn); }
+    a.back { color: var(--text-dim); font-size: .8rem; }
+    table.sources { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    table.sources th { text-align: left; color: var(--text-faint); font-weight: 500; padding: .3rem .5rem .3rem 0; }
+    table.sources td { padding: .35rem .5rem .35rem 0; border-top: 1px solid var(--border); vertical-align: top; }
+    table.sources .mono { font-family: 'Geist Mono', ui-monospace, monospace; color: var(--text-dim); word-break: break-all; }
+    table.sources .tier { color: var(--accent); }
+    table.sources button { padding: .2rem .5rem; font-size: .72rem; font-weight: 500; }
+    table.sources button.retire { background: var(--warn); }
+    select, input[type=text] { font: inherit; }
+    select {
+      padding: .5rem; border-radius: 6px;
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    }
+    .row { display: flex; gap: .5rem; margin-bottom: .5rem; }
+    .row > input { flex: 1; }
+  </style>
+</head>
+<body>
+{% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}
+  <h1>SETTINGS</h1>
+
+  <h2 style="margin-top:1.5rem">LLM PROVIDER</h2>
+
+  <form id="form">
+    <fieldset>
+      <legend>Provider</legend>
+      <div id="providers"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Model</legend>
+      <input type="text" id="model" placeholder="leave empty for the provider's default" autocomplete="off">
+      <p class="hint" id="model-hint"></p>
+    </fieldset>
+
+    <button type="submit" id="save">Save</button>
+  </form>
+
+  <div id="result" class="hidden" hidden></div>
+
+  <h2>DIGEST SCHEDULE</h2>
+
+  <form id="sched-form">
+    <fieldset>
+      <legend>Hours</legend>
+      <input type="number" id="morning" min="0" max="23" style="width:5rem" autocomplete="off">
+      <input type="number" id="evening" min="0" max="23" style="width:5rem" autocomplete="off">
+      <p class="hint">Two whole hours, in the timezone from <code>[general]</code>. The tick is
+        hourly, so half hours are refused rather than quietly rounded down.</p>
+    </fieldset>
+
+    <button type="submit" id="save-sched">Save</button>
+  </form>
+
+  <div id="sched-result" class="hidden" hidden></div>
+
+  <h2>DIGEST</h2>
+
+  <form id="digest-form">
+    <fieldset>
+      <legend>Featured</legend>
+      <input type="number" id="max-featured" min="1" max="20" style="width:5rem" autocomplete="off">
+      <p class="hint">How many sections lead the page before the rest. Your call, not a measured
+        number — the digest reads differently at 3 than at 8. Takes effect on the next digest.</p>
+    </fieldset>
+
+    <button type="submit" id="save-digest">Save</button>
+  </form>
+
+  <div id="digest-result" class="hidden" hidden></div>
+
+  <h2>NOTIFY</h2>
+
+  <form id="notify-form" action="/api/settings/notify">
+    <fieldset>
+      <legend>Discord</legend>
+      <input type="text" id="discord-webhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
+      <p class="hint">Saved only after Discord confirms the webhook exists. A webhook already
+        stored shows with its token masked; to change it, paste the whole URL again — the
+        masked value cannot be resubmitted. When empty here, a run still uses the
+        <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>.
+        This page cannot turn notifications off: to stop them, remove that Worker secret and
+        any <code>[notify]</code> value.</p>
+    </fieldset>
+
+    <button type="submit" id="save-notify">Save</button>
+  </form>
+
+  <div id="notify-result" class="hidden" hidden></div>
+
+  <h2>SOURCES</h2>
+
+  <fieldset>
+    <legend id="sources-origin">Feeds and senders</legend>
+    <div id="sources"></div>
+  </fieldset>
+
+  <form id="src-form">
+    <fieldset>
+      <legend>Add or edit</legend>
+      <div class="row">
+        <input type="text" id="src-name" placeholder="name (the key)" autocomplete="off">
+        <select id="src-type">
+          <option value="rss">rss</option>
+          <option value="newsletter">newsletter</option>
+        </select>
+        <select id="src-tier">
+          <option value="filter">filter</option>
+          <option value="summarize">summarize</option>
+          <option value="fan">fan</option>
+        </select>
+      </div>
+      <div class="row"><input type="text" id="src-url" placeholder="url (rss feed)" autocomplete="off"></div>
+      <div class="row"><input type="text" id="src-email" placeholder="email_match, e.g. from:hi@letter.com" autocomplete="off"></div>
+      <div class="row"><input type="text" id="src-homepage" placeholder="homepage (where it publishes)" autocomplete="off"></div>
+      <div class="row"><input type="text" id="src-tags" placeholder="tags, comma separated" autocomplete="off"></div>
+      <p class="hint">The name is the key: saving an existing name edits that source.
+        <code>email_match</code> is the sender→source mapping, not Cloudflare Email Routing — the
+        domain and the route stay in the dashboard. A change takes effect on the next run.</p>
+    </fieldset>
+
+    <button type="submit" id="save-src">Save source</button>
+  </form>
+
+  <div id="src-result" class="hidden" hidden></div>
+
+<script src="/static/settings.js"></script>
+</body>
+</html>

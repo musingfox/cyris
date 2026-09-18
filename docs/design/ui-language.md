@@ -216,7 +216,6 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 
 - settings 仍用 8px 圓角與 rem（`settings.html` 的內嵌樣式），第 3 步重寫。deck 的規則移到
   `static/deck.css`，不做對齊。
-- settings 沒有 site bar，唯一的返回連結指向 404 的 `/triage`（`settings.html:161`）。
 
 落地順序，每一步都能單獨上線。括號裡是 Obsidian vault `pm/cyris/tasks/` 的票：
 
