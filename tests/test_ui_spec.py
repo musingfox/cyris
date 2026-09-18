@@ -284,6 +284,13 @@ def test_a_rule_outside_the_component_list_is_reported_as_extra() -> None:
     assert _component_key_problems(planted) == ["extra .row"]
 
 
+def test_the_digest_keeps_its_stats_rows_to_the_stats_card() -> None:
+    # The stats card writes <div class="row">, so a shared `.row` would restyle it.
+    rules = parse_style_block(receipt_fixtures()[1])
+    assert ".row" not in rules
+    assert ".stats-card .row" in rules
+
+
 def test_the_digest_score_pill_is_the_component() -> None:
     _, digest, _ = receipt_fixtures()
     assert parse_style_block(digest)[".pill.score"] == {
