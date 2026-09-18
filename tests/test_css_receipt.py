@@ -518,6 +518,7 @@ EXPECTED_IDS = {
     "retire-reverts",
     "retire-deletes",
     "readonly-settings",
+    "readonly-sources",
 }
 
 

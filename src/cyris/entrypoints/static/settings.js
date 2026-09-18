@@ -217,6 +217,8 @@ const EMPTY = {
   newsletter: "No newsletter sources.",
 };
 
+const NO_SOURCE_TABLE = "No writable source table here — this deployment reads sources.yaml.";
+
 const sourcesNav = () => document.querySelector('.settings-nav a[data-tab="sources"]');
 
 function renderSources() {
@@ -281,7 +283,7 @@ function openEditor(name) {
   const refreshEditor = () => {
     const dirty = editorValues(ed) !== initial;
     save.disabled = !sourcesWritable || !dirty || !q("#e-name").value.trim();
-    sourcesNav().classList.toggle("dirty", dirty);
+    sourcesNav().classList.toggle("dirty", dirty && sourcesWritable);
   };
   ed.querySelectorAll("[data-type]").forEach((b) => {
     b.addEventListener("click", () => { setType(b.dataset.type); refreshEditor(); });
@@ -294,6 +296,11 @@ function openEditor(name) {
   ed.addEventListener("change", edited);
   refreshEditor();
   retire.hidden = adding;
+  if (!sourcesWritable) {
+    // Rows still open so their values stay readable; nothing in them writes.
+    retire.disabled = true;
+    show("err", NO_SOURCE_TABLE, save.parentElement.querySelector(".notice"));
+  }
   q('[data-act="cancel"]').addEventListener("click", () => {
     openName = null;
     renderSources();
@@ -331,10 +338,8 @@ function loaded(d) {
   sources = d.sources;
   sourcesWritable = d.writable;
   $("sources-origin").textContent = `Served from ${d.origin}.`;
-  if (!d.writable) {
-    show("err", "No writable source table here — this deployment reads sources.yaml.",
-         "sources-notice");
-  }
+  $("add-source").disabled = !d.writable;
+  if (!d.writable) show("err", NO_SOURCE_TABLE, "sources-notice");
   renderSources();
 }
 

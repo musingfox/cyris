@@ -946,6 +946,27 @@ CHECKS: list[Check] = [
         """,
         sabotage="""saveOf("digest").disabled = false;""",
     ),
+    Check(
+        id="readonly-sources",
+        fixture="readonly",
+        path="/settings#sources",
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "x");
+        """,
+        script="""
+            const reason = "No writable source table here — this deployment reads sources.yaml.";
+            expect(!$(".settings-nav a.dirty"), "Sources is marked unsaved");
+            expect($("#add-source").disabled, "Add source is enabled");
+            const toolbar = $("#sources-notice");
+            expect(visible(toolbar) && toolbar.textContent === reason, toolbar.textContent);
+            expect(editorAct("save").disabled, "Save source is enabled");
+            expect(editorAct("retire").disabled, "Retire is enabled");
+            const notice = editorAct("save").parentElement.querySelector(".notice");
+            expect(visible(notice) && notice.textContent === reason, notice.textContent);
+        """,
+        sabotage="""editorAct("retire").disabled = false;""",
+    ),
 ]
 
 PRELUDE = """
