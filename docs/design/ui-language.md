@@ -179,7 +179,8 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 - **triage view：** 一次一張卡片，卡面是來源（label）與標題（title 角色，30px）。卡片方角、
   `--surface` 底、1px `--border-strong` 框、不用陰影；向 up 傾斜時框變 `--accent`，向 down 傾斜時
   框變 `--warn`。左滑 down、右滑 up、點擊在新分頁開原文。下方並排 danger `Down` 與 primary `Up`
-  兩個高 56px 的按鈕，補足沒有觸控的桌機；上方以 label 顯示 `N remaining`。
+  兩個高 56px 的按鈕，補足沒有觸控的桌機；上方以 label 顯示 `N remaining`。卡片只取狀態仍是 pending、
+  而且還沒投過的文章；pipeline 已判過的文章要推翻，在 list view 投。沒有卡片時只剩 `0 remaining`。
 - 已投的文章在兩個 view 都看得出狀態，投票走既有的 promote Worker，不新增後端。
 - 拖曳與飛出是全站唯一用 transform 的動作，reduced-motion 下取消。
 
