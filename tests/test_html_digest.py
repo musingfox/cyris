@@ -891,18 +891,9 @@ def test_the_archive_hides_settings_behind_the_same_probe(tmp_path):
 
 
 def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
-    writer = HtmlDigestWriter(tmp_path)
-    content = DigestContent(
-        date="2026-04-15",
-        period="evening",
-        sources_processed=1,
-        articles_received=1,
-        articles_included=1,
-        usage=UsageStats(),
-    )
-    raw = writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")])
+    pages = _issue_pages(tmp_path)
 
-    for html in (writer.render(content), raw):
+    for html in (pages["digest"], pages["raw"]):
         assert html.count("redirect: 'manual'") == 1
         assert "DIGEST_DATE" in html
 
