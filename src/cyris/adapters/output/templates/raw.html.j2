@@ -148,6 +148,40 @@
     for (const b of document.querySelectorAll('[data-raw-view]')) {
         b.addEventListener('click', () => setRawView(b.dataset.rawView));
     }
+
+    const card = document.getElementById('t-card');
+    const deckButtons = [...document.querySelectorAll('#t-actions button')];
+    const enableDeck = (on) => deckButtons.forEach((b) => { b.disabled = !on; });
+
+    // Vote first, then fly: the card leaves only once its vote has landed.
+    async function voteCard(dir) {
+        const [row] = pool();
+        if (!row) return;
+        enableDeck(false);
+        if (await castVote(row.querySelector('.vote-group'), dir)) fly(dir);
+    }
+    function fly(dir) {
+        card.dataset.flying = dir;
+        card.classList.remove('dragging');
+        // A card dealt in this same frame has no style yet to move from; without one no
+        // transition runs, and no transitionend would ever settle the vote.
+        void card.offsetWidth;
+        card.style.transform = `translateX(${dir === 'up' ? 120 : -120}vw) rotate(${dir === 'up' ? 12 : -12}deg)`;
+    }
+    // Back to rest without animating the way back, then deal the next card.
+    function settle() {
+        delete card.dataset.flying;
+        card.classList.add('dragging');
+        card.style.transform = '';
+        void card.offsetWidth;
+        card.classList.remove('dragging');
+        enableDeck(true);
+        renderDeck();
+    }
+    card.addEventListener('transitionend', (e) => {
+        if (e.propertyName === 'transform' && card.dataset.flying) settle();
+    });
+    for (const b of deckButtons) b.addEventListener('click', () => voteCard(b.dataset.dir));
     </script>
     {% include "_probe_script.html.j2" %}
 </body>

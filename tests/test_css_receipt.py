@@ -690,6 +690,9 @@ EXPECTED_RAW_IDS = {
     "deck-title-is-text",
     "list-vote-leaves-deck",
     "deck-empty",
+    "button-up-votes",
+    "button-down-votes",
+    "vote-post-carries-no-credential",
 }
 
 PENDING_TWO_UP = {

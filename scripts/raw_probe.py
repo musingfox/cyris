@@ -185,6 +185,10 @@ const showView = async (view) => {
   await switchReady();
   $(`[data-raw-view="${view}"]`).click();
 };
+const pressDeck = async (dir) => {
+  await showView("triage");
+  $(`#t-${dir}`).click();
+};
 const deck = () => ["#t-remaining", "#t-source", "#t-title"].map((id) => $(id).textContent);
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
 """
@@ -198,6 +202,19 @@ def vote_body(slug: str, vote: str) -> dict:
 def _posted(*wanted: dict) -> Callable[[Fixture], str | None]:
     """A receipt: the stand-in `/api/vote` took exactly these vote bodies, in order."""
     return lambda fixture: None if fixture.posts == list(wanted) else f"posts: {fixture.posts}"
+
+
+def _bare_votes(fixture: Fixture) -> str | None:
+    """A receipt: every vote arrived as url, vote and date alone, with no credential."""
+    if not fixture.posts:
+        return "no vote arrived"
+    keys = [sorted(post) for post in fixture.posts]
+    if keys != [["digest_date", "url", "vote"]] * len(keys):
+        return f"vote bodies carry {keys}"
+    sent = [sorted(key.lower() for key in headers) for headers in fixture.post_headers]
+    if any("authorization" in headers for headers in sent):
+        return f"a vote carried a credential: {sent}"
+    return None
 
 
 _CHECKS: list[Check] = [
@@ -409,6 +426,44 @@ _CHECKS: list[Check] = [
             expect(count === "0 remaining", `count: ${count}`);
         """,
         sabotage="""$("#t-card").hidden = false;""",
+    ),
+    *(
+        Check(
+            id=f"button-{vote}-votes",
+            fixture="signed-in",
+            path=PAGE,
+            act=f"""
+                await pressDeck("{vote}");
+                await waitFor(() => deck()[0] === "3 remaining", "the next card");
+            """,
+            script=f"""
+                const shown = deck();
+                const next = ["3 remaining", "Source A", "Pending Three"];
+                expect(same(shown, next), `deck: ${{shown}}`);
+                expect(marked("Pending Two", "{vote}", "done"), "the list does not show the vote");
+            """,
+            sabotage="""$$(".promote-btn").forEach((b) => b.classList.remove("done"));""",
+            receipt=_posted(vote_body("pending-two", vote)),
+        )
+        for vote in ("up", "down")
+    ),
+    Check(
+        id="vote-post-carries-no-credential",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            await pressDeck("up");
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+        """,
+        script="""expect(deck()[2] === "Pending Three", `title: ${deck()[2]}`);""",
+        # A page that learned a credential would send it with the vote.
+        sabotage_preload="""{
+const realFetch = window.fetch;
+window.fetch = (input, init) => init && init.method === "POST"
+  ? realFetch(input, {...init, headers: {...init.headers, Authorization: "x"}})
+  : realFetch(input, init);
+}""",
+        receipt=_bare_votes,
     ),
 ]
 
