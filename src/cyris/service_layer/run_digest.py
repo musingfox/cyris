@@ -338,19 +338,21 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 except Exception as e:
                     logger.error("Failed to publish the HTML digest: %s", e)
             else:
-                try:
-                    report.html_path = deps.html_writer.write(content)
-                    progress(f"HTML digest written to {report.html_path}")
-                except Exception as e:
-                    logger.error("Failed to write HTML digest: %s", e)
-
-                # Own try/except: a broken raw page must not cost the digest its publish.
+                # Raw goes first so the archive index the digest write regenerates
+                # already sees it and offers its All articles entry. Own try/except:
+                # a broken raw page must not cost the digest its publish.
                 if collected:
                     try:
                         raw = deps.html_writer.write_raw(content.date, content.period, collected)
                         progress(f"Raw page written to {raw}")
                     except Exception as e:
                         logger.error("Failed to write raw HTML page: %s", e)
+
+                try:
+                    report.html_path = deps.html_writer.write(content)
+                    progress(f"HTML digest written to {report.html_path}")
+                except Exception as e:
+                    logger.error("Failed to write HTML digest: %s", e)
 
                 if (
                     report.html_path is not None

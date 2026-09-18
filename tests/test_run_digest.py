@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fakes import FakeLLM
@@ -20,10 +21,13 @@ from cyris.domain.models import (
     NO_LLM_MODEL,
     Article,
     ArticleState,
+    DigestContent,
+    StoredArticle,
     Tier,
+    UsageStats,
     is_degraded_run,
 )
-from cyris.service_layer.run_digest import RunOptions, run_digest
+from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 
 
 class FakeSource:
@@ -425,7 +429,8 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
     assert report.html_path is not None and report.html_path.exists()
 
 
-async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None:
+def _fresh_and_earlier_deps(tmp_path: Path) -> Deps:
+    """One article fetched this run, plus one the previous run already accepted."""
     fetched = Article(
         id=1,
         title="Fresh This Run",
@@ -461,13 +466,60 @@ async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None
     # The overlapping window still holds a row the previous run accepted.
     deps.store.save([earlier])
     deps.store.update_states({earlier.url: (ArticleState.ACCEPTED, None)}, digest_date="2026-01-01")
+    return deps
 
-    report = await run_digest(deps, RunOptions())
+
+async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None:
+    report = await run_digest(_fresh_and_earlier_deps(tmp_path), RunOptions())
 
     assert report.status == "ok"
     raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
     assert "Fresh This Run" in raw
     assert "Judged Last Run" not in raw
+
+
+async def test_the_local_archive_links_this_runs_raw_page(tmp_path: Path) -> None:
+    report = await run_digest(_fresh_and_earlier_deps(tmp_path), RunOptions())
+
+    assert report.status == "ok"
+    index = (report.html_path.parent / "index.html").read_text()
+    assert '-raw.html">All articles</a>' in index
+
+
+def _stored_article() -> StoredArticle:
+    now = datetime.now(UTC)
+    return StoredArticle(
+        url="https://example.com/collected",
+        original_id="collected",
+        title="Collected",
+        content="",
+        published_at=now,
+        source_name="Src",
+        source_tier=Tier.FILTER,
+        state=ArticleState.PENDING,
+        first_seen_at=now,
+    )
+
+
+@pytest.mark.parametrize(("collected", "linked"), [(True, True), (False, False)])
+def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
+    tmp_path: Path, collected: bool, linked: bool
+) -> None:
+    deps = SimpleNamespace(html_writer=HtmlDigestWriter(tmp_path), site_filenames=lambda: [])
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=0,
+        usage=UsageStats(),
+    )
+
+    pages = _render_site(deps, content, [_stored_article()] if collected else [])
+
+    index = pages["/index.html"].decode("utf-8")
+    assert ('href="2026-04-15-evening-raw.html">All articles</a>' in index) is linked
+    assert (">All articles</a>" in index) is linked
 
 
 async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Path) -> None:
