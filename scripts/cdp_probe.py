@@ -217,40 +217,41 @@ const centre = async (selector) => {
 const mouse = (type, x, y, held) => call('Input.dispatchMouseEvent',
   { type, x, y, button: held || type !== 'mouseMoved' ? 'left' : 'none',
     buttons: held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
+const touchEvent = (type, touchPoints) => call('Input.dispatchTouchEvent', { type, touchPoints });
+// Keyed by the POINTERS a Check accepts.
+const input = {
+  mouse: {
+    press: async ({ x, y }) => {
+      await mouse('mouseMoved', x, y, false);
+      await mouse('mousePressed', x, y, true);
+    },
+    move: ({ x, y }) => mouse('mouseMoved', x, y, true),
+    release: ({ x, y }) => mouse('mouseReleased', x, y, false),
+  },
+  touch: {
+    press: ({ x, y }) => touchEvent('touchStart', [{ x, y, id: 1 }]),
+    move: ({ x, y }) => touchEvent('touchMove', [{ x, y, id: 1 }]),
+    release: () => touchEvent('touchEnd', []),
+  },
+};
 const perform = async (gestures) => {
-  let at = null, pointer = 'mouse';
+  let at = null, pointer = input.mouse;
   for (const step of gestures) {
     if ('hover' in step) {
       const { x, y } = await centre(step.hover);
       await mouse('mouseMoved', x, y, false);
     } else if ('press' in step) {
       at = await centre(step.press);
-      pointer = step.pointer;
-      if (pointer === 'touch') {
-        await call('Input.dispatchTouchEvent',
-          { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y, id: 1 }] });
-      } else {
-        await mouse('mouseMoved', at.x, at.y, false);
-        await mouse('mousePressed', at.x, at.y, true);
-      }
+      pointer = input[step.pointer];
+      await pointer.press(at);
     } else if ('move' in step) {
       const from = at.x;
       for (let i = 1; i <= 10; i++) {
         at = { x: from + (step.move * i) / 10, y: at.y };
-        if (pointer === 'touch') {
-          await call('Input.dispatchTouchEvent',
-            { type: 'touchMove', touchPoints: [{ x: at.x, y: at.y, id: 1 }] });
-        } else {
-          await mouse('mouseMoved', at.x, at.y, true);
-        }
+        await pointer.move(at);
       }
     } else if ('release' in step) {
-      if (pointer === 'touch') {
-        await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      } else {
-        await call('Input.dispatchMouseEvent',
-          { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
-      }
+      await pointer.release(at);
     }
   }
 };
