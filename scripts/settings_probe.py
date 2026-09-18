@@ -225,6 +225,19 @@ window.fetch = (input, init) =>
 """
 
 
+# Installed before the page loads: the settings answer reports no provider key.
+NO_KEYS = """
+const realFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const res = await realFetch(input, init);
+  if (!String(input).endsWith("/api/settings") || (init && init.method)) return res;
+  const data = await res.json();
+  data.providers.forEach((provider) => { provider.configured = false; });
+  return new Response(JSON.stringify(data), {status: res.status, headers: res.headers});
+};
+"""
+
+
 def rewrite_source_post(mutation: str) -> str:
     """A preload that changes the body of the page's POST /api/sources before it leaves."""
     return f"""
@@ -434,6 +447,27 @@ CHECKS: list[Check] = [
             expect($("input", openai).disabled, "openai can be chosen");
         """,
         sabotage="""$('input[value="openai"]').disabled = false;""",
+    ),
+    Check(
+        id="model-no-keys",
+        fixture="writable",
+        path="/settings#model",
+        preload=NO_KEYS,
+        act="""
+            await settingsLoaded();
+            setValue($("#model-input"), "some-model");
+        """,
+        script="""
+            const available = $$("label.choice:not(.unavailable)").map((row) => row.textContent);
+            expect(available.length === 0, `available: ${available}`);
+            const checked = $$("input[name=provider]:checked").map((input) => input.value);
+            expect(checked.length === 0, `checked: ${checked}`);
+            const hint = $("#model-hint").textContent;
+            expect(hint === "Pick a provider whose key is present.", `hint: ${hint}`);
+            expect(saveOf("model").disabled, "Save is enabled with no provider to save");
+        """,
+        sabotage="""saveOf("model").disabled = false;""",
+        receipt=_calls([]),
     ),
     Check(
         id="model-placeholder",

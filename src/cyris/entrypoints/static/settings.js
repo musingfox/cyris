@@ -35,7 +35,9 @@ const navLink = (form) => document.querySelector(`.settings-nav a[data-tab="${fo
 
 function refresh(form) {
   const dirty = clean.has(form) && snapshot(form) !== clean.get(form);
-  saveButton(form).disabled = !dirty;
+  // With no provider chosen, there is nothing a model could be checked against.
+  const blocked = form.dataset.tab === "model" && !chosen();
+  saveButton(form).disabled = !dirty || blocked;
   navLink(form).classList.toggle("dirty", dirty);
 }
 
@@ -60,7 +62,7 @@ function render() {
   $("providers").innerHTML = state.providers.map((p) => `
     <label class="choice${p.configured ? "" : " unavailable"}">
       <input type="radio" name="provider" value="${esc(p.name)}"
-             ${p.name === state.provider ? "checked" : ""}
+             ${p.name === state.provider && p.configured ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
       <span class="name">${esc(p.name)}</span>
       ${p.configured
