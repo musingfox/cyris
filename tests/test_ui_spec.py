@@ -450,6 +450,25 @@ def test_every_page_scales_its_inherited_text(page: str) -> None:
     assert isinstance(body, list) and body[0].startswith("font-family")
 
 
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_the_body_has_no_gutter_so_a_bar_can_span_the_viewport(page: str) -> None:
+    assert [d for d in _parsed(page)["body"] if d.startswith("padding")] == []
+
+
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_the_container_carries_the_page_gutters_outside_its_width(page: str) -> None:
+    assert {
+        "padding: var(--s-6) var(--s-4) var(--s-20)",
+        "box-sizing: content-box",
+    } <= set(_parsed(page)[".container"])
+
+
+def test_the_digest_narrows_its_gutters_on_the_container() -> None:
+    digest = _parsed("digest")
+    assert "@media (max-width: 880px) | body" not in digest
+    assert digest["@media (max-width: 880px) | .container"] == {"padding: 16px 12px 60px"}
+
+
 @pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
 def test_no_font_size_escapes_the_type_scale(source: str) -> None:
     index, digest, raw = receipt_fixtures()

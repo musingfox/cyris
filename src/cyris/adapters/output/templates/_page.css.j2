@@ -18,12 +18,16 @@
             font-feature-settings: "ss01", "ss02", "cv11";
 {%- endif %}
             min-height: 100vh;
-            padding: 24px 16px 80px;
         }
 
         .container {
             max-width: {{ container_width }};
             margin: 0 auto;
+            {# The gutters live here rather than on body so a bar can span the
+               viewport; content-box keeps them outside max-width, where body
+               padding used to put them, so no content column changes width. #}
+            padding: var(--s-6) var(--s-4) var(--s-20);
+            box-sizing: content-box;
 {%- if container_relative %}
             position: relative;
 {%- endif %}
