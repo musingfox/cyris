@@ -281,9 +281,10 @@ table.src th { text-align: left; padding: var(--s-2) var(--s-5); background: var
 table.src td { padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border); font-size: calc(16px * var(--type-scale)); vertical-align: middle; }
 table.src tr.src-row { cursor: pointer; transition: background-color var(--t-fast); }
 table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
-table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
+table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(20px * var(--type-scale)); }
 table.src .target { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
 table.src tr.editor > td { background: var(--surface); padding: var(--s-5); border-bottom: 1px solid var(--border-strong); }
+.editor-title { margin-bottom: var(--s-4); }
 .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
 
 /* ---- system overview ---- */
@@ -354,7 +355,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
   .raw-row a { grid-column: 1 / -1; }
   .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
   .site-nav .label { letter-spacing: .08em; }
-  .settings-nav { position: static; display: flex; overflow-x: auto; border-left: 0; border-bottom: 1px solid var(--border); }
+  .settings-nav { position: static; display: flex; overflow-x: auto; overflow-y: hidden; border-left: 0; border-bottom: 1px solid var(--border); }
   .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; gap: var(--s-2); }
   .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
 }
@@ -661,6 +662,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
 <template id="editor-tpl">
   <tr class="editor"><td colspan="5">
+    <h3 class="label editor-title"></h3>
     <div class="form" style="max-width:none">
       <div class="field-row">
         <div class="field"><label class="label" for="e-name">Name</label><input class="input" id="e-name" type="text"></div>
@@ -866,7 +868,9 @@ function openEditor(name) {
   const ed = $("#editor-tpl").content.firstElementChild.cloneNode(true);
   const anchor = name ? $(`tr.src-row[data-name="${CSS.escape(name)}"]`) : null;
   anchor ? anchor.after(ed) : $("#src-body").prepend(ed);
+  $(".editor-title", ed).textContent = name ? `Editing ${name}` : "New source";
   $("#e-name", ed).value = s.name;
+  $("#e-name", ed).readOnly = !!name;
   $("#e-tier", ed).value = s.tier;
   $("#e-url", ed).value = s.url || "";
   $("#e-email", ed).value = s.email_match || "";
