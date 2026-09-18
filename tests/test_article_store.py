@@ -357,16 +357,16 @@ def test_update_states_preserves_human_votes(
     assert article.state == ArticleState.REJECTED
 
 
-def test_reset_to_pending_clears_triage_stamp(
+def test_returning_to_pending_clears_triage_stamp(
     store: ArticleStore, sample_articles: list[Article]
 ) -> None:
-    """Undo must drop triaged_at, or the update_states guard strands the row as PENDING."""
+    """Back to pending must drop triaged_at, or the update_states guard strands the row."""
     now = datetime.now(UTC)
     store.save([sample_articles[0]], now=now)
     store.reject(["https://example.com/1"], reason="manual_triage")
     store.update_triage_timestamp(["https://example.com/1"], now)
 
-    assert store.reset_to_pending("https://example.com/1")
+    assert store.update_article_state("https://example.com/1", ArticleState.PENDING) is True
 
     [article] = store.get_by_urls(["https://example.com/1"])
     assert article.triaged_at is None
@@ -377,6 +377,10 @@ def test_reset_to_pending_clears_triage_stamp(
         )
         == 1
     )
+
+
+def test_returning_an_unknown_url_to_pending_is_false(store: ArticleStore) -> None:
+    assert store.update_article_state("https://nonexistent.com", ArticleState.PENDING) is False
 
 
 def test_update_states_invalid_date_format(store: ArticleStore) -> None:
