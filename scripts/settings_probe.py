@@ -1,0 +1,519 @@
+#!/usr/bin/env python3
+"""Drive /settings in headless Chromium and check what a reader actually gets.
+
+pytest holds the settings page's markup and CSS, but not what its script does
+in a browser: which category a hash opens, when Save can be pressed, where a
+result appears, how the source editor behaves, and whether the page fits a
+phone. This runs those checks against a real `TriageServer`, served in-process
+from fixtures whose stores live in memory, so what a check wrote can be read
+back afterwards.
+
+Every check carries a sabotage that breaks the thing it reads. `--self-test`
+runs each check clean, where it must pass, and sabotaged, where it must fail,
+so a check that cannot fail is reported rather than trusted.
+
+Chromium is driven over the DevTools Protocol through a short Node script, as
+`css_computed.py` does and for the same reason: Node 22+ ships a WebSocket
+client and Python's standard library has none. No browser-automation package is
+installed for this, and none may be.
+
+This script must never be collected by pytest: it needs Chromium and Node,
+which makes it a reviewer-run gate rather than a test. Importing it is safe,
+and `tests/test_css_receipt.py` does so to check its fixtures and registry.
+"""
+
+import argparse
+import asyncio
+import contextlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
+
+import aiohttp
+from aiohttp import web
+from css_computed import _devtools_port, _page_socket, find_browser
+
+from cyris.config import LLMProviderConfig
+from cyris.diagnostics.doctor import Check as DoctorCheck
+from cyris.domain.models import SourceConfig, Tier
+from cyris.entrypoints.triage_server import TriageServer
+
+# Named rather than random so a leak test can look for exactly these strings.
+SENTINEL_KEY = "cyris-probe-sentinel-key"
+STORED_WEBHOOK = "https://discord.com/api/webhooks/123/abcTOKEN"
+OFFLINE_DETAIL = "cyris-probe: answered offline"
+
+# What /api/settings must resolve inside the probe environment. Asserted from the
+# server's answer, not from the variables this script set, because a key can
+# also arrive from somewhere this script does not control.
+EXPECTED_READINESS = {"anthropic": True, "gemini": True, "openai": False, "workers_ai": False}
+
+CHECK_TIMEOUT_S = 30
+HEIGHT = 900
+MINIMUM_NODE = 22
+
+
+class FakeSettings:
+    """Stands in for `D1Settings` and records every write the page makes."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def set(self, values: dict) -> None:
+        self.calls.append(dict(values))
+
+
+class FakeSourceStore:
+    """Stands in for the D1 `sources` table; `sources` is the receipt."""
+
+    def __init__(self, sources: dict[str, SourceConfig]) -> None:
+        self.sources = sources
+
+    def list_sources(self) -> dict[str, SourceConfig]:
+        return dict(self.sources)
+
+    def upsert(self, source: SourceConfig) -> None:
+        self.sources[source.name] = source
+
+    def delete(self, name: str) -> None:
+        self.sources.pop(name, None)
+
+    def replace_all(self, sources: dict[str, SourceConfig]) -> None:
+        self.sources.clear()
+        self.sources.update(sources)
+
+
+class _NoArticles:
+    """The settings routes never touch the article store."""
+
+
+def _seed_sources() -> dict[str, SourceConfig]:
+    listed = [
+        SourceConfig(
+            name="Simon Willison",
+            type="rss",
+            tier=Tier.SUMMARIZE,
+            url="https://simonwillison.net/atom/everything/",
+            tags=["ai", "tools"],
+        ),
+        SourceConfig(
+            name="Hacker News",
+            type="rss",
+            tier=Tier.FILTER,
+            url="https://hnrss.org/frontpage?points=200",
+            tags=["news", "tech"],
+        ),
+        SourceConfig(
+            name="曼報",
+            type="newsletter",
+            tier=Tier.SUMMARIZE,
+            email_match="from:manpao@substack.com",
+            homepage="https://manpaoreport.com",
+            tags=["business"],
+        ),
+        # Markup as a name: the page must print it, never parse it.
+        SourceConfig(name="<b>x</b>", type="rss", tier=Tier.FAN, url="https://example.test/x.xml"),
+    ]
+    return {source.name: source for source in listed}
+
+
+@dataclass
+class Fixture:
+    """One server and the in-memory stores a check reads its receipt from."""
+
+    app: web.Application
+    settings: FakeSettings | None
+    sources: dict[str, SourceConfig]
+
+
+def build_fixture(kind: str) -> Fixture:
+    """A `readonly` deployment (no settings store, no source table) or a `writable` one."""
+    common = {
+        "llm_provider": LLMProviderConfig(provider="gemini", model=""),
+        "schedule": ["08:00", "20:00"],
+        "max_featured": 5,
+        "notify_webhook": STORED_WEBHOOK,
+        "sources": _seed_sources(),
+        "sources_origin": "sources.yaml",
+    }
+    if kind == "readonly":
+        server = TriageServer(_NoArticles(), **common)
+        return Fixture(server._app, None, server._sources)
+    if kind == "writable":
+        settings = FakeSettings()
+        store = FakeSourceStore(_seed_sources())
+        server = TriageServer(_NoArticles(), settings=settings, source_store=store, **common)
+        return Fixture(server._app, settings, store.sources)
+    raise ValueError(f"unknown fixture {kind!r}")
+
+
+@contextlib.contextmanager
+def probe_environment() -> Iterator[SimpleNamespace]:
+    """Pin the provider keys, and answer the LLM and Discord probes offline.
+
+    Runs from an empty directory so no `.env` there can bind a key. Yields the
+    two patched probes so a caller can see they were the ones answering.
+    """
+    absent = {
+        LLMProviderConfig(provider="openai").api_key_env_var,
+        LLMProviderConfig(provider="workers_ai").api_key_env_var,
+        # workers_ai falls back to these, so removing its own variable is not enough.
+        "CLOUDFLARE_EMBEDDING_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID",
+    }
+    offline = DoctorCheck(name="probe", status="ok", detail=OFFLINE_DETAIL)
+    llm = mock.AsyncMock(return_value=offline)
+    discord = mock.AsyncMock(return_value=offline)
+    present = {"GEMINI_API_KEY": SENTINEL_KEY, "ANTHROPIC_API_KEY": SENTINEL_KEY}
+    with (
+        tempfile.TemporaryDirectory(prefix="settings-probe-") as home,
+        contextlib.chdir(home),
+        mock.patch.dict(os.environ, present),
+        mock.patch("cyris.diagnostics.doctor.probe_llm", llm),
+        mock.patch("cyris.entrypoints.triage_server.probe_discord", discord),
+    ):
+        for name in absent:
+            os.environ.pop(name, None)
+        yield SimpleNamespace(llm=llm, discord=discord)
+
+
+@dataclass(frozen=True)
+class Check:
+    """One behaviour, read from the DOM and, where something was written, the stores.
+
+    `act` performs the steps and may record observations in `ctx`; `sabotage`
+    runs after it in a self-test; `script` then asserts with `expect`. A
+    sabotage that cannot be applied through the page is a `sabotage_preload`
+    instead, installed before the page loads.
+    """
+
+    id: str
+    fixture: str
+    path: str | tuple[str, ...]
+    script: str
+    sabotage: str = ""
+    width: int = 1440
+    act: str = ""
+    preload: str = ""
+    sabotage_preload: str = ""
+    reload: bool = False
+    setup: Callable[[Fixture], None] | None = None
+    receipt: Callable[[Fixture], str | None] | None = None
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        return (self.path,) if isinstance(self.path, str) else self.path
+
+
+CHECKS: list[Check] = [
+    Check(
+        id="site-bar-current",
+        fixture="readonly",
+        path="/settings",
+        script="""
+            const current = $$('.site-nav a[aria-current="page"]');
+            const names = current.map((a) => a.textContent.trim());
+            expect(names.length === 1 && names[0] === "Settings", `current: ${names}`);
+        """,
+        sabotage="""$('.site-nav a[aria-current="page"]').removeAttribute("aria-current");""",
+    ),
+]
+
+PRELUDE = """
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const visible = (el) => !!el && el.offsetParent !== null;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const expect = (condition, detail) => { if (!condition) throw new Error(detail); };
+const waitFor = async (probe, what, ms = 5000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    try { const value = probe(); if (value) return value; } catch {}
+    await sleep(25);
+  }
+  throw new Error(`timed out waiting for ${what}`);
+};
+const setValue = (el, value) => {
+  el.value = value;
+  el.dispatchEvent(new Event("input", {bubbles: true}));
+  el.dispatchEvent(new Event("change", {bubbles: true}));
+};
+const ctx = {};
+"""
+
+
+def check_expression(check: Check, sabotaged: bool) -> str:
+    """The page-side program: act, maybe sabotage, then assert."""
+    sabotage = check.sabotage if sabotaged else ""
+    return f"""(async () => {{
+{PRELUDE}
+try {{ {{ {check.act} }} }} catch (error) {{
+  return JSON.stringify({{ok: false, detail: `act: ${{error.message || error}}`}});
+}}
+try {{ {{ {sabotage} }} }} catch (error) {{
+  return JSON.stringify({{ok: false, sabotageError: String(error.message || error)}});
+}}
+try {{ {{ {check.script} }} }} catch (error) {{
+  return JSON.stringify({{ok: false, detail: String(error.message || error)}});
+}}
+return JSON.stringify({{ok: true}});
+}})()"""
+
+
+DRIVER = """
+const socket = new WebSocket(process.env.CDP_WS);
+const pending = new Map();
+let nextId = 0;
+socket.addEventListener('message', (event) => {
+  const message = JSON.parse(event.data);
+  const settle = pending.get(message.id);
+  if (settle) { pending.delete(message.id); settle(message); }
+});
+const call = (method, params = {}) => new Promise((resolve, reject) => {
+  const id = ++nextId;
+  pending.set(id, (message) => message.error
+    ? reject(new Error(`${method}: ${message.error.message}`))
+    : resolve(message.result));
+  socket.send(JSON.stringify({ id, method, params }));
+});
+const evaluate = async (expression) => {
+  const answer = await call('Runtime.evaluate',
+    { expression, awaitPromise: true, returnByValue: true });
+  if (answer.exceptionDetails) throw new Error(JSON.stringify(answer.exceptionDetails));
+  return answer.result.value;
+};
+// A navigation that has not committed yet still reports the old document as
+// complete, so each wait also names what the new document must be.
+const settled = async (condition) => {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    try {
+      if (await evaluate(`(${condition}) && document.readyState === 'complete'`)) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`page never settled: ${condition}`);
+};
+await new Promise((resolve, reject) => {
+  socket.addEventListener('open', resolve);
+  socket.addEventListener('error', reject);
+});
+const job = JSON.parse(process.env.PROBE_JOB);
+await call('Page.enable');
+await call('Network.enable');
+// Fonts come from Google; the checks read layout, not type, and wait on nothing.
+await call('Network.setBlockedURLs', { urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*'] });
+// --window-size has a ~500px floor; the emulation override reaches a phone.
+await call('Emulation.setDeviceMetricsOverride',
+  { width: job.width, height: job.height, deviceScaleFactor: 1, mobile: false });
+const results = [];
+try {
+  for (const url of job.urls) {
+    await call('Page.navigate', { url: 'about:blank' });
+    await settled(`location.href === 'about:blank'`);
+    const added = [];
+    for (const source of job.preloads) {
+      added.push((await call('Page.addScriptToEvaluateOnNewDocument', { source })).identifier);
+    }
+    await call('Page.navigate', { url });
+    await settled(`location.origin === ${JSON.stringify(new URL(url).origin)}`);
+    if (job.reload) {
+      await evaluate('window.__probeBeforeReload = true');
+      await call('Page.reload');
+      await settled('window.__probeBeforeReload === undefined');
+    }
+    results.push(JSON.parse(await evaluate(job.expression)));
+    for (const identifier of added) {
+      await call('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+    }
+    if (!results.at(-1).ok) break;
+  }
+} finally {
+  await call('Emulation.clearDeviceMetricsOverride');
+}
+process.stdout.write(JSON.stringify(results));
+socket.close();
+"""
+
+
+@dataclass(frozen=True)
+class Outcome:
+    ok: bool
+    detail: str = ""
+    sabotage_error: str = ""
+
+
+async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    host, port = runner.addresses[0][:2]
+    return runner, f"http://{host}:{port}"
+
+
+async def _drive(socket_url: str, job: dict) -> list[dict]:
+    # Spawned from the loop that serves the fixture: a blocking subprocess call
+    # would freeze the server the page is talking to.
+    process = await asyncio.create_subprocess_exec(
+        "node",
+        "--input-type=module",
+        "-e",
+        DRIVER,
+        env={**os.environ, "CDP_WS": socket_url, "PROBE_JOB": json.dumps(job)},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), CHECK_TIMEOUT_S)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        raise
+    if process.returncode != 0:
+        raise RuntimeError(f"driver failed: {stderr.decode().strip()}")
+    return json.loads(stdout)
+
+
+async def run_check(check: Check, socket_url: str, sabotaged: bool) -> Outcome:
+    """Serve a fresh fixture, drive the page through the check, then read the receipt."""
+    fixture = build_fixture(check.fixture)
+    if check.setup:
+        check.setup(fixture)
+    runner, base = await _serve(fixture.app)
+    try:
+        preloads = [check.preload] if check.preload else []
+        if sabotaged and check.sabotage_preload:
+            preloads.append(check.sabotage_preload)
+        job = {
+            "urls": [base + path for path in check.paths],
+            "width": check.width,
+            "height": HEIGHT,
+            "preloads": preloads,
+            "reload": check.reload,
+            "expression": check_expression(check, sabotaged),
+        }
+        try:
+            results = await _drive(socket_url, job)
+        except TimeoutError:
+            return Outcome(False, "timeout")
+        for result in results:
+            if error := result.get("sabotageError"):
+                return Outcome(False, f"sabotage failed to apply: {error}", error)
+            if not result["ok"]:
+                return Outcome(False, result["detail"])
+        if check.receipt and (problem := check.receipt(fixture)):
+            return Outcome(False, f"receipt: {problem}")
+        return Outcome(True)
+    finally:
+        await runner.cleanup()
+
+
+async def resolved_readiness(base: str) -> dict[str, bool]:
+    async with aiohttp.ClientSession() as session, session.get(f"{base}/api/settings") as res:
+        data = await res.json()
+    return {provider["name"]: provider["configured"] for provider in data["providers"]}
+
+
+async def _assert_readiness() -> None:
+    runner, base = await _serve(build_fixture("writable").app)
+    try:
+        resolved = await resolved_readiness(base)
+    finally:
+        await runner.cleanup()
+    if resolved != EXPECTED_READINESS:
+        wrong = [
+            f"{name} resolved configured={resolved.get(name)}"
+            for name in sorted(set(resolved) | set(EXPECTED_READINESS))
+            if resolved.get(name) != EXPECTED_READINESS.get(name)
+        ]
+        print(f"provider readiness is not the fixture's: {'; '.join(wrong)}", file=sys.stderr)
+        raise SystemExit(2)
+
+
+def _require_node() -> None:
+    try:
+        version = subprocess.run(
+            ["node", "--version"], capture_output=True, text=True, check=True
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        version = ""
+    match = re.match(r"v(\d+)", version.strip())
+    if not match or int(match.group(1)) < MINIMUM_NODE:
+        print("settings_probe needs Node 22+ (global WebSocket)", file=sys.stderr)
+        raise SystemExit(2)
+
+
+@contextlib.contextmanager
+def _chromium(browser: str) -> Iterator[str]:
+    with tempfile.TemporaryDirectory(prefix="settings-probe-chromium-") as profile:
+        profile_dir = Path(profile)
+        process = subprocess.Popen(
+            [
+                browser,
+                "--headless",
+                f"--user-data-dir={profile_dir}",
+                "--remote-debugging-port=0",
+                "--disable-remote-fonts",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-gpu",
+                "about:blank",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            deadline = time.monotonic() + 60
+            yield _page_socket(_devtools_port(profile_dir, deadline), deadline)
+        finally:
+            process.terminate()
+            process.wait(timeout=30)
+
+
+async def _run(checks: list[Check], socket_url: str, self_test: bool) -> bool:
+    await _assert_readiness()
+    all_good = True
+    for check in checks:
+        clean = await run_check(check, socket_url, sabotaged=False)
+        print(f"PASS {check.id}" if clean.ok else f"FAIL {check.id}: {clean.detail}", flush=True)
+        all_good &= clean.ok
+        if self_test:
+            broken = await run_check(check, socket_url, sabotaged=True)
+            caught = not broken.ok and not broken.sabotage_error
+            detail = "" if caught else f": {broken.detail or 'passed while sabotaged'}"
+            print(f"{'CAUGHT' if caught else 'MISSED'} {check.id}{detail}", flush=True)
+            all_good &= caught
+    return all_good
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--browser", default=None, help="Chromium binary (else $CYRIS_CHROMIUM)")
+    parser.add_argument("--only", action="append", default=[], metavar="ID", help="run one check")
+    parser.add_argument(
+        "--self-test", action="store_true", help="also run every check sabotaged; each must fail"
+    )
+    args = parser.parse_args()
+
+    known = {check.id for check in CHECKS}
+    if unknown := sorted(set(args.only) - known):
+        parser.error(f"unknown check: {', '.join(unknown)}")
+    checks = [check for check in CHECKS if not args.only or check.id in args.only]
+
+    browser = find_browser(args.browser)
+    _require_node()
+    with probe_environment(), _chromium(browser) as socket_url:
+        good = asyncio.run(_run(checks, socket_url, args.self_test))
+    raise SystemExit(0 if good else 1)
+
+
+if __name__ == "__main__":
+    main()

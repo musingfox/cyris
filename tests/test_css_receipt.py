@@ -4,6 +4,8 @@
 and a free debug port, which would make it a flaky non-hermetic gate rather than
 a test. Its verification is a hand-run receipt. What is tested is the part that
 needs no browser -- the probe set it ships and the breakpoints it samples.
+`scripts/settings_probe.py` is the same kind of gate, so the same holds: its
+fixtures and its registry of checks are tested here, its browser run is not.
 """
 
 import io
@@ -16,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from aiohttp.test_utils import TestClient, TestServer
 from css_rules import parse_style_block, receipt_fixtures
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -34,6 +37,12 @@ from css_receipt import (  # noqa: E402
     load_allowed,
     load_computed_allowed,
     snapshot,
+)
+from settings_probe import (  # noqa: E402
+    CHECKS,
+    EXPECTED_READINESS,
+    build_fixture,
+    probe_environment,
 )
 
 
@@ -466,3 +475,73 @@ def test_the_probe_set_watches_the_site_bar_and_not_the_meta_strip():
 def test_the_probe_set_watches_no_footer_link():
     probes = load_probes(PROBES_PATH)
     assert [page for page, selectors in probes.items() if ".footer a" in selectors] == []
+
+
+# The checks `scripts/settings_probe.py` must carry. Each later change to the
+# settings page adds the ids of the checks that hold it.
+EXPECTED_IDS = {
+    "site-bar-current",
+}
+
+
+async def _get_json(fixture, path: str, method: str = "GET", body=None) -> tuple[int, dict]:
+    client = TestClient(TestServer(fixture.app))
+    await client.start_server()
+    try:
+        response = await client.request(method, path, json=body)
+        return response.status, await response.json()
+    finally:
+        await client.close()
+
+
+async def test_the_readonly_probe_fixture_can_write_neither_settings_nor_sources():
+    _, settings = await _get_json(build_fixture("readonly"), "/api/settings")
+    _, sources = await _get_json(build_fixture("readonly"), "/api/sources")
+    assert settings["writable"] is False
+    assert sources["writable"] is False
+    assert sources["origin"] == "sources.yaml"
+
+
+async def test_the_writable_probe_fixture_serves_its_four_sources_from_the_table():
+    _, settings = await _get_json(build_fixture("writable"), "/api/settings")
+    _, sources = await _get_json(build_fixture("writable"), "/api/sources")
+    assert settings["writable"] is True
+    assert sources["writable"] is True
+    assert sources["origin"] == "d1"
+    assert len(sources["sources"]) == 4
+
+
+async def test_the_probe_environment_resolves_the_provider_readiness_it_promises():
+    with probe_environment():
+        _, settings = await _get_json(build_fixture("writable"), "/api/settings")
+    resolved = {p["name"]: p["configured"] for p in settings["providers"]}
+    assert (
+        resolved
+        == EXPECTED_READINESS
+        == {
+            "anthropic": True,
+            "gemini": True,
+            "openai": False,
+            "workers_ai": False,
+        }
+    )
+
+
+async def test_a_webhook_saved_through_the_probe_fixture_is_recorded_without_a_network():
+    url = "https://discord.com/api/webhooks/9/NEWTOKEN"
+    fixture = build_fixture("writable")
+    with probe_environment() as probes:
+        status, _ = await _get_json(
+            fixture, "/api/settings/notify", "POST", {"discord_webhook_url": url}
+        )
+    assert status == 200
+    assert fixture.settings.calls == [{"notify.discord_webhook_url": url}]
+    assert probes.discord.await_count == 1
+
+
+def test_every_probe_check_is_named_once_and_can_be_sabotaged():
+    ids = [check.id for check in CHECKS]
+    assert len(ids) == len(set(ids))
+    assert [c.id for c in CHECKS if not (c.sabotage.strip() or c.sabotage_preload)] == []
+    assert {c.fixture for c in CHECKS} <= {"readonly", "writable"}
+    assert set(ids) >= EXPECTED_IDS
