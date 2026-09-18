@@ -213,9 +213,10 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 
 ## 8. 現況差距與落地順序
 
-2026-09-17 盤點的差距中，第 1 到 3 步已於 2026-09-18 落地：第 1 步補上 §2 token、§3 字級、focus 與
-reduced-motion、兩個硬寫顏色，以及元件 CSS 比對測試；第 2 步讓 archive、digest、raw 掛上 site bar 與
-issue bar；第 3 步依 §6 重做 settings。其餘差距由下面第 4 到 7 步處理。
+2026-09-17 盤點的差距中，第 1 到 3 步已於 2026-09-18 落地，第 4 步已於 2026-09-19 落地：第 1 步補上 §2
+token、§3 字級、focus 與 reduced-motion、兩個硬寫顏色，以及元件 CSS 比對測試；第 2 步讓 archive、digest、
+raw 掛上 site bar 與 issue bar；第 3 步依 §6 重做 settings；第 4 步依 §6 重做 raw 的列表，並加上登入後才
+出現的 triage view。其餘差距由下面第 5 到 7 步處理。
 
 落地順序，每一步都能單獨上線。括號裡是 Obsidian vault `pm/cyris/tasks/` 的票：
 
