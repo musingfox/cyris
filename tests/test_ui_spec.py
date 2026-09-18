@@ -664,6 +664,10 @@ def test_the_container_carries_the_page_gutters_outside_its_width(page: str) -> 
     } <= set(_parsed(page)[".container"])
 
 
+def test_the_raw_page_is_as_wide_as_the_spec_sets_it() -> None:
+    assert "max-width: 960px" in _parsed("raw")[".container"]
+
+
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])
 def test_a_link_takes_its_parents_colour_by_default(page: str) -> None:
     assert _parsed(page)["a"] == {"color: inherit"}
