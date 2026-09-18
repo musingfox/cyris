@@ -622,3 +622,19 @@ def test_a_probe_job_without_gestures_carries_none():
 def test_a_gesture_step_that_is_unknown_or_has_no_press_is_refused(gestures):
     with pytest.raises(ValueError):
         cdp_probe.Check(id="x", fixture="k", path="/p", script="", gestures=gestures)
+
+
+def test_a_probe_job_carries_the_media_features_it_emulates():
+    reduced = (("prefers-reduced-motion", "reduce"),)
+    check = cdp_probe.Check(id="x", fixture="k", path="/p", script="", media=reduced)
+    job = cdp_probe.build_job(check, "http://h", False, "")
+    assert job["media"] == [{"name": "prefers-reduced-motion", "value": "reduce"}]
+    plain = cdp_probe.Check(id="x", fixture="k", path="/p", script="")
+    assert cdp_probe.build_job(plain, "http://h", False, "")["media"] == []
+
+
+def test_the_driver_emulates_media_before_it_loads_the_page():
+    driver = cdp_probe.DRIVER
+    assert driver.index("Emulation.setEmulatedMedia") < driver.index(
+        "call('Page.navigate', { url })"
+    )

@@ -54,6 +54,9 @@ class Check:
     applied through the page is a `sabotage_preload` instead, installed before
     the page loads.
 
+    `media` names CSS media features the browser reports for the whole check,
+    such as `(("prefers-reduced-motion", "reduce"),)`.
+
     A gesture step is `{"press": selector, "pointer": "mouse" | "touch"}`,
     `{"move": dx}`, `{"release": True}` or `{"hover": selector}`; a move or a
     release belongs to the press before it.
@@ -72,6 +75,7 @@ class Check:
     setup: Callable[[Any], None] | None = None
     receipt: Callable[[Any], str | None] | None = None
     gestures: tuple[dict, ...] = ()
+    media: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         pressed = False
@@ -259,7 +263,15 @@ await call('Emulation.setDeviceMetricsOverride',
 if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
 const results = [];
 try {
-  for (const url of job.urls) {
+  // Before the first navigation: a page reads matchMedia as it loads.
+  if (job.media.length) {
+    try {
+      await call('Emulation.setEmulatedMedia', { features: job.media });
+    } catch (error) {
+      results.push({ ok: false, detail: error.message });
+    }
+  }
+  for (const url of results.length ? [] : job.urls) {
     await call('Page.navigate', { url: 'about:blank' });
     await settled(`location.href === 'about:blank'`);
     const added = [];
@@ -289,6 +301,7 @@ try {
     if (!result.ok) break;
   }
 } finally {
+  if (job.media.length) await call('Emulation.setEmulatedMedia', { features: [] });
   if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: false });
   await call('Emulation.clearDeviceMetricsOverride');
 }
@@ -317,6 +330,7 @@ def build_job(check: Check, base: str, sabotaged: bool, prelude: str) -> dict:
         "reload": check.reload,
         "act": act_expression(check, sabotaged, prelude),
         "gestures": list(check.gestures),
+        "media": [{"name": name, "value": value} for name, value in check.media],
         "script": script_expression(check, prelude),
     }
 
