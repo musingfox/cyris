@@ -10,7 +10,7 @@
 <style>
 /* Reference implementation of docs/design/ui-language.md. Sample data only. */
 
-/* ---- tokens: existing (unchanged) ---- */
+/* ---- tokens: §2, same order as the spec ---- */
 :root {
   --bg: #07070a;
   --bg-elev: #0d0d12;
@@ -24,19 +24,18 @@
   --accent: #c6ff3d;
   --accent-dim: #8aa829;
   --warn: #ff5b8a;
-  --grid: rgba(198, 255, 61, 0.035);
-/* ---- tokens: added by §2 ---- */
   --accent-tint: rgba(198, 255, 61, 0.07);
   --warn-tint: rgba(255, 91, 138, 0.12);
-  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px;
+  --grid: rgba(198, 255, 61, 0.035);
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
   --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
   --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
   --font-serif: 'Instrument Serif', Georgia, serif;
-  --t-fast: 150ms ease-out;
   --type-scale: 1;
   --r-control: 6px;
   --r-tag: 999px;
+  --t-fast: 150ms ease-out;
   --bar-h: 60px;
   --measure: 640px;
 }
@@ -207,7 +206,7 @@ button, input, select { font: inherit; color: inherit; }
 .issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale)); line-height: .92; letter-spacing: -.04em; }
 .issue-title em { font-style: italic; color: var(--accent); }
 .stats { background: var(--surface); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); }
-.stats div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); }
+.stats div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); }
 .stats div:last-child { border-bottom: 0; }
 .stats .v.hl { color: var(--accent); }
 .section-tag { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-5); }
@@ -223,7 +222,7 @@ button, input, select { font: inherit; color: inherit; }
 .raw-row { grid-template-columns: 96px 56px 1fr auto; align-items: baseline; }
 .raw-row a { text-decoration: none; border-bottom: 1px solid transparent; transition: color var(--t-fast), border-color var(--t-fast); }
 .raw-row a:hover { color: var(--accent); border-bottom-color: var(--accent); }
-.raw-row .score { font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); color: var(--text-dim); text-align: right; }
+.raw-row .score { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--text-dim); text-align: right; }
 .votes { display: inline-flex; gap: var(--s-1); }
 .page-head .seg { justify-self: start; }
 
@@ -283,7 +282,7 @@ table.src td { padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--bo
 table.src tr.src-row { cursor: pointer; transition: background-color var(--t-fast); }
 table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
 table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
-table.src .target { font-family: var(--font-mono); font-size: calc(15px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
+table.src .target { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
 table.src tr.editor > td { background: var(--surface); padding: var(--s-5); border-bottom: 1px solid var(--border-strong); }
 .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
 
@@ -498,7 +497,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <div class="row type-row"><span style="font-size: calc(20px * var(--type-scale));line-height:1.65;color:var(--text-dim)">Containers can now follow a Durable Object's lifecycle and sleep when idle.</span><span class="spec">body · Geist 400 · 20px / 1.65</span></div>
         <div class="row type-row"><span class="small">Saving makes one real call to the provider first.</span><span class="spec">small · Geist 400 · 16px / 1.5</span></div>
         <div class="row type-row"><span class="label">Publish hours</span><span class="spec">label · Geist Mono 500 · 14px · upper · 0.1em</span></div>
-        <div class="row type-row"><span class="data">2026-09-17 · 0.94 · 214</span><span class="spec">data · Geist Mono · 15–16px · tabular</span></div>
+        <div class="row type-row"><span class="data">2026-09-17 · 0.94 · 214</span><span class="spec">data · Geist Mono · 16px · tabular</span></div>
       </div>
     </div>
 
