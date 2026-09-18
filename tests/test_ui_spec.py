@@ -16,18 +16,33 @@ from css_rules import (
     font_stack_literals,
     include_sites,
     off_spec_transitions,
+    off_token_radii,
     parse_style_block,
     receipt_fixtures,
+    rem_values,
     spec_colour_exceptions,
+    style_attributes,
     unscaled_font_sizes,
 )
 
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store.article_store import ArticleStore
-from cyris.entrypoints.triage_server import TriageServer
+from cyris.entrypoints.triage_server import TriageServer, _render_settings_page
 
 STYLE = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"
+
+
+def _source(name: str) -> str:
+    """A page or stylesheet the literal guards read; settings is the page as served."""
+    if name == "style.css":
+        return STYLE.read_text()
+    if name == "settings":
+        return _render_settings_page()
+    return dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[name]
+
+
+GUARDED = ["index", "digest", "raw", "style.css", "settings"]
 
 
 def _render_partial(name: str) -> str:
@@ -124,11 +139,9 @@ def test_the_allowed_colours_are_the_spec_exceptions() -> None:
     }
 
 
-@pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
+@pytest.mark.parametrize("source", GUARDED)
 def test_no_colour_literal_outside_the_spec_exceptions(source: str) -> None:
-    index, digest, raw = receipt_fixtures()
-    text = {"index": index, "digest": digest, "raw": raw, "style.css": STYLE.read_text()}[source]
-    assert colour_literals(text) == []
+    assert colour_literals(_source(source)) == []
 
 
 @pytest.mark.parametrize(
@@ -173,9 +186,9 @@ async def test_settings_and_the_deck_stop_motion_on_request(triage: TestClient) 
     assert (await _served_rules(triage, "/static/style.css"))[REDUCED_MOTION] == STILL
 
 
-@pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
-def test_every_transition_changes_colour_over_the_fast_token(page: int) -> None:
-    assert off_spec_transitions(receipt_fixtures()[page]) == []
+@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings"])
+def test_every_transition_changes_colour_over_the_fast_token(page: str) -> None:
+    assert off_spec_transitions(_source(page)) == []
 
 
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
@@ -604,11 +617,9 @@ def test_the_digest_narrows_its_gutters_on_the_container() -> None:
     assert digest["@media (max-width: 880px) | .container"] == {"padding: 16px 12px 60px"}
 
 
-@pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
+@pytest.mark.parametrize("source", GUARDED)
 def test_no_font_size_escapes_the_type_scale(source: str) -> None:
-    index, digest, raw = receipt_fixtures()
-    text = {"index": index, "digest": digest, "raw": raw, "style.css": STYLE.read_text()}[source]
-    assert unscaled_font_sizes(text) == []
+    assert unscaled_font_sizes(_source(source)) == []
 
 
 @pytest.mark.parametrize(
@@ -631,11 +642,9 @@ def test_a_scaled_clamp_is_not_reported() -> None:
     )
 
 
-@pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
+@pytest.mark.parametrize("source", GUARDED)
 def test_every_font_stack_is_a_token(source: str) -> None:
-    index, digest, raw = receipt_fixtures()
-    text = {"index": index, "digest": digest, "raw": raw, "style.css": STYLE.read_text()}[source]
-    assert font_stack_literals(text) == []
+    assert font_stack_literals(_source(source)) == []
 
 
 @pytest.mark.parametrize(
@@ -649,3 +658,60 @@ def test_every_font_stack_is_a_token(source: str) -> None:
 )
 def test_a_hand_written_font_stack_is_reported(css: str, reported: int) -> None:
     assert len(font_stack_literals(css)) == reported
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{padding:.5rem}", 1),
+        (".x{margin:0 1.2rem 0 0}", 1),
+        (".x{letter-spacing:.1em}", 0),
+        (".x{padding:var(--s-2)}", 0),
+    ],
+)
+def test_a_rem_size_is_reported(css: str, reported: int) -> None:
+    assert len(rem_values(css)) == reported
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{border-radius:8px}", 1),
+        (".x{border-top-left-radius:4px}", 1),
+        (".x{border-radius:var(--r-control)}", 0),
+        (".x{border-radius:var(--r-tag)}", 0),
+        (".d{border-radius:50%}", 0),
+    ],
+)
+def test_a_radius_off_the_tokens_is_reported(css: str, reported: int) -> None:
+    assert len(off_token_radii(css)) == reported
+
+
+def test_a_style_attribute_is_reported() -> None:
+    assert len(style_attributes('<p style="margin:8px">x</p>')) == 1
+    assert style_attributes("<style>p { margin: 0; }</style><p>x</p>") == []
+
+
+@pytest.mark.parametrize("source", ["style.css", "settings"])
+def test_no_size_is_written_in_rem(source: str) -> None:
+    assert rem_values(_source(source)) == []
+
+
+@pytest.mark.parametrize("source", ["style.css", "settings"])
+def test_every_radius_is_a_shape_token(source: str) -> None:
+    assert off_token_radii(_source(source)) == []
+
+
+def test_the_settings_page_styles_nothing_through_an_attribute() -> None:
+    assert style_attributes(_source("settings")) == []
+
+
+def test_the_settings_page_breaks_only_where_the_spec_does() -> None:
+    queries = {key.split(" | ")[0] for key in parse_style_block(_source("settings")) if "@" in key}
+    assert queries <= {"@media (max-width: 720px)", "@media (prefers-reduced-motion: reduce)"}
+
+
+def test_the_settings_page_scales_its_text_without_a_body_gutter() -> None:
+    body = parse_style_block(_source("settings"))["body"]
+    assert "font-size: calc(16px * var(--type-scale))" in body
+    assert [d for d in body if d.startswith("padding")] == []

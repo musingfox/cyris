@@ -3,9 +3,10 @@
 It parses CSS from pages and stylesheets into comparable rules, reads the parts
 of ``docs/design/ui-language.md`` the tests check against (the section 2 tokens
 and colour exceptions), names what breaks the spec (colour literals, hand-written
-font stacks, unscaled font sizes, off-spec transitions, repeated component
-blocks), maps which CSS partials a page template includes, and renders the fixed
-index, digest and raw pages those checks read.
+font stacks, unscaled font sizes, off-spec transitions, rem sizes, off-token
+radii, style attributes, repeated component blocks), maps which CSS partials a
+page template includes, and renders the fixed index, digest and raw pages those
+checks read.
 """
 
 import re
@@ -433,6 +434,38 @@ def off_spec_transitions(css_source: str) -> list[str]:
             if prop.startswith("transition") and _OFF_SPEC_MOTION.search(value):
                 found.append(f"{key} | {declaration}")
     return found
+
+
+_REM = re.compile(r"(?<![\w-])\d*\.?\d+rem\b")
+
+
+def rem_values(css_source: str) -> list[str]:
+    """Name every declaration sized in ``rem``; the spec's section 2 sizes in px."""
+    return [
+        f"{key} | {declaration}"
+        for key, declarations in _rules(css_source).items()
+        for declaration in declarations
+        if _REM.search(declaration.split(":", 1)[1])
+    ]
+
+
+_SHAPE_TOKENS = {"var(--r-control)", "var(--r-tag)", "50%"}
+
+
+def off_token_radii(css_source: str) -> list[str]:
+    """Name every radius that is not a shape token or the round dot's ``50%``."""
+    found = []
+    for key, declarations in _rules(css_source).items():
+        for declaration in declarations:
+            prop, value = (part.strip() for part in declaration.split(":", 1))
+            if re.fullmatch(r"border(-\w+)*-radius", prop) and value not in _SHAPE_TOKENS:
+                found.append(f"{key} | {declaration}")
+    return found
+
+
+def style_attributes(html: str) -> list[str]:
+    """Return every ``style`` attribute in HTML, which no CSS guard would otherwise read."""
+    return re.findall(r"<[a-zA-Z][^>]*?\sstyle\s*=\s*(?:\"[^\"]*\"|'[^']*')", html)
 
 
 def _item(title: str, url: str, source: str) -> DigestItem:
