@@ -480,6 +480,41 @@ window.fetch = (input, init) => init && init.method === "POST"
         sabotage="""await castVote($(".vote-group", rowOf("Pending Two")), "up");""",
         receipt=_posted(vote_body("pending-two", "up")),
     ),
+    Check(
+        id="vote-failure-stays",
+        fixture="vote-fails",
+        path=PAGE,
+        act="""
+            await pressDeck("up");
+            await waitFor(() => visible($("#t-error")), "the failure notice");
+        """,
+        script="""
+            const shown = deck();
+            expect(same(shown, ["4 remaining", "Source A", "Pending Two"]), `deck: ${shown}`);
+            expect(visible($("#t-error")), "the failure notice is hidden");
+            const notice = $("#t-error").getBoundingClientRect();
+            const actions = $("#t-actions").getBoundingClientRect();
+            expect(notice.top >= actions.bottom, "the notice is not under the buttons");
+            expect($("#t-card").style.transform === "", "the card has moved");
+            const done = $$(".promote-btn.done", rowOf("Pending Two")).length;
+            expect(done === 0, "the list shows a vote");
+        """,
+        sabotage="""$("#t-error").hidden = true;""",
+    ),
+    Check(
+        id="vote-retry-clears-notice",
+        fixture="fails-once",
+        path=PAGE,
+        act="""
+            await pressDeck("up");
+            await waitFor(() => visible($("#t-error")), "the failure notice");
+            await waitFor(() => !$("#t-up").disabled, "the buttons back");
+            $("#t-up").click();
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+        """,
+        script="""expect(!visible($("#t-error")), "the failure notice stays");""",
+        sabotage="""$("#t-error").hidden = false;""",
+    ),
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]

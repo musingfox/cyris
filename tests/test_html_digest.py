@@ -978,6 +978,19 @@ def test_the_triage_view_holds_one_card_and_its_two_buttons(tmp_path):
     assert re.findall(r"<button\b[^>]*data-vote", triage) == []
 
 
+VOTE_FAILED = (
+    '<p class="notice err" id="t-error" role="alert" hidden>The vote did not go through,'
+    " so this card stays. Check your connection, then try again.</p>"
+)
+
+
+def test_a_failed_triage_vote_is_explained_under_its_buttons(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+
+    assert raw.count(VOTE_FAILED) == 1
+    assert raw.index('id="t-actions"') < raw.index(VOTE_FAILED) < raw.index('id="t-hint"')
+
+
 def test_the_raw_page_fetches_only_to_vote_and_to_probe(tmp_path):
     assert _issue_pages(tmp_path)["raw"].count("fetch(") == 2
 

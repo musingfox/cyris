@@ -109,6 +109,7 @@
             <span class="label" id="t-remaining"></span>
             <article class="card" id="t-card"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
             <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">Down</button><button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>
+            <p class="notice err" id="t-error" role="alert" hidden>The vote did not go through, so this card stays. Check your connection, then try again.</p>
             <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
         </div>
 
@@ -130,7 +131,10 @@
         for (const id of ['t-card', 't-actions', 't-hint']) {
             document.getElementById(id).hidden = !next;
         }
-        if (!next) return;
+        if (!next) {
+            document.getElementById('t-error').hidden = true;
+            return;
+        }
         document.getElementById('t-source').textContent =
             next.closest('.panel').querySelector('.source-name').textContent;
         document.getElementById('t-title').textContent = next.querySelector('a').textContent;
@@ -150,6 +154,7 @@
     }
 
     const card = document.getElementById('t-card');
+    const voteError = document.getElementById('t-error');
     const deckButtons = [...document.querySelectorAll('#t-actions button')];
     const enableDeck = (on) => deckButtons.forEach((b) => { b.disabled = !on; });
     // One card, one vote: set before the first await, so a second press or a drag
@@ -162,7 +167,14 @@
         if (busy || !row) return;
         busy = true;
         enableDeck(false);
-        if (await castVote(row.querySelector('.vote-group'), dir)) fly(dir);
+        voteError.hidden = true;
+        if (await castVote(row.querySelector('.vote-group'), dir)) return fly(dir);
+        // The vote did not land, so the card stays where it is and says so.
+        card.style.transform = '';
+        card.classList.remove('lean-up', 'lean-down');
+        busy = false;
+        enableDeck(true);
+        voteError.hidden = false;
     }
     function fly(dir) {
         card.dataset.flying = dir;
