@@ -156,6 +156,11 @@
     const card = document.getElementById('t-card');
     const voteError = document.getElementById('t-error');
     const deckButtons = [...document.querySelectorAll('#t-actions button')];
+    // The card's border shows which way a gesture points: accent for up, warn for down.
+    const lean = (dir) => {
+        card.classList.toggle('lean-up', dir === 'up');
+        card.classList.toggle('lean-down', dir === 'down');
+    };
     const enableDeck = (on) => deckButtons.forEach((b) => { b.disabled = !on; });
     // One card, one vote: set before the first await, so a second press or a drag
     // while the vote is in flight finds the deck taken.
@@ -171,7 +176,7 @@
         if (await castVote(row.querySelector('.vote-group'), dir)) return fly(dir);
         // The vote did not land, so the card stays where it is and says so.
         card.style.transform = '';
-        card.classList.remove('lean-up', 'lean-down');
+        lean(null);
         busy = false;
         enableDeck(true);
         voteError.hidden = false;
@@ -182,6 +187,7 @@
         // A card dealt in this same frame has no style yet to move from; without one no
         // transition runs, and no transitionend would ever settle the vote.
         void card.offsetWidth;
+        lean(dir);
         card.style.transform = `translateX(${dir === 'up' ? 120 : -120}vw) rotate(${dir === 'up' ? 12 : -12}deg)`;
     }
     // Back to rest without animating the way back, then deal the next card.
@@ -189,6 +195,7 @@
         delete card.dataset.flying;
         card.classList.add('dragging');
         card.style.transform = '';
+        lean(null);
         void card.offsetWidth;
         card.classList.remove('dragging');
         busy = false;
@@ -199,9 +206,10 @@
         if (e.propertyName === 'transform' && card.dataset.flying) settle();
     });
 
-    // The card follows the pointer; released far enough to one side, it votes that way.
-    // The distance is prototype.html#raw's, the spec's reference for this card.
-    const SWIPE_PX = 120;
+    // The card follows the pointer, leans once it points somewhere, and released far
+    // enough to one side votes that way. Distances are prototype.html#raw's, the
+    // spec's reference for this card.
+    const SWIPE_PX = 120, LEAN_PX = 40;
     const dirOf = (dx, min) => dx > min ? 'up' : dx < -min ? 'down' : null;
     let drag = null;
     card.addEventListener('pointerdown', (e) => {
@@ -213,6 +221,7 @@
     card.addEventListener('pointermove', (e) => {
         if (!drag) return;
         drag.dx = e.clientX - drag.x;
+        lean(dirOf(drag.dx, LEAN_PX));
         card.style.transform = `translateX(${drag.dx}px) rotate(${drag.dx / 20}deg)`;
     });
     function endDrag(e) {
@@ -223,9 +232,14 @@
         const swipe = e.type === 'pointerup' && dirOf(dx, SWIPE_PX);
         if (swipe) return voteCard(swipe);
         card.style.transform = '';
+        lean(null);
     }
     card.addEventListener('pointerup', endDrag);
     card.addEventListener('pointercancel', endDrag);
+    for (const b of deckButtons) {
+        b.addEventListener('mouseenter', () => lean(b.dataset.dir));
+        b.addEventListener('mouseleave', () => card.dataset.flying || lean(null));
+    }
     for (const b of deckButtons) b.addEventListener('click', () => voteCard(b.dataset.dir));
     </script>
     {% include "_probe_script.html.j2" %}

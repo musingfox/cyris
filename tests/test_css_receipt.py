@@ -700,6 +700,9 @@ EXPECTED_RAW_IDS = {
     "swipe-left-down",
     "swipe-touch",
     "short-drag-no-vote",
+    "lean-up-drag",
+    "lean-down-drag",
+    "lean-button-hover",
 }
 
 PENDING_TWO_UP = {

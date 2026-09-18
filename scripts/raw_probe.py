@@ -190,6 +190,18 @@ const pressDeck = async (dir) => {
   $(`#t-${dir}`).click();
 };
 const leaning = () => ["lean-up", "lean-down"].filter((c) => $("#t-card").classList.contains(c));
+const border = () => getComputedStyle($("#t-card")).borderTopColor;
+// Removes one rule from the page's stylesheet, inside the media block named if any.
+const dropRule = (selector, media = "") => {
+  const sheet = $("style").sheet;
+  const holder = media
+    ? [...sheet.cssRules].find((r) => r.conditionText === media
+        && [...r.cssRules].some((inner) => inner.selectorText === selector))
+    : sheet;
+  const index = [...holder.cssRules].findIndex((r) => r.selectorText === selector);
+  if (index < 0) throw new Error(`no rule ${selector}`);
+  holder.deleteRule(index);
+};
 const deck = () => ["#t-remaining", "#t-source", "#t-title"].map((id) => $(id).textContent);
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
 """
@@ -548,6 +560,33 @@ window.fetch = (input, init) => init && init.method === "POST"
         """,
         sabotage="""await castVote($(".vote-group", rowOf("Pending Two")), "up");""",
         receipt=_posted(),
+    ),
+    *(
+        Check(
+            id=f"lean-{vote}-drag",
+            fixture="signed-in",
+            path=PAGE,
+            act="""await showView("triage");""",
+            gestures=({"press": "#t-card", "pointer": "mouse"}, {"move": dx}),
+            script=f"""
+                expect(same(leaning(), ["lean-{vote}"]), `leaning: ${{leaning()}}`);
+                await waitFor(() => border() === "{colour}", `the border ${{border()}}`, 2000);
+            """,
+            sabotage=f"""dropRule(".card.lean-{vote}");""",
+        )
+        for vote, dx, colour in (
+            ("up", 60, "rgb(198, 255, 61)"),
+            ("down", -60, "rgb(255, 91, 138)"),
+        )
+    ),
+    Check(
+        id="lean-button-hover",
+        fixture="signed-in",
+        path=PAGE,
+        act="""await showView("triage");""",
+        gestures=({"hover": "#t-up"},),
+        script="""await waitFor(() => same(leaning(), ["lean-up"]), `lean ${leaning()}`, 2000);""",
+        sabotage="""$("#t-up").style.pointerEvents = "none";""",
     ),
 ]
 
