@@ -381,6 +381,13 @@ async def test_every_settings_scroll_asks_for_the_reduced_motion_preference(
     assert _motion_without_preference(script) == []
 
 
+async def test_each_settings_form_names_its_category(triage: TestClient) -> None:
+    ids = set(re.findall(r'\bid="([^"]+)"', await _served(triage, "/settings")))
+    for category in ("model", "digest", "notify"):
+        assert {f"{category}-form", f"save-{category}", f"{category}-result"} <= ids
+    assert ids.isdisjoint({"form", "save", "result"})
+
+
 def _literal_scroll_offsets(script: str) -> list[str]:
     """Name each line that scrolls by a pixel count written into the script (§1.6)."""
     return [line.strip() for line in script.splitlines() if re.search(r"\bscroll\w*\s*=.*\d", line)]

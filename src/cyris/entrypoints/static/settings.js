@@ -3,6 +3,7 @@ const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0
 let state = null;
 
 const TABS = ["model", "digest", "notifications", "sources"];
+const SETTINGS_NOTICES = ["model-result", "digest-result", "notify-result"];
 
 // The category lives in the hash, not the path: the Worker guards /settings by
 // exact match, and a hash never leaves the browser.
@@ -84,7 +85,7 @@ function render() {
   if (state.writable) {
     document.querySelectorAll("form.tab").forEach(markClean);
   } else {
-    ["result", "digest-result", "notify-result"].forEach((id) => {
+    SETTINGS_NOTICES.forEach((id) => {
       show("err", "This deployment has no settings store, so nothing can be saved here. " +
         "Edit cyris.toml instead.", id);
     });
@@ -104,30 +105,30 @@ function updateHint() {
     : "Pick a provider whose key is present.";
 }
 
-function show(kind, text, target = "result") {
+function show(kind, text, target) {
   const el = typeof target === "string" ? $(target) : target;
   el.className = kind === "err" ? "notice err" : "notice";
   el.textContent = text;
   el.hidden = false;
 }
 
-$("form").addEventListener("submit", async (e) => {
+$("model-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const p = chosen();
-  if (!p) return show("err", "Pick a provider first.");
-  $("save").disabled = true;
-  show("ok", "Checking with the provider…");
+  if (!p) return show("err", "Pick a provider first.", "model-result");
+  $("save-model").disabled = true;
+  show("ok", "Checking with the provider…", "model-result");
   try {
     const model = $("model-input").value.trim();
     const data = await post("/api/settings", {provider: p.name, model});
     state.provider = data.provider;
     state.model = data.model;
-    markClean($("form"));
-    show("ok", `${data.detail}\n${data.note}`);
+    markClean($("model-form"));
+    show("ok", `${data.detail}\n${data.note}`, "model-result");
   } catch (err) {
-    show("err", err.message);
+    show("err", err.message, "model-result");
   } finally {
-    refresh($("form"));
+    refresh($("model-form"));
   }
 });
 
@@ -287,12 +288,12 @@ function openEditor(name) {
   ed.querySelectorAll("[data-type]").forEach((b) => {
     b.addEventListener("click", () => { setType(b.dataset.type); refreshEditor(); });
   });
-  const edited = () => {
+  const editorEdited = () => {
     if (sourcesWritable) ed.querySelectorAll(".notice").forEach((n) => { n.hidden = true; });
     refreshEditor();
   };
-  ed.addEventListener("input", edited);
-  ed.addEventListener("change", edited);
+  ed.addEventListener("input", editorEdited);
+  ed.addEventListener("change", editorEdited);
   refreshEditor();
   retire.hidden = adding;
   if (!sourcesWritable) {
@@ -432,7 +433,7 @@ fetch("/api/settings")
   .then((d) => { state = d; render(); })
   .catch((e) => {
     // Every Save stays disabled: tracking only starts once the values are known.
-    ["result", "digest-result", "notify-result"].forEach((id) => {
+    SETTINGS_NOTICES.forEach((id) => {
       show("err", `Could not load settings: ${e}. Reload the page to try again.`, id);
     });
   });
