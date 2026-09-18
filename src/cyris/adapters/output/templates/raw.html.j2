@@ -80,8 +80,8 @@
             border-bottom-color: var(--accent);
         }
 
-        {% with layout="flex", justify=false, align_center=false, margin_top="48px",
-                  padding_top="20px", gap="24px"  %}{% include "_footer.css.j2" %}{% endwith %}
+        {% with layout="block", justify=false, align_center=false, margin_top="48px",
+                  padding_top="20px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 640px) {
             .article {
