@@ -845,3 +845,38 @@ def test_settings_link_hidden_by_default_shown_by_capability_probe(tmp_path):
     # Probe should show it when authorized
     assert "'.settings-link'" in html or '".settings-link"' in html
     assert "style.display = 'inline'" in html or 'style.display = "inline"' in html
+
+
+def test_the_archive_hides_settings_behind_the_same_probe(tmp_path):
+    """The archive gates Settings on the /api/vote probe, and carries no vote code.
+
+    A visitor with no session is the bypass path: the archive has to treat it as
+    unauthorized like digest and raw do, and has nothing it could vote with.
+    """
+    html = HtmlDigestWriter(tmp_path).render_index([])
+
+    assert ".settings-link { display: none;" in html
+    assert "fetch('/api/vote'" in html
+    assert "redirect: 'manual'" in html
+    assert "if (!resp.ok) return;" in html
+    assert "data.authorized !== true" in html
+    assert "document.querySelectorAll('.settings-link')" in html
+    assert "method: 'POST'" not in html
+    assert "DIGEST_DATE" not in html
+
+
+def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
+    writer = HtmlDigestWriter(tmp_path)
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+    )
+    raw = writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")])
+
+    for html in (writer.render(content), raw):
+        assert html.count("redirect: 'manual'") == 1
+        assert "DIGEST_DATE" in html
