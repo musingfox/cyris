@@ -161,6 +161,11 @@ const rowOf = (title) => $$("a[target=_blank]").find((a) => a.textContent === ti
 const voteButton = (title, vote) => $(`.promote-btn[data-vote="${vote}"]`, rowOf(title));
 const marked = (title, vote, mark) => voteButton(title, vote).classList.contains(mark);
 const storedVotes = () => JSON.parse(localStorage.getItem("cyris-votes") || "{}");
+const probeAnswered = async () => {
+  await waitFor(() => (window.__fetches || []).some(
+    (f) => f.url.endsWith("/api/vote") && f.method === "GET" && f.settled), "the vote probe");
+  await sleep(50);
+};
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
 """
 )
@@ -233,6 +238,31 @@ CHECKS: list[Check] = [
         act="await signedIn();",
         script="""const problem = overflow("list"); expect(!problem, problem);""",
         sabotage="""$(".container").style.minWidth = "600px";""",
+    ),
+    *(
+        Check(
+            id=f"gate-{kind}",
+            fixture=kind,
+            path=PAGE,
+            preload=RECORD_FETCHES,
+            act="await probeAnswered();",
+            script="""
+                expect(!visible($("#raw-views")), "the view switch shows");
+                const panels = $$(".panel");
+                expect(panels.length === 2 && panels.every(visible), "the list is gone");
+                expect(!$$(".vote-group").some(visible), "vote buttons show");
+            """,
+            sabotage="""$("#raw-views").hidden = false;""",
+        )
+        for kind in ("signed-out", "no-worker")
+    ),
+    Check(
+        id="gate-signed-in",
+        fixture="signed-in",
+        path=PAGE,
+        act="""await waitFor(() => visible($("#raw-views")), "the view switch");""",
+        script="""expect(visible($("#raw-views")), "the view switch is hidden");""",
+        sabotage="""$("#raw-views").hidden = true;""",
     ),
 ]
 

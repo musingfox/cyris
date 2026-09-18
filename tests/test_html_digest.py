@@ -906,6 +906,51 @@ def test_every_vote_goes_through_the_one_cast_vote_path(tmp_path, page):
     assert html.count("method: 'POST'") == 1
 
 
+REVEAL_GATED = "document.querySelectorAll('.gated').forEach((g) => g.hidden = false);"
+AUTHORIZED_CHECK = "data.authorized !== true"
+
+
+def _gated_reveal_problems(script: str) -> list[str]:
+    """A gated control may be revealed only after the probe said authorized."""
+    if REVEAL_GATED not in script:
+        return ["the probe reveals no gated control"]
+    if script.index(REVEAL_GATED) < script.index(AUTHORIZED_CHECK):
+        return ["gated controls are revealed before the authorization check"]
+    return []
+
+
+def test_the_probe_reveals_gated_controls_only_once_authorized(tmp_path):
+    script = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+
+    assert _gated_reveal_problems(script) == []
+    early = REVEAL_GATED + script.replace(REVEAL_GATED, "")
+    assert _gated_reveal_problems(early) == [
+        "gated controls are revealed before the authorization check"
+    ]
+
+
+RAW_VIEWS = (
+    '<div class="seg gated" role="group" aria-label="Article view" id="raw-views" hidden>'
+    '<button type="button" data-raw-view="list" aria-pressed="true">List</button>'
+    '<button type="button" data-raw-view="triage" aria-pressed="false">Triage</button></div>'
+)
+
+
+def test_the_raw_view_switch_sits_hidden_at_the_end_of_the_page_head(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+
+    assert raw.count(RAW_VIEWS) == 1
+    assert raw.index('class="page-head"') < raw.index(RAW_VIEWS)
+    assert raw.index(RAW_VIEWS) < raw.index('<section class="panel">')
+    assert parse_style_block(raw)["[hidden]"] == {"display: none !important"}
+
+
+def test_the_issue_bar_switch_is_never_gated(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+
+    assert '<nav class="seg" aria-label="Issue views">' in raw
+
+
 def _issue_pages(tmp_path) -> dict[str, str]:
     """Archive, digest and raw for one 2026-04-15 evening issue."""
     writer = HtmlDigestWriter(tmp_path)

@@ -678,6 +678,9 @@ EXPECTED_RAW_IDS = {
     "list-vote-failure-marks-error",
     "row-title-wraps-400",
     "fits-400-list",
+    "gate-signed-out",
+    "gate-no-worker",
+    "gate-signed-in",
 }
 
 PENDING_TWO_UP = {

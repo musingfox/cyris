@@ -15,6 +15,8 @@
         {% with container_width="960px", container_relative=false, glow=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
         .page-head { display: grid; gap: var(--s-4); margin-bottom: var(--s-12); }
+        .page-head .seg { justify-self: start; }
+        [hidden] { display: none !important; }
 
         .source-name { font-weight: 600; font-size: calc(20px * var(--type-scale)); }
 
@@ -70,6 +72,7 @@
             <span class="label">All articles · {{ total }} article{{ "" if total == 1 else "s" }} · {{ groups | length }} source{{ "" if groups | length == 1 else "s" }}</span>
             <h1 class="display">What this run <em>judged</em></h1>
             <p class="small">Everything the run decided on, plus what is still pending. The digest shows a selection of it.</p>
+            <div class="seg gated" role="group" aria-label="Article view" id="raw-views" hidden><button type="button" data-raw-view="list" aria-pressed="true">List</button><button type="button" data-raw-view="triage" aria-pressed="false">Triage</button></div>
         </div>
 
         {% for group in groups %}
