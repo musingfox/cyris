@@ -689,6 +689,7 @@ EXPECTED_RAW_IDS = {
     "deck-skips-voted",
     "deck-title-is-text",
     "list-vote-leaves-deck",
+    "deck-empty",
 }
 
 PENDING_TWO_UP = {

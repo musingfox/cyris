@@ -396,6 +396,20 @@ _CHECKS: list[Check] = [
         """,
         sabotage="""$("#t-title").textContent = "Pending Two";""",
     ),
+    Check(
+        id="deck-empty",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("pending-two", "pending-three", "pending-four", "six"),
+        act="""await showView("triage");""",
+        script="""
+            const shown = $$("#raw-triage *").filter(visible).map((el) => el.id);
+            expect(same(shown, ["t-remaining"]), `visible: ${shown}`);
+            const count = $("#t-remaining").textContent;
+            expect(count === "0 remaining", `count: ${count}`);
+        """,
+        sabotage="""$("#t-card").hidden = false;""",
+    ),
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]

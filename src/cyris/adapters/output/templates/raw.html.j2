@@ -126,6 +126,10 @@
         const rows = pool();
         document.getElementById('t-remaining').textContent = `${rows.length} remaining`;
         const [next] = rows;
+        // With nothing left to judge only the count stays, per §6 raw.
+        for (const id of ['t-card', 't-actions', 't-hint']) {
+            document.getElementById(id).hidden = !next;
+        }
         if (!next) return;
         document.getElementById('t-source').textContent =
             next.closest('.panel').querySelector('.source-name').textContent;
