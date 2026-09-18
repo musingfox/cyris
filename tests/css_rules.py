@@ -356,6 +356,25 @@ def unscaled_font_sizes(css_source: str) -> list[str]:
     return found
 
 
+_FONT_NAME = re.compile(r"Geist|Instrument Serif", re.IGNORECASE)
+
+
+def font_stack_literals(css_source: str) -> list[str]:
+    """Name every font stack written out by hand instead of through a ``--font-*`` token.
+
+    ``:root`` is where the tokens themselves spell the stacks, so it is skipped.
+    """
+    found = []
+    for key, declarations in _rules(css_source).items():
+        if key == ":root":
+            continue
+        for declaration in declarations:
+            prop, value = (part.strip() for part in declaration.split(":", 1))
+            if prop in {"font-family", "font"} and _FONT_NAME.search(value):
+                found.append(f"{key} | {declaration}")
+    return found
+
+
 def _item(title: str, url: str, source: str) -> DigestItem:
     return DigestItem(title=title, summary=f"{title} summary.", sources=[source], urls=[url])
 

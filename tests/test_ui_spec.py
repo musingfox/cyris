@@ -13,6 +13,7 @@ from css_rules import (
     UI_SPEC,
     canonical_colour,
     colour_literals,
+    font_stack_literals,
     include_sites,
     parse_style_block,
     receipt_fixtures,
@@ -432,3 +433,23 @@ def test_a_scaled_clamp_is_not_reported() -> None:
     assert (
         unscaled_font_sizes(".x{font-size:calc(clamp(52px, 8vw, 96px) * var(--type-scale))}") == []
     )
+
+
+@pytest.mark.parametrize("source", ["index", "digest", "raw", "style.css"])
+def test_every_font_stack_is_a_token(source: str) -> None:
+    index, digest, raw = receipt_fixtures()
+    text = {"index": index, "digest": digest, "raw": raw, "style.css": STYLE.read_text()}[source]
+    assert font_stack_literals(text) == []
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{font-family:'Geist Mono', monospace}", 1),
+        (".x{font:400 1em 'Instrument Serif', serif}", 1),
+        (".x{font-family:var(--font-mono)}", 0),
+        (":root{--font-sans:'Geist', system-ui, sans-serif}", 0),
+    ],
+)
+def test_a_hand_written_font_stack_is_reported(css: str, reported: int) -> None:
+    assert len(font_stack_literals(css)) == reported

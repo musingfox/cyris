@@ -36,7 +36,7 @@
         }
 
         .brand-name {
-            font-family: 'Geist Mono', monospace;
+            font-family: var(--font-mono);
             font-size: calc(14px * var(--type-scale));
 {%- if brand_weight %}
             font-weight: {{ brand_weight }};
@@ -50,7 +50,7 @@
 
         .subtitle {
             margin-top: {{ subtitle_margin }};
-            font-family: 'Geist Mono', monospace;
+            font-family: var(--font-mono);
             font-size: calc(14px * var(--type-scale));
             letter-spacing: 0.14em;
             color: var(--text-faint);
@@ -60,7 +60,7 @@
         {# digest's headline is <h1 class="issue-title">, so a bare h1 rule would
            really match it. Only a page that asks for h1 typography gets one. #}
         h1 {
-            font-family: 'Instrument Serif', serif;
+            font-family: var(--font-serif);
             font-weight: 400;
             font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale));
             line-height: 1;

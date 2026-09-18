@@ -72,7 +72,7 @@
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 
 body {
-  font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
   font-feature-settings: "ss01", "ss02", "cv11";
   background: var(--bg);
   /* The digest's grid. This surface dropped `background-attachment: fixed`
