@@ -333,17 +333,12 @@ def test_the_top_story_badge_is_the_accent_tint() -> None:
     assert "background: var(--accent-tint)" in parse_style_block(digest)[".lead-story::before"]
 
 
-@pytest.mark.parametrize("page", [0, 1], ids=["index", "digest"])
+@pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
 def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
     rules = parse_style_block(receipt_fixtures()[page])
     assert [canonical_colour(v) for v in _declared(rules[".brand-mark"], "box-shadow")] == [
         canonical_colour("0 0 12px rgba(198,255,61,.45)")
     ]
-
-
-def test_the_raw_brand_mark_does_not_glow() -> None:
-    _, _, raw = receipt_fixtures()
-    assert _declared(parse_style_block(raw)[".brand-mark"], "box-shadow") == []
 
 
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
@@ -361,7 +356,7 @@ def _parsed(page: str) -> dict[str, set[str] | list[str]]:
 # --type-scale on the page.
 TYPE_ROLES = [
     (1, "index digest raw", "body", "16px"),
-    (2, "index digest raw", ".brand-name", "14px"),
+    (2, "index digest raw", ".brand-name", "16px"),
     (3, "index digest raw", ".subtitle", "14px"),
     (4, "index raw", "h1", "clamp(52px, 8vw, 96px)"),
     (5, "index digest raw", ".footer", "14px"),
@@ -401,6 +396,8 @@ TYPE_ROLES = [
     (41, "raw", ".source-count", "14px"),
     (42, "raw", ".state", "13px"),
     (43, "raw", ".score", "16px"),
+    (44, "index digest raw", ".label", "14px"),
+    (45, "index digest raw", ".data", "16px"),
 ]
 TYPE_CASES = [
     (row, page, key, base) for row, pages, key, base in TYPE_ROLES for page in pages.split()

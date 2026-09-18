@@ -16,38 +16,6 @@
             opacity: 0.45;
         }
 {% endif %}
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-{%- if brand_margin %}
-            margin-bottom: {{ brand_margin }};
-{%- endif %}
-        }
-
-        .brand-mark {
-            width: {{ mark_size }};
-            height: {{ mark_size }};
-            background: var(--accent);
-{% if mark_glow %}            box-shadow: 0 0 12px rgba(198,255,61,.45);{% endif %}
-{%- if mark_pulse %}
-            animation: pulse 2.4s ease-in-out infinite;
-{%- endif %}
-        }
-
-        .brand-name {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-{%- if brand_weight %}
-            font-weight: {{ brand_weight }};
-{%- endif %}
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--text-dim);
-        }
-
-        .brand-name strong { color: var(--text); font-weight: 600; }
-
         .subtitle {
             margin-top: {{ subtitle_margin }};
             font-family: var(--font-mono);

@@ -65,6 +65,23 @@ COMPONENT_SELECTORS = frozenset(
         ".state.rejected",
         ".notice",
         ".notice.err",
+        ".label",
+        ".data",
+        ".site-bar",
+        ".site-bar-inner",
+        ".brand",
+        ".brand-mark",
+        ".brand-name",
+        ".site-nav",
+        ".site-nav a",
+        ".site-nav a:hover",
+        '.site-nav a[aria-current="page"]',
+        ".issue-bar",
+        ".issue-bar-inner",
+        ".issue-id",
+        "@media (max-width: 720px) | .site-nav",
+        "@media (max-width: 720px) | .brand-name",
+        "@media (max-width: 720px) | .site-nav .label",
     }
 )
 
