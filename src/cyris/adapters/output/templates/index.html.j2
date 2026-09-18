@@ -28,8 +28,8 @@
             display: grid;
             grid-template-columns: auto 1fr auto;
             align-items: center;
-            gap: 24px;
-            padding: 20px 28px;
+            gap: var(--s-6);
+            padding: var(--s-3) var(--s-5);
             border-bottom: 1px solid var(--border);
             transition: background-color var(--t-fast);
         }
@@ -80,8 +80,7 @@
         @media (max-width: 720px) {
             .digest-item {
                 grid-template-columns: 1fr auto;
-                gap: 8px 16px;
-                padding: 16px 18px;
+                gap: var(--s-2) var(--s-4);
             }
             .digest-item .actions { grid-column: 1 / -1; }
         }

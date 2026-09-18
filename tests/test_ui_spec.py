@@ -442,6 +442,10 @@ def test_archive_rows_hold_their_entries_and_wrap_them_on_phones() -> None:
     assert ".digest-arrow" not in index
     assert ".digest-item a" not in index
     assert "grid-column: 1 / -1" in index["@media (max-width: 720px) | .digest-item .actions"]
+    assert {"padding: var(--s-3) var(--s-5)", "gap: var(--s-6)"} <= index[".digest-item"]
+    phone = index["@media (max-width: 720px) | .digest-item"]
+    assert "gap: var(--s-2) var(--s-4)" in phone
+    assert not [d for d in phone if d.startswith("padding")]
 
 
 def test_the_empty_archive_message_takes_the_small_role() -> None:
