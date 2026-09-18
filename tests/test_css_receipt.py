@@ -24,6 +24,7 @@ from css_rules import parse_style_block, receipt_fixtures
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import cdp_probe  # noqa: E402
+import raw_probe  # noqa: E402
 import settings_probe  # noqa: E402
 from css_computed import (  # noqa: E402
     BREAKPOINTS,
@@ -638,3 +639,79 @@ def test_the_driver_emulates_media_before_it_loads_the_page():
     assert driver.index("Emulation.setEmulatedMedia") < driver.index(
         "call('Page.navigate', { url })"
     )
+
+
+# The checks `scripts/raw_probe.py` must carry. Each raw-page change adds the ids
+# of the checks that hold it.
+EXPECTED_RAW_IDS: set[str] = set()
+
+PENDING_TWO_UP = {
+    "url": "https://example.test/pending-two",
+    "vote": "up",
+    "digest_date": "2026-01-02",
+}
+
+
+async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[int, str]]:
+    client = TestClient(TestServer(fixture.app))
+    await client.start_server()
+    try:
+        answers = []
+        for method, path in requests:
+            body = PENDING_TWO_UP if method == "POST" else None
+            response = await client.request(method, path, json=body)
+            answers.append((response.status, await response.text()))
+        return answers
+    finally:
+        await client.close()
+
+
+@pytest.mark.parametrize(
+    ("kind", "status", "authorized"),
+    [("signed-in", 200, True), ("signed-out", 401, False), ("no-worker", 404, None)],
+)
+async def test_the_raw_probe_fixture_answers_the_vote_probe_per_kind(kind, status, authorized):
+    [(answered, body)] = await _raw_answers(raw_probe.build_fixture(kind), [("GET", "/api/vote")])
+    assert answered == status
+    if authorized is not None:
+        assert json.loads(body) == {"authorized": authorized}
+
+
+async def test_the_raw_probe_fixture_keeps_each_vote_it_takes_without_a_credential():
+    fixture = raw_probe.build_fixture("signed-in")
+    [(status, _)] = await _raw_answers(fixture, [("POST", "/api/vote")])
+    assert status == 200
+    assert fixture.posts == [PENDING_TWO_UP]
+    assert "authorization" not in {key.lower() for key in fixture.post_headers[0]}
+
+
+async def test_the_raw_probe_fixture_can_refuse_every_vote_or_only_the_first():
+    refusing = raw_probe.build_fixture("vote-fails")
+    [(status, _)] = await _raw_answers(refusing, [("POST", "/api/vote")])
+    assert status == 502
+    assert refusing.posts == [PENDING_TWO_UP]
+    once = raw_probe.build_fixture("fails-once")
+    answers = await _raw_answers(once, [("POST", "/api/vote"), ("POST", "/api/vote")])
+    assert [status for status, _ in answers] == [502, 200]
+
+
+async def test_the_raw_probe_fixture_serves_the_rendered_raw_page():
+    [(status, html)] = await _raw_answers(
+        raw_probe.build_fixture("signed-in"), [("GET", "/2026-01-02-morning-raw.html")]
+    )
+    assert status == 200
+    assert "Pending Two" in html
+    assert "&lt;b&gt;Six&lt;/b&gt;" in html
+    assert html.count('class="vote-group"') == 6
+
+
+def test_the_raw_probe_fixture_refuses_an_unknown_kind():
+    with pytest.raises(ValueError):
+        raw_probe.build_fixture("bogus")
+
+
+def test_every_raw_probe_check_is_named_once_and_can_be_sabotaged():
+    unsabotaged = cdp_probe.Check(id="a", fixture="signed-in", path="/p", script="", sabotage="")
+    assert raw_probe.registry_problems([unsabotaged]) == ["a: no sabotage"]
+    assert raw_probe.registry_problems(raw_probe.CHECKS) == []
+    assert {check.id for check in raw_probe.CHECKS} >= EXPECTED_RAW_IDS
