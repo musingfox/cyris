@@ -344,8 +344,12 @@ def test_the_sampled_widths_cover_every_breakpoint_the_rendered_pages_declare():
         }
         for name, html in pages.items()
     }
-    assert declared == {name: {width} for name, width in BREAKPOINTS.items()}
-    assert set(BREAKPOINTS.values()) <= set(WIDTHS)
+    assert declared == {name: set(widths) for name, widths in BREAKPOINTS.items()}
+    assert {width for widths in BREAKPOINTS.values() for width in widths} <= set(WIDTHS)
+
+
+def test_the_sampled_widths_are_every_breakpoint_between_a_desktop_and_a_phone():
+    assert WIDTHS == (1440, 880, 720, 640, 375)
 
 
 def test_every_probe_names_a_page_the_receipt_renders_and_at_least_one_property():

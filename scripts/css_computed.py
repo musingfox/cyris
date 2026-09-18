@@ -40,17 +40,17 @@ BROWSER_BUNDLES = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 )
 
-# The `@media` breakpoint each page declares. These are the templates' own
+# The `@media` breakpoints each page declares. These are the templates' own
 # literals restated, and nothing links the two copies at runtime, so
 # `tests/test_css_receipt.py` reads them back out of the rendered pages: a
 # breakpoint that moves without this map moving stops the gate sampling inside
 # its media block, which is the one failure this second receipt exists to catch.
-BREAKPOINTS = {"digest": 880, "index": 720, "raw": 640}
+BREAKPOINTS = {"digest": (880,), "index": (720,), "raw": (640,)}
 
 # One width above every breakpoint, then each breakpoint itself, then a phone. A
 # rule that moved across its own @media block only shows up when a width inside
 # that block is sampled.
-WIDTHS = (1440, *sorted(BREAKPOINTS.values(), reverse=True), 375)
+WIDTHS = (1440, *sorted({w for ws in BREAKPOINTS.values() for w in ws}, reverse=True), 375)
 HEIGHT = 900
 
 # The promote buttons only get these classes once the page's script has probed
