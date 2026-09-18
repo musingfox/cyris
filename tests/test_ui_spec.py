@@ -562,7 +562,6 @@ TYPE_ROLES = [
     (37, "index", ".digest-period", "14px"),
     (39, "index", ".empty-message", "16px"),
     (40, "raw", ".source-name", "20px"),
-    (41, "raw", ".source-count", "14px"),
     (42, "raw", ".state", "13px"),
     (43, "raw", ".score", "16px"),
     (44, "index digest raw", ".label", "14px"),
@@ -640,8 +639,20 @@ def test_the_empty_archive_message_takes_the_small_role() -> None:
 
 def test_the_raw_state_column_fits_the_larger_state_label() -> None:
     raw = _parsed("raw")
-    assert "grid-template-columns: 96px 46px 1fr auto" in raw[".article"]
-    assert "grid-template-columns: 96px 1fr auto" in raw["@media (max-width: 640px) | .article"]
+    assert "grid-template-columns: 96px 56px 1fr auto" in raw[".raw-row"]
+    assert "grid-template-columns: 96px 1fr auto" in raw["@media (max-width: 640px) | .raw-row"]
+
+
+def test_raw_rows_are_the_prototype_rows() -> None:
+    raw = _parsed("raw")
+    assert {
+        "grid-template-columns: 96px 56px 1fr auto",
+        "padding: var(--s-3) var(--s-5)",
+        "border-bottom: 1px solid var(--border)",
+    } <= raw[".raw-row"]
+    assert raw[".raw-row:hover"] == {"background: var(--surface)"}
+    old = {".source-group", ".source-head", ".source-count", ".article", ".article a"}
+    assert sorted(old & set(raw)) == []
 
 
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])

@@ -373,6 +373,29 @@ def test_every_probe_names_a_page_the_receipt_renders_and_at_least_one_property(
             assert properties, f"{page} | {selector}"
 
 
+def test_the_raw_probe_set_watches_the_rows_and_panels_it_renders():
+    raw = load_probes(PROBES_PATH)["raw"]
+    assert {".raw-row", ".raw-row a", ".panel-head"} <= set(raw)
+    assert ".article" not in raw
+    assert ".article a" not in raw
+
+
+def test_each_raw_source_is_a_panel_of_rows_in_state_score_title_vote_order():
+    html = raw_probe.render_page()
+    assert html.count('<section class="panel">') == 2
+    assert '<span class="source-name">Source A</span><span class="label">3</span>' in html
+    assert re.search(
+        r'<div class="raw-row">\s*<span class="state pending">pending</span>'
+        r'\s*<span class="score">0.80</span>'
+        r'\s*<a href="https://example.test/pending-two" target="_blank" rel="noopener">'
+        r'Pending Two</a>\s*<span class="vote-group"',
+        html,
+    )
+    assert re.search(
+        r'<span class="score">—</span>\s*<a href="https://example.test/pending-three"', html
+    )
+
+
 def test_the_raw_probe_set_watches_the_page_head_not_the_masthead_it_replaced():
     raw = load_probes(PROBES_PATH)["raw"]
     assert ".page-head" in raw

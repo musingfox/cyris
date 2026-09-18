@@ -16,64 +16,38 @@
 
         .page-head { display: grid; gap: var(--s-4); margin-bottom: var(--s-12); }
 
-        .source-group {
-            border: 1px solid var(--border);
-            background: var(--bg-elev);
-            margin-bottom: 20px;
-        }
-
-        .source-head {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            background: var(--surface);
-        }
-
-        .source-name {
-            font-weight: 600;
-            font-size: calc(20px * var(--type-scale));
-            letter-spacing: -0.01em;
-        }
-
-        .source-count {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            letter-spacing: 0.12em;
-            color: var(--text-faint);
-            text-transform: uppercase;
-        }
+        .source-name { font-weight: 600; font-size: calc(20px * var(--type-scale)); }
 
         {% include "_promote.css.j2" %}
 
-        .article {
+        .raw-row {
             display: grid;
-            grid-template-columns: 96px 46px 1fr auto;
+            grid-template-columns: 96px 56px 1fr auto;
             align-items: baseline;
-            gap: 14px;
-            padding: 11px 20px;
+            gap: var(--s-4);
+            padding: var(--s-3) var(--s-5);
             border-bottom: 1px solid var(--border);
+            transition: background-color var(--t-fast);
         }
 
-        .article:last-child { border-bottom: none; }
-        .article:hover { background: var(--surface); }
+        .raw-row:last-child { border-bottom: 0; }
+        .raw-row:hover { background: var(--surface); }
 
         .score {
             font-family: var(--font-mono);
             font-size: calc(16px * var(--type-scale));
             color: var(--text-dim);
             text-align: right;
+            font-variant-numeric: tabular-nums;
         }
 
-        .article a {
-            color: var(--text);
+        .raw-row a {
             text-decoration: none;
             border-bottom: 1px solid transparent;
+            transition: color var(--t-fast), border-color var(--t-fast);
         }
 
-        .article a:hover {
+        .raw-row a:hover {
             color: var(--accent);
             border-bottom-color: var(--accent);
         }
@@ -82,13 +56,13 @@
                   padding_top="20px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 640px) {
-            .article {
+            .raw-row {
                 grid-template-columns: 96px 1fr auto;
                 gap: 4px 14px;
                 padding: 12px 16px;
             }
             .score { grid-column: 2; text-align: left; }
-            .article a { grid-column: 1 / span 3; }
+            .raw-row a { grid-column: 1 / span 3; }
         }
     </style>
 </head>
@@ -103,13 +77,10 @@
         </div>
 
         {% for group in groups %}
-        <section class="source-group">
-            <div class="source-head">
-                <span class="source-name">{{ group.name }}</span>
-                <span class="source-count">{{ group.articles | length }}</span>
-            </div>
+        <section class="panel">
+            <div class="panel-head"><span class="source-name">{{ group.name }}</span><span class="label">{{ group.articles | length }}</span></div>
             {% for a in group.articles %}
-            <div class="article">
+            <div class="raw-row">
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>
