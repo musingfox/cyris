@@ -17,7 +17,7 @@
   "cloudflare": {
     "bindings": {
       "CYRIS_UI_TOKEN": {
-        "description": "**Required.** The only lock on the triage UI and the vote API. Generate with `openssl rand -hex 32` — `/login` refuses a secret shorter than 32 characters."
+        "description": "**Required.** The only lock on the settings page and the vote API. Generate with `openssl rand -hex 32` — `/login` refuses a secret shorter than 32 characters."
       },
       "DIGEST_ORIGIN": {
         "description": "Optional. The Pages origin this Worker proxies the public archive from, e.g. `https://your-project.pages.dev`. Set it only when the archive lives somewhere other than `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev` — a custom domain, say. Unset with no project named either, `/` answers 503."
