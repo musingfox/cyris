@@ -226,6 +226,21 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$('.site-nav a[aria-current="page"]').removeAttribute("aria-current");""",
     ),
+    Check(
+        id="no-credential-in-dom",
+        fixture="writable",
+        path="/settings#notifications",
+        act="""await waitFor(() => $("#discord-webhook").value, "the stored webhook");""",
+        script=f"""
+            const secrets = {json.dumps(["abcTOKEN", SENTINEL_KEY])};
+            const values = $$("input").map((input) => input.value);
+            const text = [document.documentElement.outerHTML, ...values].join("\\n");
+            const leaked = secrets.filter((secret) => text.includes(secret));
+            expect(leaked.length === 0, `leaked: ${{leaked}}`);
+            expect($("#discord-webhook").value, "the webhook field is empty");
+        """,
+        sabotage=f"""$("#discord-webhook").value = {json.dumps(STORED_WEBHOOK)};""",
+    ),
 ]
 
 PRELUDE = """

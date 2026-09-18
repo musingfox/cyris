@@ -481,6 +481,7 @@ def test_the_probe_set_watches_no_footer_link():
 # settings page adds the ids of the checks that hold it.
 EXPECTED_IDS = {
     "site-bar-current",
+    "no-credential-in-dom",
 }
 
 

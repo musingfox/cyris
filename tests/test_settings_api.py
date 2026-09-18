@@ -262,6 +262,36 @@ class TestNotifySettingsForm:
         assert "notify-result" in body
 
 
+def _leaked(text: str, literals: list[str]) -> list[str]:
+    return [literal for literal in literals if literal in text]
+
+
+class TestSettingsPageCarriesNoCredential:
+    SECRETS = ["abcTOKEN", "cyris-probe-sentinel-key"]
+
+    def test_a_leaked_literal_is_named(self):
+        page = '<input value="https://discord.com/api/webhooks/123/abcTOKEN">'
+        assert _leaked(page, ["abcTOKEN"]) == ["abcTOKEN"]
+
+    @pytest.mark.parametrize("path", ["/settings", "/static/settings.js"])
+    async def test_the_served_page_holds_no_key_and_no_webhook_token(
+        self, settings, monkeypatch, path
+    ):
+        monkeypatch.setenv("GEMINI_API_KEY", "cyris-probe-sentinel-key")
+        client = await _client(
+            settings,
+            LLMProviderConfig(provider="gemini"),
+            notify_webhook="https://discord.com/api/webhooks/123/abcTOKEN",
+        )
+
+        response = await client.get(path)
+        body = await response.text()
+        await client.close()
+
+        assert response.status == 200
+        assert _leaked(body, self.SECRETS) == []
+
+
 class TestNotifyWebhookMaskedInSettingsPayload:
     async def test_the_current_webhook_is_returned_with_its_token_replaced(self, settings):
         client = await _client(
