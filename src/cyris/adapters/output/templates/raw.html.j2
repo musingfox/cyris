@@ -116,6 +116,22 @@
     </div>
     {% include "_promote_script.html.j2" %}
     <script>
+    // The rows are the only copy of the data, so the deck reads them: what is still
+    // pending and not yet voted in this browser, in list order.
+    const pool = () => [...document.querySelectorAll('.raw-row')].filter((row) =>
+        row.querySelector('.state.pending')
+        && !Object.hasOwn(votes, groupUrls(row.querySelector('.vote-group'))[0]));
+
+    function renderDeck() {
+        const rows = pool();
+        document.getElementById('t-remaining').textContent = `${rows.length} remaining`;
+        const [next] = rows;
+        if (!next) return;
+        document.getElementById('t-source').textContent =
+            next.closest('.panel').querySelector('.source-name').textContent;
+        document.getElementById('t-title').textContent = next.querySelector('a').textContent;
+    }
+
     // List and Triage are two views of the same rows; switching never reloads.
     function setRawView(view) {
         for (const b of document.querySelectorAll('[data-raw-view]')) {
@@ -123,6 +139,7 @@
         }
         document.getElementById('raw-groups').hidden = view !== 'list';
         document.getElementById('raw-triage').hidden = view !== 'triage';
+        if (view === 'triage') renderDeck();
     }
     for (const b of document.querySelectorAll('[data-raw-view]')) {
         b.addEventListener('click', () => setRawView(b.dataset.rawView));

@@ -19,6 +19,8 @@ and `tests/test_css_receipt.py` does so to check its fixtures and registry.
 
 import argparse
 import asyncio
+import dataclasses
+import json
 import tempfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -154,6 +156,17 @@ window.__opened = [];
 window.open = (...args) => { window.__opened.push(args); return null; };
 """
 
+
+def with_votes(*slugs: str) -> str:
+    """A preload: this browser has already voted up on these articles."""
+    stored = json.dumps({url_of(slug): "up" for slug in slugs})
+    return f"localStorage.setItem('cyris-votes', {json.dumps(stored)});"
+
+
+# Chromium keeps one profile for the whole run, and a fixture's origin is only as
+# fresh as its port, so every check starts from a browser that has voted nothing.
+FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
+
 RAW_PRELUDE = (
     base_prelude()
     + """
@@ -172,6 +185,7 @@ const showView = async (view) => {
   await switchReady();
   $(`[data-raw-view="${view}"]`).click();
 };
+const deck = () => ["#t-remaining", "#t-source", "#t-title"].map((id) => $(id).textContent);
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
 """
 )
@@ -186,7 +200,7 @@ def _posted(*wanted: dict) -> Callable[[Fixture], str | None]:
     return lambda fixture: None if fixture.posts == list(wanted) else f"posts: {fixture.posts}"
 
 
-CHECKS: list[Check] = [
+_CHECKS: list[Check] = [
     Check(
         id="list-vote-marks-done",
         fixture="signed-in",
@@ -330,7 +344,61 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$(".deck-wrap").style.minWidth = "600px";""",
     ),
+    Check(
+        id="deck-pending-only",
+        fixture="signed-in",
+        path=PAGE,
+        act="""await showView("triage");""",
+        script="""
+            const shown = deck();
+            expect(same(shown, ["4 remaining", "Source A", "Pending Two"]), `deck: ${shown}`);
+        """,
+        sabotage="""$("#t-title").textContent = "Accepted One";""",
+    ),
+    Check(
+        id="deck-skips-voted",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("pending-two"),
+        act="""await showView("triage");""",
+        script="""
+            const shown = deck();
+            expect(same(shown, ["3 remaining", "Source A", "Pending Three"]), `deck: ${shown}`);
+        """,
+        sabotage="""$("#t-remaining").textContent = "4 remaining";""",
+    ),
+    Check(
+        id="deck-title-is-text",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("pending-two", "pending-three", "pending-four"),
+        act="""await showView("triage");""",
+        script="""
+            const title = $("#t-title").textContent;
+            expect(title === "<b>Six</b>", `title: ${title}`);
+            expect($("#t-title b") === null, "the title was parsed as markup");
+        """,
+        sabotage="""$("#t-title").innerHTML = "<b>Six</b>";""",
+    ),
+    Check(
+        id="list-vote-leaves-deck",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").click();
+            await waitFor(() => marked("Pending Two", "up", "done"), "the vote marked done");
+            await showView("triage");
+        """,
+        script="""
+            const shown = deck();
+            expect(same(shown, ["3 remaining", "Source A", "Pending Three"]), `deck: ${shown}`);
+        """,
+        sabotage="""$("#t-title").textContent = "Pending Two";""",
+    ),
 ]
+
+CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]
 
 
 def main() -> None:

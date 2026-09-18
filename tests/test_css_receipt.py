@@ -685,6 +685,10 @@ EXPECTED_RAW_IDS = {
     "switch-to-triage",
     "switch-back-to-list",
     "fits-400-triage",
+    "deck-pending-only",
+    "deck-skips-voted",
+    "deck-title-is-text",
+    "list-vote-leaves-deck",
 }
 
 PENDING_TWO_UP = {
