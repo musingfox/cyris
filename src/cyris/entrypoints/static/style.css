@@ -4,19 +4,32 @@
    stylesheet and carries its own copy. `tests/test_digest_css_partials.py`
    enforces that the two agree. Deck-only rules live in `deck.css`. */
 :root {
-  --bg: #07070a;
-  --bg-elev: #0d0d12;
-  --surface: #11111a;
-  --surface-2: #161622;
-  --border: #1f1f2e;
-  --border-strong: #2a2a40;
-  --text: #ebebf2;
-  --text-dim: #8a8aa0;
-  --text-faint: #56566e;
-  --accent: #c6ff3d;
-  --accent-dim: #8aa829;
-  --warn: #ff5b8a;
-  --grid: rgba(198, 255, 61, 0.035);
+    --bg: #07070a;
+    --bg-elev: #0d0d12;
+    --surface: #11111a;
+    --surface-2: #161622;
+    --border: #1f1f2e;
+    --border-strong: #2a2a40;
+    --text: #ebebf2;
+    --text-dim: #8a8aa0;
+    --text-faint: #56566e;
+    --accent: #c6ff3d;
+    --accent-dim: #8aa829;
+    --warn: #ff5b8a;
+    --accent-tint: rgba(198, 255, 61, 0.07);
+    --warn-tint: rgba(255, 91, 138, 0.12);
+    --grid: rgba(198, 255, 61, 0.035);
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px;
+    --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+    --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-serif: 'Instrument Serif', Georgia, serif;
+    --type-scale: 1;
+    --r-control: 6px;
+    --r-tag: 999px;
+    --t-fast: 150ms ease-out;
+    --bar-h: 60px;
+    --measure: 640px;
 }
 
 * {

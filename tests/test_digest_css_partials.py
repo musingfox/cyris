@@ -10,7 +10,13 @@ import re
 from pathlib import Path
 
 import pytest
-from css_rules import parse_style_block, receipt_fixtures
+from css_rules import (
+    UI_SPEC,
+    parse_style_block,
+    receipt_fixtures,
+    root_declarations,
+    spec_token_fence,
+)
 from jinja2 import DebugUndefined, Environment, meta, nodes
 
 import cyris.entrypoints
@@ -58,16 +64,6 @@ def pages() -> dict[str, str]:
     return {"index": index_html, "digest": digest_html, "raw": raw_html}
 
 
-def _root_tokens(css_source: str) -> dict[str, str]:
-    """Return the ``:root`` custom properties declared in an HTML page's styles."""
-    declarations = parse_style_block(css_source)[":root"]
-    tokens = {}
-    for declaration in declarations:
-        name, value = declaration.split(":", 1)
-        tokens[name.strip()] = value.strip()
-    return tokens
-
-
 def _style_text(html: str) -> str:
     return "\n".join(
         block for block in html.split("<style>")[1:] for block in [block.split("</style>")[0]]
@@ -99,26 +95,44 @@ def _include_sites(env: Environment, template_name: str) -> dict[str, dict[str, 
     return sites
 
 
-def test_every_page_and_the_triage_ui_declare_the_same_tokens(pages: dict[str, str]) -> None:
-    sources = {name: _root_tokens(html) for name, html in pages.items()}
-    sources["style.css"] = _root_tokens(f"<style>{STYLE_CSS.read_text()}</style>")
+@pytest.fixture(scope="module")
+def spec_tokens() -> list[str]:
+    return root_declarations(spec_token_fence(UI_SPEC.read_text()))
 
-    reference = sources["digest"]
-    problems = []
-    for name, tokens in sources.items():
-        if name == "digest":
-            continue
-        extra = sorted(set(tokens) - set(reference))
-        missing = sorted(set(reference) - set(tokens))
-        differing = sorted(
-            token for token in set(tokens) & set(reference) if tokens[token] != reference[token]
-        )
-        if extra or missing or differing:
-            problems.append(
-                f"{name}: only in {name} {extra}, absent from {name} {missing},"
-                f" different value {differing}"
-            )
-    assert not problems, "token sets diverged from digest's: " + "; ".join(problems)
+
+def test_the_spec_token_fence_is_the_full_token_set(spec_tokens: list[str]) -> None:
+    assert len(spec_tokens) == 34
+    assert spec_tokens[0] == "--bg: #07070a"
+    assert spec_tokens[-1] == "--measure: 640px"
+    assert "--type-scale: 1" in spec_tokens
+
+
+@pytest.mark.parametrize("page", sorted(PAGE_TEMPLATES))
+def test_every_page_declares_the_spec_tokens_in_spec_order(
+    pages: dict[str, str], spec_tokens: list[str], page: str
+) -> None:
+    assert root_declarations(pages[page]) == spec_tokens
+
+
+def test_the_static_stylesheet_declares_the_spec_tokens_in_spec_order(
+    spec_tokens: list[str],
+) -> None:
+    assert root_declarations(STYLE_CSS.read_text()) == spec_tokens
+
+
+def test_a_changed_spec_value_no_longer_matches_the_page(pages: dict[str, str]) -> None:
+    fence = spec_token_fence(UI_SPEC.read_text())
+    assert "--s-1: 4px" in fence
+    changed = fence.replace("--s-1: 4px", "--s-1: 5px")
+    assert root_declarations(changed) != root_declarations(pages["digest"])
+
+
+def test_a_reordered_spec_no_longer_matches_the_page(pages: dict[str, str]) -> None:
+    lines = spec_token_fence(UI_SPEC.read_text()).splitlines()
+    bg = next(i for i, line in enumerate(lines) if line.strip().startswith("--bg:"))
+    elev = next(i for i, line in enumerate(lines) if line.strip().startswith("--bg-elev:"))
+    lines[bg], lines[elev] = lines[elev], lines[bg]
+    assert root_declarations("\n".join(lines)) != root_declarations(pages["digest"])
 
 
 @pytest.mark.parametrize(

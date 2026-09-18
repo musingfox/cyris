@@ -2,6 +2,7 @@
 
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import (
@@ -16,6 +17,8 @@ from cyris.domain.models import (
 
 _COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _WHITESPACE = re.compile(r"\s+")
+
+UI_SPEC = Path(__file__).resolve().parents[1] / "docs" / "design" / "ui-language.md"
 
 
 RuleDeclarations = set[str] | list[str]
@@ -103,7 +106,7 @@ def _parse_rules(css: str, prefixes: tuple[str, ...], rules: dict[str, RuleDecla
             declarations = _split_declarations(contents)
             existing = rules.get(key)
             if existing is None:
-                ordered = selector == "body" and not prefixes
+                ordered = selector in {"body", ":root"} and not prefixes
                 rules[key] = declarations if ordered else set(declarations)
             elif isinstance(existing, list):
                 existing.extend(declarations)
@@ -126,6 +129,29 @@ def parse_style_block(html: str) -> dict[str, RuleDeclarations]:
     for style in re.findall(r"<style\b[^>]*>(.*?)</style\s*>", html, re.DOTALL | re.IGNORECASE):
         _parse_rules(_COMMENT.sub("", style), (), rules)
     return rules
+
+
+def _rules(source: str) -> dict[str, RuleDeclarations]:
+    """Parse an HTML page's style blocks, or bare CSS when there are none."""
+    return parse_style_block(source if "<style" in source else f"<style>{source}</style>")
+
+
+def spec_token_fence(markdown: str) -> str:
+    """Return the first ``css`` fence after the spec's ``## 2.`` heading."""
+    section = re.search(r"^## 2\.", markdown, re.MULTILINE)
+    if section is None:
+        raise ValueError("the spec has no '## 2.' heading")
+    fence = re.search(r"^```css\n(.*?)^```", markdown[section.end() :], re.MULTILINE | re.DOTALL)
+    if fence is None:
+        raise ValueError("the spec's section 2 has no css fence")
+    return fence.group(1)
+
+
+def root_declarations(css_source: str) -> list[str]:
+    """Return ordered ``:root`` declarations from CSS or an HTML style block."""
+    declarations = _rules(css_source)[":root"]
+    assert isinstance(declarations, list)
+    return declarations
 
 
 def _item(title: str, url: str, source: str) -> DigestItem:
