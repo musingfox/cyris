@@ -293,7 +293,7 @@ function openEditor(name) {
   const initial = editorValues(ed);
   const refreshEditor = () => {
     const dirty = editorValues(ed) !== initial;
-    save.disabled = !sourcesWritable || !dirty || !q("#e-name").value.trim();
+    save.disabled = ed.inert || !sourcesWritable || !dirty || !q("#e-name").value.trim();
     sourcesNav().classList.toggle("dirty", dirty && sourcesWritable);
   };
   ed.querySelectorAll("[data-type]").forEach((b) => {
@@ -407,6 +407,9 @@ async function saveSource(ed, button) {
   // on a feed, would be stored with nothing on the page to reveal it.
   const shown = (selector) =>
     q(selector).closest("[data-for]").dataset.for === type ? q(selector).value.trim() || null : null;
+  // Locked while the save is out: a success rebuilds the editor from what was
+  // stored, which would drop anything typed meanwhile.
+  ed.inert = true;
   const data = await writeSource("/api/sources", "POST", {
     name,
     type,
@@ -416,7 +419,10 @@ async function saveSource(ed, button) {
     homepage: shown("#e-home"),
     tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
   }, button);
-  if (!data) return;
+  if (!data) {
+    ed.inert = false;
+    return;
+  }
   // A source saved out of the active filter would lose its row, and the result
   // beside its Save with it.
   if (filter !== "all" && filter !== type) pressFilter("all");

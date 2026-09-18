@@ -1074,6 +1074,46 @@ CHECKS: list[Check] = [
         )
     ),
     Check(
+        id="editor-save-held-in-flight",
+        fixture="writable",
+        path="/settings#sources",
+        preload=hold_post("/api/sources"),
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => window.__release, "the held save");
+            setValue($("#e-tags", editor()), "news, edited");
+            editorAct("save").click();
+            await sleep(100);
+        """,
+        script="""
+            expect(editorAct("save").disabled, "Save source came back during the save");
+            expect(window.__posts === 1, `POSTs: ${window.__posts}`);
+        """,
+        sabotage="""editorAct("save").disabled = false;""",
+    ),
+    Check(
+        id="editor-locked-while-saving",
+        fixture="writable",
+        path="/settings#sources",
+        preload=hold_post("/api/sources"),
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => window.__release, "the held save");
+        """,
+        # Typing, not setValue: an edit the reload would drop must not get in.
+        script="""
+            const tags = $("#e-tags", editor());
+            tags.focus();
+            document.execCommand("insertText", false, ", typed");
+            expect(tags.value === "news", `typed during the save: ${tags.value}`);
+        """,
+        sabotage="""editor().inert = false;""",
+    ),
+    Check(
         id="retire-arms",
         fixture="writable",
         path="/settings#sources",

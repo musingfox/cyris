@@ -564,6 +564,8 @@ EXPECTED_IDS = {
     "save-held-in-flight-notifications",
     "edit-during-save-stays-dirty-model",
     "edit-during-save-stays-dirty-notifications",
+    "editor-save-held-in-flight",
+    "editor-locked-while-saving",
 }
 
 
