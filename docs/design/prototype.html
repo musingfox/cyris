@@ -456,9 +456,10 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <h2 id="t-title"></h2>
       </article>
       <div class="deck-actions" id="t-actions">
-        <button class="btn danger" type="button" id="t-down">Down</button>
-        <button class="btn primary" type="button" id="t-up">Up</button>
+        <button class="btn danger" type="button" id="t-down" data-dir="down">Down</button>
+        <button class="btn primary" type="button" id="t-up" data-dir="up">Up</button>
       </div>
+      <div class="notice err" id="t-error" role="alert" hidden>The vote did not go through, so this card stays. Check your connection, then try again.</div>
       <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
     </div>
     <div class="footer">// cyris</div>
@@ -782,6 +783,7 @@ function setRawView(view) {
   $$("[data-raw-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.rawView === view)));
   $("#raw-groups").hidden = view !== "list";
   $("#raw-triage").hidden = view !== "triage";
+  if (card.dataset.flying) settle();
 }
 $$("[data-raw-view]").forEach((b) => b.onclick = () => setRawView(b.dataset.rawView));
 
@@ -803,11 +805,25 @@ function settle() {
   vote(pending()[0], dir);
   void card.offsetWidth;
   card.classList.remove("dragging");
+  busy(false);
 }
-function fly(dir) {
-  if (!pending().length || card.dataset.flying) return;
+/* The page POSTs /api/vote here; the prototype has no network, so a vote always lands. */
+const sendVote = () => Promise.resolve(true);
+const busy = (on) => $$("#t-actions button").forEach((b) => b.disabled = on);
+async function fly(dir) {
+  if (!pending().length || card.dataset.flying || $("#t-up").disabled) return;
+  busy(true);
+  $("#t-error").hidden = true;
+  if (!await sendVote(pending()[0], dir)) {
+    busy(false);
+    card.style.transform = "";
+    lean(null);
+    $("#t-error").hidden = false;
+    return;
+  }
   card.dataset.flying = dir;
   if (reducedMotion.matches) return settle();
+  void card.offsetWidth;
   card.classList.remove("dragging");
   lean(dir);
   card.style.transform = `translateX(${dir === "up" ? 120 : -120}vw) rotate(${dir === "up" ? 12 : -12}deg)`;
