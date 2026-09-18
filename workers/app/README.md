@@ -1,6 +1,6 @@
 # `cyris-app` — the Container and its door
 
-The pipeline itself, and the only route to the triage deck and `/settings`.
+The pipeline itself, and the only route to `/settings`.
 Replaces the Mac mini's `docker compose` + supercronic (§7 M5).
 
 - **Hourly cron** → `CYRIS_ROLE=run`: one `cyris run --if-due` plus one

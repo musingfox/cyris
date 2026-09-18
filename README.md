@@ -33,8 +33,8 @@ summarization in the middle, an HTML digest on Cloudflare Pages out.
   printing the same story five times
 - Turns a 👍/👎 into an accept or reject in the store, and can suppress later articles
   sitting close to a downvote
-- Serves a swipe-based UI for triaging the borderline ones, plus `/settings` for the
-  LLM provider, digest hours, and the source list
+- Lets you triage the borderline ones card by card in the raw page's triage view, and
+  serves `/settings` for the LLM provider, digest hours, and the source list
 
 ## Two ways to run it
 
@@ -47,7 +47,7 @@ such.
 | Where the state lives | JSON files under `agent-vault/` | D1 |
 | Where the digest goes | an HTML file on disk | published to Pages, with an archive |
 | Feeds | polled when the digest runs | buffered hourly, so nothing expires between runs |
-| 👍/👎 on the digest, triage UI | no | yes |
+| 👍/👎 on the digest and the raw page | no | yes |
 | Email-only newsletters | no | yes, with your own domain |
 | Needs | Python, uv, an LLM key | the same, plus a Cloudflare account (Workers Paid, US$5/mo, for the schedule and the buffer) |
 
@@ -65,7 +65,7 @@ and add only what you want.
 |---|---|---|
 | RSS digest, HTML output | An LLM API key | LLM usage only |
 | Better feed coverage (see below) | A Cloudflare account, Workers Paid | US$5/mo |
-| Production schedule + public triage UI | Same Workers Paid plan; a domain is an optional Access layer | same US$5/mo |
+| Production schedule + `/settings` | Same Workers Paid plan; a domain is an optional Access layer | same US$5/mo |
 | Digest votes 👍/👎 | A Cloudflare account | Free tier |
 | Published HTML digest | A Cloudflare account | Free tier |
 | **Email-only newsletters** | A Cloudflare account **and your own domain** | Domain registration |
@@ -75,7 +75,7 @@ and add only what you want.
 **Email Routing is the one thing that cannot be automated away.** It needs a domain you
 control, so email-only newsletters — the ones with no feed at all — need one too.
 Newsletters that publish RSS (Substack, Ghost, and most others) are just feeds and need
-nothing extra. The triage UI and digest archive run on `*.workers.dev` with the
+nothing extra. `/settings` and the digest archive run on `*.workers.dev` with the
 `CYRIS_UI_TOKEN` cookie as the only lock; Cloudflare Access is an optional second layer
 if you attach your own hostname.
 
@@ -122,8 +122,8 @@ image with supercronic reading `docker/crontab`.
 ## Running it on Cloudflare
 
 The deployment is a Container fronted by a Worker: an hourly Cron Trigger runs
-`cyris run --if-due` plus `promote-sync` and the instance exits, while the triage UI
-wakes on request and sleeps again. State is D1 and the digest is published to Pages.
+`cyris run --if-due` plus `promote-sync` and the instance exits, while the `/settings`
+server wakes on request and sleeps again. State is D1 and the digest is published to Pages.
 Digest hours and the LLM provider live in D1, so changing either is a write on
 `/settings`, not a rebuild. Deploy steps, the secret list and auth are in
 [`workers/app/README.md`](workers/app/README.md).
@@ -177,7 +177,7 @@ one backend** — they are alternatives, never a pair; running both splits decis
 ## The CLI
 
 **On a local install, the CLI is the whole application.** `cyris run` is the pipeline,
-`cyris triage-ui` is the triage deck, `cyris articles ...` is how the store is managed.
+`cyris triage-ui` serves `/settings`, `cyris articles ...` is how the store is managed.
 `cyris --help` lists everything.
 
 **On a Cloudflare install, most of it is not yours to type.** The container already runs
@@ -193,8 +193,8 @@ cyris store migrate|diff      The move into D1, and the comparison to run before
                               trust it
 cyris sources push|list       Make D1 match sources.yaml, removals included; show what
                               it serves. /settings edits one source, this replaces all
-cyris articles list|accept|   Bulk work on the store, which the swipe UI is too slow
-      reject|score|clean      for — and the only way to delete old rows
+cyris articles list|accept|   Bulk work on the store: the only way to reach pending
+      reject|score|clean      rows outside an issue, and to delete old rows
 cyris llm-compare             Digest one window with several providers, side by side,
 cyris embed-compare           or judge it with both embedding providers, before
 cyris vote-sim                switching; vote-sim previews what similarity would
@@ -213,7 +213,7 @@ attention it gets:
 | `fan` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
 
 An article moves `pending → accepted / rejected / awaiting_triage`. A 👍/👎 on the
-digest, the triage UI, and `cyris articles accept|reject` all stamp `triaged_at`, and
+digest or the raw page, and `cyris articles accept|reject`, all stamp `triaged_at`, and
 that stamp is what vote similarity later treats as a human decision.
 
 **Paywalled sources are not supported.** cyris takes a feed at face value and will not

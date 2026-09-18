@@ -99,6 +99,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **The swipe deck.** Raw's triage view replaced it. `/static/index.html`, its
+  script and stylesheet, and the container routes `GET /`, `GET /triage`,
+  `GET /api/articles`, `GET /api/stats` and `POST /api/articles/{accept,reject,undo}`
+  are gone, so `cyris triage-ui` serves `/settings` alone and opens no article
+  store. The deck was the only UI over the cross-day pending backlog: pending
+  rows outside an issue are now reachable only through
+  `cyris articles list|accept|reject`. Undoing a verdict and the `already_known`
+  reason from a UI go with it, and so does `ArticleRepository.reset_to_pending`,
+  whose only caller was the deck's undo.
 - **Miniflux.** `MinifluxSource`, `MinifluxClient` and `SourceMatcher` are gone,
   and with them the Postgres dependency, the `[miniflux]` config section,
   `CYRIS_MINIFLUX_API_KEY`, and the `miniflux` + `db` services in

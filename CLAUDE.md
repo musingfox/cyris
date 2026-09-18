@@ -110,14 +110,14 @@ src/cyris/
 │                            #   Returns rows; the CLI owns every local write
 ├── entrypoints/      # CLI and web servers
 │   ├── cli.py               # Typer CLI (entry point: cyris.entrypoints.cli:app)
-│   ├── triage_server.py     # Swipe-based triage web UI + /settings (aiohttp) + static/
+│   ├── triage_server.py     # Settings web UI + /settings APIs (aiohttp) + static/
 │   └── templates/           # settings.html.j2: /settings, rendered with the digest's site bar
 └── utils/            # timezone helpers (cross-cutting)
 
 workers/              # Cloudflare Workers (deployed to the user's CF account)
 ├── app/              # The Container and its door: hourly Cron Trigger runs the pipeline
 │                     #   (CYRIS_ROLE=run, one pass then exits), any HTTP request wakes the
-│                     #   triage UI (CYRIS_ROLE=ui). Auth = Cloudflare Access + CYRIS_UI_TOKEN
+│                     #   /settings server (CYRIS_ROLE=ui). Auth = Cloudflare Access + CYRIS_UI_TOKEN
 │                     #   cookie. Its `wrangler.toml` is at the repo root, because the image is
 │                     #   built from the whole repo — deploy from there, not from this directory
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
@@ -149,7 +149,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 - **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured) and `CloudflareNewsletterSource`.
 - **`Embedder`** (`ports.py`) — vote-similarity embeddings, selected in `build_embedder()`: `WorkersAIEmbedder` (`@cf/baai/bge-m3`, the default) or `GeminiEmbedder`. Neither caches — a run is ~600 texts ≈ 20 neurons. Each provider carries its **own** threshold, in `src/cyris/provider_defaults.json` (reasons in `docs/architecture.md` §5); the cosine scales differ, so reusing one number across providers silently disables the feature.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it).
-- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation would fail at the CLI or the triage UI, not at import, so `tests/test_protocol_conformance.py` checks every implementation against its Protocol instead.
+- **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation would fail at the CLI, not at import, so `tests/test_protocol_conformance.py` checks every implementation against its Protocol instead.
 - **Output sinks** — `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
 `ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map, and what each of these is being replaced by: `docs/architecture.md`.
@@ -164,7 +164,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |
 | `cyris llm-compare` | Digest one window with several providers (`--arm provider:model`, repeatable), side by side |
-| `cyris triage-ui` | Start swipe-based web UI for article classification; `/settings` picks the LLM provider and model (verified against the live API before storing), the two digest hours, and the Discord webhook, all written to D1 `settings`, and adds/edits/retires sources in D1 `sources` |
+| `cyris triage-ui` | Serve `/settings`, which picks the LLM provider and model (verified against the live API before storing), the two digest hours, and the Discord webhook, all written to D1 `settings`, and adds/edits/retires sources in D1 `sources` |
 | `cyris articles list\|accept\|reject\|clean\|score` | Article store management (`export` went with the vault in M1) |
 | `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends. Like every command that opens D1, they create the tables first — `diff` reads only, but not from a database it leaves untouched |
 | `cyris sources push\|list` | Make D1's source table match `sources.yaml`; show what it serves. Both create the tables first, `list` included — a `database_id` pointing somewhere else gets them |
@@ -190,7 +190,7 @@ Agent-owned state directory, entirely gitignored — nothing under it is in vers
   something is a proof of concept, say so in the identifier or the comment above it —
   an unlabelled placeholder becomes load-bearing by default
 - **UI changes follow `docs/design/ui-language.md`.** It covers every reader-facing page — the
-  digest templates, triage, `/settings` — with the tokens, type scale, components and a checklist;
+  digest templates, `/settings` — with the tokens, type scale, components and a checklist;
   `docs/design/prototype.html` is its reference implementation. The code does not fully conform yet
   (the spec's §8): restyle a component to the spec when you touch it, never copy the old style
 - User-facing strings are English, even while the digest's content is not. i18n has no
@@ -199,7 +199,7 @@ Agent-owned state directory, entirely gitignored — nothing under it is in vers
 - Pydantic v2 for all data models and config validation
 - pytest with `pytest-asyncio` (auto mode) for async tests
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
-- Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest vote, triage UI, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
+- Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest or raw-page vote, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
 - Digest output language is configurable via `[digest] output_language`, a **BCP 47 tag** (default `zh-Hant`). `service_layer/languages.json` maps the tag to the wording the model receives; an unlisted tag is substituted verbatim, which is what keeps an older config holding a plain language name working. Prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan are fallbacks behind it. The constraint is that a returned URL should not repeat across issues — the store dedups by URL, so a later issue of the same source whose link repeats under a different subject falls back to its synthetic `newsletter:{id}` URL and loses its link (a different source, or the same subject, is still skipped; see `adapters/store/newsletter_dedup.py`). `tests/test_newsletter.py` enforces it (distinct post URLs, distinct synthetic URLs, and where `homepage` may land); read those before changing the extractor. Real-sample coverage is in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
 - Link-health counters on `DigestContent` measure two different things: `synthetic_url_count` counts every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health); `dead_link_count` counts only items that reached the digest with no clickable link (what a reader hits). Each has its own test, but nothing asserts they disagree on one run — so don't "fix" them into agreement

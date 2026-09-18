@@ -8,7 +8,7 @@ updated: 2026-09-18
 
 任何改動到 reader-facing 介面的修改都要遵守這份規範：`src/cyris/adapters/output/templates/`
 （archive、digest、raw）、`src/cyris/entrypoints/templates/`（settings）、`src/cyris/entrypoints/static/`
-（triage 與 settings 的腳本、`style.css`），以及之後新增的頁面。
+（settings 的腳本與 `style.css`），以及之後新增的頁面。
 
 - **規範是這份文件。** `docs/design/prototype.html` 是它的參考實作，用瀏覽器直接打開：
   `#system` 是 token 與元件總覽，`#archive`、`#digest`、`#raw`（含 triage view）、`#settings/model`
@@ -146,7 +146,7 @@ Settings (/settings)：site bar 上，授權後才出現
 
 - 所有頁面頂部都有 site bar；digest 與 raw 另有 issue bar。導覽不放在頁尾。
 - archive 的頭版卡片與每一列都有 `Digest` 與 `All articles` 兩個入口。
-- 沒有獨立的 triage 頁。判定文章在 raw 的 triage view 做，`/static/index.html` 的 deck 退場
+- 沒有獨立的 triage 頁。判定文章在 raw 的 triage view 做，deck 已於 2026-09-19 退場
   （`triage-raw-list-merge`）。
 - 不做上一期與下一期。使用情境是當天讀完當天那期。
 - 返回連結必須指向實際存在的路徑。`/triage` 在正式環境是 404。
@@ -208,7 +208,7 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 - digest 是部署到 Pages 的獨立 HTML，不能連結外部 stylesheet，所以 token 與元件樣式都放在
   `templates/_*.css.j2` partial：`_tokens.css.j2` 放 §2，`_components.css.j2` 放 §4。
 - site bar 與 issue bar 的標記放在 `_site_bar.html.j2` 與 `_issue_bar.html.j2`。
-- `static/style.css` 是這些 partial 的副本，settings 與 triage 從它取得同一份樣式。
+- `static/style.css` 是這些 partial 的副本，settings 從它取得同一份樣式。
 - `tests/test_digest_css_partials.py` 要同時比對 token 與元件規則，否則兩邊會再分岔。
 
 ## 8. 現況差距與落地順序
@@ -216,19 +216,17 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 2026-09-17 盤點的差距中，第 1 到 3 步已於 2026-09-18 落地，第 4 步已於 2026-09-19 落地：第 1 步補上 §2
 token、§3 字級、focus 與 reduced-motion、兩個硬寫顏色，以及元件 CSS 比對測試；第 2 步讓 archive、digest、
 raw 掛上 site bar 與 issue bar；第 3 步依 §6 重做 settings；第 4 步依 §6 重做 raw 的列表，並加上登入後才
-出現的 triage view。其餘差距由下面第 5 到 7 步處理。
+出現的 triage view，deck 也於同日刪除（`triage-raw-list-merge`）。其餘差距由下面第 5 到 7 步處理。
 
 落地順序，每一步都能單獨上線。括號裡是 Obsidian vault `pm/cyris/tasks/` 的票：
 
 1. §2 token、§3 字級、focus 與 reduced-motion、刪除兩個硬寫顏色，並把 CSS 比對測試擴大到元件（`ui-spec-tokens-and-type`）
 2. site bar 與 issue bar 上 archive、digest、raw；archive 列加入兩個入口；頁尾導覽移除（`ui-site-bar-and-issue-bar`）
 3. settings 依 §6 重做（`settings-page-layout`）
-4. raw 加上 triage view（`raw-page-triage-view`），之後刪掉 deck（`triage-raw-list-merge`）
+4. raw 加上 triage view（`raw-page-triage-view`）；deck 已刪（`triage-raw-list-merge`）
 5. `/api/settings` 逐鍵回傳值的來源，settings 顯示來源 pill（`settings-value-origin-per-key`）
 6. archive 改成頭版卡片加年月分段（`digest-index-archive-layout`）
 7. digest 內文的層級、`.meta` 與寬度死區，內文間距在這一步搬上刻度（`digest-issue-page-layout`）
-
-deck 不做對齊。2026-09-01 已決定它退場，對齊一個要刪的頁面沒有價值。
 
 ## 9. 改介面前的檢查清單
 
