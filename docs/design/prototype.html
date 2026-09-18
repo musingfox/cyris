@@ -559,7 +559,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <form class="tab" data-tab="model" hidden>
           <div class="tab-head">
             <h2 class="heading">Model</h2>
-            <p class="small">The LLM that scores, filters and summarizes. A change applies from the next run.</p>
+            <p class="small">The LLM the next run scores, filters and summarizes with.</p>
             <div class="origin"><span class="pill">Stored in D1</span><span class="req">needs per-key origin from /api/settings</span></div>
           </div>
           <div class="form">
@@ -623,8 +623,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
             <div class="field">
               <label class="label" for="webhook">Discord webhook</label>
               <input class="input" id="webhook" type="text" value="https://discord.com/api/webhooks/1398…/••••••••" autocomplete="off">
-              <p class="small">To change it, paste the whole URL. It is saved only after Discord confirms it exists.</p>
-              <details class="more"><summary>More</summary><p class="small">When empty here, a run falls back to <code>[notify]</code> in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: remove that Worker secret and any <code>[notify]</code> value.</p></details>
+              <p class="small">To change it, paste the whole URL.</p>
+              <details class="more"><summary>More</summary><p class="small">It is saved only after Discord confirms it exists. When empty here, a run falls back to <code>[notify]</code> in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: remove that Worker secret and any <code>[notify]</code> value.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
@@ -637,7 +637,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <div class="tab" data-tab="sources" hidden>
           <div class="tab-head">
             <h2 class="heading">Sources</h2>
-            <p class="small">Feeds and newsletter senders. A change applies from the next run.</p>
+            <p class="small">The feeds and newsletter senders the next run reads.</p>
             <div class="origin"><span class="pill">Served from D1</span></div>
           </div>
           <div class="toolbar">
@@ -675,7 +675,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
       </div>
       <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text"></div>
       <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@letter.com">
-        <p class="small">Maps a sender to this source. Email routing itself stays in the Cloudflare dashboard.</p></div>
+        <p class="small">Maps a sender to this source.</p>
+        <details class="more"><summary>More</summary><p class="small">Email routing itself stays in the Cloudflare dashboard.</p></details></div>
       <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text"></div>
       <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" type="text" placeholder="comma separated"></div>
     </div>
