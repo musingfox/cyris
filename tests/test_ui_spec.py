@@ -463,6 +463,22 @@ def test_the_container_carries_the_page_gutters_outside_its_width(page: str) -> 
     } <= set(_parsed(page)[".container"])
 
 
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_a_link_takes_its_parents_colour_by_default(page: str) -> None:
+    assert _parsed(page)["a"] == {"color: inherit"}
+
+
+def test_only_digest_content_links_take_the_accent() -> None:
+    digest = _parsed("digest")
+    assert digest[":where(main) a"] == {
+        "color: var(--accent)",
+        "text-decoration: none",
+        "background: none",
+        "border: none",
+    }
+    assert digest[":where(main) a:hover"] == {"color: var(--text)"}
+
+
 def test_the_digest_narrows_its_gutters_on_the_container() -> None:
     digest = _parsed("digest")
     assert "@media (max-width: 880px) | body" not in digest

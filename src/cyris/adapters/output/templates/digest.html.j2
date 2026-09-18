@@ -480,14 +480,17 @@
                   padding_top="32px", gap="18px", link_transition=true  %}{% include "_footer.css.j2" %}{% endwith %}
 
         /* === GENERIC LINK === */
-        a {
+        /* :where() keeps these at a bare `a`'s specificity, so every link rule
+           above still wins exactly as it did, while links outside the digest's
+           content (the bars) keep their inherited colour. */
+        :where(main) a {
             color: var(--accent);
             text-decoration: none;
             background: none;
             border: none;
         }
 
-        a:hover { color: var(--text); }
+        :where(main) a:hover { color: var(--text); }
 
         /* === RESPONSIVE === */
         @media (max-width: 880px) {
