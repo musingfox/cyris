@@ -361,7 +361,6 @@ TYPE_ROLES = [
     (4, "index raw", "h1", "clamp(52px, 8vw, 96px)"),
     (5, "index digest raw", ".footer", "14px"),
     (6, "index digest raw", ".btn", "14px"),
-    (7, "digest", ".meta-strip", "14px"),
     (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
     (10, "digest", ".stats-card", "16px"),
     (11, "digest", ".stats-card .label", "14px"),
@@ -426,9 +425,15 @@ def test_the_page_title_takes_the_display_role(page: str) -> None:
     } <= set(_parsed(page)["h1"])
 
 
-@pytest.mark.parametrize("key", [".meta-strip", ".lead-story::before"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "@media (max-width: 880px) | .lead-story::before",
+        "@media (max-width: 720px) | .site-nav .label",
+    ],
+)
 def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
-    declarations = _parsed("digest")[f"@media (max-width: 880px) | {key}"]
+    declarations = _parsed("digest")[key]
     assert [d for d in declarations if d.startswith("font-size")] == []
 
 

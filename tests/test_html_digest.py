@@ -4,6 +4,9 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+from css_rules import parse_style_block
+
 from cyris.adapters.output import html_digest
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import (
@@ -891,3 +894,58 @@ def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
     for html in (writer.render(content), raw):
         assert html.count("redirect: 'manual'") == 1
         assert "DIGEST_DATE" in html
+
+
+def _issue_pages(tmp_path) -> dict[str, str]:
+    """Archive, digest and raw for one 2026-04-15 evening issue."""
+    writer = HtmlDigestWriter(tmp_path)
+    content = DigestContent(
+        date="2026-04-15",
+        period="evening",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+    )
+    return {
+        "index": writer.render_index(["2026-04-15-evening.html", "2026-04-15-evening-raw.html"]),
+        "digest": writer.render(content),
+        "raw": writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")]),
+    }
+
+
+def _site_bar(html: str) -> str:
+    match = re.search(r'<header class="site-bar">.*?</header>', html, re.DOTALL)
+    assert match, "no site bar"
+    return match.group(0)
+
+
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_every_page_opens_with_the_site_bar(tmp_path, page):
+    html = _issue_pages(tmp_path)[page]
+
+    assert html.count('<header class="site-bar">') == 1
+    assert html.index('<header class="site-bar">') < html.index('class="container"')
+    bar = _site_bar(html)
+    assert 'aria-current="page">Archive</a>' in bar
+    assert '<span class="label settings-link"><a href="/settings">Settings</a></span>' in bar
+    assert 'class="brand-name">CYRIS<' in bar
+
+
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_the_site_bar_has_no_triage(tmp_path, page):
+    """The deck is retiring (spec section 5), and /triage is a 404 in production."""
+    bar = _site_bar(_issue_pages(tmp_path)[page])
+
+    assert "Triage" not in bar
+    assert "/triage" not in bar
+
+
+def test_the_old_masthead_brand_and_meta_strip_are_gone(tmp_path):
+    pages = _issue_pages(tmp_path)
+
+    assert 'class="mast-row"' not in pages["digest"]
+    assert 'class="meta-strip"' not in pages["digest"]
+    assert ".meta-strip" not in parse_style_block(pages["digest"])
+    for html in pages.values():
+        assert "<strong>CYRIS</strong> // " not in html

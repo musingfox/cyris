@@ -33,32 +33,6 @@
         {% with masthead_padding="28px 0 24px", masthead_margin="48px", masthead_rule=true,
                   subtitle_margin="18px"  %}{% include "_masthead.css.j2" %}{% endwith %}
 
-        .mast-row {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 24px;
-            flex-wrap: wrap;
-        }
-
-        .meta-strip {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            letter-spacing: 0.08em;
-            color: var(--text-faint);
-            text-transform: uppercase;
-            display: flex;
-            gap: 18px;
-            align-items: center;
-        }
-
-        .meta-strip span.live::before {
-            content: "●";
-            color: var(--accent);
-            margin-right: 6px;
-            animation: pulse 2.4s ease-in-out infinite;
-        }
-
         .headline-block {
             margin-top: 36px;
             display: grid;
@@ -502,7 +476,6 @@
             .featured-grid { grid-template-columns: 1fr; }
             .attention-list { grid-template-columns: 1fr; }
             .section { margin-bottom: 48px; }
-            .meta-strip { gap: 12px; }
         }
         {% include "_promote.css.j2" %}
 
@@ -522,19 +495,9 @@
     </style>
 </head>
 <body>
+    {% include "_site_bar.html.j2" %}
     <div class="container">
         <header class="masthead">
-            <div class="mast-row">
-                <div class="brand">
-                    <div class="brand-mark"></div>
-                    <div class="brand-name"><strong>CYRIS</strong> // Daily Digest</div>
-                </div>
-                <div class="meta-strip">
-                    <span class="live">Live</span>
-                    <span>{{ date }}</span>
-                    <span>{{ period | upper }}</span>
-                </div>
-            </div>
             <div class="headline-block">
                 <h1 class="issue-title">Signal<em>/</em>Noise</h1>
                 <aside class="stats-card">

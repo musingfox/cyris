@@ -453,3 +453,11 @@ def test_a_pin_whose_cell_left_the_probe_set_fails_rather_than_going_quiet():
     assert compare_computed_page(cell, cell, pins) == [
         "  ! @880 | .brand `color` is pinned but no longer measured"
     ]
+
+
+def test_the_probe_set_watches_the_site_bar_and_not_the_meta_strip():
+    probes = load_probes(PROBES_PATH)
+    assert ".meta-strip" not in probes["digest"]
+    for page in ("index", "digest", "raw"):
+        for selector in (".site-bar", ".site-nav a", ".brand-name"):
+            assert selector in probes[page], f"{page} | {selector}"

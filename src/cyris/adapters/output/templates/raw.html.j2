@@ -95,12 +95,9 @@
     </style>
 </head>
 <body>
+    {% include "_site_bar.html.j2" %}
     <div class="container">
         <header class="masthead">
-            <div class="brand">
-                <div class="brand-mark"></div>
-                <div class="brand-name"><strong>CYRIS</strong> // Raw Feed</div>
-            </div>
             <h1>This run's <em>verdicts</em>, plus pending</h1>
             <div class="subtitle">{{ date }} · {{ period | upper }} · {{ total }} articles · {{ groups | length }} sources</div>
         </header>
