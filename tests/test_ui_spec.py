@@ -391,6 +391,13 @@ async def test_no_settings_element_is_a_category_hash_target(triage: TestClient)
     assert _hash_targets(await _served(triage, "/settings")) == set()
 
 
+async def test_a_hidden_settings_field_stays_hidden_whatever_its_display(
+    triage: TestClient,
+) -> None:
+    rules = parse_style_block(await _served(triage, "/settings"))
+    assert rules["[hidden]"] == {"display: none !important"}
+
+
 async def test_settings_loads_the_display_font(triage: TestClient) -> None:
     page = await _served(triage, "/settings")
     fonts = re.search(r'href="(https://fonts\.googleapis\.com/css2[^"]+)"', page)

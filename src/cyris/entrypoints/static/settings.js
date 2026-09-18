@@ -246,6 +246,9 @@ function openEditor(name) {
     ed.querySelectorAll("[data-type]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.type === type));
     });
+    ed.querySelectorAll("[data-for]").forEach((field) => {
+      field.hidden = field.dataset.for !== type;
+    });
   };
   setType(s.type);
   const initial = editorValues(ed);

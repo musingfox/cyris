@@ -500,6 +500,7 @@ EXPECTED_IDS = {
     "editor-dirty",
     "editor-heading-escapes",
     "editor-add-at-top",
+    "editor-type-fields",
 }
 
 

@@ -525,6 +525,22 @@ CHECKS: list[Check] = [
         """,
         sabotage="""editorAct("retire").hidden = false;""",
     ),
+    Check(
+        id="editor-type-fields",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("曼報");
+            ctx.newsletter = shownFields();
+            $('[data-type="rss"]', editor()).click();
+        """,
+        script="""
+            const both = ["e-email", "e-home"];
+            expect(same(ctx.newsletter, both), `newsletter shows ${ctx.newsletter}`);
+            expect(same(shownFields(), ["e-url"]), `rss shows ${shownFields()}`);
+        """,
+        sabotage="""$("#e-home", editor()).closest("[data-for]").hidden = false;""",
+    ),
 ]
 
 PRELUDE = """
@@ -565,6 +581,8 @@ const openRow = async (name) => {
   rowOf(name).click();
   return waitFor(editor, "the editor");
 };
+const shownFields = () =>
+  $$("[data-for]", editor()).filter(visible).map((field) => $("input", field).id);
 const ctx = {};
 """
 
