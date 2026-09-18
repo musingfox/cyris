@@ -75,7 +75,7 @@
         }
 
         {% with layout="block", justify=false, align_center=false, margin_top="56px",
-                  padding_top="24px", gap=none, link_transition=false  %}{% include "_footer.css.j2" %}{% endwith %}
+                  padding_top="24px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 720px) {
             .digest-item {
@@ -111,7 +111,7 @@
         </div>
         {% endif %}
 
-        <div class="footer">// CYRIS &middot; local-first information agent</div>
+        <div class="footer">// cyris &middot; {{ digests | length }} issue{{ "" if digests | length == 1 else "s" }}</div>
     </div>
     {% include "_probe_script.html.j2" %}
 </body>

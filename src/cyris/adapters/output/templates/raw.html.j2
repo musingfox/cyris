@@ -81,7 +81,7 @@
         }
 
         {% with layout="flex", justify=false, align_center=false, margin_top="48px",
-                  padding_top="20px", gap="24px", link_transition=false  %}{% include "_footer.css.j2" %}{% endwith %}
+                  padding_top="20px", gap="24px"  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 640px) {
             .article {
@@ -120,11 +120,7 @@
         </section>
         {% endfor %}
 
-        <div class="footer">
-            <a href="{{ date }}-{{ period }}.html">← Back to digest</a>
-            <a href="index.html">Archive →</a>
-            <span class="settings-link"><a href="/settings">Settings →</a></span>
-        </div>
+        <div class="footer">// cyris</div>
     </div>
     {% include "_promote_script.html.j2" %}
     {% include "_probe_script.html.j2" %}

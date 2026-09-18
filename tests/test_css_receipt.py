@@ -461,3 +461,8 @@ def test_the_probe_set_watches_the_site_bar_and_not_the_meta_strip():
     for page in ("index", "digest", "raw"):
         for selector in (".site-bar", ".site-nav a", ".brand-name"):
             assert selector in probes[page], f"{page} | {selector}"
+
+
+def test_the_probe_set_watches_no_footer_link():
+    probes = load_probes(PROBES_PATH)
+    assert [page for page, selectors in probes.items() if ".footer a" in selectors] == []
