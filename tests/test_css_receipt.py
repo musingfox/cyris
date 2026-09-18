@@ -499,6 +499,7 @@ EXPECTED_IDS = {
     "editor-cancel",
     "editor-dirty",
     "editor-heading-escapes",
+    "editor-add-at-top",
 }
 
 

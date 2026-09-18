@@ -501,6 +501,30 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$(".editor-title", editor()).innerHTML = "Editing <b>x</b>";""",
     ),
+    Check(
+        id="editor-add-at-top",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await sourcesLoaded();
+            $("#add-source").click();
+            await waitFor(editor, "the editor");
+            ctx.disabledEmpty = editorAct("save").disabled;
+            const name = $("#e-name", editor());
+            ctx.name = {readOnly: name.readOnly, value: name.value};
+            setValue($("#e-name", editor()), "New Feed");
+        """,
+        script="""
+            expect($("#src-body").firstElementChild === editor(), "not at the top of the table");
+            const title = $(".editor-title", editor()).textContent;
+            expect(title === "New source", `heading: ${title}`);
+            expect(!ctx.name.readOnly && ctx.name.value === "", "the name is not an empty field");
+            expect(!visible(editorAct("retire")), "Retire is shown for a new source");
+            expect(ctx.disabledEmpty, "Save source was enabled without a name");
+            expect(!editorAct("save").disabled, "Save source stayed disabled with a name");
+        """,
+        sabotage="""editorAct("retire").hidden = false;""",
+    ),
 ]
 
 PRELUDE = """

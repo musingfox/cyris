@@ -309,6 +309,11 @@ $("src-body").addEventListener("click", (e) => {
   renderSources();
 });
 
+$("add-source").addEventListener("click", () => {
+  openName = "";
+  renderSources();
+});
+
 $("src-body").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.matches("tr.src-row")) e.target.click();
 });
