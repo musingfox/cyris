@@ -7,7 +7,8 @@ updated: 2026-09-18
 # cyris 介面設計規範
 
 任何改動到 reader-facing 介面的修改都要遵守這份規範：`src/cyris/adapters/output/templates/`
-（archive、digest、raw）、`src/cyris/entrypoints/static/`（triage、settings），以及之後新增的頁面。
+（archive、digest、raw）、`src/cyris/entrypoints/templates/`（settings）、`src/cyris/entrypoints/static/`
+（triage 與 settings 的腳本、`style.css`），以及之後新增的頁面。
 
 - **規範是這份文件。** `docs/design/prototype.html` 是它的參考實作，用瀏覽器直接打開：
   `#system` 是 token 與元件總覽，`#archive`、`#digest`、`#raw`（含 triage view）、`#settings/model`
