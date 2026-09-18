@@ -559,6 +559,11 @@ EXPECTED_IDS = {
     "readonly-sources",
     "fits-400",
     "fits-1440",
+    "save-held-in-flight-model",
+    "save-held-in-flight-digest",
+    "save-held-in-flight-notifications",
+    "edit-during-save-stays-dirty-model",
+    "edit-during-save-stays-dirty-notifications",
 }
 
 

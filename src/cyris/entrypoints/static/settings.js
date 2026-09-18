@@ -29,6 +29,8 @@ route();
 // A category's Save is live only while its form differs from what was last
 // loaded or saved, and the category list marks that form with a dot.
 const clean = new Map();
+// A form whose save is in flight keeps its Save disabled and its notice.
+const saving = new Set();
 // Keyed by field, so a save can tell which part of its form changed.
 const snapshot = (form) => Object.fromEntries([...form.querySelectorAll("input, select")]
   .map((input) => input.type === "radio"
@@ -42,19 +44,19 @@ function refresh(form) {
     && JSON.stringify(snapshot(form)) !== JSON.stringify(clean.get(form));
   // With no provider chosen, there is nothing a model could be checked against.
   const blocked = form.dataset.tab === "model" && !chosen();
-  saveButton(form).disabled = !dirty || blocked;
+  saveButton(form).disabled = !dirty || blocked || saving.has(form);
   navLink(form).classList.toggle("dirty", dirty);
 }
 
-function markClean(form) {
-  clean.set(form, snapshot(form));
+function markClean(form, values = snapshot(form)) {
+  clean.set(form, values);
   refresh(form);
 }
 
 // An edit makes the last result stale, so it goes; a deployment that cannot
 // save never tracks, and its explanation stays.
 function edited(form) {
-  if (clean.has(form)) form.querySelector(".notice").hidden = true;
+  if (clean.has(form) && !saving.has(form)) form.querySelector(".notice").hidden = true;
   refresh(form);
 }
 
@@ -83,7 +85,7 @@ function render() {
   if (state.max_featured) $("max-featured").value = state.max_featured;
   if (state.notify_webhook) $("discord-webhook").value = state.notify_webhook;
   if (state.writable) {
-    document.querySelectorAll("form.tab").forEach(markClean);
+    document.querySelectorAll("form.tab").forEach((form) => markClean(form));
   } else {
     SETTINGS_NOTICES.forEach((id) => {
       show("err", "This deployment has no settings store, so nothing can be saved here. " +
@@ -114,21 +116,25 @@ function show(kind, text, target) {
 
 $("model-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const form = $("model-form");
   const p = chosen();
   if (!p) return show("err", "Pick a provider first.", "model-result");
-  $("save-model").disabled = true;
+  const sent = snapshot(form);
+  saving.add(form);
+  refresh(form);
   show("ok", "Checking with the provider…", "model-result");
   try {
     const model = $("model-input").value.trim();
     const data = await post("/api/settings", {provider: p.name, model});
     state.provider = data.provider;
     state.model = data.model;
-    markClean($("model-form"));
+    markClean(form, sent);
     show("ok", `${data.detail}\n${data.note}`, "model-result");
   } catch (err) {
     show("err", err.message, "model-result");
   } finally {
-    refresh($("model-form"));
+    saving.delete(form);
+    refresh(form);
   }
 });
 
@@ -161,7 +167,8 @@ $("digest-form").addEventListener("submit", async (e) => {
   const saved = {...clean.get(form)};
   const lines = [];
   let failed = false;
-  $("save-digest").disabled = true;
+  saving.add(form);
+  refresh(form);
   if (morning !== saved.morning || evening !== saved.evening) {
     const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
     try {
@@ -183,25 +190,29 @@ $("digest-form").addEventListener("submit", async (e) => {
       lines.push(`Featured sections not saved: ${err.message || err}`);
     }
   }
-  clean.set(form, saved);
+  saving.delete(form);
+  markClean(form, saved);
   show(failed ? "err" : "ok", lines.join("\n"), "digest-result");
-  refresh(form);
 });
 
 $("notify-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  $("save-notify").disabled = true;
+  const form = $("notify-form"), field = $("discord-webhook");
+  const url = field.value, sent = snapshot(form);
+  saving.add(form);
+  refresh(form);
   try {
-    const url = $("discord-webhook").value;
     const data = await post("/api/settings/notify", {discord_webhook_url: url});
     state.notify_webhook = data.discord_webhook_url;
-    $("discord-webhook").value = data.discord_webhook_url;
-    markClean($("notify-form"));
+    // The stored value comes back masked; an edit typed meanwhile is kept.
+    if (field.value === url) field.value = data.discord_webhook_url;
+    markClean(form, {...sent, "discord-webhook": data.discord_webhook_url});
     show("ok", `${data.detail} ${data.note}`, "notify-result");
   } catch (err) {
     show("err", err.message, "notify-result");
   } finally {
-    refresh($("notify-form"));
+    saving.delete(form);
+    refresh(form);
   }
 });
 

@@ -286,6 +286,52 @@ window.fetch = async (input, init) => {{
 """
 
 
+def hold_post(path: str) -> str:
+    """A preload that counts the page's POSTs to `path` and holds each until `__release()`."""
+    return answer_post(
+        path,
+        """(window.__posts = (window.__posts || 0) + 1, new Promise((resolve) => {
+          window.__release = () => resolve(realFetch(input, init));
+        }))""",
+    )
+
+
+EDITED_WEBHOOK = "https://discord.com/api/webhooks/7/EDITEDTOKEN"
+
+# Per settings form: the POST its Save sends, a change that makes it dirty, and
+# a second change typed while that save is in flight.
+IN_FLIGHT = {
+    "model": (
+        "/api/settings",
+        """$('input[value="anthropic"]').click();""",
+        """setValue($("#model-input"), "edited-model");""",
+    ),
+    "digest": (
+        "/api/settings/digest",
+        """setValue($("#max-featured"), "7");""",
+        """setValue($("#max-featured"), "8");""",
+    ),
+    "notifications": (
+        "/api/settings/notify",
+        f"""setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});""",
+        f"""setValue($("#discord-webhook"), {json.dumps(EDITED_WEBHOOK)});""",
+    ),
+}
+
+
+def _save_edit_during(tab: str) -> str:
+    """Act: change the form, press Save, then edit and press Save again while it is held."""
+    _, change, edit = IN_FLIGHT[tab]
+    return f"""
+await settingsLoaded();
+{change}
+saveOf("{tab}").click();
+await waitFor(() => window.__release, "the held save");
+{edit}
+saveOf("{tab}").click();
+"""
+
+
 def _calls(wanted: list[dict]) -> Callable[[Fixture], str | None]:
     """A receipt: the settings store received exactly these writes, in order."""
 
@@ -971,6 +1017,61 @@ CHECKS: list[Check] = [
         """,
         sabotage="""noticeOf("digest").classList.remove("err");""",
         receipt=_calls([{"digest.max_featured": 7}]),
+    ),
+    *(
+        Check(
+            id=f"save-held-in-flight-{tab}",
+            fixture="writable",
+            path=f"/settings#{tab}",
+            preload=hold_post(path),
+            act=_save_edit_during(tab) + "await sleep(100);",
+            script=f"""
+                expect(saveOf("{tab}").disabled, "Save came back while the save was in flight");
+                expect(window.__posts === 1, `POSTs: ${{window.__posts}}`);
+                const notice = noticeOf("model");
+                expect("{tab}" !== "model" || (visible(notice)
+                  && notice.textContent === "Checking with the provider…"),
+                  `the model notice: ${{visible(notice) && notice.textContent}}`);
+            """,
+            sabotage=f"""saveOf("{tab}").disabled = false;""",
+        )
+        for tab, (path, _, _) in IN_FLIGHT.items()
+    ),
+    *(
+        Check(
+            id=f"edit-during-save-stays-dirty-{tab}",
+            fixture="writable",
+            path=f"/settings#{tab}",
+            preload=hold_post(IN_FLIGHT[tab][0]),
+            act=_save_edit_during(tab)
+            + f"""
+                window.__release();
+                await waitFor(() => visible(noticeOf("{tab}"))
+                  && !noticeOf("{tab}").textContent.startsWith("Checking"), "the answer");
+            """,
+            script=f"""
+                const value = {json.dumps(field)}, wanted = {json.dumps(typed)};
+                expect($(value).value === wanted, `field: ${{$(value).value}}`);
+                expect(!saveOf("{tab}").disabled, "the edit made during the save looks saved");
+                expect(navOf("{tab}").classList.contains("dirty"), "no dirty mark");
+            """,
+            sabotage=f"""markClean(saveOf("{tab}").form);""",
+            receipt=_last_call(stored),
+        )
+        for tab, field, typed, stored in (
+            (
+                "model",
+                "#model-input",
+                "edited-model",
+                {"llm_provider.provider": "anthropic", "llm_provider.model": ""},
+            ),
+            (
+                "notifications",
+                "#discord-webhook",
+                EDITED_WEBHOOK,
+                {"notify.discord_webhook_url": NEW_WEBHOOK},
+            ),
+        )
     ),
     Check(
         id="retire-arms",
