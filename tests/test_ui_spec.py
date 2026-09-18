@@ -474,7 +474,8 @@ async def test_no_settings_element_is_a_category_hash_target(triage: TestClient)
 async def test_a_hidden_settings_field_stays_hidden_whatever_its_display(
     triage: TestClient,
 ) -> None:
-    rules = parse_style_block(await _served(triage, "/settings"))
+    assert await _stylesheet_hrefs(triage, "/settings") == ["/static/style.css"]
+    rules = await _served_rules(triage, "/static/style.css")
     assert rules["[hidden]"] == {"display: none !important"}
 
 
