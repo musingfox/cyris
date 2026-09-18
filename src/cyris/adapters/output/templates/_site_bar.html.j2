@@ -2,8 +2,8 @@
         <div class="site-bar-inner">
             <a class="brand" href="index.html"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></a>
             <nav class="site-nav" aria-label="Site">
-                <a class="label" href="index.html" aria-current="page">Archive</a>
-                <span class="label settings-link"><a href="/settings">Settings</a></span>
+                <a class="label" href="index.html"{% if current is not defined or current == "archive" %} aria-current="page"{% endif %}>Archive</a>
+                <span class="label settings-link"><a href="/settings"{% if current == "settings" %} aria-current="page"{% endif %}>Settings</a></span>
             </nav>
         </div>
     </header>

@@ -934,6 +934,40 @@ def test_every_page_opens_with_the_site_bar(tmp_path, page):
     assert 'class="brand-name">CYRIS<' in bar
 
 
+# The partial's output before it took a `current` parameter, line for line.
+SITE_BAR_ON_THE_ARCHIVE = "\n".join(
+    [
+        '    <header class="site-bar">',
+        '        <div class="site-bar-inner">',
+        '            <a class="brand" href="index.html"><span class="brand-mark"></span>'
+        '<span class="brand-name">CYRIS</span></a>',
+        '            <nav class="site-nav" aria-label="Site">',
+        '                <a class="label" href="index.html" aria-current="page">Archive</a>',
+        '                <span class="label settings-link"><a href="/settings">Settings</a></span>',
+        "            </nav>",
+        "        </div>",
+        "    </header>",
+    ]
+)
+
+
+def test_the_site_bar_marks_the_archive_unless_told_otherwise(tmp_path):
+    bar = HtmlDigestWriter(tmp_path).env.get_template("_site_bar.html.j2").render()
+
+    assert bar == SITE_BAR_ON_THE_ARCHIVE
+
+
+def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):
+    env = HtmlDigestWriter(tmp_path).env
+    wrapper = '{% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}'
+
+    bar = env.from_string(wrapper).render()
+
+    assert '<a href="/settings" aria-current="page">Settings</a>' in bar
+    assert '<a class="label" href="index.html">Archive</a>' in bar
+    assert bar.count("aria-current") == 1
+
+
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])
 def test_the_site_bar_has_no_triage(tmp_path, page):
     """The deck is retiring (spec section 5), and /triage is a 404 in production."""
