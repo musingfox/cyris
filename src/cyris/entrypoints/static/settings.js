@@ -18,7 +18,8 @@ function route() {
   });
   window.scrollTo(0, 0);
   const active = document.querySelector(".settings-nav a[aria-current]");
-  active.parentElement.scrollLeft = active.offsetLeft - 16;
+  const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--s-4"));
+  active.parentElement.scrollLeft = active.offsetLeft - gutter;
 }
 
 addEventListener("hashchange", route);

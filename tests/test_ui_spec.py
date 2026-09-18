@@ -381,6 +381,21 @@ async def test_every_settings_scroll_asks_for_the_reduced_motion_preference(
     assert _motion_without_preference(script) == []
 
 
+def _literal_scroll_offsets(script: str) -> list[str]:
+    """Name each line that scrolls by a pixel count written into the script (§1.6)."""
+    return [line.strip() for line in script.splitlines() if re.search(r"\bscroll\w*\s*=.*\d", line)]
+
+
+def test_a_literal_scroll_offset_is_reported() -> None:
+    planted = "nav.scrollLeft = link.offsetLeft - 16;"
+    assert _literal_scroll_offsets(planted) == [planted]
+    assert _literal_scroll_offsets("nav.scrollLeft = link.offsetLeft - gutter;") == []
+
+
+async def test_settings_scrolls_by_the_spacing_tokens(triage: TestClient) -> None:
+    assert _literal_scroll_offsets(await _served(triage, "/static/settings.js")) == []
+
+
 def _uses_confirm(script: str) -> bool:
     return re.search(r"\bconfirm\(", script) is not None
 
