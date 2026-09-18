@@ -3,6 +3,7 @@
 import functools
 import re
 from collections.abc import AsyncIterator
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -715,6 +716,52 @@ def test_the_settings_page_scales_its_text_without_a_body_gutter() -> None:
     body = parse_style_block(_source("settings"))["body"]
     assert "font-size: calc(16px * var(--type-scale))" in body
     assert [d for d in body if d.startswith("padding")] == []
+
+
+class _VisibleSmallText(HTMLParser):
+    """The text of every small paragraph a reader sees without opening a `details`."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.texts: list[str] = []
+        self._details = 0
+        self._text: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "details":
+            self._details += 1
+        elif tag == "p" and ("class", "small") in attrs and not self._details:
+            self._text = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "details":
+            self._details -= 1
+        elif tag == "p" and self._text is not None:
+            self.texts.append("".join(self._text).strip())
+            self._text = None
+
+    def handle_data(self, data: str) -> None:
+        if self._text is not None:
+            self._text.append(data)
+
+
+def _longer_than_a_sentence(html: str) -> list[str]:
+    parser = _VisibleSmallText()
+    parser.feed(html)
+    return [text for text in parser.texts if len(re.findall(r"[.!?](?:\s|$)", text)) > 1]
+
+
+def test_a_second_visible_sentence_is_reported() -> None:
+    planted = (
+        '<p class="small">One. Two.</p><p class="small">Three.</p>'
+        '<details class="more"><summary>More</summary><p class="small">Four. Five.</p></details>'
+    )
+    assert _longer_than_a_sentence(planted) == ["One. Two."]
+
+
+def test_settings_says_one_sentence_in_view_and_folds_the_rest() -> None:
+    """§4 and §6: one small sentence under a heading or field, the rest under More."""
+    assert _longer_than_a_sentence(_source("settings")) == []
 
 
 def test_a_settings_source_name_takes_the_title_role() -> None:

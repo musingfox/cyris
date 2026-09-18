@@ -72,7 +72,7 @@
         <form class="tab" data-tab="model" id="form" novalidate hidden>
           <div class="tab-head">
             <h2 class="heading">Model</h2>
-            <p class="small">The LLM that scores, filters and summarizes. A change applies from the next run.</p>
+            <p class="small">The LLM the next run scores, filters and summarizes with.</p>
           </div>
           <div class="form">
             <div class="field">
@@ -127,8 +127,8 @@
             <div class="field">
               <label class="label" for="discord-webhook">Discord webhook</label>
               <input class="input" id="discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
-              <p class="small">To change it, paste the whole URL. It is saved only after Discord confirms it exists.</p>
-              <details class="more"><summary>More</summary><p class="small">A stored webhook shows with its token masked, and the masked value cannot be resubmitted. When empty here, a run still uses the <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: to stop them, remove that Worker secret and any <code>[notify]</code> value.</p></details>
+              <p class="small">To change it, paste the whole URL.</p>
+              <details class="more"><summary>More</summary><p class="small">It is saved only after Discord confirms it exists. A stored webhook shows with its token masked, and the masked value cannot be resubmitted. When empty here, a run still uses the <code>[notify]</code> value in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: to stop them, remove that Worker secret and any <code>[notify]</code> value.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-notify" disabled>Save</button>
@@ -140,7 +140,7 @@
         <div class="tab" data-tab="sources" hidden>
           <div class="tab-head">
             <h2 class="heading">Sources</h2>
-            <p class="small">Feeds and newsletter senders. A change applies from the next run.</p>
+            <p class="small">The feeds and newsletter senders the next run reads.</p>
             <p class="small" id="sources-origin"></p>
           </div>
           <div class="toolbar">
@@ -180,7 +180,8 @@
         </div>
         <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text" autocomplete="off"></div>
         <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@letter.com" autocomplete="off">
-          <p class="small">Maps a sender to this source. Email routing itself stays in the Cloudflare dashboard.</p></div>
+          <p class="small">Maps a sender to this source.</p>
+          <details class="more"><summary>More</summary><p class="small">Email routing itself stays in the Cloudflare dashboard.</p></details></div>
         <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text" autocomplete="off"></div>
         <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" type="text" placeholder="comma separated" autocomplete="off"></div>
       </div>
