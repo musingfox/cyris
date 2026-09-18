@@ -511,6 +511,7 @@ EXPECTED_IDS = {
     "model-notice-ok",
     "notify-notice-masked",
     "source-notice-beside-save",
+    "source-notice-outside-filter",
     "settings-load-failure",
     "sources-load-failure",
     "digest-posts-featured-only",

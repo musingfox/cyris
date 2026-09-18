@@ -345,13 +345,17 @@ function loaded(d) {
   renderSources();
 }
 
+function pressFilter(value) {
+  filter = value;
+  document.querySelectorAll("[data-filter]").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.filter === value));
+  });
+}
+
 document.querySelectorAll("[data-filter]").forEach((button) => {
   button.addEventListener("click", () => {
-    filter = button.dataset.filter;
+    pressFilter(button.dataset.filter);
     openName = null;
-    document.querySelectorAll("[data-filter]").forEach((b) => {
-      b.setAttribute("aria-pressed", String(b === button));
-    });
     renderSources();
   });
 });
@@ -411,10 +415,14 @@ async function saveSource(ed, button) {
     tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
   }, button);
   if (!data) return;
+  // A source saved out of the active filter would lose its row, and the result
+  // beside its Save with it.
+  if (filter !== "all" && filter !== type) pressFilter("all");
   openName = data.name;
   await loadSources();
   const reopened = document.querySelector("tr.editor");
-  if (reopened) show("ok", `${data.name} saved. ${data.note}`, reopened.querySelector(".notice"));
+  show("ok", `${data.name} saved. ${data.note}`,
+       reopened ? reopened.querySelector(".notice") : "sources-notice");
 }
 
 const loadSources = () =>

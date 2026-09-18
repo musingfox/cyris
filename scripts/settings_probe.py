@@ -844,6 +844,30 @@ CHECKS: list[Check] = [
         sabotage="""editor().remove();""",
     ),
     Check(
+        id="source-notice-outside-filter",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await sourcesLoaded();
+            $('[data-filter="rss"]').click();
+            await openRow("Hacker News");
+            $('[data-type="newsletter"]', editor()).click();
+            setValue($("#e-email", editor()), "from:hn@example.com");
+            editorAct("save").click();
+            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+        """,
+        script="""
+            expect(rowOf("Hacker News").nextElementSibling === editor(), "not under its row");
+            const text = editorAct("save").parentElement.querySelector(".notice").textContent;
+            expect(text === "Hacker News saved. Effective next run.", `notice: ${text}`);
+            const all = $('[data-filter="all"]').getAttribute("aria-pressed");
+            expect(all === "true", "the filter still hides the saved source");
+        """,
+        # The filter the save left behind: pressing it closes the editor.
+        sabotage="""$('[data-filter="rss"]').click();""",
+        receipt=_stored("Hacker News", type="newsletter", email_match="from:hn@example.com"),
+    ),
+    Check(
         id="settings-load-failure",
         fixture="writable",
         path="/settings",
