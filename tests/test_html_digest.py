@@ -199,6 +199,8 @@ def test_render_index_empty(tmp_path):
     assert ">Digest</a>" not in html
     assert not re.search(r'href="\d{4}-', html)
     assert "No digests yet" in html
+    assert "<code>cyris run</code>" in html
+    assert "cyris digest" not in html
 
 
 def test_render_index_ignores_non_digests(tmp_path):
