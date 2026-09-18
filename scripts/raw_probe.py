@@ -167,6 +167,8 @@ def with_votes(*slugs: str) -> str:
 # fresh as its port, so every check starts from a browser that has voted nothing.
 FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
 
+REDUCED_MOTION = (("prefers-reduced-motion", "reduce"),)
+
 RAW_PRELUDE = (
     base_prelude()
     + """
@@ -602,6 +604,21 @@ window.fetch = (input, init) => init && init.method === "POST"
         """,
         sabotage="""$("#t-card").style.pointerEvents = "none";""",
         receipt=_posted(),
+    ),
+    Check(
+        id="reduced-motion-still",
+        fixture="signed-in",
+        path=PAGE,
+        media=REDUCED_MOTION,
+        act="""await showView("triage");""",
+        gestures=({"press": "#t-card", "pointer": "mouse"}, {"move": 200}),
+        script="""
+            const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+            expect(reduced, "the browser does not ask for reduced motion");
+            const moved = getComputedStyle($("#t-card")).transform;
+            expect(moved === "none", `the card moved: ${moved}`);
+        """,
+        sabotage="""dropRule(".card", "(prefers-reduced-motion: reduce)");""",
     ),
 ]
 

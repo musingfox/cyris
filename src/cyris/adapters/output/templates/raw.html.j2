@@ -68,6 +68,9 @@
         .card h2 { font-weight: 600; font-size: calc(30px * var(--type-scale)); line-height: 1.3; letter-spacing: -.015em; text-wrap: balance; }
         .deck-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
         .deck-actions .btn { justify-content: center; height: 56px; }
+        @media (prefers-reduced-motion: reduce) {
+            .card { transform: none !important; }
+        }
 
         {% with layout="block", justify=false, align_center=false, margin_top="48px",
                   padding_top="20px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}

@@ -661,6 +661,12 @@ def test_the_triage_card_is_the_prototype_card() -> None:
     assert "max-width: 600px" in raw[".deck-wrap"]
 
 
+def test_the_triage_card_stays_still_under_reduced_motion() -> None:
+    raw = _parsed("raw")
+    assert raw["@media (prefers-reduced-motion: reduce) | .card"] == {"transform: none !important"}
+    assert raw[REDUCED_MOTION] == STILL
+
+
 def test_the_card_transform_is_the_only_one_the_raw_page_needs_let_through() -> None:
     assert off_spec_transitions(_source("raw")) == [
         ".card | transition: border-color var(--t-fast), transform var(--t-fast)"

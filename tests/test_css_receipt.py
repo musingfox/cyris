@@ -704,6 +704,7 @@ EXPECTED_RAW_IDS = {
     "lean-down-drag",
     "lean-button-hover",
     "tap-opens-article",
+    "reduced-motion-still",
 }
 
 PENDING_TWO_UP = {
