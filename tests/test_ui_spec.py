@@ -28,7 +28,6 @@ from css_rules import (
 
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.adapters.store.article_store import ArticleStore
 from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
 STYLE = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"
@@ -80,8 +79,8 @@ def _focus_problems(html: str) -> list[str]:
 
 
 @pytest.fixture
-async def triage(tmp_path: Path) -> AsyncIterator[TestClient]:
-    client = TestClient(TestServer(TriageServer(ArticleStore(tmp_path))._app))
+async def triage() -> AsyncIterator[TestClient]:
+    client = TestClient(TestServer(TriageServer()._app))
     await client.start_server()
     yield client
     await client.close()

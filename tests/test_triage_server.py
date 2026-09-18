@@ -1,6 +1,5 @@
 """Tests for triage web server API endpoints."""
 
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -8,70 +7,32 @@ from aiohttp.test_utils import TestClient, TestServer
 from fakes import SqliteD1
 
 from cyris.adapters.store.article_store import ArticleStore
-from cyris.adapters.store.d1_store import D1ArticleStore
-from cyris.domain.models import Article, Tier
 from cyris.entrypoints.triage_server import TriageServer
 
 
-@pytest.fixture(params=["json", "d1"])
-def store_with_articles(request, tmp_path: Path):
-    """A store with scored pending articles, once per backend.
-
-    The triage UI is the knowledge gate and the only source of real-human
-    training signal, so it has to work identically on both.
-    """
-    store = ArticleStore(tmp_path) if request.param == "json" else D1ArticleStore(SqliteD1())
-    now = datetime.now(UTC)
-    articles = [
-        Article(
-            id=1,
-            title="High Score Chinese",
-            url="https://example.com/1",
-            content="這是一篇高分中文文章，內容非常豐富且深入探討了人工智慧的最新發展",
-            published_at=now,
-            source_name="iThome",
-            source_tier=Tier.SUMMARIZE,
-        ),
-        Article(
-            id=2,
-            title="High Score English",
-            url="https://example.com/2",
-            content="A high-quality English article about cloud computing trends",
-            published_at=now,
-            source_name="TechCrunch",
-            source_tier=Tier.FILTER,
-            source_tags=["tech"],
-        ),
-        Article(
-            id=3,
-            title="Low Score Article",
-            url="https://example.com/3",
-            content="Short filler content",
-            published_at=now,
-            source_name="Random Blog",
-            source_tier=Tier.FILTER,
-        ),
-    ]
-    store.save(articles, now=now)
-    store.update_scores(
-        {
-            "https://example.com/1": (85.0, "zh"),
-            "https://example.com/2": (85.0, "en"),
-            "https://example.com/3": (30.0, "en"),
-        }
-    )
-    return store
-
-
 @pytest.fixture
-async def client(store_with_articles: ArticleStore) -> TestClient:
-    """Create an aiohttp test client for the triage server."""
-    server = TriageServer(store_with_articles)
+async def client() -> TestClient:
+    """Create an aiohttp test client for the settings server."""
+    server = TriageServer()
     test_server = TestServer(server._app)
     test_client = TestClient(test_server)
     await test_client.start_server()
     yield test_client
     await test_client.close()
+
+
+class TestNoArticleStore:
+    async def test_the_server_starts_with_no_argument(self) -> None:
+        test_client = TestClient(TestServer(TriageServer()._app))
+        await test_client.start_server()
+        try:
+            assert (await test_client.get("/settings")).status == 200
+        finally:
+            await test_client.close()
+
+    def test_a_positional_argument_is_refused(self, tmp_path: Path) -> None:
+        with pytest.raises(TypeError):
+            TriageServer(ArticleStore(tmp_path))
 
 
 class TestTheDeckIsNotServed:
@@ -137,11 +98,10 @@ class TestBuildEndpoint:
 class TestSourcesEndpoint:
     """The settings page's source list and its write surface (§7 #15)."""
 
-    async def test_lists_sources_with_origin(self, store_with_articles: ArticleStore) -> None:
+    async def test_lists_sources_with_origin(self) -> None:
         from cyris.domain.models import SourceConfig, Tier
 
         server = TriageServer(
-            store_with_articles,
             sources={
                 "feed": SourceConfig(name="feed", url="https://e.com/rss", tier=Tier.SUMMARIZE),
                 "letter": SourceConfig(
@@ -177,12 +137,11 @@ class TestSourcesWriteSurface:
     """§7 #15: add, retire and re-tier a source over the existing D1 row."""
 
     @pytest.fixture
-    async def client(self, store_with_articles: ArticleStore) -> TestClient:
+    async def client(self) -> TestClient:
         from cyris.adapters.store.source_store import D1SourceStore
         from cyris.domain.models import SourceConfig
 
         server = TriageServer(
-            store_with_articles,
             sources={"From File": SourceConfig(name="From File", url="https://file.test/feed")},
             sources_origin="sources.yaml",
             source_store=D1SourceStore(SqliteD1()),

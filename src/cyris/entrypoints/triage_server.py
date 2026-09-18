@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from cyris.adapters.output import html_digest
 from cyris.diagnostics.doctor import probe_discord
 from cyris.domain.models import SourceConfig
-from cyris.service_layer.ports import ArticleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ class TriageServer:
 
     def __init__(
         self,
-        store: ArticleRepository,
+        *,
         host: str = "127.0.0.1",
         port: int = 8766,
         settings=None,
@@ -55,7 +54,6 @@ class TriageServer:
         source_store=None,
         notify_webhook: str = "",
     ) -> None:
-        self._store = store
         self._host = host
         self._port = port
         # Without a settings store the page still renders, read-only: a

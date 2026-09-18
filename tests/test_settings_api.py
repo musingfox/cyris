@@ -22,15 +22,10 @@ def settings():
     return FakeSettings()
 
 
-class FakeStore:
-    """The settings routes never touch the store."""
-
-
 async def _client(
     settings=None, llm_provider=None, schedule=None, max_featured=5, notify_webhook=""
 ):
     server = TriageServer(
-        FakeStore(),
         settings=settings,
         llm_provider=llm_provider,
         schedule=schedule,

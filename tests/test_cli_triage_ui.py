@@ -70,6 +70,19 @@ def test_startup_names_only_the_settings_url(config: tuple[Path, Path]) -> None:
     assert "Triage UI:" not in result.output
 
 
+def test_the_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypatch) -> None:
+    def refuse(*args, **kwargs):
+        raise AssertionError("ui role opened an article store")
+
+    monkeypatch.setattr("cyris.bootstrap.build_store", refuse)
+    result = _run(config)
+    assert result.exit_code == 0, result.output
+    [(args, kwargs)] = FakeServer.calls
+    assert args == ()
+    assert kwargs["sources_origin"] == "sources.yaml"
+    assert kwargs["source_store"] is None
+
+
 def test_help_describes_the_settings_server() -> None:
     result = runner.invoke(app, ["triage-ui", "--help"])
     assert result.exit_code == 0

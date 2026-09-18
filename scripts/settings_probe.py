@@ -84,10 +84,6 @@ class FakeSourceStore:
         self.sources.update(sources)
 
 
-class _NoArticles:
-    """The settings routes never touch the article store."""
-
-
 def _seed_sources() -> dict[str, SourceConfig]:
     listed = [
         SourceConfig(
@@ -138,12 +134,12 @@ def build_fixture(kind: str) -> Fixture:
         "sources_origin": "sources.yaml",
     }
     if kind == "readonly":
-        server = TriageServer(_NoArticles(), **common)
+        server = TriageServer(**common)
         return Fixture(server._app, None, server._sources)
     if kind == "writable":
         settings = FakeSettings()
         store = FakeSourceStore(_seed_sources())
-        server = TriageServer(_NoArticles(), settings=settings, source_store=store, **common)
+        server = TriageServer(settings=settings, source_store=store, **common)
         return Fixture(server._app, settings, store.sources)
     raise ValueError(f"unknown fixture {kind!r}")
 

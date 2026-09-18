@@ -550,7 +550,7 @@ def triage_ui(
     _setup_logging(verbose)
 
     from cyris.adapters.store.source_store import D1SourceStore
-    from cyris.bootstrap import build_d1_client, build_settings, build_store, load_effective_config
+    from cyris.bootstrap import build_d1_client, build_settings, load_effective_config
     from cyris.entrypoints.triage_server import TriageServer
 
     try:
@@ -559,12 +559,10 @@ def triage_ui(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    store = build_store(cfg)
     d1 = build_d1_client(cfg)
 
     async def _run() -> None:
         server = TriageServer(
-            store,
             host=host,
             port=port,
             settings=build_settings(cfg),
