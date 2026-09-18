@@ -284,6 +284,37 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$('.settings-nav a[aria-current]').removeAttribute("aria-current");""",
     ),
+    Check(
+        id="model-readiness",
+        fixture="writable",
+        path="/settings#model",
+        act="await providersLoaded();",
+        script="""
+            const gemini = choice("gemini"), openai = choice("openai");
+            const state = (row) => $(".label", row).textContent.trim();
+            expect(state(gemini) === "Key ready", `gemini: ${state(gemini)}`);
+            expect(!$("input", gemini).disabled && $("input", gemini).checked, "gemini unchosen");
+            expect(state(openai) === "OPENAI_API_KEY missing", `openai: ${state(openai)}`);
+            expect(openai.classList.contains("unavailable"), "openai is not unavailable");
+            expect($("input", openai).disabled, "openai can be chosen");
+        """,
+        sabotage="""$('input[value="openai"]').disabled = false;""",
+    ),
+    Check(
+        id="model-placeholder",
+        fixture="writable",
+        path="/settings#model",
+        act="""
+            await providersLoaded();
+            const answer = await (await fetch("/api/settings")).json();
+            ctx.fallback = answer.providers.find((p) => p.name === "gemini").default_model;
+        """,
+        script="""
+            const placeholder = $("#model-input").placeholder;
+            expect(placeholder === `Empty uses ${ctx.fallback}`, `placeholder: ${placeholder}`);
+        """,
+        sabotage="""$("#model-input").placeholder = "";""",
+    ),
 ]
 
 PRELUDE = """
@@ -309,6 +340,8 @@ const panels = () => $$(".tab").filter(visible).map((panel) => panel.dataset.tab
 const currentTabs = () =>
   $$(".settings-nav a[aria-current]").map((link) => link.getAttribute("href"));
 const same = (actual, wanted) => JSON.stringify(actual) === JSON.stringify(wanted);
+const choice = (name) => $(`input[name=provider][value="${name}"]`).closest("label.choice");
+const providersLoaded = () => waitFor(() => $$("input[name=provider]").length, "providers");
 const ctx = {};
 """
 

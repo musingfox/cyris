@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 let state = null;
 
 const TABS = ["model", "digest", "notifications", "sources"];
@@ -25,12 +26,14 @@ route();
 
 function render() {
   $("providers").innerHTML = state.providers.map((p) => `
-    <label class="provider ${p.configured ? "" : "unavailable"}">
-      <input type="radio" name="provider" value="${p.name}"
+    <label class="choice${p.configured ? "" : " unavailable"}">
+      <input type="radio" name="provider" value="${esc(p.name)}"
              ${p.name === state.provider ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
-      <span>${p.name}</span>
-      <span class="env">${p.configured ? "key ready" : `${p.env_var} missing`}</span>
+      <span class="name">${esc(p.name)}</span>
+      ${p.configured
+        ? `<span class="label">Key ready</span>`
+        : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
     </label>`).join("");
   $("model-input").value = state.model;
   updateHint();
@@ -55,8 +58,9 @@ function chosen() {
 
 function updateHint() {
   const p = chosen();
+  $("model-input").placeholder = p ? `Empty uses ${p.default_model}` : "";
   $("model-hint").textContent = p
-    ? `Empty uses ${p.default_model}. Saving checks the model against ${p.name} with a real call first — a typo is rejected here rather than at 08:00 tomorrow.`
+    ? `Saving checks the model against ${p.name} with a real call first — a typo is rejected here rather than at 08:00 tomorrow.`
     : "Pick a provider whose key is present.";
 }
 
@@ -147,8 +151,6 @@ $("notify-form").addEventListener("submit", async (e) => {
     $("save-notify").disabled = false;
   }
 });
-
-const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 let sources = [];
 

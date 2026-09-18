@@ -486,6 +486,8 @@ EXPECTED_IDS = {
     "hash-refresh",
     "hash-default",
     "hash-nav-click",
+    "model-readiness",
+    "model-placeholder",
 }
 
 
