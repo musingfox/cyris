@@ -114,32 +114,24 @@ $("form").addEventListener("submit", async (e) => {
   $("save").disabled = true;
   show("ok", "Checking with the provider…");
   try {
-    const res = await fetch("/api/settings", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({provider: p.name, model: $("model-input").value.trim()}),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      state.provider = data.provider;
-      state.model = data.model;
-      markClean($("form"));
-      show("ok", `${data.detail}\n${data.note}`);
-    } else {
-      show("err", data.error || `HTTP ${res.status}`);
-    }
+    const model = $("model-input").value.trim();
+    const data = await post("/api/settings", {provider: p.name, model});
+    state.provider = data.provider;
+    state.model = data.model;
+    markClean($("form"));
+    show("ok", `${data.detail}\n${data.note}`);
   } catch (err) {
-    show("err", String(err));
+    show("err", err.message);
   } finally {
     refresh($("form"));
   }
 });
 
-async function post(url, body) {
+async function post(url, body, method = "POST") {
   const res = await fetch(url, {
-    method: "POST",
+    method,
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json();
   return data.ok ? data : Promise.reject(new Error(data.error || `HTTP ${res.status}`));
@@ -186,22 +178,14 @@ $("notify-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   $("save-notify").disabled = true;
   try {
-    const res = await fetch("/api/settings/notify", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({discord_webhook_url: $("discord-webhook").value}),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      state.notify_webhook = data.discord_webhook_url;
-      $("discord-webhook").value = data.discord_webhook_url;
-      markClean($("notify-form"));
-      show("ok", `${data.detail} ${data.note}`, "notify-result");
-    } else {
-      show("err", data.error || `HTTP ${res.status}`, "notify-result");
-    }
+    const url = $("discord-webhook").value;
+    const data = await post("/api/settings/notify", {discord_webhook_url: url});
+    state.notify_webhook = data.discord_webhook_url;
+    $("discord-webhook").value = data.discord_webhook_url;
+    markClean($("notify-form"));
+    show("ok", `${data.detail} ${data.note}`, "notify-result");
   } catch (err) {
-    show("err", String(err), "notify-result");
+    show("err", err.message, "notify-result");
   } finally {
     refresh($("notify-form"));
   }
@@ -382,16 +366,9 @@ async function writeSource(url, method, body, button) {
   const notice = button.parentElement.querySelector(".notice");
   button.disabled = true;
   try {
-    const res = await fetch(url, {
-      method,
-      headers: {"Content-Type": "application/json"},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await res.json();
-    if (data.ok) return data;
-    show("err", data.error || `HTTP ${res.status}`, notice);
+    return await post(url, body, method);
   } catch (err) {
-    show("err", String(err), notice);
+    show("err", err.message, notice);
   }
   button.disabled = false;
   return null;
