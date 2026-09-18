@@ -96,10 +96,11 @@
 </head>
 <body>
     {% include "_site_bar.html.j2" %}
+    {% with view="raw" %}{% include "_issue_bar.html.j2" %}{% endwith %}
     <div class="container">
         <header class="masthead">
             <h1>This run's <em>verdicts</em>, plus pending</h1>
-            <div class="subtitle">{{ date }} · {{ period | upper }} · {{ total }} articles · {{ groups | length }} sources</div>
+            <div class="subtitle">{{ total }} articles · {{ groups | length }} sources</div>
         </header>
 
         {% for group in groups %}

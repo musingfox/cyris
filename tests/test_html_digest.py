@@ -949,3 +949,49 @@ def test_the_old_masthead_brand_and_meta_strip_are_gone(tmp_path):
     assert ".meta-strip" not in parse_style_block(pages["digest"])
     for html in pages.values():
         assert "<strong>CYRIS</strong> // " not in html
+
+
+def test_the_digest_switches_to_its_raw_page_from_the_issue_bar(tmp_path):
+    digest = _issue_pages(tmp_path)["digest"]
+
+    assert '<span class="data">2026-04-15</span><span class="label">evening</span>' in digest
+    assert '<a href="2026-04-15-evening.html" aria-current="page">Digest</a>' in digest
+    assert '<a href="2026-04-15-evening-raw.html">All articles</a>' in digest
+
+
+def test_the_raw_page_switches_back_to_its_digest_from_the_issue_bar(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+
+    assert '<span class="data">2026-04-15</span><span class="label">evening</span>' in raw
+    assert '<a href="2026-04-15-evening.html">Digest</a>' in raw
+    assert '<a href="2026-04-15-evening-raw.html" aria-current="page">All articles</a>' in raw
+
+
+def test_the_issue_bar_sits_under_the_site_bar_on_issue_pages_only(tmp_path):
+    pages = _issue_pages(tmp_path)
+
+    for page in ("digest", "raw"):
+        html = pages[page]
+        assert (
+            html.index('class="site-bar"')
+            < html.index('class="issue-bar"')
+            < html.index('class="container"')
+        ), page
+    assert 'class="issue-bar"' not in pages["index"]
+
+
+@pytest.mark.parametrize("page", ["digest", "raw"])
+def test_an_issue_links_only_to_its_own_two_views(tmp_path, page):
+    """No previous or next issue (spec section 5): the reader reads today's issue."""
+    html = _issue_pages(tmp_path)[page]
+
+    dated = set(re.findall(r'href="(\d{4}-\d{2}-\d{2}-[^"]*\.html)"', html))
+    assert dated == {"2026-04-15-evening.html", "2026-04-15-evening-raw.html"}
+
+
+def test_the_raw_subtitle_leaves_date_and_period_to_the_issue_bar(tmp_path):
+    articles = [_stored(f"Article {n}", "Src") for n in range(3)]
+    raw = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "evening", articles)
+
+    assert "3 articles" in raw
+    assert "· EVENING ·" not in raw
