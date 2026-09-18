@@ -44,9 +44,16 @@ function markClean(form) {
   refresh(form);
 }
 
+// An edit makes the last result stale, so it goes; a deployment that cannot
+// save never tracks, and its explanation stays.
+function edited(form) {
+  if (clean.has(form)) form.querySelector(".notice").hidden = true;
+  refresh(form);
+}
+
 document.querySelectorAll("form.tab").forEach((form) => {
-  form.addEventListener("input", () => refresh(form));
-  form.addEventListener("change", () => refresh(form));
+  form.addEventListener("input", () => edited(form));
+  form.addEventListener("change", () => edited(form));
 });
 
 function render() {
@@ -260,8 +267,12 @@ function openEditor(name) {
   ed.querySelectorAll("[data-type]").forEach((b) => {
     b.addEventListener("click", () => { setType(b.dataset.type); refreshEditor(); });
   });
-  ed.addEventListener("input", refreshEditor);
-  ed.addEventListener("change", refreshEditor);
+  const edited = () => {
+    if (sourcesWritable) ed.querySelectorAll(".notice").forEach((n) => { n.hidden = true; });
+    refreshEditor();
+  };
+  ed.addEventListener("input", edited);
+  ed.addEventListener("change", edited);
   refreshEditor();
   retire.hidden = adding;
   q('[data-act="cancel"]').addEventListener("click", () => {

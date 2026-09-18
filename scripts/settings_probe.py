@@ -42,6 +42,7 @@ import aiohttp
 from aiohttp import web
 from css_computed import _devtools_port, _page_socket, find_browser
 
+from cyris.adapters.notify import mask_discord_webhook_url
 from cyris.config import LLMProviderConfig
 from cyris.diagnostics.doctor import Check as DoctorCheck
 from cyris.domain.models import SourceConfig, Tier
@@ -251,6 +252,26 @@ def _stored(name: str, **wanted) -> Callable[[Fixture], str | None]:
 
     return receipt
 
+
+def _last_call(wanted: dict) -> Callable[[Fixture], str | None]:
+    """A receipt: the settings store's last write was exactly `wanted`."""
+
+    def receipt(fixture: Fixture) -> str | None:
+        calls = fixture.settings.calls
+        return None if calls and calls[-1] == wanted else f"settings writes: {calls}"
+
+    return receipt
+
+
+NEW_WEBHOOK = "https://discord.com/api/webhooks/9/NEWTOKEN"
+NEW_WEBHOOK_MASKED = mask_discord_webhook_url(NEW_WEBHOOK)
+
+SAVE_FEATURED_7 = """
+await settingsLoaded();
+setValue($("#max-featured"), "7");
+saveOf("digest").click();
+await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled, "the save");
+"""
 
 CHECKS: list[Check] = [
     Check(
@@ -607,6 +628,111 @@ CHECKS: list[Check] = [
         sabotage_preload=rewrite_source_post('body.tags = ["ai", "", "tools"];'),
         receipt=_stored("Simon Willison", tags=["ai", "tools"], email_match=None, homepage=None),
     ),
+    Check(
+        id="notice-ok-beside-save",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_FEATURED_7,
+        script="""
+            const notice = noticeOf("digest");
+            expect(!notice.classList.contains("err"), `an error: ${notice.textContent}`);
+            expect(notice.textContent.includes("Featured sections: 7."), notice.textContent);
+            expect(notice.textContent.includes("Effective next digest."), notice.textContent);
+            expect(saveOf("digest").disabled, "the digest Save is still enabled");
+        """,
+        sabotage="""noticeOf("digest").classList.add("err");""",
+        receipt=_last_call({"digest.max_featured": 7}),
+    ),
+    Check(
+        id="notice-err-beside-save",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#morning"), "25");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the notice");
+        """,
+        script="""
+            const notice = noticeOf("digest"), text = notice.textContent.trim();
+            expect(notice.classList.contains("err"), `not an error: ${text}`);
+            expect(visible(notice) && text && text !== "HTTP 400", `notice: ${text}`);
+            expect(!saveOf("digest").disabled, "the digest Save was disabled");
+            expect(navOf("digest").classList.contains("dirty"), "Digest lost its dirty mark");
+        """,
+        sabotage="""noticeOf("digest").hidden = true;""",
+        receipt=lambda fixture: (
+            f"a schedule was stored: {fixture.settings.calls}"
+            if any("general.digest_schedule" in call for call in fixture.settings.calls)
+            else None
+        ),
+    ),
+    Check(
+        id="notice-hides-on-edit",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_FEATURED_7 + """setValue($("#max-featured"), "8");""",
+        script="""expect(!visible(noticeOf("digest")), "the old result is still shown");""",
+        sabotage="""noticeOf("digest").hidden = false;""",
+    ),
+    Check(
+        id="model-notice-ok",
+        fixture="writable",
+        path="/settings#model",
+        act="""
+            await settingsLoaded();
+            $('input[value="anthropic"]').click();
+            saveOf("model").click();
+            await waitFor(() => saveOf("model").disabled && !noticeOf("model").textContent
+              .startsWith("Checking"), "the provider's answer");
+        """,
+        script=f"""
+            const notice = noticeOf("model");
+            expect(!notice.classList.contains("err"), `an error: ${{notice.textContent}}`);
+            expect(notice.textContent.includes({json.dumps(OFFLINE_DETAIL)}), notice.textContent);
+        """,
+        sabotage="""noticeOf("model").classList.add("err");""",
+        receipt=_last_call({"llm_provider.provider": "anthropic", "llm_provider.model": ""}),
+    ),
+    Check(
+        id="notify-notice-masked",
+        fixture="writable",
+        path="/settings#notifications",
+        act=f"""
+            await settingsLoaded();
+            setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});
+            saveOf("notifications").click();
+            await waitFor(() => visible($("#notify-result")), "the notice");
+        """,
+        script=f"""
+            const notice = $("#notify-result"), field = $("#discord-webhook");
+            expect(!notice.classList.contains("err"), `an error: ${{notice.textContent}}`);
+            expect(field.value === {json.dumps(NEW_WEBHOOK_MASKED)}, `field: ${{field.value}}`);
+            expect(!document.body.textContent.includes("NEWTOKEN"), "the token is on the page");
+        """,
+        sabotage=f"""$("#discord-webhook").value = {json.dumps(NEW_WEBHOOK)};""",
+        receipt=_last_call({"notify.discord_webhook_url": NEW_WEBHOOK}),
+    ),
+    Check(
+        id="source-notice-beside-save",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+        """,
+        script="""
+            expect(rowOf("Hacker News").nextElementSibling === editor(), "not under its row");
+            const title = $(".editor-title", editor()).textContent;
+            expect(title === "Editing Hacker News", `heading: ${title}`);
+            const text = editorAct("save").parentElement.querySelector(".notice").textContent;
+            expect(text === "Hacker News saved. Effective next run.", `notice: ${text}`);
+            expect(editorAct("save").disabled, "Save source is still enabled");
+        """,
+        sabotage="""editor().remove();""",
+    ),
 ]
 
 PRELUDE = """
@@ -649,6 +775,7 @@ const openRow = async (name) => {
 };
 const shownFields = () =>
   $$("[data-for]", editor()).filter(visible).map((field) => $("input", field).id);
+const noticeOf = (tab) => $(".actions-line .notice", $(`form.tab[data-tab="${tab}"]`));
 const ctx = {};
 """
 

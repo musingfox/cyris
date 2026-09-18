@@ -503,6 +503,12 @@ EXPECTED_IDS = {
     "editor-type-fields",
     "source-save-nulls-hidden-fields",
     "source-save-tags",
+    "notice-ok-beside-save",
+    "notice-err-beside-save",
+    "notice-hides-on-edit",
+    "model-notice-ok",
+    "notify-notice-masked",
+    "source-notice-beside-save",
 }
 
 
