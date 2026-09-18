@@ -1,4 +1,12 @@
-"""CSS rule receipts and deterministic render fixtures for digest templates."""
+"""Shared helpers for the tests that hold the reader-facing CSS to the UI spec.
+
+It parses CSS from pages and stylesheets into comparable rules, reads the parts
+of ``docs/design/ui-language.md`` the tests check against (the section 2 tokens
+and colour exceptions), names what breaks the spec (colour literals, hand-written
+font stacks, unscaled font sizes, off-spec transitions, repeated component
+blocks), maps which CSS partials a page template includes, and renders the fixed
+index, digest and raw pages those checks read.
+"""
 
 import re
 from collections import Counter
@@ -371,6 +379,24 @@ def font_stack_literals(css_source: str) -> list[str]:
         for declaration in declarations:
             prop, value = (part.strip() for part in declaration.split(":", 1))
             if prop in {"font-family", "font"} and _FONT_NAME.search(value):
+                found.append(f"{key} | {declaration}")
+    return found
+
+
+_OFF_SPEC_MOTION = re.compile(r"(?<![\w-])(?:all|transform)(?![\w-])|(?<![\w-])\d*\.?\d+m?s\b")
+
+
+def off_spec_transitions(css_source: str) -> list[str]:
+    """Name every transition that moves ``transform`` or ``all``, or times itself.
+
+    The spec's section 4 lets a transition change colours and opacity only, over
+    ``--t-fast``, so a literal duration is as much a miss as a forbidden property.
+    """
+    found = []
+    for key, declarations in _rules(css_source).items():
+        for declaration in declarations:
+            prop, value = (part.strip() for part in declaration.split(":", 1))
+            if prop.startswith("transition") and _OFF_SPEC_MOTION.search(value):
                 found.append(f"{key} | {declaration}")
     return found
 

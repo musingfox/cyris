@@ -27,7 +27,7 @@
 
         .digest-item {
             border-bottom: 1px solid var(--border);
-            transition: background 0.15s;
+            transition: background-color var(--t-fast);
         }
 
         .digest-item:last-child { border-bottom: none; }
@@ -65,12 +65,11 @@
             font-family: var(--font-mono);
             font-size: calc(14px * var(--type-scale));
             color: var(--text-faint);
-            transition: color 0.15s, transform 0.15s;
+            transition: color var(--t-fast);
         }
 
         .digest-item:hover .digest-arrow {
             color: var(--accent);
-            transform: translateX(4px);
         }
 
         .empty-message {

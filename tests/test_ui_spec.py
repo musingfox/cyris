@@ -15,6 +15,7 @@ from css_rules import (
     colour_literals,
     font_stack_literals,
     include_sites,
+    off_spec_transitions,
     parse_style_block,
     receipt_fixtures,
     spec_colour_exceptions,
@@ -170,6 +171,37 @@ def test_every_digest_page_stops_motion_on_request(page: int) -> None:
 
 async def test_settings_and_the_deck_stop_motion_on_request(triage: TestClient) -> None:
     assert (await _served_rules(triage, "/static/style.css"))[REDUCED_MOTION] == STILL
+
+
+@pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
+def test_every_transition_changes_colour_over_the_fast_token(page: int) -> None:
+    assert off_spec_transitions(receipt_fixtures()[page]) == []
+
+
+@pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
+def test_no_hover_moves_anything(page: int) -> None:
+    rules = parse_style_block(receipt_fixtures()[page])
+    moved = [
+        key
+        for key, declarations in rules.items()
+        if ":hover" in key and _declared(declarations, "transform")
+    ]
+    assert moved == []
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{transition:color 0.15s}", 1),
+        (".x{transition:color var(--t-fast), transform var(--t-fast)}", 1),
+        (".x{transition:all var(--t-fast)}", 1),
+        (".x{transition-duration:200ms}", 1),
+        (".x{transition:background-color var(--t-fast), border-color var(--t-fast)}", 0),
+        ("*{transition:none !important}", 0),
+    ],
+)
+def test_an_off_spec_transition_is_reported(css: str, reported: int) -> None:
+    assert len(off_spec_transitions(css)) == reported
 
 
 def test_no_keyframes_override_is_left_under_reduced_motion() -> None:
