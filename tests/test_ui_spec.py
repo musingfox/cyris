@@ -564,6 +564,7 @@ TYPE_ROLES = [
     (40, "raw", ".source-name", "20px"),
     (42, "raw", ".state", "13px"),
     (43, "raw", ".score", "16px"),
+    (46, "raw", ".card h2", "30px"),
     (44, "index digest raw", ".label", "14px"),
     (45, "index digest raw", ".data", "16px"),
 ]
@@ -641,6 +642,29 @@ def test_the_raw_state_column_fits_the_larger_state_label() -> None:
     raw = _parsed("raw")
     assert "grid-template-columns: 96px 56px 1fr auto" in raw[".raw-row"]
     assert "grid-template-columns: 96px 1fr auto" in raw["@media (max-width: 720px) | .raw-row"]
+
+
+def test_the_triage_card_is_the_prototype_card() -> None:
+    raw = _parsed("raw")
+    card = raw[".card"]
+    assert {
+        "background: var(--surface)",
+        "border: 1px solid var(--border-strong)",
+        "touch-action: pan-y",
+        "transition: border-color var(--t-fast), transform var(--t-fast)",
+    } <= card
+    assert [d for d in card if d.startswith(("border-radius", "box-shadow"))] == []
+    assert raw[".card.lean-up"] == {"border-color: var(--accent)"}
+    assert raw[".card.lean-down"] == {"border-color: var(--warn)"}
+    assert raw[".card:hover"] == {"border-color: var(--text-faint)"}
+    assert "height: 56px" in raw[".deck-actions .btn"]
+    assert "max-width: 600px" in raw[".deck-wrap"]
+
+
+def test_the_card_transform_is_the_only_one_the_raw_page_needs_let_through() -> None:
+    assert off_spec_transitions(_source("raw")) == [
+        ".card | transition: border-color var(--t-fast), transform var(--t-fast)"
+    ]
 
 
 def test_raw_rows_put_the_title_on_its_own_line_at_the_one_breakpoint() -> None:

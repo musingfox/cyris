@@ -684,6 +684,7 @@ EXPECTED_RAW_IDS = {
     "default-list",
     "switch-to-triage",
     "switch-back-to-list",
+    "fits-400-triage",
 }
 
 PENDING_TWO_UP = {

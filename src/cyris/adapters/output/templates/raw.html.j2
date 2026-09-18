@@ -54,6 +54,21 @@
             border-bottom-color: var(--accent);
         }
 
+        .deck-wrap { max-width: 600px; margin: 0 auto; display: grid; gap: var(--s-6); }
+        .card {
+            min-height: 320px; background: var(--surface); border: 1px solid var(--border-strong);
+            padding: var(--s-6); display: grid; align-content: start; gap: var(--s-4);
+            cursor: grab; touch-action: pan-y; user-select: none;
+            transition: border-color var(--t-fast), transform var(--t-fast);
+        }
+        .card.dragging { cursor: grabbing; transition: border-color var(--t-fast); }
+        .card:hover { border-color: var(--text-faint); }
+        .card.lean-up { border-color: var(--accent); }
+        .card.lean-down { border-color: var(--warn); }
+        .card h2 { font-weight: 600; font-size: calc(30px * var(--type-scale)); line-height: 1.3; letter-spacing: -.015em; text-wrap: balance; }
+        .deck-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+        .deck-actions .btn { justify-content: center; height: 56px; }
+
         {% with layout="block", justify=false, align_center=false, margin_top="48px",
                   padding_top="20px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
@@ -90,7 +105,12 @@
         </section>
         {% endfor %}
         </div>
-        <div class="deck-wrap" id="raw-triage" hidden></div>
+        <div class="deck-wrap" id="raw-triage" hidden>
+            <span class="label" id="t-remaining"></span>
+            <article class="card" id="t-card"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
+            <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">Down</button><button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>
+            <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
+        </div>
 
         <div class="footer">// cyris</div>
     </div>

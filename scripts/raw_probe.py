@@ -314,6 +314,22 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$("#raw-triage").hidden = false;""",
     ),
+    Check(
+        id="fits-400-triage",
+        fixture="signed-in",
+        path=PAGE,
+        width=400,
+        act="""await showView("triage");""",
+        script="""
+            const problem = overflow("triage");
+            expect(!problem, problem);
+            const down = $("#t-down").getBoundingClientRect();
+            const up = $("#t-up").getBoundingClientRect();
+            expect(down.height === 56 && up.height === 56, `heights ${down.height} ${up.height}`);
+            expect(down.top === up.top, `tops ${down.top} ${up.top}`);
+        """,
+        sabotage="""$(".deck-wrap").style.minWidth = "600px";""",
+    ),
 ]
 
 

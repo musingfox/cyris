@@ -957,6 +957,27 @@ def test_the_raw_page_holds_both_views_before_its_footer(tmp_path):
     assert raw.index('id="raw-groups"') < raw.index('<section class="panel">')
 
 
+TRIAGE_MARKUP = (
+    '<span class="label" id="t-remaining"></span>',
+    '<article class="card" id="t-card"><span class="label" id="t-source"></span>'
+    '<h2 id="t-title"></h2></article>',
+    '<div class="deck-actions" id="t-actions">'
+    '<button class="btn danger" type="button" id="t-down" data-dir="down">Down</button>'
+    '<button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>',
+    '<p class="small" id="t-hint">Swipe left for down, right for up.'
+    " Tap the card to open the article in a new tab.</p>",
+)
+
+
+def test_the_triage_view_holds_one_card_and_its_two_buttons(tmp_path):
+    raw = _issue_pages(tmp_path)["raw"]
+    triage = raw[raw.index('id="raw-triage"') : raw.index('<div class="footer">')]
+
+    for markup in TRIAGE_MARKUP:
+        assert markup in triage
+    assert re.findall(r"<button\b[^>]*data-vote", triage) == []
+
+
 def test_the_raw_page_fetches_only_to_vote_and_to_probe(tmp_path):
     assert _issue_pages(tmp_path)["raw"].count("fetch(") == 2
 
