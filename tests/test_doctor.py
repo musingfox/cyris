@@ -135,11 +135,19 @@ async def test_workers_ai_without_an_account_id_fails(tmp_path: Path, monkeypatc
     assert "CLOUDFLARE_ACCOUNT_ID" in check.fix
 
 
-async def test_no_provider_is_a_warning_not_a_failure(tmp_path: Path) -> None:
-    """Degraded mode is a choice; it must not read as a broken deployment."""
-    check = _by_name(await doctor.run_checks(_config(tmp_path)), "llm provider")
+def test_a_missing_provider_defers_to_the_settings_check(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.missing_settings = ["llm_provider.provider"]
 
-    assert check.status == "warn"
+    assert doctor._check_llm(cfg) == doctor.Check("llm provider", "skip", "not set — see settings")
+
+
+def test_a_missing_model_defers_to_the_settings_check(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="gemini"))
+    cfg.missing_settings = ["llm_provider.model"]
+
+    assert doctor._check_llm(cfg) == doctor.Check("llm provider", "skip", "not set — see settings")
 
 
 async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) -> None:

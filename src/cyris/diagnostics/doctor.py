@@ -133,17 +133,11 @@ def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
 
 
 def _check_llm(cfg: Config) -> Check:
+    # A missing key is the settings check's failure; this one only says why it stops.
+    missing = {"llm_provider.provider", "llm_provider.model"} & set(cfg.missing_settings)
+    if missing or not cfg.app.llm_provider.provider:
+        return Check("llm provider", "skip", "not set — see settings")
     llm = cfg.app.llm_provider
-    if not llm.provider:
-        return Check(
-            "llm provider",
-            "warn",
-            "not configured — the digest will fall back to plain excerpts",
-            "Choose one on /settings, which writes it to D1. A deployed container "
-            "has no cyris.toml, so that is the only home for it there; a local run "
-            'can also set [llm_provider] provider to "anthropic", "gemini", '
-            '"openai" or "workers_ai".',
-        )
     if not llm.api_key:
         hint = f"Put {llm.api_key_env_var} in .env."
         if llm.provider == "workers_ai":
