@@ -1027,3 +1027,56 @@ def test_doctor_on_an_empty_d1_fails_on_settings(tmp_path: Path, monkeypatch) ->
 
     assert result.exit_code == 1
     assert "✗ settings — missing in D1:" in result.stdout
+
+
+async def test_a_d1_deployment_whose_file_sets_a_runtime_setting_fails(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text('[llm_provider]\nprovider = "gemini"\n')
+
+    check = _by_name(await doctor.run_checks(cfg, config_path), "file settings")
+
+    assert check.status == "fail"
+    assert check.detail == (
+        "this deployment reads these from D1 and ignores cyris.toml's [llm_provider] provider"
+    )
+    assert check.fix == (
+        "Delete them from cyris.toml. If D1 lacks any, run `cyris settings push` first."
+    )
+
+
+def test_file_keys_outside_grade_d_do_not_trigger_it(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(
+        '[store]\nbackend = "d1"\n\n[vote_similarity]\nthreshold = 0.5\n\n'
+        '[llm_provider]\napi_key = "k"\n'
+    )
+
+    assert doctor._check_file_settings(cfg, config_path) == [
+        doctor.Check("file settings", "ok", "cyris.toml sets no runtime settings")
+    ]
+
+
+def test_several_ignored_keys_are_named_in_order(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text('[llm_provider]\nprovider = "gemini"\n\n[digest]\nmax_featured = 3\n')
+
+    [check] = doctor._check_file_settings(cfg, config_path)
+
+    assert check.detail.endswith("cyris.toml's [digest] max_featured, [llm_provider] provider")
+
+
+async def test_a_json_deployment_has_no_file_settings_check(tmp_path: Path) -> None:
+    from fakes import settings_toml
+
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(settings_toml())
+
+    names = [c.name for c in await doctor.run_checks(_config(tmp_path), config_path)]
+
+    assert "file settings" not in names

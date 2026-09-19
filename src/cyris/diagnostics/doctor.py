@@ -103,6 +103,35 @@ def _check_settings(cfg: Config) -> Check:
     return Check("settings", "ok", f"all {len(GRADE_D_KEYS)} set in cyris.toml")
 
 
+def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
+    """Runtime settings a D1 deployment's cyris.toml still sets, and so ignores.
+
+    A value the deployment does not read, sitting where a reader would edit it,
+    is the 2026-08-25 failure: the edit takes, and nothing changes.
+    """
+    if not cfg.app.store.is_d1 or config_path is None or not config_path.exists():
+        return []
+    import tomllib
+
+    with open(config_path, "rb") as f:
+        loaded = tomllib.load(f)
+    ignored = [
+        f"[{table}] {field}"
+        for table, field in (key.split(".", 1) for key in sorted(GRADE_D_KEYS))
+        if isinstance(loaded.get(table), dict) and field in loaded[table]
+    ]
+    if not ignored:
+        return [Check("file settings", "ok", "cyris.toml sets no runtime settings")]
+    return [
+        Check(
+            "file settings",
+            "fail",
+            f"this deployment reads these from D1 and ignores cyris.toml's {', '.join(ignored)}",
+            "Delete them from cyris.toml. If D1 lacks any, run `cyris settings push` first.",
+        )
+    ]
+
+
 def _check_llm(cfg: Config) -> Check:
     llm = cfg.app.llm_provider
     if not llm.provider:
@@ -681,6 +710,7 @@ async def run_checks(
         _check_config_file(cfg, config_path),
         _check_sources(cfg),
         _check_settings(cfg),
+        *_check_file_settings(cfg, config_path),
         _check_llm(cfg),
         *_check_paths(cfg),
         _check_store(cfg),
