@@ -861,10 +861,8 @@ def test_only_digest_content_links_take_the_accent() -> None:
     assert digest[":where(main) a:hover"] == {"color: var(--text)"}
 
 
-def test_the_digest_narrows_its_gutters_on_the_container() -> None:
-    digest = _parsed("digest")
-    assert "@media (max-width: 880px) | body" not in digest
-    assert digest["@media (max-width: 880px) | .container"] == {"padding: 16px 12px 60px"}
+def test_the_digest_keeps_the_page_gutters_at_every_width() -> None:
+    assert [key for key in _parsed("digest") if key.endswith("| .container")] == []
 
 
 @pytest.mark.parametrize("source", GUARDED)
