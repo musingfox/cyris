@@ -31,6 +31,19 @@
         .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
         .archive-row .actions { grid-column: 4; }
 
+        .latest { color: var(--accent); }
+
+        .front-card {
+            background: var(--surface);
+            border: 1px solid var(--border-strong);
+            padding: var(--s-6);
+            display: grid;
+            gap: var(--s-4);
+            margin-bottom: var(--s-5);
+        }
+
+        .front-card .line { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline; }
+
         .empty-message {
             text-align: center;
             padding: 80px 20px;
@@ -58,6 +71,7 @@
     </style>
 </head>
 <body>
+    {% macro actions(issue) %}<span class="actions"><a class="btn secondary sm" href="{{ issue.filename }}">Digest</a>{% if issue.raw_filename %}<a class="btn secondary sm" href="{{ issue.raw_filename }}">All articles</a>{% endif %}</span>{% endmacro %}
     {% include "_site_bar.html.j2" %}
     <div class="container">
         <div class="page-head">
@@ -67,6 +81,10 @@
         </div>
 
         {% if digests %}
+        <article class="front-card">
+            <div class="line"><span class="label latest">Latest</span><span class="date">{{ latest.date }}</span><span class="label">{{ latest.period }}</span></div>
+            {{ actions(latest) }}
+        </article>
         {% for panel in months %}
         <section class="panel">
             <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length }} issue{{ "" if panel.issues | length == 1 else "s" }}</span></div>
@@ -74,7 +92,7 @@
             <div class="archive-row">
                 <span class="date">{{ digest.date }}</span>
                 <span class="label">{{ digest.period }}</span>
-                <span class="actions"><a class="btn secondary sm" href="{{ digest.filename }}">Digest</a>{% if digest.raw_filename %}<a class="btn secondary sm" href="{{ digest.raw_filename }}">All articles</a>{% endif %}</span>
+                {{ actions(digest) }}
             </div>
             {% endfor %}
         </section>

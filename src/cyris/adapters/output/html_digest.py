@@ -125,7 +125,11 @@ class HtmlDigestWriter:
         return file_path
 
     def render_index(
-        self, filenames: list[str], *, period_order: Sequence[str] = PERIOD_ORDER
+        self,
+        filenames: list[str],
+        *,
+        content: DigestContent | None = None,
+        period_order: Sequence[str] = PERIOD_ORDER,
     ) -> str:
         """The archive page, from the list of files the site is made of.
 
@@ -136,6 +140,9 @@ class HtmlDigestWriter:
 
         A day's issues follow `period_order`, the order the schedule fires them
         in, latest first; a label outside it sorts below the known ones of its day.
+
+        The headline card is `content`'s issue when it is listed, so a run's own
+        archive leads with it; otherwise the first issue. The rest go in month panels.
         """
         template = self.env.get_template("index.html.j2")
 
@@ -164,12 +171,19 @@ class HtmlDigestWriter:
             key=lambda d: (d["date"], rank.get(d["period"], -1), d["period"]), reverse=True
         )
 
+        latest = digests[0] if digests else None
+        if content is not None:
+            this_run = f"{content.date}-{content.period}.html"
+            latest = next((d for d in digests if d["filename"] == this_run), latest)
+
         months: dict[str, list[dict]] = {}
         for digest in digests:
-            months.setdefault(digest["date"][:7], []).append(digest)
+            if digest is not latest:
+                months.setdefault(digest["date"][:7], []).append(digest)
 
         return template.render(
             digests=digests,
+            latest=latest,
             months=[{"month": month, "issues": issues} for month, issues in months.items()],
         )
 

@@ -333,6 +333,100 @@ def test_an_empty_archive_has_no_panel(tmp_path):
     assert "// cyris &middot; 0 issues<" in html
 
 
+def _content(date: str, period: str, **fields) -> DigestContent:
+    return DigestContent(
+        date=date,
+        period=period,
+        sources_processed=1,
+        articles_received=1,
+        articles_included=fields.pop("articles_included", 1),
+        usage=UsageStats(),
+        **fields,
+    )
+
+
+def _card(html: str) -> str:
+    """The headline card's markup, whitespace between tags removed."""
+    match = re.search(r'<article class="front-card">.*?</article>', _tight(html), re.DOTALL)
+    assert match, "no headline card"
+    return match.group(0)
+
+
+def _card_line(date: str, period: str) -> str:
+    return (
+        f'<div class="line"><span class="label latest">Latest</span>'
+        f'<span class="date">{date}</span><span class="label">{period}</span></div>'
+    )
+
+
+SAME_DAY = ["2026-04-15-morning.html", "2026-04-15-evening.html", "2026-04-15-evening-raw.html"]
+
+
+def test_the_newest_issue_is_the_headline_card_not_a_row(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(SAME_DAY)
+
+    card = _card(html)
+    assert _card_line("2026-04-15", "evening") in card
+    assert 'href="2026-04-15-evening-raw.html">All articles</a>' in card
+    assert html.count('href="2026-04-15-evening.html"') == 1
+    tight = _tight(html)
+    assert '<span class="data">2026-04</span><span class="label">1 issue</span>' in tight
+    panel = tight[tight.index('<section class="panel">') :]
+    assert '<span class="date">2026-04-15</span><span class="label">morning</span>' in panel
+    assert 'href="2026-04-15-evening.html"' not in panel
+
+
+def test_this_runs_issue_is_the_headline_card_when_the_renderer_is_told(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(
+        SAME_DAY, content=_content("2026-04-15", "morning")
+    )
+
+    assert _card_line("2026-04-15", "morning") in _card(html)
+    panel = _tight(html)[_tight(html).index('<section class="panel">') :]
+    assert '<span class="label">evening</span>' in panel
+    assert 'href="2026-04-15-morning.html"' not in panel
+
+
+def test_a_run_whose_issue_is_not_listed_leaves_the_newest_on_the_card(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(
+        SAME_DAY, content=_content("2026-04-16", "evening")
+    )
+
+    assert _card_line("2026-04-15", "evening") in _card(html)
+
+
+def test_a_single_issue_is_the_card_with_no_panel_below_it(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(["2026-04-15-evening.html"])
+
+    assert _card_line("2026-04-15", "evening") in _card(html)
+    assert 'class="panel"' not in html
+    assert "// cyris &middot; 1 issue<" in html
+
+
+def test_an_empty_archive_has_no_headline_card(tmp_path):
+    assert 'class="front-card"' not in HtmlDigestWriter(tmp_path).render_index([])
+
+
+def test_the_footer_counts_the_card_issue_too(tmp_path):
+    names = ["2026-04-15-evening.html", "2026-04-15-morning.html", "2026-04-14-evening.html"]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names)
+
+    assert "// cyris &middot; 3 issues<" in html
+
+
+def test_no_archive_link_opens_inside_another(tmp_path):
+    names = [*SAME_DAY, "2026-04-14-evening.html", "2026-04-14-evening-raw.html"]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names, content=_content("2026-04-15", "evening"))
+
+    depth = 0
+    for tag in re.findall(r"<a\b|</a>", html):
+        depth += 1 if tag == "<a" else -1
+        assert depth in (0, 1)
+    assert depth == 0
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

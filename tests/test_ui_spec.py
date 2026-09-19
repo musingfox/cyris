@@ -629,6 +629,21 @@ def test_archive_rows_are_the_prototype_rows_and_wrap_them_on_phones() -> None:
     assert widths == {"@media (max-width: 720px)"}
 
 
+def test_the_headline_card_is_the_prototype_card() -> None:
+    index = _parsed("index")
+    card = index[".front-card"]
+    assert {
+        "background: var(--surface)",
+        "border: 1px solid var(--border-strong)",
+        "padding: var(--s-6)",
+        "display: grid",
+        "gap: var(--s-4)",
+        "margin-bottom: var(--s-5)",
+    } <= card
+    assert [d for d in card if d.startswith(("border-radius", "box-shadow"))] == []
+    assert index[".latest"] == {"color: var(--accent)"}
+
+
 def test_the_empty_archive_message_takes_the_small_role() -> None:
     assert "font-size: calc(16px * var(--type-scale))" in _parsed("index")[".empty-message"]
 
