@@ -518,6 +518,20 @@ def _card_for(tmp_path, content: DigestContent | None) -> str:
     return _card(HtmlDigestWriter(tmp_path).render_index(names, content=content))
 
 
+def _lead_card(html: str) -> str:
+    """A digest's lead card, from its opening tag to its close."""
+    return html[html.index('<article class="lead-story">') :].split("</article>", 1)[0]
+
+
+def _lead_card_of(tmp_path, **extra) -> str:
+    """The lead card of a digest whose one feature is Lead, linked to https://a.test."""
+    lead = DigestItem(title="Lead", summary="s", sources=["S"], urls=["https://a.test"], **extra)
+    content = _content(
+        "2026-04-15", "evening", featured_articles=[DigestSection(heading="F", items=[lead])]
+    )
+    return _lead_card(HtmlDigestWriter(tmp_path).render(content))
+
+
 def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
     content = _content(
         "2026-04-15",
@@ -529,9 +543,7 @@ def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
     )
 
     assert "<h2>Cloudflare Containers GA</h2>" in _card_for(tmp_path, content)
-    digest = HtmlDigestWriter(tmp_path).render(content)
-    lead = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
-    assert "Cloudflare Containers GA" in lead
+    assert "Cloudflare Containers GA" in _lead_card(HtmlDigestWriter(tmp_path).render(content))
 
 
 def test_the_top_story_tag_sits_directly_above_the_lead_card():
@@ -541,12 +553,7 @@ def test_the_top_story_tag_sits_directly_above_the_lead_card():
 
 
 def test_the_lead_score_pill_sits_above_its_title(tmp_path):
-    lead = DigestItem(title="Lead", summary="s", sources=["S"], urls=["https://a.test"], score=8.5)
-    content = _content(
-        "2026-04-15", "evening", featured_articles=[DigestSection(heading="F", items=[lead])]
-    )
-    digest = HtmlDigestWriter(tmp_path).render(content)
-    card = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
+    card = _lead_card_of(tmp_path, score=8.5)
     assert '<span class="pill score">8.5</span>' in card
     assert card.index('class="pill score"') < card.index("<h2")
     assert "Score:" not in card
@@ -554,12 +561,7 @@ def test_the_lead_score_pill_sits_above_its_title(tmp_path):
 
 
 def test_the_lead_links_its_article_once_through_its_title(tmp_path):
-    lead = DigestItem(title="Lead", summary="s", sources=["S"], urls=["https://a.test"])
-    content = _content(
-        "2026-04-15", "evening", featured_articles=[DigestSection(heading="F", items=[lead])]
-    )
-    digest = HtmlDigestWriter(tmp_path).render(content)
-    card = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
+    card = _lead_card_of(tmp_path)
     assert card.count('href="https://a.test"') == 1
     title = r'<h2>\s*<a href="https://a.test" target="_blank" rel="noopener">Lead</a>'
     assert re.search(title, card)
