@@ -138,6 +138,8 @@ def _check_llm(cfg: Config) -> Check:
     if missing or not cfg.app.llm_provider.provider:
         return Check("llm provider", "skip", "not set — see settings")
     llm = cfg.app.llm_provider
+    if llm.provider == "none":
+        return Check("llm provider", "ok", "none — digests list plain excerpts, by choice")
     if not llm.api_key:
         hint = f"Put {llm.api_key_env_var} in .env."
         if llm.provider == "workers_ai":

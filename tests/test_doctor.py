@@ -150,6 +150,43 @@ def test_a_missing_model_defers_to_the_settings_check(tmp_path: Path, monkeypatc
     assert doctor._check_llm(cfg) == doctor.Check("llm provider", "skip", "not set — see settings")
 
 
+_LLM_KEYS = ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "CLOUDFLARE_AI_TOKEN")
+
+
+def test_provider_none_is_reported_as_a_choice(tmp_path: Path, monkeypatch) -> None:
+    """Plain excerpts by choice must not read as a broken deployment."""
+    for key in _LLM_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="none", model=""))
+
+    assert doctor._check_llm(cfg) == doctor.Check(
+        "llm provider", "ok", "none — digests list plain excerpts, by choice"
+    )
+
+
+def test_doctor_on_a_none_provider_config_passes_the_llm_check(tmp_path: Path, monkeypatch) -> None:
+    from fakes import settings_toml
+    from typer.testing import CliRunner
+
+    from cyris.entrypoints.cli import app
+
+    for key in _LLM_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(
+        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n\n'
+        + settings_toml(**{"llm_provider.provider": "none"})
+    )
+
+    result = CliRunner().invoke(
+        app, ["doctor", "--config", str(config_path), "--sources", str(tmp_path / "s.yaml")]
+    )
+
+    assert "✓ llm provider — none" in result.stdout
+    assert "✗ llm provider" not in result.stdout
+
+
 async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) -> None:
     request = httpx.Request("POST", "https://generativelanguage.googleapis.com")
     response = httpx.Response(400, request=request)
