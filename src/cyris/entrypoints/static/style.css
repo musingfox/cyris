@@ -51,6 +51,8 @@
 .input, .select { width: 100%; height: 48px; padding: 0 var(--s-4); border: 1px solid var(--border-strong); border-radius: var(--r-control); background: var(--bg-elev); color: var(--text); font-size: calc(18px * var(--type-scale)); transition: border-color var(--t-fast); }
 .input:focus, .select:focus { border-color: var(--accent); outline: none; }
 .input.invalid { border-color: var(--warn); }
+.input[aria-invalid="true"] { border-color: var(--warn); }
+textarea.input { height: auto; padding-block: var(--s-3); line-height: 1.5; resize: vertical; }
 .field { display: grid; gap: var(--s-2); }
 details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); list-style: none; }
 details.more summary::before { content: "+ "; }

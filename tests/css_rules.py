@@ -50,6 +50,8 @@ COMPONENT_SELECTORS = frozenset(
         ".input, .select",
         ".input:focus, .select:focus",
         ".input.invalid",
+        '.input[aria-invalid="true"]',
+        "textarea.input",
         ".field",
         "details.more summary",
         "details.more summary::before",
