@@ -232,6 +232,10 @@ window.fetch = (input, init) => init && init.method === "POST"
   : realFetch(input, init);
 }"""
 
+# The column counts the body grids must show where the ticket names a width; every
+# other sampled width only has to agree between the two grids.
+GRID_COLUMNS = {360: 1, 880: 2, 1000: 2, 1440: 3}
+
 # Chromium keeps one profile for the whole run, and a fixture's origin is only as
 # fresh as its port, so every check starts from a browser that has voted nothing.
 FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
@@ -261,6 +265,9 @@ const expectEveryKind = (measure) => {
 const bringIntoView = (selector) => {
   $(selector).scrollIntoView({block: "center", behavior: "instant"});
 };
+// A grid's column count: the distinct left edges among its items.
+const columns = (selector) => new Set(
+  [...$(selector).children].map((item) => Math.round(item.getBoundingClientRect().left))).size;
 const oneRow = (group) => {
   const up = $('[data-vote="up"]', group).getBoundingClientRect();
   const down = $('[data-vote="down"]', group).getBoundingClientRect();
@@ -306,6 +313,27 @@ _CHECKS: list[Check] = [
             });""",
         )
         for width in WIDTHS
+    ),
+    # Both body grids hold five items, so each shows as many columns as fit.
+    *(
+        Check(
+            id=f"grids-agree-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script=f"""
+                const featured = columns(".featured-grid");
+                const attention = columns(".attention-list");
+                const pinned = {json.dumps(GRID_COLUMNS.get(width))};
+                const agree = featured === attention && (pinned === null || featured === pinned);
+                expect(agree, `featured ${{featured}}, attention ${{attention}}, want ${{pinned}}`);
+            """,
+            sabotage="""
+                $(".attention-list").style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
+            """,
+        )
+        for width in (360, 721, 880, 1000, 1100, 1160, 1440)
     ),
     # A real pointer press on each kind's first up button: the button is hit, every URL
     # of its group is voted on, and the button is marked. The phone run is caught by a

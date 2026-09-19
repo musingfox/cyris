@@ -866,6 +866,7 @@ EXPECTED_DIGEST_IDS = {
         for width in (360, 1440)
     ),
     "vote-failure-marks-error",
+    *(f"grids-agree-{width}" for width in (360, 721, 880, 1000, 1100, 1160, 1440)),
 }
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}

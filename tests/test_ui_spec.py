@@ -694,6 +694,21 @@ def test_a_short_last_row_of_features_leaves_its_empty_cells_blank() -> None:
     } <= digest[".featured-item"]
 
 
+BODY_TRACKS = "grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr))"
+
+
+def test_features_and_the_radar_list_share_one_fluid_track_rule() -> None:
+    digest = _parsed("digest")
+    assert BODY_TRACKS in digest[".featured-grid"]
+    assert BODY_TRACKS in digest[".attention-list"]
+    narrowed = [
+        key
+        for key in digest
+        if key.startswith("@media") and ("featured-grid" in key or "attention-list" in key)
+    ]
+    assert narrowed == []
+
+
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
     digest = _parsed("digest")
     assert [key for key in digest if ".lead-story::before" in key] == []
