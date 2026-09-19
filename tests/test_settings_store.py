@@ -3,8 +3,18 @@
 import pytest
 from fakes import SqliteD1
 
-from cyris.adapters.store.settings import D1Settings, apply_to
-from cyris.config import AppConfig, Config
+from cyris.adapters.store.settings import WRITABLE_KEYS, D1Settings, apply_to
+from cyris.config import (
+    GRADE_D_KEYS,
+    AppConfig,
+    Config,
+    DigestConfig,
+    GeneralConfig,
+    LLMProviderConfig,
+    NotifyConfig,
+    RoutingConfig,
+    VoteSimilarityConfig,
+)
 
 
 @pytest.fixture
@@ -25,13 +35,45 @@ def test_writing_the_same_key_twice_replaces_rather_than_duplicates(settings):
     assert settings.all() == {"llm_provider.provider": "openai"}
 
 
-def test_a_key_with_no_writer_is_refused(settings):
+def test_a_key_outside_the_grade_d_list_is_refused(settings):
     """The whitelist is the contract: an arbitrary dotted path would let the
-    settings page write config the overlay has no idea how to apply."""
-    with pytest.raises(ValueError, match="digest.max_articles_per_digest"):
-        settings.set({"digest.max_articles_per_digest": 400})
+    settings page write config no reader resolves."""
+    with pytest.raises(ValueError, match="digest.bogus"):
+        settings.set({"digest.bogus": 1})
 
     assert settings.all() == {}
+
+
+def test_a_newly_writable_key_round_trips(settings):
+    settings.set({"digest.output_language": "en"})
+
+    assert settings.all() == {"digest.output_language": "en"}
+
+
+def test_several_grade_d_keys_are_stored_in_one_set(settings):
+    settings.set({"routing.score_threshold": 80, "vote_similarity.max_seeds": 50})
+
+    assert settings.all() == {"routing.score_threshold": 80, "vote_similarity.max_seeds": 50}
+
+
+def test_the_whitelist_is_exactly_the_twenty_grade_d_keys():
+    assert len(GRADE_D_KEYS) == 20
+    assert set(WRITABLE_KEYS) == set(GRADE_D_KEYS)
+
+
+@pytest.mark.parametrize("key", GRADE_D_KEYS)
+def test_every_grade_d_key_names_a_field_of_its_table(key):
+    tables = {
+        "general": GeneralConfig,
+        "notify": NotifyConfig,
+        "llm_provider": LLMProviderConfig,
+        "digest": DigestConfig,
+        "routing": RoutingConfig,
+        "vote_similarity": VoteSimilarityConfig,
+    }
+    table, field = key.split(".", 1)
+
+    assert field in tables[table].model_fields
 
 
 def test_a_key_left_behind_by_an_older_build_is_ignored_not_applied(settings):

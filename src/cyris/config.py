@@ -59,6 +59,33 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
     return data
 
 
+# Every grade-D setting (docs/architecture.md §5), as `table.field`. One list serves
+# as the required set, the D1 whitelist and the /settings fields, so a key cannot be
+# required without a writer or writable without a reader.
+GRADE_D_KEYS: tuple[str, ...] = (
+    "general.digest_schedule",
+    "general.timezone",
+    "general.digest_window_hours",
+    "llm_provider.provider",
+    "llm_provider.model",
+    "notify.discord_webhook_url",
+    "digest.max_articles_per_digest",
+    "digest.max_articles_per_digest_output",
+    "digest.max_featured",
+    "digest.scoring_snippet_length",
+    "digest.summarize_snippet_length",
+    "digest.filter_snippet_length",
+    "digest.output_language",
+    "digest.style_prompt",
+    "routing.score_threshold",
+    "routing.summarize_score_threshold",
+    "vote_similarity.enabled",
+    "vote_similarity.provider",
+    "vote_similarity.model",
+    "vote_similarity.max_seeds",
+)
+
+
 # The env fallback of a grade-D setting (read after D1 `settings` and `[notify]`).
 # Named here rather than inline because `cyris doctor` reports which home a webhook
 # came from, and has to name the same variable this reads.

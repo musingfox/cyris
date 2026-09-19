@@ -1,14 +1,13 @@
 """Runtime-mutable settings in D1 — grade D in docs/architecture.md §5.
 
 `cyris.toml` is baked into the image and mounted `:ro`, so the settings page
-cannot write it. These keys live in D1 instead, and the file keeps the same
-keys as the fallback a fresh deployment starts from.
+cannot write it. These keys live in D1 instead.
 
-The read order is fixed and not negotiable: **D1 first, file second.** A host
-run and a container run reading different settings is the 2026-08-25→27 split,
-and this table only removes that risk if every reader resolves it the same way.
-For the same reason a D1 read error propagates — falling back to the file on
-error would reintroduce exactly the divergence the order exists to prevent.
+A host run and a container run reading different settings is the 2026-08-25→27
+split, and this table only removes that risk if every reader resolves it the
+same way. For the same reason a D1 read error propagates — falling back to the
+file on error would reintroduce exactly the divergence this table exists to
+prevent.
 """
 
 from __future__ import annotations
@@ -19,19 +18,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from cyris.adapters.store.d1 import D1Queryable
+from cyris.config import GRADE_D_KEYS
 
 logger = logging.getLogger(__name__)
 
-# Dotted paths into AppConfig. Only keys with a writer are listed: a key nobody
-# can change from the settings page has nothing to gain from a second home.
-WRITABLE_KEYS = (
-    "llm_provider.provider",
-    "llm_provider.model",
-    "general.digest_schedule",
-    "general.timezone",
-    "digest.max_featured",
-    "notify.discord_webhook_url",
-)
+# Dotted paths into AppConfig: exactly the grade-D keys, nothing else.
+WRITABLE_KEYS = GRADE_D_KEYS
 
 
 class D1Settings:
