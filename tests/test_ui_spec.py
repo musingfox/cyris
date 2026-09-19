@@ -478,14 +478,19 @@ def _declared(rules: set[str] | list[str], prop: str) -> list[str]:
     return [d.split(":", 1)[1].strip() for d in rules if d.split(":", 1)[0] == prop]
 
 
-@pytest.mark.parametrize(
-    ("page", "glow"), [(0, "80% 50%"), (1, "80% 60%")], ids=["index", "digest"]
-)
-def test_the_page_glow_is_the_accent_tint(page: int, glow: str) -> None:
-    (image,) = _declared(parse_style_block(receipt_fixtures()[page])["body"], "background-image")
-    tint = f"radial-gradient(ellipse {glow} at 50% -10%, var(--accent-tint), transparent 70%)"
+def test_the_page_glow_is_the_accent_tint() -> None:
+    (image,) = _declared(parse_style_block(receipt_fixtures()[1])["body"], "background-image")
+    tint = "radial-gradient(ellipse 80% 60% at 50% -10%, var(--accent-tint), transparent 70%)"
     assert tint in image
     assert "rgba(" not in image
+
+
+def test_the_archive_has_no_page_glow_like_raw() -> None:
+    """Spec section 1.2: the only glow is the brand mark."""
+    index, _, raw = receipt_fixtures()
+    images = _declared(parse_style_block(index)["body"], "background-image")
+    assert images == _declared(parse_style_block(raw)["body"], "background-image")
+    assert [image for image in images if "radial-gradient(" in image] == []
 
 
 def test_the_top_story_badge_is_the_accent_tint() -> None:
@@ -517,9 +522,8 @@ def _parsed(page: str) -> dict[str, set[str] | list[str]]:
 TYPE_ROLES = [
     (1, "index digest raw", "body", "16px"),
     (2, "index digest raw", ".brand-name", "16px"),
-    (3, "index digest", ".subtitle", "14px"),
-    (4, "index", "h1", "clamp(52px, 8vw, 96px)"),
-    (4, "raw", ".display", "clamp(52px, 8vw, 96px)"),
+    (3, "digest", ".subtitle", "14px"),
+    (4, "index raw", ".display", "clamp(52px, 8vw, 96px)"),
     (5, "index digest raw", ".footer", "14px"),
     (6, "index digest raw", ".btn", "14px"),
     (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
@@ -577,20 +581,13 @@ def test_the_issue_title_takes_the_issue_title_role() -> None:
     )
 
 
-def test_the_page_title_takes_the_display_role() -> None:
-    assert {
-        "font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale))",
-        "line-height: 1",
-        "letter-spacing: -0.03em",
-    } <= set(_parsed("index")["h1"])
-
-
-def test_the_raw_page_title_is_the_display_component() -> None:
+@pytest.mark.parametrize("page", ["index", "raw"])
+def test_the_page_title_is_the_display_component(page: str) -> None:
     assert {
         "font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale))",
         "line-height: 1",
         "letter-spacing: -.03em",
-    } <= set(_parsed("raw")[".display"])
+    } <= set(_parsed(page)[".display"])
 
 
 def test_the_raw_page_head_is_the_prototype_page_head() -> None:

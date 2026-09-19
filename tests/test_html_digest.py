@@ -1239,6 +1239,30 @@ def test_the_raw_page_opens_with_the_spec_page_head(tmp_path):
     assert 'class="subtitle"' not in raw
 
 
+ARCHIVE_PAGE_HEAD = (
+    '<span class="label">Archive</span>',
+    '<h1 class="display">Every <em>issue</em></h1>',
+    '<p class="small">Newest first. Each issue has the digest and the full list of articles'
+    " it judged.</p>",
+)
+
+
+def test_the_archive_opens_with_the_spec_page_head(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index([])
+
+    head = html[html.index('class="container"') :]
+    assert head.index('<div class="page-head">') < head.index(ARCHIVE_PAGE_HEAD[0])
+    positions = [head.index(part) for part in ARCHIVE_PAGE_HEAD]
+    assert positions == sorted(positions)
+
+
+def test_the_archive_masthead_is_gone(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(["2026-04-15-evening.html"])
+
+    assert 'class="masthead"' not in html
+    assert 'class="subtitle"' not in html
+
+
 def _footer(html: str) -> str:
     """Everything from the footer to the page's scripts."""
     return html[html.index('class="footer"') :].split("<script", 1)[0]

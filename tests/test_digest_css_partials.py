@@ -39,15 +39,9 @@ PAGE_TEMPLATES = {
 # than read back out of the templates: derived expectations would silently accept
 # a page that stopped including a partial and inlined the rules again.
 EXPECTED_INCLUDES = {
-    "index": (
-        "_tokens.css.j2",
-        "_components.css.j2",
-        "_page.css.j2",
-        "_masthead.css.j2",
-        "_footer.css.j2",
-    ),
+    # Archive and raw open with §4's `.page-head` of components, so no masthead.
+    "index": ("_tokens.css.j2", "_components.css.j2", "_page.css.j2", "_footer.css.j2"),
     "digest": CSS_PARTIALS,
-    # The page head is §4's `.page-head` of components, so no masthead.
     "raw": tuple(partial for partial in CSS_PARTIALS if partial != "_masthead.css.j2"),
 }
 

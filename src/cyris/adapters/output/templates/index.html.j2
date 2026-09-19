@@ -12,11 +12,7 @@
 
         {% include "_components.css.j2" %}
 
-        {% with container_width="960px", container_relative=false, glow="80% 50%", line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
-
-        {% with masthead_padding="28px 0 24px", masthead_margin="56px", masthead_rule=true,
-                  subtitle_margin="18px",
-                  display_h1=true  %}{% include "_masthead.css.j2" %}{% endwith %}
+        {% with container_width="960px", container_relative=false, glow=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
         .digest-list {
             list-style: none;
@@ -89,10 +85,11 @@
 <body>
     {% include "_site_bar.html.j2" %}
     <div class="container">
-        <header class="masthead">
-            <h1>Digest <em>Archive</em></h1>
-            <div class="subtitle">All past issues · sorted newest first</div>
-        </header>
+        <div class="page-head">
+            <span class="label">Archive</span>
+            <h1 class="display">Every <em>issue</em></h1>
+            <p class="small">Newest first. Each issue has the digest and the full list of articles it judged.</p>
+        </div>
 
         {% if digests %}
         <ul class="digest-list">

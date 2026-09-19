@@ -403,6 +403,12 @@ def test_the_raw_probe_set_watches_the_page_head_not_the_masthead_it_replaced():
     assert ".subtitle" not in raw
 
 
+def test_the_index_probe_set_watches_the_page_head_not_the_masthead_it_replaced():
+    index = load_probes(PROBES_PATH)["index"]
+    assert ".page-head" in index
+    assert [key for key in (".masthead", ".subtitle", "h1") if key in index] == []
+
+
 def test_the_probe_set_watches_the_masthead_name_on_every_page_that_has_one():
     probes = load_probes(PROBES_PATH)
     for page in ("index", "digest", "raw"):
