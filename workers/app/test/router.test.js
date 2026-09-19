@@ -12,14 +12,17 @@ async function sha256(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function makeDeps({ fetchStatus = 200, fetchBody = "<html>", fetchThrow = false } = {}) {
-  const container = Object.assign(
-    async () => new Response("container", { status: 200 }),
-    { calls: 0 },
-  );
+function makeDeps({
+  fetchStatus = 200,
+  fetchBody = "<html>",
+  fetchThrow = false,
+  fetchHeaders = {},
+  scale = 1,
+  containerResponse = () => new Response("container", { status: 200 }),
+} = {}) {
   const wrappedContainer = async (req) => {
     wrappedContainer.calls.push(req);
-    return container();
+    return containerResponse();
   };
   wrappedContainer.calls = [];
 
@@ -44,12 +47,47 @@ function makeDeps({ fetchStatus = 200, fetchBody = "<html>", fetchThrow = false 
     const body = typeof fetchBody === "string" ? fetchBody : JSON.stringify(fetchBody);
     return new Response(body, {
       status: fetchStatus,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...fetchHeaders },
     });
   };
   fetchImpl.calls = [];
 
-  return { container: wrappedContainer, startRun, probeGemini, fetchImpl };
+  const typeScale = {
+    reads: 0,
+    forgets: 0,
+    async current() {
+      typeScale.reads += 1;
+      return scale;
+    },
+    forget() {
+      typeScale.forgets += 1;
+    },
+  };
+
+  // What HTMLRewriter does in workerd, which Node lacks: `html` goes last in <head>.
+  const injectStyle = (response, html) => {
+    injectStyle.calls.push(html);
+    const body =
+      response.body &&
+      new ReadableStream({
+        async start(controller) {
+          const text = await response.text();
+          controller.enqueue(new TextEncoder().encode(text.replace("</head>", `${html}</head>`)));
+          controller.close();
+        },
+      });
+    return new Response(body, response);
+  };
+  injectStyle.calls = [];
+
+  return {
+    container: wrappedContainer,
+    startRun,
+    probeGemini,
+    fetchImpl,
+    typeScale,
+    injectStyle,
+  };
 }
 
 function env(extra = {}) {
@@ -510,5 +548,179 @@ describe("DigestOriginRequired", () => {
     expect(body).toContain("CYRIS_PROMOTE_PAGES_PROJECT");
     expect(body).toContain("DIGEST_ORIGIN");
     expect(deps.fetchImpl.calls).toHaveLength(0);
+  });
+});
+
+const PAGE = "<html><head><title>x</title></head><body></body></html>";
+const PAGE_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  ETag: '"abc"',
+  "Last-Modified": "Tue, 01 Sep 2026 00:00:00 GMT",
+};
+const STYLE_1125 = "<style>html:root{--type-scale:1.125}</style>";
+
+const pageDeps = (scale, headers = PAGE_HEADERS) =>
+  makeDeps({ scale, fetchBody: PAGE, fetchHeaders: headers });
+
+const containerAnswering = (contentType, status = 200) => () =>
+  new Response(contentType === "text/html" ? PAGE : "{}", {
+    status,
+    headers: { "Content-Type": contentType },
+  });
+
+const upstreamRequest = (deps) => deps.fetchImpl.calls[0].input;
+
+describe("HtmlResponsesCarryTheScale", () => {
+  it("puts the size last in the head of a proxied page and drops its validators", async () => {
+    const deps = pageDeps(1.125);
+
+    const resp = await handleRequest(request("GET", "/2026-08-30-evening.html"), env(), deps);
+
+    expect(resp.status).toBe(200);
+    expect(await resp.text()).toContain(`${STYLE_1125}</head>`);
+    expect(resp.headers.get("ETag")).toBeNull();
+    expect(resp.headers.get("Last-Modified")).toBeNull();
+    expect(deps.injectStyle.calls).toEqual([STYLE_1125]);
+  });
+
+  it("passes a page through untouched at size 1", async () => {
+    const deps = pageDeps(1);
+
+    const resp = await handleRequest(request("GET", "/2026-08-30-evening.html"), env(), deps);
+
+    expect(deps.injectStyle.calls).toEqual([]);
+    expect(resp.headers.get("ETag")).toBe('"abc"');
+    expect(await resp.text()).toBe(PAGE);
+  });
+
+  it("leaves what is not HTML alone", async () => {
+    const deps = pageDeps(1.125, { "Content-Type": "image/png", ETag: '"abc"' });
+
+    const resp = await handleRequest(request("GET", "/logo.png"), env(), deps);
+
+    expect(deps.injectStyle.calls).toEqual([]);
+    expect(resp.headers.get("ETag")).toBe('"abc"');
+  });
+
+  it("drops the validators of a HEAD for a page too", async () => {
+    const deps = pageDeps(1.125);
+
+    const resp = await handleRequest(request("HEAD", "/"), env(), deps);
+
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("ETag")).toBeNull();
+  });
+
+  it("sizes /settings as the container serves it", async () => {
+    const deps = makeDeps({ scale: 0.875, containerResponse: containerAnswering("text/html") });
+    const cookie = await sessionCookie();
+
+    const resp = await handleRequest(request("GET", "/settings", { cookie }), env(), deps);
+
+    expect(await resp.text()).toContain("<style>html:root{--type-scale:0.875}</style></head>");
+    expect(deps.injectStyle.calls).toHaveLength(1);
+  });
+
+  it("leaves the container's JSON alone", async () => {
+    const deps = makeDeps({ scale: 1.125, containerResponse: containerAnswering("application/json") });
+    const cookie = await sessionCookie();
+
+    await handleRequest(request("GET", "/api/settings", { cookie }), env(), deps);
+
+    expect(deps.injectStyle.calls).toEqual([]);
+    expect(deps.typeScale.reads).toBe(0);
+  });
+
+  it("puts no token in a sized page", async () => {
+    const deps = pageDeps(1.125);
+
+    const resp = await handleRequest(
+      request("GET", "/2026-08-30-evening.html"),
+      env({ CLOUDFLARE_API_TOKEN: "tok-SECRET" }),
+      deps,
+    );
+
+    expect(await resp.text()).not.toContain("tok-SECRET");
+    expect([...resp.headers].filter(([, value]) => value.includes("tok-SECRET"))).toEqual([]);
+  });
+});
+
+describe("ScaledHtmlDropsValidators", () => {
+  const conditional = {
+    "If-None-Match": '"abc"',
+    "If-Modified-Since": "Tue, 01 Sep 2026 00:00:00 GMT",
+    Accept: "text/html",
+  };
+
+  it("asks Pages without validators at another size", async () => {
+    const deps = pageDeps(1.125);
+
+    await handleRequest(request("GET", "/", { headers: conditional }), env(), deps);
+
+    const upstream = upstreamRequest(deps);
+    expect(upstream.headers.get("If-None-Match")).toBeNull();
+    expect(upstream.headers.get("If-Modified-Since")).toBeNull();
+    expect(upstream.headers.get("Accept")).toBe("text/html");
+  });
+
+  it("forwards them at size 1", async () => {
+    const deps = pageDeps(1);
+
+    await handleRequest(request("GET", "/", { headers: conditional }), env(), deps);
+
+    expect(upstreamRequest(deps).headers.get("If-None-Match")).toBe('"abc"');
+  });
+
+  it("sends Pages no token", async () => {
+    const deps = pageDeps(1.125);
+
+    await handleRequest(
+      request("GET", "/", { headers: conditional }),
+      env({ CLOUDFLARE_API_TOKEN: "tok-SECRET" }),
+      deps,
+    );
+
+    const upstream = upstreamRequest(deps);
+    expect([...upstream.headers].filter(([, value]) => value.includes("tok-SECRET"))).toEqual([]);
+    expect(upstream.headers.get("Authorization")).toBeNull();
+  });
+});
+
+describe("SettingsSaveForgetsTheScale", () => {
+  const save = async (deps, path, cookie) =>
+    handleRequest(request("POST", path, { cookie, body: { values: {} } }), env(), deps);
+
+  it("forgets the size when a values save lands", async () => {
+    const deps = makeDeps({ containerResponse: containerAnswering("application/json") });
+
+    await save(deps, "/api/settings/values", await sessionCookie());
+
+    expect(deps.typeScale.forgets).toBe(1);
+  });
+
+  it("keeps it when the save is refused", async () => {
+    const deps = makeDeps({ containerResponse: containerAnswering("application/json", 400) });
+
+    await save(deps, "/api/settings/values", await sessionCookie());
+
+    expect(deps.typeScale.forgets).toBe(0);
+  });
+
+  it("keeps it for a request that never reaches the container", async () => {
+    const deps = makeDeps();
+
+    const resp = await save(deps, "/api/settings/values", undefined);
+
+    expect(resp.status).toBe(401);
+    expect(deps.typeScale.forgets).toBe(0);
+    expect(deps.container.calls).toHaveLength(0);
+  });
+
+  it("keeps it for another settings route", async () => {
+    const deps = makeDeps({ containerResponse: containerAnswering("application/json") });
+
+    await save(deps, "/api/settings", await sessionCookie());
+
+    expect(deps.typeScale.forgets).toBe(0);
   });
 });

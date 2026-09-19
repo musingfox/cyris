@@ -7,6 +7,7 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env } from "cloudflare:workers";
 import { handleRequest } from "./router.js";
+import { createTypeScale } from "./type_scale.js";
 
 // Every secret the pipeline reads from the environment. The provider is a
 // runtime setting in D1, so all three LLM keys ride along — passing only the
@@ -137,6 +138,18 @@ export class CyrisContainer extends Container {
   }
 }
 
+// Module scope, so one reader per isolate: its memo is what bounds the REST calls.
+const typeScale = createTypeScale({ env, fetchImpl: (input, init) => fetch(input, init) });
+
+const injectStyle = (response, html) =>
+  new HTMLRewriter()
+    .on("head", {
+      element(head) {
+        head.append(html, { html: true });
+      },
+    })
+    .transform(response);
+
 // A separate instance from the UI: this one runs the pipeline once and exits,
 // so it stops billing without waiting for a sleep timer.
 async function startRun() {
@@ -151,6 +164,8 @@ export default {
       startRun,
       probeGemini,
       fetchImpl: (input, init) => fetch(input, init),
+      typeScale,
+      injectStyle,
     });
   },
 

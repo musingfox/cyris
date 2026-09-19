@@ -8,6 +8,9 @@ Replaces the Mac mini's `docker compose` + supercronic (§7 M5).
   The tick is unconditional; which hours are digest hours is a D1 setting.
 - **Any HTTP request** → `CYRIS_ROLE=ui`: `cyris triage-ui` on port 8766,
   asleep 5 minutes after the last request (`onActivityExpired` → `stop()`).
+- **Every HTML page it serves** (the archive, each issue, `/settings`) gets the
+  D1 type size as `<style>html:root{--type-scale:X}</style>`, read over REST at
+  most once a minute per isolate; pages.dev direct stays at 1.
 
 ## Auth
 

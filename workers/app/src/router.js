@@ -4,6 +4,8 @@
 // One layer always: CYRIS_UI_TOKEN cookie. A second layer (Cloudflare Access)
 // only when the request hostname equals CYRIS_UI_ACCESS_HOST.
 
+import { typeScaleStyle } from "./type_scale.js";
+
 const COOKIE = "cyris_session";
 const MIN_TOKEN_LENGTH = 32;
 
@@ -81,6 +83,26 @@ const archiveOrigin = (env) =>
     ? `https://${env.CYRIS_PROMOTE_PAGES_PROJECT}.pages.dev`
     : "");
 
+const isHtml = (response) => (response.headers.get("Content-Type") || "").startsWith("text/html");
+
+// At type size 1 a page passes untouched, validators and all. At any other
+// size an HTML page carries it, and drops its validators: a browser holding
+// the Pages ETag would otherwise revalidate to a 304 of the page at its old
+// size. The request side drops them too, so Pages never answers 304 here.
+const VALIDATORS = ["If-None-Match", "If-Modified-Since"];
+
+function sized(response, scale, deps) {
+  if (scale === 1 || !isHtml(response)) return response;
+  const injected = deps.injectStyle(response, typeScaleStyle(scale));
+  const headers = new Headers(injected.headers);
+  for (const name of ["ETag", "Last-Modified", "Content-Length"]) headers.delete(name);
+  return new Response(injected.body, {
+    status: injected.status,
+    statusText: injected.statusText,
+    headers,
+  });
+}
+
 const onAccessHost = (request, env) =>
   Boolean(env.CYRIS_UI_ACCESS_HOST) &&
   new URL(request.url).hostname === env.CYRIS_UI_ACCESS_HOST;
@@ -150,7 +172,15 @@ export async function handleRequest(request, env, deps) {
         { status: 503, headers: { "Content-Type": "text/plain" } },
       );
     }
-    return fetchImpl(new Request(origin + url.pathname + url.search, request));
+    const readsPage = request.method === "GET" || request.method === "HEAD";
+    const scale = readsPage ? await deps.typeScale.current() : 1;
+    let proxied = new Request(origin + url.pathname + url.search, request);
+    if (scale !== 1) {
+      const headers = new Headers(proxied.headers);
+      for (const name of VALIDATORS) headers.delete(name);
+      proxied = new Request(proxied, { headers });
+    }
+    return sized(await fetchImpl(proxied), scale, deps);
   }
 
   if (url.pathname === "/login") {
@@ -203,5 +233,11 @@ export async function handleRequest(request, env, deps) {
     return json(await deps.startRun());
   }
 
-  return deps.container(request);
+  const response = await deps.container(request);
+  // The reader who saved a new size sees it on the next page, not a minute later.
+  if (request.method === "POST" && url.pathname === "/api/settings/values" && response.ok) {
+    deps.typeScale.forget();
+  }
+  if (!isHtml(response)) return response;
+  return sized(response, await deps.typeScale.current(), deps);
 }
