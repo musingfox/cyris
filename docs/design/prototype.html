@@ -695,15 +695,15 @@ const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0
 
 /* ---- sample data ---- */
 const issues = [
-  {date: "2026-09-17", period: "morning", count: 22, topics: ["ai", "infra", "business"], lead: "Cloudflare Containers 進入 GA，冷啟動降到兩秒內"},
-  {date: "2026-09-16", period: "evening", count: 18, topics: ["ai", "tools"]},
-  {date: "2026-09-16", period: "morning", count: 25, topics: ["news", "tech"]},
-  {date: "2026-09-15", period: "evening", count: 16, topics: ["business"]},
-  {date: "2026-09-02", period: "morning", count: 21, topics: ["infra", "ai"]},
-  {date: "2026-09-01", period: "evening", count: 19, topics: ["tech"]},
-  {date: "2026-08-31", period: "evening", count: 17, topics: ["ai", "business"]},
-  {date: "2026-08-31", period: "morning", count: 23, topics: ["news"]},
-  {date: "2026-08-30", period: "morning", count: 20, topics: ["tools", "infra"]},
+  {date: "2026-09-17", period: "morning", count: 22, topics: ["電價費率審議決議暫時凍漲，爭取立院追加711億撥補台電", "美股回穩外資大買，台股暴漲近900點"], lead: "Cloudflare Containers 進入 GA，冷啟動降到兩秒內"},
+  {date: "2026-09-16", period: "evening", count: 18},
+  {date: "2026-09-16", period: "morning", count: 25},
+  {date: "2026-09-15", period: "evening", count: 16},
+  {date: "2026-09-02", period: "morning", count: 21},
+  {date: "2026-09-01", period: "evening", count: 19},
+  {date: "2026-08-31", period: "evening", count: 17},
+  {date: "2026-08-31", period: "morning", count: 23},
+  {date: "2026-08-30", period: "morning", count: 20},
 ];
 const rawGroups = [
   ["Simon Willison", [["accepted", .91, "Structured outputs are finally boring"], ["pending", null, "Notes on the new sqlite-vec release"], ["rejected", .22, "Weeknotes: a quiet week"]]],
@@ -726,7 +726,8 @@ $("#archive-list").innerHTML = `
   <article class="front-card">
     <div class="line"><span class="label latest">Latest</span><span class="date">${latest.date}</span><span class="label">${latest.period}</span></div>
     ${latest.lead ? `<h2>${esc(latest.lead)}</h2>` : ""}
-    ${latest.count ? `<div class="line"><span class="data">${latest.count} articles</span>${latest.topics.map((t) => `<span class="pill">${esc(t)}</span>`).join("")}</div>` : ""}
+    ${latest.count ? `<span class="data">${latest.count} articles</span>` : ""}
+    ${latest.topics.length ? `<p class="small">${latest.topics.map(esc).join(" · ")}</p>` : ""}
     ${issueActions}
   </article>
   ${[...months].map(([month, list]) => `
@@ -736,7 +737,7 @@ $("#archive-list").innerHTML = `
         <div class="row archive-row">
           <span class="date">${i.date}</span>
           <span class="label">${i.period}</span>
-          <span class="small">${i.count} articles · ${esc(i.topics.join(", "))}</span>
+          ${i.count ? `<span class="small">${i.count} articles</span>` : ""}
           ${issueActions}
         </div>`).join("")}
     </section>`).join("")}`;

@@ -116,7 +116,7 @@ updated: 2026-09-18
 | **輸入框 / 下拉** | 高 48px、左右 `--s-4`、`--bg-elev` 底、1px `--border-strong` 框、`--r-control`、Geist 18px。focus 時框變 `--accent`；驗證失敗時框變 `--warn`，下方接 notice |
 | **欄位** | 由上而下是 label 角色的欄位名、控制項、small 角色的說明，間距 `--s-2`。超過一句的說明收進 `<details>`，摘要文字為 `More` |
 | **選項清單** | 單選的多個選項（例如 provider）：`--bg-elev` 底、1px `--border` 框、`--r-control`；每列上下 `--s-3`、左右 `--s-4`、底線分隔、hover `--surface`。右側用 label 角色表示狀態；不可選的列 opacity .5 |
-| **頭版卡片** | archive 最新一期專用。`--surface` 底、1px `--border-strong` 框、方角、內距 `--s-6`。由上而下：`--accent` 的 `Latest` label 加日期（data）與時段（label）；當期第一篇的標題（title 角色）；篇數（data）與主題 pill；兩個 secondary 小按鈕 `Digest` 與 `All articles`。沒有資料的欄位直接省略，不顯示佔位字 |
+| **頭版卡片** | archive 最新一期專用。`--surface` 底、1px `--border-strong` 框、方角、內距 `--s-6`。由上而下：`--accent` 的 `Latest` label 加日期（data）與時段（label）；當期第一篇的標題（title 角色）；篇數（data）；成員最多的前兩個主題標題（small，以 ` · ` 相連）；兩個 secondary 小按鈕 `Digest` 與 `All articles`。沒有資料的欄位直接省略，不顯示佔位字 |
 | **面板** | `--bg-elev` 底、1px `--border` 框、方角。可選的頭列：`--surface` 底、底線、上下 `--s-3` 左右 `--s-5`，左放標題、右放數量或動作。相鄰面板間距 `--s-5` |
 | **列表列 / 表格列** | 上下 `--s-3`、左右 `--s-5`、底線分隔、hover `--surface`。表頭用 label 角色、`--surface` 底。表格放在自己的 `overflow-x: auto` 容器裡 |
 | **pill** | Geist Mono 14px、`2px 10px`、1px `--border-strong` 框、`--surface-2` 底、`--r-tag`。score 變體為 `--accent` 字、`--accent-dim` 框、`--accent-tint` 底 |
@@ -156,8 +156,9 @@ Settings (/settings)：site bar 上，授權後才出現
 ### archive
 
 page head（label、display、small 說明）之下，最新一期是頭版卡片，其餘期數依年月分成多個面板。
-面板頭列左邊是年月（data），右邊是期數。每期一列：日期、時段（label）、篇數與主題（small）、
-兩個 secondary 小按鈕；手機寬度時兩個按鈕換到下一行。
+面板頭列左邊是年月（data），右邊是期數。每期一列：日期、時段（label）、篇數（small，有紀錄的期數才有）、
+兩個 secondary 小按鈕；手機寬度時兩個按鈕換到下一行。歷史列不顯示主題：主題標題是一句話而不是標籤，
+而且 2026-09-19 量到的 91 期裡只有 20 期有主題紀錄。
 
 - 每一期都要列出，不截斷、不分頁、不摺疊，因為 Pages 的復原機制靠首頁列出的每一期重建。
 - 期別直接印標籤原文，不做顏色編碼，版面不假設一天只有兩期。同一天第二期以後用一個與標籤無關的
