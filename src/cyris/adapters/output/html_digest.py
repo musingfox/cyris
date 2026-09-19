@@ -16,6 +16,21 @@ def _hostname(url: str) -> str:
     return urlsplit(url).hostname or url
 
 
+def _features(content: DigestContent) -> list[DigestItem]:
+    """The issue's full-summary stories in reading order; the first is its lead.
+
+    Every summarize-tier group with a full summary: the scored ones (already sorted
+    by score in layer_by_score) followed by the unscored rest. Rendering them as
+    one stream is what lets the digest drop the structurally near-empty "Thematic
+    Summaries" section, and what the archive's headline card takes its title from.
+    """
+    return [
+        item
+        for section in [*content.featured_articles, *content.thematic_summaries]
+        for item in section.items
+    ]
+
+
 class HtmlDigestWriter:
     """Renders DigestContent as a newspaper-style HTML page."""
 
@@ -65,17 +80,9 @@ class HtmlDigestWriter:
         """
         template = self.env.get_template("digest.html.j2")
 
-        # Features = every summarize-tier group with a full summary: the scored ones
-        # (already sorted by score in layer_by_score) followed by the unscored rest.
-        # Rendering them as one stream is what lets the digest drop the structurally
-        # near-empty "Thematic Summaries" section.
-        lead_story: DigestItem | None = None
-        featured_articles: list[DigestItem] = []
-        for section in [*content.featured_articles, *content.thematic_summaries]:
-            featured_articles.extend(section.items)
-        if featured_articles:
-            lead_story = featured_articles[0]
-            featured_articles = featured_articles[1:]
+        features = _features(content)
+        lead_story = features[0] if features else None
+        featured_articles = features[1:]
 
         return template.render(
             date=content.date,
@@ -172,9 +179,16 @@ class HtmlDigestWriter:
         )
 
         latest = digests[0] if digests else None
+        card: dict = {}
         if content is not None:
             this_run = f"{content.date}-{content.period}.html"
-            latest = next((d for d in digests if d["filename"] == this_run), latest)
+            listed = next((d for d in digests if d["filename"] == this_run), None)
+            if listed is not None:
+                # What the card says beyond date and period is known only for the
+                # issue this run is rendering, and only from memory.
+                latest = listed
+                features = _features(content)
+                card["lead"] = features[0].title if features else None
 
         months: dict[str, list[dict]] = {}
         for digest in digests:
@@ -184,6 +198,7 @@ class HtmlDigestWriter:
         return template.render(
             digests=digests,
             latest=latest,
+            card=card,
             months=[{"month": month, "issues": issues} for month, issues in months.items()],
         )
 

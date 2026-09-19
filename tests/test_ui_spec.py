@@ -558,6 +558,7 @@ TYPE_ROLES = [
     (42, "raw", ".state", "13px"),
     (43, "raw", ".score", "16px"),
     (46, "raw", ".card h2", "30px"),
+    (47, "index", ".front-card h2", "22px"),
     (44, "index digest raw", ".label", "14px"),
     (45, "index digest raw", ".data", "16px"),
 ]
@@ -642,6 +643,11 @@ def test_the_headline_card_is_the_prototype_card() -> None:
     } <= card
     assert [d for d in card if d.startswith(("border-radius", "box-shadow"))] == []
     assert index[".latest"] == {"color: var(--accent)"}
+    assert "font-weight: 600" in index[".front-card h2"]
+
+
+def test_the_receipt_archive_carries_the_card_title() -> None:
+    assert "<h2>Featured Story</h2>" in _source("index")
 
 
 def test_the_empty_archive_message_takes_the_small_role() -> None:

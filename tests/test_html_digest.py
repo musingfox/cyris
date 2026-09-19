@@ -427,6 +427,68 @@ def test_no_archive_link_opens_inside_another(tmp_path):
     assert depth == 0
 
 
+def _items(*titles: str, urls: int = 1) -> list[DigestItem]:
+    return [
+        DigestItem(
+            title=title,
+            summary="S",
+            sources=["Src"],
+            urls=[f"https://example.test/{title}/{n}" for n in range(urls)],
+        )
+        for title in titles
+    ]
+
+
+def _card_for(tmp_path, content: DigestContent | None) -> str:
+    """The headline card of an archive holding one 2026-04-15 evening issue."""
+    names = ["2026-04-15-evening.html", "2026-04-14-evening.html"]
+    return _card(HtmlDigestWriter(tmp_path).render_index(names, content=content))
+
+
+def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
+    content = _content(
+        "2026-04-15",
+        "evening",
+        featured_articles=[
+            DigestSection(heading="F", items=_items("Cloudflare Containers GA", "Second"))
+        ],
+        thematic_summaries=[DigestSection(heading="T", items=_items("Thematic"))],
+    )
+
+    assert "<h2>Cloudflare Containers GA</h2>" in _card_for(tmp_path, content)
+    digest = HtmlDigestWriter(tmp_path).render(content)
+    lead = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
+    assert "Cloudflare Containers GA" in lead
+
+
+def test_without_features_the_card_leads_with_the_first_thematic_story(tmp_path):
+    content = _content(
+        "2026-04-15",
+        "evening",
+        thematic_summaries=[DigestSection(heading="T", items=_items("Thematic lead"))],
+    )
+
+    assert "<h2>Thematic lead</h2>" in _card_for(tmp_path, content)
+
+
+def test_a_run_with_no_lead_story_shows_no_card_title(tmp_path):
+    assert "<h2" not in _card_for(tmp_path, _content("2026-04-15", "evening"))
+
+
+def test_the_card_title_is_escaped(tmp_path):
+    content = _content(
+        "2026-04-15",
+        "evening",
+        featured_articles=[DigestSection(heading="F", items=_items("<b>x</b>"))],
+    )
+
+    assert "<h2>&lt;b&gt;x&lt;/b&gt;</h2>" in _card_for(tmp_path, content)
+
+
+def test_without_content_the_card_has_no_title(tmp_path):
+    assert "<h2" not in _card_for(tmp_path, None)
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

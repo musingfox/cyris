@@ -505,7 +505,6 @@ def receipt_fixtures() -> tuple[str, str, str]:
     reachable fixture. Fixed dates and records keep snapshots stable across runs.
     """
     writer = HtmlDigestWriter("/tmp/css-receipt")
-    index_html = writer.render_index(["2026-01-02-morning.html", "2026-01-01-evening.html"])
     content = DigestContent(
         date="2026-01-02",
         period="morning",
@@ -551,6 +550,9 @@ def receipt_fixtures() -> tuple[str, str, str]:
         triage_pending_count=5,
     )
     digest_html = writer.render(content)
+    index_html = writer.render_index(
+        ["2026-01-02-morning.html", "2026-01-01-evening.html"], content=content
+    )
     raw_html = writer.render_raw(
         "2026-01-02",
         "morning",
