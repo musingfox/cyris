@@ -127,7 +127,7 @@ class HtmlDigestWriter:
 
         file_path.write_text(html, encoding="utf-8")
 
-        self.write_index(self.output_dir)
+        self.write_index(self.output_dir, content=content)
 
         return file_path
 
@@ -216,17 +216,18 @@ class HtmlDigestWriter:
             months=[{"month": month, "issues": issues} for month, issues in months.items()],
         )
 
-    def write_index(self, digest_dir: Path) -> Path:
+    def write_index(self, digest_dir: Path, content: DigestContent | None = None) -> Path:
         """Persist the index page to disk.
 
         Args:
             digest_dir: Directory to write index.html
+            content: This run's digest, so the headline card leads with it
 
         Returns:
             Path to written index.html
         """
         names = [p.name for p in digest_dir.iterdir() if p.is_file()] if digest_dir.exists() else []
-        html = self.render_index(names)
+        html = self.render_index(names, content=content)
         index_path = digest_dir / "index.html"
 
         digest_dir.mkdir(parents=True, exist_ok=True)

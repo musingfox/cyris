@@ -661,6 +661,35 @@ def test_write_index(tmp_path):
     assert "2026-04-15-morning.html" in content
 
 
+def test_the_local_archive_leads_with_this_runs_issue(tmp_path):
+    (tmp_path / "2026-04-15-evening.html").write_text("x")
+    content = _content(
+        "2026-04-16",
+        "morning",
+        articles_included=5,
+        featured_articles=[DigestSection(heading="F", items=_items("Local lead"))],
+    )
+
+    HtmlDigestWriter(tmp_path).write(content)
+
+    index = (tmp_path / "index.html").read_text()
+    card = _card(index)
+    assert _card_line("2026-04-16", "morning") in card
+    assert "<h2>Local lead</h2>" in card
+    assert '<span class="data">5 articles</span>' in card
+    assert [row for row in _rows(index) if 'class="small"' in row] == []
+
+
+def test_an_index_written_without_a_run_shows_only_the_newest_issue_on_its_card(tmp_path):
+    (tmp_path / "2026-04-15-evening.html").write_text("x")
+
+    card = _card(HtmlDigestWriter(tmp_path).write_index(tmp_path).read_text())
+
+    assert _card_line("2026-04-15", "evening") in card
+    assert "<h2" not in card
+    assert 'class="data"' not in card
+
+
 def test_config_html_output_enabled():
     """C5 Test 1: Config with html_output enabled parses correctly."""
     import tempfile
