@@ -32,6 +32,7 @@ from cdp_probe import (
     at_largest_type_scale,
     base_prelude,
     chromium,
+    largest_twin,
     require_node,
     run_all,
 )
@@ -446,6 +447,12 @@ _CHECKS: list[Check] = [
         sabotage=strip_mark_sabotage("error"),
         receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
+]
+# The page never scrolls sideways at the largest type size either.
+_CHECKS += [
+    largest_twin(check, check.id.replace("fits-", "fits-largest-"), "signed-in-largest")
+    for check in _CHECKS
+    if check.id in {f"fits-{width}" for width in WIDTHS}
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]

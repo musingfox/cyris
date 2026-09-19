@@ -31,8 +31,10 @@ from cdp_probe import (
     SEND_CREDENTIAL,
     Check,
     VoteFixture,
+    at_largest_type_scale,
     base_prelude,
     chromium,
+    largest_twin,
     require_node,
     run_all,
 )
@@ -45,7 +47,15 @@ DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{DATE}-{PERIOD}-raw.html"
 
-KINDS = ("signed-in", "signed-out", "no-worker", "vote-fails", "fails-once", "slow-vote")
+KINDS = (
+    "signed-in",
+    "signed-in-largest",
+    "signed-out",
+    "no-worker",
+    "vote-fails",
+    "fails-once",
+    "slow-vote",
+)
 
 # How long `slow-vote` holds each vote: long enough for a check to act, and for
 # CDP input to land, while the vote is still in flight.
@@ -94,7 +104,8 @@ def render_page() -> str:
 def build_fixture(kind: str) -> VoteFixture:
     """Serve the raw page with the `/api/vote` answers of one deployment `kind`.
 
-    `signed-in` answers the probe and takes votes; `signed-out` refuses the
+    `signed-in` answers the probe and takes votes, and `signed-in-largest` does
+    too on the page served at the largest type size; `signed-out` refuses the
     probe; `no-worker` has no route at all, as on bare pages.dev; `vote-fails`
     signs in but refuses every vote; `fails-once` refuses only the first vote;
     `slow-vote` takes every vote, each only after `SLOW_VOTE_S`.
@@ -102,6 +113,8 @@ def build_fixture(kind: str) -> VoteFixture:
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
     page = render_page()
+    if kind == "signed-in-largest":
+        page = at_largest_type_scale(page)
     app = web.Application()
     fixture = VoteFixture(app)
 
@@ -756,6 +769,12 @@ _CHECKS: list[Check] = [
             ),
         )
     ),
+]
+# The page never scrolls sideways at the largest type size either.
+_CHECKS += [
+    largest_twin(check, check.id.replace("fits-", "fits-largest-"), "signed-in-largest")
+    for check in _CHECKS
+    if check.id in ("fits-400-list", "fits-400-triage")
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]

@@ -34,7 +34,16 @@ from unittest import mock
 
 import aiohttp
 from aiohttp import web
-from cdp_probe import Check, base_prelude, chromium, require_node, run_all, serve
+from cdp_probe import (
+    Check,
+    at_largest_type_scale,
+    base_prelude,
+    chromium,
+    largest_twin,
+    require_node,
+    run_all,
+    serve,
+)
 from css_computed import find_browser
 
 from cyris.adapters.notify import mask_discord_webhook_url
@@ -159,15 +168,20 @@ class Fixture:
 
 
 def build_fixture(kind: str) -> Fixture:
-    """A `readonly` deployment (no settings store, no source table) or a `writable` one."""
+    """A `readonly` deployment (no settings store, no source table) or a `writable` one.
+
+    `writable-largest` is `writable` with the page served at the largest type size.
+    """
     common = {"values": PROBE_VALUES, "sources": _seed_sources()}
     if kind == "readonly":
         server = TriageServer(**common)
         return Fixture(server._app, None, server._sources, server._values)
-    if kind == "writable":
+    if kind in ("writable", "writable-largest"):
         settings = FakeSettings()
         store = FakeSourceStore(_seed_sources())
         server = TriageServer(settings=settings, source_store=store, **common)
+        if kind == "writable-largest":
+            server._settings_page = at_largest_type_scale(server._settings_page)
         return Fixture(server._app, settings, store.sources, server._values)
     raise ValueError(f"unknown fixture {kind!r}")
 
@@ -1874,6 +1888,12 @@ document.addEventListener("click", (event) => {
         """,
         sabotage="""$(".settings-nav").style.display = "none";""",
     ),
+]
+# The page fits at the largest type size too.
+CHECKS += [
+    largest_twin(check, check.id.replace("fits-", "fits-largest-"), "writable-largest")
+    for check in CHECKS
+    if check.id in ("fits-400", "fits-1440")
 ]
 
 # Only these two may scroll sideways; anything else past the viewport is overflow.

@@ -25,7 +25,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Awaitable, Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol, get_args
 
@@ -138,6 +138,17 @@ class Check:
     @property
     def paths(self) -> tuple[str, ...]:
         return (self.path,) if isinstance(self.path, str) else self.path
+
+
+def largest_twin(check: Check, check_id: str, fixture: str) -> Check:
+    """`check` again as `check_id`, on a `fixture` serving the page at the largest type size.
+
+    It asserts that size took effect before anything else, so a fixture that
+    failed to inject cannot pass as scale 1; its sabotage is its twin's.
+    """
+    return replace(
+        check, id=check_id, fixture=fixture, script="expectLargestScale();\n" + check.script
+    )
 
 
 def registry_problems(checks: Iterable[Check], kinds: Iterable[str]) -> list[str]:

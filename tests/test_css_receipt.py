@@ -620,6 +620,8 @@ EXPECTED_IDS = {
     "type-scale-unset-clears-on-save",
     "type-scale-applies-on-save",
     "type-scale-kept-on-refusal",
+    "fits-largest-400",
+    "fits-largest-1440",
 }
 
 
@@ -685,7 +687,7 @@ def test_every_probe_check_is_named_once_and_can_be_sabotaged():
     ids = [check.id for check in CHECKS]
     assert len(ids) == len(set(ids))
     assert [c.id for c in CHECKS if not (c.sabotage.strip() or c.sabotage_preload)] == []
-    assert {c.fixture for c in CHECKS} <= {"readonly", "writable"}
+    assert {c.fixture for c in CHECKS} <= {"readonly", "writable", "writable-largest"}
     assert set(ids) >= EXPECTED_IDS
 
 
@@ -770,6 +772,8 @@ EXPECTED_RAW_IDS = {
     "switch-to-triage",
     "switch-back-to-list",
     "fits-400-triage",
+    "fits-largest-400-list",
+    "fits-largest-400-triage",
     "deck-pending-only",
     "deck-skips-voted",
     "deck-title-is-text",
@@ -826,6 +830,7 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
     ("kind", "status", "authorized"),
     [
         ("signed-in", 200, True),
+        ("signed-in-largest", 200, True),
         ("signed-out", 401, False),
         ("no-worker", 404, None),
         ("slow-vote", 200, True),
@@ -901,6 +906,7 @@ EXPECTED_DIGEST_IDS = {
     *(f"head-fits-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
     *(f"head-fits-largest-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
     *(f"head-unchanged-{width}" for width in (721, 760, 800, 880)),
+    *(f"fits-largest-{width}" for width in (360, 880, 1000, 1440)),
 }
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
