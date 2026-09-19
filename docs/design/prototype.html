@@ -353,7 +353,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
   .page { padding-top: var(--s-8); }
   .archive-row { grid-template-columns: 1fr auto; row-gap: var(--s-2); }
   .archive-row .small, .archive-row .actions { grid-column: 1 / -1; }
-  .digest-head { grid-template-columns: 1fr; gap: var(--s-6); }
+  .digest-head { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); overflow-x: clip; }
   .lead { padding: var(--s-6) var(--s-5); }
   .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
   .raw-row .score { text-align: left; }
