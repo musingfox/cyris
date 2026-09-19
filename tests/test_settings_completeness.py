@@ -161,3 +161,31 @@ def test_the_error_lists_all_twenty_keys_on_an_empty_d1(tmp_path: Path, d1: Sqli
         f"Missing settings in D1: {', '.join(sorted(GRADE_D_KEYS))}. "
         "Set them on /settings, or run `cyris settings push` to copy them from cyris.toml."
     )
+
+
+def test_run_on_a_d1_with_no_sources_says_how_to_add_one(
+    tmp_path: Path, d1: SqliteD1, built: list[object], caplog
+) -> None:
+    seed_d1_settings(d1)
+
+    result = runner.invoke(app, ["run", *_paths(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "No sources in D1. Add one on /settings, or run `cyris sources push`." in caplog.text
+    assert built == []
+
+
+def test_run_without_sources_yaml_names_the_file(
+    tmp_path: Path, built: list[object], caplog, monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(settings_toml())
+
+    result = runner.invoke(
+        app, ["run", "--config", str(config_path), "--sources", str(tmp_path / "absent.yaml")]
+    )
+
+    assert result.exit_code == 1
+    assert "No sources in sources.yaml." in caplog.text
+    assert built == []

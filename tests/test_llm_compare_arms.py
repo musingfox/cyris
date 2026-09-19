@@ -115,6 +115,9 @@ def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):
         f'[agent_vault]\npath = "{tmp_path / "vault"}"\n'
     )
 
+    sources = tmp_path / "sources.yaml"
+    sources.write_text('sources:\n  - name: "Feed"\n    url: "https://a.test/feed"\n')
+
     result = CliRunner().invoke(
         app,
         [
@@ -124,7 +127,7 @@ def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):
             "--config",
             str(config),
             "--sources",
-            str(tmp_path / "s.yaml"),
+            str(sources),
         ],
     )
 

@@ -401,6 +401,10 @@ class IncompleteSettingsError(ValueError):
     """A command that reads runtime settings was started while some are missing."""
 
 
+class NoSourcesError(ValueError):
+    """A run was started with no source to fetch from."""
+
+
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
@@ -436,6 +440,16 @@ class Config(BaseModel):
         raise IncompleteSettingsError(
             f"Missing from cyris.toml: {keys}. cyris.toml.example lists every key."
         )
+
+    def require_sources(self) -> None:
+        """Raise NoSourcesError when this deployment's one source list is empty."""
+        if self.sources:
+            return
+        if self.app.store.is_d1:
+            raise NoSourcesError(
+                "No sources in D1. Add one on /settings, or run `cyris sources push`."
+            )
+        raise NoSourcesError("No sources in sources.yaml.")
 
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
