@@ -1117,7 +1117,7 @@ def sources_push(
     """Make D1 match sources.yaml exactly, removals included."""
     cfg, store = _source_store(config_path, sources_path)
 
-    # load_config already prefers D1 when it has rows, so read the file directly
+    # A D1 deployment's config holds the table's sources, so read the file directly
     # or a push would just write D1's current contents back to itself.
     import yaml as _yaml
 
@@ -1149,7 +1149,10 @@ def sources_list(
 
     sources = store.list_sources()
     if not sources:
-        typer.echo("D1 has no sources; both readers fall back to sources.yaml.")
+        typer.echo(
+            "D1 has no sources; runs stop until you add one on /settings "
+            "or run `cyris sources push`."
+        )
         return
     for source in sources.values():
         typer.echo(f"{source.tier.value:<10} {source.type:<11} {source.name} — {source.url or '—'}")

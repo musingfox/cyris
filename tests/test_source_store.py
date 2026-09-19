@@ -136,3 +136,25 @@ def test_a_fresh_database_is_read_after_its_tables_exist(tmp_path: Path, monkeyp
     cfg, _ = _load(tmp_path, "d1", monkeypatch, SqliteD1(with_schema=False))
 
     assert cfg.sources == {}
+
+
+def test_sources_list_on_an_empty_table_says_runs_stop(tmp_path: Path, monkeypatch) -> None:
+    from typer.testing import CliRunner
+
+    from cyris.entrypoints.cli import app
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    db = SqliteD1()
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
+    config_path, sources_path = _write_config(tmp_path, "d1")
+
+    result = CliRunner().invoke(
+        app, ["sources", "list", "--config", str(config_path), "--sources", str(sources_path)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == (
+        "D1 has no sources; runs stop until you add one on /settings or run `cyris sources push`."
+    )
+    assert "fall back" not in result.stdout
