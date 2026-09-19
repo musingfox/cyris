@@ -169,7 +169,25 @@ page head（label、display、small 說明）之下，最新一期是頭版卡�
 
 ### digest
 
-刊頭沿用現有結構（issue title 加 stats card），上方加 site bar 與 issue bar。內文結構不變。
+上方是 site bar 與 issue bar。刊頭左邊是 issue title（`h1`），右邊是 stats card；stats 欄寬
+`min(37vw, 320px)`，隨頁寬收窄，讓字體載入前較寬的備用字型也不會壓到它。720px 以下改為單欄
+`minmax(0, 1fr)`。刊頭一律 `overflow-x: clip`，備用字型撐寬的標題在手機上會被裁掉，而不是讓整頁橫向捲動。
+
+內文依序是 Top story、Features、In Focus、Following、On the Radar、The Wire 六個 section，沒有內容的
+section 整個省略。每個 section 是一個 `<section class="section">`，名字只由開頭的區塊標記（§4）印一次，
+不加編號，也不再重複一個大字的 section 標題。區塊標記是 `h2`；Top story 例外，用 `div`，因為頭條卡片的
+標題本身就是那個 section 的 `h2`。
+
+- **標題層級依結構決定。** `h1` 是 issue title，`h2` 是區塊標記與頭條標題，`h3` 是 feature、新聞群組與
+  主題區塊的標題，`h4` 是主題區塊裡的文章與 On the Radar 的項目。`h3` 與 `h4` 都是 title 角色（§3），
+  class 為 `.item-title`：`h3` 加 `.lg` 用 22px，`h4` 用 20px。The Wire 的每列只是編號加連結，沒有標題元素。
+- **每個項目下方有一條 meta 列。** `.meta` 是 flex、可換行、間距 `--s-3`，字型就是 label 角色；
+  依序放來源與原文連結（feature 在最前面多一個 score pill），投票小按鈕永遠在最後。只有頭條卡片的 meta 列加 `.ruled`，
+  上方多一條虛線。新聞群組超過兩個來源時收進 `<details>`，摘要文字為 `N sources`。
+- **Features 與 On the Radar 共用一條流體欄寬規則：**
+  `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`，不在任何寬度另設欄數。Features 的格線畫在每張卡片的
+  右邊與下邊，所以最後一列不滿時，空格是頁面底色，不是一整塊框線色。
+- 斷點只有 720px，內文間距全部在 §2 的刻度上，光暈只有品牌方塊。
 
 ### raw
 

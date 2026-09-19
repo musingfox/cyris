@@ -203,22 +203,75 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .front-card .line { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline; }
 .front-card h2 { font-weight: 600; font-size: calc(22px * var(--type-scale)); line-height: 1.3; text-wrap: balance; }
 
-/* ---- digest excerpt ---- */
-.digest-head { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); }
+/* ---- digest ---- */
+.digest-head { display: grid; grid-template-columns: minmax(0, 1fr) min(37vw, 320px); gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); overflow-x: clip; }
 .issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale)); line-height: .92; letter-spacing: -.04em; }
 .issue-title em { font-style: italic; color: var(--accent); }
 .stats { background: var(--surface); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); }
 .stats div { display: flex; justify-content: space-between; padding: var(--s-2) 0; border-bottom: 1px dashed var(--border); font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); }
 .stats div:last-child { border-bottom: 0; }
 .stats .v.hl { color: var(--accent); }
-.section-tag { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-5); }
+.section { margin-bottom: var(--s-16); }
+.section-tag { display: flex; align-items: center; gap: var(--s-3); font-size: calc(14px * var(--type-scale)); margin-bottom: var(--s-5); }
 .section-tag::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+/* Scoped to the digest: the system page's swatches also carry a .meta. */
+.digest .meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3);
+  font-family: var(--font-mono); font-weight: 500; font-size: calc(14px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint);
+}
+.digest .meta.ruled { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px dashed var(--border-strong); }
+.digest .meta a { color: var(--accent); text-decoration: none; }
+.source-tag { color: var(--text-dim); }
+.summary, .snippet { font-size: calc(20px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); }
 .lead { border: 1px solid var(--border); background: linear-gradient(180deg, var(--surface), var(--bg-elev)); padding: var(--s-8) var(--s-12); position: relative; }
 .lead::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
 .lead h2 { font-weight: 600; font-size: calc(clamp(32px, 4.5vw, 52px) * var(--type-scale)); line-height: 1.1; letter-spacing: -.025em; margin: var(--s-3) 0 var(--s-5); }
-.lead p { font-size: calc(20px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); max-width: 70ch; }
-.lead .meta { display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px dashed var(--border-strong); align-items: center; }
-.elided { margin-top: var(--s-8); padding: var(--s-8); border: 1px dashed var(--border-strong); text-align: center; }
+.lead h2 a { text-decoration: none; transition: color var(--t-fast); }
+.lead h2 a:hover { color: var(--accent); }
+.lead .summary { max-width: 70ch; }
+.item-title { font-weight: 600; font-size: calc(20px * var(--type-scale)); line-height: 1.3; }
+.item-title.lg { font-size: calc(22px * var(--type-scale)); }
+.item-title a { text-decoration: none; transition: color var(--t-fast); }
+.item-title a:hover { color: var(--accent); }
+/* The grid lines live on the cards, so a short last row leaves blank page, not a filled block. */
+.featured-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.featured-item { background: var(--bg-elev); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: var(--s-6); transition: background-color var(--t-fast); }
+.featured-item:hover { background: var(--surface); }
+.featured-item h3 { margin-bottom: var(--s-3); }
+.featured-item .summary { margin-bottom: var(--s-4); }
+.news-cluster { border-left: 2px solid var(--border-strong); padding: var(--s-4) 0 var(--s-4) var(--s-5); margin-bottom: var(--s-5); transition: border-color var(--t-fast); }
+.news-cluster:hover { border-left-color: var(--accent); }
+.news-cluster h3, .news-cluster .summary { margin-bottom: var(--s-2); }
+.thematic-block { margin-bottom: var(--s-8); }
+.thematic-block h3 { display: flex; align-items: baseline; gap: var(--s-3); margin-bottom: var(--s-4); }
+.thematic-block h3::before { content: "▸"; color: var(--accent); font-size: calc(14px * var(--type-scale)); }
+.article-item { padding: var(--s-5) 0; border-bottom: 1px solid var(--border); }
+.article-item:last-child { border-bottom: 0; }
+.article-item h4, .attention-item h4 { margin-bottom: var(--s-2); }
+.article-item .summary { margin-bottom: var(--s-3); }
+.attention-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--s-6); }
+.attention-item { padding: var(--s-4) var(--s-5); background: var(--bg-elev); border: 1px solid var(--border); transition: border-color var(--t-fast); }
+.attention-item:hover { border-color: var(--border-strong); }
+.attention-item .snippet { line-height: 1.55; margin-bottom: var(--s-2); }
+.headlines-compact { border: 1px solid var(--border); background: var(--bg-elev); padding: var(--s-1) 0; }
+.headline-item {
+  display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-2) var(--s-5);
+  font-size: calc(16px * var(--type-scale)); line-height: 1.5; border-bottom: 1px dashed var(--border);
+  transition: background-color var(--t-fast);
+}
+.headline-item:hover { background: var(--surface); }
+.headline-item:last-child { border-bottom: 0; }
+.headline-item .idx { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--accent-dim); min-width: 36px; letter-spacing: .05em; }
+.headline-item .text { flex: 1; }
+.headline-item .text a { text-decoration: none; transition: color var(--t-fast); }
+.headline-item .text a:hover { color: var(--accent); }
+.src-fold { display: inline-block; }
+.src-fold > summary { cursor: pointer; list-style: none; color: var(--text-dim); text-decoration: underline dotted; text-underline-offset: 3px; }
+.src-fold > summary::-webkit-details-marker { display: none; }
+.src-fold > summary::after { content: " ▾"; }
+.src-fold[open] > summary::after { content: " ▴"; }
+.src-list { display: block; padding-top: var(--s-1); }
 
 /* ---- raw ---- */
 .raw-row { grid-template-columns: 96px 56px 1fr auto; align-items: baseline; }
@@ -353,7 +406,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
   .page { padding-top: var(--s-8); }
   .archive-row { grid-template-columns: 1fr auto; row-gap: var(--s-2); }
   .archive-row .small, .archive-row .actions { grid-column: 1 / -1; }
-  .digest-head { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); overflow-x: clip; }
+  .digest-head { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+  .section { margin-bottom: var(--s-12); }
   .lead { padding: var(--s-6) var(--s-5); }
   .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
   .raw-row .score { text-align: left; }
@@ -397,7 +451,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
   </main>
 </section>
 
-<!-- ============ DIGEST (masthead + first section only) ============ -->
+<!-- ============ DIGEST ============ -->
 <section data-view="digest" hidden>
   <div class="issue-bar">
     <div class="issue-bar-inner">
@@ -408,7 +462,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
       </nav>
     </div>
   </div>
-  <main class="page wide">
+  <main class="page wide digest">
     <div class="digest-head">
       <h1 class="issue-title">Signal<em>/</em>Noise</h1>
       <aside class="stats">
@@ -417,17 +471,110 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <div><span class="label">Included</span><span class="v hl">22</span></div>
       </aside>
     </div>
-    <div class="section-tag"><span class="label">Top story</span></div>
-    <article class="lead">
-      <span class="pill score">0.94</span>
-      <h2>Cloudflare Containers 進入 GA，冷啟動降到兩秒內</h2>
-      <p>容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。對排程型工作負載來說，按秒計費與 Worker 前門的組合，讓「每小時醒來一次」的部署不再需要常駐主機。</p>
-      <div class="meta">
-        <span class="label">blog.cloudflare.com</span>
-        <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+    <section class="section">
+      <div class="section-tag"><span class="label">Top story</span></div>
+      <article class="lead">
+        <span class="pill score">0.94</span>
+        <h2><a href="#digest">Cloudflare Containers 進入 GA，冷啟動降到兩秒內</a></h2>
+        <p class="summary">容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。對排程型工作負載來說，按秒計費與 Worker 前門的組合，讓「每小時醒來一次」的部署不再需要常駐主機。</p>
+        <div class="meta ruled">
+          <span class="source-tag">blog.cloudflare.com</span>
+          <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2 class="section-tag"><span class="label">Features</span></h2>
+      <div class="featured-grid">
+        <article class="featured-item">
+          <h3 class="item-title lg"><a href="#digest">SQLite 的 WAL2 模式合進主線</a></h3>
+          <p class="summary">兩個 WAL 檔輪替寫入，checkpoint 不再擋住寫入者。長時間跑寫入的服務終於不用自己排程 checkpoint。</p>
+          <div class="meta">
+            <span class="pill score">0.88</span>
+            <span class="source-tag">sqlite.org</span>
+            <a href="#digest">↗</a>
+            <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+          </div>
+        </article>
+        <article class="featured-item">
+          <h3 class="item-title lg"><a href="#digest">用 embedding 找重複新聞，門檻怎麼定</a></h3>
+          <p class="summary">作者拿三個月的標記資料比較 cosine 門檻，發現不同模型的分數分布差很多，同一個數字不能跨 provider 共用。</p>
+          <div class="meta">
+            <span class="pill score">0.85</span>
+            <span class="source-tag">Simon Willison</span>
+            <a href="#digest">↗</a>
+            <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+          </div>
+        </article>
+        <article class="featured-item">
+          <h3 class="item-title lg"><a href="#digest">Python 3.14 的 free-threaded build 效能實測</a></h3>
+          <p class="summary">單執行緒慢了約一成，四核以上的 CPU 密集工作開始回本。C 擴充套件的相容性仍是主要障礙。</p>
+          <div class="meta">
+            <span class="pill score">0.81</span>
+            <span class="source-tag">LWN.net</span>
+            <a href="#digest">↗</a>
+            <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+          </div>
+        </article>
       </div>
-    </article>
-    <div class="elided small">The rest of the digest body is unchanged by this proposal.</div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-tag"><span class="label">In Focus</span></h2>
+      <div class="news-cluster">
+        <h3 class="item-title lg">歐盟 AI 法案第二階段生效</h3>
+        <div class="summary">通用模型提供者從本月起要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</div>
+        <div class="meta">
+          <details class="src-fold"><summary>3 sources</summary><span class="src-list"><a href="#digest">reuters.com</a> · <a href="#digest">theverge.com</a> · <a href="#digest">euractiv.com</a></span></details>
+          <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-tag"><span class="label">Following</span></h2>
+      <div class="thematic-block">
+        <h3 class="item-title lg">本地優先軟體</h3>
+        <article class="article-item">
+          <h4 class="item-title"><a href="#digest">CRDT 同步在離線編輯器裡的三個坑</a></h4>
+          <p class="summary">時鐘漂移、刪除墓碑的膨脹，以及權限變更無法事後撤回。作者各給了一個已上線的解法。</p>
+          <div class="meta">
+            <span class="source-tag">Ink &amp; Switch</span>
+            <a href="#digest">↗</a>
+            <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-tag"><span class="label">On the Radar</span></h2>
+      <div class="thematic-block">
+        <h3 class="item-title lg">值得留意</h3>
+        <div class="attention-list">
+          <article class="attention-item">
+            <h4 class="item-title"><a href="#digest">Bun 1.3 內建 Postgres 驅動</a></h4>
+            <p class="snippet">不用再裝 pg 套件，連線池與 prepared statement 由 runtime 管理。</p>
+            <div class="meta"><span class="source-tag">bun.sh</span> <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
+          </article>
+          <article class="attention-item">
+            <h4 class="item-title"><a href="#digest">Pages 直接上傳 API 開始限制單次檔案數</a></h4>
+            <p class="snippet">單次部署上限兩萬個檔案，超過要分批，或改用 Workers 靜態資源。</p>
+            <div class="meta"><span class="source-tag">developers.cloudflare.com</span> <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-tag"><span class="label">The Wire</span></h2>
+      <div class="headlines-compact">
+        <div class="headline-item"><span class="idx">001</span><span class="text"><a href="#digest">台積電公布兩奈米良率進度</a></span><span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
+        <div class="headline-item"><span class="idx">002</span><span class="text"><a href="#digest">Firefox 將預設啟用 HTTPS-First</a></span><span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
+        <div class="headline-item"><span class="idx">003</span><span class="text"><a href="#digest">GitHub Actions 新增 arm64 免費 runner</a></span><span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
+      </div>
+    </section>
     <div class="footer">// generated by cyris · 48,210 tokens · 17 api calls</div>
   </main>
 </section>
