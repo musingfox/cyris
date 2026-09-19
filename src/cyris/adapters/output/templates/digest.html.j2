@@ -369,11 +369,8 @@
         :where(main) a:hover { color: var(--text); }
 
         /* === RESPONSIVE === */
-        @media (max-width: 880px) {
-            .section { margin-bottom: 48px; }
-        }
-
         @media (max-width: 720px) {
+            .section { margin-bottom: var(--s-12); }
             .headline-block { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
             .lead-story { padding: var(--s-6) var(--s-5); }
         }

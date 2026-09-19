@@ -712,6 +712,13 @@ def test_features_and_the_radar_list_share_one_fluid_track_rule() -> None:
     assert narrowed == []
 
 
+def test_the_digest_breaks_only_at_the_spec_breakpoint() -> None:
+    digest = _parsed("digest")
+    widths = {key.split(" | ")[0] for key in digest if key.startswith("@media (max-width")}
+    assert widths == {"@media (max-width: 720px)"}
+    assert digest["@media (max-width: 720px) | .section"] == {"margin-bottom: var(--s-12)"}
+
+
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
     digest = _parsed("digest")
     assert [key for key in digest if ".lead-story::before" in key] == []

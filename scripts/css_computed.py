@@ -45,7 +45,7 @@ BROWSER_BUNDLES = (
 # `tests/test_css_receipt.py` reads them back out of the rendered pages: a
 # breakpoint that moves without this map moving stops the gate sampling inside
 # its media block, which is the one failure this second receipt exists to catch.
-BREAKPOINTS = {"digest": (880, 720), "index": (720,), "raw": (720,)}
+BREAKPOINTS = {"digest": (720,), "index": (720,), "raw": (720,)}
 
 # One width above every breakpoint, then each breakpoint itself, then a phone. A
 # rule that moved across its own @media block only shows up when a width inside
