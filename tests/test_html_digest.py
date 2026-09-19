@@ -502,6 +502,50 @@ def test_without_content_the_card_has_no_count(tmp_path):
     assert 'class="data"' not in _card_for(tmp_path, None)
 
 
+def _clusters(*clusters: tuple[str, list[int]]) -> DigestContent:
+    """An issue whose news clusters hold items with the given URL counts."""
+    return _content(
+        "2026-04-15",
+        "evening",
+        news_clusters=[
+            DigestSection(
+                heading=heading,
+                items=[
+                    item
+                    for n, urls in enumerate(sizes)
+                    for item in _items(f"{heading}{n}", urls=urls)
+                ],
+            )
+            for heading, sizes in clusters
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("clusters", "line"),
+    [
+        ((("Small", [2]), ("Big", [5]), ("Mid", [3])), "Big · Mid"),
+        ((("Split", [1, 1]), ("Wide", [5])), "Wide · Split"),
+        ((("First", [2]), ("Second", [2]), ("Third", [2])), "First · Second"),
+        ((("Only", [3]),), "Only"),
+    ],
+    ids=["largest-two", "members-are-urls", "ties-keep-order", "one-cluster"],
+)
+def test_the_card_names_the_two_largest_stories(tmp_path, clusters, line):
+    assert f'<p class="small">{line}</p>' in _card_for(tmp_path, _clusters(*clusters))
+
+
+def test_a_run_without_news_clusters_shows_no_topic_line(tmp_path):
+    assert 'class="small"' not in _card_for(tmp_path, _content("2026-04-15", "evening"))
+
+
+def test_the_card_topics_are_escaped(tmp_path):
+    card = _card_for(tmp_path, _clusters(("<script>alert(1)</script>", [1])))
+
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in card
+    assert "<script>alert(1)" not in card
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

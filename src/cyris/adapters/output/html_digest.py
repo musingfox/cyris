@@ -190,6 +190,12 @@ class HtmlDigestWriter:
                 features = _features(content)
                 card["lead"] = features[0].title if features else None
                 card["count"] = content.articles_included
+                # A cluster's members are its URLs: one item can hold a whole story.
+                largest = sorted(
+                    content.news_clusters,
+                    key=lambda section: -sum(len(item.urls) for item in section.items),
+                )
+                card["topics"] = " · ".join(section.heading for section in largest[:2])
 
         months: dict[str, list[dict]] = {}
         for digest in digests:
