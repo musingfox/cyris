@@ -97,6 +97,7 @@
             <div class="archive-row{{ ' same-day' if digest.same_day }}">
                 <span class="date">{{ digest.date }}</span>
                 <span class="label">{{ digest.period }}</span>
+                {% if digest["count"] is not none %}<span class="small">{{ digest["count"] }} article{{ "" if digest["count"] == 1 else "s" }}</span>{% endif %}
                 {{ actions(digest) }}
             </div>
             {% endfor %}

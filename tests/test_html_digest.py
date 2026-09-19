@@ -607,6 +607,44 @@ def test_a_panels_first_row_is_never_marked(tmp_path):
     assert firsts == ["archive-row", "archive-row", "archive-row"]
 
 
+def _rows(html: str) -> list[str]:
+    """Every archive row's markup, whitespace between tags removed."""
+    return re.findall(r'<div class="archive-row[^"]*">.*?</div>', _tight(html))
+
+
+COUNTED = ["2026-09-02-morning.html", "2026-08-31-morning.html"]
+
+
+@pytest.mark.parametrize(("n", "shown"), [(18, "18 articles"), (1, "1 article")])
+def test_a_row_shows_its_recorded_article_count(tmp_path, n, shown):
+    html = HtmlDigestWriter(tmp_path).render_index(COUNTED, counts={("2026-08-31", "morning"): n})
+
+    (row,) = _rows(html)
+    assert (
+        f'<span class="label">morning</span><span class="small">{shown}</span>'
+        '<span class="actions">'
+    ) in row
+
+
+def test_a_row_without_a_record_shows_no_count(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(COUNTED, counts={})
+
+    assert [row for row in _rows(html) if 'class="small"' in row] == []
+
+
+def test_a_count_for_an_unlisted_issue_adds_no_row(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(COUNTED, counts={("2020-01-01", "morning"): 3})
+
+    assert html.count(">Digest</a>") == len(COUNTED)
+    assert "2020-01-01" not in html
+
+
+def test_the_card_takes_no_count_from_the_recorded_counts(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(COUNTED, counts={("2026-09-02", "morning"): 7})
+
+    assert 'class="data"' not in _card(html)
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

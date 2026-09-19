@@ -1,7 +1,7 @@
 """HTML digest output writer for newspaper-style rendering."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -136,6 +136,7 @@ class HtmlDigestWriter:
         filenames: list[str],
         *,
         content: DigestContent | None = None,
+        counts: Mapping[tuple[str, str], int] | None = None,
         period_order: Sequence[str] = PERIOD_ORDER,
     ) -> str:
         """The archive page, from the list of files the site is made of.
@@ -149,7 +150,8 @@ class HtmlDigestWriter:
         in, latest first; a label outside it sorts below the known ones of its day.
 
         The headline card is `content`'s issue when it is listed, so a run's own
-        archive leads with it; otherwise the first issue. The rest go in month panels.
+        archive leads with it; otherwise the first issue. The rest go in month panels,
+        each row showing its article count when `counts` has one for it.
         """
         template = self.env.get_template("index.html.j2")
 
@@ -204,6 +206,7 @@ class HtmlDigestWriter:
                 # Label-independent: whatever a day's periods are called, and however
                 # many there are, its second row onward says it continues the day.
                 digest["same_day"] = bool(rows) and rows[-1]["date"] == digest["date"]
+                digest["count"] = (counts or {}).get((digest["date"], digest["period"]))
                 rows.append(digest)
 
         return template.render(
