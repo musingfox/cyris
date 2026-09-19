@@ -160,13 +160,13 @@ button, input, select { font: inherit; color: inherit; }
   display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
   padding: var(--s-3) var(--s-5); background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.row {
+.list-row {
   display: grid; align-items: center; gap: var(--s-4);
   padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
   transition: background-color var(--t-fast);
 }
-.row:last-child { border-bottom: 0; }
-.row:hover { background: var(--surface); }
+.list-row:last-child { border-bottom: 0; }
+.list-row:hover { background: var(--surface); }
 .pill {
   font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .04em;
   padding: 2px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-tag); background: var(--surface-2); color: var(--text-dim);
@@ -193,6 +193,8 @@ button, input, select { font: inherit; color: inherit; }
 .archive-row { grid-template-columns: 170px 110px 1fr auto; }
 .archive-row .date, .front-card .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
 .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
+.archive-row .actions { grid-column: 4; }
+.archive-row.same-day .date { color: var(--text-faint); }
 .latest { color: var(--accent); }
 .front-card {
   background: var(--surface); border: 1px solid var(--border-strong); padding: var(--s-6);
@@ -493,13 +495,13 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
     <div class="sys-section">
       <span class="label">Type roles</span>
       <div class="panel">
-        <div class="row type-row"><span class="display">Signal <em>/</em> Noise</span><span class="spec">display · Instrument Serif 400<br>clamp(52–96px) · −0.03em</span></div>
-        <div class="row type-row"><span class="heading">Sources</span><span class="spec">heading · Geist 600 · 28px</span></div>
-        <div class="row type-row"><span style="font-weight:600;font-size: calc(22px * var(--type-scale))">Nvidia 的護城河真的在 CUDA 嗎</span><span class="spec">title · Geist 600 · 20–22px</span></div>
-        <div class="row type-row"><span style="font-size: calc(20px * var(--type-scale));line-height:1.65;color:var(--text-dim)">Containers can now follow a Durable Object's lifecycle and sleep when idle.</span><span class="spec">body · Geist 400 · 20px / 1.65</span></div>
-        <div class="row type-row"><span class="small">Saving makes one real call to the provider first.</span><span class="spec">small · Geist 400 · 16px / 1.5</span></div>
-        <div class="row type-row"><span class="label">Publish hours</span><span class="spec">label · Geist Mono 500 · 14px · upper · 0.1em</span></div>
-        <div class="row type-row"><span class="data">2026-09-17 · 0.94 · 214</span><span class="spec">data · Geist Mono · 16px · tabular</span></div>
+        <div class="list-row type-row"><span class="display">Signal <em>/</em> Noise</span><span class="spec">display · Instrument Serif 400<br>clamp(52–96px) · −0.03em</span></div>
+        <div class="list-row type-row"><span class="heading">Sources</span><span class="spec">heading · Geist 600 · 28px</span></div>
+        <div class="list-row type-row"><span style="font-weight:600;font-size: calc(22px * var(--type-scale))">Nvidia 的護城河真的在 CUDA 嗎</span><span class="spec">title · Geist 600 · 20–22px</span></div>
+        <div class="list-row type-row"><span style="font-size: calc(20px * var(--type-scale));line-height:1.65;color:var(--text-dim)">Containers can now follow a Durable Object's lifecycle and sleep when idle.</span><span class="spec">body · Geist 400 · 20px / 1.65</span></div>
+        <div class="list-row type-row"><span class="small">Saving makes one real call to the provider first.</span><span class="spec">small · Geist 400 · 16px / 1.5</span></div>
+        <div class="list-row type-row"><span class="label">Publish hours</span><span class="spec">label · Geist Mono 500 · 14px · upper · 0.1em</span></div>
+        <div class="list-row type-row"><span class="data">2026-09-17 · 0.94 · 214</span><span class="spec">data · Geist Mono · 16px · tabular</span></div>
       </div>
     </div>
 
@@ -733,8 +735,8 @@ $("#archive-list").innerHTML = `
   ${[...months].map(([month, list]) => `
     <section class="panel">
       <div class="panel-head"><span class="data">${month}</span><span class="label">${list.length} issues</span></div>
-      ${list.map((i) => `
-        <div class="row archive-row">
+      ${list.map((i, n) => `
+        <div class="list-row archive-row${n && list[n - 1].date === i.date ? " same-day" : ""}">
           <span class="date">${i.date}</span>
           <span class="label">${i.period}</span>
           ${i.count ? `<span class="small">${i.count} articles</span>` : ""}
@@ -752,7 +754,7 @@ function renderRaw() {
   <section class="panel">
     <div class="panel-head"><span style="font-weight:600;font-size: calc(20px * var(--type-scale))">${esc(name)}</span><span class="label">${arts.length}</span></div>
     ${arts.map((a) => `
-      <div class="row raw-row">
+      <div class="list-row raw-row">
         <span class="state ${a.state}">${a.state}</span>
         <span class="score">${a.score == null ? "—" : a.score.toFixed(2)}</span>
         <a href="#raw">${esc(a.title)}</a>

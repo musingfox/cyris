@@ -118,7 +118,7 @@ updated: 2026-09-18
 | **選項清單** | 單選的多個選項（例如 provider）：`--bg-elev` 底、1px `--border` 框、`--r-control`；每列上下 `--s-3`、左右 `--s-4`、底線分隔、hover `--surface`。右側用 label 角色表示狀態；不可選的列 opacity .5 |
 | **頭版卡片** | archive 最新一期專用。`--surface` 底、1px `--border-strong` 框、方角、內距 `--s-6`。由上而下：`--accent` 的 `Latest` label 加日期（data）與時段（label）；當期第一篇的標題（title 角色）；篇數（data）；成員最多的前兩個主題標題（small，以 ` · ` 相連）；兩個 secondary 小按鈕 `Digest` 與 `All articles`。沒有資料的欄位直接省略，不顯示佔位字 |
 | **面板** | `--bg-elev` 底、1px `--border` 框、方角。可選的頭列：`--surface` 底、底線、上下 `--s-3` 左右 `--s-5`，左放標題、右放數量或動作。相鄰面板間距 `--s-5` |
-| **列表列 / 表格列** | 上下 `--s-3`、左右 `--s-5`、底線分隔、hover `--surface`。表頭用 label 角色、`--surface` 底。表格放在自己的 `overflow-x: auto` 容器裡 |
+| **列表列 / 表格列** | class 名稱 `.list-row`（`.row` 已被 digest 統計卡片占用）。上下 `--s-3`、左右 `--s-5`、底線分隔、hover `--surface`。表頭用 label 角色、`--surface` 底。表格放在自己的 `overflow-x: auto` 容器裡 |
 | **pill** | Geist Mono 14px、`2px 10px`、1px `--border-strong` 框、`--surface-2` 底、`--r-tag`。score 變體為 `--accent` 字、`--accent-dim` 框、`--accent-tint` 底 |
 | **狀態字** | Geist Mono 13px、大寫、字距 0.1em。accepted 為 `--accent`；pending 為 `--text-dim`；rejected 為 `--text-faint` |
 | **notice** | 儲存結果與錯誤：左側 2px 色條（`--accent` 或 `--warn`）、對應 tint 底、方角、small 角色、`white-space: pre-wrap`，放在觸發它的按鈕旁邊。錯誤訊息要說明發生什麼、怎麼修 |
@@ -161,8 +161,8 @@ page head（label、display、small 說明）之下，最新一期是頭版卡�
 而且 2026-09-19 量到的 91 期裡只有 20 期有主題紀錄。
 
 - 每一期都要列出，不截斷、不分頁、不摺疊，因為 Pages 的復原機制靠首頁列出的每一期重建。
-- 期別直接印標籤原文，不做顏色編碼，版面不假設一天只有兩期。同一天第二期以後用一個與標籤無關的
-  結構訊號區分，形式在實作時依真實資料決定。
+- 期別直接印標籤原文，不做顏色編碼，版面不假設一天只有兩期。同一天的期數依排程觸發的先後排列；
+  第二期以後的列把日期改成 `--text-faint`，這個訊號與標籤無關。沒有篇數的列，兩個按鈕仍對齊在同一欄。
 - 資料來源與取捨記在 `docs/milestones/digest-archive-index-layout.md`；斷點以本文件 §2 為準。
 
 ### digest
