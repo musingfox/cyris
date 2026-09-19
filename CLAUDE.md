@@ -94,7 +94,8 @@ src/cyris/
 │   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback;
 │   │                        #   source_store.py, tags.py, stories.py = the other D1 tables;
 │   │                        #   newsletter_dedup.py = the save-time dedup rule both stores share;
-│   │                        #   runs.py = one `digest_runs` row per run, every path
+│   │                        #   runs.py = one `digest_runs` row per run, every path;
+│   │                        #   archive_meta.py = the archive rows' article counts, read from `usage_log`
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
 │   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST,
