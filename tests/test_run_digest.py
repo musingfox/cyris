@@ -212,8 +212,13 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
         )
 
     class StubHtmlWriter:
+        # A name no other code spells, so the digest URL can only come from here.
+        @staticmethod
+        def digest_filename(date: str, period: str) -> str:
+            return f"{date}-{period}-v2.html"
+
         def write(self, content, raw_page: bool = False) -> Path:
-            path = tmp_path / f"{content.date}-{content.period}.html"
+            path = tmp_path / self.digest_filename(content.date, content.period)
             path.write_text("<html></html>")
             return path
 
@@ -241,6 +246,7 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
     ok = await run_with(True, tmp_path / "ok")
     assert ok["publish_failed"] is False
     assert ok["digest_url"].startswith("https://cyris-digest.pages.dev/")
+    assert ok["digest_url"].endswith("-v2")
 
 
 def _fan_article(*, article_id: int, title: str, url: str) -> Article:
@@ -588,6 +594,22 @@ def test_the_published_archive_leads_with_this_runs_issue(tmp_path: Path) -> Non
     assert '<span class="data">7 articles</span>' in card
     panels = index[index.index('<section class="panel">') :]
     assert 'href="2026-04-15-evening.html"' in panels
+
+
+def test_the_published_digest_is_keyed_by_the_writers_file_name(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        HtmlDigestWriter, "digest_filename", staticmethod(lambda d, p: f"{d}-{p}-v2.html")
+    )
+    deps = SimpleNamespace(
+        html_writer=HtmlDigestWriter(tmp_path),
+        site_filenames=lambda: [],
+        archive_counts=lambda: {},
+    )
+
+    pages = _render_site(deps, _run_content("2026-04-16", "evening", "Lead", 1), [])
+
+    assert "/2026-04-16-evening-v2.html" in pages
+    assert "/2026-04-16-evening.html" not in pages
 
 
 def test_the_published_archive_rows_carry_the_recorded_counts(tmp_path: Path) -> None:

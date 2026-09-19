@@ -680,6 +680,28 @@ def test_the_local_archive_leads_with_this_runs_issue(tmp_path):
     assert [row for row in _rows(index) if 'class="small"' in row] == []
 
 
+def test_a_digest_is_named_by_its_date_and_period():
+    assert HtmlDigestWriter.digest_filename("2026-04-16", "evening") == "2026-04-16-evening.html"
+
+
+def test_the_digest_and_its_archive_card_follow_one_file_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        HtmlDigestWriter, "digest_filename", staticmethod(lambda d, p: f"{d}-{p}-v2.html")
+    )
+    # A newer issue on disk, so only the card's lookup can put this run on it.
+    (tmp_path / "2026-04-17-morning.html").write_text("x")
+    content = _content(
+        "2026-04-16",
+        "morning",
+        featured_articles=[DigestSection(heading="F", items=_items("Renamed lead"))],
+    )
+
+    path = HtmlDigestWriter(tmp_path).write(content)
+
+    assert path == tmp_path / "2026-04-16-morning-v2.html"
+    assert "<h2>Renamed lead</h2>" in _card((tmp_path / "index.html").read_text())
+
+
 def test_an_index_written_without_a_run_shows_only_the_newest_issue_on_its_card(tmp_path):
     (tmp_path / "2026-04-15-evening.html").write_text("x")
 

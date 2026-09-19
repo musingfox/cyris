@@ -35,6 +35,11 @@ class HtmlDigestWriter:
     """Renders DigestContent as a newspaper-style HTML page."""
 
     @staticmethod
+    def digest_filename(date: str, period: str) -> str:
+        """The digest page's file name; its extensionless form is the issue's URL."""
+        return f"{date}-{period}.html"
+
+    @staticmethod
     def raw_filename(date: str, period: str) -> str:
         """The raw page's file name; the archive links to it only under this name."""
         return f"{date}-{period}-raw.html"
@@ -116,8 +121,7 @@ class HtmlDigestWriter:
             OSError: If output directory cannot be created
         """
         html = self.render(content, raw_page=raw_page)
-        filename = f"{content.date}-{content.period}.html"
-        file_path = self.output_dir / filename
+        file_path = self.output_dir / self.digest_filename(content.date, content.period)
 
         if dry_run:
             print(html)
@@ -183,7 +187,7 @@ class HtmlDigestWriter:
         latest = digests[0] if digests else None
         card: dict = {}
         if content is not None:
-            this_run = f"{content.date}-{content.period}.html"
+            this_run = self.digest_filename(content.date, content.period)
             listed = next((d for d in digests if d["filename"] == this_run), None)
             if listed is not None:
                 # What the card says beyond date and period is known only for the

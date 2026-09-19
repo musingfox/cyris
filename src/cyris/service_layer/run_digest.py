@@ -42,8 +42,8 @@ class RunReport:
 def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
     """This run's pages as bytes, keyed by the path Pages will serve them at."""
     writer = deps.html_writer
-    slug = f"{content.date}-{content.period}"
-    pages = {f"/{slug}.html": writer.render(content, raw_page=bool(collected))}
+    page = "/" + writer.digest_filename(content.date, content.period)
+    pages = {page: writer.render(content, raw_page=bool(collected))}
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
@@ -336,14 +336,15 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
 
         # HTML output (optional, non-blocking)
         if deps.html_writer is not None:
-            slug = f"{content.date}-{content.period}"
+            filename = deps.html_writer.digest_filename(content.date, content.period)
+            slug = Path(filename).stem
             published = False
             if deps.publish_site is not None:
                 # No local archive: the pages are built in memory and the site's
                 # file list comes from D1. Nothing here touches the filesystem.
                 try:
                     published = deps.publish_site(_render_site(deps, content, collected), slug)
-                    report.html_path = Path(f"{slug}.html")  # published, not written
+                    report.html_path = Path(filename)  # published, not written
                 except Exception as e:
                     logger.error("Failed to publish the HTML digest: %s", e)
             else:
