@@ -222,6 +222,7 @@ function render() {
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
   }
+  showNotifyState();
   markMissing();
   if (state.writable) {
     document.querySelectorAll("form.tab").forEach((form) => markClean(form));
@@ -434,6 +435,7 @@ $("notify-form").addEventListener("submit", async (e) => {
     // The stored value comes back masked; an edit typed meanwhile is kept.
     if (field.value === url) field.value = data.discord_webhook_url;
     markSet(["notify.discord_webhook_url"]);
+    showNotifyState();
     markClean(form, {...sent, "discord-webhook": data.discord_webhook_url});
     show("ok", `${data.detail} ${data.note}`, "notify-result");
   } catch (err) {
@@ -441,6 +443,47 @@ $("notify-form").addEventListener("submit", async (e) => {
   } finally {
     saving.delete(form);
     refresh(form);
+  }
+});
+
+// "" is off by choice; a missing webhook is neither on nor off yet.
+function showNotifyState() {
+  const webhook = state.values["notify.discord_webhook_url"];
+  $("notify-state").hidden = webhook !== "";
+  $("notify-off").hidden = !(webhook && state.writable);
+}
+
+// The spec's destructive confirm, as Retire does it: the stored URL cannot be
+// read back, so turning it off is not undone by pressing Save again.
+let notifyOffTimer;
+const disarmNotifyOff = () => {
+  clearTimeout(notifyOffTimer);
+  $("notify-off").classList.remove("armed");
+  $("notify-off").textContent = "Turn off";
+};
+
+$("notify-off").addEventListener("click", async () => {
+  const button = $("notify-off"), form = $("notify-form");
+  if (!button.classList.contains("armed")) {
+    button.classList.add("armed");
+    button.textContent = "Confirm turn off";
+    notifyOffTimer = setTimeout(disarmNotifyOff, 3000);
+    return;
+  }
+  disarmNotifyOff();
+  button.disabled = true;
+  try {
+    const data = await post("/api/settings/notify", {off: true});
+    state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
+    $("discord-webhook").value = data.discord_webhook_url;
+    markSet(["notify.discord_webhook_url"]);
+    showNotifyState();
+    markClean(form);
+    show("ok", data.note, "notify-result");
+  } catch (err) {
+    show("err", err.message, "notify-result");
+  } finally {
+    button.disabled = false;
   }
 });
 

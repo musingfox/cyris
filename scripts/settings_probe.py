@@ -1618,6 +1618,70 @@ window.fetch = async (input, init) => {
 """,
     ),
     Check(
+        id="notify-off-arms",
+        fixture="writable",
+        path="/settings#notifications",
+        act="""
+            await settingsLoaded();
+            ctx.shown = visible($("#notify-off"));
+            $("#notify-off").click();
+            await sleep(300);
+        """,
+        script="""
+            expect(ctx.shown, "Turn off is hidden while a webhook is stored");
+            const button = $("#notify-off");
+            expect(button.classList.contains("armed"), "not armed");
+            expect(button.textContent === "Confirm turn off", `text: ${button.textContent}`);
+        """,
+        sabotage_preload="""
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#notify-off")) return;
+  fetch("/api/settings/notify", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({off: true})});
+}, true);
+""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="notify-off-stores",
+        fixture="writable",
+        path="/settings#notifications",
+        act="""
+            await settingsLoaded();
+            $("#notify-off").click();
+            await sleep(200);
+            $("#notify-off").click();
+            await waitFor(() => visible($("#notify-result")), "the notice");
+        """,
+        script="""
+            const state = $("#notify-state"), notice = $("#notify-result");
+            expect(visible(state) && state.textContent === "Notifications are off.",
+              `state: ${visible(state) && state.textContent}`);
+            expect(!visible($("#notify-off")), "Turn off is still shown");
+            expect($("#discord-webhook").value === "", `field: ${$("#discord-webhook").value}`);
+            expect(!notice.classList.contains("err"), `an error: ${notice.textContent}`);
+            const wanted = "Notifications are off. The next run finishes without a message.";
+            expect(notice.textContent === wanted, `notice: ${notice.textContent}`);
+            expect(saveOf("notifications").disabled, "Save is enabled after turning off");
+        """,
+        sabotage="""$("#notify-state").hidden = true;""",
+        receipt=_last_call({"notify.discord_webhook_url": ""}),
+    ),
+    Check(
+        id="notify-off-hidden-when-off",
+        fixture="writable",
+        path="/settings#notifications",
+        setup=lambda fixture: fixture.values.update({"notify.discord_webhook_url": ""}),
+        act="await settingsLoaded();",
+        script="""
+            expect(!visible($("#notify-off")), "Turn off is shown with notifications off");
+            const state = $("#notify-state");
+            expect(visible(state) && state.textContent === "Notifications are off.",
+              `state: ${visible(state) && state.textContent}`);
+        """,
+        sabotage="""$("#notify-off").hidden = false;""",
+    ),
+    Check(
         id="readonly-settings",
         fixture="readonly",
         path="/settings#model",

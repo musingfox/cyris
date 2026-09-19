@@ -612,6 +612,9 @@ EXPECTED_IDS = {
     "model-none-posts",
     "model-none-loaded",
     "model-missing-unchecked",
+    "notify-off-arms",
+    "notify-off-stores",
+    "notify-off-hidden-when-off",
 }
 
 
