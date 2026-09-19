@@ -543,7 +543,6 @@ TYPE_ROLES = [
     (6, "index digest raw", ".btn", "14px"),
     (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
     (10, "digest", ".stats-card", "16px"),
-    (11, "digest", ".stats-card .label", "14px"),
     (12, "digest", ".section-tag", "14px"),
     (14, "digest", ".section-description", "20px"),
     (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
@@ -662,6 +661,25 @@ def test_every_meta_row_is_one_base_rule_and_the_lead_names_its_variant() -> Non
         "border-top: 1px dashed var(--border-strong)",
     }
     assert '<div class="meta ruled">' in _source("digest")
+
+
+def test_the_masthead_is_the_prototype_digest_head() -> None:
+    digest = _parsed("digest")
+    assert {
+        "display: grid",
+        "grid-template-columns: minmax(0, 1fr) 320px",
+        "gap: var(--s-12)",
+        "align-items: end",
+    } <= set(digest[".headline-block"])
+    assert digest["@media (max-width: 720px) | .headline-block"] == {
+        "grid-template-columns: minmax(0, 1fr)",
+        "gap: var(--s-6)",
+    }
+    assert "padding: var(--s-4) var(--s-5)" in digest[".stats-card"]
+    assert "padding: var(--s-2) 0" in digest[".stats-card .row"]
+    assert ".stats-card .label" not in digest
+    narrow = "@media (max-width: 880px) | "
+    assert [k for k in digest if k in (narrow + ".headline-block", narrow + ".stats-card")] == []
 
 
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
