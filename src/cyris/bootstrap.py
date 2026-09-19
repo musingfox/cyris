@@ -167,12 +167,10 @@ def _d1_value_survived(cfg: Config, key: str, stored: Any) -> bool:
     """Did the D1 row actually decide this field, or did a validator overwrite it?
 
     `apply_to` rebuilds each table through `model_validate`, so a validator can
-    replace what D1 stored — `notify.discord_webhook_url` is the case that
-    matters: an empty row is refilled from the env var, and calling that a D1
-    override sends an operator to /settings to change a value pinned by a Worker
-    secret. Comparing the stored value against what survived answers this without
-    a per-key rule: an empty `llm_provider.model` survives as empty and is still
-    an override, because "" there means "the provider's default", not "unset".
+    replace what D1 stored. Comparing the stored value against what survived
+    answers this without a per-key rule: an empty `llm_provider.model` survives as
+    empty and is still an override, because "" there means "the provider's
+    default", not "unset".
     """
     table, field = key.split(".", 1)
     return getattr(getattr(cfg.app, table), field) == stored

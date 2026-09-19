@@ -96,22 +96,8 @@ GRADE_D_KEYS: tuple[str, ...] = (
 )
 
 
-# The env fallback of a grade-D setting (read after D1 `settings` and `[notify]`).
-# Named here rather than inline because `cyris doctor` reports which home a webhook
-# came from, and has to name the same variable this reads.
-DISCORD_WEBHOOK_ENV_VAR = "CYRIS_DISCORD_WEBHOOK_URL"
-
-
 class NotifyConfig(BaseModel):
-    discord_webhook_url: str = ""
-
-    @model_validator(mode="after")
-    def inject_webhook_url(self) -> "NotifyConfig":
-        # A webhook URL is a credential: it must have somewhere to live other than
-        # the config file, or a deployment that only ships env has no way to set it.
-        if not self.discord_webhook_url:
-            self.discord_webhook_url = os.environ.get(DISCORD_WEBHOOK_ENV_VAR, "")
-        return self
+    discord_webhook_url: str = ""  # "" ⇒ notifications off
 
 
 def _known_timezone(name: str) -> str:
@@ -424,7 +410,14 @@ class Config(BaseModel):
     # Grade-D keys this deployment's one home does not hold. Never raises at load:
     # the commands that fill the home have to start while it is empty.
     missing_settings: list[str] = Field(default_factory=list)
+    # Each grade-D value the home does hold, validated on its own. Recorded apart
+    # from the tables, which fill what is absent.
+    settings_values: dict[str, Any] = Field(default_factory=dict)
     config_file_found: bool = True
+
+    def present_settings(self) -> dict[str, Any]:
+        """The grade-D values this deployment's home holds, by `table.field`."""
+        return dict(self.settings_values)
 
     def missing_store_keys(self) -> list[str]:
         """Env vars a D1 store needs and does not have; empty when json or complete."""
@@ -484,6 +477,7 @@ def load_config(
         raw_yaml = {}
 
     app_config = AppConfig.model_validate(raw_toml)
+    settings_values, missing_settings = _file_settings(raw_toml)
 
     sources_config = SourcesConfig.model_validate(raw_yaml or {})
 
@@ -499,8 +493,24 @@ def load_config(
         app=app_config,
         sources=from_d1 or sources_dict,
         sources_origin="d1" if from_d1 else "sources.yaml",
+        missing_settings=missing_settings,
+        settings_values=settings_values,
         config_file_found=config_file_found,
     )
+
+
+def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
+    """The grade-D values a cyris.toml sets, validated, and the keys it leaves out."""
+    values: dict[str, Any] = {}
+    missing: list[str] = []
+    for key in GRADE_D_KEYS:
+        table, field = key.split(".", 1)
+        body = raw_toml.get(table)
+        if isinstance(body, dict) and field in body:
+            values[key] = validate_setting(key, body[field])
+        else:
+            missing.append(key)
+    return values, sorted(missing)
 
 
 def _sources_from_d1(app_config: AppConfig) -> dict[str, SourceConfig] | None:

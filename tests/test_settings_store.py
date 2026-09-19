@@ -148,8 +148,7 @@ def test_a_stored_webhook_becomes_the_one_the_run_uses():
     assert "notify.discord_webhook_url" in applied
 
 
-def test_the_stored_webhook_outranks_both_the_file_and_the_worker_secret(monkeypatch):
-    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/env")
+def test_the_stored_webhook_outranks_the_file():
     cfg = Config(
         app=AppConfig.model_validate(
             {"notify": {"discord_webhook_url": "https://discord.com/api/webhooks/1/file"}}
@@ -160,14 +159,3 @@ def test_the_stored_webhook_outranks_both_the_file_and_the_worker_secret(monkeyp
     apply_to(cfg, {"notify.discord_webhook_url": "https://discord.com/api/webhooks/1/d1"})
 
     assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/1/d1"
-
-
-def test_an_empty_stored_webhook_does_not_switch_notifications_off(monkeypatch):
-    """Clearing the field on /settings falls back to the environment rather than
-    silencing the run: the env var is how a container is given the webhook."""
-    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/env")
-    cfg = Config(app=AppConfig(), sources={})
-
-    apply_to(cfg, {"notify.discord_webhook_url": ""})
-
-    assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/1/env"

@@ -56,42 +56,6 @@ def test_the_settings_read_finds_its_table_on_first_boot(tmp_path, monkeypatch) 
     assert db.query("SELECT name FROM sqlite_master WHERE name = 'settings'").rows
 
 
-def test_an_empty_settings_row_is_not_reported_as_an_override(tmp_path, monkeypatch) -> None:
-    """An empty row overrides nothing, so `doctor` must not name D1 as the home.
-
-    The webhook is the case that made this matter: a blank row leaves the value
-    to `NotifyConfig`'s env-fill, and crediting D1 would send an operator to
-    `/settings` to change a value pinned by a Worker secret.
-    """
-    from cyris import bootstrap
-    from cyris.adapters.store import d1 as d1_module
-    from cyris.adapters.store.settings import D1Settings
-
-    db = SqliteD1(with_schema=False)
-    apply_schema(db)
-    D1Settings(db).set(
-        {
-            "notify.discord_webhook_url": "",
-            "digest.max_featured": 4,
-            # "" here means "the provider's default", not "unset" — it survives
-            # validation, so it stays an override even though it is falsy.
-            "llm_provider.model": "",
-        }
-    )
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
-    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
-    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/9/env")
-    monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: db)
-    monkeypatch.setattr(d1_module, "D1Client", lambda **_kwargs: db)
-
-    cfg = bootstrap.load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
-
-    assert sorted(cfg.settings_from_d1) == ["digest.max_featured", "llm_provider.model"]
-    assert cfg.app.notify.discord_webhook_url == "https://discord.com/api/webhooks/9/env"
-
-
 def test_doctor_reports_an_unusable_d1_as_a_check_line(monkeypatch) -> None:
     """Creating the tables here means a D1Error is D1 itself, not a missing table."""
     from typer.testing import CliRunner

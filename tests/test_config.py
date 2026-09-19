@@ -6,8 +6,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from fakes import settings_toml
 
-from cyris.config import load_config
+from cyris.config import GRADE_D_KEYS, load_config
 from cyris.domain.models import Tier
 
 
@@ -654,3 +655,73 @@ class TestProviderNone:
 
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             cfg.validate_required_keys()
+
+
+class TestJsonSettingsFromFileOnly:
+    """A json deployment takes every runtime setting from cyris.toml and nowhere else."""
+
+    ENV_WEBHOOK = "https://discord.com/api/webhooks/1/envTOKEN"
+
+    def _load(self, tmp_path: Path, body: str | None):
+        config_file = tmp_path / "cyris.toml"
+        if body is not None:
+            config_file.write_text(body)
+        return _load_tmp(tmp_path, config_file)
+
+    def test_no_file_means_every_key_is_missing(self, tmp_path):
+        from cyris.config import GRADE_D_KEYS
+
+        cfg = self._load(tmp_path, None)
+
+        assert cfg.missing_settings == sorted(GRADE_D_KEYS)
+        assert cfg.present_settings() == {}
+        assert cfg.config_file_found is False
+
+    def test_a_file_with_one_key_leaves_the_other_nineteen_missing(self, tmp_path):
+        cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
+
+        assert len(cfg.missing_settings) == 19
+        assert "general.timezone" not in cfg.missing_settings
+        assert cfg.present_settings() == {"general.timezone": "UTC"}
+
+    def test_the_environment_never_supplies_the_webhook(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", self.ENV_WEBHOOK)
+
+        cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
+
+        assert "notify.discord_webhook_url" in cfg.missing_settings
+        assert "envTOKEN" not in cfg.model_dump_json()
+
+    def test_an_empty_webhook_is_present_and_means_off(self, tmp_path):
+        cfg = self._load(tmp_path, '[notify]\ndiscord_webhook_url = ""\n')
+
+        assert "notify.discord_webhook_url" not in cfg.missing_settings
+        assert cfg.present_settings()["notify.discord_webhook_url"] == ""
+
+    def test_provider_none_is_a_present_value(self, tmp_path):
+        cfg = self._load(tmp_path, '[llm_provider]\nprovider = "none"\nmodel = ""\n')
+
+        assert "llm_provider.provider" not in cfg.missing_settings
+        assert "llm_provider.model" not in cfg.missing_settings
+        assert cfg.present_settings()["llm_provider.provider"] == "none"
+
+    def test_the_shipped_example_sets_every_key(self):
+        root = Path(__file__).parent.parent
+
+        cfg = load_config(root / "cyris.toml.example", root / "sources.example.yaml")
+
+        assert cfg.missing_settings == []
+
+    @pytest.mark.parametrize("key", GRADE_D_KEYS)
+    def test_each_omitted_key_is_reported_missing(self, tmp_path, monkeypatch, key):
+        monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", self.ENV_WEBHOOK)
+
+        cfg = self._load(tmp_path, settings_toml(omit=[key]))
+
+        assert cfg.missing_settings == [key]
+        assert key not in cfg.present_settings()
+        assert "envTOKEN" not in cfg.model_dump_json()
+
+    def test_the_webhook_env_var_name_is_gone(self):
+        with pytest.raises(ImportError):
+            from cyris.config import DISCORD_WEBHOOK_ENV_VAR  # noqa: F401

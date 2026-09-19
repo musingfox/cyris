@@ -787,7 +787,6 @@ async def test_a_config_left_on_the_old_stanza_fails_the_build_check(
     top-level-only comparison reports green while the webhook silently stops
     arriving — the 2026-08-25 failure the build check exists to prevent.
     """
-    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(
         '[general]\ntimezone = "Asia/Taipei"\n\n'
@@ -814,7 +813,6 @@ async def test_a_config_left_on_the_old_stanza_fails_the_build_check(
 async def test_the_run_reports_one_discord_check_and_a_missing_webhook_is_not_a_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
 
     checks = await doctor.run_checks(_config(tmp_path))
 

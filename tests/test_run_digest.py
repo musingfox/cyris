@@ -843,7 +843,6 @@ async def test_notification_marks_no_llm_as_not_degraded(tmp_path: Path) -> None
 async def test_a_run_with_no_webhook_says_it_is_skipping_the_notification(
     tmp_path: Path, caplog, monkeypatch
 ) -> None:
-    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
     deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
     assert deps.cfg.app.notify.discord_webhook_url == ""
 
@@ -859,7 +858,6 @@ async def test_a_run_with_no_webhook_says_it_is_skipping_the_notification(
 async def test_a_run_with_a_webhook_stays_quiet_and_still_notifies(
     tmp_path: Path, caplog, monkeypatch
 ) -> None:
-    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
     deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/run-log"
     sent: dict = {}

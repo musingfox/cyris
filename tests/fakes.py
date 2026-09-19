@@ -1,6 +1,54 @@
 """Test doubles for cross-boundary Protocols."""
 
+import json
+from collections.abc import Iterable
+from typing import Any
+
 from cyris.service_layer.ports import LLMResponse
+
+# One explicit value for every grade-D key. Tests build their settings from this,
+# never from a code default, so a test states every value it runs on.
+TEST_SETTINGS: dict[str, Any] = {
+    "general.digest_schedule": ["08:00", "20:00"],
+    "general.timezone": "Asia/Taipei",
+    "general.digest_window_hours": 24,
+    "llm_provider.provider": "none",
+    "llm_provider.model": "",
+    # Off: a test that runs the pipeline must never reach a real Discord channel.
+    "notify.discord_webhook_url": "",
+    "digest.max_articles_per_digest": 200,
+    "digest.max_articles_per_digest_output": 15,
+    "digest.max_featured": 5,
+    "digest.scoring_snippet_length": 1000,
+    "digest.summarize_snippet_length": 1000,
+    "digest.filter_snippet_length": 500,
+    "digest.output_language": "zh-Hant",
+    "digest.style_prompt": "",
+    "routing.score_threshold": 70,
+    "routing.summarize_score_threshold": 70,
+    "vote_similarity.enabled": False,
+    "vote_similarity.provider": "workers_ai",
+    "vote_similarity.model": "",
+    "vote_similarity.max_seeds": 200,
+}
+
+
+def _test_settings(omit: Iterable[str], overrides: dict[str, Any]) -> dict[str, Any]:
+    omitted = set(omit)
+    unknown = sorted((omitted | set(overrides)) - set(TEST_SETTINGS))
+    assert not unknown, f"not a grade-D key: {unknown}"
+    values = {**TEST_SETTINGS, **overrides}
+    return {key: value for key, value in values.items() if key not in omitted}
+
+
+def settings_toml(*, omit: Iterable[str] = (), **overrides: Any) -> str:
+    """A cyris.toml body holding every grade-D key but `omit`, keyed `table.field`."""
+    tables: dict[str, list[str]] = {}
+    for key, value in _test_settings(omit, overrides).items():
+        table, field = key.split(".", 1)
+        # JSON strings, numbers, booleans and string arrays are valid TOML values.
+        tables.setdefault(table, []).append(f"{field} = {json.dumps(value)}")
+    return "".join(f"[{table}]\n" + "\n".join(lines) + "\n\n" for table, lines in tables.items())
 
 
 class FakeLLM:

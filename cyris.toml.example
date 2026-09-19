@@ -7,12 +7,13 @@ timezone = "Asia/Taipei"
 digest_window_hours = 24
 
 [notify]
-discord_webhook_url = ""                # optional; falls back to CYRIS_DISCORD_WEBHOOK_URL
+discord_webhook_url = ""                # "" means off; paste a Discord webhook URL to get a message per digest
 
 [llm_provider]
 # "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY), "openai" (OPENAI_API_KEY),
-# or "workers_ai"
-# (CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying Workers AI -> Read).
+# "workers_ai"
+# (CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying Workers AI -> Read),
+# or "none" for plain excerpts with no model and no key (set model = "").
 # workers_ai keeps everything on one Cloudflare account, but it is not yet a
 # drop-in: run `cyris llm-compare` and read both digests before switching.
 provider = "anthropic"
@@ -22,6 +23,9 @@ model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider 
 max_articles_per_digest = 400           # cap fed into the pipeline; set above daily volume or it truncates
 max_articles_per_digest_output = 15     # cap shown in the digest note
 max_featured = 5                        # sections leading the page; /settings can change it
+scoring_snippet_length = 1000           # characters of each article the scorer reads
+summarize_snippet_length = 1000         # characters read when summarizing
+filter_snippet_length = 500             # characters read when extracting headlines
 output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
 style_prompt = ""                       # optional: your tone/focus, injected into the prompts
 
@@ -73,14 +77,14 @@ worker_url = ""                         # or CYRIS_NEWSLETTER_WORKER_URL
 # drew the first downvote was news-tagged. Preview with `cyris vote-sim` before
 # enabling, and compare providers with `cyris embed-compare`.
 enabled = false
-# provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
-#                           # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
+provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
+                          # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
+model = ""                # "" uses the provider's default model
+max_seeds = 200           # recent votes on each side a run compares against
 # Leave `threshold` unset: each provider carries its own calibration (bge-m3 0.53,
 # gemini 0.68) because their cosines run on different scales. Setting one value and
 # switching provider is how this feature silently stops suppressing anything.
 # threshold = 0.53
-# model = "@cf/baai/bge-m3"
-# max_seeds = 200
 
 [rss]
 # Cloudflare feed-buffer Worker (see workers/rss/): polls feeds hourly into D1 so
