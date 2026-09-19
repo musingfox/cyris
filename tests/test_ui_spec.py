@@ -545,7 +545,6 @@ TYPE_ROLES = [
     (10, "digest", ".stats-card", "16px"),
     (11, "digest", ".stats-card .label", "14px"),
     (12, "digest", ".section-tag", "14px"),
-    (13, "digest", ".section-heading", "28px"),
     (14, "digest", ".section-description", "20px"),
     (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
     (18, "digest", ".lead-story .summary", "20px"),
@@ -622,6 +621,11 @@ def test_the_raw_page_head_is_the_prototype_page_head() -> None:
 def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
     declarations = _parsed("digest")[key]
     assert [d for d in declarations if d.startswith("font-size")] == []
+
+
+def test_a_section_tag_is_a_label_with_no_number_or_heading_beside_it() -> None:
+    digest = _parsed("digest")
+    assert [key for key in digest if ".section-heading" in key or ".section-tag .id" in key] == []
 
 
 def test_the_lead_story_is_the_prototype_lead_card() -> None:

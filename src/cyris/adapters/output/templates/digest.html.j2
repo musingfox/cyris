@@ -97,13 +97,9 @@
         .section-tag {
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-family: var(--font-mono);
+            gap: var(--s-3);
             font-size: calc(14px * var(--type-scale));
-            letter-spacing: 0.16em;
-            color: var(--text-faint);
-            text-transform: uppercase;
-            margin-bottom: 24px;
+            margin-bottom: var(--s-5);
         }
 
         .section-tag::before {
@@ -111,21 +107,6 @@
             width: 24px;
             height: 1px;
             background: var(--accent);
-        }
-
-        .section-tag .id {
-            color: var(--accent);
-            font-weight: 500;
-        }
-
-        .section-heading {
-            font-family: var(--font-sans);
-            font-size: calc(28px * var(--type-scale));
-            font-weight: 600;
-            letter-spacing: -0.02em;
-            line-height: 1.05;
-            margin-bottom: 28px;
-            color: var(--text);
         }
 
         .section-description {
@@ -529,7 +510,7 @@
 
             {% if featured_articles %}
             <section class="section">
-                <div class="section-tag"><span class="id">02</span><span>Features</span></div>
+                <h2 class="section-tag"><span class="label">Features</span></h2>
                 <div class="featured-grid">
                     {% for item in featured_articles %}
                     <article class="featured-item">
@@ -549,8 +530,7 @@
 
             {% if news_clusters %}
             <section class="section">
-                <div class="section-tag"><span class="id">03</span><span>In Focus</span></div>
-                <h2 class="section-heading">In Focus</h2>
+                <h2 class="section-tag"><span class="label">In Focus</span></h2>
                 {% for cluster in news_clusters %}
                 <div class="news-cluster">
                     <h4>{{ cluster.heading }}</h4>
@@ -570,8 +550,7 @@
 
             {% if fan_sections %}
             <section class="section">
-                <div class="section-tag"><span class="id">◆</span><span>Following</span></div>
-                <h2 class="section-heading">Following</h2>
+                <h2 class="section-tag"><span class="label">Following</span></h2>
                 {% for sec in fan_sections %}
                 <div class="thematic-block">
                     <h3>{{ sec.heading }}</h3>
@@ -593,8 +572,7 @@
 
             {% if attention_sections %}
             <section class="section">
-                <div class="section-tag"><span class="id">04</span><span>On the Radar</span></div>
-                <h2 class="section-heading">On the Radar</h2>
+                <h2 class="section-tag"><span class="label">On the Radar</span></h2>
                 {% for sec in attention_sections %}
                 <div class="thematic-block">
                     <h3>{{ sec.heading }}</h3>
@@ -615,8 +593,7 @@
 
             {% if filtered_headlines %}
             <section class="section">
-                <div class="section-tag"><span class="id">05</span><span>The Wire</span></div>
-                <h2 class="section-heading">The Wire</h2>
+                <h2 class="section-tag"><span class="label">The Wire</span></h2>
                 <div class="headlines-compact">
                     {% for item in filtered_headlines %}
                     <div class="headline-item">

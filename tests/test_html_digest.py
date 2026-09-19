@@ -2,6 +2,7 @@
 
 import re
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -101,10 +102,53 @@ def test_render_empty_sections(tmp_path):
     assert "<!DOCTYPE html>" in html
     assert "<style>" in html
     # Should not contain section headings or content when empty
-    assert "Top story" not in html
-    assert "In Focus" not in html
-    assert "On the Radar" not in html
-    assert "The Wire" not in html
+    for label in SECTION_LABELS:
+        assert label not in html
+
+
+SECTION_LABELS = ("Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire")
+
+
+class _MainText(HTMLParser):
+    """Every stripped text node inside <main>, and the heading levels there in order."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.texts: list[str] = []
+        self.levels: list[int] = []
+        self._inside = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "main":
+            self._inside = True
+        elif self._inside and re.fullmatch(r"h[1-6]", tag):
+            self.levels.append(int(tag[1]))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "main":
+            self._inside = False
+
+    def handle_data(self, data: str) -> None:
+        if self._inside and data.strip():
+            self.texts.append(data.strip())
+
+
+def _main_text(html: str) -> _MainText:
+    parser = _MainText()
+    parser.feed(html)
+    return parser
+
+
+@pytest.mark.parametrize("label", SECTION_LABELS)
+def test_each_section_names_itself_once(label):
+    assert _main_text(receipt_fixtures()[1]).texts.count(label) == 1
+
+
+def test_each_body_section_is_headed_by_its_tag_alone():
+    digest = receipt_fixtures()[1]
+    assert digest.count('<h2 class="section-tag"><span class="label">') == 5
+    assert 'class="id"' not in digest
+    assert "section-heading" not in digest
 
 
 def test_render_optional_score(tmp_path):
