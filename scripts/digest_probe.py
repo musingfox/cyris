@@ -46,7 +46,7 @@ PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 KINDS = ("signed-in", "vote-fails")
 
 # Every element a vote group sits in, one per promote_btn call site.
-KIND_SELECTORS = (
+ITEM_SELECTORS = (
     ".lead-story",
     ".featured-item",
     ".news-cluster",
@@ -201,11 +201,11 @@ def _voted(urls: list[str]) -> Callable[[VoteFixture], str | None]:
     return receipt
 
 
-def _up(kind: str) -> str:
-    return f'{kind} .promote-btn[data-vote="up"]'
+def _up(item: str) -> str:
+    return f'{item} .promote-btn[data-vote="up"]'
 
 
-def _strip(mark: str) -> str:
+def strip_mark_sabotage(mark: str) -> str:
     """A sabotage: the page takes `mark` off every vote button as soon as it is put on."""
     return f"""new MutationObserver(() => {{
         $$(".promote-btn.{mark}").forEach((b) => b.classList.remove("{mark}"));
@@ -222,21 +222,22 @@ FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
 
 DIGEST_PRELUDE = (
     base_prelude()
-    + f"const KINDS = {json.dumps(KIND_SELECTORS)};\n"
+    + f"const ITEM_SELECTORS = {json.dumps(ITEM_SELECTORS)};\n"
     + """
 const signedIn = () => waitFor(() => {
   const groups = $$(".vote-group");
   return groups.length && groups.every(visible);
 }, "the vote buttons");
-// Fails on each problem `measure` names for a shown vote group, and on every kind showing none.
-const expectEveryKind = (measure) => {
+// Fails on each problem `measure` names for a shown vote group, and on each item kind
+// showing none.
+const expectEveryItem = (measure) => {
   const problems = [];
-  for (const kind of KINDS) {
-    const groups = $$(`${kind} .vote-group`).filter(visible);
-    if (!groups.length) problems.push(`${kind}: no vote group shows`);
+  for (const item of ITEM_SELECTORS) {
+    const groups = $$(`${item} .vote-group`).filter(visible);
+    if (!groups.length) problems.push(`${item}: no vote group shows`);
     for (const group of groups) {
       const problem = measure(group);
-      if (problem) problems.push(`${kind}: ${problem}`);
+      if (problem) problems.push(`${item}: ${problem}`);
     }
   }
   expect(!problems.length, problems.join("; "));
@@ -281,7 +282,7 @@ _CHECKS: list[Check] = [
             path=PAGE,
             width=width,
             act="await signedIn();",
-            script="expectEveryKind(oneRow);",
+            script="expectEveryItem(oneRow);",
             sabotage="""$$(".vote-group").forEach((g) => { g.style.flexDirection = "column"; });""",
         )
         for width in WIDTHS
@@ -293,7 +294,7 @@ _CHECKS: list[Check] = [
             path=PAGE,
             width=width,
             act="await signedIn();",
-            script="expectEveryKind(besideMeta);",
+            script="expectEveryItem(besideMeta);",
             sabotage="""$$(".vote-group").forEach((g) => {
                 g.style.display = "flex";
                 g.style.width = "100%";
@@ -355,29 +356,29 @@ _CHECKS: list[Check] = [
         )
         for width in HEAD_WIDTHS
     ),
-    # A real pointer press on each kind's first up button: the button is hit, every URL
-    # of its group is voted on, and the button is marked. The phone run is caught by a
-    # page that drops the mark, the desktop run by a page that sends a credential.
+    # A real pointer press on each item kind's first up button: the button is hit, every
+    # URL of its group is voted on, and the button is marked. The phone run is caught by
+    # a page that drops the mark, the desktop run by a page that sends a credential.
     *(
         Check(
-            id=f"vote-click-{kind.lstrip('.')}-{width}",
+            id=f"vote-click-{item.lstrip('.')}-{width}",
             fixture="signed-in",
             path=PAGE,
             width=width,
             act=f"""
                 await signedIn();
-                bringIntoView({json.dumps(_up(kind))});
+                bringIntoView({json.dumps(_up(item))});
             """,
-            gestures=({"press": _up(kind), "pointer": "mouse"}, {"release": True}),
+            gestures=({"press": _up(item), "pointer": "mouse"}, {"release": True}),
             script=f"""
-                const up = $({json.dumps(_up(kind))});
+                const up = $({json.dumps(_up(item))});
                 await waitFor(() => up.classList.contains("done"), "the vote marked done");
             """,
-            sabotage=_strip("done") if width == 360 else "",
+            sabotage=strip_mark_sabotage("done") if width == 360 else "",
             sabotage_preload=SEND_CREDENTIAL if width == 1440 else "",
             receipt=_voted(urls),
         )
-        for kind, urls in first_vote_urls().items()
+        for item, urls in first_vote_urls().items()
         for width in (360, 1440)
     ),
     Check(
@@ -396,7 +397,7 @@ _CHECKS: list[Check] = [
             const stored = localStorage.getItem("cyris-votes");
             expect(!stored || stored === "{{}}", `stored: ${{stored}}`);
         """,
-        sabotage=_strip("error"),
+        sabotage=strip_mark_sabotage("error"),
         receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
 ]

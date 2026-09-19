@@ -904,9 +904,11 @@ def _placed_in(html: str, what: str) -> set[str]:
 
 
 def test_the_digest_probe_page_shows_a_vote_group_in_every_item_kind():
-    kinds = {selector.lstrip(".") for selector in digest_probe.KIND_SELECTORS}
-    assert len(kinds) == 6
-    assert kinds <= _placed_in(digest_probe.render_page(), "vote-group")
+    items = {selector.lstrip(".") for selector in digest_probe.ITEM_SELECTORS}
+    assert len(items) == 6
+    assert items <= _placed_in(digest_probe.render_page(), "vote-group")
+    # KINDS names the fixtures; the page-side list of item selectors is another name.
+    assert "KINDS" not in digest_probe.DIGEST_PRELUDE
 
 
 def test_the_digest_probe_page_folds_a_cluster_and_a_headline():
