@@ -21,7 +21,7 @@ from typing import Literal
 
 import httpx
 
-from cyris.config import Config
+from cyris.config import GRADE_D_KEYS, Config
 from cyris.domain.models import Tier
 
 Status = Literal["ok", "warn", "fail", "skip"]
@@ -82,17 +82,31 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
     return Check(
         "config file",
         "warn",
-        "not found — running on baked defaults",
+        "not found",
         "Set CYRIS_STORE_BACKEND (and the other CYRIS_ keys), or place a cyris.toml here.",
     )
 
 
-def _check_settings_origin(cfg: Config) -> Check:
-    """Which home the grade-D keys came from, so a split is visible on sight."""
-    if not cfg.settings_from_d1:
-        home = "defaults" if not cfg.config_file_found else "cyris.toml"
-        return Check("settings", "ok", f"{home} — D1 holds no overrides")
-    return Check("settings", "ok", f"D1 overrides {', '.join(sorted(cfg.settings_from_d1))}")
+def _check_settings(cfg: Config) -> Check:
+    """Every runtime setting is in this deployment's one home, or the run stops."""
+    missing = ", ".join(cfg.missing_settings)
+    if cfg.app.store.is_d1:
+        if missing:
+            return Check(
+                "settings",
+                "fail",
+                f"missing in D1: {missing}",
+                "Set them on /settings, or run `cyris settings push`.",
+            )
+        return Check("settings", "ok", f"all {len(GRADE_D_KEYS)} set in D1")
+    if missing:
+        return Check(
+            "settings",
+            "fail",
+            f"missing from cyris.toml: {missing}",
+            "cyris.toml.example lists every key.",
+        )
+    return Check("settings", "ok", f"all {len(GRADE_D_KEYS)} set in cyris.toml")
 
 
 def _check_llm(cfg: Config) -> Check:
@@ -672,7 +686,7 @@ async def run_checks(
         *_check_build(cfg, config_path),
         _check_config_file(cfg, config_path),
         _check_sources(cfg),
-        _check_settings_origin(cfg),
+        _check_settings(cfg),
         _check_llm(cfg),
         *_check_paths(cfg),
         _check_store(cfg),

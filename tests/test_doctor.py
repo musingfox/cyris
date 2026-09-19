@@ -301,6 +301,7 @@ def test_the_command_does_not_claim_a_config_file_it_never_read(monkeypatch, tmp
 
     assert "✓ config —" not in result.stdout
     assert "! config file — not found" in result.stdout
+    assert "baked defaults" not in result.stdout
 
 
 async def test_a_config_key_this_build_cannot_see_is_a_failure(tmp_path: Path) -> None:
@@ -380,18 +381,6 @@ async def test_a_found_config_file_is_named_in_the_check(tmp_path: Path) -> None
 
     assert check.status == "ok"
     assert str(config_path) in check.detail
-
-
-async def test_settings_without_a_config_file_do_not_claim_cyris_toml(
-    tmp_path: Path,
-) -> None:
-    cfg = _config(tmp_path)
-    cfg.config_file_found = False
-    cfg.settings_from_d1 = []
-
-    check = _by_name(await doctor.run_checks(cfg), "settings")
-
-    assert "cyris.toml" not in check.detail
 
 
 async def test_a_run_with_nowhere_to_put_the_digest_is_a_failure(tmp_path: Path) -> None:
@@ -956,3 +945,65 @@ async def test_the_llm_probe_skips_provider_none() -> None:
     assert check.status == "skip"
     assert check.detail == "none — no model to call"
     assert "ANTHROPIC_API_KEY" not in check.detail
+
+
+def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    cfg.missing_settings = ["general.timezone"]
+
+    assert doctor._check_settings(cfg) == doctor.Check(
+        "settings",
+        "fail",
+        "missing in D1: general.timezone",
+        "Set them on /settings, or run `cyris settings push`.",
+    )
+
+
+def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
+    assert doctor._check_settings(_config(tmp_path)) == doctor.Check(
+        "settings", "ok", "all 20 set in cyris.toml"
+    )
+
+
+def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+
+    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 20 set in D1")
+
+
+async def test_a_json_deployment_without_a_file_fails_listing_every_key(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from cyris.config import GRADE_D_KEYS, load_config
+
+    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    cfg = load_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
+
+    checks = await doctor.run_checks(cfg)
+
+    settings = _by_name(checks, "settings")
+    assert settings.status == "fail"
+    assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(GRADE_D_KEYS))}"
+    assert settings.fix == "cyris.toml.example lists every key."
+    assert _by_name(checks, "config file").detail == "not found"
+
+
+def test_doctor_on_an_empty_d1_fails_on_settings(tmp_path: Path, monkeypatch) -> None:
+    from typer.testing import CliRunner
+
+    from cyris.entrypoints.cli import app
+
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "db")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+
+    result = CliRunner().invoke(
+        app,
+        ["doctor", "--config", str(tmp_path / "nope.toml"), "--sources", str(tmp_path / "s.yaml")],
+    )
+
+    assert result.exit_code == 1
+    assert "✗ settings — missing in D1:" in result.stdout
