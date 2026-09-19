@@ -52,3 +52,14 @@ test("the bundled feed list is gone", () => {
   const index = readFileSync(new URL("src/index.js", root), "utf8");
   assert.doesNotMatch(index, /feeds\.json/);
 });
+
+test("an unreadable sources table fails the poll", async () => {
+  await assert.rejects(
+    loadFeeds(
+      env(async () => {
+        throw new Error("no such table: sources");
+      })
+    ),
+    /could not read sources from D1.*no such table/
+  );
+});
