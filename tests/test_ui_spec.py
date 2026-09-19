@@ -682,6 +682,18 @@ def test_the_masthead_is_the_prototype_digest_head() -> None:
     assert [k for k in digest if k in (narrow + ".headline-block", narrow + ".stats-card")] == []
 
 
+def test_a_short_last_row_of_features_leaves_its_empty_cells_blank() -> None:
+    digest = _parsed("digest")
+    grid = digest[".featured-grid"]
+    assert [d for d in grid if d.startswith("background")] == []
+    assert "gap: 1px" not in grid
+    assert {"border-top: 1px solid var(--border)", "border-left: 1px solid var(--border)"} <= grid
+    assert {
+        "border-right: 1px solid var(--border)",
+        "border-bottom: 1px solid var(--border)",
+    } <= digest[".featured-item"]
+
+
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
     digest = _parsed("digest")
     assert [key for key in digest if ".lead-story::before" in key] == []

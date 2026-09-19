@@ -196,14 +196,17 @@
         .featured-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-            gap: 1px;
-            background: var(--border);
             margin-bottom: 56px;
-            border: 1px solid var(--border);
+            border-top: 1px solid var(--border);
+            border-left: 1px solid var(--border);
         }
 
+        /* Each card draws its own right and bottom hairline, so a short last row
+           leaves its empty cells as page, not a border-coloured block. */
         .featured-item {
             background: var(--bg-elev);
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
             padding: 28px;
             transition: background-color var(--t-fast);
             position: relative;
