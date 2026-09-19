@@ -1,5 +1,5 @@
 // Feed parsing, kept separate from index.js so it is testable without the
-// Workers runtime (index.js imports feeds.json and D1 bindings).
+// Workers runtime (index.js needs the D1 binding).
 import { XMLParser } from "fast-xml-parser";
 
 const parser = new XMLParser({

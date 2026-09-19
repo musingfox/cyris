@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { loadFeeds } from "../src/feeds.js";
-
-const BUNDLED = [{ name: "Bundled", url: "https://bundled.test/feed" }];
 
 function env(behaviour) {
   return {
@@ -17,28 +16,39 @@ function env(behaviour) {
   };
 }
 
-test("prefers the sources table when it has rows", async () => {
+function capturingErrors() {
+  const calls = [];
+  const original = console.error;
+  console.error = (...args) => calls.push(args.join(" "));
+  return { calls, restore: () => { console.error = original; } };
+}
+
+test("polls exactly the rows in the sources table", async () => {
   const rows = [{ name: "A", url: "https://a.test/feed" }];
-  const feeds = await loadFeeds(env(async () => ({ results: rows })), BUNDLED);
+  const feeds = await loadFeeds(env(async () => ({ results: rows })));
 
   assert.deepEqual(feeds, rows);
 });
 
-test("falls back to the bundled feeds when the table is empty", async () => {
-  // A Worker deployed before the first `cyris sources push` must keep polling.
-  const feeds = await loadFeeds(env(async () => ({ results: [] })), BUNDLED);
+test("an empty sources table polls nothing and says how to fill it", async () => {
+  // No bundled list to fall back to: a fork would poll feeds nobody chose.
+  const errors = capturingErrors();
+  let feeds;
+  try {
+    feeds = await loadFeeds(env(async () => ({ results: [] })));
+  } finally {
+    errors.restore();
+  }
 
-  assert.equal(feeds, BUNDLED);
+  assert.deepEqual(feeds, []);
+  assert.equal(errors.calls.length, 1);
+  assert.match(errors.calls[0], /cyris sources push/);
 });
 
-test("falls back to the bundled feeds when D1 errors", async () => {
-  // Polling nothing is a silent outage; the digest would just look like a quiet day.
-  const feeds = await loadFeeds(
-    env(async () => {
-      throw new Error("no such table: sources");
-    }),
-    BUNDLED
-  );
-
-  assert.equal(feeds, BUNDLED);
+test("the bundled feed list is gone", () => {
+  const root = new URL("../", import.meta.url);
+  assert.equal(existsSync(new URL("src/feeds.json", root)), false);
+  assert.equal(existsSync(new URL("gen-feeds.py", root)), false);
+  const index = readFileSync(new URL("src/index.js", root), "utf8");
+  assert.doesNotMatch(index, /feeds\.json/);
 });

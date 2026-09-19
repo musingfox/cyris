@@ -1,7 +1,6 @@
 // Cloudflare RSS Worker: polls feeds hourly into D1 so the 24h digest window
 // sees more than the 2-4h a feed snapshot holds. cyris reads a time window via
 // GET /articles; there is no ack — this is a retention buffer, not a queue.
-import BUNDLED_FEEDS from "./feeds.json";
 import { loadFeeds } from "./feeds.js";
 import { parseFeed } from "./parse.js";
 
@@ -55,7 +54,7 @@ async function fetchFeed(feed) {
 
 async function poll(env, feeds) {
   await ensureSchema(env);
-  feeds = feeds ?? (await loadFeeds(env, BUNDLED_FEEDS));
+  feeds = feeds ?? (await loadFeeds(env));
   const fetchedAt = new Date().toISOString();
   const rows = [];
   const failures = [];

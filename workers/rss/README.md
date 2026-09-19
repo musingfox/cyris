@@ -1,9 +1,9 @@
 # cyris-rss — hourly feed buffer on Cloudflare
 
 Polls every RSS/Atom feed once an hour into **D1**, so the 24h digest window has
-something to read. The feed list comes from the `sources` table the app writes;
-`src/feeds.json` is the bundled fallback for a Worker deployed before the first
-`cyris sources push`, or whose D1 read fails.
+something to read. The feed list is the `sources` table the app writes, and
+nothing else: an empty table polls no feed and logs `sources table is empty`
+until a source is added on `/settings` or with `cyris sources push`.
 
 ```
 cron 0 * * * *
@@ -49,30 +49,23 @@ digest crashes. Rows age out after 8 days, matching the ArticleStore's dedup sca
 
 The button provisions a **fresh** D1 database and rewrites the id in
 `wrangler.toml`. Repoint it at the app's database afterwards, or this Worker
-reads an empty `sources` table and buffers the bundled fallback feeds instead
-of yours. By hand:
+reads an empty `sources` table and polls nothing. By hand:
 
 ```bash
 cd workers/rss
 bun install
 
-# 1. Refresh the bundled fallback from sources.example.yaml. Optional — the
-#    committed feeds.json is already that list, and D1's `sources` table is what
-#    the Worker actually polls once `cyris sources push` has run.
-uv run --with pyyaml python gen-feeds.py
-
-# 2. Point wrangler.toml at the SAME D1 database the app uses — paste the id you
+# 1. Point wrangler.toml at the SAME D1 database the app uses — paste the id you
 #    put in the app's CYRIS_STORE_DATABASE_ID. This Worker reads the `sources`
-#    table the app writes, so a database of its own means it reads an empty table,
-#    silently falls back to the bundled feeds.json, and buffers feeds nobody
-#    chose. If you have not created one yet:
+#    table the app writes, so a database of its own means it reads an empty table
+#    and polls nothing. If you have not created one yet:
 npx wrangler d1 create cyris               # → copy database_id into wrangler.toml
 #    The `articles` table needs no setup step: the Worker creates it on its
 #    first poll or request (src/index.js, `SCHEMA`), which is also what a
 #    Deploy to Cloudflare button relies on. Note the button provisions a *fresh*
 #    database and rewrites the id, so a button deploy needs this repointed after.
 
-# 3. Auth token (same value goes into cyris's .env as CYRIS_WORKER_TOKEN,
+# 2. Auth token (same value goes into cyris's .env as CYRIS_WORKER_TOKEN,
 #    the one bearer all three Workers accept)
 npx wrangler secret put RSS_TOKEN
 

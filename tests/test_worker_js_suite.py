@@ -37,6 +37,32 @@ def test_app_worker_vitest_suite():
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
 
 
+def _run_rss_suites(names: list[str]) -> None:
+    # The package script passes a glob for the shell to expand; naming the files
+    # keeps that out of `subprocess`, and an empty list would run zero tests and
+    # report success.
+    assert names, "no test files under workers/rss/test/"
+    result = subprocess.run(
+        ["node", "--test", *(f"test/{name}" for name in names)],
+        cwd=RSS_WORKER,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+
+
+# Imports nothing outside node, so it needs no install: the guard that the
+# Worker polls only the D1 table must not skip on a fresh checkout.
+FEEDS_SUITE = "feeds.test.js"
+
+
+def test_rss_worker_feed_list_suite():
+    if shutil.which("node") is None:
+        _skip_unless_ci("node is not on PATH")
+    assert (RSS_WORKER / "test" / FEEDS_SUITE).exists()
+    _run_rss_suites([FEEDS_SUITE])
+
+
 def test_rss_worker_node_suite():
     """`workers/rss/` is outside the vitest include, so it needs its own run.
 
@@ -50,16 +76,5 @@ def test_rss_worker_node_suite():
         # `fast-xml-parser`, which the root install does not provide.
         _skip_unless_ci("bun install in workers/rss (node_modules missing)")
 
-    # The package script passes a glob for the shell to expand; naming the files
-    # keeps that out of `subprocess`, and an empty list would run zero tests and
-    # report success.
     suites = sorted(p.name for p in (RSS_WORKER / "test").glob("*.test.js"))
-    assert suites, "no test files under workers/rss/test/"
-
-    result = subprocess.run(
-        ["node", "--test", *(f"test/{name}" for name in suites)],
-        cwd=RSS_WORKER,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    _run_rss_suites([name for name in suites if name != FEEDS_SUITE])
