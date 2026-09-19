@@ -388,6 +388,7 @@ Every setting belongs to exactly one grade. Mixing them is what makes a deployme
 |---|---|---|---|
 | Tier thresholds, batch sizes | A | code | unchanged |
 | Per-provider default model, per-model embedding threshold | A | `src/cyris/provider_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
+| Runtime-setting registry: each grade-D key's `/settings` category, label, controls and save route | A | `src/cyris/settings_fields.json` | unchanged — the one key list (see *Where grade D lives*); `tests/test_settings_fields.py` holds the page to it |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
 | Image's build commit | A | `GIT_SHA` build arg, baked as `CYRIS_GIT_SHA` by the `Dockerfile` | unchanged — the release workflow supplies it; a local `docker build` legitimately leaves it empty |
 | Container placement regions | A | `[containers.constraints] regions` in `wrangler.toml` (`WNAM`, `ENAM`) | unchanged — Gemini and OpenAI refuse by egress location, and unconstrained placement landed in one of theirs; `tests/test_deploy_inputs.py` keeps `APAC` out |
@@ -527,9 +528,11 @@ unseen. The rules now:
   `settings push`, `sources push|list`, `promote-sync`, `store *` — still start.
 - **A D1 read error propagates.** Falling back to the file on error would reintroduce exactly the
   divergence the rule exists to prevent: one run on D1's values, the next on the file's.
-- **One key list.** `GRADE_D_KEYS` in `config.py` is the required set, `WRITABLE_KEYS`, and the
-  `/settings` fields at once — twenty keys, each with a field in one of Model, Digest, Pipeline or
-  Notifications. `validate_setting` checks one key through its field's own type, so the page,
+- **One key list.** `src/cyris/settings_fields.json` names every key with its `/settings` field —
+  category, label, controls and save route. `GRADE_D_KEYS` (the required set and `WRITABLE_KEYS`),
+  the values route's plain keys, and the page's field map (served on `GET /api/settings`) all
+  derive from it — twenty keys, each with a field in one of Model, Digest, Pipeline or
+  Notifications; `tests/test_settings_fields.py` holds the page to it. `validate_setting` checks one key through its field's own type, so the page,
   `cyris settings push` and the loader accept the same values. An invalid D1 row counts as
   missing, because D1 is fixed through `/settings`, which has to start; an invalid `cyris.toml`
   value fails the load, because the file is fixed in an editor.
