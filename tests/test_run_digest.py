@@ -1,6 +1,7 @@
 """Direct tests for the run_digest use case."""
 
 import json
+import re
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -587,6 +588,44 @@ def test_the_published_archive_leads_with_this_runs_issue(tmp_path: Path) -> Non
     assert '<span class="data">7 articles</span>' in card
     panels = index[index.index('<section class="panel">') :]
     assert 'href="2026-04-15-evening.html"' in panels
+
+
+def test_the_published_archive_rows_carry_the_recorded_counts(tmp_path: Path) -> None:
+    deps = SimpleNamespace(
+        html_writer=HtmlDigestWriter(tmp_path),
+        site_filenames=lambda: ["2026-04-15-evening.html"],
+        archive_counts=lambda: {("2026-04-15", "evening"): 12},
+    )
+
+    index = _published_index(deps, _run_content("2026-04-16", "morning", "Lead", 3))
+
+    row = index[index.index('<div class="archive-row">') :].split("</div>", 1)[0]
+    assert "2026-04-15" in row
+    assert '<span class="small">12 articles</span>' in row
+
+
+def test_a_failed_count_read_still_publishes_every_issue(tmp_path: Path, caplog) -> None:
+    from cyris.adapters.output.publish import _parse_archive_anchors
+
+    def down():
+        raise RuntimeError("d1 down")
+
+    deps = SimpleNamespace(
+        html_writer=HtmlDigestWriter(tmp_path),
+        site_filenames=lambda: ["2026-04-15-evening.html"],
+        archive_counts=down,
+    )
+
+    with caplog.at_level("ERROR"):
+        index = _published_index(deps, _run_content("2026-04-16", "morning", "Lead", 3))
+
+    assert _parse_archive_anchors(index) == {"/2026-04-15-evening.html", "/2026-04-16-morning.html"}
+    rows = re.findall(r'<div class="archive-row[^"]*">.*?</div>', index, re.S)
+    assert rows
+    assert [row for row in rows if 'class="small"' in row] == []
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "d1 down" in errors[0].getMessage()
 
 
 async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Path) -> None:

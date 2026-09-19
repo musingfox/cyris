@@ -50,7 +50,14 @@ def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
     # The archive page lists every digest the site holds, this run's included, and
     # leads with this run's issue: its title and count come from memory, not D1.
     known = sorted({*deps.site_filenames(), *(p.lstrip("/") for p in pages)})
-    pages["/index.html"] = writer.render_index(known, content=content)
+    # Counts are decoration; the list is what Pages recovery rebuilds from. A failed
+    # read costs the rows their counts, never the index its issues or the publish.
+    try:
+        counts = deps.archive_counts()
+    except Exception as e:
+        logger.error("Failed to read the archive's article counts: %s", e)
+        counts = {}
+    pages["/index.html"] = writer.render_index(known, content=content, counts=counts)
     return {path: html.encode("utf-8") for path, html in pages.items()}
 
 
