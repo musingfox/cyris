@@ -185,8 +185,9 @@ $("digest-form").addEventListener("submit", async (e) => {
   }
   if (featured !== saved["max-featured"]) {
     try {
-      const data = await post("/api/settings/digest", {max_featured: parseInt(featured, 10)});
-      lines.push(`Featured sections: ${data.max_featured}. ${data.note}`);
+      const data = await post("/api/settings/values",
+                              {values: {"digest.max_featured": parseInt(featured, 10)}});
+      lines.push(`Featured sections: ${data.values["digest.max_featured"]}. ${data.note}`);
       saved["max-featured"] = featured;
     } catch (err) {
       failed = true;

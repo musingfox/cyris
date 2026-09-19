@@ -279,26 +279,24 @@ class TestFeaturedCap:
 
         assert data["values"]["digest.max_featured"] == 3
 
-    async def test_a_new_cap_is_stored_under_the_key_the_config_reads(self, settings):
-        client = await _client(settings)
-
-        res = await client.post("/api/settings/digest", json={"max_featured": 8})
-        body = await res.json()
-        await client.close()
-
-        assert res.status == 200
-        assert body["max_featured"] == 8
-        assert settings.stored == {"digest.max_featured": 8}
-
     async def test_a_cap_of_zero_is_refused(self, settings):
         """A featured section of none is an empty band, not a preference."""
         client = await _client(settings)
 
-        res = await client.post("/api/settings/digest", json={"max_featured": 0})
+        res = await client.post("/api/settings/values", json={"values": {"digest.max_featured": 0}})
         await client.close()
 
         assert res.status == 400
         assert settings.stored == {}
+
+    async def test_the_old_digest_route_is_gone(self, settings):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/digest", json={"max_featured": 8})
+        await client.close()
+
+        assert res.status == 404
+        assert settings.calls == []
 
     async def test_the_key_is_writable_and_reaches_the_config(self):
         """Storing a key the loader does not read would silently change nothing."""
@@ -311,6 +309,110 @@ class TestFeaturedCap:
         cfg = resolve_config(raw, d1_settings={"digest.max_featured": 9})
 
         assert cfg.app.digest.max_featured == 9
+
+
+class TestPlainValues:
+    async def test_several_plain_keys_are_stored_in_one_write(self, settings):
+        client = await _client(settings, {})
+
+        res = await client.post(
+            "/api/settings/values",
+            json={"values": {"general.timezone": "Europe/Berlin", "digest.max_featured": 3}},
+        )
+        body = await res.json()
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert res.status == 200
+        assert body == {
+            "ok": True,
+            "values": {"general.timezone": "Europe/Berlin", "digest.max_featured": 3},
+            "note": "Effective next run.",
+        }
+        assert settings.calls == [{"general.timezone": "Europe/Berlin", "digest.max_featured": 3}]
+        assert data["values"]["general.timezone"] == "Europe/Berlin"
+        assert data["values"]["digest.max_featured"] == 3
+        assert {"general.timezone", "digest.max_featured"}.isdisjoint(data["missing"])
+
+    async def test_one_invalid_value_stores_nothing(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values",
+            json={"values": {"digest.max_featured": 3, "routing.score_threshold": 150}},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"].startswith("routing.score_threshold: ")
+        assert settings.calls == []
+
+    async def test_a_key_with_its_own_form_is_refused(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"llm_provider.model": "x"}}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "llm_provider.model is saved from its own form"
+        assert settings.calls == []
+
+    async def test_the_webhook_is_not_a_plain_value(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"notify.discord_webhook_url": ""}}
+        )
+        await client.close()
+
+        assert res.status == 400
+        assert settings.calls == []
+
+    @pytest.mark.parametrize("body", [{"values": {}}, {"values": []}, {}], ids=str)
+    async def test_nothing_to_store_is_refused(self, settings, body):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/values", json=body)
+        await client.close()
+
+        assert res.status == 400
+        assert settings.calls == []
+
+    async def test_invalid_json_is_refused(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", data="not-json", headers={"Content-Type": "text/plain"}
+        )
+        await client.close()
+
+        assert res.status == 400
+
+    async def test_without_a_settings_store_the_page_refuses_to_save(self):
+        client = await _client(None)
+
+        res = await client.post("/api/settings/values", json={"values": {"digest.max_featured": 3}})
+        await client.close()
+
+        assert res.status == 409
+
+    async def test_a_store_failure_is_returned_as_500(self):
+        class Boom:
+            def set(self, values):
+                raise RuntimeError("D1 down")
+
+        client = await _client(Boom())
+
+        res = await client.post("/api/settings/values", json={"values": {"digest.max_featured": 3}})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 500
+        assert "D1 down" in body["error"]
 
 
 class TestNotifySettingsForm:

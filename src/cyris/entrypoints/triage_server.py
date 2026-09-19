@@ -16,6 +16,24 @@ from cyris.domain.models import SourceConfig
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# The grade-D keys stored through the generic values route. The rest need their
+# own route: the LLM and the embedder are probed, the schedule and the webhook
+# have their own rules.
+PLAIN_KEYS: tuple[str, ...] = (
+    "general.timezone",
+    "general.digest_window_hours",
+    "digest.max_articles_per_digest",
+    "digest.max_articles_per_digest_output",
+    "digest.max_featured",
+    "digest.scoring_snippet_length",
+    "digest.summarize_snippet_length",
+    "digest.filter_snippet_length",
+    "digest.output_language",
+    "digest.style_prompt",
+    "routing.score_threshold",
+    "routing.summarize_score_threshold",
+)
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
@@ -75,7 +93,7 @@ class TriageServer:
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/diagnostics/llm", self._handle_diagnose_llm)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
-        self._app.router.add_post("/api/settings/digest", self._handle_post_digest)
+        self._app.router.add_post("/api/settings/values", self._handle_post_values)
         self._app.router.add_post("/api/settings/notify", self._handle_post_notify)
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
@@ -275,12 +293,10 @@ class TriageServer:
         logger.info("Digest schedule set to %s", ", ".join(times))
         return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
 
-    async def _handle_post_digest(self, request: web.Request) -> web.Response:
-        """Set how many featured sections lead the page.
+    async def _handle_post_values(self, request: web.Request) -> web.Response:
+        """Store any of the plain settings, all or nothing, each through its own rule."""
+        from cyris.config import validate_setting
 
-        Graded D because it is a reader's preference, not a measurement: how many
-        headlines you want above the fold is not a number this codebase can derive.
-        """
         if self._settings is None:
             return web.json_response(
                 {"ok": False, "error": "this deployment has no settings store to write"},
@@ -291,27 +307,30 @@ class TriageServer:
         except Exception:
             return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
 
-        try:
-            max_featured = int(body.get("max_featured"))
-        except (TypeError, ValueError):
+        values = body.get("values") if isinstance(body, dict) else None
+        if not isinstance(values, dict) or not values:
             return web.json_response(
-                {"ok": False, "error": "max_featured must be a whole number"}, status=400
+                {"ok": False, "error": "values must name at least one setting"}, status=400
             )
-        if max_featured < 1:
-            return web.json_response(
-                {"ok": False, "error": "max_featured must be at least 1"}, status=400
-            )
+        validated = {}
+        for key, value in values.items():
+            if key not in PLAIN_KEYS:
+                return web.json_response(
+                    {"ok": False, "error": f"{key} is saved from its own form"}, status=400
+                )
+            try:
+                validated[key] = validate_setting(key, value)
+            except ValueError as e:
+                return web.json_response({"ok": False, "error": f"{key}: {e}"}, status=400)
 
         try:
-            self._settings.set({"digest.max_featured": max_featured})
+            self._settings.set(validated)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-        self._values["digest.max_featured"] = max_featured
-        logger.info("Featured cap set to %d", max_featured)
-        return web.json_response(
-            {"ok": True, "max_featured": max_featured, "note": "Effective next digest."}
-        )
+        self._values.update(validated)
+        logger.info("Settings saved: %s", ", ".join(sorted(validated)))
+        return web.json_response({"ok": True, "values": validated, "note": "Effective next run."})
 
     async def _handle_post_notify(self, request: web.Request) -> web.Response:
         """Store a Discord webhook only after Discord confirms it exists.

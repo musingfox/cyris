@@ -306,7 +306,7 @@ IN_FLIGHT = {
         """setValue($("#model-input"), "edited-model");""",
     ),
     "digest": (
-        "/api/settings/digest",
+        "/api/settings/values",
         """setValue($("#max-featured"), "7");""",
         """setValue($("#max-featured"), "8");""",
     ),
@@ -766,7 +766,7 @@ CHECKS: list[Check] = [
             const notice = noticeOf("digest");
             expect(!notice.classList.contains("err"), `an error: ${notice.textContent}`);
             expect(notice.textContent.includes("Featured sections: 7."), notice.textContent);
-            expect(notice.textContent.includes("Effective next digest."), notice.textContent);
+            expect(notice.textContent.includes("Effective next run."), notice.textContent);
             expect(saveOf("digest").disabled, "the digest Save is still enabled");
         """,
         sabotage="""noticeOf("digest").classList.add("err");""",
@@ -972,7 +972,7 @@ CHECKS: list[Check] = [
         act=SAVE_FEATURED_7,
         script="",
         sabotage_preload=also_post(
-            "/api/settings/digest", "/api/settings/schedule", {"times": ["08:00", "20:00"]}
+            "/api/settings/values", "/api/settings/schedule", {"times": ["08:00", "20:00"]}
         ),
         receipt=_calls([{"digest.max_featured": 7}]),
     ),
@@ -988,7 +988,7 @@ CHECKS: list[Check] = [
         """,
         script="",
         sabotage_preload=also_post(
-            "/api/settings/schedule", "/api/settings/digest", {"max_featured": 5}
+            "/api/settings/schedule", "/api/settings/values", {"values": {"digest.max_featured": 5}}
         ),
         receipt=_calls([{"general.digest_schedule": ["09:00", "20:00"]}]),
     ),
