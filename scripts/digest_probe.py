@@ -335,6 +335,23 @@ _CHECKS: list[Check] = [
         )
         for width in (360, 721, 880, 1000, 1100, 1160, 1440)
     ),
+    # The page never scrolls sideways, even in the fallback font the probe renders.
+    *(
+        Check(
+            id=f"fits-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script=f"""const problem = overflow("{width}"); expect(!problem, problem);""",
+            sabotage=(
+                """$(".headline-block").style.overflowX = "visible";"""
+                if width == 360
+                else f"""$(".container").style.minWidth = "{width + 300}px";"""
+            ),
+        )
+        for width in WIDTHS
+    ),
     # A real pointer press on each kind's first up button: the button is hit, every URL
     # of its group is voted on, and the button is marked. The phone run is caught by a
     # page that drops the mark, the desktop run by a page that sends a credential.

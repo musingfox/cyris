@@ -40,6 +40,9 @@
             grid-template-columns: minmax(0, 1fr) 320px;
             gap: var(--s-12);
             align-items: end;
+            /* The fallback font sets the title wider than a phone's column until the
+               webfont lands; clip, not hidden, so the italic's overhang still shows. */
+            overflow-x: clip;
         }
 
         .issue-title {

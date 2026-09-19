@@ -675,6 +675,9 @@ def test_the_masthead_is_the_prototype_digest_head() -> None:
         "grid-template-columns: minmax(0, 1fr)",
         "gap: var(--s-6)",
     }
+    # A title wider than a phone's column, as it is before the webfont lands, is
+    # clipped rather than scrolling the page sideways.
+    assert "overflow-x: clip" in digest[".headline-block"]
     assert "padding: var(--s-4) var(--s-5)" in digest[".stats-card"]
     assert "padding: var(--s-2) 0" in digest[".stats-card .row"]
     assert ".stats-card .label" not in digest
