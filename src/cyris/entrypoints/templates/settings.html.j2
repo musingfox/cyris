@@ -22,6 +22,10 @@
     .settings-nav a[aria-current="page"] { color: var(--accent); border-left-color: var(--accent); }
     .dirty-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; visibility: hidden; }
     .settings-nav a.dirty .dirty-dot { visibility: visible; }
+    .nav-dots { display: flex; gap: var(--s-1); }
+    .missing-dot { width: 6px; height: 6px; background: var(--warn); border-radius: 50%; visibility: hidden; }
+    .settings-nav a.missing .missing-dot { visibility: visible; }
+    .input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--warn); }
     .tab-head { display: grid; gap: var(--s-2); margin-bottom: var(--s-8); max-width: var(--measure); }
     .form { display: grid; gap: var(--s-6); max-width: var(--measure); }
     .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-4); }
@@ -60,10 +64,10 @@
 
     <div class="settings">
       <nav class="settings-nav" aria-label="Settings sections">
-        <a class="label" href="#model" data-tab="model">Model <span class="dirty-dot"></span></a>
-        <a class="label" href="#digest" data-tab="digest">Digest <span class="dirty-dot"></span></a>
-        <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="dirty-dot"></span></a>
-        <a class="label" href="#sources" data-tab="sources">Sources <span class="dirty-dot"></span></a>
+        <a class="label" href="#model" data-tab="model">Model <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#digest" data-tab="digest">Digest <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
       <div>
@@ -71,6 +75,7 @@
           <div class="tab-head">
             <h2 class="heading">Model</h2>
             <p class="small">The LLM the next run scores, filters and summarizes with.</p>
+            <div class="notice err" id="model-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">
@@ -93,6 +98,7 @@
           <div class="tab-head">
             <h2 class="heading">Digest</h2>
             <p class="small">When issues are published and how the page is laid out.</p>
+            <div class="notice err" id="digest-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">
@@ -120,6 +126,7 @@
           <div class="tab-head">
             <h2 class="heading">Notifications</h2>
             <p class="small">Where a finished issue is announced.</p>
+            <div class="notice err" id="notifications-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">

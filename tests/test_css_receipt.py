@@ -595,6 +595,10 @@ EXPECTED_IDS = {
     "edit-during-save-stays-dirty-notifications",
     "editor-save-held-in-flight",
     "editor-locked-while-saving",
+    "missing-marked",
+    "missing-clears-on-save",
+    "missing-readonly",
+    "missing-none-when-set",
 }
 
 
@@ -612,6 +616,7 @@ async def test_the_readonly_probe_fixture_can_write_neither_settings_nor_sources
     _, settings = await _get_json(build_fixture("readonly"), "/api/settings")
     _, sources = await _get_json(build_fixture("readonly"), "/api/sources")
     assert settings["writable"] is False
+    assert settings["missing"] == []
     assert sources["writable"] is False
     assert "origin" not in sources
 
@@ -620,6 +625,7 @@ async def test_the_writable_probe_fixture_serves_its_four_sources_from_the_table
     _, settings = await _get_json(build_fixture("writable"), "/api/settings")
     _, sources = await _get_json(build_fixture("writable"), "/api/sources")
     assert settings["writable"] is True
+    assert settings["missing"] == []
     assert sources["writable"] is True
     assert "origin" not in sources
     assert len(sources["sources"]) == 4

@@ -110,35 +110,56 @@ def _seed_sources() -> dict[str, SourceConfig]:
     return {source.name: source for source in listed}
 
 
+# Every runtime setting set, so no check meets a missing-value marker it did not ask for.
+PROBE_VALUES = {
+    "general.digest_schedule": ["08:00", "20:00"],
+    "general.timezone": "Asia/Taipei",
+    "general.digest_window_hours": 24,
+    "llm_provider.provider": "gemini",
+    "llm_provider.model": "",
+    "notify.discord_webhook_url": STORED_WEBHOOK,
+    "digest.max_articles_per_digest": 200,
+    "digest.max_articles_per_digest_output": 15,
+    "digest.max_featured": 5,
+    "digest.scoring_snippet_length": 1000,
+    "digest.summarize_snippet_length": 1000,
+    "digest.filter_snippet_length": 500,
+    "digest.output_language": "zh-Hant",
+    "digest.style_prompt": "x",
+    "routing.score_threshold": 70,
+    "routing.summarize_score_threshold": 70,
+    "vote_similarity.enabled": False,
+    "vote_similarity.provider": "workers_ai",
+    "vote_similarity.model": "",
+    "vote_similarity.max_seeds": 200,
+}
+
+
 @dataclass
 class Fixture:
-    """One server and the in-memory stores a check reads its receipt from."""
+    """One server and the in-memory stores a check reads its receipt from.
+
+    `values` is the server's own snapshot of the settings home, so a check's
+    setup can leave a key unset.
+    """
 
     app: web.Application
     settings: FakeSettings | None
     sources: dict[str, SourceConfig]
+    values: dict
 
 
 def build_fixture(kind: str) -> Fixture:
     """A `readonly` deployment (no settings store, no source table) or a `writable` one."""
-    common = {
-        "values": {
-            "llm_provider.provider": "gemini",
-            "llm_provider.model": "",
-            "general.digest_schedule": ["08:00", "20:00"],
-            "digest.max_featured": 5,
-            "notify.discord_webhook_url": STORED_WEBHOOK,
-        },
-        "sources": _seed_sources(),
-    }
+    common = {"values": PROBE_VALUES, "sources": _seed_sources()}
     if kind == "readonly":
         server = TriageServer(**common)
-        return Fixture(server._app, None, server._sources)
+        return Fixture(server._app, None, server._sources, server._values)
     if kind == "writable":
         settings = FakeSettings()
         store = FakeSourceStore(_seed_sources())
         server = TriageServer(settings=settings, source_store=store, **common)
-        return Fixture(server._app, settings, store.sources)
+        return Fixture(server._app, settings, store.sources, server._values)
     raise ValueError(f"unknown fixture {kind!r}")
 
 
@@ -378,6 +399,16 @@ window.fetch = (input, init) =>
 
 def _still_listed(name: str) -> Callable[[Fixture], str | None]:
     return lambda fixture: None if name in fixture.sources else f"{name} was retired"
+
+
+def _unset(*keys: str) -> Callable[[Fixture], None]:
+    """A setup: the settings home holds every key but `keys`; none at all when empty."""
+
+    def setup(fixture: Fixture) -> None:
+        for key in keys or list(fixture.values):
+            fixture.values.pop(key)
+
+    return setup
 
 
 CHECKS: list[Check] = [
@@ -971,7 +1002,9 @@ CHECKS: list[Check] = [
         fixture="writable",
         path="/settings",
         preload=reject_get("/api/settings"),
-        act="""await waitFor(() => $$("form.tab .notice.err").length === 3, "three notices");""",
+        act="""
+            await waitFor(() => $$("form.tab .actions-line .notice.err").length === 3, "3 notices");
+        """,
         script="""
             const tabs = ["model", "digest", "notifications"];
             const wrong = tabs.filter((t) => !noticeOf(t).classList.contains("err")
@@ -1212,6 +1245,87 @@ CHECKS: list[Check] = [
         """,
         sabotage_preload=ANSWER_DELETE_OK,
         receipt=_still_listed("Hacker News"),
+    ),
+    Check(
+        id="missing-marked",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset(),
+        act="""
+            await providersLoaded();
+            // The border colour transitions; read it once that has settled.
+            await sleep(400);
+            const swatch = document.createElement("i");
+            swatch.style.color = "var(--warn)";
+            document.body.append(swatch);
+            ctx.warn = getComputedStyle(swatch).color;
+            swatch.remove();
+        """,
+        script="""
+            const field = $("#max-featured");
+            expect(field.getAttribute("aria-invalid") === "true", "the field is not marked");
+            expect(field.value === "" && field.placeholder === "Not set",
+              `field: ${field.value} / ${field.placeholder}`);
+            const border = getComputedStyle(field).borderTopColor;
+            expect(border === ctx.warn, `border: ${border}, warn: ${ctx.warn}`);
+            const notice = $("#digest-missing");
+            expect(visible(notice) && notice.classList.contains("err"), "no category notice");
+            expect(notice.textContent.startsWith("Not set yet: ")
+              && notice.textContent.includes("Featured sections"), notice.textContent);
+            expect(navOf("digest").classList.contains("missing"), "Digest has no missing mark");
+            const dot = getComputedStyle($(".missing-dot", navOf("digest"))).visibility;
+            expect(dot === "visible", `the dot is ${dot}`);
+            const checked = $$("input[name=provider]:checked").map((input) => input.value);
+            expect(checked.length === 0, `checked: ${checked}`);
+        """,
+        sabotage="""$("#max-featured").removeAttribute("aria-invalid");""",
+    ),
+    Check(
+        id="missing-clears-on-save",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.max_featured"),
+        act="""
+            await providersLoaded();
+            ctx.marked = navOf("digest").classList.contains("missing");
+            setValue($("#max-featured"), "7");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""
+            expect(ctx.marked, "Digest was not marked before the save");
+            expect(!visible($("#digest-missing")), "the category notice is still shown");
+            expect(!navOf("digest").classList.contains("missing"), "Digest is still marked");
+            expect(!$("#max-featured").hasAttribute("aria-invalid"), "the field is still marked");
+        """,
+        sabotage="""navOf("digest").classList.add("missing");""",
+        receipt=_calls([{"digest.max_featured": 7}]),
+    ),
+    Check(
+        id="missing-readonly",
+        fixture="readonly",
+        path="/settings#digest",
+        setup=_unset("digest.max_featured"),
+        act="""await waitFor(() => visible($("#digest-missing")), "the category notice");""",
+        script="""
+            const text = $("#digest-missing").textContent;
+            expect(text.startsWith("Missing from cyris.toml: Featured sections."), text);
+        """,
+        sabotage="""$("#digest-missing").textContent = "Not set yet: Featured sections.";""",
+    ),
+    Check(
+        id="missing-none-when-set",
+        fixture="writable",
+        path="/settings",
+        act="await settingsLoaded();",
+        script="""
+            const marked = $$(".settings-nav a.missing").map((a) => a.dataset.tab);
+            expect(marked.length === 0, `marked: ${marked}`);
+            const shown = $$('[id$="-missing"]').filter(visible).map((n) => n.id);
+            expect(shown.length === 0, `notices: ${shown}`);
+        """,
+        sabotage="""navOf("model").classList.add("missing");""",
     ),
     Check(
         id="readonly-settings",

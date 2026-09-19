@@ -56,7 +56,7 @@ function markClean(form, values = snapshot(form)) {
 // An edit makes the last result stale, so it goes; a deployment that cannot
 // save never tracks, and its explanation stays.
 function edited(form) {
-  if (clean.has(form) && !saving.has(form)) form.querySelector(".notice").hidden = true;
+  if (clean.has(form) && !saving.has(form)) form.querySelector(".actions-line .notice").hidden = true;
   refresh(form);
 }
 
@@ -64,6 +64,63 @@ document.querySelectorAll("form.tab").forEach((form) => {
   form.addEventListener("input", () => edited(form));
   form.addEventListener("change", () => edited(form));
 });
+
+// Each runtime setting's field: the category it sits in, the label a notice names
+// it by, and the controls marked while it is not set.
+const FIELDS = {
+  "llm_provider.provider": {tab: "model", label: "Provider", controls: ["providers"]},
+  "llm_provider.model": {tab: "model", label: "Model", controls: ["model-input"]},
+  "general.digest_schedule": {tab: "digest", label: "Publish hours", controls: ["morning", "evening"]},
+  "digest.max_featured": {tab: "digest", label: "Featured sections", controls: ["max-featured"]},
+  "notify.discord_webhook_url": {
+    tab: "notifications", label: "Discord webhook", controls: ["discord-webhook"],
+  },
+};
+
+// A control's own placeholder, which a missing value covers with "Not set".
+document.querySelectorAll("[placeholder]").forEach((el) => {
+  el.dataset.placeholder = el.placeholder;
+});
+
+function applyPlaceholder(el) {
+  if (!("placeholder" in el)) return;
+  el.placeholder = el.getAttribute("aria-invalid") === "true"
+    ? "Not set"
+    : el.dataset.placeholder || "";
+}
+
+// A missing key's field, its category's notice and its dot stay until a save
+// stores it.
+function markMissing() {
+  const missing = new Set(state.missing);
+  const byTab = {};
+  for (const [key, field] of Object.entries(FIELDS)) {
+    const unset = missing.has(key);
+    field.controls.forEach((id) => {
+      const el = $(id);
+      if (unset) el.setAttribute("aria-invalid", "true");
+      else el.removeAttribute("aria-invalid");
+      applyPlaceholder(el);
+    });
+    byTab[field.tab] = byTab[field.tab] || [];
+    if (unset && !byTab[field.tab].includes(field.label)) byTab[field.tab].push(field.label);
+  }
+  for (const [tab, labels] of Object.entries(byTab)) {
+    const notice = $(`${tab}-missing`);
+    notice.textContent = !labels.length ? ""
+      : state.writable
+        ? `Not set yet: ${labels.join(", ")}. The next run stops until they are saved.`
+        : `Missing from cyris.toml: ${labels.join(", ")}. The next run stops until they are added there.`;
+    notice.hidden = !labels.length;
+    document.querySelector(`.settings-nav a[data-tab="${tab}"]`)
+      .classList.toggle("missing", labels.length > 0);
+  }
+}
+
+function markSet(keys) {
+  state.missing = state.missing.filter((key) => !keys.includes(key));
+  markMissing();
+}
 
 function render() {
   const values = state.values;
@@ -87,6 +144,7 @@ function render() {
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
   }
+  markMissing();
   if (state.writable) {
     document.querySelectorAll("form.tab").forEach((form) => markClean(form));
   } else {
@@ -104,7 +162,8 @@ function chosen() {
 
 function updateHint() {
   const p = chosen();
-  $("model-input").placeholder = p ? `Empty uses ${p.default_model}` : "";
+  $("model-input").dataset.placeholder = p ? `Empty uses ${p.default_model}` : "";
+  applyPlaceholder($("model-input"));
   $("model-hint").textContent = p
     ? `Saving checks the model against ${p.name} with a real call first — a typo is rejected here rather than at 08:00 tomorrow.`
     : "Pick a provider whose key is present.";
@@ -131,6 +190,7 @@ $("model-form").addEventListener("submit", async (e) => {
     const data = await post("/api/settings", {provider: p.name, model});
     state.values["llm_provider.provider"] = data.provider;
     state.values["llm_provider.model"] = data.model;
+    markSet(["llm_provider.provider", "llm_provider.model"]);
     markClean(form, sent);
     show("ok", `${data.detail}\n${data.note}`, "model-result");
   } catch (err) {
@@ -167,35 +227,37 @@ $("digest-form").addEventListener("submit", async (e) => {
   const form = $("digest-form");
   const [morning, evening, featured] = [$("morning"), $("evening"), $("max-featured")]
     .map((input) => input.value);
-  const saved = {...clean.get(form)};
+  const stored = {...clean.get(form)};
   const lines = [];
   let failed = false;
   saving.add(form);
   refresh(form);
-  if (morning !== saved.morning || evening !== saved.evening) {
+  if (morning !== stored.morning || evening !== stored.evening) {
     const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
     try {
       const data = await post("/api/settings/schedule", {times});
       lines.push(`Digest hours: ${data.times.join(" and ")}. ${data.note}`);
-      Object.assign(saved, {morning, evening});
+      Object.assign(stored, {morning, evening});
+      markSet(["general.digest_schedule"]);
     } catch (err) {
       failed = true;
       lines.push(`Digest hours not saved: ${err.message || err}`);
     }
   }
-  if (featured !== saved["max-featured"]) {
+  if (featured !== stored["max-featured"]) {
     try {
       const data = await post("/api/settings/values",
                               {values: {"digest.max_featured": parseInt(featured, 10)}});
       lines.push(`Featured sections: ${data.values["digest.max_featured"]}. ${data.note}`);
-      saved["max-featured"] = featured;
+      stored["max-featured"] = featured;
+      markSet(Object.keys(data.values));
     } catch (err) {
       failed = true;
       lines.push(`Featured sections not saved: ${err.message || err}`);
     }
   }
   saving.delete(form);
-  markClean(form, saved);
+  markClean(form, stored);
   show(failed ? "err" : "ok", lines.join("\n"), "digest-result");
 });
 
@@ -210,6 +272,7 @@ $("notify-form").addEventListener("submit", async (e) => {
     state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
     // The stored value comes back masked; an edit typed meanwhile is kept.
     if (field.value === url) field.value = data.discord_webhook_url;
+    markSet(["notify.discord_webhook_url"]);
     markClean(form, {...sent, "discord-webhook": data.discord_webhook_url});
     show("ok", `${data.detail} ${data.note}`, "notify-result");
   } catch (err) {
