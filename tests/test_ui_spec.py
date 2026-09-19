@@ -660,7 +660,7 @@ def test_the_masthead_is_the_prototype_digest_head() -> None:
     digest = _parsed("digest")
     assert {
         "display: grid",
-        "grid-template-columns: minmax(0, 1fr) min(37vw, 320px)",
+        "grid-template-columns: minmax(0, 1fr) min(37vw, 37vw / var(--type-scale), 320px)",
         "gap: var(--s-12)",
         "align-items: end",
     } <= set(digest[".headline-block"])

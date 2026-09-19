@@ -27,10 +27,12 @@ import time
 from collections.abc import Awaitable, Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, get_args
 
 from aiohttp import web
 from css_computed import _devtools_port, _page_socket
+
+from cyris.config import DigestConfig
 
 CHECK_TIMEOUT_S = 30
 POINTERS = ("mouse", "touch")
@@ -61,6 +63,19 @@ window.fetch = (input, init) => init && init.method === "POST"
   ? realFetch(input, {...init, headers: {...init.headers, Authorization: "x"}})
   : realFetch(input, init);
 }"""
+
+
+# The largest type size, and the style the app Worker injects for it
+# (`typeScaleStyle` in workers/app/src/type_scale.js), byte for byte.
+LARGEST_TYPE_SCALE = max(get_args(DigestConfig.model_fields["type_scale"].annotation))
+LARGEST_TYPE_SCALE_STYLE = f"<style>html:root{{--type-scale:{LARGEST_TYPE_SCALE}}}</style>"
+
+
+def at_largest_type_scale(page: str) -> str:
+    """`page` as the app Worker serves it at the largest type size."""
+    if "</head>" not in page:
+        raise ValueError("the page has no </head> to put the type size before")
+    return page.replace("</head>", LARGEST_TYPE_SCALE_STYLE + "</head>", 1)
 
 
 @dataclass(frozen=True)
@@ -175,6 +190,11 @@ const escaping = () => $$("body *")
 const overflow = (where) => document.documentElement.scrollWidth > viewport()
   ? `${{where}}: ${{document.documentElement.scrollWidth}}px wide, past ${{escaping().join(" ")}}`
   : "";
+const typeScale = () =>
+  getComputedStyle(document.documentElement).getPropertyValue("--type-scale").trim();
+// A largest-size fixture that failed to inject would otherwise pass as scale 1.
+const expectLargestScale = () => expect(typeScale() === {json.dumps(str(LARGEST_TYPE_SCALE))},
+  `--type-scale is ${{typeScale()}}`);
 """
 
 

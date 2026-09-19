@@ -899,6 +899,8 @@ EXPECTED_DIGEST_IDS = {
     *(f"grids-agree-{width}" for width in (360, 721, 880, 1000, 1100, 1160, 1440)),
     *(f"fits-{width}" for width in (360, 880, 1000, 1440)),
     *(f"head-fits-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
+    *(f"head-fits-largest-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
+    *(f"head-unchanged-{width}" for width in (721, 760, 800, 880)),
 }
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}

@@ -29,6 +29,7 @@ from cdp_probe import (
     SEND_CREDENTIAL,
     Check,
     VoteFixture,
+    at_largest_type_scale,
     base_prelude,
     chromium,
     require_node,
@@ -43,7 +44,7 @@ DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 
-KINDS = ("signed-in", "vote-fails")
+KINDS = ("signed-in", "signed-in-largest", "vote-fails")
 
 # Every element a vote group sits in, one per promote_btn call site.
 ITEM_SELECTORS = (
@@ -61,6 +62,10 @@ WIDTHS = (360, 880, 1000, 1440)
 # Widths the masthead sets title and stats card side by side at, densest just above
 # the breakpoint, where the fallback-font title is widest for its column.
 HEAD_WIDTHS = (721, 740, 760, 800, 880, 1000, 1440)
+
+# Where the stats column narrowed with the page before the type size existed, and where
+# the unfixed column let the largest-size title overrun it.
+NARROW_HEAD_WIDTHS = (721, 740, 760, 800, 880)
 
 
 def url_of(slug: str) -> str:
@@ -137,12 +142,15 @@ def render_page() -> str:
 def build_fixture(kind: str) -> VoteFixture:
     """Serve the digest page with the `/api/vote` answers of one deployment `kind`.
 
-    Both kinds answer the probe signed in; `signed-in` takes every vote and
-    `vote-fails` refuses every vote.
+    Every kind answers the probe signed in; `signed-in` takes every vote,
+    `signed-in-largest` does too on the page served at the largest type size,
+    and `vote-fails` refuses every vote.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
     page = render_page()
+    if kind == "signed-in-largest":
+        page = at_largest_type_scale(page)
     app = web.Application()
     fixture = VoteFixture(app)
 
@@ -355,6 +363,44 @@ _CHECKS: list[Check] = [
             sabotage="""$(".headline-block").style.gridTemplateColumns = "minmax(0, 1fr) 100%";""",
         )
         for width in HEAD_WIDTHS
+    ),
+    # At the largest type size the stats column narrows further, so the larger title
+    # still clears it. Below 881px today's column is what let it overrun.
+    *(
+        Check(
+            id=f"head-fits-largest-{width}",
+            fixture="signed-in-largest",
+            path=PAGE,
+            width=width,
+            script="""
+                expectLargestScale();
+                const overrun = titleOverrun();
+                expect(overrun <= 0, `the title runs ${overrun}px into the stats card`);
+            """,
+            sabotage=f"""$(".headline-block").style.gridTemplateColumns = "minmax(0, 1fr) {
+                "min(37vw, 320px)" if width in NARROW_HEAD_WIDTHS else "100%"
+            }";""",
+        )
+        for width in HEAD_WIDTHS
+    ),
+    # At type scale 1 the stats column is exactly what it was before the type size.
+    *(
+        Check(
+            id=f"head-unchanged-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            script="""
+                const tracks = getComputedStyle($(".headline-block")).gridTemplateColumns;
+                const stats = parseFloat(tracks.split(" ")[1]);
+                const wanted = Math.min(innerWidth * 0.37, 320);
+                expect(Math.abs(stats - wanted) <= 0.5, `stats ${stats}px, wanted ${wanted}px`);
+            """,
+            sabotage="""
+                $(".headline-block").style.gridTemplateColumns = "minmax(0, 1fr) min(33vw, 320px)";
+            """,
+        )
+        for width in (721, 760, 800, 880)
     ),
     # A real pointer press on each item kind's first up button: the button is hit, every
     # URL of its group is voted on, and the button is marked. The phone run is caught by
