@@ -115,7 +115,7 @@ def promote_sync(
     """Sync promote-button clicks from the cloud Worker into the article store (no fetch/LLM)."""
     _setup_logging(verbose)
 
-    from cyris.bootstrap import build_store, load_effective_config
+    from cyris.bootstrap import build_promotion_sync, load_effective_config
 
     try:
         cfg = load_effective_config(config_path, sources_path)
@@ -123,8 +123,10 @@ def promote_sync(
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
 
-    promote = cfg.app.promote
-    if not (promote.worker_url and promote.token):
+    # Not through build_deps: this command starts on an empty D1, where the
+    # runtime-settings tables build_deps reads do not exist yet.
+    sync = build_promotion_sync(cfg)
+    if sync is None:
         # The vote Worker is optional, and this command is the last one in the
         # container's `run` role — so its failure fails the tick. Not having
         # deployed one is a deployment shape, the way an hour that is not a
@@ -132,12 +134,7 @@ def promote_sync(
         typer.echo("Promotion sync not configured (set promote.worker_url + token).")
         return
 
-    from cyris.adapters.promotions import sync_promotions
-
-    # Not through build_deps: this command starts on an empty D1, where the
-    # runtime-settings tables it would read do not exist yet.
-    count = sync_promotions(promote.worker_url, promote.token, build_store(cfg))
-    typer.echo(f"Synced {count} digest vote(s).")
+    typer.echo(f"Synced {sync()} digest vote(s).")
 
 
 @app.command("vote-sim")

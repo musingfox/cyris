@@ -14,6 +14,7 @@ from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.usage_log import append_usage, append_usage_d1
+from cyris.adapters.promotions import sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
@@ -209,6 +210,22 @@ class Deps:
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
 
 
+def build_promotion_sync(
+    cfg: Config, store: ArticleRepository | None = None
+) -> Callable[[], int] | None:
+    """The vote pull bound to `store`, or None when no vote Worker is configured.
+
+    Reads no runtime setting, so `promote-sync` can call it on an empty D1. With
+    no `store` it builds one, and only once a Worker is configured: the json
+    store creates its directory.
+    """
+    promote = cfg.app.promote
+    if not (promote.worker_url and promote.token):
+        return None
+    store = store if store is not None else build_store(cfg)
+    return partial(sync_promotions, promote.worker_url, promote.token, store)
+
+
 def build_deps(
     cfg: Config, on_progress: Callable[[str], None] | None = None, dry_run: bool = False
 ) -> Deps:
@@ -302,16 +319,7 @@ def build_deps(
                     cfg.app.promote.pages_project,
                 )
 
-    sync = None
-    if not dry_run and cfg.app.promote.worker_url and cfg.app.promote.token:
-        from cyris.adapters.promotions import sync_promotions
-
-        sync = partial(
-            sync_promotions,
-            cfg.app.promote.worker_url,
-            cfg.app.promote.token,
-            store,
-        )
+    sync = None if dry_run else build_promotion_sync(cfg, store)
 
     return Deps(
         cfg=cfg,
