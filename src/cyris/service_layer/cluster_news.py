@@ -42,7 +42,7 @@ async def cluster_news(
     article_scores: dict[str, float] | None = None,
     *,
     output_language: str,
-    style_prompt: str = "",
+    style_prompt: str,
 ) -> tuple[list[DigestSection], list[Article]]:
     """Cluster related news articles using the LLM.
 
@@ -67,7 +67,7 @@ async def cluster_news(
         result = await complete_json(
             llm,
             user_prompt,
-            system=build_news_cluster_system_prompt(output_language, style_prompt),
+            system=build_news_cluster_system_prompt(output_language, style_prompt=style_prompt),
             temperature=1.0,
             usage=usage,
         )

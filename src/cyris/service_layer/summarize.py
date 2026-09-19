@@ -27,11 +27,11 @@ async def summarize_articles(
     articles: list[Article],
     llm: LLMClient | None,
     usage: UsageStats | None = None,
-    snippet_length: int = 1000,
     article_scores: dict[str, float] | None = None,
     *,
+    snippet_length: int,
     output_language: str,
-    style_prompt: str = "",
+    style_prompt: str,
 ) -> list[DigestSection]:
     """Summarize articles grouped by source tags.
 
@@ -66,7 +66,7 @@ async def summarize_articles(
             data = await complete_json(
                 llm,
                 user_prompt,
-                system=build_summarize_system_prompt(output_language, style_prompt),
+                system=build_summarize_system_prompt(output_language, style_prompt=style_prompt),
                 temperature=1.0,
                 usage=usage,
             )

@@ -33,6 +33,19 @@ TEST_SETTINGS: dict[str, Any] = {
 }
 
 
+def pipeline_settings(**overrides: Any) -> dict[str, Any]:
+    """DigestPipeline's setting keywords, taken from TEST_SETTINGS."""
+    return {
+        "max_digest_output": TEST_SETTINGS["digest.max_articles_per_digest_output"],
+        "summarize_snippet_length": TEST_SETTINGS["digest.summarize_snippet_length"],
+        "filter_snippet_length": TEST_SETTINGS["digest.filter_snippet_length"],
+        "score_threshold": TEST_SETTINGS["routing.summarize_score_threshold"],
+        "output_language": TEST_SETTINGS["digest.output_language"],
+        "style_prompt": TEST_SETTINGS["digest.style_prompt"],
+        **overrides,
+    }
+
+
 def _test_settings(omit: Iterable[str], overrides: dict[str, Any]) -> dict[str, Any]:
     omitted = set(omit)
     unknown = sorted((omitted | set(overrides)) - set(TEST_SETTINGS))

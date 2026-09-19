@@ -57,26 +57,6 @@ class TestSummarizeSystemPrompt:
 
 
 class TestBuildFilterPrompt:
-    def test_build_filter_prompt_default_snippet_length(self):
-        """Default snippet length should be 500 chars."""
-        article = Article(
-            id=301,
-            title="Filter Article",
-            url="https://example.com/filter",
-            content="X" * 1000,  # 1000 chars, should be truncated at 500 (default)
-            published_at=datetime(2026, 4, 12, 10, 0, tzinfo=UTC),
-            source_name="TechNews",
-            source_tier=Tier.FILTER,
-            source_tags=["tech"],
-        )
-
-        prompt = build_filter_prompt([article])
-
-        assert "[301] (TechNews) Filter Article" in prompt
-        # Should truncate at 500 chars (default)
-        assert "X" * 500 in prompt
-        assert "X" * 501 not in prompt
-
     def test_build_filter_prompt_custom_snippet_length_500(self):
         """Custom snippet_length=500 should truncate at 500 chars."""
         article = Article(
@@ -115,23 +95,22 @@ class TestBuildFilterPrompt:
 
 
 class TestBuildSummarizePrompt:
-    def test_build_summarize_prompt_default_length(self):
+    def test_build_summarize_prompt_truncates_at_snippet_length(self):
         article = Article(
             id=201,
             title="Tech Article",
             url="https://example.com/tech",
-            content="B" * 2000,  # 2000 chars, should be truncated at 1000 (default)
+            content="B" * 2000,  # 2000 chars, should be truncated at 1000
             published_at=datetime(2026, 4, 9, 10, 0, tzinfo=UTC),
             source_name="TechCrunch",
             source_tier=Tier.SUMMARIZE,
             source_tags=["tech"],
         )
 
-        prompt = build_summarize_prompt("tech", [article])
+        prompt = build_summarize_prompt("tech", [article], snippet_length=1000)
 
         assert "Topic group: tech" in prompt
         assert "[0] (TechCrunch) Tech Article" in prompt
-        # Content should be truncated to 1000 chars (default)
         assert "B" * 1000 in prompt
         assert "B" * 1001 not in prompt
 
@@ -170,7 +149,7 @@ class TestOutputLanguage:
         assert language_wording("繁體中文") == "繁體中文"
 
     def test_a_listed_tag_reaches_the_system_prompt_as_a_name(self):
-        prompt = build_filter_system_prompt("zh-Hant")
+        prompt = build_filter_system_prompt("zh-Hant", style_prompt="")
 
         assert "繁體中文 (Traditional Chinese)" in prompt
         assert "zh-Hant" not in prompt

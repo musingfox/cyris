@@ -39,7 +39,8 @@ def select_scorable(
 async def score_articles_batch(
     articles: list[StoredArticle],
     llm: LLMClient,
-    snippet_length: int = 1000,
+    *,
+    snippet_length: int,
 ) -> tuple[dict[str, tuple[float, str]], dict[str, list[str]], UsageStats]:
     """Score a batch of articles via the LLM.
 
@@ -90,7 +91,8 @@ async def score_articles_batch(
 async def score_in_batches(
     articles: list[StoredArticle],
     llm: LLMClient,
-    snippet_length: int = 1000,
+    *,
+    snippet_length: int,
     progress: Callable[[str], None] = lambda _msg: None,
     persist: Callable[[dict[str, tuple[float, str]]], None] | None = None,
     persist_tags: Callable[[dict[str, list[str]]], None] | None = None,

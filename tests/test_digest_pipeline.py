@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fakes import FakeLLM
+from fakes import TEST_SETTINGS, FakeLLM, pipeline_settings
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import Article, DigestItem, DigestSection, Tier
@@ -21,7 +21,7 @@ def _expected_story_id(date: str, period: str, urls: list[str]) -> str:
 class TestDigestPipeline:
     @pytest.fixture
     def pipeline(self):
-        return DigestPipeline(FakeLLM(), output_language="zh-Hant")
+        return DigestPipeline(FakeLLM(), **pipeline_settings())
 
     async def test_process_mixed_articles(
         self,
@@ -66,7 +66,12 @@ class TestDigestPipeline:
                 return_value=mock_summarize_result,
             ),
         ):
-            result = await pipeline.process(all_articles, sample_sources, period="morning")
+            result = await pipeline.process(
+                all_articles,
+                sample_sources,
+                period="morning",
+                timezone=TEST_SETTINGS["general.timezone"],
+            )
 
         assert result.content.period == "morning"
         assert result.content.articles_received == 3
@@ -103,7 +108,12 @@ class TestDigestPipeline:
         ]
 
         # No filter/summarize mocks needed — fan tier never reaches the LLM path.
-        result = await pipeline.process(fan_articles, sample_sources, period="morning")
+        result = await pipeline.process(
+            fan_articles,
+            sample_sources,
+            period="morning",
+            timezone=TEST_SETTINGS["general.timezone"],
+        )
 
         assert len(result.content.fan_sections) == 1  # grouped by the single source
         section = result.content.fan_sections[0]
@@ -136,11 +146,12 @@ class TestDigestPipeline:
                 '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
                 '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
             ),
-            max_digest_output=1,
-            output_language="zh-Hant",
+            **pipeline_settings(max_digest_output=1),
         )
 
-        result = await pipeline.process(news, sample_sources, period="morning")
+        result = await pipeline.process(
+            news, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
+        )
 
         # The cap truncated the rendered clusters...
         assert len(result.content.news_clusters) == 1
@@ -177,10 +188,12 @@ class TestDigestPipeline:
                 '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
                 '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
             ),
-            output_language="zh-Hant",
+            **pipeline_settings(),
         )
 
-        result = await pipeline.process(news, sample_sources, period="morning")
+        result = await pipeline.process(
+            news, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
+        )
 
         # (a) Sections and records carry the same ids, one-to-one, in order.
         assert [s.story_id for s in result.content.news_clusters] == [
@@ -194,7 +207,9 @@ class TestDigestPipeline:
             assert f'data-story-id="{record.id}"' in html
 
     async def test_process_no_articles(self, pipeline, sample_sources):
-        result = await pipeline.process([], sample_sources, period="evening")
+        result = await pipeline.process(
+            [], sample_sources, period="evening", timezone=TEST_SETTINGS["general.timezone"]
+        )
 
         assert result.content.articles_received == 0
         assert result.content.articles_included == 0

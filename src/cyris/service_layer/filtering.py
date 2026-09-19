@@ -18,10 +18,10 @@ async def filter_articles(
     llm: LLMClient | None,
     usage: UsageStats | None = None,
     article_scores: dict[str, float] | None = None,
-    filter_snippet_length: int = 500,
     *,
+    filter_snippet_length: int,
     output_language: str,
-    style_prompt: str = "",
+    style_prompt: str,
 ) -> list[DigestItem]:
     """Send filter-tier articles to Claude for headline extraction.
 
@@ -49,7 +49,7 @@ async def filter_articles(
     logger.info("Filtering %d articles through the LLM", len(articles_to_process))
 
     user_prompt = build_filter_prompt(articles_to_process, snippet_length=filter_snippet_length)
-    system_prompt = build_filter_system_prompt(output_language, style_prompt)
+    system_prompt = build_filter_system_prompt(output_language, style_prompt=style_prompt)
 
     try:
         data = await complete_json(

@@ -31,7 +31,7 @@ def language_wording(tag: str) -> str:
 def _finalize_system(
     base: str,
     language: str,
-    style_prompt: str = "",
+    style_prompt: str,
 ) -> str:
     """Substitute the output language and append the optional style block."""
     out = base.replace("<output_language>", language_wording(language))
@@ -105,7 +105,7 @@ Respond in JSON format:
 """
 
 
-def build_filter_prompt(articles: list[Article], snippet_length: int = 500) -> str:
+def build_filter_prompt(articles: list[Article], *, snippet_length: int) -> str:
     """Build user prompt for filter-tier batch processing.
 
     Args:
@@ -121,7 +121,7 @@ def build_filter_prompt(articles: list[Article], snippet_length: int = 500) -> s
     return "\n".join(lines)
 
 
-def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: int = 1000) -> str:
+def build_summarize_prompt(tag: str, articles: list[Article], *, snippet_length: int) -> str:
     """Build user prompt for summarize-tier grouped processing.
 
     Args:
@@ -143,7 +143,8 @@ def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: in
 
 def build_filter_system_prompt(
     language: str,
-    style_prompt: str = "",
+    *,
+    style_prompt: str,
 ) -> str:
     """Build filter system prompt with output language and style."""
     return _finalize_system(FILTER_SYSTEM, language, style_prompt)
@@ -151,7 +152,8 @@ def build_filter_system_prompt(
 
 def build_summarize_system_prompt(
     language: str,
-    style_prompt: str = "",
+    *,
+    style_prompt: str,
 ) -> str:
     """Build summarize system prompt with output language and style."""
     return _finalize_system(SUMMARIZE_SYSTEM, language, style_prompt)
@@ -210,7 +212,7 @@ def build_news_cluster_prompt(articles: list[Article]) -> str:
     return "\n".join(lines)
 
 
-def build_news_cluster_system_prompt(language: str, style_prompt: str = "") -> str:
+def build_news_cluster_system_prompt(language: str, *, style_prompt: str) -> str:
     """Build news-cluster system prompt with output language and style injection."""
     return _finalize_system(NEWS_CLUSTER_SYSTEM, language, style_prompt)
 
@@ -248,7 +250,7 @@ def build_scoring_system_prompt() -> str:
     return SCORING_SYSTEM
 
 
-def build_scoring_prompt(articles: list, snippet_length: int = 1000) -> str:
+def build_scoring_prompt(articles: list, *, snippet_length: int) -> str:
     """Build user prompt for batch article scoring.
 
     Args:

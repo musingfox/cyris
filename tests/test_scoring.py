@@ -85,7 +85,7 @@ class TestBuildScoringPrompt:
                 first_seen_at=datetime.now(UTC),
             ),
         ]
-        prompt = build_scoring_prompt(articles)
+        prompt = build_scoring_prompt(articles, snippet_length=1000)
         assert "[1] Title A" in prompt
         assert "Source: Source A" in prompt
         assert "Content: Content A" in prompt
@@ -105,8 +105,8 @@ class TestBuildScoringPrompt:
                 first_seen_at=datetime.now(UTC),
             ),
         ]
-        prompt = build_scoring_prompt(articles)
-        # Content should be truncated to 1000 chars (default)
+        prompt = build_scoring_prompt(articles, snippet_length=1000)
+        # Content should be truncated to the snippet length
         assert "X" * 1000 in prompt
         assert "X" * 1001 not in prompt
 
@@ -133,7 +133,7 @@ class TestBuildScoringPrompt:
     def test_empty_articles(self):
         from cyris.service_layer.prompts import build_scoring_prompt
 
-        assert build_scoring_prompt([]) == ""
+        assert build_scoring_prompt([], snippet_length=1000) == ""
 
 
 # --- Score batch tests ---
@@ -180,7 +180,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        result, tags, usage = await score_articles_batch(sample_articles, llm)
+        result, tags, usage = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert result["http://a.com"] == (85.0, "en")
         assert result["http://b.com"] == (72.0, "zh")
@@ -191,7 +191,7 @@ class TestScoreArticlesBatch:
     async def test_empty_articles(self):
         from cyris.service_layer.scoring import score_articles_batch
 
-        result, tags, usage = await score_articles_batch([], FakeLLM())
+        result, tags, usage = await score_articles_batch([], FakeLLM(), snippet_length=1000)
         assert result == {}
         assert tags == {}
         assert usage.api_calls == 0
@@ -210,7 +210,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        result, _, _ = await score_articles_batch(sample_articles, llm)
+        result, _, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         # Article 2 has Chinese content, should fallback to "zh"
         assert result["http://b.com"][1] == "zh"
@@ -234,7 +234,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        scores, tags, _ = await score_articles_batch(sample_articles, llm)
+        scores, tags, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores["http://a.com"] == (80.0, "en")
         assert tags == {"http://a.com": ["rust"]}  # normalized at the source
@@ -253,7 +253,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        scores, tags, _ = await score_articles_batch(sample_articles, llm)
+        scores, tags, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores["http://a.com"] == (80.0, "en")  # nothing thrown away
         assert tags["http://a.com"] == ["ai"]  # 42 dropped, no TypeError
@@ -264,7 +264,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]}))
 
-        scores, tags, _ = await score_articles_batch(sample_articles, llm)
+        scores, tags, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores["http://a.com"] == (80.0, "en")
         assert tags == {}
@@ -490,6 +490,7 @@ class TestBatchGuard:
         await score_in_batches(
             articles,
             llm,
+            snippet_length=1000,
             persist=scored.update,
             persist_tags=tagged.update,
         )

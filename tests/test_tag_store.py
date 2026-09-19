@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fakes import CountingD1, FakeLLM, SqliteD1
+from fakes import TEST_SETTINGS, CountingD1, FakeLLM, SqliteD1, pipeline_settings
 
 from cyris.adapters.store.tags import D1TagStore
 from cyris.domain.models import Article, Tier
@@ -29,10 +29,12 @@ async def test_cluster_tags_persist_for_every_member_normalized() -> None:
             '{"clusters": [{"heading": "H", "summary": "S", '
             '"article_ids": [1, 2], "tags": ["AI Policy", "ai policy"]}]}'
         ),
-        output_language="zh-Hant",
+        **pipeline_settings(),
     )
 
-    result = await pipeline.process([_news(1, "u1"), _news(2, "u2")], {})
+    result = await pipeline.process(
+        [_news(1, "u1"), _news(2, "u2")], {}, timezone=TEST_SETTINGS["general.timezone"]
+    )
     D1TagStore(db).save(result.url_to_tags)
 
     assert db.query("SELECT name FROM tags").rows == [{"name": "ai policy"}]

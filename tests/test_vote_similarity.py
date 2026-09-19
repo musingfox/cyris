@@ -55,7 +55,7 @@ async def test_a_candidate_like_a_downvote_is_suppressed():
     store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)])
     candidates = [article("c1", "Lottery again"), article("c2", "Tech thing")]
 
-    report = await judge_by_votes(store, FakeEmbedder(), candidates)
+    report = await judge_by_votes(store, FakeEmbedder(), candidates, max_seeds=200)
 
     assert report.suppressed_urls == ["c1"]
     assert report.downvote_seeds == 1
@@ -65,7 +65,9 @@ async def test_pipeline_verdicts_are_not_seeds():
     """48 of 50 lottery rows were pipeline-accepted; seeding on those inverts the filter."""
     store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=False)])
 
-    report = await judge_by_votes(store, FakeEmbedder(), [article("c1", "Lottery again")])
+    report = await judge_by_votes(
+        store, FakeEmbedder(), [article("c1", "Lottery again")], max_seeds=200
+    )
 
     assert not report.ran
     assert report.skipped_reason == "no human-voted articles yet"
@@ -79,7 +81,9 @@ async def test_an_upvoted_neighbour_is_not_suppressed():
         ]
     )
 
-    report = await judge_by_votes(store, FakeEmbedder(), [article("c1", "Lottery again")])
+    report = await judge_by_votes(
+        store, FakeEmbedder(), [article("c1", "Lottery again")], max_seeds=200
+    )
 
     assert report.suppressed_urls == []
     assert report.upvote_seeds == 1
@@ -92,7 +96,7 @@ async def test_embedding_failure_lets_the_digest_through():
 
     store = FakeStore([article("d", "Lottery", ArticleState.REJECTED, triaged=True)])
 
-    report = await judge_by_votes(store, Broken(), [article("c1", "Lottery")])
+    report = await judge_by_votes(store, Broken(), [article("c1", "Lottery")], max_seeds=200)
 
     assert not report.ran
     assert report.suppressed_urls == []
@@ -104,7 +108,7 @@ async def test_an_already_voted_article_is_not_re_judged():
     voted = article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)
     store = FakeStore([voted])
 
-    report = await judge_by_votes(store, FakeEmbedder(), [voted])
+    report = await judge_by_votes(store, FakeEmbedder(), [voted], max_seeds=200)
 
     assert not report.ran
     assert report.skipped_reason == "every candidate was already voted on"
@@ -113,7 +117,7 @@ async def test_an_already_voted_article_is_not_re_judged():
 async def test_no_candidates_short_circuits_before_any_api_call():
     embedder = FakeEmbedder()
 
-    report = await judge_by_votes(FakeStore([]), embedder, [])
+    report = await judge_by_votes(FakeStore([]), embedder, [], max_seeds=200)
 
     assert not report.ran
     assert embedder.calls == 0
@@ -125,6 +129,8 @@ async def test_threshold_moves_the_boundary(threshold, expected):
     store = FakeStore([article("d", "Lottery", ArticleState.REJECTED, triaged=True)])
     candidates = [article("c1", "Partial match")]
 
-    report = await judge_by_votes(store, FakeEmbedder(), candidates, threshold=threshold)
+    report = await judge_by_votes(
+        store, FakeEmbedder(), candidates, threshold=threshold, max_seeds=200
+    )
 
     assert report.suppressed_urls == expected

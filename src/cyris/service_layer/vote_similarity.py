@@ -53,7 +53,7 @@ async def judge_by_votes(
     candidates: list[StoredArticle],
     *,
     threshold: float = DEFAULT_THRESHOLD,
-    max_seeds: int = 200,
+    max_seeds: int,
 ) -> VoteSimilarityReport:
     """Compare candidates against upvoted and downvoted articles.
 

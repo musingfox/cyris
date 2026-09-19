@@ -48,13 +48,13 @@ class DigestPipeline:
     def __init__(
         self,
         llm: LLMClient,
-        max_digest_output: int = 15,
-        summarize_snippet_length: int = 1000,
-        filter_snippet_length: int = 500,
-        score_threshold: int = 70,
         *,
+        max_digest_output: int,
+        summarize_snippet_length: int,
+        filter_snippet_length: int,
+        score_threshold: int,
         output_language: str,
-        style_prompt: str = "",
+        style_prompt: str,
     ) -> None:
         self._llm = llm
         self.max_digest_output = max_digest_output
@@ -69,7 +69,8 @@ class DigestPipeline:
         articles: list[Article],
         sources: dict[str, SourceConfig],
         period: Period = "morning",
-        timezone: str = "Asia/Taipei",
+        *,
+        timezone: str,
         article_scores: dict[str, float] | None = None,
     ) -> ProcessResult:
         """Process articles through tier-based pipeline.

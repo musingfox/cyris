@@ -191,7 +191,7 @@ async def test_a_batched_scoring_stage_reports_what_it_spent():
         for i in range(60)
     ]
 
-    usage = await score_in_batches(articles, NeuronReportingLLM())
+    usage = await score_in_batches(articles, NeuronReportingLLM(), snippet_length=1000)
 
     assert usage.api_calls == 3
     assert usage.neurons == 12.0

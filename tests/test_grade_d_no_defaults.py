@@ -1,5 +1,6 @@
 """No grade-D setting has a value in code: a table missing a key is left unbuilt."""
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -140,3 +141,53 @@ def test_the_example_config_builds_every_settings_table():
     cfg = load_config(ROOT / "cyris.toml.example", ROOT / "sources.example.yaml")
 
     assert all(getattr(cfg.app, table) is not None for table in TABLES)
+
+
+def _grade_d_parameters():
+    from cyris.domain import selection
+    from cyris.service_layer import (
+        cluster_news,
+        digest_pipeline,
+        filtering,
+        prompts,
+        scoring,
+        summarize,
+        vote_similarity,
+    )
+
+    pipeline = digest_pipeline.DigestPipeline
+    return [
+        (pipeline.__init__, "max_digest_output"),
+        (pipeline.__init__, "summarize_snippet_length"),
+        (pipeline.__init__, "filter_snippet_length"),
+        (pipeline.__init__, "score_threshold"),
+        (pipeline.__init__, "style_prompt"),
+        (pipeline.process, "timezone"),
+        (filtering.filter_articles, "filter_snippet_length"),
+        (filtering.filter_articles, "style_prompt"),
+        (summarize.summarize_articles, "snippet_length"),
+        (summarize.summarize_articles, "style_prompt"),
+        (cluster_news.cluster_news, "style_prompt"),
+        (scoring.score_articles_batch, "snippet_length"),
+        (scoring.score_in_batches, "snippet_length"),
+        (vote_similarity.judge_by_votes, "max_seeds"),
+        (prompts.build_filter_prompt, "snippet_length"),
+        (prompts.build_summarize_prompt, "snippet_length"),
+        (prompts.build_scoring_prompt, "snippet_length"),
+        (prompts.build_filter_system_prompt, "style_prompt"),
+        (prompts.build_summarize_system_prompt, "style_prompt"),
+        (prompts.build_news_cluster_system_prompt, "style_prompt"),
+        (selection.select_digest_articles, "max_items"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("func", "name"),
+    _grade_d_parameters(),
+    ids=lambda v: v if isinstance(v, str) else v.__qualname__,
+)
+def test_no_callable_carries_a_runtime_setting_as_a_default(func, name):
+    """A caller that leaves a setting out must fail, not run on an old number."""
+    param = inspect.signature(func).parameters[name]
+    assert param.default is inspect.Parameter.empty
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY

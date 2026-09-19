@@ -130,7 +130,7 @@ def _truncate_sections(sections: list[DigestSection], max_items: int) -> list[Di
     return result
 
 
-def select_digest_articles(content: DigestContent, max_items: int = 15) -> DigestContent:
+def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestContent:
     """Apply priority fill to limit total digest articles.
 
     Priority order: thematic_summaries → news_clusters → attention_sections → filtered_headlines.

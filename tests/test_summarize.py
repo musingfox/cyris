@@ -55,7 +55,11 @@ class TestSummarizeArticles:
         )
 
         sections = await summarize_articles(
-            sample_summarize_articles, llm, output_language="zh-Hant"
+            sample_summarize_articles,
+            llm,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert len(sections) == 1
@@ -95,7 +99,12 @@ class TestSummarizeArticles:
 
         item = (
             await summarize_articles(
-                [article], llm, article_scores={article.url: 88.0}, output_language="zh-Hant"
+                [article],
+                llm,
+                article_scores={article.url: 88.0},
+                snippet_length=1000,
+                output_language="zh-Hant",
+                style_prompt="",
             )
         )[0].items[0]
 
@@ -134,19 +143,29 @@ class TestSummarizeArticles:
             source_tags=["tech"],
         )
 
-        sections = await summarize_articles([article], llm, output_language="zh-Hant")
+        sections = await summarize_articles(
+            [article], llm, snippet_length=1000, output_language="zh-Hant", style_prompt=""
+        )
 
         assert sections[0].items == []
 
     async def test_summarize_empty_input(self):
-        sections = await summarize_articles([], FakeLLM(), output_language="zh-Hant")
+        sections = await summarize_articles(
+            [], FakeLLM(), snippet_length=1000, output_language="zh-Hant", style_prompt=""
+        )
         assert sections == []
 
     async def test_summarize_articles_passes_temperature(self, sample_summarize_articles):
         """summarize_articles should pass temperature=1.0 to the LLM."""
         llm = FakeLLM(json.dumps({"sections": []}))
 
-        await summarize_articles(sample_summarize_articles, llm, output_language="zh-Hant")
+        await summarize_articles(
+            sample_summarize_articles,
+            llm,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
 
         assert len(llm.calls) == 1
         assert llm.calls[0]["temperature"] == 1.0
@@ -335,7 +354,11 @@ class TestDigestItemsCarryRefUrls:
             )
         )
 
-        item = (await summarize_articles([article], llm, output_language="zh-Hant"))[0].items[0]
+        item = (
+            await summarize_articles(
+                [article], llm, snippet_length=1000, output_language="zh-Hant", style_prompt=""
+            )
+        )[0].items[0]
 
         assert item.ref_urls == ["https://r1.com/a"]
         assert item.urls == ["newsletter:abc"]
@@ -396,7 +419,13 @@ class TestDigestItemsCarryRefUrls:
         fan_item = build_fan_sections([fan_article])[0].items[0]
         attention_item = build_attention_sections([summarize_article])[0].items[0]
         summarized_item = (
-            await summarize_articles([summarize_article], llm, output_language="zh-Hant")
+            await summarize_articles(
+                [summarize_article],
+                llm,
+                snippet_length=1000,
+                output_language="zh-Hant",
+                style_prompt="",
+            )
         )[0].items[0]
         degraded_item = excerpt_sections_from_articles([summarize_article])[0].items[0]
 
