@@ -396,6 +396,25 @@ def test_each_raw_source_is_a_panel_of_rows_in_state_score_title_vote_order():
     )
 
 
+DIGEST_ITEM_PROBES = {
+    ".section-tag",
+    ".meta",
+    ".featured-item",
+    ".news-cluster",
+    ".article-item",
+    ".attention-item",
+    ".headline-item",
+    ".lead-story h2",
+}
+
+
+def test_the_digest_probe_set_watches_every_item_row_like_the_lead():
+    digest = load_probes(PROBES_PATH)["digest"]
+    assert set(digest) >= DIGEST_ITEM_PROBES
+    for selector in DIGEST_ITEM_PROBES:
+        assert digest[selector] == digest[".lead-story"], selector
+
+
 def test_the_raw_probe_set_watches_the_page_head_not_the_masthead_it_replaced():
     raw = load_probes(PROBES_PATH)["raw"]
     assert ".page-head" in raw
