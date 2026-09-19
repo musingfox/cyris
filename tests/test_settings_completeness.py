@@ -189,3 +189,41 @@ def test_run_without_sources_yaml_names_the_file(
     assert result.exit_code == 1
     assert "No sources in sources.yaml." in caplog.text
     assert built == []
+
+
+def test_promote_sync_starts_on_an_empty_d1(tmp_path: Path, d1: SqliteD1, monkeypatch) -> None:
+    monkeypatch.delenv("CYRIS_PROMOTE_WORKER_URL", raising=False)
+    monkeypatch.delenv("CYRIS_PROMOTE_TOKEN", raising=False)
+
+    result = runner.invoke(app, ["promote-sync", *_paths(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Promotion sync not configured" in result.output
+
+
+def test_triage_ui_starts_on_an_empty_d1(tmp_path: Path, d1: SqliteD1, monkeypatch) -> None:
+    from test_cli_triage_ui import FakeServer
+
+    FakeServer.calls = []
+    monkeypatch.setattr("cyris.entrypoints.triage_server.TriageServer", FakeServer)
+
+    result = runner.invoke(app, ["triage-ui", *_paths(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    [(_args, kwargs)] = FakeServer.calls
+    assert kwargs["settings"] is not None
+
+
+def test_sources_list_starts_on_an_empty_d1(tmp_path: Path, d1: SqliteD1) -> None:
+    result = runner.invoke(app, ["sources", "list", *_paths(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_sources_push_fills_an_empty_d1(tmp_path: Path, d1: SqliteD1) -> None:
+    from cyris.adapters.store.source_store import D1SourceStore
+
+    result = runner.invoke(app, ["sources", "push", *_paths(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert set(D1SourceStore(d1).list_sources()) == {"Feed"}
