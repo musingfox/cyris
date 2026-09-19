@@ -605,6 +605,10 @@ EXPECTED_IDS = {
     "hash-pipeline",
     "pipeline-posts-changed-only",
     "pipeline-refusal",
+    "model-posts-vote-only",
+    "model-vote-checking",
+    "embedding-readiness",
+    "model-vote-refusal",
 }
 
 

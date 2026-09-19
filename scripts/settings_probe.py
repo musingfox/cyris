@@ -165,10 +165,10 @@ def build_fixture(kind: str) -> Fixture:
 
 @contextlib.contextmanager
 def probe_environment() -> Iterator[SimpleNamespace]:
-    """Pin the provider keys, and answer the LLM and Discord probes offline.
+    """Pin the provider keys, and answer the LLM, embedder and Discord probes offline.
 
     Runs from an empty directory so no `.env` there can bind a key. Yields the
-    two patched probes so a caller can see they were the ones answering.
+    patched probes so a caller can see they were the ones answering.
     """
     absent = {
         LLMProviderConfig(provider="openai", model="").api_key_env_var,
@@ -179,6 +179,7 @@ def probe_environment() -> Iterator[SimpleNamespace]:
     }
     offline = DoctorCheck(name="probe", status="ok", detail=OFFLINE_DETAIL)
     llm = mock.AsyncMock(return_value=offline)
+    embedder = mock.AsyncMock(return_value=offline)
     discord = mock.AsyncMock(return_value=offline)
     present = {"GEMINI_API_KEY": SENTINEL_KEY, "ANTHROPIC_API_KEY": SENTINEL_KEY}
     with (
@@ -186,11 +187,12 @@ def probe_environment() -> Iterator[SimpleNamespace]:
         contextlib.chdir(home),
         mock.patch.dict(os.environ, present),
         mock.patch("cyris.diagnostics.doctor.probe_llm", llm),
+        mock.patch("cyris.diagnostics.doctor.probe_embedder", embedder),
         mock.patch("cyris.entrypoints.triage_server.probe_discord", discord),
     ):
         for name in absent:
             os.environ.pop(name, None)
-        yield SimpleNamespace(llm=llm, discord=discord)
+        yield SimpleNamespace(llm=llm, embedder=embedder, discord=discord)
 
 
 # Installed before the page loads: the settings request never answers.
@@ -525,7 +527,8 @@ CHECKS: list[Check] = [
             setValue($("#model-input"), "some-model");
         """,
         script="""
-            const available = $$("label.choice:not(.unavailable)").map((row) => row.textContent);
+            const rows = $$("#providers label.choice:not(.unavailable)");
+            const available = rows.map((row) => row.textContent);
             expect(available.length === 0, `available: ${available}`);
             const checked = $$("input[name=provider]:checked").map((input) => input.value);
             expect(checked.length === 0, `checked: ${checked}`);
@@ -1443,6 +1446,92 @@ CHECKS: list[Check] = [
             expect(navOf("pipeline").classList.contains("dirty"), "Pipeline lost its dirty mark");
         """,
         sabotage="""$("#pipeline-result").hidden = true;""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="model-posts-vote-only",
+        fixture="writable",
+        path="/settings#model",
+        act="""
+            await settingsLoaded();
+            ctx.loaded = $("#vote-seeds").value;
+            setValue($("#vote-seeds"), "50");
+            saveOf("model").click();
+            await waitFor(() => visible(noticeOf("model")) && saveOf("model").disabled, "the save");
+        """,
+        script="""
+            expect(ctx.loaded === "200", `loaded: ${ctx.loaded}`);
+            const notice = noticeOf("model"), text = notice.textContent;
+            expect(!notice.classList.contains("err"), `an error: ${text}`);
+            expect(text.startsWith("Not checked: vote similarity is off."), `notice: ${text}`);
+        """,
+        sabotage_preload=also_post(
+            "/api/settings/vote-similarity", "/api/settings", {"provider": "gemini", "model": ""}
+        ),
+        receipt=_calls(
+            [
+                {
+                    "vote_similarity.enabled": False,
+                    "vote_similarity.provider": "workers_ai",
+                    "vote_similarity.model": "",
+                    "vote_similarity.max_seeds": 50,
+                }
+            ]
+        ),
+    ),
+    Check(
+        id="model-vote-checking",
+        fixture="writable",
+        path="/settings#model",
+        preload=hold_post("/api/settings/vote-similarity"),
+        act="""
+            await settingsLoaded();
+            setValue($("#vote-enabled"), "true");
+            saveOf("model").click();
+            await waitFor(() => window.__release, "the held save");
+        """,
+        script="""
+            const notice = noticeOf("model");
+            expect(visible(notice) && notice.textContent === "Checking the embedder…",
+              `notice: ${visible(notice) && notice.textContent}`);
+            expect(saveOf("model").disabled, "Save came back while the check was out");
+        """,
+        sabotage="""noticeOf("model").textContent = "Checking with the provider…";""",
+    ),
+    Check(
+        id="embedding-readiness",
+        fixture="writable",
+        path="/settings#model",
+        act="""await waitFor(() => $$("input[name=embedding-provider]").length, "embedders");""",
+        script="""
+            const radio = $('input[name=embedding-provider][value="workers_ai"]');
+            const row = radio.closest("label.choice");
+            const state = $(".label", row).textContent.trim();
+            expect(state === "CLOUDFLARE_EMBEDDING_API_TOKEN missing", `workers_ai: ${state}`);
+            expect(!radio.disabled && radio.checked, "workers_ai cannot be chosen or is unchosen");
+            const input = $("#embedding-model-input");
+            expect(input.placeholder === "Empty uses @cf/baai/bge-m3", input.placeholder);
+        """,
+        sabotage="""$('input[name=embedding-provider][value="workers_ai"]').disabled = true;""",
+    ),
+    Check(
+        id="model-vote-refusal",
+        fixture="writable",
+        path="/settings#model",
+        act="""
+            await settingsLoaded();
+            setValue($("#vote-seeds"), "0");
+            saveOf("model").click();
+            await waitFor(() => visible(noticeOf("model")), "the notice");
+        """,
+        script="""
+            const notice = $("#model-result"), text = notice.textContent;
+            expect(visible(notice) && notice.classList.contains("err"), `not an error: ${text}`);
+            expect(text.includes("vote_similarity.max_seeds"), `notice: ${text}`);
+            expect(navOf("model").classList.contains("dirty"), "Model lost its dirty mark");
+            expect(!saveOf("model").disabled, "the Model Save was disabled");
+        """,
+        sabotage="""$("#model-result").classList.remove("err");""",
         receipt=_calls([]),
     ),
     Check(

@@ -76,7 +76,7 @@
         <form class="tab" data-tab="model" id="model-form" novalidate hidden>
           <div class="tab-head">
             <h2 class="heading">Model</h2>
-            <p class="small">The LLM the next run scores, filters and summarizes with.</p>
+            <p class="small">The models the next run calls, and how it uses your votes.</p>
             <div class="notice err" id="model-missing" hidden></div>
           </div>
           <div class="form">
@@ -88,6 +88,28 @@
               <label class="label" for="model-input">Model</label>
               <input class="input" id="model-input" type="text" autocomplete="off">
               <p class="small" id="model-hint"></p>
+            </div>
+            <div class="field">
+              <span class="label" id="embedding-provider-label">Embedding provider</span>
+              <div class="choices" id="embedding-providers" role="radiogroup" aria-labelledby="embedding-provider-label"></div>
+              <p class="small">The embedder vote similarity compares articles with.</p>
+              <details class="more"><summary>More</summary><p class="small">Its similarity cutoff is not set here: it follows the provider, because each model's scores run on their own scale.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="embedding-model-input">Embedding model</label>
+              <input class="input" id="embedding-model-input" type="text" autocomplete="off">
+              <p class="small">Checked with one real call when vote similarity is on.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="vote-enabled">Vote similarity</label>
+              <select class="select" id="vote-enabled"><option value="false">Off</option><option value="true">On</option></select>
+              <p class="small">Drop candidates close to an article you voted down.</p>
+              <details class="more"><summary>More</summary><p class="small">Preview what it would drop with <code>cyris vote-sim</code> before turning it on. Turning it on checks the embedder first.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="vote-seeds">Votes compared</label>
+              <input class="input narrow" id="vote-seeds" type="number" min="1" autocomplete="off">
+              <p class="small">How many of your most recent votes on each side a run compares against.</p>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-model" disabled>Save</button>

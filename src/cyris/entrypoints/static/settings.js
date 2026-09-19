@@ -39,11 +39,19 @@ const snapshot = (form) => Object.fromEntries([...form.querySelectorAll("input, 
 const saveButton = (form) => form.querySelector('button[type="submit"]');
 const navLink = (form) => document.querySelector(`.settings-nav a[data-tab="${form.dataset.tab}"]`);
 
+// The Model form saves in two parts, each through its own route.
+const LLM_PART = (field) => field.startsWith("provider=") || field === "model-input";
+const VOTE_PART = (field) => !LLM_PART(field);
+const partChanged = (form, part) => {
+  const now = snapshot(form), stored = clean.get(form) || now;
+  return Object.keys(now).some((field) => part(field) && now[field] !== stored[field]);
+};
+
 function refresh(form) {
   const dirty = clean.has(form)
     && JSON.stringify(snapshot(form)) !== JSON.stringify(clean.get(form));
   // With no provider chosen, there is nothing a model could be checked against.
-  const blocked = form.dataset.tab === "model" && !chosen();
+  const blocked = form.dataset.tab === "model" && partChanged(form, LLM_PART) && !chosen();
   saveButton(form).disabled = !dirty || blocked || saving.has(form);
   navLink(form).classList.toggle("dirty", dirty);
 }
@@ -95,6 +103,14 @@ const FIELDS = {
   "digest.filter_snippet_length": {
     tab: "pipeline", label: "Characters read (Headlines)", controls: ["filter-snippet"],
   },
+  "vote_similarity.provider": {
+    tab: "model", label: "Embedding provider", controls: ["embedding-providers"],
+  },
+  "vote_similarity.model": {
+    tab: "model", label: "Embedding model", controls: ["embedding-model-input"],
+  },
+  "vote_similarity.enabled": {tab: "model", label: "Vote similarity", controls: ["vote-enabled"]},
+  "vote_similarity.max_seeds": {tab: "model", label: "Votes compared", controls: ["vote-seeds"]},
   "notify.discord_webhook_url": {
     tab: "notifications", label: "Discord webhook", controls: ["discord-webhook"],
   },
@@ -176,6 +192,26 @@ function render() {
   $("model-input").value = values["llm_provider.model"] ?? "";
   updateHint();
   $("providers").addEventListener("change", updateHint);
+  // A missing key does not disable an embedder: with vote similarity off,
+  // choosing one needs no call.
+  $("embedding-providers").innerHTML = state.embedding_providers.map((p) => `
+    <label class="choice">
+      <input type="radio" name="embedding-provider" value="${esc(p.name)}"
+             ${p.name === values["vote_similarity.provider"] ? "checked" : ""}>
+      <span class="name">${esc(p.name)}</span>
+      ${p.configured
+        ? `<span class="label">Key ready</span>`
+        : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
+    </label>`).join("");
+  $("embedding-model-input").value = values["vote_similarity.model"] ?? "";
+  updateEmbeddingHint();
+  $("embedding-providers").addEventListener("change", updateEmbeddingHint);
+  const enabled = values["vote_similarity.enabled"];
+  if (enabled == null) $("vote-enabled").prepend(new Option("Not set", "", true, true));
+  else $("vote-enabled").value = String(enabled);
+  if (values["vote_similarity.max_seeds"] != null) {
+    $("vote-seeds").value = values["vote_similarity.max_seeds"];
+  }
   const [m, e] = values["general.digest_schedule"] || [];
   if (m) $("morning").value = parseInt(m, 10);
   if (e) $("evening").value = parseInt(e, 10);
@@ -207,8 +243,15 @@ function updateHint() {
   $("model-input").dataset.placeholder = p ? `Empty uses ${p.default_model}` : "";
   applyPlaceholder($("model-input"));
   $("model-hint").textContent = p
-    ? `Saving checks the model against ${p.name} with a real call first — a typo is rejected here rather than at 08:00 tomorrow.`
+    ? "Saving makes one real call to the provider first, so a typo is rejected here."
     : "Pick a provider whose key is present.";
+}
+
+function updateEmbeddingHint() {
+  const el = document.querySelector("input[name=embedding-provider]:checked");
+  const p = el && state.embedding_providers.find((x) => x.name === el.value);
+  $("embedding-model-input").dataset.placeholder = p ? `Empty uses ${p.default_model}` : "";
+  applyPlaceholder($("embedding-model-input"));
 }
 
 function show(kind, text, target) {
@@ -218,29 +261,65 @@ function show(kind, text, target) {
   el.hidden = false;
 }
 
+const LLM_KEYS = ["llm_provider.provider", "llm_provider.model"];
+const VOTE_KEYS = [
+  "vote_similarity.enabled", "vote_similarity.provider", "vote_similarity.model",
+  "vote_similarity.max_seeds",
+];
+
+// One Save, two routes: the LLM part is checked against its provider, the vote
+// part against its embedder when it is on. Only a changed part is sent; a part
+// that saved becomes clean, one that failed stays dirty.
 $("model-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = $("model-form");
-  const p = chosen();
-  if (!p) return show("err", "Pick a provider first.", "model-result");
-  const sent = snapshot(form);
+  const stored = {...clean.get(form)}, sent = snapshot(form);
+  const keep = (part) => Object.keys(sent).filter(part).forEach((f) => { stored[f] = sent[f]; });
+  const lines = [];
+  let failed = false;
   saving.add(form);
   refresh(form);
-  show("ok", "Checking with the provider…", "model-result");
-  try {
-    const model = $("model-input").value.trim();
-    const data = await post("/api/settings", {provider: p.name, model});
-    state.values["llm_provider.provider"] = data.provider;
-    state.values["llm_provider.model"] = data.model;
-    markSet(["llm_provider.provider", "llm_provider.model"]);
-    markClean(form, sent);
-    show("ok", `${data.detail}\n${data.note}`, "model-result");
-  } catch (err) {
-    show("err", err.message, "model-result");
-  } finally {
-    saving.delete(form);
-    refresh(form);
+  if (partChanged(form, LLM_PART)) {
+    const p = chosen();
+    show("ok", "Checking with the provider…", "model-result");
+    try {
+      if (!p) throw new Error("Pick a provider first.");
+      const data = await post("/api/settings", {provider: p.name, model: sent["model-input"].trim()});
+      state.values["llm_provider.provider"] = data.provider;
+      state.values["llm_provider.model"] = data.model;
+      markSet(LLM_KEYS);
+      keep(LLM_PART);
+      lines.push(`${data.detail}\n${data.note}`);
+    } catch (err) {
+      failed = true;
+      lines.push(err.message);
+    }
   }
+  if (Object.keys(sent).some((f) => VOTE_PART(f) && sent[f] !== stored[f])) {
+    const embedder = document.querySelector("input[name=embedding-provider]:checked");
+    const seeds = sent["vote-seeds"];
+    const body = {
+      enabled: {true: true, false: false}[sent["vote-enabled"]] ?? null,
+      provider: embedder ? embedder.value : null,
+      model: sent["embedding-model-input"].trim(),
+      max_seeds: seeds === "" ? null : Number(seeds),
+    };
+    if (body.enabled) show("ok", "Checking the embedder…", "model-result");
+    try {
+      const data = await post("/api/settings/vote-similarity", body);
+      Object.assign(state.values, data.values);
+      $("vote-enabled").querySelector('option[value=""]')?.remove();
+      markSet(VOTE_KEYS);
+      keep(VOTE_PART);
+      lines.push(`${data.detail}\n${data.note}`);
+    } catch (err) {
+      failed = true;
+      lines.push(err.message);
+    }
+  }
+  saving.delete(form);
+  markClean(form, stored);
+  show(failed ? "err" : "ok", lines.join("\n"), "model-result");
 });
 
 // Rejects with what the reader needs: the server's own explanation when it
