@@ -3,8 +3,8 @@
 It parses CSS from pages and stylesheets into comparable rules, reads the parts
 of ``docs/design/ui-language.md`` the tests check against (the section 2 tokens
 and colour exceptions), names what breaks the spec (colour literals, hand-written
-font stacks, unscaled font sizes, off-spec transitions, rem sizes, off-token
-radii, style attributes, repeated component blocks), maps which CSS partials a
+font stacks, unscaled font sizes, off-spec transitions, shadows, rem sizes,
+off-token radii, style attributes, repeated component blocks), maps which CSS partials a
 page template includes, and renders the fixed index, digest and raw pages those
 checks read.
 """
@@ -445,6 +445,18 @@ def off_spec_transitions(
             if prop.startswith("transition") and _OFF_SPEC_MOTION.search(value):
                 found.append(f"{key} | {declaration}")
     return found
+
+
+def box_shadows(css_source: str) -> list[str]:
+    """Name every shadow drawn outside the brand mark, whose glow is the spec's only one."""
+    return [
+        f"{key} | {declaration}"
+        for key, declarations in _rules(css_source).items()
+        if key != ".brand-mark"
+        for declaration in declarations
+        if declaration.split(":", 1)[0].strip() == "box-shadow"
+        and declaration.split(":", 1)[1].strip() != "none"
+    ]
 
 
 _REM = re.compile(r"(?<![\w-])\d*\.?\d+rem\b")

@@ -12,6 +12,7 @@ from css_rules import (
     COMPONENT_SELECTORS,
     PROTOTYPE,
     UI_SPEC,
+    box_shadows,
     canonical_colour,
     colour_literals,
     font_stack_literals,
@@ -499,6 +500,25 @@ def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
     assert [canonical_colour(v) for v in _declared(rules[".brand-mark"], "box-shadow")] == [
         canonical_colour("0 0 12px rgba(198,255,61,.45)")
     ]
+
+
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_only_the_brand_mark_glows(page: str) -> None:
+    """Spec section 1.2: the only glow is the brand mark."""
+    assert box_shadows(_source(page)) == []
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{box-shadow:0 0 24px var(--accent)}", 1),
+        ("@media (max-width: 720px){.x{box-shadow:0 1px 0 red}}", 1),
+        (".brand-mark{box-shadow:0 0 12px rgba(198,255,61,.45)}", 0),
+        (".x{box-shadow:none}", 0),
+    ],
+)
+def test_a_shadow_outside_the_brand_mark_is_reported(css: str, reported: int) -> None:
+    assert len(box_shadows(css)) == reported
 
 
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
