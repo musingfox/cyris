@@ -299,9 +299,12 @@ class TriageServer:
         )
 
     async def _handle_post_notify(self, request: web.Request) -> web.Response:
-        """Store a Discord webhook only after Discord confirms it exists."""
+        """Store a Discord webhook only after Discord confirms it exists.
+
+        `{"off": true}` stores "" instead: turning notifications off is its own
+        action, so clearing the field by accident cannot stop them.
+        """
         from cyris.adapters.notify import mask_discord_webhook_url
-        from cyris.config import DISCORD_WEBHOOK_ENV_VAR
 
         if self._settings is None:
             return web.json_response(
@@ -313,15 +316,28 @@ class TriageServer:
         except Exception:
             return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
 
+        if body.get("off") is True:
+            try:
+                self._settings.set({"notify.discord_webhook_url": ""})
+            except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+                return web.json_response({"ok": False, "error": str(e)}, status=500)
+            self._notify_webhook = ""
+            logger.info("Discord notifications turned off")
+            return web.json_response(
+                {
+                    "ok": True,
+                    "discord_webhook_url": "",
+                    "note": "Notifications are off. The next run finishes without a message.",
+                }
+            )
+
         url = (body.get("discord_webhook_url") or "").strip()
         if not url:
             return web.json_response(
                 {
                     "ok": False,
                     "error": (
-                        "paste a Discord webhook URL. Notifications cannot be turned off "
-                        f"from /settings: to stop them, remove the {DISCORD_WEBHOOK_ENV_VAR} "
-                        "Worker secret and any [notify] value in cyris.toml"
+                        "Paste a Discord webhook URL, or press Turn off to stop notifications."
                     ),
                 },
                 status=400,

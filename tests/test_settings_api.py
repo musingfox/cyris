@@ -12,8 +12,10 @@ class FakeSettings:
 
     def __init__(self) -> None:
         self.stored: dict = {}
+        self.calls: list[dict] = []
 
     def set(self, values: dict) -> None:
+        self.calls.append(dict(values))
         self.stored.update(values)
 
 
@@ -376,11 +378,33 @@ class TestNotifyWebhookWrite:
         await client.close()
 
         assert res.status == 400
-        assert "cannot be turned off from /settings" in body["error"]
-        assert "remove the CYRIS_DISCORD_WEBHOOK_URL Worker secret" in body["error"]
-        assert "[notify]" in body["error"]
+        assert body["error"] == (
+            "Paste a Discord webhook URL, or press Turn off to stop notifications."
+        )
+        assert "CYRIS_DISCORD_WEBHOOK_URL" not in await res.text()
         assert settings.stored == {}
         assert called == []
+
+    async def test_turning_off_stores_empty_without_asking_discord(self, settings, monkeypatch):
+        async def probe(url, transport=None):
+            raise AssertionError("turning notifications off must not call Discord")
+
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", probe)
+        client = await _client(settings, notify_webhook="https://discord.com/api/webhooks/1/tok")
+
+        res = await client.post("/api/settings/notify", json={"off": True})
+        body = await res.json()
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert res.status == 200
+        assert body == {
+            "ok": True,
+            "discord_webhook_url": "",
+            "note": "Notifications are off. The next run finishes without a message.",
+        }
+        assert settings.calls == [{"notify.discord_webhook_url": ""}]
+        assert data["notify_webhook"] == ""
 
     async def test_without_a_settings_store_the_page_refuses_to_save(self):
         client = await _client(None)
