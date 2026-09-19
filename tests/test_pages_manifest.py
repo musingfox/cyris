@@ -1,5 +1,6 @@
 """The deployed site's file list, and publishing from it without a local archive."""
 
+import re
 from datetime import UTC, datetime
 
 import httpx
@@ -629,6 +630,48 @@ def test_parse_archive_anchors_from_the_real_index_template(tmp_path):
         "/2026-09-03-evening.html",
         "/2026-09-03-morning.html",
     }
+
+
+def _sixty_five_issues() -> list[str]:
+    """Two issues a day over three months, and one day with a single issue."""
+    days = [f"2026-{month:02d}-{day:02d}" for month in (6, 7, 8) for day in range(1, 12)]
+    issues = [f"{day}-{period}" for day in days for period in ("morning", "evening")]
+    issues.remove(f"{days[0]}-evening")
+    return issues
+
+
+def _missing_from_archive(html: str, issues: list[str]) -> set[str]:
+    """The issues whose digest the archive's recovery reading cannot see."""
+    return {f"/{issue}.html" for issue in issues} - publish_mod._parse_archive_anchors(html)
+
+
+def test_the_archive_lists_every_issue_the_site_holds(tmp_path):
+    """Pages recovery rebuilds from what the live index lists: no issue may drop off."""
+    from cyris.adapters.output.html_digest import HtmlDigestWriter
+
+    issues = _sixty_five_issues()
+    raws = [f"{issue}-raw.html" for issue in issues[::2]]
+
+    html = HtmlDigestWriter(tmp_path).render_index([f"{i}.html" for i in issues] + raws)
+
+    assert len(issues) == 65
+    assert _missing_from_archive(html, issues) == set()
+    assert html.count(">Digest</a>") == 65
+    assert "<details" not in html
+
+
+def test_the_completeness_check_names_an_issue_cut_from_the_archive(tmp_path):
+    from cyris.adapters.output.html_digest import HtmlDigestWriter
+
+    issues = _sixty_five_issues()
+    html = HtmlDigestWriter(tmp_path).render_index([f"{i}.html" for i in issues])
+    cut = "2026-07-05-morning"
+    row = re.search(
+        rf'<div class="archive-row[^"]*">(?:(?!</div>).)*?{cut}\.html.*?</div>', html, re.S
+    )
+    assert row
+
+    assert _missing_from_archive(html.replace(row.group(0), ""), issues) == {f"/{cut}.html"}
 
 
 def test_parse_archive_anchors_from_an_empty_archive_index(tmp_path):
