@@ -797,13 +797,14 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
               <label class="label" for="output-language">Output language</label>
               <input class="input" id="output-language" type="text" list="languages" value="zh-Hant" autocomplete="off">
               <datalist id="languages"><option value="zh-Hant"></option><option value="zh-Hans"></option><option value="en"></option><option value="ja"></option><option value="ko"></option><option value="fr"></option><option value="de"></option><option value="es"></option></datalist>
-              <p class="small">A BCP 47 tag, such as zh-Hant or en. Headlines and summaries are written in it.</p>
-              <details class="more"><summary>More</summary><p class="small">A tag not in the list is passed to the model as written.</p></details>
+              <p class="small">A BCP 47 tag, such as zh-Hant or en.</p>
+              <details class="more"><summary>More</summary><p class="small">Headlines and summaries are written in it. A tag not in the list is passed to the model as written.</p></details>
             </div>
             <div class="field">
               <label class="label" for="style-prompt">Style</label>
               <textarea class="input" id="style-prompt" rows="4"></textarea>
-              <p class="small">Your tone or focus for the summaries, in your own words. Empty means none.</p>
+              <p class="small">Your tone or focus for the summaries, in your own words.</p>
+              <details class="more"><summary>More</summary><p class="small">Empty means none.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
@@ -828,7 +829,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
             <div class="field">
               <label class="label" for="max-articles">Articles per run</label>
               <input class="input narrow" id="max-articles" type="number" min="1" aria-invalid="true">
-              <p class="small">The most articles one run scores and digests. Set it above a day's volume, or the run drops the rest.</p>
+              <p class="small">The most articles one run scores and digests.</p>
+              <details class="more"><summary>More</summary><p class="small">Set it above a day's volume, or the run drops the rest.</p></details>
             </div>
             <div class="field">
               <label class="label" for="featured-threshold">Featured score</label>
@@ -847,7 +849,8 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
                 <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" value="1000"></div>
                 <div class="field"><label class="small" for="filter-snippet">Headlines</label><input class="input narrow" id="filter-snippet" type="number" min="1" value="500"></div>
               </div>
-              <p class="small">How much of each article the model reads at each step. More costs more per call.</p>
+              <p class="small">How much of each article the model reads at each step.</p>
+              <details class="more"><summary>More</summary><p class="small">More costs more per call.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
