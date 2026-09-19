@@ -583,6 +583,7 @@ EXPECTED_IDS = {
     "retire-reverts",
     "retire-deletes",
     "retire-last-refused",
+    "sources-empty-all",
     "readonly-settings",
     "readonly-sources",
     "fits-400",
@@ -612,7 +613,7 @@ async def test_the_readonly_probe_fixture_can_write_neither_settings_nor_sources
     _, sources = await _get_json(build_fixture("readonly"), "/api/sources")
     assert settings["writable"] is False
     assert sources["writable"] is False
-    assert sources["origin"] == "sources.yaml"
+    assert "origin" not in sources
 
 
 async def test_the_writable_probe_fixture_serves_its_four_sources_from_the_table():
@@ -620,7 +621,7 @@ async def test_the_writable_probe_fixture_serves_its_four_sources_from_the_table
     _, sources = await _get_json(build_fixture("writable"), "/api/sources")
     assert settings["writable"] is True
     assert sources["writable"] is True
-    assert sources["origin"] == "d1"
+    assert "origin" not in sources
     assert len(sources["sources"]) == 4
 
 

@@ -84,8 +84,6 @@ def test_an_empty_d1_sources_table_fails_with_the_push_hint(tmp_path: Path) -> N
 def test_d1_sources_are_counted_as_from_d1(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
-    # The origin field is not what names the home: the backend is.
-    cfg.sources_origin = "sources.yaml"
     feeds = [SourceConfig(name=f"F{i}", url=f"https://a.test/{i}") for i in range(50)]
     mail = [
         SourceConfig(name=f"M{i}", type="newsletter", email_match=f"from:m{i}@a.test")

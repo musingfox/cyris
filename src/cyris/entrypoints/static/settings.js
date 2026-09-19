@@ -227,12 +227,12 @@ let filter = "all";
 let openName = null;
 
 const EMPTY = {
-  all: "No sources configured.",
+  all: "No sources yet. The next run stops until one is added.",
   rss: "No RSS sources.",
   newsletter: "No newsletter sources.",
 };
 
-const NO_SOURCE_TABLE = "No writable source table here — this deployment reads sources.yaml.";
+const NO_SOURCE_TABLE = "No writable source table here — edit sources.yaml instead.";
 
 const sourcesNav = () => document.querySelector('.settings-nav a[data-tab="sources"]');
 
@@ -352,7 +352,6 @@ function openEditor(name) {
 function loaded(d) {
   sources = d.sources;
   sourcesWritable = d.writable;
-  $("sources-origin").textContent = `Served from ${d.origin}.`;
   $("add-source").disabled = !d.writable;
   if (!d.writable) show("err", NO_SOURCE_TABLE, "sources-notice");
   renderSources();

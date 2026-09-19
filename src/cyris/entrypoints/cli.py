@@ -576,7 +576,6 @@ def triage_ui(
             settings=build_settings(cfg),
             values=cfg.present_settings(),
             sources=cfg.sources,
-            sources_origin=cfg.sources_origin,
             source_store=D1SourceStore(d1) if d1 else None,
         )
         await server.start()

@@ -130,7 +130,6 @@ def build_fixture(kind: str) -> Fixture:
             "notify.discord_webhook_url": STORED_WEBHOOK,
         },
         "sources": _seed_sources(),
-        "sources_origin": "sources.yaml",
     }
     if kind == "readonly":
         server = TriageServer(**common)
@@ -630,6 +629,21 @@ CHECKS: list[Check] = [
             expect(same(rows, ["No newsletter sources."]), `rows: ${rows}`);
         """,
         sabotage="""$("#src-body").replaceChildren();""",
+    ),
+    Check(
+        id="sources-empty-all",
+        fixture="writable",
+        path="/settings#sources",
+        setup=lambda fixture: fixture.sources.clear(),
+        act="""
+            await waitFor(() => $$("#src-body tr").length, "the sources list");
+        """,
+        script="""
+            const rows = $$("#src-body tr").map((row) => row.textContent.trim());
+            const copy = "No sources yet. The next run stops until one is added.";
+            expect(same(rows, [copy]), `rows: ${rows}`);
+        """,
+        sabotage="""$("#src-body td").textContent = "No sources configured.";""",
     ),
     Check(
         id="editor-opens-under-row",
@@ -1233,7 +1247,7 @@ CHECKS: list[Check] = [
             setValue($("#e-tags", editor()), "x");
         """,
         script="""
-            const reason = "No writable source table here — this deployment reads sources.yaml.";
+            const reason = "No writable source table here — edit sources.yaml instead.";
             expect(!$(".settings-nav a.dirty"), "Sources is marked unsaved");
             expect($("#add-source").disabled, "Add source is enabled");
             const toolbar = $("#sources-notice");

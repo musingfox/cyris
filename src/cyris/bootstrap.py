@@ -163,7 +163,6 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     cfg = resolve_config(raw, d1_settings=settings.all())
     # The table alone, empty included: sources.yaml is not a D1 deployment's list.
     cfg.sources = D1SourceStore(d1).list_sources()
-    cfg.sources_origin = "d1"
     return cfg
 
 

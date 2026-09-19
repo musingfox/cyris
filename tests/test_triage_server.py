@@ -86,7 +86,7 @@ class TestBuildEndpoint:
 class TestSourcesEndpoint:
     """The settings page's source list and its write surface (§7 #15)."""
 
-    async def test_lists_sources_with_origin(self) -> None:
+    async def test_lists_sources_without_an_origin(self) -> None:
         from cyris.domain.models import SourceConfig, Tier
 
         server = TriageServer(
@@ -96,7 +96,6 @@ class TestSourcesEndpoint:
                     name="letter", type="newsletter", email_match="from:a@b.com"
                 ),
             },
-            sources_origin="d1",
         )
         test_client = TestClient(TestServer(server._app))
         await test_client.start_server()
@@ -105,14 +104,14 @@ class TestSourcesEndpoint:
         finally:
             await test_client.close()
 
-        assert data["origin"] == "d1"
+        assert set(data) == {"writable", "sources"}
         by_name = {s["name"]: s for s in data["sources"]}
         assert by_name["feed"]["tier"] == "summarize"
         assert by_name["letter"]["email_match"] == "from:a@b.com"
 
     async def test_no_sources_wired_is_empty_not_an_error(self, client: TestClient) -> None:
         data = await (await client.get("/api/sources")).json()
-        assert data == {"origin": "unknown", "writable": False, "sources": []}
+        assert data == {"writable": False, "sources": []}
 
     async def test_writes_are_refused_without_a_writable_table(self, client: TestClient) -> None:
         """A `backend = "json"` deployment has nowhere to put a source."""
@@ -131,7 +130,6 @@ class TestSourcesWriteSurface:
 
         server = TriageServer(
             sources={"From File": SourceConfig(name="From File", url="https://file.test/feed")},
-            sources_origin="sources.yaml",
             source_store=D1SourceStore(SqliteD1()),
         )
         self.sources = server._source_store
@@ -213,3 +211,27 @@ class TestLastSource:
 
         assert status == 200
         assert left == {"B"}
+
+
+def test_the_page_names_no_sources_origin() -> None:
+    from cyris.entrypoints.triage_server import render_settings_page
+
+    assert "sources-origin" not in render_settings_page()
+
+
+async def test_an_emptied_table_is_listed_empty_not_as_the_startup_list() -> None:
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.domain.models import SourceConfig
+
+    server = TriageServer(
+        sources={"Old": SourceConfig(name="Old", url="https://old.test/feed")},
+        source_store=D1SourceStore(SqliteD1()),
+    )
+    test_client = TestClient(TestServer(server._app))
+    await test_client.start_server()
+    try:
+        data = await (await test_client.get("/api/sources")).json()
+    finally:
+        await test_client.close()
+
+    assert data == {"writable": True, "sources": []}

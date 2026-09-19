@@ -67,7 +67,6 @@ class TriageServer:
         settings=None,
         values: dict[str, Any] | None = None,
         sources: dict[str, SourceConfig] | None = None,
-        sources_origin: str = "",
         source_store=None,
     ) -> None:
         self._host = host
@@ -82,7 +81,6 @@ class TriageServer:
         # Already resolved by `load_effective_config` — D1's `sources` table under
         # a D1 store, empty or not; `sources.yaml` otherwise.
         self._sources = sources or {}
-        self._sources_origin = sources_origin
         # The write surface (§7 #15). Absent on a `backend = "json"` deployment,
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
@@ -460,15 +458,14 @@ class TriageServer:
         )
 
     async def _handle_get_sources(self, request: web.Request) -> web.Response:
-        """What the pipeline is actually fetching, and from which home.
+        """What the pipeline is actually fetching.
 
         `email_match` rides along because it is source data (grade D);
         Cloudflare Email Routing is grade B and stays in the dashboard.
         """
-        sources, origin = self._effective_sources()
+        sources = self._effective_sources()
         return web.json_response(
             {
-                "origin": origin,
                 "writable": self._source_store is not None,
                 "sources": [
                     {
@@ -485,16 +482,11 @@ class TriageServer:
             }
         )
 
-    def _effective_sources(self) -> tuple[dict[str, SourceConfig], str]:
-        """The live table when there is one, else the startup snapshot.
-
-        Re-reading matters after the first write: `sources_origin` was resolved
-        once at startup, and an empty table then meant "sources.yaml".
-        """
+    def _effective_sources(self) -> dict[str, SourceConfig]:
+        """The live table when there is one, empty included; else the startup list."""
         if self._source_store is None:
-            return self._sources, self._sources_origin or "unknown"
-        live = self._source_store.list_sources()
-        return (live, "d1") if live else (self._sources, self._sources_origin or "unknown")
+            return self._sources
+        return self._source_store.list_sources()
 
     async def _handle_post_source(self, request: web.Request) -> web.Response:
         """Add or edit one source, over the row `name` owns."""

@@ -408,9 +408,6 @@ class NoSourcesError(ValueError):
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
-    # Which one won: a D1-backed deployment silently falling back to the file is
-    # exactly the kind of half-migration `cyris doctor` exists to surface.
-    sources_origin: Literal["sources.yaml", "d1"] = "sources.yaml"
     # Grade-D keys this deployment's one home does not hold. Never raises at load:
     # the commands that fill the home have to start while it is empty.
     missing_settings: list[str] = Field(default_factory=list)

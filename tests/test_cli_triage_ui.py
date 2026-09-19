@@ -79,7 +79,7 @@ def test_the_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypat
     assert result.exit_code == 0, result.output
     [(args, kwargs)] = FakeServer.calls
     assert args == ()
-    assert kwargs["sources_origin"] == "sources.yaml"
+    assert "sources_origin" not in kwargs
     assert kwargs["source_store"] is None
 
 
