@@ -166,6 +166,9 @@ class DigestConfig(BaseModel):
     filter_snippet_length: int = Field(ge=1)
     output_language: NonBlank  # BCP 47 tag; service_layer/languages.json names it
     style_prompt: str  # reader-defined tone/focus injected into prompts; "" ⇒ none
+    # Every page's --type-scale. The app Worker reads it and injects it into each
+    # HTML page it serves (workers/app/src/type_scale.js holds the same steps).
+    type_scale: Literal[0.875, 1, 1.125]
 
 
 class AgentVaultConfig(BaseModel):

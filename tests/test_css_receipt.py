@@ -615,6 +615,11 @@ EXPECTED_IDS = {
     "notify-off-arms",
     "notify-off-stores",
     "notify-off-hidden-when-off",
+    "type-scale-saves",
+    "type-scale-unset",
+    "type-scale-unset-clears-on-save",
+    "type-scale-applies-on-save",
+    "type-scale-kept-on-refusal",
 }
 
 

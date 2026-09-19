@@ -137,7 +137,7 @@ def test_a_complete_d1_off_the_hour_is_not_due(
     assert built == []
 
 
-def test_the_error_lists_all_twenty_keys_on_an_empty_d1(tmp_path: Path, d1: SqliteD1) -> None:
+def test_the_error_lists_all_twenty_one_keys_on_an_empty_d1(tmp_path: Path, d1: SqliteD1) -> None:
     from cyris.bootstrap import load_effective_config
     from cyris.config import IncompleteSettingsError
 

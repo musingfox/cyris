@@ -119,7 +119,7 @@
         <form class="tab" data-tab="digest" id="digest-form" novalidate hidden>
           <div class="tab-head">
             <h2 class="heading">Digest</h2>
-            <p class="small">When issues are published and what each one holds.</p>
+            <p class="small">When issues are published, what each one holds, and how large its text reads.</p>
             <div class="notice err" id="digest-missing" hidden></div>
           </div>
           <div class="form">
@@ -158,6 +158,12 @@
               <textarea class="input" id="style-prompt" rows="4"></textarea>
               <p class="small">Your tone or focus for the summaries, in your own words.</p>
               <details class="more"><summary>More</summary><p class="small">Empty means none.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="type-scale">Type size</label>
+              <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1">Default</option><option value="1.125">Larger</option></select>
+              <p class="small">How large the text is on every page.</p>
+              <details class="more"><summary>More</summary><p class="small">It applies within a minute, to issues already published too, except those from before 2026-09-18 and pages opened on pages.dev directly.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>

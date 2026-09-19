@@ -131,6 +131,7 @@ _PROBE_VALUES = {
     "digest.filter_snippet_length": 500,
     "digest.output_language": "zh-Hant",
     "digest.style_prompt": "x",
+    "digest.type_scale": 1,
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,
@@ -270,6 +271,14 @@ NEW_WEBHOOK_MASKED = mask_discord_webhook_url(NEW_WEBHOOK)
 SAVE_FEATURED_7 = """
 await settingsLoaded();
 setValue($("#max-featured"), "7");
+saveOf("digest").click();
+await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled, "the save");
+"""
+
+# Pick a type size in the Digest form and save it; `value` is the option's.
+SAVE_TYPE_SCALE = """
+await settingsLoaded();
+setValue($("#type-scale"), "{value}");
 saveOf("digest").click();
 await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled, "the save");
 """
@@ -1414,6 +1423,85 @@ CHECKS: list[Check] = [
             expect(!saveOf("digest").disabled, "the digest Save was disabled");
         """,
         sabotage="""$("#digest-result").classList.remove("err");""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="type-scale-saves",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_TYPE_SCALE.format(value="1.125"),
+        script="""
+            const text = $("#digest-result").textContent;
+            expect(text.includes("Type size: 1.125."), `notice: ${text}`);
+        """,
+        sabotage="""$("#digest-result").textContent = "";""",
+        receipt=_calls([{"digest.type_scale": 1.125}]),
+    ),
+    Check(
+        id="type-scale-unset",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.type_scale"),
+        act="await settingsLoaded();",
+        script="""
+            const select = $("#type-scale");
+            expect(select.value === "", `value: ${select.value}`);
+            const shown = select.selectedOptions[0]?.textContent;
+            expect(shown === "Not set", `shown: ${shown}`);
+            expect(select.getAttribute("aria-invalid") === "true", "the field is not marked");
+            const notice = $("#digest-missing").textContent;
+            expect(notice.includes("Type size"), `notice: ${notice}`);
+        """,
+        sabotage="""$('#type-scale option[value=""]').remove();""",
+    ),
+    Check(
+        id="type-scale-unset-clears-on-save",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.type_scale"),
+        act=SAVE_TYPE_SCALE.format(value="1"),
+        script="""
+            const select = $("#type-scale");
+            expect(!$('option[value=""]', select), "Not set is still an option");
+            expect(!select.hasAttribute("aria-invalid"), "the field is still marked");
+        """,
+        sabotage="""$("#type-scale").prepend(new Option("Not set", "", false, false));""",
+        receipt=_calls([{"digest.type_scale": 1}]),
+    ),
+    Check(
+        id="type-scale-applies-on-save",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_TYPE_SCALE.format(value="1.125"),
+        script="""
+            const scale = getComputedStyle(document.documentElement)
+              .getPropertyValue("--type-scale").trim();
+            expect(scale === "1.125", `--type-scale: ${scale}`);
+        """,
+        sabotage="""document.documentElement.style.removeProperty("--type-scale");""",
+    ),
+    Check(
+        id="type-scale-kept-on-refusal",
+        fixture="writable",
+        path="/settings#digest",
+        preload=answer_post(
+            "/api/settings/values",
+            """Promise.resolve(new Response(JSON.stringify({ok: false, error: "refused"}),
+              {status: 400, headers: {"Content-Type": "application/json"}}))""",
+        ),
+        act="""
+            await settingsLoaded();
+            setValue($("#type-scale"), "1.125");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the notice");
+        """,
+        script="""
+            const scale = getComputedStyle(document.documentElement)
+              .getPropertyValue("--type-scale").trim();
+            expect(scale === "1", `--type-scale: ${scale}`);
+            expect($("#digest-result").classList.contains("err"), "the notice is not an error");
+        """,
+        sabotage="""document.documentElement.style.setProperty("--type-scale", "1.125");""",
         receipt=_calls([]),
     ),
     Check(

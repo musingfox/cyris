@@ -27,6 +27,16 @@ PLAIN_KEYS: tuple[str, ...] = tuple(
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
+def _values_note(keys: list[str]) -> str:
+    """When the saved keys take effect: a live key reaches the pages, the rest the next run."""
+    live = [SETTINGS_FIELDS[key]["label"] for key in keys if SETTINGS_FIELDS[key].get("live")]
+    if not live:
+        return "Effective next run."
+    if len(live) == len(keys):
+        return "Pages show it within a minute."
+    return f"{', '.join(live)}: pages show it within a minute. The rest: effective next run."
+
+
 def render_settings_page() -> str:
     """Render /settings with the digest pages' own site bar.
 
@@ -320,7 +330,8 @@ class TriageServer:
             return refused
 
         logger.info("Settings saved: %s", ", ".join(sorted(validated)))
-        return web.json_response({"ok": True, "values": validated, "note": "Effective next run."})
+        note = _values_note(list(validated))
+        return web.json_response({"ok": True, "values": validated, "note": note})
 
     async def _handle_post_vote(self, request: web.Request) -> web.Response:
         """Store vote similarity's switch, embedder and seeds as one unit.

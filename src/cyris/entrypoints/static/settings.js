@@ -167,8 +167,10 @@ function render() {
   if (m) $("morning").value = parseInt(m, 10);
   if (e) $("evening").value = parseInt(e, 10);
   $("languages").replaceChildren(...state.languages.map((tag) => new Option("", tag)));
+  // A select would otherwise show its first option for a missing value.
   for (const [id, key] of Object.entries(PLAIN)) {
     if (values[key] != null) $(id).value = values[key];
+    else if ($(id).tagName === "SELECT") $(id).prepend(new Option("Not set", "", true, true));
   }
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
@@ -293,6 +295,8 @@ async function post(url, body, method = "POST") {
 
 const plainValue = (input) => {
   if (input.type === "number") return input.value === "" ? null : Number(input.value);
+  // The type size is stored as a number, which a select only holds as text.
+  if (input.id === "type-scale") return input.value === "" ? null : Number(input.value);
   // The style prompt is the reader's own words, spaces included.
   return input.id === "style-prompt" ? input.value : input.value.trim();
 };
@@ -315,6 +319,10 @@ async function savePlain(form, stored) {
     Object.assign(stored, sent);
     Object.assign(state.values, data.values);
     markSet(Object.keys(data.values));
+    ids.forEach((id) => $(id).querySelector('option[value=""]')?.remove());
+    // The Worker sizes the next page it serves; this one follows at once.
+    const scale = data.values["digest.type_scale"];
+    if (scale != null) document.documentElement.style.setProperty("--type-scale", String(scale));
     const parts = ids.map((id) => `${FIELDS[PLAIN[id]].label}: ${shownValue(data.values[PLAIN[id]])}`);
     return {ok: true, line: `${parts.join(", ")}. ${data.note}`};
   } catch (err) {

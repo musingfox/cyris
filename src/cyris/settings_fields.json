@@ -96,6 +96,15 @@
     ],
     "route": "plain"
   },
+  "digest.type_scale": {
+    "tab": "digest",
+    "label": "Type size",
+    "controls": [
+      "type-scale"
+    ],
+    "route": "plain",
+    "live": true
+  },
   "general.digest_window_hours": {
     "tab": "pipeline",
     "label": "Window (hours)",

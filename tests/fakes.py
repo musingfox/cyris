@@ -23,6 +23,7 @@ _TEST_VALUES: dict[str, Any] = {
     "digest.filter_snippet_length": 500,
     "digest.output_language": "zh-Hant",
     "digest.style_prompt": "",
+    "digest.type_scale": 1,
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,

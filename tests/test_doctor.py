@@ -1026,7 +1026,7 @@ def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> No
 
 def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
     assert doctor._check_settings(_config(tmp_path)) == doctor.Check(
-        "settings", "ok", "all 20 set in cyris.toml"
+        "settings", "ok", "all 21 set in cyris.toml"
     )
 
 
@@ -1034,7 +1034,7 @@ def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
 
-    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 20 set in D1")
+    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 21 set in D1")
 
 
 async def test_a_json_deployment_without_a_file_fails_listing_every_key(

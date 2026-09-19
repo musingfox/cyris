@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Type size.** One site-wide setting, `digest.type_scale` (Smaller 0.875,
+  Default 1, Larger 1.125), under Digest on `/settings`. The app Worker applies it
+  to every HTML page it serves within a minute, issues already published included;
+  pages opened on pages.dev directly stay at 1.
 - **`cyris settings push`.** Copies each runtime setting D1 lacks from a
   `cyris.toml`, validating every value first, and never overwrites a row. It
   prints the D1 database id it bound to before anything else, so a push to the
@@ -15,7 +19,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cyris.toml` and D1: no LLM client is built and no key is needed, `cyris doctor`
   reports it as ok, and the run is not flagged degraded. The Model category on
   `/settings` offers it as `None — plain excerpts`.
-- **Every runtime setting on `/settings`.** Twenty keys across Model (the LLM, the
+- **Every runtime setting on `/settings`.** Twenty-one keys across Model (the LLM, the
   embedder and vote similarity), Digest, a new Pipeline category and
   Notifications. A missing one is marked in its field, at the top of its category
   and with a warn dot on the category list. Turning vote similarity on checks the

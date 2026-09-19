@@ -28,6 +28,7 @@ summarize_snippet_length = 1000         # characters read when summarizing
 filter_snippet_length = 500             # characters read when extracting headlines
 output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
 style_prompt = ""                       # optional: your tone/focus, injected into the prompts
+type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
 
 [agent_vault]
 path = "./agent-vault"

@@ -379,6 +379,42 @@ class TestPlainValues:
         assert body["error"] == "llm_provider.model is saved from its own form"
         assert settings.calls == []
 
+    async def test_the_type_size_as_a_string_is_refused(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.type_scale": "1.125"}}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"].startswith("digest.type_scale:")
+        assert settings.calls == []
+
+    @pytest.mark.parametrize(
+        ("values", "note"),
+        [
+            ({"digest.type_scale": 1.125}, "Pages show it within a minute."),
+            ({"digest.max_featured": 3}, "Effective next run."),
+            (
+                {"digest.type_scale": 1, "digest.max_featured": 3},
+                "Type size: pages show it within a minute. The rest: effective next run.",
+            ),
+        ],
+        ids=["live", "next-run", "both"],
+    )
+    async def test_the_note_says_when_the_saved_keys_apply(self, settings, values, note):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/values", json={"values": values})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["note"] == note
+        assert settings.calls == [values]
+
     async def test_the_webhook_is_not_a_plain_value(self, settings):
         client = await _client(settings)
 
