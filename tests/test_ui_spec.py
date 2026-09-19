@@ -493,11 +493,6 @@ def test_the_archive_has_no_page_glow_like_raw() -> None:
     assert [image for image in images if "radial-gradient(" in image] == []
 
 
-def test_the_top_story_badge_is_the_accent_tint() -> None:
-    _, digest, _ = receipt_fixtures()
-    assert "background: var(--accent-tint)" in parse_style_block(digest)[".lead-story::before"]
-
-
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
 def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
     rules = parse_style_block(receipt_fixtures()[page])
@@ -532,7 +527,6 @@ TYPE_ROLES = [
     (12, "digest", ".section-tag", "14px"),
     (13, "digest", ".section-heading", "28px"),
     (14, "digest", ".section-description", "20px"),
-    (15, "digest", ".lead-story::before", "14px"),
     (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
     (18, "digest", ".lead-story .summary", "20px"),
     (19, "digest", ".lead-story .meta", "14px"),
@@ -601,13 +595,26 @@ def test_the_raw_page_head_is_the_prototype_page_head() -> None:
 @pytest.mark.parametrize(
     "key",
     [
-        "@media (max-width: 880px) | .lead-story::before",
+        "@media (max-width: 720px) | .lead-story",
         "@media (max-width: 720px) | .site-nav .label",
     ],
 )
 def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
     declarations = _parsed("digest")[key]
     assert [d for d in declarations if d.startswith("font-size")] == []
+
+
+def test_the_lead_story_is_the_prototype_lead_card() -> None:
+    digest = _parsed("digest")
+    assert [key for key in digest if ".lead-story::before" in key] == []
+    assert _declared(digest[".lead-story::after"], "box-shadow") == []
+    assert "padding: var(--s-8) var(--s-12)" in digest[".lead-story"]
+    assert _declared(digest[".lead-story"], "margin-bottom") == []
+    assert digest["@media (max-width: 720px) | .lead-story"] == {"padding: var(--s-6) var(--s-5)"}
+    title = digest[".lead-story h2"]
+    assert _declared(title, "max-width") == []
+    assert {"line-height: 1.1", "margin: var(--s-3) 0 var(--s-5)"} <= set(title)
+    assert {"color: var(--text-dim)", "line-height: 1.65"} <= set(digest[".lead-story .summary"])
 
 
 def test_archive_rows_are_the_prototype_rows_and_wrap_them_on_phones() -> None:

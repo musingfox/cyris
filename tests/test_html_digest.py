@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from css_rules import parse_style_block
+from css_rules import parse_style_block, receipt_fixtures
 
 from cyris.adapters.output import html_digest
 from cyris.adapters.output.html_digest import HtmlDigestWriter
@@ -101,6 +101,7 @@ def test_render_empty_sections(tmp_path):
     assert "<!DOCTYPE html>" in html
     assert "<style>" in html
     # Should not contain section headings or content when empty
+    assert "Top story" not in html
     assert "In Focus" not in html
     assert "On the Radar" not in html
     assert "The Wire" not in html
@@ -139,7 +140,7 @@ def test_render_optional_score(tmp_path):
     assert "<!DOCTYPE html>" in html
     assert "No Score Article" in html
     # Should not display score when None
-    assert "Score:" not in html
+    assert 'class="pill score"' not in html
 
 
 def test_write_creates_file(tmp_path, sample_digest_content):
@@ -459,6 +460,25 @@ def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
     digest = HtmlDigestWriter(tmp_path).render(content)
     lead = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
     assert "Cloudflare Containers GA" in lead
+
+
+def test_the_top_story_tag_sits_directly_above_the_lead_card():
+    digest = receipt_fixtures()[1]
+    between = digest.split("Top story</span></div>", 1)[1].split('<article class="lead-story">')[0]
+    assert between.strip() == ""
+
+
+def test_the_lead_score_pill_sits_above_its_title(tmp_path):
+    lead = DigestItem(title="Lead", summary="s", sources=["S"], urls=["https://a.test"], score=8.5)
+    content = _content(
+        "2026-04-15", "evening", featured_articles=[DigestSection(heading="F", items=[lead])]
+    )
+    digest = HtmlDigestWriter(tmp_path).render(content)
+    card = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
+    assert '<span class="pill score">8.5</span>' in card
+    assert card.index('class="pill score"') < card.index("<h2")
+    assert "Score:" not in card
+    assert "Source:" not in card
 
 
 def test_without_features_the_card_leads_with_the_first_thematic_story(tmp_path):
@@ -1103,8 +1123,7 @@ def test_newsletter_references_render_for_every_digest_section(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(content)
 
     assert html.count('<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>') == 5
-    assert html.count('<span class="source-tag">Newsletter</span>') == 3
-    assert html.count('<span class="source-tag">Source: Newsletter</span>') == 1
+    assert html.count('<span class="source-tag">Newsletter</span>') == 4
     assert html.count("data-urls='[\"newsletter:abc\"]'") == 5
     assert "data-urls='[&#34;https://r1.com/a&#34;" not in html
 

@@ -140,23 +140,8 @@
             position: relative;
             border: 1px solid var(--border);
             background: linear-gradient(180deg, var(--surface) 0%, var(--bg-elev) 100%);
-            padding: 40px 44px;
-            margin-bottom: 56px;
+            padding: var(--s-8) var(--s-12);
             overflow: hidden;
-        }
-
-        .lead-story::before {
-            content: "TOP STORY";
-            position: absolute;
-            top: 20px;
-            right: 28px;
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            letter-spacing: 0.22em;
-            color: var(--accent);
-            border: 1px solid var(--accent-dim);
-            padding: 4px 10px;
-            background: var(--accent-tint);
         }
 
         .lead-story::after {
@@ -165,17 +150,15 @@
             left: 0; top: 0; bottom: 0;
             width: 3px;
             background: var(--accent);
-            box-shadow: 0 0 24px var(--accent);
         }
 
         .lead-story h2 {
             font-family: var(--font-sans);
             font-size: calc(clamp(32px, 4.5vw, 52px) * var(--type-scale));
             font-weight: 600;
-            line-height: 1.05;
+            line-height: 1.1;
             letter-spacing: -0.025em;
-            margin-bottom: 20px;
-            max-width: 24ch;
+            margin: var(--s-3) 0 var(--s-5);
         }
 
         .lead-story h2 a {
@@ -190,10 +173,9 @@
 
         .lead-story .summary {
             font-size: calc(20px * var(--type-scale));
-            line-height: 1.7;
-            color: var(--text);
+            line-height: 1.65;
+            color: var(--text-dim);
             max-width: 70ch;
-            margin-bottom: 28px;
         }
 
         .lead-story .meta {
@@ -204,9 +186,10 @@
             letter-spacing: 0.08em;
             display: flex;
             flex-wrap: wrap;
-            gap: 18px;
+            gap: var(--s-3);
             align-items: center;
-            padding-top: 20px;
+            margin-top: var(--s-6);
+            padding-top: var(--s-5);
             border-top: 1px dashed var(--border-strong);
         }
 
@@ -471,11 +454,13 @@
             .container { padding: 16px 12px 60px; }
             .headline-block { grid-template-columns: 1fr; gap: 24px; }
             .stats-card { max-width: 100%; }
-            .lead-story { padding: 28px 24px; }
-            .lead-story::before { top: 14px; right: 16px; }
             .featured-grid { grid-template-columns: 1fr; }
             .attention-list { grid-template-columns: 1fr; }
             .section { margin-bottom: 48px; }
+        }
+
+        @media (max-width: 720px) {
+            .lead-story { padding: var(--s-6) var(--s-5); }
         }
         {% include "_promote.css.j2" %}
 
@@ -526,18 +511,21 @@
 
         <main>
             {% if lead_story %}
-            <article class="lead-story">
-                <h2>
-                    {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
-                </h2>
-                <p class="summary">{{ lead_story.summary }}</p>
-                <div class="meta">
-                    {% if lead_story.score %}<span class="pill score">Score: {{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
-                    <span class="source-tag">Source: {{ lead_story.sources | join(' · ') }}</span>{% if lead_story.ref_urls | length > 1 %} {{ source_list(lead_story) }}{% endif %}
-                    {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">Read more →</a>{% endif %}
-                    {{ promote_btn(lead_story) }}
-                </div>
-            </article>
+            <section class="section">
+                <div class="section-tag"><span class="label">Top story</span></div>
+                <article class="lead-story">
+                    {% if lead_story.score %}<span class="pill score">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
+                    <h2>
+                        {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
+                    </h2>
+                    <p class="summary">{{ lead_story.summary }}</p>
+                    <div class="meta">
+                        <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>{% if lead_story.ref_urls | length > 1 %} {{ source_list(lead_story) }}{% endif %}
+                        {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">Read more →</a>{% endif %}
+                        {{ promote_btn(lead_story) }}
+                    </div>
+                </article>
+            </section>
             {% endif %}
 
             {% if featured_articles %}
