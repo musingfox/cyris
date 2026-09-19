@@ -13,7 +13,7 @@
        style.css; a rule here that another page also needs belongs there. */
     body { font-size: calc(16px * var(--type-scale)); line-height: 1.6; min-height: 100vh; }
     a { color: inherit; }
-    button, input, select { font: inherit; color: inherit; }
+    button, input, select, textarea { font: inherit; color: inherit; }
     .page { max-width: 1240px; margin: 0 auto; padding: var(--s-12) var(--s-4) var(--s-20); }
     .settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-12); align-items: start; }
     .settings-nav { position: sticky; top: calc(var(--bar-h) + var(--s-6)); display: grid; border-left: 1px solid var(--border); }
@@ -26,6 +26,7 @@
     .missing-dot { width: 6px; height: 6px; background: var(--warn); border-radius: 50%; visibility: hidden; }
     .settings-nav a.missing .missing-dot { visibility: visible; }
     .input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--warn); }
+    textarea.input { height: auto; padding-block: var(--s-3); line-height: 1.5; resize: vertical; }
     .tab-head { display: grid; gap: var(--s-2); margin-bottom: var(--s-8); max-width: var(--measure); }
     .form { display: grid; gap: var(--s-6); max-width: var(--measure); }
     .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-4); }
@@ -97,7 +98,7 @@
         <form class="tab" data-tab="digest" id="digest-form" novalidate hidden>
           <div class="tab-head">
             <h2 class="heading">Digest</h2>
-            <p class="small">When issues are published and how the page is laid out.</p>
+            <p class="small">When issues are published and what each one holds.</p>
             <div class="notice err" id="digest-missing" hidden></div>
           </div>
           <div class="form">
@@ -107,13 +108,35 @@
                 <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
                 <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
               </div>
-              <details class="more"><summary>More</summary><p class="small">Two whole hours, in the timezone from <code>[general]</code>. The tick is hourly, so half hours are refused rather than quietly rounded down.</p></details>
+              <details class="more"><summary>More</summary><p class="small">Whole hours in the timezone below. The tick is hourly, so half hours are refused rather than rounded down.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="timezone">Timezone</label>
+              <input class="input" id="timezone" type="text" placeholder="Asia/Taipei" autocomplete="off">
+              <p class="small">The clock the publish hours are read in.</p>
             </div>
             <div class="field">
               <label class="label" for="max-featured">Featured sections</label>
               <input class="input narrow" id="max-featured" type="number" min="1" max="20" autocomplete="off">
               <p class="small">How many sections lead the page before the rest.</p>
-              <details class="more"><summary>More</summary><p class="small">Your call, not a measured number — the digest reads differently at 3 than at 8. It takes effect on the next digest.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="max-output">Articles in the digest</label>
+              <input class="input narrow" id="max-output" type="number" min="1" autocomplete="off">
+              <p class="small">The most articles one issue lists.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="output-language">Output language</label>
+              <input class="input" id="output-language" type="text" list="languages" autocomplete="off">
+              <datalist id="languages"></datalist>
+              <p class="small">A BCP 47 tag, such as zh-Hant or en.</p>
+              <details class="more"><summary>More</summary><p class="small">Headlines and summaries are written in it. A tag not in the list is passed to the model as written.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="style-prompt">Style</label>
+              <textarea class="input" id="style-prompt" rows="4"></textarea>
+              <p class="small">Your tone or focus for the summaries, in your own words.</p>
+              <details class="more"><summary>More</summary><p class="small">Empty means none.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>

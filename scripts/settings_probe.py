@@ -216,12 +216,12 @@ window.fetch = async (input, init) => {
 """
 
 
-def rewrite_source_post(mutation: str) -> str:
-    """A preload that changes the body of the page's POST /api/sources before it leaves."""
+def rewrite_post(path: str, mutation: str) -> str:
+    """A preload that changes the body of the page's POST to `path` before it leaves."""
     return f"""
 const realFetch = window.fetch;
 window.fetch = (input, init) => {{
-  if (String(input).endsWith("/api/sources") && init && init.method === "POST") {{
+  if (String(input).endsWith({json.dumps(path)}) && init && init.method === "POST") {{
     const body = JSON.parse(init.body);
     {mutation}
     init = {{...init, body: JSON.stringify(body)}};
@@ -795,8 +795,8 @@ CHECKS: list[Check] = [
             await waitFor(() => editor() && visible($(".notice", editor())), "the save");
         """,
         script="",
-        sabotage_preload=rewrite_source_post(
-            'body.url = "https://hnrss.org/frontpage?points=200";'
+        sabotage_preload=rewrite_post(
+            "/api/sources", 'body.url = "https://hnrss.org/frontpage?points=200";'
         ),
         receipt=_stored(
             "Hacker News",
@@ -817,7 +817,7 @@ CHECKS: list[Check] = [
             await waitFor(() => editor() && visible($(".notice", editor())), "the save");
         """,
         script="",
-        sabotage_preload=rewrite_source_post('body.tags = ["ai", "", "tools"];'),
+        sabotage_preload=rewrite_post("/api/sources", 'body.tags = ["ai", "", "tools"];'),
         receipt=_stored("Simon Willison", tags=["ai", "tools"], email_match=None, homepage=None),
     ),
     Check(
@@ -1262,7 +1262,7 @@ CHECKS: list[Check] = [
             swatch.remove();
         """,
         script="""
-            const field = $("#max-featured");
+            const field = $("#timezone");
             expect(field.getAttribute("aria-invalid") === "true", "the field is not marked");
             expect(field.value === "" && field.placeholder === "Not set",
               `field: ${field.value} / ${field.placeholder}`);
@@ -1271,24 +1271,24 @@ CHECKS: list[Check] = [
             const notice = $("#digest-missing");
             expect(visible(notice) && notice.classList.contains("err"), "no category notice");
             expect(notice.textContent.startsWith("Not set yet: ")
-              && notice.textContent.includes("Featured sections"), notice.textContent);
+              && notice.textContent.includes("Timezone"), notice.textContent);
             expect(navOf("digest").classList.contains("missing"), "Digest has no missing mark");
             const dot = getComputedStyle($(".missing-dot", navOf("digest"))).visibility;
             expect(dot === "visible", `the dot is ${dot}`);
             const checked = $$("input[name=provider]:checked").map((input) => input.value);
             expect(checked.length === 0, `checked: ${checked}`);
         """,
-        sabotage="""$("#max-featured").removeAttribute("aria-invalid");""",
+        sabotage="""$("#timezone").removeAttribute("aria-invalid");""",
     ),
     Check(
         id="missing-clears-on-save",
         fixture="writable",
         path="/settings#digest",
-        setup=_unset("digest.max_featured"),
+        setup=_unset("general.timezone"),
         act="""
             await providersLoaded();
             ctx.marked = navOf("digest").classList.contains("missing");
-            setValue($("#max-featured"), "7");
+            setValue($("#timezone"), "Europe/Berlin");
             saveOf("digest").click();
             await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
@@ -1297,22 +1297,24 @@ CHECKS: list[Check] = [
             expect(ctx.marked, "Digest was not marked before the save");
             expect(!visible($("#digest-missing")), "the category notice is still shown");
             expect(!navOf("digest").classList.contains("missing"), "Digest is still marked");
-            expect(!$("#max-featured").hasAttribute("aria-invalid"), "the field is still marked");
+            const field = $("#timezone");
+            expect(!field.hasAttribute("aria-invalid"), "the field is still marked");
+            expect(field.placeholder === "Asia/Taipei", `placeholder: ${field.placeholder}`);
         """,
         sabotage="""navOf("digest").classList.add("missing");""",
-        receipt=_calls([{"digest.max_featured": 7}]),
+        receipt=_calls([{"general.timezone": "Europe/Berlin"}]),
     ),
     Check(
         id="missing-readonly",
         fixture="readonly",
         path="/settings#digest",
-        setup=_unset("digest.max_featured"),
+        setup=_unset("digest.style_prompt"),
         act="""await waitFor(() => visible($("#digest-missing")), "the category notice");""",
         script="""
             const text = $("#digest-missing").textContent;
-            expect(text.startsWith("Missing from cyris.toml: Featured sections."), text);
+            expect(text.startsWith("Missing from cyris.toml: Style."), text);
         """,
-        sabotage="""$("#digest-missing").textContent = "Not set yet: Featured sections.";""",
+        sabotage="""$("#digest-missing").textContent = "Not set yet: Style.";""",
     ),
     Check(
         id="missing-none-when-set",
@@ -1326,6 +1328,66 @@ CHECKS: list[Check] = [
             expect(shown.length === 0, `notices: ${shown}`);
         """,
         sabotage="""navOf("model").classList.add("missing");""",
+    ),
+    Check(
+        id="digest-posts-new-fields",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#timezone"), "Europe/Berlin");
+            setValue($("#output-language"), "en");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""
+            const text = noticeOf("digest").textContent;
+            expect(text === "Timezone: Europe/Berlin, Output language: en. Effective next run.",
+              `notice: ${text}`);
+        """,
+        sabotage_preload=rewrite_post(
+            "/api/settings/values", 'body.values["digest.max_featured"] = 5;'
+        ),
+        receipt=_calls([{"general.timezone": "Europe/Berlin", "digest.output_language": "en"}]),
+    ),
+    Check(
+        id="digest-style-empty",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            ctx.loaded = $("#style-prompt").value;
+            setValue($("#style-prompt"), "");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""expect(ctx.loaded === "x", `the style loaded as ${ctx.loaded}`);""",
+        sabotage_preload=rewrite_post(
+            "/api/settings/values", 'body.values["digest.style_prompt"] = "x";'
+        ),
+        receipt=_calls([{"digest.style_prompt": ""}]),
+    ),
+    Check(
+        id="digest-bad-timezone",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#timezone"), "Mars/Base");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the notice");
+        """,
+        script="""
+            const notice = $("#digest-result"), text = notice.textContent;
+            expect(notice.classList.contains("err"), `not an error: ${text}`);
+            expect(text.startsWith("Timezone not saved: general.timezone: "), `notice: ${text}`);
+            expect(navOf("digest").classList.contains("dirty"), "Digest lost its dirty mark");
+            expect(!saveOf("digest").disabled, "the digest Save was disabled");
+        """,
+        sabotage="""$("#digest-result").classList.remove("err");""",
+        receipt=_calls([]),
     ),
     Check(
         id="readonly-settings",

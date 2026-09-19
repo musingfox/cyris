@@ -32,7 +32,7 @@ const clean = new Map();
 // A form whose save is in flight keeps its Save disabled and its notice.
 const saving = new Set();
 // Keyed by field, so a save can tell which part of its form changed.
-const snapshot = (form) => Object.fromEntries([...form.querySelectorAll("input, select")]
+const snapshot = (form) => Object.fromEntries([...form.querySelectorAll("input, select, textarea")]
   .map((input) => input.type === "radio"
     ? [`${input.name}=${input.value}`, input.checked]
     : [input.id, input.value]));
@@ -71,7 +71,13 @@ const FIELDS = {
   "llm_provider.provider": {tab: "model", label: "Provider", controls: ["providers"]},
   "llm_provider.model": {tab: "model", label: "Model", controls: ["model-input"]},
   "general.digest_schedule": {tab: "digest", label: "Publish hours", controls: ["morning", "evening"]},
+  "general.timezone": {tab: "digest", label: "Timezone", controls: ["timezone"]},
   "digest.max_featured": {tab: "digest", label: "Featured sections", controls: ["max-featured"]},
+  "digest.max_articles_per_digest_output": {
+    tab: "digest", label: "Articles in the digest", controls: ["max-output"],
+  },
+  "digest.output_language": {tab: "digest", label: "Output language", controls: ["output-language"]},
+  "digest.style_prompt": {tab: "digest", label: "Style", controls: ["style-prompt"]},
   "notify.discord_webhook_url": {
     tab: "notifications", label: "Discord webhook", controls: ["discord-webhook"],
   },
@@ -117,6 +123,15 @@ function markMissing() {
   }
 }
 
+// The settings saved through /api/settings/values, by the id of their control.
+const PLAIN = {
+  "timezone": "general.timezone",
+  "max-featured": "digest.max_featured",
+  "max-output": "digest.max_articles_per_digest_output",
+  "output-language": "digest.output_language",
+  "style-prompt": "digest.style_prompt",
+};
+
 function markSet(keys) {
   state.missing = state.missing.filter((key) => !keys.includes(key));
   markMissing();
@@ -140,7 +155,10 @@ function render() {
   const [m, e] = values["general.digest_schedule"] || [];
   if (m) $("morning").value = parseInt(m, 10);
   if (e) $("evening").value = parseInt(e, 10);
-  if (values["digest.max_featured"] != null) $("max-featured").value = values["digest.max_featured"];
+  $("languages").replaceChildren(...state.languages.map((tag) => new Option("", tag)));
+  for (const [id, key] of Object.entries(PLAIN)) {
+    if (values[key] != null) $(id).value = values[key];
+  }
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
   }
@@ -220,13 +238,44 @@ async function post(url, body, method = "POST") {
     "Try again; if it keeps failing, check the server log.");
 }
 
+const plainValue = (input) => {
+  if (input.type === "number") return input.value === "" ? null : Number(input.value);
+  // The style prompt is the reader's own words, spaces included.
+  return input.id === "style-prompt" ? input.value : input.value.trim();
+};
+
+const shownValue = (value) => {
+  if (value === "") return "empty";
+  const text = String(value);
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
+};
+
+// Every changed plain field of `form` in one request, all or nothing. A field
+// that saved takes its sent value in `stored`; the result is one notice line.
+async function savePlain(form, stored) {
+  const ids = Object.keys(PLAIN).filter((id) => form.contains($(id)) && $(id).value !== stored[id]);
+  if (!ids.length) return null;
+  const sent = Object.fromEntries(ids.map((id) => [id, $(id).value]));
+  const values = Object.fromEntries(ids.map((id) => [PLAIN[id], plainValue($(id))]));
+  try {
+    const data = await post("/api/settings/values", {values});
+    Object.assign(stored, sent);
+    Object.assign(state.values, data.values);
+    markSet(Object.keys(data.values));
+    const parts = ids.map((id) => `${FIELDS[PLAIN[id]].label}: ${shownValue(data.values[PLAIN[id]])}`);
+    return {ok: true, line: `${parts.join(", ")}. ${data.note}`};
+  } catch (err) {
+    const labels = ids.map((id) => FIELDS[PLAIN[id]].label);
+    return {ok: false, line: `${labels.join(", ")} not saved: ${err.message || err}`};
+  }
+}
+
 // One Save, two endpoints: only a changed part is sent, the hours first, and
 // both are tried. A part that saved becomes clean; one that failed stays dirty.
 $("digest-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = $("digest-form");
-  const [morning, evening, featured] = [$("morning"), $("evening"), $("max-featured")]
-    .map((input) => input.value);
+  const [morning, evening] = [$("morning"), $("evening")].map((input) => input.value);
   const stored = {...clean.get(form)};
   const lines = [];
   let failed = false;
@@ -244,17 +293,10 @@ $("digest-form").addEventListener("submit", async (e) => {
       lines.push(`Digest hours not saved: ${err.message || err}`);
     }
   }
-  if (featured !== stored["max-featured"]) {
-    try {
-      const data = await post("/api/settings/values",
-                              {values: {"digest.max_featured": parseInt(featured, 10)}});
-      lines.push(`Featured sections: ${data.values["digest.max_featured"]}. ${data.note}`);
-      stored["max-featured"] = featured;
-      markSet(Object.keys(data.values));
-    } catch (err) {
-      failed = true;
-      lines.push(`Featured sections not saved: ${err.message || err}`);
-    }
+  const plain = await savePlain(form, stored);
+  if (plain) {
+    failed = failed || !plain.ok;
+    lines.push(plain.line);
   }
   saving.delete(form);
   markClean(form, stored);

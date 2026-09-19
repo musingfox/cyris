@@ -219,6 +219,15 @@ def test_the_page_names_no_sources_origin() -> None:
     assert "sources-origin" not in render_settings_page()
 
 
+def test_the_digest_category_offers_the_language_list_and_a_style_box() -> None:
+    from cyris.entrypoints.triage_server import render_settings_page
+
+    page = render_settings_page()
+
+    assert '<datalist id="languages">' in page
+    assert '<textarea class="input" id="style-prompt" rows="4">' in page
+
+
 async def test_an_emptied_table_is_listed_empty_not_as_the_startup_list() -> None:
     from cyris.adapters.store.source_store import D1SourceStore
     from cyris.domain.models import SourceConfig

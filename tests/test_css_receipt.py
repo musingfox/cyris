@@ -599,6 +599,9 @@ EXPECTED_IDS = {
     "missing-clears-on-save",
     "missing-readonly",
     "missing-none-when-set",
+    "digest-posts-new-fields",
+    "digest-style-empty",
+    "digest-bad-timezone",
 }
 
 
