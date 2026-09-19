@@ -164,7 +164,14 @@ class HtmlDigestWriter:
             key=lambda d: (d["date"], rank.get(d["period"], -1), d["period"]), reverse=True
         )
 
-        return template.render(digests=digests)
+        months: dict[str, list[dict]] = {}
+        for digest in digests:
+            months.setdefault(digest["date"][:7], []).append(digest)
+
+        return template.render(
+            digests=digests,
+            months=[{"month": month, "issues": issues} for month, issues in months.items()],
+        )
 
     def write_index(self, digest_dir: Path) -> Path:
         """Persist the index page to disk.

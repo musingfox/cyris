@@ -274,6 +274,65 @@ def test_a_label_outside_the_period_order_follows_the_known_ones_of_its_day(tmp_
     ]
 
 
+def _tight(html: str) -> str:
+    """The markup with the whitespace between tags removed."""
+    return re.sub(r">\s+<", "><", html)
+
+
+def test_a_months_issues_share_one_panel_headed_by_the_month_and_its_count(tmp_path):
+    names = [
+        "2026-09-02-morning.html",
+        "2026-08-31-evening.html",
+        "2026-08-31-morning.html",
+        "2026-08-30-morning.html",
+    ]
+
+    html = _tight(HtmlDigestWriter(tmp_path).render_index(names))
+
+    assert '<span class="data">2026-08</span><span class="label">3 issues</span>' in html
+
+
+def test_the_newer_month_panel_comes_first(tmp_path):
+    names = [
+        "2026-08-02-morning.html",
+        "2026-08-01-morning.html",
+        "2026-07-31-evening.html",
+        "2026-07-30-evening.html",
+    ]
+
+    html = _tight(HtmlDigestWriter(tmp_path).render_index(names))
+
+    assert html.index('<span class="data">2026-08</span>') < html.index(
+        '<span class="data">2026-07</span>'
+    )
+    assert '<span class="data">2026-07</span><span class="label">2 issues</span>' in html
+
+
+def test_an_archive_row_holds_date_period_and_the_issues_two_views(tmp_path):
+    names = ["2026-08-31-morning.html", "2026-08-31-morning-raw.html", "2026-09-02-morning.html"]
+
+    html = _tight(HtmlDigestWriter(tmp_path).render_index(names))
+
+    assert (
+        '<div class="archive-row"><span class="date">2026-08-31</span>'
+        '<span class="label">morning</span><span class="actions">'
+        '<a class="btn secondary sm" href="2026-08-31-morning.html">Digest</a>'
+        '<a class="btn secondary sm" href="2026-08-31-morning-raw.html">All articles</a>'
+        "</span></div>"
+    ) in html
+    assert "digest-list" not in html
+    assert "digest-item" not in html
+
+
+def test_an_empty_archive_has_no_panel(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index([])
+
+    assert "No digests yet" in html
+    assert "<code>cyris run</code>" in html
+    assert 'class="panel"' not in html
+    assert "// cyris &middot; 0 issues<" in html
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest
@@ -769,7 +828,8 @@ def test_index_skips_raw_pages(tmp_path):
 
     index = writer.render_index([f.name for f in tmp_path.iterdir() if f.is_file()])
 
-    assert index.count('class="digest-item"') == 1
+    assert index.count(">Digest</a>") == 1
+    assert index.count(">All articles</a>") == 1
     assert 'href="2026-08-20-morning.html">Digest</a>' in index
     assert 'href="2026-08-20-morning-raw.html">All articles</a>' in index
 

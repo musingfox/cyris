@@ -552,8 +552,7 @@ TYPE_ROLES = [
     (33, "digest", ".news-cluster .meta, .attention-item .meta", "14px"),
     (34, "digest", ".headline-item", "16px"),
     (35, "digest", ".headline-item .idx", "16px"),
-    (36, "index", ".digest-date", "22px"),
-    (37, "index", ".digest-period", "14px"),
+    (36, "index", ".archive-row .date, .front-card .date", "22px"),
     (39, "index", ".empty-message", "16px"),
     (40, "raw", ".source-name", "20px"),
     (42, "raw", ".state", "13px"),
@@ -610,15 +609,24 @@ def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
     assert [d for d in declarations if d.startswith("font-size")] == []
 
 
-def test_archive_rows_hold_their_entries_and_wrap_them_on_phones() -> None:
+def test_archive_rows_are_the_prototype_rows_and_wrap_them_on_phones() -> None:
     index = _parsed("index")
-    assert ".digest-arrow" not in index
-    assert ".digest-item a" not in index
-    assert "grid-column: 1 / -1" in index["@media (max-width: 720px) | .digest-item .actions"]
-    assert {"padding: var(--s-3) var(--s-5)", "gap: var(--s-6)"} <= index[".digest-item"]
-    phone = index["@media (max-width: 720px) | .digest-item"]
-    assert "gap: var(--s-2) var(--s-4)" in phone
-    assert not [d for d in phone if d.startswith("padding")]
+    assert {
+        "display: grid",
+        "grid-template-columns: 170px 110px 1fr auto",
+        "padding: var(--s-3) var(--s-5)",
+        "border-bottom: 1px solid var(--border)",
+    } <= index[".archive-row"]
+    assert index[".archive-row:hover"] == {"background: var(--surface)"}
+    # A row without a count keeps its buttons in the last column, right-aligned.
+    assert "grid-column: 4" in index[".archive-row .actions"]
+    phone = index["@media (max-width: 720px) | .archive-row"]
+    assert {"grid-template-columns: 1fr auto", "row-gap: var(--s-2)"} <= phone
+    wrapped = index["@media (max-width: 720px) | .archive-row .small, .archive-row .actions"]
+    assert "grid-column: 1 / -1" in wrapped
+    assert [key for key in index if "digest-item" in key] == []
+    widths = {key.split(" | ")[0] for key in index if key.startswith("@media (max-width")}
+    assert widths == {"@media (max-width: 720px)"}
 
 
 def test_the_empty_archive_message_takes_the_small_role() -> None:

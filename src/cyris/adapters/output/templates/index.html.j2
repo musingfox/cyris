@@ -14,44 +14,22 @@
 
         {% with container_width="960px", container_relative=false, glow=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
-        .digest-list {
-            list-style: none;
-            border: 1px solid var(--border);
-            background: var(--bg-elev);
-        }
-
-        .digest-item {
+        .archive-row {
             display: grid;
-            grid-template-columns: auto 1fr auto;
+            grid-template-columns: 170px 110px 1fr auto;
             align-items: center;
-            gap: var(--s-6);
+            gap: var(--s-4);
             padding: var(--s-3) var(--s-5);
             border-bottom: 1px solid var(--border);
             transition: background-color var(--t-fast);
         }
 
-        .digest-item:last-child { border-bottom: none; }
+        .archive-row:last-child { border-bottom: 0; }
+        .archive-row:hover { background: var(--surface); }
 
-        .digest-item:hover { background: var(--surface); }
-
-        .digest-date {
-            font-family: var(--font-mono);
-            font-size: calc(22px * var(--type-scale));
-            font-weight: 500;
-            color: var(--text);
-            letter-spacing: -0.01em;
-        }
-
-        .digest-period {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            text-transform: uppercase;
-            letter-spacing: 0.14em;
-            color: var(--text-faint);
-            justify-self: start;
-        }
-
-        .digest-item .actions { display: flex; gap: var(--s-2); }
+        .archive-row .date, .front-card .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
+        .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
+        .archive-row .actions { grid-column: 4; }
 
         .empty-message {
             text-align: center;
@@ -74,11 +52,8 @@
                   padding_top="24px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
         @media (max-width: 720px) {
-            .digest-item {
-                grid-template-columns: 1fr auto;
-                gap: var(--s-2) var(--s-4);
-            }
-            .digest-item .actions { grid-column: 1 / -1; }
+            .archive-row { grid-template-columns: 1fr auto; row-gap: var(--s-2); }
+            .archive-row .small, .archive-row .actions { grid-column: 1 / -1; }
         }
     </style>
 </head>
@@ -92,15 +67,18 @@
         </div>
 
         {% if digests %}
-        <ul class="digest-list">
-            {% for digest in digests %}
-            <li class="digest-item">
-                <span class="digest-date">{{ digest.date }}</span>
-                <span class="digest-period">{{ digest.period }}</span>
+        {% for panel in months %}
+        <section class="panel">
+            <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length }} issue{{ "" if panel.issues | length == 1 else "s" }}</span></div>
+            {% for digest in panel.issues %}
+            <div class="archive-row">
+                <span class="date">{{ digest.date }}</span>
+                <span class="label">{{ digest.period }}</span>
                 <span class="actions"><a class="btn secondary sm" href="{{ digest.filename }}">Digest</a>{% if digest.raw_filename %}<a class="btn secondary sm" href="{{ digest.raw_filename }}">All articles</a>{% endif %}</span>
-            </li>
+            </div>
             {% endfor %}
-        </ul>
+        </section>
+        {% endfor %}
         {% else %}
         <div class="empty-message">
             No digests yet. Run <code>cyris run</code> to generate your first digest.
