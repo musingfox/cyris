@@ -21,7 +21,7 @@ from typing import Literal
 
 import httpx
 
-from cyris.config import DISCORD_WEBHOOK_ENV_VAR, Config
+from cyris.config import Config
 from cyris.domain.models import Tier
 
 Status = Literal["ok", "warn", "fail", "skip"]
@@ -649,28 +649,18 @@ def _check_output_sink(cfg: Config) -> Check:
     )
 
 
-def _webhook_origin(cfg: Config) -> str:
-    """Which of the three homes this run's webhook came from.
-
-    D1 settings, the Worker secret and the config file all reach the same field,
-    so "configured" alone leaves the reader guessing which one they just edited.
-    """
-    if "notify.discord_webhook_url" in cfg.settings_from_d1:
-        return "D1 settings"
-    if cfg.app.notify.discord_webhook_url == os.environ.get(DISCORD_WEBHOOK_ENV_VAR):
-        return DISCORD_WEBHOOK_ENV_VAR
-    return "cyris.toml [notify]"
-
-
 def _check_notifications(cfg: Config) -> Check:
+    # Missing is the settings check's to report; reading the table first would
+    # judge a value nobody set.
+    if "notify.discord_webhook_url" in cfg.missing_settings:
+        return Check("discord", "skip", "not set — see settings")
     if cfg.app.notify.discord_webhook_url:
-        return Check("discord", "ok", f"webhook from {_webhook_origin(cfg)}")
+        return Check("discord", "ok", "webhook set")
     return Check(
         "discord",
         "skip",
-        "no webhook — runs finish silently",
-        f"Set it on /settings, or put {DISCORD_WEBHOOK_ENV_VAR} in the environment, "
-        "to get a message per digest.",
+        "off — runs finish without a message",
+        "Set one on /settings to get a message per digest.",
     )
 
 

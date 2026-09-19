@@ -421,6 +421,9 @@ class Config(BaseModel):
     # Grade-D keys this run took from the D1 `settings` table rather than the
     # file. Same reason as above: which home won has to be reportable.
     settings_from_d1: list[str] = Field(default_factory=list)
+    # Grade-D keys this deployment's one home does not hold. Never raises at load:
+    # the commands that fill the home have to start while it is empty.
+    missing_settings: list[str] = Field(default_factory=list)
     config_file_found: bool = True
 
     def missing_store_keys(self) -> list[str]:

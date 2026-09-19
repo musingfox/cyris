@@ -743,50 +743,39 @@ async def test_an_unreachable_discord_is_a_failed_check_not_an_exception() -> No
     assert "boom" in check.detail
 
 
-async def test_a_webhook_from_d1_is_named_as_such(tmp_path: Path) -> None:
+async def test_a_set_webhook_is_reported_without_its_url_or_a_home(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
-    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/origin-d1"
-    cfg.settings_from_d1 = ["notify.discord_webhook_url"]
+    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/123/abcTOKEN"
 
     check = _by_name(await doctor.run_checks(cfg), "discord")
 
     assert check.status == "ok"
-    assert check.detail == "webhook from D1 settings"
+    assert check.detail == "webhook set"
+    said = f"{check.name} {check.detail} {check.fix}"
+    assert "abcTOKEN" not in said
+    assert "CYRIS_DISCORD_WEBHOOK_URL" not in said
 
 
-async def test_a_webhook_from_the_worker_secret_names_the_variable(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/origin-env")
+async def test_an_empty_webhook_is_notifications_off(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
-    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/origin-env"
+    cfg.app.notify.discord_webhook_url = ""
 
     check = _by_name(await doctor.run_checks(cfg), "discord")
-
-    assert check.detail == "webhook from CYRIS_DISCORD_WEBHOOK_URL"
-
-
-async def test_a_webhook_the_environment_did_not_supply_is_the_files(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
-    cfg = _config(tmp_path)
-    cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/origin-file"
-
-    check = _by_name(await doctor.run_checks(cfg), "discord")
-
-    assert check.detail == "webhook from cyris.toml [notify]"
-
-
-async def test_no_webhook_points_at_the_settings_page_before_the_variable(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.delenv("CYRIS_DISCORD_WEBHOOK_URL", raising=False)
-
-    check = _by_name(await doctor.run_checks(_config(tmp_path)), "discord")
 
     assert check.status == "skip"
-    assert check.fix.index("/settings") < check.fix.index("CYRIS_DISCORD_WEBHOOK_URL")
+    assert check.detail == "off — runs finish without a message"
+    assert check.fix == "Set one on /settings to get a message per digest."
+    assert "CYRIS_DISCORD_WEBHOOK_URL" not in check.fix
+
+
+async def test_a_missing_webhook_defers_to_the_settings_check(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.missing_settings = ["notify.discord_webhook_url"]
+
+    check = _by_name(await doctor.run_checks(cfg), "discord")
+
+    assert check.status == "skip"
+    assert check.detail == "not set — see settings"
 
 
 async def test_a_config_left_on_the_old_stanza_fails_the_build_check(
