@@ -1596,6 +1596,17 @@ CHECKS: list[Check] = [
         sabotage="""$("#model-input").disabled = false;""",
     ),
     Check(
+        id="model-none-label",
+        fixture="writable",
+        path="/settings#model",
+        act="await providersLoaded();",
+        script="""
+            const label = $(".label", choice("none")).textContent.trim();
+            expect(label === "No key needed", `label: ${label}`);
+        """,
+        sabotage="""$(".label", choice("none")).textContent = "";""",
+    ),
+    Check(
         id="model-missing-unchecked",
         fixture="writable",
         path="/settings#model",
