@@ -1,6 +1,6 @@
 ---
 status: accepted
-delivered:
+delivered: 2026-09-19
 depends: [digest-shared-css-partial]
 ---
 
