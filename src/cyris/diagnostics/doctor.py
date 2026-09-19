@@ -14,6 +14,7 @@ directly. Silent misconfiguration is the failure mode this closes.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -211,6 +212,9 @@ async def probe_llm(llm_cfg) -> Check:
 
 
 EMBEDDING_PROBE_TEXT = "cyris embedding probe"
+# The embedders back off on 429 for about 90 s in total, which a run can afford
+# and a Save cannot. This bound still leaves room for one short retry.
+EMBEDDING_PROBE_TIMEOUT_SECONDS = 15
 
 # The key each embedding provider reads, then anything else its REST path needs.
 EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
@@ -255,7 +259,15 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
     else:
         embedder = WorkersAIEmbedder(api_token=key, account_id=os.environ[env[1]], model=model)
     try:
-        [vector] = await embedder.embed([EMBEDDING_PROBE_TEXT])
+        [vector] = await asyncio.wait_for(
+            embedder.embed([EMBEDDING_PROBE_TEXT]), EMBEDDING_PROBE_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        detail = (
+            f"{model} did not answer within {EMBEDDING_PROBE_TIMEOUT_SECONDS:g} s — the "
+            "provider may be rate-limiting this key. Wait a minute and save again, or "
+            "save with vote similarity off."
+        )
     except httpx.HTTPStatusError as e:
         # The body first: the status line alone says nothing about which model.
         detail = f"{model} refused: {e.response.status_code} {_provider_message(e.response)}"

@@ -1,5 +1,7 @@
 """`probe_embedder`: one real embedding call, reported as a check, never raising."""
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -85,4 +87,18 @@ async def test_a_transport_error_is_a_failure_not_an_exception(requests) -> None
     check = await probe_embedder("gemini", "")
 
     assert check.status == "fail"
+    assert "sentinel-key-123" not in check.detail
+
+
+async def test_a_rate_limited_embedder_fails_within_the_probe_bound(requests, monkeypatch) -> None:
+    """The embedders back off on 429 for ~90 s; a Save must not wait that out."""
+    monkeypatch.setattr("cyris.diagnostics.doctor.EMBEDDING_PROBE_TIMEOUT_SECONDS", 0.2)
+    requests.answer(lambda r: httpx.Response(429, json={"error": {"message": "slow down"}}))
+
+    check = await asyncio.wait_for(probe_embedder("gemini", ""), timeout=5)
+
+    assert check.status == "fail"
+    assert check.detail.startswith("gemini-embedding-001 did not answer within 0.2 s")
+    assert "rate-limiting" in check.detail
+    assert "save with vote similarity off" in check.detail
     assert "sentinel-key-123" not in check.detail
