@@ -219,7 +219,7 @@ class HtmlDigestWriter:
                     key=lambda section: -sum(len(item.urls) for item in section.items),
                 )
                 card = HeadlineCard(
-                    lead=features[0].title if features else None,
+                    lead=(features[0].title or None) if features else None,
                     count=content.articles_included,
                     topics=" · ".join(section.heading for section in largest[:2]) or None,
                 )

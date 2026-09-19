@@ -475,6 +475,16 @@ def test_a_run_with_no_lead_story_shows_no_card_title(tmp_path):
     assert "<h2" not in _card_for(tmp_path, _content("2026-04-15", "evening"))
 
 
+def test_a_lead_story_with_an_empty_title_shows_no_card_title(tmp_path):
+    content = _content(
+        "2026-04-15",
+        "evening",
+        featured_articles=[DigestSection(heading="F", items=_items(""))],
+    )
+
+    assert "<h2" not in _card_for(tmp_path, content)
+
+
 def test_the_card_title_is_escaped(tmp_path):
     content = _content(
         "2026-04-15",
