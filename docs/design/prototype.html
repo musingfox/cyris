@@ -204,7 +204,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .front-card h2 { font-weight: 600; font-size: calc(22px * var(--type-scale)); line-height: 1.3; text-wrap: balance; }
 
 /* ---- digest ---- */
-.digest-head { display: grid; grid-template-columns: minmax(0, 1fr) min(37vw, 320px); gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); overflow-x: clip; }
+.digest-head { display: grid; grid-template-columns: minmax(0, 1fr) min(37vw, 37vw / var(--type-scale), 320px); gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); overflow-x: clip; }
 .issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale)); line-height: .92; letter-spacing: -.04em; }
 .issue-title em { font-style: italic; color: var(--accent); }
 .stats { background: var(--surface); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); }
@@ -768,7 +768,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <form class="tab" data-tab="digest" hidden>
           <div class="tab-head">
             <h2 class="heading">Digest</h2>
-            <p class="small">When issues are published and what each one holds.</p>
+            <p class="small">When issues are published, what each one holds, and how large its text reads.</p>
           </div>
           <div class="form">
             <div class="field">
@@ -806,6 +806,12 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
               <textarea class="input" id="style-prompt" rows="4"></textarea>
               <p class="small">Your tone or focus for the summaries, in your own words.</p>
               <details class="more"><summary>More</summary><p class="small">Empty means none.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="type-scale">Type size</label>
+              <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1" selected>Default</option><option value="1.125">Larger</option></select>
+              <p class="small">How large the text is on every page.</p>
+              <details class="more"><summary>More</summary><p class="small">It applies within a minute, to issues already published too, except those from before 2026-09-18 and pages opened on pages.dev directly.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>

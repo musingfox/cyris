@@ -89,7 +89,8 @@ updated: 2026-09-19
 - **每個 `font-size` 都寫成 `calc(基準值 * var(--type-scale))`**，clamp 也包在裡面，例如
   `calc(clamp(52px, 8vw, 96px) * var(--type-scale))`。之後的字級調整設定（`docs/architecture.md`
   §7 #35）只改倍率，不改這張表。
-- 控制項高度、欄寬與間距不跟著倍率縮放。
+- 控制項高度、欄寬與間距不跟著倍率縮放。唯一例外是 digest 刊頭的 stats 欄（§6）：倍率大於 1 時跟著收窄，倍率 1 以下與基準相同。
+- 倍率只有三個值：0.875、1、1.125。它是 D1 `settings` 的 `digest.type_scale`，在 `/settings` 的 Digest 分類設定；app Worker 把 `<style>html:root{--type-scale:X}</style>` 加進它送出的每一個 HTML 頁面，所以已發布的期數也會跟著變（2026-09-18 以前的期數字級是寫死的，不受影響）。直接開 pages.dev 一律是 1。
 - 大寫只寫在 CSS（`text-transform: uppercase`），HTML 裡的字維持正常大小寫。
 
 | 角色 | 規格 | 用在 |
@@ -170,7 +171,7 @@ page head（label、display、small 說明）之下，最新一期是頭版卡�
 ### digest
 
 上方是 site bar 與 issue bar。刊頭左邊是 issue title（`h1`），右邊是 stats card；stats 欄寬
-`min(37vw, 320px)`，隨頁寬收窄，讓字體載入前較寬的備用字型也不會壓到它。720px 以下改為單欄
+`min(37vw, 37vw / var(--type-scale), 320px)`：隨頁寬收窄，讓字體載入前較寬的備用字型也不會壓到它；倍率大於 1 時再按倍率收窄，讓放大的 issue title 在 721px 以上仍不壓到 stats card。倍率 1 以下的欄寬與基準相同。720px 以下改為單欄
 `minmax(0, 1fr)`。刊頭一律 `overflow-x: clip`，備用字型撐寬的標題在手機上會被裁掉，而不是讓整頁橫向捲動。
 
 內文依序是 Top story、Features、In Focus、Following、On the Radar、The Wire 六個 section，沒有內容的
@@ -213,7 +214,7 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 | hash | 分類 | 內容 |
 |---|---|---|
 | `#model` | Model | LLM provider（選項清單，右側顯示金鑰是否就緒，最後一項 `None — plain excerpts` 表示不呼叫 LLM、只放原文摘錄）、model、儲存前的實際呼叫驗證；embedding provider 與 model、vote similarity 開關、比對的票數 |
-| `#digest` | Digest | 兩個發布時段、時區、featured 區塊數、一期的篇數上限、輸出語言、風格提示（多行輸入框） |
+| `#digest` | Digest | 兩個發布時段、時區、featured 區塊數、一期的篇數上限、輸出語言、風格提示（多行輸入框）、字級（下拉：Smaller 0.875 / Default 1 / Larger 1.125；未設定時顯示 `Not set`） |
 | `#pipeline` | Pipeline | 回溯的時數、一次處理的篇數上限、featured 與 summary 兩個分數門檻、三個步驟各讀多少字元 |
 | `#notifications` | Notifications | Discord webhook，已存的值遮罩顯示；danger `Turn off` 用破壞性確認，關閉後欄位清空並顯示 `Notifications are off.` |
 | `#sources` | Sources | 類型篩選（All / RSS / Newsletter）與 `Add source`；表格欄位為名稱、類型、tier、feed 或 sender、tags；點列在原地展開編輯；表單只顯示該類型需要的欄位；`Retire` 用破壞性確認，但拒絕退休最後一個來源 |
