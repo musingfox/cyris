@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -29,6 +30,18 @@ def _features(content: DigestContent) -> list[DigestItem]:
         for section in [*content.featured_articles, *content.thematic_summaries]
         for item in section.items
     ]
+
+
+@dataclass(frozen=True)
+class HeadlineCard:
+    """What the archive's headline card says beyond its issue's date and period.
+
+    None is absent, as in the history rows; a count of 0 is a count and shows.
+    """
+
+    lead: str | None = None
+    count: int | None = None
+    topics: str | None = None
 
 
 class HtmlDigestWriter:
@@ -185,7 +198,7 @@ class HtmlDigestWriter:
         )
 
         latest = digests[0] if digests else None
-        card: dict = {}
+        card = HeadlineCard()
         if content is not None:
             this_run = self.digest_filename(content.date, content.period)
             listed = next((d for d in digests if d["filename"] == this_run), None)
@@ -194,14 +207,16 @@ class HtmlDigestWriter:
                 # issue this run is rendering, and only from memory.
                 latest = listed
                 features = _features(content)
-                card["lead"] = features[0].title if features else None
-                card["count"] = content.articles_included
                 # A cluster's members are its URLs: one item can hold a whole story.
                 largest = sorted(
                     content.news_clusters,
                     key=lambda section: -sum(len(item.urls) for item in section.items),
                 )
-                card["topics"] = " · ".join(section.heading for section in largest[:2])
+                card = HeadlineCard(
+                    lead=features[0].title if features else None,
+                    count=content.articles_included,
+                    topics=" · ".join(section.heading for section in largest[:2]) or None,
+                )
 
         months: dict[str, list[dict]] = {}
         for digest in digests:

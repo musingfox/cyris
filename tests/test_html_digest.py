@@ -680,6 +680,31 @@ def test_the_local_archive_leads_with_this_runs_issue(tmp_path):
     assert [row for row in _rows(index) if 'class="small"' in row] == []
 
 
+def _card_of(card: html_digest.HeadlineCard) -> str:
+    """The headline card the archive template draws from `card` alone."""
+    issue = {"date": "2026-04-16", "period": "morning", "filename": "x.html", "raw_filename": None}
+    template = HtmlDigestWriter("unused").env.get_template("index.html.j2")
+    return _card(template.render(digests=[issue], latest=issue, card=card, months=[]))
+
+
+def test_a_card_field_set_to_none_is_left_off():
+    card = _card_of(html_digest.HeadlineCard())
+    assert "<h2>" not in card
+    assert 'class="data"' not in card
+    assert 'class="small"' not in card
+
+
+def test_a_card_count_of_zero_still_shows():
+    assert '<span class="data">0 articles</span>' in _card_of(html_digest.HeadlineCard(count=0))
+
+
+def test_the_archive_checks_an_absent_field_one_way():
+    source = (Path(html_digest.__file__).parent / "templates" / "index.html.j2").read_text()
+    conditions = re.findall(r"{%\s*if\s+((?:card|digest)\b[^%]*?)\s*%}", source)
+    assert len(conditions) == 4
+    assert [c for c in conditions if not c.endswith(" is not none")] == []
+
+
 def test_a_digest_is_named_by_its_date_and_period():
     assert HtmlDigestWriter.digest_filename("2026-04-16", "evening") == "2026-04-16-evening.html"
 
