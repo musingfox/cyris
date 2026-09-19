@@ -843,8 +843,8 @@ def test_the_raw_probe_fixture_refuses_an_unknown_kind():
 
 def test_every_raw_probe_check_is_named_once_and_can_be_sabotaged():
     unsabotaged = cdp_probe.Check(id="a", fixture="signed-in", path="/p", script="", sabotage="")
-    assert raw_probe.registry_problems([unsabotaged]) == ["a: no sabotage"]
-    assert raw_probe.registry_problems(raw_probe.CHECKS) == []
+    assert cdp_probe.registry_problems([unsabotaged], raw_probe.KINDS) == ["a: no sabotage"]
+    assert cdp_probe.registry_problems(raw_probe.CHECKS, raw_probe.KINDS) == []
     assert {check.id for check in raw_probe.CHECKS} >= EXPECTED_RAW_IDS
 
 
@@ -940,8 +940,16 @@ def test_the_digest_probe_runs_on_the_shared_core():
     assert digest_probe.Check is cdp_probe.Check
 
 
+@pytest.mark.parametrize("probe", [raw_probe, digest_probe], ids=["raw", "digest"])
+def test_a_vote_probe_takes_its_scaffolding_from_the_core(probe):
+    source = Path(probe.__file__).read_text()
+    for copied in ("class Fixture", "def registry_problems", 'Authorization: "x"'):
+        assert copied not in source, copied
+    assert isinstance(probe.build_fixture("signed-in"), cdp_probe.VoteFixture)
+
+
 def test_every_digest_probe_check_is_named_once_and_can_be_sabotaged():
     unsabotaged = cdp_probe.Check(id="a", fixture="signed-in", path="/p", script="", sabotage="")
-    assert digest_probe.registry_problems([unsabotaged]) == ["a: no sabotage"]
-    assert digest_probe.registry_problems(digest_probe.CHECKS) == []
+    assert cdp_probe.registry_problems([unsabotaged], digest_probe.KINDS) == ["a: no sabotage"]
+    assert cdp_probe.registry_problems(digest_probe.CHECKS, digest_probe.KINDS) == []
     assert {check.id for check in digest_probe.CHECKS} >= EXPECTED_DIGEST_IDS

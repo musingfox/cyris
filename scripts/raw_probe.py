@@ -22,13 +22,20 @@ import asyncio
 import dataclasses
 import json
 import tempfile
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 from aiohttp import web
-from cdp_probe import Check, base_prelude, chromium, require_node, run_all
+from cdp_probe import (
+    SEND_CREDENTIAL,
+    Check,
+    VoteFixture,
+    base_prelude,
+    chromium,
+    require_node,
+    run_all,
+)
 from css_computed import find_browser
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
@@ -84,16 +91,7 @@ def render_page() -> str:
         return HtmlDigestWriter(Path(unused)).render_raw(DATE, PERIOD, _articles())
 
 
-@dataclass
-class Fixture:
-    """The raw page and a stand-in `/api/vote`; `posts` is the receipt of every vote."""
-
-    app: web.Application
-    posts: list[dict] = field(default_factory=list)
-    post_headers: list[dict] = field(default_factory=list)
-
-
-def build_fixture(kind: str) -> Fixture:
+def build_fixture(kind: str) -> VoteFixture:
     """Serve the raw page with the `/api/vote` answers of one deployment `kind`.
 
     `signed-in` answers the probe and takes votes; `signed-out` refuses the
@@ -105,7 +103,7 @@ def build_fixture(kind: str) -> Fixture:
         raise ValueError(f"unknown fixture {kind!r}")
     page = render_page()
     app = web.Application()
-    fixture = Fixture(app)
+    fixture = VoteFixture(app)
 
     async def serve_page(_: web.Request) -> web.Response:
         return web.Response(text=page, content_type="text/html")
@@ -130,20 +128,6 @@ def build_fixture(kind: str) -> Fixture:
         app.router.add_get("/api/vote", probe)
         app.router.add_post("/api/vote", vote)
     return fixture
-
-
-def registry_problems(checks: Iterable[Check]) -> list[str]:
-    """Name every check the self-test could not trust: repeated, unsabotaged, or unserved."""
-    problems, seen = [], set()
-    for check in checks:
-        if check.id in seen:
-            problems.append(f"{check.id}: named twice")
-        seen.add(check.id)
-        if not (check.sabotage.strip() or check.sabotage_preload):
-            problems.append(f"{check.id}: no sabotage")
-        if check.fixture not in KINDS:
-            problems.append(f"{check.id}: unknown fixture {check.fixture}")
-    return problems
 
 
 # Installed before the page loads: every fetch the page makes is recorded once it settles.
@@ -230,12 +214,12 @@ def vote_body(slug: str, vote: str) -> dict:
     return {"url": url_of(slug), "vote": vote, "digest_date": DATE}
 
 
-def _posted(*wanted: dict) -> Callable[[Fixture], str | None]:
+def _posted(*wanted: dict) -> Callable[[VoteFixture], str | None]:
     """A receipt: the stand-in `/api/vote` took exactly these vote bodies, in order."""
     return lambda fixture: None if fixture.posts == list(wanted) else f"posts: {fixture.posts}"
 
 
-def _bare_votes(fixture: Fixture) -> str | None:
+def _bare_votes(fixture: VoteFixture) -> str | None:
     """A receipt: every vote arrived as url, vote and date alone, with no credential."""
     if not fixture.posts:
         return "no vote arrived"
@@ -487,13 +471,7 @@ _CHECKS: list[Check] = [
             await waitFor(() => deck()[0] === "3 remaining", "the next card");
         """,
         script="""expect(deck()[2] === "Pending Three", `title: ${deck()[2]}`);""",
-        # A page that learned a credential would send it with the vote.
-        sabotage_preload="""{
-const realFetch = window.fetch;
-window.fetch = (input, init) => init && init.method === "POST"
-  ? realFetch(input, {...init, headers: {...init.headers, Authorization: "x"}})
-  : realFetch(input, init);
-}""",
+        sabotage_preload=SEND_CREDENTIAL,
         receipt=_bare_votes,
     ),
     Check(

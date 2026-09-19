@@ -24,8 +24,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Awaitable, Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -43,6 +43,24 @@ class Fixture(Protocol):
     """What the core needs from a probe's fixture: the app to serve."""
 
     app: web.Application
+
+
+@dataclass
+class VoteFixture:
+    """A page served beside a stand-in `/api/vote`; `posts` is the receipt of every vote."""
+
+    app: web.Application
+    posts: list[dict] = field(default_factory=list)
+    post_headers: list[dict] = field(default_factory=list)
+
+
+# Installed before the page loads: a page that learned a credential would send it with a POST.
+SEND_CREDENTIAL = """{
+const realFetch = window.fetch;
+window.fetch = (input, init) => init && init.method === "POST"
+  ? realFetch(input, {...init, headers: {...init.headers, Authorization: "x"}})
+  : realFetch(input, init);
+}"""
 
 
 @dataclass(frozen=True)
@@ -105,6 +123,23 @@ class Check:
     @property
     def paths(self) -> tuple[str, ...]:
         return (self.path,) if isinstance(self.path, str) else self.path
+
+
+def registry_problems(checks: Iterable[Check], kinds: Iterable[str]) -> list[str]:
+    """Name every check the self-test could not trust: repeated, unsabotaged, or unserved.
+
+    `kinds` are the fixtures the probe can build.
+    """
+    problems, seen, served = [], set(), set(kinds)
+    for check in checks:
+        if check.id in seen:
+            problems.append(f"{check.id}: named twice")
+        seen.add(check.id)
+        if not (check.sabotage.strip() or check.sabotage_preload):
+            problems.append(f"{check.id}: no sabotage")
+        if check.fixture not in served:
+            problems.append(f"{check.id}: unknown fixture {check.fixture}")
+    return problems
 
 
 def base_prelude(scrolls_sideways: tuple[str, ...] = ()) -> str:
