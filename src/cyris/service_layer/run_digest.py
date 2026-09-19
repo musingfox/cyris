@@ -47,9 +47,10 @@ def _render_site(deps: "Deps", content, collected) -> dict[str, bytes]:
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
-    # The archive page lists every digest the site holds, this run's included.
+    # The archive page lists every digest the site holds, this run's included, and
+    # leads with this run's issue: its title and count come from memory, not D1.
     known = sorted({*deps.site_filenames(), *(p.lstrip("/") for p in pages)})
-    pages["/index.html"] = writer.render_index(known)
+    pages["/index.html"] = writer.render_index(known, content=content)
     return {path: html.encode("utf-8") for path, html in pages.items()}
 
 

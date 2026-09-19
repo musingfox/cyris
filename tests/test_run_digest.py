@@ -22,6 +22,8 @@ from cyris.domain.models import (
     Article,
     ArticleState,
     DigestContent,
+    DigestItem,
+    DigestSection,
     StoredArticle,
     Tier,
     UsageStats,
@@ -523,7 +525,11 @@ def _stored_article() -> StoredArticle:
 def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
     tmp_path: Path, collected: bool, linked: bool
 ) -> None:
-    deps = SimpleNamespace(html_writer=HtmlDigestWriter(tmp_path), site_filenames=lambda: [])
+    deps = SimpleNamespace(
+        html_writer=HtmlDigestWriter(tmp_path),
+        site_filenames=lambda: [],
+        archive_counts=lambda: {},
+    )
     content = DigestContent(
         date="2026-04-15",
         period="evening",
@@ -541,6 +547,46 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
     digest = pages["/2026-04-15-evening.html"].decode("utf-8")
     assert ('<a href="2026-04-15-evening-raw.html">All articles</a>' in digest) is linked
     assert (">All articles</a>" in digest) is linked
+
+
+def _published_index(deps, content: DigestContent) -> str:
+    return _render_site(deps, content, [])["/index.html"].decode("utf-8")
+
+
+def _run_content(date: str, period: str, lead: str, included: int) -> DigestContent:
+    return DigestContent(
+        date=date,
+        period=period,
+        sources_processed=1,
+        articles_received=included,
+        articles_included=included,
+        usage=UsageStats(),
+        featured_articles=[
+            DigestSection(
+                heading="F",
+                items=[
+                    DigestItem(title=lead, summary="S", sources=["Src"], urls=["https://x.test"])
+                ],
+            )
+        ],
+    )
+
+
+def test_the_published_archive_leads_with_this_runs_issue(tmp_path: Path) -> None:
+    deps = SimpleNamespace(
+        html_writer=HtmlDigestWriter(tmp_path),
+        site_filenames=lambda: ["2026-04-15-evening.html"],
+        archive_counts=lambda: {},
+    )
+
+    index = _published_index(deps, _run_content("2026-04-16", "evening", "Run lead", 7))
+
+    card = index[index.index('<article class="front-card">') :].split("</article>", 1)[0]
+    assert '<span class="date">2026-04-16</span>' in card
+    assert "<h2>Run lead</h2>" in card
+    assert '<span class="data">7 articles</span>' in card
+    panels = index[index.index('<section class="panel">') :]
+    assert 'href="2026-04-15-evening.html"' in panels
 
 
 async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Path) -> None:
