@@ -2,14 +2,15 @@
 {% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>{% endif %}
 {%- endmacro -%}
 {#- Sources of a news cluster: one link per article, so a busy topic renders five of
-    them and wraps into a mess on a phone. Fold past two behind a native <details>. -#}
+    them and wraps into a mess on a phone. Fold past two behind a native <details>.
+    Unfolded, they stay in one span, or the flex meta row would gap them apart. -#}
 {% macro source_links(item) -%}
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
 {%- for url in urls %}{% set label = url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url %}{% if url.startswith('http') %}<a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
 {%- endmacro -%}
 {% macro source_list(item) -%}
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
-{% if urls | length > 2 %}<details class="src-fold"><summary>{{ urls | length }} sources</summary><span class="src-list">{{ source_links(item) }}</span></details>{% else %}{{ source_links(item) }}{% endif %}
+{% if urls | length > 2 %}<details class="src-fold"><summary>{{ urls | length }} sources</summary><span class="src-list">{{ source_links(item) }}</span></details>{% else %}<span class="src-links">{{ source_links(item) }}</span>{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -159,16 +160,22 @@
             max-width: 70ch;
         }
 
-        .lead-story .meta {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            color: var(--text-faint);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
+        /* === META ROWS === */
+        /* One row model for every item: flex, so a vote group is a flex item
+           whatever display the vote probe gives it. */
+        .meta {
             display: flex;
             flex-wrap: wrap;
-            gap: var(--s-3);
             align-items: center;
+            gap: var(--s-3);
+            font-family: var(--font-mono);
+            font-size: calc(14px * var(--type-scale));
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+        }
+
+        .meta.ruled {
             margin-top: var(--s-6);
             padding-top: var(--s-5);
             border-top: 1px dashed var(--border-strong);
@@ -219,19 +226,7 @@
             font-size: calc(20px * var(--type-scale));
             line-height: 1.65;
             color: var(--text-dim);
-            margin-bottom: 18px;
-        }
-
-        .featured-item .meta {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            color: var(--text-faint);
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: center;
+            margin-bottom: var(--s-4);
         }
 
         .source-tag {
@@ -256,9 +251,8 @@
             font-size: calc(20px * var(--type-scale));
             color: var(--text-dim);
             line-height: 1.65;
+            margin-bottom: var(--s-2);
         }
-
-        .news-cluster .meta { margin-top: 10px; }
 
         /* === ARTICLE ITEM (Thematic) === */
         .thematic-block {
@@ -290,20 +284,8 @@
         .article-item .summary {
             font-size: calc(20px * var(--type-scale));
             color: var(--text-dim);
-            margin-bottom: 12px;
+            margin-bottom: var(--s-3);
             line-height: 1.65;
-        }
-
-        .article-item .meta {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            color: var(--text-faint);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            align-items: center;
         }
 
         /* === ATTENTION (2-col) === */
@@ -328,15 +310,7 @@
             font-size: calc(20px * var(--type-scale));
             color: var(--text-dim);
             line-height: 1.55;
-            margin-bottom: 10px;
-        }
-
-        .news-cluster .meta, .attention-item .meta {
-            font-family: var(--font-mono);
-            font-size: calc(14px * var(--type-scale));
-            color: var(--text-faint);
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
+            margin-bottom: var(--s-2);
         }
 
         /* === HEADLINES (compact terminal-list) === */
@@ -465,7 +439,7 @@
                         {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
                     </h2>
                     <p class="summary">{{ lead_story.summary }}</p>
-                    <div class="meta">
+                    <div class="meta ruled">
                         <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>{% if lead_story.ref_urls | length > 1 %} {{ source_list(lead_story) }}{% endif %}
                         {{ promote_btn(lead_story) }}
                     </div>

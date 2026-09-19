@@ -548,18 +548,15 @@ TYPE_ROLES = [
     (14, "digest", ".section-description", "20px"),
     (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
     (18, "digest", ".lead-story .summary", "20px"),
-    (19, "digest", ".lead-story .meta", "14px"),
+    (19, "digest", ".meta", "14px"),
     (20, "digest", ".item-title.lg", "22px"),
     (21, "digest", ".featured-item .summary", "20px"),
-    (22, "digest", ".featured-item .meta", "14px"),
     (23, "digest", ".pill", "14px"),
     (25, "digest", ".news-cluster .summary", "20px"),
     (27, "digest", ".thematic-block h3::before", "14px"),
     (28, "digest", ".item-title", "20px"),
     (29, "digest", ".article-item .summary", "20px"),
-    (30, "digest", ".article-item .meta", "14px"),
     (32, "digest", ".attention-item .snippet", "20px"),
-    (33, "digest", ".news-cluster .meta, .attention-item .meta", "14px"),
     (34, "digest", ".headline-item", "16px"),
     (35, "digest", ".headline-item .idx", "16px"),
     (36, "index", ".archive-row .date, .front-card .date", "22px"),
@@ -643,6 +640,28 @@ def test_every_item_title_takes_the_title_role_from_one_rule() -> None:
         if declaration.split(":", 1)[0] in typeset
     ]
     assert per_kind == []
+
+
+def test_every_meta_row_is_one_base_rule_and_the_lead_names_its_variant() -> None:
+    digest = _parsed("digest")
+    assert sorted(key for key in digest if ".meta" in key) == [".meta", ".meta.ruled"]
+    assert {
+        "display: flex",
+        "flex-wrap: wrap",
+        "align-items: center",
+        "gap: var(--s-3)",
+        "font-family: var(--font-mono)",
+        "font-size: calc(14px * var(--type-scale))",
+        "text-transform: uppercase",
+        "letter-spacing: 0.08em",
+        "color: var(--text-faint)",
+    } <= set(digest[".meta"])
+    assert digest[".meta.ruled"] == {
+        "margin-top: var(--s-6)",
+        "padding-top: var(--s-5)",
+        "border-top: 1px dashed var(--border-strong)",
+    }
+    assert '<div class="meta ruled">' in _source("digest")
 
 
 def test_the_lead_story_is_the_prototype_lead_card() -> None:

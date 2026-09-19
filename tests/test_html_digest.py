@@ -1051,9 +1051,12 @@ def test_promote_buttons_on_every_section(tmp_path):
     # The wire value is what a published page would send back, so that is what is
     # asserted; the button's old label is a string this codebase no longer holds.
     assert 'data-vote="deep"' not in html
-    # Every article in the cluster stays individually openable.
-    assert '<a href="https://na.com" target="_blank" rel="noopener">A</a>' in html
-    assert '<a href="https://nb.com" target="_blank" rel="noopener">B</a>' in html
+    # Every article in the cluster stays individually openable, and the links stay one
+    # flex item of the meta row rather than splitting apart at its gap.
+    assert (
+        '<span class="src-links"><a href="https://na.com" target="_blank" rel="noopener">A</a>'
+        ' · <a href="https://nb.com" target="_blank" rel="noopener">B</a></span>'
+    ) in html
     # Two sources is not a mess; folding it would cost a tap for nothing.
     assert "<details" not in html
 
