@@ -109,9 +109,8 @@ class TriageServer:
     async def _handle_get_settings(self, request: web.Request) -> web.Response:
         """Every runtime setting and which are missing, and what this machine could switch to."""
         from cyris.adapters.notify import mask_discord_webhook_url
-        from cyris.bootstrap import default_models, embedding_defaults
+        from cyris.bootstrap import EMBEDDING_ENV, default_models, embedding_defaults
         from cyris.config import GRADE_D_KEYS, LLMProviderConfig
-        from cyris.diagnostics.doctor import EMBEDDING_ENV
         from cyris.service_layer.prompts import _language_names
 
         values = {key: self._values.get(key) for key in GRADE_D_KEYS}

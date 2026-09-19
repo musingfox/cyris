@@ -216,12 +216,6 @@ EMBEDDING_PROBE_TEXT = "cyris embedding probe"
 # and a Save cannot. This bound still leaves room for one short retry.
 EMBEDDING_PROBE_TIMEOUT_SECONDS = 15
 
-# The key each embedding provider reads, then anything else its REST path needs.
-EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
-    "workers_ai": ("CLOUDFLARE_EMBEDDING_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"),
-    "gemini": ("GEMINI_API_KEY",),
-}
-
 
 def _provider_message(response: httpx.Response) -> str:
     """The provider's own words from an error body: Gemini's `error`, Cloudflare's `errors`."""
@@ -245,8 +239,7 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
     Never raises. Gemini carries its key in the URL query, so every key value is
     scrubbed from the detail before it can reach a page or a log.
     """
-    from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
-    from cyris.bootstrap import embedding_defaults
+    from cyris.bootstrap import EMBEDDING_ENV, embedding_defaults, make_embedder
 
     model = model or embedding_defaults(provider)["model"]
     env = EMBEDDING_ENV[provider]
@@ -254,10 +247,7 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
     if unset:
         return Check("embedding probe", "fail", f"{unset[0]} is not set")
     key = os.environ[env[0]]
-    if provider == "gemini":
-        embedder = GeminiEmbedder(api_key=key, model=model)
-    else:
-        embedder = WorkersAIEmbedder(api_token=key, account_id=os.environ[env[1]], model=model)
+    embedder = make_embedder(provider, model)
     try:
         [vector] = await asyncio.wait_for(
             embedder.embed([EMBEDDING_PROBE_TEXT]), EMBEDDING_PROBE_TIMEOUT_SECONDS

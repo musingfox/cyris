@@ -66,6 +66,30 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     return AnthropicClient(cfg.api_key, model)
 
 
+# The key each embedding provider reads, then anything else its REST path needs.
+# workers_ai's is deliberately not CLOUDFLARE_API_TOKEN. That one carries D1 and
+# Pages — measured 2026-08-30: D1 200, Pages 200, upload-token 200, Workers AI 401.
+# Inference is a separate token because it is a separate permission.
+EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
+    "workers_ai": ("CLOUDFLARE_EMBEDDING_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"),
+    "gemini": ("GEMINI_API_KEY",),
+}
+
+
+def make_embedder(provider: str, model: str) -> Any:
+    """The embedder for `provider`, keyed from the environment; "" is its default model."""
+    model = model or embedding_defaults(provider)["model"]
+    env = [os.environ.get(name, "") for name in EMBEDDING_ENV[provider]]
+    if provider == "gemini":
+        from cyris.adapters.embedding import GeminiEmbedder
+
+        return GeminiEmbedder(api_key=env[0], model=model)
+
+    from cyris.adapters.embedding import WorkersAIEmbedder
+
+    return WorkersAIEmbedder(api_token=env[0], account_id=env[1], model=model)
+
+
 def build_embedder(cfg: Config) -> Any | None:
     """The embedder for vote similarity, or None when it is switched off.
 
@@ -76,24 +100,7 @@ def build_embedder(cfg: Config) -> Any | None:
     vote = cfg.app.vote_similarity
     if not vote.enabled:
         return None
-    defaults = embedding_defaults(vote.provider)
-    model = vote.model or defaults["model"]
-
-    if vote.provider == "gemini":
-        from cyris.adapters.embedding import GeminiEmbedder
-
-        return GeminiEmbedder(api_key=os.environ.get("GEMINI_API_KEY", ""), model=model)
-
-    from cyris.adapters.embedding import WorkersAIEmbedder
-
-    # Deliberately not CLOUDFLARE_API_TOKEN. That one carries D1 and Pages —
-    # measured 2026-08-30: D1 200, Pages 200, upload-token 200, Workers AI 401.
-    # Inference is a separate token because it is a separate permission.
-    return WorkersAIEmbedder(
-        api_token=os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", ""),
-        account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
-        model=model,
-    )
+    return make_embedder(vote.provider, vote.model)
 
 
 def embedding_threshold(cfg: Config) -> float:

@@ -102,3 +102,14 @@ async def test_a_rate_limited_embedder_fails_within_the_probe_bound(requests, mo
     assert "rate-limiting" in check.detail
     assert "save with vote similarity off" in check.detail
     assert "sentinel-key-123" not in check.detail
+
+
+def test_the_probe_builds_its_embedder_the_way_a_run_does() -> None:
+    """One provider switch: a probe that built its own could pass where a run fails."""
+    import inspect
+
+    from cyris.diagnostics import doctor
+
+    source = inspect.getsource(doctor)
+    assert "GeminiEmbedder(" not in source
+    assert "WorkersAIEmbedder(" not in source
