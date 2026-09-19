@@ -151,6 +151,23 @@ def test_each_body_section_is_headed_by_its_tag_alone():
     assert "section-heading" not in digest
 
 
+def test_the_heading_outline_skips_no_level():
+    levels = _main_text(receipt_fixtures()[1]).levels
+    assert levels
+    previous = 1  # the masthead's issue title
+    for level in levels:
+        assert level <= previous + 1, levels
+        previous = level
+    assert max(levels) <= 4
+
+
+def test_clusters_are_headed_at_h3_and_radar_items_at_h4():
+    digest = receipt_fixtures()[1]
+    assert re.search(r'<div class="news-cluster">\s*<h3', digest)
+    assert re.search(r'<article class="attention-item">\s*<h4', digest)
+    assert "<h5" not in digest
+
+
 def test_render_optional_score(tmp_path):
     """C1 Test 3: DigestItem with score=None renders without error."""
     content = DigestContent(

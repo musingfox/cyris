@@ -247,7 +247,7 @@
             border-left-color: var(--accent);
         }
 
-        .news-cluster h4 {
+        .news-cluster h3 {
             font-size: calc(22px * var(--type-scale));
             font-weight: 600;
             letter-spacing: -0.01em;
@@ -344,20 +344,20 @@
 
         .attention-item:hover { border-color: var(--border-strong); }
 
-        .attention-item h5 {
+        .attention-item h4 {
             font-size: calc(20px * var(--type-scale));
             font-weight: 600;
             margin-bottom: 8px;
             letter-spacing: -0.005em;
         }
 
-        .attention-item h5 a {
+        .attention-item h4 a {
             color: var(--text);
             border: none;
             background: none;
         }
 
-        .attention-item h5 a:hover { color: var(--accent); }
+        .attention-item h4 a:hover { color: var(--accent); }
 
         .attention-item .snippet {
             font-size: calc(20px * var(--type-scale));
@@ -533,7 +533,7 @@
                 <h2 class="section-tag"><span class="label">In Focus</span></h2>
                 {% for cluster in news_clusters %}
                 <div class="news-cluster">
-                    <h4>{{ cluster.heading }}</h4>
+                    <h3>{{ cluster.heading }}</h3>
                     {% for item in cluster.items %}
                     <div class="summary">{{ item.summary }}</div>
                     {#- The vote is on the topic, so one group per cluster; the links stay per article.
@@ -580,7 +580,7 @@
                     <div class="attention-list">
                         {% for item in sec.items %}
                         <article class="attention-item">
-                            <h5>{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h5>
+                            <h4>{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
                             <p class="snippet">{{ item.summary }}</p>
                             <div class="meta"><span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %} {{ promote_btn(item) }}</div>
                         </article>
