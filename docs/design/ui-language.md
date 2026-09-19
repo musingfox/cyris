@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-09-18
+updated: 2026-09-19
 ---
 
 # cyris 介面設計規範
@@ -114,7 +114,9 @@ updated: 2026-09-18
 | **分段控制** | 外框 1px `--border-strong`、`--r-control`、格間 1px 分隔線；每格高 44px、左右 `--s-4`、label 角色、`--text-dim`。選中：`--surface-2` 底、`--accent` 字、2px `--accent` 底線。連結用 `aria-current="page"`，切換鈕用 `aria-pressed` |
 | **按鈕** | 高 44px、左右 `--s-5`、label 角色、`--r-control`。**primary**：`--accent` 底、`--bg` 字。**secondary**：`--surface-2` 底、`--border-strong` 框、`--text-dim` 字，hover 字變 `--text`。**danger**：透明底、`--warn` 字與框，hover 為 `--warn-tint` 底。小尺寸高 34px、左右 `--s-2`、字距 0.06em。disabled 一律 opacity .4 |
 | **輸入框 / 下拉** | 高 48px、左右 `--s-4`、`--bg-elev` 底、1px `--border-strong` 框、`--r-control`、Geist 18px。focus 時框變 `--accent`；驗證失敗時框變 `--warn`，下方接 notice |
+| **多行輸入框** | `<textarea class="input">`，沿用輸入框的底、框、圓角、字級與 focus、驗證失敗規則；高度由 `rows` 決定，上下內距 `--s-3`，只能垂直調整大小 |
 | **欄位** | 由上而下是 label 角色的欄位名、控制項、small 角色的說明，間距 `--s-2`。超過一句的說明收進 `<details>`，摘要文字為 `More` |
+| **分類清單圓點** | settings 分類清單每一項右側的兩個 6px 圓點：`--accent` 表示這個分類有未儲存的改動，`--warn` 表示這個分類缺必填值。兩者可以同時出現，缺值圓點在左 |
 | **選項清單** | 單選的多個選項（例如 provider）：`--bg-elev` 底、1px `--border` 框、`--r-control`；每列上下 `--s-3`、左右 `--s-4`、底線分隔、hover `--surface`。右側用 label 角色表示狀態；不可選的列 opacity .5 |
 | **頭版卡片** | archive 最新一期專用。`--surface` 底、1px `--border-strong` 框、方角、內距 `--s-6`。由上而下：`--accent` 的 `Latest` label 加日期（data）與時段（label）；當期第一篇的標題（title 角色）；篇數（data）；成員最多的前兩個主題標題（small，以 ` · ` 相連）；兩個 secondary 小按鈕 `Digest` 與 `All articles`。沒有資料的欄位直接省略，不顯示佔位字 |
 | **面板** | `--bg-elev` 底、1px `--border` 框、方角。可選的頭列：`--surface` 底、底線、上下 `--s-3` 左右 `--s-5`，左放標題、右放數量或動作。相鄰面板間距 `--s-5` |
@@ -192,17 +194,19 @@ page head 的 label 寫出文章數與來源數，下方是分段控制 `List` /
 
 | hash | 分類 | 內容 |
 |---|---|---|
-| `#model` | Model | provider（選項清單，右側顯示金鑰是否就緒）、model、儲存前的實際呼叫驗證。embedding provider（§7 #17）之後放這裡 |
-| `#digest` | Digest | 兩個發布時段、featured 區塊數 |
-| `#notifications` | Notifications | Discord webhook，已存的值遮罩顯示 |
-| `#sources` | Sources | 類型篩選（All / RSS / Newsletter）與 `Add source`；表格欄位為名稱、類型、tier、feed 或 sender、tags；點列在原地展開編輯；表單只顯示該類型需要的欄位；`Retire` 用破壞性確認 |
+| `#model` | Model | LLM provider（選項清單，右側顯示金鑰是否就緒，最後一項 `None — plain excerpts` 表示不呼叫 LLM、只放原文摘錄）、model、儲存前的實際呼叫驗證；embedding provider 與 model、vote similarity 開關、比對的票數 |
+| `#digest` | Digest | 兩個發布時段、時區、featured 區塊數、一期的篇數上限、輸出語言、風格提示（多行輸入框） |
+| `#pipeline` | Pipeline | 回溯的時數、一次處理的篇數上限、featured 與 summary 兩個分數門檻、三個步驟各讀多少字元 |
+| `#notifications` | Notifications | Discord webhook，已存的值遮罩顯示；danger `Turn off` 用破壞性確認，關閉後欄位清空並顯示 `Notifications are off.` |
+| `#sources` | Sources | 類型篩選（All / RSS / Newsletter）與 `Add source`；表格欄位為名稱、類型、tier、feed 或 sender、tags；點列在原地展開編輯；表單只顯示該類型需要的欄位；`Retire` 用破壞性確認，但拒絕退休最後一個來源 |
 
 - 頁寬 1240px。720px 以上左邊是 220px 的分類清單（label 角色，選中時 2px `--accent` 左線），
   以下改為頂部可橫向捲動的分頁列。
-- 每個分類頂部是 heading、一句 small 說明、值的來源 pill（`Stored in D1` 或 `Fallback: cyris.toml`）。
-  `/api/settings` 目前沒有逐鍵回傳來源，做到之前不顯示這個 pill（§8 第 5 步）。
-- 每個分類只有一個 primary `Save`，沒有改動時停用；有未儲存改動的分類在清單上加一個 6px
-  `--accent` 圓點。
+- 每個部署只有一個設定來源，所以頁面不顯示值從哪裡來。每個分類頂部是 heading 與一句 small 說明。
+- 缺必填值時，該欄位留空並標成驗證失敗，分類頂部用一則錯誤 notice 列出缺的欄位，清單上加 `--warn`
+  圓點。儲存後這三個標記一起消失。
+- 每個分類只有一個 primary `Save`，沒有改動時停用；有未儲存改動的分類在清單上加 `--accent` 圓點。
+- 欄位的名稱、說明與 `More` 文字以原型為準。
 
 ## 7. 樣式放在哪裡
 
@@ -226,7 +230,7 @@ digest、raw 掛上 site bar 與 issue bar；第 3 步依 §6 重做 settings；
 2. site bar 與 issue bar 上 archive、digest、raw；archive 列加入兩個入口；頁尾導覽移除（`ui-site-bar-and-issue-bar`）
 3. settings 依 §6 重做（`settings-page-layout`）
 4. raw 加上 triage view（`raw-page-triage-view`）；deck 已刪（`triage-raw-list-merge`）
-5. `/api/settings` 逐鍵回傳值的來源，settings 顯示來源 pill（`settings-value-origin-per-key`）
+5. 每個部署只有一個設定來源，settings 列出每個執行期設定並標出缺值，不顯示來源 pill（`settings-value-origin-per-key`，改為此用途）
 6. archive 改成頭版卡片加年月分段（`digest-index-archive-layout`）
 7. digest 內文的層級、`.meta` 與寬度死區，內文間距在這一步搬上刻度（`digest-issue-page-layout`）
 

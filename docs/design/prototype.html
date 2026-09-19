@@ -56,7 +56,7 @@ body {
 }
 
 a { color: inherit; }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
@@ -241,9 +241,10 @@ button, input, select { font: inherit; color: inherit; }
 .settings-nav a[aria-current="page"] { color: var(--accent); border-left-color: var(--accent); }
 .dirty-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; visibility: hidden; }
 .settings-nav a.dirty .dirty-dot { visibility: visible; }
+.nav-dots { display: flex; gap: var(--s-1); }
+.missing-dot { width: 6px; height: 6px; background: var(--warn); border-radius: 50%; visibility: hidden; }
+.settings-nav a.missing .missing-dot { visibility: visible; }
 .tab-head { display: grid; gap: var(--s-2); margin-bottom: var(--s-8); max-width: var(--measure); }
-.tab-head .origin { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
-.req { color: var(--warn); font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); letter-spacing: .06em; }
 
 .form { display: grid; gap: var(--s-6); max-width: var(--measure); }
 .field { display: grid; gap: var(--s-2); }
@@ -257,6 +258,8 @@ button, input, select { font: inherit; color: inherit; }
 .input:focus, .select:focus { border-color: var(--accent); outline: none; }
 .input.narrow { width: 96px; }
 .input.invalid { border-color: var(--warn); }
+.input[aria-invalid="true"] { border-color: var(--warn); }
+textarea.input { height: auto; padding-block: var(--s-3); line-height: 1.5; resize: vertical; }
 details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); list-style: none; }
 details.more summary::before { content: "+ "; }
 details.more[open] summary::before { content: "− "; }
@@ -551,10 +554,11 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
     <div class="settings">
       <nav class="settings-nav" aria-label="Settings sections">
-        <a class="label" href="#settings/model" data-tab="model">Model <span class="dirty-dot"></span></a>
-        <a class="label" href="#settings/digest" data-tab="digest">Digest <span class="dirty-dot"></span></a>
-        <a class="label" href="#settings/notifications" data-tab="notifications">Notifications <span class="dirty-dot"></span></a>
-        <a class="label" href="#settings/sources" data-tab="sources">Sources <span class="dirty-dot"></span></a>
+        <a class="label" href="#settings/model" data-tab="model">Model <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#settings/digest" data-tab="digest">Digest <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label missing" href="#settings/pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#settings/notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#settings/sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
       <div>
@@ -562,8 +566,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <form class="tab" data-tab="model" hidden>
           <div class="tab-head">
             <h2 class="heading">Model</h2>
-            <p class="small">The LLM the next run scores, filters and summarizes with.</p>
-            <div class="origin"><span class="pill">Stored in D1</span><span class="req">needs per-key origin from /api/settings</span></div>
+            <p class="small">The models the next run calls, and how it uses your votes.</p>
           </div>
           <div class="form">
             <fieldset class="field" style="border:0">
@@ -573,12 +576,38 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
                 <label class="choice"><input type="radio" name="provider" id="p-gemini" value="gemini" checked><span class="name">gemini</span><span class="label">Key ready</span></label>
                 <label class="choice"><input type="radio" name="provider" id="p-workers" value="workers_ai"><span class="name">workers_ai</span><span class="label">Key ready</span></label>
                 <label class="choice unavailable"><input type="radio" name="provider" id="p-openai" value="openai" disabled><span class="name">openai</span><span class="label" style="color:var(--warn)">OPENAI_API_KEY missing</span></label>
+                <label class="choice"><input type="radio" name="provider" id="p-none" value="none"><span class="name">None — plain excerpts</span><span class="label"></span></label>
               </div>
             </fieldset>
             <div class="field">
               <label class="label" for="model">Model</label>
               <input class="input" id="model" type="text" placeholder="Empty uses gemini-2.5-flash" autocomplete="off">
               <p class="small">Saving makes one real call to the provider first, so a typo is rejected here.</p>
+            </div>
+            <fieldset class="field" style="border:0">
+              <legend class="label" style="margin-bottom:8px">Embedding provider</legend>
+              <div class="choices" id="embedding-providers">
+                <label class="choice"><input type="radio" name="embedding-provider" id="e-workers" value="workers_ai" checked><span class="name">workers_ai</span><span class="label">Key ready</span></label>
+                <label class="choice"><input type="radio" name="embedding-provider" id="e-gemini" value="gemini"><span class="name">gemini</span><span class="label">Key ready</span></label>
+              </div>
+              <p class="small">The embedder vote similarity compares articles with.</p>
+              <details class="more"><summary>More</summary><p class="small">Its similarity cutoff is not set here: it follows the provider, because each model's scores run on their own scale.</p></details>
+            </fieldset>
+            <div class="field">
+              <label class="label" for="embedding-model-input">Embedding model</label>
+              <input class="input" id="embedding-model-input" type="text" placeholder="Empty uses @cf/baai/bge-m3" autocomplete="off">
+              <p class="small">Checked with one real call when vote similarity is on.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="vote-enabled">Vote similarity</label>
+              <select class="select" id="vote-enabled"><option value="false" selected>Off</option><option value="true">On</option></select>
+              <p class="small">Drop candidates close to an article you voted down.</p>
+              <details class="more"><summary>More</summary><p class="small">Preview what it would drop with <code>cyris vote-sim</code> before turning it on. Turning it on checks the embedder first.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="vote-seeds">Votes compared</label>
+              <input class="input narrow" id="vote-seeds" type="number" min="1" value="200">
+              <p class="small">How many of your most recent votes on each side a run compares against.</p>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
@@ -591,8 +620,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
         <form class="tab" data-tab="digest" hidden>
           <div class="tab-head">
             <h2 class="heading">Digest</h2>
-            <p class="small">When issues are published and how the page is laid out.</p>
-            <div class="origin"><span class="pill">Fallback: cyris.toml</span><span class="small">Saving stores it in D1.</span></div>
+            <p class="small">When issues are published and what each one holds.</p>
           </div>
           <div class="form">
             <div class="field">
@@ -601,16 +629,82 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
                 <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" value="8"></div>
                 <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" value="20"></div>
               </div>
-              <details class="more"><summary>More</summary><p class="small">Whole hours in the timezone from <code>[general]</code>. The tick is hourly, so half hours are refused rather than rounded down.</p></details>
+              <details class="more"><summary>More</summary><p class="small">Whole hours in the timezone below. The tick is hourly, so half hours are refused rather than rounded down.</p></details>
             </div>
             <div class="field">
-              <label class="label" for="featured">Featured sections</label>
-              <input class="input narrow" id="featured" type="number" min="1" max="20" value="5">
+              <label class="label" for="timezone">Timezone</label>
+              <input class="input" id="timezone" type="text" placeholder="Asia/Taipei" value="Asia/Taipei" autocomplete="off">
+              <p class="small">The clock the publish hours are read in.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="max-featured">Featured sections</label>
+              <input class="input narrow" id="max-featured" type="number" min="1" max="20" value="5">
               <p class="small">How many sections lead the page before the rest.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="max-output">Articles in the digest</label>
+              <input class="input narrow" id="max-output" type="number" min="1" value="15">
+              <p class="small">The most articles one issue lists.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="output-language">Output language</label>
+              <input class="input" id="output-language" type="text" list="languages" value="zh-Hant" autocomplete="off">
+              <datalist id="languages"><option value="zh-Hant"></option><option value="zh-Hans"></option><option value="en"></option><option value="ja"></option><option value="ko"></option><option value="fr"></option><option value="de"></option><option value="es"></option></datalist>
+              <p class="small">A BCP 47 tag, such as zh-Hant or en. Headlines and summaries are written in it.</p>
+              <details class="more"><summary>More</summary><p class="small">A tag not in the list is passed to the model as written.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="style-prompt">Style</label>
+              <textarea class="input" id="style-prompt" rows="4"></textarea>
+              <p class="small">Your tone or focus for the summaries, in your own words. Empty means none.</p>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
               <div class="notice" hidden>Publish hours 08:00 and 20:00. Applies from the next tick.</div>
+            </div>
+          </div>
+        </form>
+
+        <!-- PIPELINE -->
+        <form class="tab" data-tab="pipeline" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Pipeline</h2>
+            <p class="small">How far back each run looks, how much it reads, and where it cuts.</p>
+            <div class="notice err" id="pipeline-missing">Not set yet: Articles per run. The next run stops until they are saved.</div>
+          </div>
+          <div class="form">
+            <div class="field">
+              <label class="label" for="window-hours">Window (hours)</label>
+              <input class="input narrow" id="window-hours" type="number" min="1" max="168" value="24">
+              <p class="small">How far back a run looks for articles.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="max-articles">Articles per run</label>
+              <input class="input narrow" id="max-articles" type="number" min="1" aria-invalid="true">
+              <p class="small">The most articles one run scores and digests. Set it above a day's volume, or the run drops the rest.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="featured-threshold">Featured score</label>
+              <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" value="70">
+              <p class="small">A section can lead the page when one of its articles scores at least this.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="summarize-threshold">Summary score</label>
+              <input class="input narrow" id="summarize-threshold" type="number" min="0" max="100" value="70">
+              <p class="small">A summarize-tier article scoring below this is listed for attention instead of summarized.</p>
+            </div>
+            <div class="field">
+              <span class="label">Characters read</span>
+              <div class="field-row">
+                <div class="field"><label class="small" for="scoring-snippet">Scoring</label><input class="input narrow" id="scoring-snippet" type="number" min="1" value="1000"></div>
+                <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" value="1000"></div>
+                <div class="field"><label class="small" for="filter-snippet">Headlines</label><input class="input narrow" id="filter-snippet" type="number" min="1" value="500"></div>
+              </div>
+              <p class="small">How much of each article the model reads at each step. More costs more per call.</p>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" disabled>Save</button>
+              <div class="notice" hidden>Saved. Effective next run.</div>
             </div>
           </div>
         </form>
@@ -620,18 +714,20 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
           <div class="tab-head">
             <h2 class="heading">Notifications</h2>
             <p class="small">Where a finished issue is announced.</p>
-            <div class="origin"><span class="pill">Stored in D1</span></div>
           </div>
           <div class="form">
             <div class="field">
               <label class="label" for="webhook">Discord webhook</label>
               <input class="input" id="webhook" type="text" value="https://discord.com/api/webhooks/1398…/••••••••" autocomplete="off">
               <p class="small">To change it, paste the whole URL.</p>
-              <details class="more"><summary>More</summary><p class="small">It is saved only after Discord confirms it exists. When empty here, a run falls back to <code>[notify]</code> in cyris.toml, then <code>CYRIS_DISCORD_WEBHOOK_URL</code>. This page cannot turn notifications off: remove that Worker secret and any <code>[notify]</code> value.</p></details>
+              <p class="small" id="notify-state" hidden>Notifications are off.</p>
+              <details class="more"><summary>More</summary><p class="small">It is saved only after Discord confirms it exists. Turn off clears it: runs then finish without a message.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
               <div class="notice err" hidden>Discord answered 404: this webhook does not exist. Copy it again from the channel's Integrations page.</div>
+              <button class="btn danger" type="button" id="notify-off">Turn off</button>
+              <div class="notice" id="notify-result" hidden>Notifications are off. The next run finishes without a message.</div>
             </div>
           </div>
         </form>
@@ -641,7 +737,6 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
           <div class="tab-head">
             <h2 class="heading">Sources</h2>
             <p class="small">The feeds and newsletter senders the next run reads.</p>
-            <div class="origin"><span class="pill">Served from D1</span></div>
           </div>
           <div class="toolbar">
             <div class="seg" role="group" aria-label="Filter by type">
@@ -685,7 +780,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
     </div>
     <div class="editor-foot">
       <div class="actions-line"><button class="btn primary" type="button" data-act="save">Save source</button><button class="btn secondary" type="button" data-act="cancel">Cancel</button></div>
-      <button class="btn danger" type="button" data-act="retire">Retire</button>
+      <div class="actions-line"><div class="notice err" data-act="retire-result" hidden></div><button class="btn danger" type="button" data-act="retire">Retire</button></div>
     </div>
   </td></tr>
 </template>
@@ -881,7 +976,7 @@ function renderSources() {
       <td><span class="pill ${s.tier === "summarize" ? "score" : ""}">${s.tier}</span></td>
       <td class="target">${esc(s.url || s.email_match || "—")}</td>
       <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
-    </tr>`).join("");
+    </tr>`).join("") || `<tr><td class="small" colspan="5">No sources yet. The next run stops until one is added.</td></tr>`;
   if (openName !== null) openEditor(openName);
 }
 function openEditor(name) {
@@ -913,6 +1008,13 @@ function openEditor(name) {
       return;
     }
     clearTimeout(armTimer);
+    retire.classList.remove("armed"); retire.textContent = "Retire";
+    if (sources.length === 1) {
+      const result = $('[data-act="retire-result"]', ed);
+      result.textContent = `${name} is the last source. A run with none stops, so add another before retiring it.`;
+      result.hidden = false;
+      return;
+    }
     sources = sources.filter((x) => x.name !== name); openName = null; renderSources();
   };
   $('[data-act="cancel"]', ed).onclick = () => { openName = null; renderSources(); };
@@ -938,22 +1040,51 @@ renderSources();
 
 /* ---- settings forms: dirty tracking + save ---- */
 $$("form.tab").forEach((form) => {
-  const snapshot = () => $$("input, select", form).map((i) => i.type === "radio" ? i.checked : i.value).join("|");
+  const snapshot = () => $$("input, select, textarea", form).map((i) => i.type === "radio" ? i.checked : i.value).join("|");
   let saved = snapshot();
   const save = $('button[type="submit"]', form);
   const navLink = $(`.settings-nav a[data-tab="${form.dataset.tab}"]`);
+  const result = $(".actions-line .notice", form);
   form.addEventListener("input", () => {
     const dirty = snapshot() !== saved;
     save.disabled = !dirty;
     navLink.classList.toggle("dirty", dirty);
-    $(".notice", form).hidden = true;
+    $$(".actions-line .notice", form).forEach((n) => n.hidden = true);
   });
+  form.addEventListener("saved", () => { saved = snapshot(); save.disabled = true; navLink.classList.remove("dirty"); });
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    saved = snapshot(); save.disabled = true; navLink.classList.remove("dirty");
-    $(".notice", form).hidden = false;
+    form.dispatchEvent(new Event("saved"));
+    $$('[aria-invalid="true"]', form).forEach((i) => { if (i.value) i.removeAttribute("aria-invalid"); });
+    if (!$('[aria-invalid="true"]', form)) {
+      navLink.classList.remove("missing");
+      const missing = $(`#${form.dataset.tab}-missing`);
+      if (missing) missing.hidden = true;
+    }
+    result.hidden = false;
   });
 });
+
+/* ---- notifications: Turn off with the destructive double press ---- */
+{
+  const off = $("#notify-off"), form = off.form;
+  let armTimer;
+  off.onclick = () => {
+    if (!off.classList.contains("armed")) {
+      off.classList.add("armed"); off.textContent = "Confirm turn off";
+      armTimer = setTimeout(() => { off.classList.remove("armed"); off.textContent = "Turn off"; }, 3000);
+      return;
+    }
+    clearTimeout(armTimer);
+    off.classList.remove("armed"); off.textContent = "Turn off";
+    $("#webhook").value = "";
+    off.hidden = true;
+    $("#notify-state").hidden = false;
+    form.dispatchEvent(new Event("saved"));
+    $(".actions-line .notice", form).hidden = true;
+    $("#notify-result").hidden = false;
+  };
+}
 
 /* ---- system overview data ---- */
 const tokens = [
