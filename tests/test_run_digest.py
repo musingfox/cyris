@@ -1079,3 +1079,60 @@ async def test_a_run_without_content_records_no_degraded_verdict(tmp_path: Path)
     await run_digest(deps, RunOptions())
 
     assert "degraded" not in recorded[0]
+
+
+def _second_notify_article() -> Article:
+    article = _notify_article()
+    article.id = 8
+    article.url = "https://example.com/notify-2"
+    article.title = "Notify Path Two"
+    return article
+
+
+async def test_a_provider_none_run_is_not_degraded(tmp_path: Path) -> None:
+    deps, _ = make_deps(
+        tmp_path, llm=None, source=FakeSource([_notify_article(), _second_notify_article()])
+    )
+    deps, recorded = _recording(deps)
+    deps.cfg.app.llm_provider.provider = "none"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[0]["degraded"] is False
+
+
+async def test_a_provider_none_run_ignores_a_leftover_model(tmp_path: Path) -> None:
+    """A model left behind by the provider before "none" must not name the run's usage."""
+    from cyris.adapters.notify import build_discord_payload
+
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        llm=None,
+        source=FakeSource([_notify_article(), _second_notify_article()]),
+        discord_contents=contents,
+    )
+    deps, recorded = _recording(deps)
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/none"
+    deps.cfg.app.llm_provider.provider = "none"
+    deps.cfg.app.llm_provider.model = "gemini-3.8-flash"
+
+    await run_digest(deps, RunOptions())
+
+    assert contents[0].usage.model == NO_LLM_MODEL
+    assert recorded[0]["degraded"] is False
+    assert "content" not in build_discord_payload(contents[0])
+
+
+async def test_a_configured_provider_that_spent_nothing_is_still_degraded(tmp_path: Path) -> None:
+    deps, _ = make_deps(
+        tmp_path, _notify_llm(input_tokens=0, model="test-model"), FakeSource([_notify_article()])
+    )
+    deps, recorded = _recording(deps)
+    deps.cfg.app.llm_provider.provider = "gemini"
+    deps.cfg.app.llm_provider.model = ""
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[0]["degraded"] is True
