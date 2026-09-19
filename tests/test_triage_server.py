@@ -140,25 +140,23 @@ class TestSourcesWriteSurface:
         yield test_client
         await test_client.close()
 
-    async def test_first_write_seeds_the_table_before_adding(self, client: TestClient) -> None:
-        """An empty `sources` table means "use sources.yaml".
+    async def test_the_first_write_stores_that_source_alone(
+        self, client: TestClient, monkeypatch
+    ) -> None:
+        """An empty table is no sources, not sources.yaml: nothing is seeded from the file."""
+        from cyris.adapters.store.source_store import D1SourceStore
 
-        Writing one source into one would flip the pipeline to D1 with that
-        source alone, and every feed the file serves would silently stop.
-        """
+        def refuse(self, sources):
+            raise AssertionError("the first write replaced the table")
+
+        monkeypatch.setattr(D1SourceStore, "replace_all", refuse)
         resp = await client.post(
             "/api/sources",
-            json={"name": "New Feed", "url": "https://new.test/rss", "tier": "summarize"},
+            json={"name": "New", "type": "rss", "tier": "filter", "url": "https://n.test/feed"},
         )
         assert resp.status == 200
 
-        stored = self.sources.list_sources()
-        assert set(stored) == {"From File", "New Feed"}
-        assert stored["New Feed"].tier.value == "summarize"
-
-        data = await (await client.get("/api/sources")).json()
-        assert data["origin"] == "d1"
-        assert data["writable"] is True
+        assert set(self.sources.list_sources()) == {"New"}
 
     async def test_retiring_a_source_removes_its_row(self, client: TestClient) -> None:
         await client.post("/api/sources", json={"name": "New Feed", "url": "https://n.test/rss"})

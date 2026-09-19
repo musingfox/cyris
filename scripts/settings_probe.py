@@ -79,10 +79,6 @@ class FakeSourceStore:
     def delete(self, name: str) -> None:
         self.sources.pop(name, None)
 
-    def replace_all(self, sources: dict[str, SourceConfig]) -> None:
-        self.sources.clear()
-        self.sources.update(sources)
-
 
 def _seed_sources() -> dict[str, SourceConfig]:
     listed = [

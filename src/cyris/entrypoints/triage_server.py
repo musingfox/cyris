@@ -496,17 +496,6 @@ class TriageServer:
         live = self._source_store.list_sources()
         return (live, "d1") if live else (self._sources, self._sources_origin or "unknown")
 
-    def _seed_before_writing(self) -> None:
-        """Put today's effective list in D1 before the table's first edit.
-
-        An empty table means "use sources.yaml", so writing a single source into
-        one would flip the pipeline to D1 with that source alone and silently
-        stop every feed the file serves. Seeding first makes the first edit mean
-        what it looks like: `cyris sources push`, then the change.
-        """
-        if not self._source_store.list_sources() and self._sources:
-            self._source_store.replace_all(self._sources)
-
     async def _handle_post_source(self, request: web.Request) -> web.Response:
         """Add or edit one source, over the row `name` owns."""
         if self._source_store is None:
@@ -527,7 +516,6 @@ class TriageServer:
             return web.json_response({"ok": False, "error": "name is required"}, status=400)
 
         try:
-            self._seed_before_writing()
             self._source_store.upsert(source)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
@@ -543,7 +531,6 @@ class TriageServer:
             )
         name = request.match_info["name"]
         try:
-            self._seed_before_writing()
             self._source_store.delete(name)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
