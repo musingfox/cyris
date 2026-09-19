@@ -146,6 +146,8 @@ async def probe_llm(llm_cfg) -> Check:
     from cyris.adapters.gemini_client import GeminiAPIError
     from cyris.bootstrap import build_llm
 
+    if llm_cfg.provider == "none":
+        return Check("llm probe", "skip", "none — no model to call")
     llm = build_llm(llm_cfg)
     if llm is None:
         return Check(

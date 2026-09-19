@@ -961,3 +961,11 @@ async def test_llm_probe_prompt_satisfies_openai_json_mode(monkeypatch) -> None:
 
     assert check.status == "ok"
     assert "json" in prompts[0].lower()
+
+
+async def test_the_llm_probe_skips_provider_none() -> None:
+    check = await doctor.probe_llm(LLMProviderConfig(provider="none", model=""))
+
+    assert check.status == "skip"
+    assert check.detail == "none — no model to call"
+    assert "ANTHROPIC_API_KEY" not in check.detail

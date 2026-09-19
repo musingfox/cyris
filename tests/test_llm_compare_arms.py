@@ -94,3 +94,40 @@ def test_a_field_that_no_longer_exists_is_named():
     read = _deps_attrs("rows = compare(render=deps.writer.render)\n")
 
     assert sorted(read - known) == ["writer"]
+
+
+def test_a_none_arm_is_refused_as_no_model():
+    with pytest.raises(typer.BadParameter, match="none is not a model to compare"):
+        _build_arm("none:")
+
+
+def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from cyris.entrypoints.cli import app
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
+    config = tmp_path / "cyris.toml"
+    config.write_text(
+        '[llm_provider]\nprovider = "anthropic"\n'
+        "[html_output]\nenabled = true\n"
+        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n'
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "llm-compare",
+            "--arm",
+            "none:",
+            "--config",
+            str(config),
+            "--sources",
+            str(tmp_path / "s.yaml"),
+        ],
+    )
+
+    assert result.exit_code == 2
+    # The refusal is drawn in a box that wraps at the terminal's width.
+    assert "none is not a model to compare" in " ".join(result.output.replace("│", " ").split())

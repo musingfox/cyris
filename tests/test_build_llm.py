@@ -52,3 +52,14 @@ def test_workers_ai_without_an_account_id_degrades_rather_than_building_a_broken
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
 
     assert build_llm(LLMProviderConfig(provider="workers_ai", api_key="k")) is None
+
+
+def test_provider_none_builds_no_client_even_with_a_key():
+    """The key is passed explicitly, so the empty-key early return cannot mask it."""
+    assert build_llm(LLMProviderConfig(provider="none", model="", api_key="k")) is None
+
+
+def test_gemini_with_an_empty_model_still_builds_its_client():
+    assert isinstance(
+        build_llm(LLMProviderConfig(provider="gemini", model="", api_key="k")), GeminiClient
+    )

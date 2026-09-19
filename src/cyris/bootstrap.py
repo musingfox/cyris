@@ -45,9 +45,12 @@ def embedding_defaults(provider: str) -> dict:
 def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     """Build the LLM client, or None when no provider/key is configured.
 
-    None puts the pipeline in degraded mode: LLM steps are skipped and the
-    digest falls back to plain excerpts.
+    None puts the pipeline in excerpt-only mode: LLM steps are skipped and the
+    digest falls back to plain excerpts. Provider "none" chooses that mode, so it
+    builds nothing even when a key is present.
     """
+    if cfg.provider == "none":
+        return None
     if not cfg.provider or not cfg.api_key:
         return None
     model = cfg.model or default_model(cfg.provider)

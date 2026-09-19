@@ -356,6 +356,8 @@ def _build_arm(spec: str):
         arm_cfg = LLMProviderConfig(provider=provider.strip(), model=model.strip())
     except ValidationError as e:
         raise typer.BadParameter(f"--arm {spec!r}: unknown provider {provider.strip()!r}") from e
+    if arm_cfg.provider == "none":
+        raise typer.BadParameter(f"--arm {spec!r}: none is not a model to compare")
 
     llm = build_llm(arm_cfg)
     if llm is None:
