@@ -63,9 +63,8 @@ class TriageServer:
         self._llm_provider = llm_provider
         self._schedule = schedule or []
         self._max_featured = max_featured
-        # Already resolved by `load_effective_config` — D1's `sources` table when
-        # it has rows, `sources.yaml` otherwise. The page reports which, so a
-        # half-migrated deployment does not look like a stale one.
+        # Already resolved by `load_effective_config` — D1's `sources` table under
+        # a D1 store, empty or not; `sources.yaml` otherwise.
         self._sources = sources or {}
         self._sources_origin = sources_origin
         # The write surface (§7 #15). Absent on a `backend = "json"` deployment,

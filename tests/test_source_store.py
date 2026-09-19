@@ -1,4 +1,4 @@
-"""Sources in D1, and the fallback that keeps a half-migrated deployment fetching."""
+"""Sources in D1, and a D1 deployment that fetches exactly what the table holds."""
 
 from pathlib import Path
 
@@ -6,7 +6,6 @@ import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.store.source_store import D1SourceStore
-from cyris.config import load_config
 from cyris.domain.models import SourceConfig, Tier
 
 CONFIG = """
@@ -82,53 +81,58 @@ def _write_config(tmp_path: Path, backend: str) -> tuple[Path, Path]:
     return config_path, sources_path
 
 
-def test_the_file_is_used_when_the_backend_is_json(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-    config_path, sources_path = _write_config(tmp_path, "json")
+def _load(tmp_path: Path, backend: str, monkeypatch, db=None):
+    from cyris.bootstrap import load_effective_config
 
-    cfg = load_config(config_path=config_path, sources_path=sources_path)
-
-    assert list(cfg.sources) == ["From File"]
-
-
-def test_d1_sources_win_when_the_table_has_rows(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    constructed: list[dict] = []
+
+    def client(**kwargs):
+        constructed.append(kwargs)
+        return db
+
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", client)
+    config_path, sources_path = _write_config(tmp_path, backend)
+    return load_effective_config(config_path, sources_path), constructed
+
+
+def test_a_json_deployment_reads_the_file_and_never_opens_d1(tmp_path: Path, monkeypatch) -> None:
+    cfg, constructed = _load(tmp_path, "json", monkeypatch)
+
+    assert list(cfg.sources) == ["From File"]
+    assert constructed == []
+
+
+def test_a_d1_deployment_reads_only_the_table(tmp_path: Path, monkeypatch) -> None:
     db = SqliteD1()
     D1SourceStore(db).replace_all(_sources(SourceConfig(name="From D1", url="https://d1.test/f")))
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
-    config_path, sources_path = _write_config(tmp_path, "d1")
 
-    cfg = load_config(config_path=config_path, sources_path=sources_path)
+    cfg, _ = _load(tmp_path, "d1", monkeypatch, db)
 
-    assert list(cfg.sources) == ["From D1"]
+    assert set(cfg.sources) == {"From D1"}
 
 
-def test_an_empty_table_falls_back_to_the_file(tmp_path: Path, monkeypatch) -> None:
-    """A deployment that switched to D1 but has not pushed yet must still fetch."""
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-    db = SqliteD1()
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
-    config_path, sources_path = _write_config(tmp_path, "d1")
+def test_an_empty_table_is_no_sources_not_the_file(tmp_path: Path, monkeypatch) -> None:
+    cfg, _ = _load(tmp_path, "d1", monkeypatch, SqliteD1())
 
-    cfg = load_config(config_path=config_path, sources_path=sources_path)
-
-    assert list(cfg.sources) == ["From File"]
+    assert cfg.sources == {}
 
 
-def test_an_unreachable_d1_falls_back_to_the_file(tmp_path: Path, monkeypatch) -> None:
-    """Dropping every source would look like a quiet news day, not an outage."""
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+def test_an_unreadable_table_fails_the_load(tmp_path: Path, monkeypatch) -> None:
+    """Dropping to the file on error would decide a run from a list D1 no longer holds."""
+    from cyris.adapters.store.d1 import D1Error
 
-    class Dead:
-        def query(self, *_a, **_k):
-            raise RuntimeError("connection refused")
+    def boom(self):
+        raise D1Error("boom")
 
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: Dead())
-    config_path, sources_path = _write_config(tmp_path, "d1")
+    monkeypatch.setattr(D1SourceStore, "list_sources", boom)
 
-    cfg = load_config(config_path=config_path, sources_path=sources_path)
+    with pytest.raises(D1Error, match="boom"):
+        _load(tmp_path, "d1", monkeypatch, SqliteD1())
 
-    assert list(cfg.sources) == ["From File"]
+
+def test_a_fresh_database_is_read_after_its_tables_exist(tmp_path: Path, monkeypatch) -> None:
+    cfg, _ = _load(tmp_path, "d1", monkeypatch, SqliteD1(with_schema=False))
+
+    assert cfg.sources == {}

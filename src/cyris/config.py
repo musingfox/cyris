@@ -516,8 +516,9 @@ def load_config(
 ) -> Config:
     """Load and validate configuration from TOML and YAML files.
 
-    cyris.toml is the home of every grade-D setting here; a D1 deployment is
-    resolved by `bootstrap.load_effective_config`, which reads D1 instead.
+    The files alone: cyris.toml is the home of every grade-D setting here and
+    sources.yaml of the sources. A D1 deployment is resolved by
+    `bootstrap.load_effective_config`, which reads both from D1 instead.
 
     Args:
         config_path: Path to cyris.toml. Defaults to ./cyris.toml.
@@ -530,12 +531,7 @@ def load_config(
         TOMLDecodeError: If the config file exists but is malformed.
         ValueError: If a value is invalid (pydantic's ValidationError is one).
     """
-    cfg = resolve_config(read_config_files(config_path, sources_path))
-    from_d1 = _sources_from_d1(cfg.app)
-    if from_d1:
-        cfg.sources = from_d1
-        cfg.sources_origin = "d1"
-    return cfg
+    return resolve_config(read_config_files(config_path, sources_path))
 
 
 def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
@@ -585,40 +581,3 @@ def _with_settings(raw_toml: dict, values: dict[str, Any]) -> dict[str, Any]:
             merged[table] = {}
         merged[table][field] = value
     return merged
-
-
-def _sources_from_d1(app_config: AppConfig) -> dict[str, SourceConfig] | None:
-    """The `sources` table when D1 is on and populated, else None to use the file.
-
-    Deliberately falls back rather than failing: a deployment that has switched
-    the store to D1 but has not run `cyris sources push` yet must still fetch,
-    and an unreachable D1 must not silently drop every source.
-    """
-    if not app_config.store.is_d1:
-        return None
-
-    missing = _missing_store_keys(app_config)
-    if missing:
-        # Four doomed retries ahead of the error that names these is 13 seconds
-        # of noise for a first deploy; the file fallback is the same either way.
-        logger.warning("D1 store is missing %s; using sources.yaml", ", ".join(missing))
-        return None
-
-    from cyris.adapters.store.d1 import D1Client
-    from cyris.adapters.store.source_store import D1SourceStore
-
-    try:
-        client = D1Client(
-            account_id=app_config.store.account_id,
-            database_id=app_config.store.database_id,
-            api_token=app_config.store.api_token,
-        )
-        sources = D1SourceStore(client).list_sources()
-    except Exception as e:  # noqa: BLE001 - any failure means "use the file"
-        logger.warning("Could not read sources from D1 (%s); using sources.yaml", e)
-        return None
-
-    if not sources:
-        logger.info("No sources in D1 yet; using sources.yaml. Run `cyris sources push`.")
-        return None
-    return sources

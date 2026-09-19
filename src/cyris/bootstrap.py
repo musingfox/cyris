@@ -144,7 +144,8 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     is the failure this exists to prevent — so a D1 read error propagates.
     """
     from cyris.adapters.store.d1 import apply_schema
-    from cyris.config import _sources_from_d1, read_config_files, resolve_config
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.config import read_config_files, resolve_config
 
     raw = read_config_files(config_path, sources_path)
     # Grade-D keys from nowhere yet: this pass only has to know the store, and
@@ -153,19 +154,16 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     if not cfg.app.store.is_d1:
         return resolve_config(raw)
 
-    from_d1 = _sources_from_d1(cfg.app)
     d1 = build_d1_client(cfg)
     settings = build_settings(cfg, d1)
-    # First boot on a clean account: nothing else creates the tables, and the
-    # settings read below is the first thing that *cannot survive* their
-    # absence — the sources read above falls back to the file, while this one
-    # propagates by design, so an empty D1 used to abort the CLI before any check
-    # could name the cause. Idempotent, one POST.
+    # First boot on a clean account: nothing else creates the tables, and both
+    # reads below propagate by design, so an empty D1 would abort the CLI before
+    # any check could name the cause. Idempotent, one POST.
     apply_schema(d1)
     cfg = resolve_config(raw, d1_settings=settings.all())
-    if from_d1:
-        cfg.sources = from_d1
-        cfg.sources_origin = "d1"
+    # The table alone, empty included: sources.yaml is not a D1 deployment's list.
+    cfg.sources = D1SourceStore(d1).list_sources()
+    cfg.sources_origin = "d1"
     return cfg
 
 

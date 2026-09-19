@@ -1,8 +1,8 @@
 """Source definitions in D1, so adding a feed is a write rather than a rebuild.
 
-`sources.yaml` remains the editable format and the fallback. This table is what
-the pipeline and the RSS Worker read at runtime, and `cyris sources push` is what
-puts the file's contents here.
+`sources.yaml` remains the editable format. Under a D1 store this table is the
+only list the pipeline reads at runtime, and `cyris sources push` is what puts
+the file's contents here.
 """
 
 from __future__ import annotations
@@ -47,10 +47,9 @@ class D1SourceStore:
     def delete(self, name: str) -> int:
         """Retire one source.
 
-        Emptying the table entirely hands the pipeline back to `sources.yaml`
-        (`config._sources_from_d1`), so the last delete resurrects the file's
-        list rather than fetching nothing. That is the documented fallback, not
-        a bug to engineer around.
+        A D1 deployment fetches exactly this table, so deleting the last row
+        leaves it with no sources: the next run stops rather than falling back to
+        `sources.yaml`.
         """
         return self._db.query("DELETE FROM sources WHERE name = ?", [name]).changes
 
