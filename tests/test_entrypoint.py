@@ -52,13 +52,15 @@ def _stub(bin_dir: Path, name: str, body: str) -> None:
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
 
 
-def _run_role(tmp_path: Path, role: str, python_body: str) -> tuple[int, list[str]]:
+def _run_role(
+    tmp_path: Path, role: str, python_body: str, cyris_body: str = "exit 0"
+) -> tuple[int, list[str]]:
     """Run the entrypoint with `python` and `cyris` stubbed; return exit code and call order."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     calls = tmp_path / "calls.log"
     _stub(bin_dir, "python", f"echo python >> '{calls}'\n{python_body}")
-    _stub(bin_dir, "cyris", f"echo \"cyris $1\" >> '{calls}'")
+    _stub(bin_dir, "cyris", f"echo \"cyris $1\" >> '{calls}'\n{cyris_body}")
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["CYRIS_ROLE"] = role
@@ -79,6 +81,12 @@ class TestRunRoleProbesEgress:
         code, calls = _run_role(tmp_path, "run", "exit 1")
         assert code == 0
         assert calls == ["python", "cyris run", "cyris promote-sync"]
+
+    def test_a_failed_run_still_syncs_votes_and_fails_the_pass(self, tmp_path: Path) -> None:
+        # A run that stops on incomplete settings must not strand the votes.
+        code, calls = _run_role(tmp_path, "run", "exit 0", 'test "$1" = run && exit 3; exit 0')
+        assert calls == ["python", "cyris run", "cyris promote-sync"]
+        assert code == 3
 
     def test_ui_role_does_not_probe(self, tmp_path: Path) -> None:
         # `exec` hands the process to the stub, so the ui role records one call.

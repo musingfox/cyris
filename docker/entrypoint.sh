@@ -25,8 +25,12 @@ try:
 except Exception as e:
     print(json.dumps({"event": "egress_probe", "error": str(e)[:200]}))
 PY
-    cyris run --if-due $CONF
+    # Votes sync even when the run stops (say, on incomplete settings); the
+    # pass still exits with the run's failure.
+    status=0
+    cyris run --if-due $CONF || status=$?
     cyris promote-sync $CONF
+    exit "$status"
     ;;
   ui)
     export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}

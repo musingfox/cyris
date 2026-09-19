@@ -1,7 +1,7 @@
 """What the hourly tick does when no vote Worker is deployed.
 
 `docker/entrypoint.sh` runs `promote-sync` as the last command of the `run` role,
-so its exit code is the container's. The vote Worker is optional — a deployment
+so its failure is the container's. The vote Worker is optional — a deployment
 without one must not report every tick as a failure.
 """
 
