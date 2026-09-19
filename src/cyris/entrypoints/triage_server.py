@@ -145,6 +145,9 @@ class TriageServer:
                     "configured": ready,
                 }
             )
+        # Not from provider_defaults.json: "none" has no model, and anything read
+        # from that file is treated as a provider that has one.
+        providers.append({"name": "none", "env_var": "", "default_model": "", "configured": True})
         embedding_providers = [
             {
                 "name": name,

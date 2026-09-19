@@ -54,6 +54,23 @@ class TestSettingsApi:
         assert by_name["openai"]["env_var"] == "OPENAI_API_KEY"
         assert by_name["gemini"]["default_model"]  # something to fall back to
 
+    async def test_none_is_offered_last_after_the_live_providers(self, settings):
+        from cyris.bootstrap import default_models
+
+        client = await _client(settings)
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        names = [p["name"] for p in data["providers"]]
+        assert names == [*default_models(), "none"]
+        assert data["providers"][-1] == {
+            "name": "none",
+            "env_var": "",
+            "default_model": "",
+            "configured": True,
+        }
+
     async def test_an_unknown_provider_is_rejected_before_any_call(self, settings):
         client = await _client(settings)
 

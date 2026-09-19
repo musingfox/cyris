@@ -609,6 +609,9 @@ EXPECTED_IDS = {
     "model-vote-checking",
     "embedding-readiness",
     "model-vote-refusal",
+    "model-none-posts",
+    "model-none-loaded",
+    "model-missing-unchecked",
 }
 
 
@@ -653,6 +656,7 @@ async def test_the_probe_environment_resolves_the_provider_readiness_it_promises
             "gemini": True,
             "openai": False,
             "workers_ai": False,
+            "none": True,
         }
     )
 

@@ -51,7 +51,13 @@ OFFLINE_DETAIL = "cyris-probe: answered offline"
 # What /api/settings must resolve inside the probe environment. Asserted from the
 # server's answer, not from the variables this script set, because a key can
 # also arrive from somewhere this script does not control.
-EXPECTED_READINESS = {"anthropic": True, "gemini": True, "openai": False, "workers_ai": False}
+EXPECTED_READINESS = {
+    "anthropic": True,
+    "gemini": True,
+    "openai": False,
+    "workers_ai": False,
+    "none": True,
+}
 
 
 class FakeSettings:
@@ -396,6 +402,20 @@ window.fetch = (input, init) =>
     ? Promise.resolve(new Response(retired,
         {status: 200, headers: {"Content-Type": "application/json"}}))
     : realFetch(input, init);
+"""
+
+
+# Installed before the page loads: every POST body the page sends, in order. A
+# block, so a sabotage preload can declare its own `realFetch` beside it.
+RECORD_POSTS = """
+{
+  const realFetch = window.fetch;
+  window.__sent = [];
+  window.fetch = (input, init) => {
+    if (init && init.method === "POST") window.__sent.push([String(input), JSON.parse(init.body)]);
+    return realFetch(input, init);
+  };
+}
 """
 
 
@@ -1533,6 +1553,69 @@ CHECKS: list[Check] = [
         """,
         sabotage="""$("#model-result").classList.remove("err");""",
         receipt=_calls([]),
+    ),
+    Check(
+        id="model-none-posts",
+        fixture="writable",
+        path="/settings#model",
+        preload=RECORD_POSTS,
+        act="""
+            await settingsLoaded();
+            setValue($("#model-input"), "gemini-3.8-flash");
+            $('input[name=provider][value="none"]').click();
+            ctx.disabled = $("#model-input").disabled;
+            saveOf("model").click();
+            await waitFor(() => visible(noticeOf("model")) && saveOf("model").disabled
+              && !noticeOf("model").textContent.startsWith("Checking"), "the save");
+        """,
+        script="""
+            expect(ctx.disabled, "the model field stayed enabled under None");
+            const label = $(".name", choice("none")).textContent;
+            expect(label === "None — plain excerpts", `label: ${label}`);
+            const text = noticeOf("model").textContent;
+            expect(text.startsWith("No model is called: digests list plain excerpts."), text);
+            // The server stores "" for None whatever it is sent, so read what was sent.
+            const sent = window.__sent.filter(([url]) => url.endsWith("/api/settings"));
+            expect(same(sent.map(([, body]) => body), [{provider: "none", model: ""}]),
+              `sent: ${JSON.stringify(sent)}`);
+        """,
+        sabotage_preload=rewrite_post("/api/settings", 'body.model = "gemini-3.8-flash";'),
+        receipt=_calls([{"llm_provider.provider": "none", "llm_provider.model": ""}]),
+    ),
+    Check(
+        id="model-none-loaded",
+        fixture="writable",
+        path="/settings#model",
+        setup=lambda fixture: fixture.values.update({"llm_provider.provider": "none"}),
+        act="await providersLoaded();",
+        script="""
+            const checked = $$("input[name=provider]:checked").map((input) => input.value);
+            expect(same(checked, ["none"]), `checked: ${checked}`);
+            expect($("#model-input").disabled, "the model field is enabled");
+        """,
+        sabotage="""$("#model-input").disabled = false;""",
+    ),
+    Check(
+        id="model-missing-unchecked",
+        fixture="writable",
+        path="/settings#model",
+        setup=_unset("llm_provider.provider"),
+        act="await providersLoaded();",
+        script="""
+            const checked = $$("input[name=provider]:checked").map((input) => input.value);
+            expect(checked.length === 0, `checked: ${checked}`);
+            expect(navOf("model").classList.contains("missing"), "Model is not marked");
+        """,
+        sabotage_preload="""
+const realFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const res = await realFetch(input, init);
+  if (!String(input).endsWith("/api/settings") || (init && init.method)) return res;
+  const data = await res.json();
+  data.values["llm_provider.provider"] = data.providers[0].name;
+  return new Response(JSON.stringify(data), {status: res.status, headers: res.headers});
+};
+""",
     ),
     Check(
         id="readonly-settings",

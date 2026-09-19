@@ -184,9 +184,9 @@ function render() {
       <input type="radio" name="provider" value="${esc(p.name)}"
              ${p.name === values["llm_provider.provider"] && p.configured ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
-      <span class="name">${esc(p.name)}</span>
-      ${p.configured
-        ? `<span class="label">Key ready</span>`
+      <span class="name">${p.name === "none" ? "None — plain excerpts" : esc(p.name)}</span>
+      ${p.name === "none" ? `<span class="label"></span>`
+        : p.configured ? `<span class="label">Key ready</span>`
         : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
     </label>`).join("");
   $("model-input").value = values["llm_provider.model"] ?? "";
@@ -240,11 +240,15 @@ function chosen() {
 
 function updateHint() {
   const p = chosen();
-  $("model-input").dataset.placeholder = p ? `Empty uses ${p.default_model}` : "";
+  // None calls no model, so there is no model to name.
+  const none = p && p.name === "none";
+  $("model-input").disabled = !!none;
+  if (none) $("model-input").value = "";
+  $("model-input").dataset.placeholder = p && !none ? `Empty uses ${p.default_model}` : "";
   applyPlaceholder($("model-input"));
-  $("model-hint").textContent = p
-    ? "Saving makes one real call to the provider first, so a typo is rejected here."
-    : "Pick a provider whose key is present.";
+  $("model-hint").textContent = !p ? "Pick a provider whose key is present."
+    : none ? "No model is called: digests list plain excerpts."
+    : "Saving makes one real call to the provider first, so a typo is rejected here.";
 }
 
 function updateEmbeddingHint() {
