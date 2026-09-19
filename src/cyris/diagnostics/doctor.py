@@ -210,6 +210,64 @@ async def probe_llm(llm_cfg) -> Check:
     return Check("llm probe", "ok", f"{llm_cfg.provider} · {llm.model} answered")
 
 
+EMBEDDING_PROBE_TEXT = "cyris embedding probe"
+
+# The key each embedding provider reads, then anything else its REST path needs.
+_EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
+    "gemini": ("GEMINI_API_KEY",),
+    "workers_ai": ("CLOUDFLARE_EMBEDDING_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"),
+}
+
+
+def _provider_message(response: httpx.Response) -> str:
+    """The provider's own words from an error body: Gemini's `error`, Cloudflare's `errors`."""
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text[:300]
+    if isinstance(body, dict):
+        if isinstance(body.get("error"), dict) and body["error"].get("message"):
+            return str(body["error"]["message"])
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+            return str(errors[0].get("message", errors[0]))
+    return response.text[:300]
+
+
+async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) -> Check:
+    """Ask the embedding provider whether this model answers, with one real call.
+
+    What `probe_llm` is for the LLM: a model id typo passes every static check.
+    Never raises. Gemini carries its key in the URL query, so every key value is
+    scrubbed from the detail before it can reach a page or a log.
+    """
+    from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
+    from cyris.bootstrap import embedding_defaults
+
+    model = model or embedding_defaults(provider)["model"]
+    env = _EMBEDDING_ENV[provider]
+    unset = [name for name in env if not os.environ.get(name)]
+    if unset:
+        return Check("embedding probe", "fail", f"{unset[0]} is not set")
+    key = os.environ[env[0]]
+    if provider == "gemini":
+        embedder = GeminiEmbedder(api_key=key, model=model)
+    else:
+        embedder = WorkersAIEmbedder(api_token=key, account_id=os.environ[env[1]], model=model)
+    try:
+        [vector] = await embedder.embed([EMBEDDING_PROBE_TEXT])
+    except httpx.HTTPStatusError as e:
+        # The body first: the status line alone says nothing about which model.
+        detail = f"{model} refused: {e.response.status_code} {_provider_message(e.response)}"
+    except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
+        detail = f"{model} refused: {str(e)[:300] or type(e).__name__}"
+    else:
+        return Check(
+            "embedding probe", "ok", f"{provider} · {model} answered ({len(vector)} dimensions)"
+        )
+    return Check("embedding probe", "fail", detail.replace(key, "[redacted]"))
+
+
 DISCORD_PROBE_TIMEOUT_SECONDS = 10
 
 
