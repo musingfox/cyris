@@ -24,6 +24,7 @@
   {"path": "/api/diagnostics/llm", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/diagnostics/llm"},
   {"path": "/api/settings/schedule", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/schedule"},
   {"path": "/api/settings/values", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/values"},
+  {"path": "/api/settings/vote-similarity", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/vote-similarity"},
   {"path": "/api/settings/notify", "method": "POST", "kind": "container", "unauth_status": 401, "container_route": "/api/settings/notify"},
   {"path": "/api/sources", "method": "GET", "kind": "container", "unauth_status": 401, "container_route": "/api/sources"},
   {"path": "/api/sources", "method": "POST", "kind": "container", "unauth_status": 401},

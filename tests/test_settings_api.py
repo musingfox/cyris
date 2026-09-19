@@ -415,6 +415,145 @@ class TestPlainValues:
         assert "D1 down" in body["error"]
 
 
+class TestVoteSimilarity:
+    ON = {"enabled": True, "provider": "workers_ai", "model": "", "max_seeds": 200}
+
+    @pytest.fixture
+    def probe(self, monkeypatch):
+        """Answers the embedder probe with `probe.result`, recording each call."""
+        from cyris.diagnostics.doctor import Check
+
+        calls: list[tuple] = []
+
+        async def fake(provider, model):
+            calls.append((provider, model))
+            return fake.result
+
+        fake.result = Check("embedding probe", "ok", "workers_ai · @cf/baai/bge-m3 answered")
+        fake.calls = calls
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_embedder", fake)
+        return fake
+
+    async def test_turning_it_on_stores_all_four_after_the_probe(self, settings, probe):
+        client = await _client(settings, {})
+
+        res = await client.post("/api/settings/vote-similarity", json=self.ON)
+        body = await res.json()
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert res.status == 200
+        assert settings.calls == [
+            {
+                "vote_similarity.enabled": True,
+                "vote_similarity.provider": "workers_ai",
+                "vote_similarity.model": "",
+                "vote_similarity.max_seeds": 200,
+            }
+        ]
+        assert body["detail"] == "workers_ai · @cf/baai/bge-m3 answered"
+        assert body["note"] == "Saved. The next digest run picks this up."
+        assert probe.calls == [("workers_ai", "")]
+        assert data["values"]["vote_similarity.max_seeds"] == 200
+
+    async def test_an_embedder_that_refuses_is_never_turned_on(self, settings, probe):
+        from cyris.diagnostics.doctor import Check
+
+        probe.result = Check("embedding probe", "fail", "@cf/x refused: 404 no such model")
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/vote-similarity", json=self.ON)
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "@cf/x refused: 404 no such model"
+        assert settings.calls == []
+
+    async def test_off_is_stored_without_a_probe(self, settings, probe):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/vote-similarity",
+            json={"enabled": False, "provider": "gemini", "model": "typo-model", "max_seeds": 50},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert probe.calls == []
+        assert body["detail"] == (
+            "Not checked: vote similarity is off. Turning it on checks the embedder first."
+        )
+        assert settings.stored["vote_similarity.model"] == "typo-model"
+
+    async def test_an_unknown_embedding_provider_is_refused_before_the_probe(self, settings, probe):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/vote-similarity", json={**self.ON, "provider": "openai"}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"].startswith("vote_similarity.provider: ")
+        assert probe.calls == []
+        assert settings.calls == []
+
+    async def test_every_field_is_required(self, settings, probe):
+        client = await _client(settings)
+
+        body = {k: v for k, v in self.ON.items() if k != "max_seeds"}
+        res = await client.post("/api/settings/vote-similarity", json=body)
+        answer = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "max_seeds" in answer["error"]
+        assert settings.calls == []
+
+    async def test_without_a_settings_store_the_page_refuses_to_save(self, probe):
+        client = await _client(None)
+
+        res = await client.post("/api/settings/vote-similarity", json=self.ON)
+        await client.close()
+
+        assert res.status == 409
+
+    async def test_a_refusal_never_carries_the_key(self, settings, monkeypatch):
+        """The real probe, against a provider that echoes the key in its refusal."""
+        import httpx
+
+        import cyris.bootstrap  # noqa: F401 - its SDK imports must precede the patch
+
+        monkeypatch.setenv("GEMINI_API_KEY", "sentinel-key-123")
+        real = httpx.AsyncClient
+
+        def refuse(request):
+            return httpx.Response(
+                400, json={"error": {"message": "API key sentinel-key-123 not valid"}}
+            )
+
+        monkeypatch.setattr(
+            httpx,
+            "AsyncClient",
+            lambda *a, **kw: real(*a, **{**kw, "transport": httpx.MockTransport(refuse)}),
+        )
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/vote-similarity",
+            json={"enabled": True, "provider": "gemini", "model": "", "max_seeds": 50},
+        )
+        text = await res.text()
+        await client.close()
+
+        assert res.status == 400
+        assert "sentinel-key-123" not in text
+        assert settings.calls == []
+
+
 class TestNotifySettingsForm:
     async def test_the_page_has_a_notify_form_and_webhook_field(self):
         client = await _client()

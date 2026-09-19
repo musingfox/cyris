@@ -94,6 +94,7 @@ class TriageServer:
         self._app.router.add_post("/api/diagnostics/llm", self._handle_diagnose_llm)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
         self._app.router.add_post("/api/settings/values", self._handle_post_values)
+        self._app.router.add_post("/api/settings/vote-similarity", self._handle_post_vote)
         self._app.router.add_post("/api/settings/notify", self._handle_post_notify)
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
@@ -331,6 +332,67 @@ class TriageServer:
         self._values.update(validated)
         logger.info("Settings saved: %s", ", ".join(sorted(validated)))
         return web.json_response({"ok": True, "values": validated, "note": "Effective next run."})
+
+    async def _handle_post_vote(self, request: web.Request) -> web.Response:
+        """Store vote similarity's switch, embedder and seeds as one unit.
+
+        Turning it on checks the embedder with one real call first, and this is
+        the only writer of `enabled`, so no run meets an unverified embedder.
+        Off stores without a call: a deployment with no embedding key must still
+        be able to complete its settings.
+        """
+        from cyris.config import validate_setting
+        from cyris.diagnostics import doctor
+
+        if self._settings is None:
+            return web.json_response(
+                {"ok": False, "error": "this deployment has no settings store to write"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        if not isinstance(body, dict):
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        values = {}
+        for field in ("enabled", "provider", "model", "max_seeds"):
+            key = f"vote_similarity.{field}"
+            if field not in body:
+                return web.json_response({"ok": False, "error": f"{field} is required"}, status=400)
+            try:
+                values[key] = validate_setting(key, body[field])
+            except ValueError as e:
+                return web.json_response({"ok": False, "error": f"{key}: {e}"}, status=400)
+
+        if values["vote_similarity.enabled"]:
+            probe = await doctor.probe_embedder(
+                values["vote_similarity.provider"], values["vote_similarity.model"]
+            )
+            if probe.status != "ok":
+                return web.json_response({"ok": False, "error": probe.detail}, status=400)
+            detail = probe.detail
+        else:
+            detail = "Not checked: vote similarity is off. Turning it on checks the embedder first."
+
+        try:
+            self._settings.set(values)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        self._values.update(values)
+        logger.info(
+            "Vote similarity saved: %s", "on" if values["vote_similarity.enabled"] else "off"
+        )
+        return web.json_response(
+            {
+                "ok": True,
+                "values": values,
+                "detail": detail,
+                "note": "Saved. The next digest run picks this up.",
+            }
+        )
 
     async def _handle_post_notify(self, request: web.Request) -> web.Response:
         """Store a Discord webhook only after Discord confirms it exists.
