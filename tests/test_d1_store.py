@@ -4,14 +4,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from fakes import CompoundSelectLimitedD1, SqliteD1
+from fakes import CompoundSelectLimitedD1, SqliteD1, make_config
 
 from cyris.adapters.output.usage_log import append_usage_d1
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.d1 import D1Client, D1Error, chunk_rows
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.bootstrap import build_store
-from cyris.config import AppConfig, Config, StoreConfig
+from cyris.config import Config, StoreConfig
 from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
 
 
@@ -181,9 +181,9 @@ def test_usage_with_no_api_calls_is_not_logged(sample_digest_content) -> None:
 
 
 def _config(tmp_path: Path, **store_kwargs) -> Config:
-    app = AppConfig(store=StoreConfig(**store_kwargs))
-    app.agent_vault.path = tmp_path
-    return Config(app=app, sources={})
+    cfg = make_config(store=StoreConfig(**store_kwargs))
+    cfg.app.agent_vault.path = tmp_path
+    return cfg
 
 
 def test_build_store_defaults_to_the_local_files(tmp_path: Path) -> None:

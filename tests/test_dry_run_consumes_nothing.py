@@ -10,6 +10,7 @@ rebuild, which is the opposite of previewing.
 from pathlib import Path
 
 import pytest
+from fakes import settings_toml
 
 from cyris.bootstrap import build_deps
 from cyris.config import load_config
@@ -38,7 +39,7 @@ def cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("CYRIS_WORKER_TOKEN", "tok")
     monkeypatch.setenv("CYRIS_PROMOTE_TOKEN", "promote-tok")
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text(CONFIG.format(vault=tmp_path), encoding="utf-8")
+    config_path.write_text(CONFIG.format(vault=tmp_path) + settings_toml(), encoding="utf-8")
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(SOURCES, encoding="utf-8")
     return load_config(config_path=config_path, sources_path=sources_path)

@@ -28,7 +28,8 @@ async def test_cluster_tags_persist_for_every_member_normalized() -> None:
         FakeLLM(
             '{"clusters": [{"heading": "H", "summary": "S", '
             '"article_ids": [1, 2], "tags": ["AI Policy", "ai policy"]}]}'
-        )
+        ),
+        output_language="zh-Hant",
     )
 
     result = await pipeline.process([_news(1, "u1"), _news(2, "u2")], {})

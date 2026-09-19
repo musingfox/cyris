@@ -98,7 +98,7 @@ GRADE_D_KEYS: tuple[str, ...] = (
 
 
 class NotifyConfig(BaseModel):
-    discord_webhook_url: str = ""  # "" ⇒ notifications off
+    discord_webhook_url: str  # "" ⇒ notifications off
 
 
 def _known_timezone(name: str) -> str:
@@ -121,21 +121,20 @@ NonBlank = Annotated[str, AfterValidator(_not_blank)]
 
 
 class RoutingConfig(BaseModel):
-    score_threshold: int = Field(default=70, ge=0, le=100)  # Featured article threshold
-    summarize_score_threshold: int = Field(default=70, ge=0, le=100)
+    score_threshold: int = Field(ge=0, le=100)  # Featured article threshold
+    summarize_score_threshold: int = Field(ge=0, le=100)
 
 
 class GeneralConfig(BaseModel):
-    digest_schedule: DigestSchedule = Field(default_factory=lambda: ["08:00", "20:00"])
-    timezone: Timezone = "Asia/Taipei"
-    digest_window_hours: int = Field(default=24, ge=1, le=168)
+    digest_schedule: DigestSchedule
+    timezone: Timezone
+    digest_window_hours: int = Field(ge=1, le=168)
 
 
 class LLMProviderConfig(BaseModel):
-    # No default provider — the user opts in explicitly. "none" ⇒ excerpt-only
-    # by choice: no client is built and no key is needed.
-    provider: Literal["anthropic", "gemini", "openai", "workers_ai", "none"] | None = None
-    model: str = ""  # empty ⇒ the provider's default model (see bootstrap.build_llm)
+    # "none" ⇒ excerpt-only by choice: no client is built and no key is needed.
+    provider: Literal["anthropic", "gemini", "openai", "workers_ai", "none"]
+    model: str  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     api_key: str = ""
     account_id: str = ""  # workers_ai only: its REST path is per-account
 
@@ -146,11 +145,11 @@ class LLMProviderConfig(BaseModel):
             "openai": "OPENAI_API_KEY",
             "workers_ai": "CLOUDFLARE_AI_TOKEN",
             "none": "",
-        }.get(self.provider or "", "ANTHROPIC_API_KEY")
+        }.get(self.provider, "ANTHROPIC_API_KEY")
 
     @model_validator(mode="after")
     def inject_api_key(self) -> "LLMProviderConfig":
-        if self.provider in (None, "none"):
+        if self.provider == "none":
             return self
         if not self.api_key:
             self.api_key = os.environ.get(self.api_key_env_var, "")
@@ -168,16 +167,16 @@ class LLMProviderConfig(BaseModel):
 
 
 class DigestConfig(BaseModel):
-    max_articles_per_digest: int = Field(default=200, ge=1)
-    max_articles_per_digest_output: int = Field(default=15, ge=1)
+    max_articles_per_digest: int = Field(ge=1)
+    max_articles_per_digest_output: int = Field(ge=1)
     # How many featured sections lead the page. A reader preference, not a
     # measurement — see docs/architecture.md §5.
-    max_featured: int = Field(default=5, ge=1)
-    scoring_snippet_length: int = Field(default=1000, ge=1)
-    summarize_snippet_length: int = Field(default=1000, ge=1)
-    filter_snippet_length: int = Field(default=500, ge=1)
-    output_language: NonBlank = "zh-Hant"  # BCP 47 tag; service_layer/languages.json names it
-    style_prompt: str = ""  # optional reader-defined tone/focus injected into prompts
+    max_featured: int = Field(ge=1)
+    scoring_snippet_length: int = Field(ge=1)
+    summarize_snippet_length: int = Field(ge=1)
+    filter_snippet_length: int = Field(ge=1)
+    output_language: NonBlank  # BCP 47 tag; service_layer/languages.json names it
+    style_prompt: str  # reader-defined tone/focus injected into prompts; "" ⇒ none
 
 
 class AgentVaultConfig(BaseModel):
@@ -305,19 +304,19 @@ class NewsletterConfig(WorkerConfig):
 class VoteSimilarityConfig(BaseModel):
     """Suppress candidates that sit close to what the reader downvoted.
 
-    Off by default: it changes what reaches the digest, and the threshold was
-    calibrated on one reader's votes. See docs/vote-signal-measurement.md.
+    It changes what reaches the digest, and the threshold was calibrated on one
+    reader's votes. See docs/vote-signal-measurement.md.
     """
 
-    enabled: bool = False
-    provider: Literal["workers_ai", "gemini"] = "workers_ai"
+    enabled: bool
+    provider: Literal["workers_ai", "gemini"]
     # None means "the provider's own calibration". Grade A: the pairing is a
     # measured property of the model, not a preference — bge-m3's cosines run
     # lower than Gemini's across the board, so carrying 0.68 over to it would
     # suppress nothing and the feature would silently no-op.
     threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    model: str = ""
-    max_seeds: int = Field(default=200, ge=1)
+    model: str
+    max_seeds: int = Field(ge=1)
 
 
 class RssConfig(WorkerConfig):
@@ -330,18 +329,20 @@ class RssConfig(WorkerConfig):
 
 
 class AppConfig(BaseModel):
-    general: GeneralConfig = Field(default_factory=GeneralConfig)
-    notify: NotifyConfig = Field(default_factory=NotifyConfig)
-    llm_provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
-    digest: DigestConfig = Field(default_factory=DigestConfig)
+    # The six tables holding grade-D keys are None until their home holds every
+    # one of those keys: a runtime setting has no value in code.
+    general: GeneralConfig | None
+    notify: NotifyConfig | None
+    llm_provider: LLMProviderConfig | None
+    digest: DigestConfig | None
     agent_vault: AgentVaultConfig = Field(default_factory=AgentVaultConfig)
-    routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    routing: RoutingConfig | None
     html_output: HtmlOutputConfig = Field(default_factory=HtmlOutputConfig)
     promote: PromoteConfig = Field(default_factory=PromoteConfig)
     newsletter: NewsletterConfig = Field(default_factory=NewsletterConfig)
     rss: RssConfig = Field(default_factory=RssConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
-    vote_similarity: VoteSimilarityConfig = Field(default_factory=VoteSimilarityConfig)
+    vote_similarity: VoteSimilarityConfig | None
 
 
 _SETTINGS_TABLES: dict[str, type[BaseModel]] = {
@@ -451,13 +452,13 @@ class Config(BaseModel):
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
 
-        The LLM is optional: provider "none" (or none configured) runs the
-        excerpt-only digest, so only a real provider that is missing its key
-        counts as an error.
+        The LLM is optional: provider "none" runs the excerpt-only digest, so only
+        a real provider that is missing its key counts as an error. An unbuilt
+        table is the settings gate's to report.
         """
         missing = self.missing_store_keys()
         llm = self.app.llm_provider
-        if llm.provider not in (None, "none") and not llm.api_key:
+        if llm is not None and llm.provider != "none" and not llm.api_key:
             missing.append(llm.api_key_env_var)
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
@@ -525,11 +526,12 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) ->
     as missing, because D1 is fixed through /settings, which has to start.
     """
     if d1_settings is None:
-        app_config = AppConfig.model_validate(raw.toml)
         settings_values, missing_settings = _file_settings(raw.toml)
     else:
         settings_values, missing_settings = _stored_settings(d1_settings)
-        app_config = AppConfig.model_validate(_with_settings(raw.toml, settings_values))
+    app_config = AppConfig.model_validate(
+        _with_settings(raw.toml, settings_values, missing_settings)
+    )
     return Config(
         app=app_config,
         sources=raw.sources,
@@ -593,11 +595,12 @@ def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]
     return values, sorted(missing)
 
 
-def _with_settings(raw_toml: dict, values: dict[str, Any]) -> dict[str, Any]:
+def _with_settings(raw_toml: dict, values: dict[str, Any], missing: list[str]) -> dict[str, Any]:
     """The file with its grade-D keys replaced by `values`, key by key.
 
     Key level, not table level: `[llm_provider] api_key` and `[vote_similarity]
-    threshold` share a table with grade-D keys and still come from the file.
+    threshold` share a table with grade-D keys and still come from the file. A
+    table missing any grade-D key is None, file keys included: it cannot be used.
     """
     merged: dict[str, Any] = {}
     for table, body in raw_toml.items():
@@ -609,4 +612,9 @@ def _with_settings(raw_toml: dict, values: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(merged.get(table), dict):
             merged[table] = {}
         merged[table][field] = value
+    for table in _SETTINGS_TABLES:
+        if any(key.split(".", 1)[0] == table for key in missing):
+            merged[table] = None
+        else:
+            merged.setdefault(table, {})
     return merged

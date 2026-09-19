@@ -150,8 +150,8 @@ def probe_environment() -> Iterator[SimpleNamespace]:
     two patched probes so a caller can see they were the ones answering.
     """
     absent = {
-        LLMProviderConfig(provider="openai").api_key_env_var,
-        LLMProviderConfig(provider="workers_ai").api_key_env_var,
+        LLMProviderConfig(provider="openai", model="").api_key_env_var,
+        LLMProviderConfig(provider="workers_ai", model="").api_key_env_var,
         # workers_ai falls back to these, so removing its own variable is not enough.
         "CLOUDFLARE_EMBEDDING_API_TOKEN",
         "CLOUDFLARE_ACCOUNT_ID",

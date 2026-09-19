@@ -2,6 +2,7 @@
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from fakes import TEST_SETTINGS
 
 from cyris.config import GRADE_D_KEYS
 from cyris.entrypoints.triage_server import TriageServer
@@ -306,7 +307,7 @@ class TestFeaturedCap:
         assert "digest.max_featured" in WRITABLE_KEYS
 
         raw = RawConfig(toml={}, sources={}, config_file_found=False)
-        cfg = resolve_config(raw, d1_settings={"digest.max_featured": 9})
+        cfg = resolve_config(raw, d1_settings={**TEST_SETTINGS, "digest.max_featured": 9})
 
         assert cfg.app.digest.max_featured == 9
 

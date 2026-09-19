@@ -133,7 +133,7 @@ class TriageServer:
         for name in models:
             # Constructing it is what resolves the key from the environment, so
             # `configured` reflects what a run would actually find, not a guess.
-            probe_cfg = LLMProviderConfig(provider=name)
+            probe_cfg = LLMProviderConfig(provider=name, model="")
             ready = bool(probe_cfg.api_key) and (
                 bool(probe_cfg.account_id) if name == "workers_ai" else True
             )

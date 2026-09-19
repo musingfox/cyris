@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import httpx
 
@@ -135,9 +135,9 @@ def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
 def _check_llm(cfg: Config) -> Check:
     # A missing key is the settings check's failure; this one only says why it stops.
     missing = {"llm_provider.provider", "llm_provider.model"} & set(cfg.missing_settings)
-    if missing or not cfg.app.llm_provider.provider:
-        return Check("llm provider", "skip", "not set — see settings")
     llm = cfg.app.llm_provider
+    if missing or llm is None:
+        return Check("llm provider", "skip", "not set — see settings")
     if llm.provider == "none":
         return Check("llm provider", "ok", "none — digests list plain excerpts, by choice")
     if not llm.api_key:
@@ -395,7 +395,13 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
         # again, one nesting level lower.
         for table in sorted(set(loaded) & set(AppConfig.model_fields)):
             body = loaded[table]
-            fields = getattr(AppConfig.model_fields[table].annotation, "model_fields", None)
+            annotation = AppConfig.model_fields[table].annotation
+            # A runtime-settings table is `Table | None`, so look inside the union.
+            model = next(
+                (t for t in (annotation, *get_args(annotation)) if hasattr(t, "model_fields")),
+                None,
+            )
+            fields = getattr(model, "model_fields", None)
             if not isinstance(body, dict) or fields is None:
                 continue
             unknown += [f"[{table}] {key}" for key in sorted(set(body) - set(fields))]

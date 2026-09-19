@@ -9,10 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from fakes import FakeLLM
+from fakes import FakeLLM, make_config
 from test_vote_similarity import FakeEmbedder, FakeStore, article
 
-from cyris.config import AppConfig, Config
 from cyris.diagnostics.compare import (
     NothingToCompareError,
     compare_embedders,
@@ -137,8 +136,7 @@ def test_an_arm_that_never_reached_its_model_is_not_a_row():
     """The pipeline ships excerpts when the LLM fails — a plausible digest from no model
     at all. Printing it beside a real arm invites reading the fallback as that model's
     work, so zero API calls is dropped rather than reported."""
-    cfg = Config(
-        app=AppConfig.model_validate({}),
+    cfg = make_config(
         sources={"Src": SourceConfig(name="Src", url="http://s", tier=Tier.FILTER)},
     )
 

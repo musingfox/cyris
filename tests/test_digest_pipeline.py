@@ -21,7 +21,7 @@ def _expected_story_id(date: str, period: str, urls: list[str]) -> str:
 class TestDigestPipeline:
     @pytest.fixture
     def pipeline(self):
-        return DigestPipeline(FakeLLM())
+        return DigestPipeline(FakeLLM(), output_language="zh-Hant")
 
     async def test_process_mixed_articles(
         self,
@@ -137,6 +137,7 @@ class TestDigestPipeline:
                 '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
             ),
             max_digest_output=1,
+            output_language="zh-Hant",
         )
 
         result = await pipeline.process(news, sample_sources, period="morning")
@@ -175,7 +176,8 @@ class TestDigestPipeline:
                 '{"clusters": ['
                 '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
                 '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
-            )
+            ),
+            output_language="zh-Hant",
         )
 
         result = await pipeline.process(news, sample_sources, period="morning")

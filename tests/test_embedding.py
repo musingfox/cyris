@@ -112,14 +112,15 @@ async def test_an_empty_input_never_reaches_the_api(patched_client):
 def test_each_provider_carries_its_own_calibration(monkeypatch):
     """Switching provider without switching threshold is how this feature dies
     silently: bge-m3's cosines run lower, so 0.68 would suppress nothing."""
+    from fakes import make_config
+
     from cyris.bootstrap import build_embedder, embedding_threshold
-    from cyris.config import AppConfig, Config
 
     monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("GEMINI_API_KEY", "g")
 
-    cfg = Config(app=AppConfig(), sources={})
+    cfg = make_config()
     cfg.app.vote_similarity.enabled = True
 
     cfg.app.vote_similarity.provider = "workers_ai"
@@ -132,20 +133,22 @@ def test_each_provider_carries_its_own_calibration(monkeypatch):
 
 
 def test_a_configured_threshold_still_wins():
-    from cyris.bootstrap import embedding_threshold
-    from cyris.config import AppConfig, Config
+    from fakes import make_config
 
-    cfg = Config(app=AppConfig(), sources={})
+    from cyris.bootstrap import embedding_threshold
+
+    cfg = make_config()
     cfg.app.vote_similarity.threshold = 0.6
 
     assert embedding_threshold(cfg) == 0.6
 
 
 def test_the_feature_off_means_no_embedder_at_all():
-    from cyris.bootstrap import build_embedder
-    from cyris.config import AppConfig, Config
+    from fakes import make_config
 
-    assert build_embedder(Config(app=AppConfig(), sources={})) is None
+    from cyris.bootstrap import build_embedder
+
+    assert build_embedder(make_config()) is None
 
 
 def test_module_default_models_match_provider_defaults() -> None:

@@ -8,20 +8,16 @@ from cyris.bootstrap import build_llm
 from cyris.config import LLMProviderConfig
 
 
-def test_no_provider_means_degraded_mode():
-    assert build_llm(LLMProviderConfig()) is None
-
-
 def test_anthropic_and_gemini_still_route_to_their_own_clients():
-    anthropic = build_llm(LLMProviderConfig(provider="anthropic", api_key="k"))
-    gemini = build_llm(LLMProviderConfig(provider="gemini", api_key="k"))
+    anthropic = build_llm(LLMProviderConfig(provider="anthropic", model="", api_key="k"))
+    gemini = build_llm(LLMProviderConfig(provider="gemini", model="", api_key="k"))
 
     assert isinstance(anthropic, AnthropicClient)
     assert isinstance(gemini, GeminiClient)
 
 
 def test_openai_routes_to_its_client_and_defaults_to_luna():
-    llm = build_llm(LLMProviderConfig(provider="openai", api_key="k"))
+    llm = build_llm(LLMProviderConfig(provider="openai", model="", api_key="k"))
 
     assert isinstance(llm, OpenAIClient)
     assert llm.model == "gpt-5.6-luna"
@@ -29,7 +25,7 @@ def test_openai_routes_to_its_client_and_defaults_to_luna():
 
 def test_workers_ai_defaults_to_gpt_oss():
     """llama-3.3's 24k context has no room for a busy window's filter batch."""
-    llm = build_llm(LLMProviderConfig(provider="workers_ai", api_key="k", account_id="a"))
+    llm = build_llm(LLMProviderConfig(provider="workers_ai", model="", api_key="k", account_id="a"))
 
     assert isinstance(llm, WorkersAIClient)
     assert llm.model == "@cf/openai/gpt-oss-120b"
@@ -51,7 +47,7 @@ def test_workers_ai_honours_an_explicit_model():
 def test_workers_ai_without_an_account_id_degrades_rather_than_building_a_broken_url(monkeypatch):
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
 
-    assert build_llm(LLMProviderConfig(provider="workers_ai", api_key="k")) is None
+    assert build_llm(LLMProviderConfig(provider="workers_ai", model="", api_key="k")) is None
 
 
 def test_provider_none_builds_no_client_even_with_a_key():

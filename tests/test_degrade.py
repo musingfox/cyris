@@ -53,11 +53,11 @@ def test_excerpt_sections_group_by_tag():
 
 @pytest.mark.asyncio
 async def test_filter_degrades_without_llm():
-    items = await filter_articles([_article(1), _article(2)], None)
+    items = await filter_articles([_article(1), _article(2)], None, output_language="zh-Hant")
     assert len(items) == 2  # excerpt headlines, no crash
 
 
 @pytest.mark.asyncio
 async def test_summarize_degrades_without_llm():
-    sections = await summarize_articles([_article(1)], None)
+    sections = await summarize_articles([_article(1)], None, output_language="zh-Hant")
     assert sections and sections[0].items

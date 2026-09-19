@@ -3,11 +3,11 @@
 from pathlib import Path
 
 import pytest
-from fakes import CompoundSelectLimitedD1, SqliteD1
+from fakes import CompoundSelectLimitedD1, SqliteD1, make_config
 
 from cyris import bootstrap
 from cyris.adapters.store.archive_meta import D1ArchiveMeta
-from cyris.config import AgentVaultConfig, AppConfig, Config
+from cyris.config import AgentVaultConfig, Config
 
 
 def _log(db: SqliteD1, logged_at: str, date: str | None, period: str | None, n: int) -> None:
@@ -72,7 +72,7 @@ def test_the_read_writes_nothing() -> None:
 
 
 def _config(tmp_path: Path, *, d1: bool) -> Config:
-    cfg = Config(app=AppConfig(agent_vault=AgentVaultConfig(path=tmp_path / "vault")), sources={})
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
     if d1:
         cfg.app.store.backend = "d1"
         cfg.app.store.database_id = "db"

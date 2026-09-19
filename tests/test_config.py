@@ -1,12 +1,11 @@
 """Tests for configuration loader."""
 
-import inspect
 import logging
 import tomllib
 from pathlib import Path
 
 import pytest
-from fakes import settings_toml
+from fakes import TEST_SETTINGS, make_config, settings_toml
 
 from cyris.config import GRADE_D_KEYS, load_config
 from cyris.domain.models import Tier
@@ -53,7 +52,7 @@ class TestLoadConfig:
         sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
         missing = tmp_path / "nope.toml"
         cfg = load_config(config_path=missing, sources_path=sources)
-        assert cfg.app.general.timezone == "Asia/Taipei"
+        assert cfg.app.general is None
         assert cfg.app.store.backend == "json"
         assert cfg.config_file_found is False
 
@@ -63,7 +62,7 @@ class TestLoadConfig:
         sources = tmp_path / "sources.yaml"
         sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
         cfg = load_config(config_path=config_file, sources_path=sources)
-        assert cfg.app.general.timezone == "UTC"
+        assert cfg.present_settings()["general.timezone"] == "UTC"
         assert cfg.config_file_found is True
 
     def test_malformed_config_file_raises(self, tmp_path):
@@ -173,13 +172,12 @@ class TestPublishingSettingsFromEnv:
 class TestStoreBackendFromEnv:
     def test_env_selects_d1_store(self, monkeypatch):
         from cyris.bootstrap import build_store
-        from cyris.config import AppConfig, Config
 
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
         monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
         monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-        cfg = Config(app=AppConfig.model_validate({}), sources={})
+        cfg = make_config()
         assert cfg.app.store.is_d1 is True
         assert cfg.app.store.database_id == "abc"
         assert type(build_store(cfg)).__name__ == "D1ArticleStore"
@@ -194,11 +192,9 @@ class TestStoreBackendFromEnv:
     def test_invalid_backend_raises(self, monkeypatch):
         from pydantic import ValidationError
 
-        from cyris.config import AppConfig
-
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
         with pytest.raises(ValidationError, match="backend"):
-            AppConfig.model_validate({})
+            make_config()
 
     def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
@@ -210,18 +206,15 @@ class TestStoreBackendFromEnv:
     def test_empty_database_id_yields_to_env(self, monkeypatch):
         import tomllib
 
-        from cyris.config import AppConfig
-
         monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
         raw = tomllib.loads('[store]\nbackend = "d1"\ndatabase_id = ""\n')
-        cfg_app = AppConfig.model_validate(raw)
+        cfg_app = make_config(store=raw["store"]).app
         assert cfg_app.store.database_id == "abc"
 
     def test_d1_without_database_id_names_env_var(self, monkeypatch):
-        from cyris.config import AppConfig, Config
 
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
-        cfg = Config(app=AppConfig.model_validate({}), sources={})
+        cfg = make_config()
         with pytest.raises(ValueError, match="CYRIS_STORE_DATABASE_ID"):
             cfg.validate_required_keys()
 
@@ -229,7 +222,6 @@ class TestStoreBackendFromEnv:
         """`backend = d1` with blank creds must name the variable, not retry HTTP 4x."""
         from cyris import bootstrap
         from cyris.adapters.store import d1 as d1_module
-        from cyris.config import AppConfig, Config
 
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
         monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
@@ -244,7 +236,7 @@ class TestStoreBackendFromEnv:
 
         monkeypatch.setattr(d1_module, "D1Client", ExplodingD1Client)
 
-        cfg = Config(app=AppConfig.model_validate({}), sources={})
+        cfg = make_config()
         with pytest.raises(ValueError, match="CYRIS_STORE_DATABASE_ID"):
             bootstrap.build_d1_client(cfg)
         assert constructed == []
@@ -302,20 +294,22 @@ class TestWorkerUrlsFromEnv:
         assert cfg.app.rss.worker_url == "https://env.example"
 
 
+def _table(model, table: str, **overrides):
+    """One settings table built from TEST_SETTINGS, with `overrides` on top."""
+    values = {
+        key.split(".", 1)[1]: value
+        for key, value in TEST_SETTINGS.items()
+        if key.split(".", 1)[0] == table
+    }
+    return model(**{**values, **overrides})
+
+
 class TestRoutingConfig:
-    def test_routing_config_default(self):
-        """RoutingConfig default threshold is 70 (featured article threshold)."""
-        from cyris.config import RoutingConfig
-
-        config = RoutingConfig()
-        assert config.score_threshold == 70
-        assert config.summarize_score_threshold == 70
-
     def test_routing_config_valid(self):
         """RoutingConfig accepts valid threshold."""
         from cyris.config import RoutingConfig
 
-        config = RoutingConfig(score_threshold=70)
+        config = _table(RoutingConfig, "routing", score_threshold=70)
         assert config.score_threshold == 70
 
     def test_routing_config_invalid(self):
@@ -324,24 +318,17 @@ class TestRoutingConfig:
 
         from cyris.config import RoutingConfig
 
-        with pytest.raises(ValidationError):
-            RoutingConfig(score_threshold=150)
+        with pytest.raises(ValidationError, match="score_threshold"):
+            _table(RoutingConfig, "routing", score_threshold=150)
 
-        with pytest.raises(ValidationError):
-            RoutingConfig(score_threshold=-10)
-
-    def test_summarize_score_threshold_default(self):
-        """RoutingConfig default summarize_score_threshold is 70."""
-        from cyris.config import RoutingConfig
-
-        config = RoutingConfig()
-        assert config.summarize_score_threshold == 70
+        with pytest.raises(ValidationError, match="score_threshold"):
+            _table(RoutingConfig, "routing", score_threshold=-10)
 
     def test_summarize_score_threshold_custom(self):
         """RoutingConfig accepts custom summarize_score_threshold."""
         from cyris.config import RoutingConfig
 
-        config = RoutingConfig(summarize_score_threshold=80)
+        config = _table(RoutingConfig, "routing", summarize_score_threshold=80)
         assert config.summarize_score_threshold == 80
 
     def test_summarize_score_threshold_validation(self):
@@ -350,58 +337,29 @@ class TestRoutingConfig:
 
         from cyris.config import RoutingConfig
 
-        with pytest.raises(ValidationError):
-            RoutingConfig(summarize_score_threshold=150)
+        with pytest.raises(ValidationError, match="summarize_score_threshold"):
+            _table(RoutingConfig, "routing", summarize_score_threshold=150)
 
-        with pytest.raises(ValidationError):
-            RoutingConfig(summarize_score_threshold=-5)
+        with pytest.raises(ValidationError, match="summarize_score_threshold"):
+            _table(RoutingConfig, "routing", summarize_score_threshold=-5)
 
 
 class TestDigestConfigSnippetLength:
-    def test_digest_config_default_snippet_lengths(self):
-        """DigestConfig snippet_length fields default to 1000."""
-        from cyris.config import DigestConfig
-
-        config = DigestConfig()
-        assert config.scoring_snippet_length == 1000
-        assert config.summarize_snippet_length == 1000
-
-    def test_digest_config_custom_scoring_snippet_length(self):
-        """DigestConfig accepts custom scoring_snippet_length."""
-        from cyris.config import DigestConfig
-
-        config = DigestConfig(scoring_snippet_length=500)
-        assert config.scoring_snippet_length == 500
-        assert config.summarize_snippet_length == 1000
-
-    def test_digest_config_custom_summarize_snippet_length(self):
-        """DigestConfig accepts custom summarize_snippet_length."""
-        from cyris.config import DigestConfig
-
-        config = DigestConfig(summarize_snippet_length=1500)
-        assert config.scoring_snippet_length == 1000
-        assert config.summarize_snippet_length == 1500
-
     def test_digest_config_both_custom_snippet_lengths(self):
         """DigestConfig accepts both custom snippet lengths."""
         from cyris.config import DigestConfig
 
-        config = DigestConfig(scoring_snippet_length=800, summarize_snippet_length=1200)
+        config = _table(
+            DigestConfig, "digest", scoring_snippet_length=800, summarize_snippet_length=1200
+        )
         assert config.scoring_snippet_length == 800
         assert config.summarize_snippet_length == 1200
-
-    def test_digest_config_filter_snippet_length_default(self):
-        """LLMProviderConfig filter_snippet_length defaults to 500."""
-        from cyris.config import DigestConfig
-
-        config = DigestConfig()
-        assert config.filter_snippet_length == 500
 
     def test_digest_config_filter_snippet_length_custom(self):
         """DigestConfig accepts custom filter_snippet_length."""
         from cyris.config import DigestConfig
 
-        config = DigestConfig(filter_snippet_length=800)
+        config = _table(DigestConfig, "digest", filter_snippet_length=800)
         assert config.filter_snippet_length == 800
 
     def test_digest_config_filter_snippet_length_validation(self):
@@ -410,31 +368,21 @@ class TestDigestConfigSnippetLength:
 
         from cyris.config import DigestConfig
 
-        with pytest.raises(ValidationError):
-            DigestConfig(filter_snippet_length=-1)
+        with pytest.raises(ValidationError, match="filter_snippet_length"):
+            _table(DigestConfig, "digest", filter_snippet_length=-1)
 
-        with pytest.raises(ValidationError):
-            DigestConfig(filter_snippet_length=0)
+        with pytest.raises(ValidationError, match="filter_snippet_length"):
+            _table(DigestConfig, "digest", filter_snippet_length=0)
 
 
 class TestLLMProvider:
-    def test_provider_defaults_to_none(self, monkeypatch):
-        """No provider by default ⇒ degraded mode, not a silent vendor default."""
-        from cyris.config import LLMProviderConfig
-
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
-        monkeypatch.setenv("GEMINI_API_KEY", "g-key")
-        config = LLMProviderConfig()
-        assert config.provider is None
-        assert config.api_key == ""  # no key injected without a chosen provider
-
     def test_gemini_provider_reads_gemini_key(self, monkeypatch):
         """provider=gemini injects GEMINI_API_KEY instead of ANTHROPIC_API_KEY."""
         from cyris.config import LLMProviderConfig
 
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.setenv("GEMINI_API_KEY", "g-key")
-        config = LLMProviderConfig(provider="gemini")
+        config = LLMProviderConfig(provider="gemini", model="")
         assert config.api_key == "g-key"
 
     def test_workers_ai_reads_its_own_token_and_account(self, monkeypatch):
@@ -442,7 +390,7 @@ class TestLLMProvider:
 
         monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "ai-token")
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct-1")
-        config = LLMProviderConfig(provider="workers_ai")
+        config = LLMProviderConfig(provider="workers_ai", model="")
         assert config.api_key == "ai-token"
         assert config.account_id == "acct-1"
 
@@ -452,7 +400,7 @@ class TestLLMProvider:
 
         monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
         monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "embed-token")
-        assert LLMProviderConfig(provider="workers_ai").api_key == "embed-token"
+        assert LLMProviderConfig(provider="workers_ai", model="").api_key == "embed-token"
 
     def test_workers_ai_never_uses_the_d1_pages_token(self, monkeypatch):
         """CLOUDFLARE_API_TOKEN carries D1 and Pages; using it here would 403 confusingly."""
@@ -461,7 +409,7 @@ class TestLLMProvider:
         monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
         monkeypatch.delenv("CLOUDFLARE_EMBEDDING_API_TOKEN", raising=False)
         monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "d1-pages-token")
-        assert LLMProviderConfig(provider="workers_ai").api_key == ""
+        assert LLMProviderConfig(provider="workers_ai", model="").api_key == ""
 
     def test_invalid_provider_rejected(self):
         """Unknown provider values fail validation."""
@@ -470,19 +418,12 @@ class TestLLMProvider:
         from cyris.config import LLMProviderConfig
 
         with pytest.raises(ValidationError):
-            LLMProviderConfig(provider="mistral")
+            LLMProviderConfig(provider="mistral", model="")
 
     def test_missing_gemini_key_named_in_error(self, monkeypatch):
         """validate_required_keys names GEMINI_API_KEY when provider=gemini."""
-        from cyris.config import AppConfig, Config, LLMProviderConfig
-
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        cfg = Config(
-            app=AppConfig(
-                llm_provider=LLMProviderConfig(provider="gemini"),
-            ),
-            sources={},
-        )
+        cfg = make_config(llm_provider={"provider": "gemini"})
         with pytest.raises(ValueError, match="GEMINI_API_KEY"):
             cfg.validate_required_keys()
 
@@ -499,34 +440,8 @@ class TestLLMProvider:
         assert isinstance(gemini, GeminiClient)
         assert gemini.model == "gemini-2.5-flash"
 
-        claude = build_llm(LLMProviderConfig(provider="anthropic", api_key="k"))
+        claude = build_llm(LLMProviderConfig(provider="anthropic", model="", api_key="k"))
         assert isinstance(claude, AnthropicClient)
-
-        # No provider ⇒ None (degraded mode)
-        assert build_llm(LLMProviderConfig()) is None
-
-
-def test_code_defaults_match_the_config_defaults_they_shadow() -> None:
-    """Two settings state their default twice; neither may drift from the other.
-
-    Both function defaults are only reached by callers that omit the value — the
-    pipeline always passes the configured one — so a drift would show up nowhere
-    except in whatever calls them directly.
-    """
-    from cyris.config import AppConfig
-    from cyris.domain.selection import layer_by_score
-    from cyris.service_layer.prompts import DEFAULT_LANGUAGE
-
-    defaults = AppConfig()
-    assert defaults.digest.output_language == DEFAULT_LANGUAGE
-    assert (
-        inspect.signature(layer_by_score).parameters["featured_threshold"].default
-        == defaults.routing.score_threshold
-    )
-    assert (
-        inspect.signature(layer_by_score).parameters["max_featured"].default
-        == defaults.digest.max_featured
-    )
 
 
 class TestValidateSetting:
@@ -587,14 +502,9 @@ class TestProviderNone:
     LLM_KEYS = ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "CLOUDFLARE_AI_TOKEN")
 
     def test_it_passes_the_key_check_with_no_llm_key(self, monkeypatch):
-        from cyris.config import AppConfig, Config, LLMProviderConfig
-
         for name in self.LLM_KEYS:
             monkeypatch.delenv(name, raising=False)
-        cfg = Config(
-            app=AppConfig(llm_provider=LLMProviderConfig(provider="none", model="")),
-            sources={},
-        )
+        cfg = make_config(llm_provider={"provider": "none", "model": ""})
 
         assert cfg.validate_required_keys() is None
 
@@ -622,13 +532,8 @@ class TestProviderNone:
             validate_setting("llm_provider.provider", "")
 
     def test_a_real_provider_without_its_key_still_fails(self, monkeypatch):
-        from cyris.config import AppConfig, Config, LLMProviderConfig
-
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        cfg = Config(
-            app=AppConfig(llm_provider=LLMProviderConfig(provider="anthropic")),
-            sources={},
-        )
+        cfg = make_config(llm_provider={"provider": "anthropic"})
 
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             cfg.validate_required_keys()

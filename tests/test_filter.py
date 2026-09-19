@@ -27,7 +27,7 @@ class TestFilterArticles:
             )
         )
 
-        items = await filter_articles(sample_filter_articles, llm)
+        items = await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert len(items) == 1
         assert items[0].title == "Apple Vision Pro 第二代發表"
@@ -48,7 +48,7 @@ class TestFilterArticles:
         )
 
         with caplog.at_level(logging.WARNING):
-            items = await filter_articles(sample_filter_articles, llm)
+            items = await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert [item.title for item in items] == ["ok"]
         assert len(caplog.records) == 1
@@ -68,7 +68,7 @@ class TestFilterArticles:
         )
 
         with caplog.at_level(logging.WARNING):
-            items = await filter_articles(sample_filter_articles, llm)
+            items = await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert items == []
         assert len(caplog.records) == 2
@@ -88,7 +88,7 @@ class TestFilterArticles:
         )
 
         with caplog.at_level(logging.WARNING):
-            items = await filter_articles(sample_filter_articles, llm)
+            items = await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert [item.title for item in items] == ["ok"]
         assert len(caplog.records) == 1
@@ -110,19 +110,19 @@ class TestFilterArticles:
         )
 
         with caplog.at_level(logging.WARNING):
-            items = await filter_articles(sample_filter_articles, llm)
+            items = await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert [item.title for item in items] == ["ok"]
         assert len(caplog.records) == 3
 
     async def test_filter_empty_input(self):
-        items = await filter_articles([], FakeLLM())
+        items = await filter_articles([], FakeLLM(), output_language="zh-Hant")
         assert items == []
 
     async def test_filter_nothing_noteworthy(self, sample_filter_articles):
         llm = FakeLLM(json.dumps({"selected": []}))
 
-        items = await filter_articles(sample_filter_articles, llm)
+        items = await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert items == []
 
@@ -130,7 +130,7 @@ class TestFilterArticles:
         """filter_articles should pass temperature=1.0 to the LLM."""
         llm = FakeLLM(json.dumps({"selected": []}))
 
-        await filter_articles(sample_filter_articles, llm)
+        await filter_articles(sample_filter_articles, llm, output_language="zh-Hant")
 
         assert len(llm.calls) == 1
         assert llm.calls[0]["temperature"] == 1.0
@@ -150,7 +150,7 @@ class TestFilterArticles:
             json.dumps({"selected": [{"id": 101, "title": "Newsletter", "source": "Newsletter"}]})
         )
 
-        item = (await filter_articles([article], llm))[0]
+        item = (await filter_articles([article], llm, output_language="zh-Hant"))[0]
 
         assert item.ref_urls == ["https://r1.com/a", "https://r2.com/b"]
         assert item.urls == ["newsletter:abc"]
@@ -167,7 +167,7 @@ class TestFilterArticles:
         )
         llm = FakeLLM(json.dumps({"selected": [{"id": 102, "title": "RSS", "source": "RSS"}]}))
 
-        item = (await filter_articles([article], llm))[0]
+        item = (await filter_articles([article], llm, output_language="zh-Hant"))[0]
 
         assert item.ref_urls == []
         assert item.urls == ["https://ex.com/2"]

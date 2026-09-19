@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from cyris.domain.models import Article, Tier
 from cyris.service_layer.prompts import (
-    DEFAULT_LANGUAGE,
     FILTER_SYSTEM,
     SUMMARIZE_SYSTEM,
     build_filter_prompt,
@@ -170,8 +169,8 @@ class TestOutputLanguage:
         assert language_wording("pt-BR") == "pt-BR"
         assert language_wording("繁體中文") == "繁體中文"
 
-    def test_the_default_tag_reaches_the_system_prompt_as_a_name(self):
-        prompt = build_filter_system_prompt(DEFAULT_LANGUAGE)
+    def test_a_listed_tag_reaches_the_system_prompt_as_a_name(self):
+        prompt = build_filter_system_prompt("zh-Hant")
 
         assert "繁體中文 (Traditional Chinese)" in prompt
         assert "zh-Hant" not in prompt

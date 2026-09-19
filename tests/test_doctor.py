@@ -5,9 +5,10 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from fakes import make_config
 
 from cyris.adapters.gemini_client import GeminiAPIError
-from cyris.config import AppConfig, Config, LLMProviderConfig
+from cyris.config import Config, LLMProviderConfig
 from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig, Tier
 
@@ -32,15 +33,15 @@ def no_network(monkeypatch):
 
 
 def _config(tmp_path: Path, **app_kwargs) -> Config:
-    app = AppConfig(**app_kwargs)
-    app.agent_vault.path = tmp_path / "agent-vault"
+    cfg = make_config(
+        sources={"Feed": SourceConfig(name="Feed", url="https://a.test/feed", tier=Tier.FILTER)},
+        **app_kwargs,
+    )
+    cfg.app.agent_vault.path = tmp_path / "agent-vault"
     # A setup with neither sink is its own failure (`digest output`), and every
     # test here is about something else.
-    app.html_output.enabled = True
-    return Config(
-        app=app,
-        sources={"Feed": SourceConfig(name="Feed", url="https://a.test/feed", tier=Tier.FILTER)},
-    )
+    cfg.app.html_output.enabled = True
+    return cfg
 
 
 def _by_name(checks: list[doctor.Check], name: str) -> doctor.Check:
@@ -49,7 +50,7 @@ def _by_name(checks: list[doctor.Check], name: str) -> doctor.Check:
 
 async def test_a_clean_local_setup_has_no_failures(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
-    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="anthropic"))
+    cfg = _config(tmp_path, llm_provider={"provider": "anthropic"})
 
     checks = await doctor.run_checks(cfg)
 
@@ -113,7 +114,7 @@ async def test_no_sources_is_a_failure(tmp_path: Path) -> None:
 
 async def test_a_provider_without_its_key_names_the_variable(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="gemini"))
+    cfg = _config(tmp_path, llm_provider={"provider": "gemini"})
 
     check = _by_name(await doctor.run_checks(cfg), "llm provider")
 
@@ -125,7 +126,7 @@ async def test_workers_ai_without_an_account_id_fails(tmp_path: Path, monkeypatc
     """A token alone is not enough: the Workers AI REST path is per-account."""
     monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "ai-token")
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
-    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="workers_ai"))
+    cfg = _config(tmp_path, llm_provider={"provider": "workers_ai"})
 
     check = _by_name(await doctor.run_checks(cfg), "llm provider")
 
@@ -142,7 +143,7 @@ def test_a_missing_provider_defers_to_the_settings_check(tmp_path: Path) -> None
 
 def test_a_missing_model_defers_to_the_settings_check(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "g")
-    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="gemini"))
+    cfg = _config(tmp_path, llm_provider={"provider": "gemini"})
     cfg.missing_settings = ["llm_provider.model"]
 
     assert doctor._check_llm(cfg) == doctor.Check("llm provider", "skip", "not set — see settings")
@@ -155,7 +156,7 @@ def test_provider_none_is_reported_as_a_choice(tmp_path: Path, monkeypatch) -> N
     """Plain excerpts by choice must not read as a broken deployment."""
     for key in _LLM_KEYS:
         monkeypatch.delenv(key, raising=False)
-    cfg = _config(tmp_path, llm_provider=LLMProviderConfig(provider="none", model=""))
+    cfg = _config(tmp_path, llm_provider={"provider": "none", "model": ""})
 
     assert doctor._check_llm(cfg) == doctor.Check(
         "llm provider", "ok", "none — digests list plain excerpts, by choice"
@@ -202,7 +203,7 @@ async def test_llm_probe_exposes_structured_gemini_error_details(monkeypatch) ->
             )
 
     monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: FakeLLM())
-    cfg = LLMProviderConfig(provider="gemini", api_key="key")
+    cfg = LLMProviderConfig(provider="gemini", model="", api_key="key")
 
     check = await doctor.probe_llm(cfg)
 
@@ -996,7 +997,7 @@ async def test_llm_probe_prompt_satisfies_openai_json_mode(monkeypatch) -> None:
 
     monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: FakeLLM())
 
-    check = await doctor.probe_llm(LLMProviderConfig(provider="openai", api_key="key"))
+    check = await doctor.probe_llm(LLMProviderConfig(provider="openai", model="", api_key="key"))
 
     assert check.status == "ok"
     assert "json" in prompts[0].lower()

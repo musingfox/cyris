@@ -16,8 +16,6 @@ from importlib.resources import files
 
 from cyris.domain.models import Article
 
-DEFAULT_LANGUAGE = "zh-Hant"
-
 
 @cache
 def _language_names() -> dict[str, str]:
@@ -32,7 +30,7 @@ def language_wording(tag: str) -> str:
 
 def _finalize_system(
     base: str,
-    language: str = DEFAULT_LANGUAGE,
+    language: str,
     style_prompt: str = "",
 ) -> str:
     """Substitute the output language and append the optional style block."""
@@ -144,7 +142,7 @@ def build_summarize_prompt(tag: str, articles: list[Article], snippet_length: in
 
 
 def build_filter_system_prompt(
-    language: str = DEFAULT_LANGUAGE,
+    language: str,
     style_prompt: str = "",
 ) -> str:
     """Build filter system prompt with output language and style."""
@@ -152,7 +150,7 @@ def build_filter_system_prompt(
 
 
 def build_summarize_system_prompt(
-    language: str = DEFAULT_LANGUAGE,
+    language: str,
     style_prompt: str = "",
 ) -> str:
     """Build summarize system prompt with output language and style."""
@@ -212,9 +210,7 @@ def build_news_cluster_prompt(articles: list[Article]) -> str:
     return "\n".join(lines)
 
 
-def build_news_cluster_system_prompt(
-    language: str = DEFAULT_LANGUAGE, style_prompt: str = ""
-) -> str:
+def build_news_cluster_system_prompt(language: str, style_prompt: str = "") -> str:
     """Build news-cluster system prompt with output language and style injection."""
     return _finalize_system(NEWS_CLUSTER_SYSTEM, language, style_prompt)
 

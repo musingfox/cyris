@@ -7,7 +7,6 @@ from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.service_layer.degrade import excerpt, excerpt_sections_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
-    DEFAULT_LANGUAGE,
     build_summarize_prompt,
     build_summarize_system_prompt,
 )
@@ -30,7 +29,8 @@ async def summarize_articles(
     usage: UsageStats | None = None,
     snippet_length: int = 1000,
     article_scores: dict[str, float] | None = None,
-    output_language: str = DEFAULT_LANGUAGE,
+    *,
+    output_language: str,
     style_prompt: str = "",
 ) -> list[DigestSection]:
     """Summarize articles grouped by source tags.

@@ -51,6 +51,31 @@ def settings_toml(*, omit: Iterable[str] = (), **overrides: Any) -> str:
     return "".join(f"[{table}]\n" + "\n".join(lines) + "\n\n" for table, lines in tables.items())
 
 
+def make_config(*, sources: dict | None = None, **table_overrides: Any):
+    """A complete Config built from TEST_SETTINGS.
+
+    A dict override is merged into that table (`digest={"max_featured": 3}`); a
+    model instance replaces it (`store=StoreConfig(...)`).
+    """
+    from cyris.config import AppConfig, Config
+
+    tables: dict[str, Any] = {}
+    for key, value in TEST_SETTINGS.items():
+        table, field = key.split(".", 1)
+        tables.setdefault(table, {})[field] = value
+    for table, override in table_overrides.items():
+        if isinstance(override, dict) and isinstance(tables.get(table), dict):
+            tables[table] = {**tables[table], **override}
+        else:
+            tables[table] = override
+    app = AppConfig.model_validate(tables)
+    values = {}
+    for key in TEST_SETTINGS:
+        table, field = key.split(".", 1)
+        values[key] = getattr(getattr(app, table), field)
+    return Config(app=app, sources=sources or {}, settings_values=values)
+
+
 def seed_d1_settings(d1, *, omit: Iterable[str] = (), **overrides: Any) -> None:
     """Store every grade-D key but `omit` in D1 `settings`, keyed `table.field`."""
     from cyris.adapters.store.settings import D1Settings

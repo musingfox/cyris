@@ -49,7 +49,7 @@ def split_summarize_tier_by_score(
 
 
 def layer_by_score(
-    content: DigestContent, featured_threshold: float = 70, max_featured: int = 5
+    content: DigestContent, *, featured_threshold: float, max_featured: int
 ) -> DigestContent:
     """Extract high-scoring sections from thematic_summaries to featured_articles.
 

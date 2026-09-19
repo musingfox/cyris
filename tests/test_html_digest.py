@@ -883,9 +883,9 @@ def test_config_html_output_enabled():
         with open(f.name, "rb") as rf:
             raw = tomllib.load(rf)
 
-        from cyris.config import AppConfig
+        from fakes import make_config
 
-        config = AppConfig.model_validate(raw)
+        config = make_config(html_output=raw["html_output"]).app
 
         assert config.html_output.enabled is True
         assert config.html_output.output_dir == "/tmp/digests"
@@ -896,9 +896,9 @@ def test_config_html_output_enabled():
 
 def test_config_html_output_defaults():
     """C5 Test 2: Config without html_output uses defaults."""
-    from cyris.config import AppConfig
+    from fakes import make_config
 
-    config = AppConfig.model_validate({})
+    config = make_config().app
 
     assert config.html_output.enabled is False
     assert config.html_output.output_dir == "agent-vault/html"

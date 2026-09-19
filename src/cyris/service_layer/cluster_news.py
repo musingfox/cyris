@@ -6,7 +6,6 @@ from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.domain.tags import NEWS_TAG, normalize_tags
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
-    DEFAULT_LANGUAGE,
     build_news_cluster_prompt,
     build_news_cluster_system_prompt,
 )
@@ -41,7 +40,8 @@ async def cluster_news(
     llm: LLMClient | None,
     usage: UsageStats | None = None,
     article_scores: dict[str, float] | None = None,
-    output_language: str = DEFAULT_LANGUAGE,
+    *,
+    output_language: str,
     style_prompt: str = "",
 ) -> tuple[list[DigestSection], list[Article]]:
     """Cluster related news articles using the LLM.

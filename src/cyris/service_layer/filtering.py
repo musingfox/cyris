@@ -6,7 +6,6 @@ from cyris.domain.models import Article, DigestItem, UsageStats
 from cyris.service_layer.degrade import headlines_from_articles
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
-    DEFAULT_LANGUAGE,
     build_filter_prompt,
     build_filter_system_prompt,
 )
@@ -20,7 +19,8 @@ async def filter_articles(
     usage: UsageStats | None = None,
     article_scores: dict[str, float] | None = None,
     filter_snippet_length: int = 500,
-    output_language: str = DEFAULT_LANGUAGE,
+    *,
+    output_language: str,
     style_prompt: str = "",
 ) -> list[DigestItem]:
     """Send filter-tier articles to Claude for headline extraction.

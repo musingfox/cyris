@@ -8,7 +8,7 @@ read — the first D1 touch in every entrypoint — and aborted there.
 from datetime import UTC, datetime
 
 import pytest
-from fakes import SqliteD1
+from fakes import SqliteD1, make_config
 
 from cyris.adapters.store.d1 import D1Error, apply_schema
 from cyris.adapters.store.d1_store import D1ArticleStore
@@ -99,10 +99,9 @@ def test_doctor_says_when_the_database_it_just_built_was_empty(tmp_path) -> None
     """A wrong `database_id` and a first deploy look identical; say which one is assumed."""
     from unittest.mock import patch
 
-    from cyris.config import AppConfig, Config
     from cyris.diagnostics import doctor
 
-    cfg = Config(app=AppConfig.model_validate({}), sources={})
+    cfg = make_config()
     cfg.app.store.backend = "d1"
     cfg.app.store.database_id = "db"
     cfg.app.store.account_id = "acct"

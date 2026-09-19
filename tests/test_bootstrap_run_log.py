@@ -3,16 +3,16 @@
 from pathlib import Path
 
 import pytest
-from fakes import SqliteD1
+from fakes import SqliteD1, make_config
 
 from cyris import bootstrap
-from cyris.config import AgentVaultConfig, AppConfig, Config
+from cyris.config import AgentVaultConfig, Config
 
 _SUMMARY = {"status": "ok", "period": "morning", "dry_run": False}
 
 
 def _d1_config(tmp_path: Path) -> Config:
-    cfg = Config(app=AppConfig(agent_vault=AgentVaultConfig(path=tmp_path / "vault")), sources={})
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
     cfg.app.store.backend = "d1"
     cfg.app.store.database_id = "db"
     cfg.app.store.account_id = "acct"
@@ -44,6 +44,6 @@ def test_an_image_built_without_a_sha_records_an_empty_one(tmp_path: Path, monke
 
 
 def test_a_json_backend_records_no_run(tmp_path: Path) -> None:
-    cfg = Config(app=AppConfig(agent_vault=AgentVaultConfig(path=tmp_path / "vault")), sources={})
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
 
     assert bootstrap.build_deps(cfg).record_run is None

@@ -8,15 +8,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fakes import FakeLLM
+from fakes import FakeLLM, make_config
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store import ArticleStore
 from cyris.bootstrap import Deps
 from cyris.config import (
     AgentVaultConfig,
-    AppConfig,
-    Config,
 )
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -57,12 +55,7 @@ def make_deps(
     agent_vault = tmp_path / "agent-vault"
     agent_vault.mkdir(parents=True)
 
-    cfg = Config(
-        app=AppConfig(
-            agent_vault=AgentVaultConfig(path=agent_vault),
-        ),
-        sources={},
-    )
+    cfg = make_config(agent_vault=AgentVaultConfig(path=agent_vault))
 
     notifications: list[str] = []
 
