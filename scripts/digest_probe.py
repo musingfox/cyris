@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""Drive the digest page in headless Chromium and check what a reader actually gets.
+
+pytest holds the digest's markup and CSS, but not where a browser puts things:
+whether each kind of item keeps its ↑ and ↓ side by side, on the row of the
+meta before them. This runs those checks against the page `render` writes for
+a digest holding every kind of item, served in-process next to a stand-in for
+the app Worker's `/api/vote`, whose every vote request is kept as a receipt.
+
+Every check carries a sabotage that breaks the thing it reads. `--self-test`
+runs each check clean, where it must pass, and sabotaged, where it must fail,
+so a check that cannot fail is reported rather than trusted.
+
+This script must never be collected by pytest: it needs Chromium and Node,
+which makes it a reviewer-run gate rather than a test. Importing it is safe,
+and `tests/test_css_receipt.py` does so to check its fixtures and registry.
+"""
+
+import argparse
+import asyncio
+import dataclasses
+import json
+import tempfile
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from aiohttp import web
+from cdp_probe import Check, base_prelude, chromium, require_node, run_all
+from css_computed import find_browser
+
+from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
+
+DATE = "2026-01-02"
+PERIOD = "morning"
+PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
+
+KINDS = ("signed-in", "vote-fails")
+
+# Every element a vote group sits in, one per promote_btn call site.
+KIND_SELECTORS = (
+    ".lead-story",
+    ".featured-item",
+    ".news-cluster",
+    ".article-item",
+    ".attention-item",
+    ".headline-item",
+)
+
+# The widths the ticket accepts the page at.
+WIDTHS = (360, 880, 1000, 1440)
+
+
+def url_of(slug: str) -> str:
+    return f"https://example.test/{slug}"
+
+
+def _item(slug: str, title: str, sources: list[str], **extra) -> DigestItem:
+    urls = [url_of(f"{slug}-{n}") for n in range(len(sources))]
+    summary = f"{title}: a summary."
+    return DigestItem(title=title, summary=summary, sources=sources, urls=urls, **extra)
+
+
+def content() -> DigestContent:
+    """A digest with every item kind, a folded cluster and a folded headline."""
+    features = [_item("lead", "The lead story of the issue", ["Lead Source"], score=8.5)]
+    features += [
+        _item(f"feature-{n}", f"Feature story {n}", [f"Source {n}"], score=8.0 - n / 10)
+        for n in range(1, 6)
+    ]
+    return DigestContent(
+        date=DATE,
+        period=PERIOD,
+        sources_processed=12,
+        articles_received=40,
+        articles_included=20,
+        usage=UsageStats(input_tokens=1000, output_tokens=500, api_calls=3, model="probe"),
+        featured_articles=[DigestSection(heading="Top", items=features)],
+        # The busy cluster comes first: a click on the first cluster votes on three URLs.
+        news_clusters=[
+            DigestSection(
+                heading="A busy topic",
+                items=[_item("busy", "Busy", ["Wire A", "Wire B", "Wire C"])],
+                story_id=f"{DATE}-{PERIOD}-0",
+            ),
+            DigestSection(
+                heading="A quiet topic",
+                items=[_item("quiet", "Quiet", ["Wire D", "Wire E"])],
+                story_id=f"{DATE}-{PERIOD}-1",
+            ),
+        ],
+        fan_sections=[
+            DigestSection(
+                heading="Followed",
+                items=[_item(f"fan-{n}", f"Followed story {n}", ["Fan"]) for n in range(1, 3)],
+            )
+        ],
+        # One section, so the five items share one list.
+        attention_sections=[
+            DigestSection(
+                heading="Worth watching",
+                description="Things to keep an eye on.",
+                items=[_item(f"radar-{n}", f"Radar item {n}", ["Blog"]) for n in range(1, 6)],
+            )
+        ],
+        filtered_headlines=[
+            _item("wire-1", "Headline one", ["Wire"]),
+            _item(
+                "wire-2",
+                "Headline two",
+                ["Wire"],
+                ref_urls=[url_of(f"ref-{n}") for n in range(1, 4)],
+            ),
+            _item("wire-3", "Headline three", ["Wire"]),
+        ],
+        triage_pending_count=4,
+    )
+
+
+def render_page() -> str:
+    with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
+        return HtmlDigestWriter(Path(unused)).render(content())
+
+
+@dataclass
+class Fixture:
+    """The digest page and a stand-in `/api/vote`; `posts` is the receipt of every vote."""
+
+    app: web.Application
+    posts: list[dict] = field(default_factory=list)
+    post_headers: list[dict] = field(default_factory=list)
+
+
+def build_fixture(kind: str) -> Fixture:
+    """Serve the digest page with the `/api/vote` answers of one deployment `kind`.
+
+    Both kinds answer the probe signed in; `signed-in` takes every vote and
+    `vote-fails` refuses every vote.
+    """
+    if kind not in KINDS:
+        raise ValueError(f"unknown fixture {kind!r}")
+    page = render_page()
+    app = web.Application()
+    fixture = Fixture(app)
+
+    async def serve_page(_: web.Request) -> web.Response:
+        return web.Response(text=page, content_type="text/html")
+
+    async def probe(_: web.Request) -> web.Response:
+        return web.json_response({"authorized": True})
+
+    async def vote(request: web.Request) -> web.Response:
+        fixture.posts.append(await request.json())
+        fixture.post_headers.append(dict(request.headers))
+        if kind == "vote-fails":
+            return web.json_response({"ok": False}, status=502)
+        return web.json_response({"ok": True})
+
+    app.router.add_get(PAGE, serve_page)
+    app.router.add_get("/api/vote", probe)
+    app.router.add_post("/api/vote", vote)
+    return fixture
+
+
+def registry_problems(checks: Iterable[Check]) -> list[str]:
+    """Name every check the self-test could not trust: repeated, unsabotaged, or unserved."""
+    problems, seen = [], set()
+    for check in checks:
+        if check.id in seen:
+            problems.append(f"{check.id}: named twice")
+        seen.add(check.id)
+        if not (check.sabotage.strip() or check.sabotage_preload):
+            problems.append(f"{check.id}: no sabotage")
+        if check.fixture not in KINDS:
+            problems.append(f"{check.id}: unknown fixture {check.fixture}")
+    return problems
+
+
+# Chromium keeps one profile for the whole run, and a fixture's origin is only as
+# fresh as its port, so every check starts from a browser that has voted nothing.
+FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
+
+DIGEST_PRELUDE = (
+    base_prelude()
+    + f"const KINDS = {json.dumps(KIND_SELECTORS)};\n"
+    + """
+const signedIn = () => waitFor(() => {
+  const groups = $$(".vote-group");
+  return groups.length && groups.every(visible);
+}, "the vote buttons");
+// Fails on each problem `measure` names for a shown vote group, and on every kind showing none.
+const expectEveryKind = (measure) => {
+  const problems = [];
+  for (const kind of KINDS) {
+    const groups = $$(`${kind} .vote-group`).filter(visible);
+    if (!groups.length) problems.push(`${kind}: no vote group shows`);
+    for (const group of groups) {
+      const problem = measure(group);
+      if (problem) problems.push(`${kind}: ${problem}`);
+    }
+  }
+  expect(!problems.length, problems.join("; "));
+};
+const oneRow = (group) => {
+  const up = $('[data-vote="up"]', group).getBoundingClientRect();
+  const down = $('[data-vote="down"]', group).getBoundingClientRect();
+  return Math.abs(up.top - down.top) > 1 ? `up at ${up.top}, down at ${down.top}` : "";
+};
+const besideMeta = (group) => {
+  const before = group.previousElementSibling;
+  if (!before) return "nothing before the vote group";
+  const a = group.getBoundingClientRect();
+  const b = before.getBoundingClientRect();
+  return a.top < b.bottom && b.top < a.bottom
+    ? ""
+    : `votes span ${a.top}-${a.bottom}, the meta before them ${b.top}-${b.bottom}`;
+};
+"""
+)
+
+
+_CHECKS: list[Check] = [
+    *(
+        Check(
+            id=f"votes-one-row-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script="expectEveryKind(oneRow);",
+            sabotage="""$$(".vote-group").forEach((g) => { g.style.flexDirection = "column"; });""",
+        )
+        for width in WIDTHS
+    ),
+    *(
+        Check(
+            id=f"votes-beside-meta-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script="expectEveryKind(besideMeta);",
+            sabotage="""$$(".vote-group").forEach((g) => {
+                g.style.display = "flex";
+                g.style.width = "100%";
+            });""",
+        )
+        for width in WIDTHS
+    ),
+]
+
+CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--browser", default=None, help="Chromium binary (else $CYRIS_CHROMIUM)")
+    parser.add_argument("--only", action="append", default=[], metavar="ID", help="run one check")
+    parser.add_argument(
+        "--self-test", action="store_true", help="also run every check sabotaged; each must fail"
+    )
+    args = parser.parse_args()
+
+    known = {check.id for check in CHECKS}
+    if unknown := sorted(set(args.only) - known):
+        parser.error(f"unknown check: {', '.join(unknown)}")
+    checks = [check for check in CHECKS if not args.only or check.id in args.only]
+
+    browser = find_browser(args.browser)
+    require_node()
+    with chromium(browser) as socket_url:
+        good = asyncio.run(
+            run_all(checks, socket_url, args.self_test, build_fixture, DIGEST_PRELUDE)
+        )
+    raise SystemExit(0 if good else 1)
+
+
+if __name__ == "__main__":
+    main()

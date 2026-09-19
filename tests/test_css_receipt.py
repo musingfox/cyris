@@ -15,6 +15,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from css_rules import parse_style_block, receipt_fixtures
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import cdp_probe  # noqa: E402
+import digest_probe  # noqa: E402
 import raw_probe  # noqa: E402
 import settings_probe  # noqa: E402
 from css_computed import (  # noqa: E402
@@ -844,3 +846,75 @@ def test_every_raw_probe_check_is_named_once_and_can_be_sabotaged():
     assert raw_probe.registry_problems([unsabotaged]) == ["a: no sabotage"]
     assert raw_probe.registry_problems(raw_probe.CHECKS) == []
     assert {check.id for check in raw_probe.CHECKS} >= EXPECTED_RAW_IDS
+
+
+# The checks `scripts/digest_probe.py` must carry. Each digest-page change adds the
+# ids of the checks that hold it.
+EXPECTED_DIGEST_IDS = {
+    *(f"votes-one-row-{width}" for width in (360, 880, 1000, 1440)),
+    *(f"votes-beside-meta-{width}" for width in (360, 880, 1000, 1440)),
+}
+
+_VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
+
+
+class _Placement(HTMLParser):
+    """For each element the digest probe looks for, the classes of the elements around it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._open: list[set[str]] = []
+        self.found: list[tuple[str, set[str]]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        classes = set((dict(attrs).get("class") or "").split())
+        around = set().union(*self._open)
+        if "vote-group" in classes:
+            self.found.append(("vote-group", around))
+        if tag == "details" and "src-fold" in classes:
+            self.found.append(("src-fold", around))
+        if tag not in _VOID_TAGS:
+            self._open.append(classes)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag not in _VOID_TAGS:
+            self._open.pop()
+
+
+def _placed_in(html: str, what: str) -> set[str]:
+    parser = _Placement()
+    parser.feed(html)
+    return set().union(*(around for name, around in parser.found if name == what))
+
+
+def test_the_digest_probe_page_shows_a_vote_group_in_every_item_kind():
+    kinds = {selector.lstrip(".") for selector in digest_probe.KIND_SELECTORS}
+    assert len(kinds) == 6
+    assert kinds <= _placed_in(digest_probe.render_page(), "vote-group")
+
+
+def test_the_digest_probe_page_folds_a_cluster_and_a_headline():
+    assert {"news-cluster", "headline-item"} <= _placed_in(digest_probe.render_page(), "src-fold")
+
+
+@pytest.mark.parametrize("kind", digest_probe.KINDS)
+async def test_the_digest_probe_fixture_signs_every_kind_in(kind):
+    [(status, body)] = await _raw_answers(digest_probe.build_fixture(kind), [("GET", "/api/vote")])
+    assert status == 200
+    assert json.loads(body) == {"authorized": True}
+
+
+def test_the_digest_probe_fixture_refuses_an_unknown_kind():
+    with pytest.raises(ValueError):
+        digest_probe.build_fixture("bogus")
+
+
+def test_the_digest_probe_runs_on_the_shared_core():
+    assert digest_probe.Check is cdp_probe.Check
+
+
+def test_every_digest_probe_check_is_named_once_and_can_be_sabotaged():
+    unsabotaged = cdp_probe.Check(id="a", fixture="signed-in", path="/p", script="", sabotage="")
+    assert digest_probe.registry_problems([unsabotaged]) == ["a: no sabotage"]
+    assert digest_probe.registry_problems(digest_probe.CHECKS) == []
+    assert {check.id for check in digest_probe.CHECKS} >= EXPECTED_DIGEST_IDS
