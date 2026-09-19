@@ -355,6 +355,28 @@ document.addEventListener("click", (event) => {
 """
 
 
+def _keep_only(name: str) -> Callable[[Fixture], None]:
+    """A setup: the source table holds `name` alone."""
+
+    def setup(fixture: Fixture) -> None:
+        for other in [n for n in fixture.sources if n != name]:
+            fixture.sources.pop(other)
+
+    return setup
+
+
+# Installed before the page loads: every DELETE of a source is answered as retired.
+ANSWER_DELETE_OK = """
+const realFetch = window.fetch;
+const retired = JSON.stringify({ok: true, name: "x", note: "Effective next run."});
+window.fetch = (input, init) =>
+  String(input).includes("/api/sources/") && init && init.method === "DELETE"
+    ? Promise.resolve(new Response(retired,
+        {status: 200, headers: {"Content-Type": "application/json"}}))
+    : realFetch(input, init);
+"""
+
+
 def _still_listed(name: str) -> Callable[[Fixture], str | None]:
     return lambda fixture: None if name in fixture.sources else f"{name} was retired"
 
@@ -1154,6 +1176,28 @@ CHECKS: list[Check] = [
         """,
         sabotage_preload=IGNORE_ARMED_RETIRE,
         receipt=lambda fixture: "曼報 is still listed" if "曼報" in fixture.sources else None,
+    ),
+    Check(
+        id="retire-last-refused",
+        fixture="writable",
+        path="/settings#sources",
+        setup=_keep_only("Hacker News"),
+        act="""
+            await openRow("Hacker News");
+            editorAct("retire").click();
+            await sleep(200);
+            editorAct("retire").click();
+            const notice = () => editorAct("retire").parentElement.querySelector(".notice");
+            await waitFor(() => visible(notice()) || visible($("#sources-notice")), "the retire");
+        """,
+        script="""
+            const notice = editorAct("retire").parentElement.querySelector(".notice");
+            expect(notice.classList.contains("err"), `not an error: ${notice.className}`);
+            expect(notice.textContent.includes("last source"), `notice: ${notice.textContent}`);
+            expect(rowNames().includes("Hacker News"), `rows: ${rowNames()}`);
+        """,
+        sabotage_preload=ANSWER_DELETE_OK,
+        receipt=_still_listed("Hacker News"),
     ),
     Check(
         id="readonly-settings",

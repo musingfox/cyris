@@ -176,3 +176,40 @@ class TestSourcesWriteSurface:
         resp = await client.post("/api/sources", json={"name": "x", "tier": "nonsense"})
         assert resp.status == 400
         assert self.sources.list_sources() == {}
+
+
+class TestLastSource:
+    """A deployment with no source stops running, so the page cannot retire the last one."""
+
+    async def _delete(self, names: list[str], retire: str):
+        from cyris.adapters.store.source_store import D1SourceStore
+        from cyris.domain.models import SourceConfig
+
+        store = D1SourceStore(SqliteD1())
+        for name in names:
+            store.upsert(SourceConfig(name=name, url=f"https://{name.lower()}.test/feed"))
+        test_client = TestClient(TestServer(TriageServer(source_store=store)._app))
+        await test_client.start_server()
+        try:
+            resp = await test_client.delete(f"/api/sources/{retire}")
+            return resp.status, await resp.json(), set(store.list_sources())
+        finally:
+            await test_client.close()
+
+    async def test_the_last_source_is_kept(self) -> None:
+        status, body, left = await self._delete(["Only"], "Only")
+
+        assert status == 409
+        assert body == {
+            "ok": False,
+            "error": (
+                "Only is the last source. A run with none stops, so add another before retiring it."
+            ),
+        }
+        assert left == {"Only"}
+
+    async def test_one_of_two_is_retired(self) -> None:
+        status, _, left = await self._delete(["A", "B"], "A")
+
+        assert status == 200
+        assert left == {"B"}
