@@ -20,18 +20,7 @@
 
         {% include "_promote.css.j2" %}
 
-        .raw-row {
-            display: grid;
-            grid-template-columns: 96px 56px 1fr auto;
-            align-items: baseline;
-            gap: var(--s-4);
-            padding: var(--s-3) var(--s-5);
-            border-bottom: 1px solid var(--border);
-            transition: background-color var(--t-fast);
-        }
-
-        .raw-row:last-child { border-bottom: 0; }
-        .raw-row:hover { background: var(--surface); }
+        .raw-row { grid-template-columns: 96px 56px 1fr auto; align-items: baseline; }
 
         .score {
             font-family: var(--font-mono);
@@ -96,7 +85,7 @@
         <section class="panel">
             <div class="panel-head"><span class="source-name">{{ group.name }}</span><span class="label">{{ group.articles | length }}</span></div>
             {% for a in group.articles %}
-            <div class="raw-row">
+            <div class="list-row raw-row">
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>

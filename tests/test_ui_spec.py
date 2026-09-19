@@ -612,13 +612,10 @@ def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
 
 def test_archive_rows_are_the_prototype_rows_and_wrap_them_on_phones() -> None:
     index = _parsed("index")
-    assert {
-        "display: grid",
-        "grid-template-columns: 170px 110px 1fr auto",
-        "padding: var(--s-3) var(--s-5)",
-        "border-bottom: 1px solid var(--border)",
-    } <= index[".archive-row"]
-    assert index[".archive-row:hover"] == {"background: var(--surface)"}
+    # The row itself is the shared list row; the archive adds only its columns.
+    assert 'class="list-row archive-row"' in _source("index")
+    assert index[".archive-row"] == {"grid-template-columns: 170px 110px 1fr auto"}
+    assert ".archive-row:hover" not in index
     # A row without a count keeps its buttons in the last column, right-aligned.
     assert "grid-column: 4" in index[".archive-row .actions"]
     phone = index["@media (max-width: 720px) | .archive-row"]
@@ -701,12 +698,13 @@ def test_raw_rows_put_the_title_on_its_own_line_at_the_one_breakpoint() -> None:
 
 def test_raw_rows_are_the_prototype_rows() -> None:
     raw = _parsed("raw")
-    assert {
+    # The row itself is the shared list row; raw adds its columns and baseline.
+    assert 'class="list-row raw-row"' in _source("raw")
+    assert raw[".raw-row"] == {
         "grid-template-columns: 96px 56px 1fr auto",
-        "padding: var(--s-3) var(--s-5)",
-        "border-bottom: 1px solid var(--border)",
-    } <= raw[".raw-row"]
-    assert raw[".raw-row:hover"] == {"background: var(--surface)"}
+        "align-items: baseline",
+    }
+    assert ".raw-row:hover" not in raw
     old = {".source-group", ".source-head", ".source-count", ".article", ".article a"}
     assert sorted(old & set(raw)) == []
 

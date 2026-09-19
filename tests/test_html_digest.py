@@ -314,7 +314,7 @@ def test_an_archive_row_holds_date_period_and_the_issues_two_views(tmp_path):
     html = _tight(HtmlDigestWriter(tmp_path).render_index(names))
 
     assert (
-        '<div class="archive-row"><span class="date">2026-08-31</span>'
+        '<div class="list-row archive-row"><span class="date">2026-08-31</span>'
         '<span class="label">morning</span><span class="actions">'
         '<a class="btn secondary sm" href="2026-08-31-morning.html">Digest</a>'
         '<a class="btn secondary sm" href="2026-08-31-morning-raw.html">All articles</a>'
@@ -551,7 +551,7 @@ def _row_classes(html: str) -> list[tuple[str, str]]:
     return [
         (f"{date} {period}", cls)
         for cls, date, period in re.findall(
-            r'<div class="(archive-row[^"]*)"><span class="date">([^<]+)</span>'
+            r'<div class="(list-row archive-row[^"]*)"><span class="date">([^<]+)</span>'
             r'<span class="label">([^<]+)</span>',
             _tight(html),
         )
@@ -574,10 +574,10 @@ def test_a_days_later_rows_are_marked_as_the_same_day(tmp_path, labels, order):
     html = HtmlDigestWriter(tmp_path).render_index(names, period_order=order)
 
     assert _row_classes(html) == [
-        (f"2026-04-15 {late}", "archive-row"),
-        (f"2026-04-15 {mid}", "archive-row same-day"),
-        (f"2026-04-15 {early}", "archive-row same-day"),
-        ("2026-04-14 evening", "archive-row"),
+        (f"2026-04-15 {late}", "list-row archive-row"),
+        (f"2026-04-15 {mid}", "list-row archive-row same-day"),
+        (f"2026-04-15 {early}", "list-row archive-row same-day"),
+        ("2026-04-14 evening", "list-row archive-row"),
     ]
 
 
@@ -587,7 +587,7 @@ def test_a_row_below_the_card_of_its_own_day_is_not_marked(tmp_path):
     html = HtmlDigestWriter(tmp_path).render_index(names)
 
     assert _card_line("2026-04-15", "evening") in _card(html)
-    assert _row_classes(html) == [("2026-04-15 morning", "archive-row")]
+    assert _row_classes(html) == [("2026-04-15 morning", "list-row archive-row")]
 
 
 def test_a_panels_first_row_is_never_marked(tmp_path):
@@ -604,12 +604,12 @@ def test_a_panels_first_row_is_never_marked(tmp_path):
     firsts = re.findall(
         r'<section class="panel"><div class="panel-head">.*?</div><div class="([^"]*)"', html
     )
-    assert firsts == ["archive-row", "archive-row", "archive-row"]
+    assert firsts == ["list-row archive-row", "list-row archive-row", "list-row archive-row"]
 
 
 def _rows(html: str) -> list[str]:
     """Every archive row's markup, whitespace between tags removed."""
-    return re.findall(r'<div class="archive-row[^"]*">.*?</div>', _tight(html))
+    return re.findall(r'<div class="list-row archive-row[^"]*">.*?</div>', _tight(html))
 
 
 COUNTED = ["2026-09-02-morning.html", "2026-08-31-morning.html"]

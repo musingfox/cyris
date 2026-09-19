@@ -599,7 +599,7 @@ def test_the_published_archive_rows_carry_the_recorded_counts(tmp_path: Path) ->
 
     index = _published_index(deps, _run_content("2026-04-16", "morning", "Lead", 3))
 
-    row = index[index.index('<div class="archive-row">') :].split("</div>", 1)[0]
+    row = index[index.index('<div class="list-row archive-row">') :].split("</div>", 1)[0]
     assert "2026-04-15" in row
     assert '<span class="small">12 articles</span>' in row
 
@@ -620,7 +620,7 @@ def test_a_failed_count_read_still_publishes_every_issue(tmp_path: Path, caplog)
         index = _published_index(deps, _run_content("2026-04-16", "morning", "Lead", 3))
 
     assert _parse_archive_anchors(index) == {"/2026-04-15-evening.html", "/2026-04-16-morning.html"}
-    rows = re.findall(r'<div class="archive-row[^"]*">.*?</div>', index, re.S)
+    rows = re.findall(r'<div class="list-row archive-row[^"]*">.*?</div>', index, re.S)
     assert rows
     assert [row for row in rows if 'class="small"' in row] == []
     errors = [r for r in caplog.records if r.levelname == "ERROR"]

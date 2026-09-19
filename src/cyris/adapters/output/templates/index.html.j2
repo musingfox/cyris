@@ -14,18 +14,7 @@
 
         {% with container_width="960px", container_relative=false, glow=none, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
 
-        .archive-row {
-            display: grid;
-            grid-template-columns: 170px 110px 1fr auto;
-            align-items: center;
-            gap: var(--s-4);
-            padding: var(--s-3) var(--s-5);
-            border-bottom: 1px solid var(--border);
-            transition: background-color var(--t-fast);
-        }
-
-        .archive-row:last-child { border-bottom: 0; }
-        .archive-row:hover { background: var(--surface); }
+        .archive-row { grid-template-columns: 170px 110px 1fr auto; }
 
         .archive-row .date, .front-card .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
         .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
@@ -94,7 +83,7 @@
         <section class="panel">
             <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length }} issue{{ "" if panel.issues | length == 1 else "s" }}</span></div>
             {% for digest in panel.issues %}
-            <div class="archive-row{{ ' same-day' if digest.same_day }}">
+            <div class="list-row archive-row{{ ' same-day' if digest.same_day }}">
                 <span class="date">{{ digest.date }}</span>
                 <span class="label">{{ digest.period }}</span>
                 {% if digest["count"] is not none %}<span class="small">{{ digest["count"] }} article{{ "" if digest["count"] == 1 else "s" }}</span>{% endif %}

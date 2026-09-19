@@ -667,7 +667,7 @@ def test_the_completeness_check_names_an_issue_cut_from_the_archive(tmp_path):
     html = HtmlDigestWriter(tmp_path).render_index([f"{i}.html" for i in issues])
     cut = "2026-07-05-morning"
     row = re.search(
-        rf'<div class="archive-row[^"]*">(?:(?!</div>).)*?{cut}\.html.*?</div>', html, re.S
+        rf'<div class="list-row archive-row[^"]*">(?:(?!</div>).)*?{cut}\.html.*?</div>', html, re.S
     )
     assert row
 
