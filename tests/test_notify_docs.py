@@ -47,12 +47,8 @@ def test_api_keys_on_the_settings_page_stay_undecided() -> None:
     assert "undecided" in row
 
 
-def test_env_example_keeps_the_variable_and_drops_overrides() -> None:
-    start = ENV_EXAMPLE.index("Discord")
-    end = ENV_EXAMPLE.index("CYRIS_DISCORD_WEBHOOK_URL=")
-    discord = ENV_EXAMPLE[start:end] + "CYRIS_DISCORD_WEBHOOK_URL="
-    assert "overrides" not in discord
-    assert "CYRIS_DISCORD_WEBHOOK_URL=" in ENV_EXAMPLE
+def test_env_example_no_longer_offers_the_webhook_variable() -> None:
+    assert "CYRIS_DISCORD_WEBHOOK_URL" not in ENV_EXAMPLE
 
 
 def test_deploy_facing_copy_does_not_name_the_old_table() -> None:

@@ -66,9 +66,6 @@
       },
       "CLOUDFLARE_EMBEDDING_API_TOKEN": {
         "description": "Optional. A `Workers AI:Read` token for `@cf/baai/bge-m3` vote-similarity filtering. Not the same token as `CLOUDFLARE_API_TOKEN`."
-      },
-      "CYRIS_DISCORD_WEBHOOK_URL": {
-        "description": "Optional fallback. /settings writes the Discord webhook to D1; a run uses that first. Leave empty if you will paste it there."
       }
     }
   }

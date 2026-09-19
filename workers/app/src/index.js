@@ -19,7 +19,6 @@ const SECRETS = {
   // Separate because it is not a secret: it is rendered into every published
   // digest page so the vote buttons work in the reader's browser.
   CYRIS_PROMOTE_TOKEN: env.CYRIS_PROMOTE_TOKEN,
-  CYRIS_DISCORD_WEBHOOK_URL: env.CYRIS_DISCORD_WEBHOOK_URL,
   ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
   GEMINI_API_KEY: env.GEMINI_API_KEY,
   OPENAI_API_KEY: env.OPENAI_API_KEY,

@@ -90,14 +90,15 @@ for s in CYRIS_UI_TOKEN \
          CYRIS_STORE_DATABASE_ID CYRIS_PROMOTE_PAGES_PROJECT \
          CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN \
          DIGEST_ORIGIN CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_WORKER_TOKEN \
-         CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL CYRIS_DISCORD_WEBHOOK_URL \
+         CYRIS_PROMOTE_TOKEN CYRIS_PROMOTE_WORKER_URL \
          ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY; do
   bunx wrangler secret put "$s" --env-file /dev/null
 done
 
-# Then choose the LLM provider on /settings — it is a D1 setting, not a secret,
-# and until it is set the digest publishes as plain excerpts. The Discord webhook
-# is the same: /settings is the home; CYRIS_DISCORD_WEBHOOK_URL is the fallback.
+# Then fill the runtime settings on /settings — the LLM provider (None gives
+# plain excerpts), the Discord webhook (Turn off for none) and the rest. They
+# are D1 settings, not secrets, and until every one is set each run stops and
+# names what is missing.
 
 bunx wrangler deploy --env-file /dev/null   # builds ./Dockerfile, pushes, deploys
 ```

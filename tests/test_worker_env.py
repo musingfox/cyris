@@ -14,11 +14,22 @@ _SECRETS = (
     "CLOUDFLARE_EMBEDDING_API_TOKEN",
     "CYRIS_WORKER_TOKEN",
     "CYRIS_PROMOTE_TOKEN",
-    "CYRIS_DISCORD_WEBHOOK_URL",
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "OPENAI_API_KEY",
 )
+
+
+def test_no_deploy_input_carries_the_retired_webhook_variable():
+    """The webhook is a runtime setting in D1; the environment no longer supplies it."""
+    deploy_inputs = (
+        ".env.example",
+        "package.json",
+        "workers/app/src/index.js",
+        "workers/app/README.md",
+    )
+    for rel in deploy_inputs:
+        assert "CYRIS_DISCORD_WEBHOOK_URL" not in (ROOT / rel).read_text(encoding="utf-8"), rel
 
 
 def test_worker_names_every_b_grade_env_var():
