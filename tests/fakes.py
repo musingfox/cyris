@@ -51,6 +51,13 @@ def settings_toml(*, omit: Iterable[str] = (), **overrides: Any) -> str:
     return "".join(f"[{table}]\n" + "\n".join(lines) + "\n\n" for table, lines in tables.items())
 
 
+def seed_d1_settings(d1, *, omit: Iterable[str] = (), **overrides: Any) -> None:
+    """Store every grade-D key but `omit` in D1 `settings`, keyed `table.field`."""
+    from cyris.adapters.store.settings import D1Settings
+
+    D1Settings(d1).set(_test_settings(omit, overrides))
+
+
 class FakeLLM:
     """In-memory LLMClient: returns queued response texts, records every call.
 

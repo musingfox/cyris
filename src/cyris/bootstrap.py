@@ -136,44 +136,37 @@ def build_settings(cfg: Config, d1: Any | None = None) -> Any | None:
 
 
 def load_effective_config(config_path: Path, sources_path: Path) -> Config:
-    """The config a run actually uses: the file, then D1's grade-D overrides.
+    """The config a run actually uses, with grade-D settings from one home.
 
-    The single seam where the read order from `adapters/store/settings.py` is
-    applied. Every entrypoint goes through here, because a host run and a
-    container run resolving settings differently is the failure this exists to
-    prevent — so a D1 read error propagates rather than quietly using the file.
+    A json deployment reads them from cyris.toml; a D1 deployment from the D1
+    `settings` table alone, whatever the file says. Every entrypoint goes through
+    here, because a host run and a container run resolving settings differently
+    is the failure this exists to prevent — so a D1 read error propagates.
     """
     from cyris.adapters.store.d1 import apply_schema
-    from cyris.adapters.store.settings import apply_to
-    from cyris.config import load_config
+    from cyris.config import _sources_from_d1, read_config_files, resolve_config
 
-    cfg = load_config(config_path, sources_path)
+    raw = read_config_files(config_path, sources_path)
+    # Grade-D keys from nowhere yet: this pass only has to know the store, and
+    # must not fail on file values a D1 deployment is about to ignore.
+    cfg = resolve_config(raw, d1_settings={})
+    if not cfg.app.store.is_d1:
+        return resolve_config(raw)
+
+    from_d1 = _sources_from_d1(cfg.app)
     d1 = build_d1_client(cfg)
     settings = build_settings(cfg, d1)
-    if settings is not None:
-        # First boot on a clean account: nothing else creates the tables, and the
-        # settings read below is the first thing that *cannot survive* their
-        # absence — `load_config` already asked D1 for `sources` and fell back to
-        # the file, while this one propagates by design, so an empty D1 used to
-        # abort the CLI before any check could name the cause. Idempotent, one POST.
-        apply_schema(d1)
-        stored = settings.all()
-        applied = apply_to(cfg, stored)
-        cfg.settings_from_d1 = [key for key in applied if _d1_value_survived(cfg, key, stored[key])]
+    # First boot on a clean account: nothing else creates the tables, and the
+    # settings read below is the first thing that *cannot survive* their
+    # absence — the sources read above falls back to the file, while this one
+    # propagates by design, so an empty D1 used to abort the CLI before any check
+    # could name the cause. Idempotent, one POST.
+    apply_schema(d1)
+    cfg = resolve_config(raw, d1_settings=settings.all())
+    if from_d1:
+        cfg.sources = from_d1
+        cfg.sources_origin = "d1"
     return cfg
-
-
-def _d1_value_survived(cfg: Config, key: str, stored: Any) -> bool:
-    """Did the D1 row actually decide this field, or did a validator overwrite it?
-
-    `apply_to` rebuilds each table through `model_validate`, so a validator can
-    replace what D1 stored. Comparing the stored value against what survived
-    answers this without a per-key rule: an empty `llm_provider.model` survives as
-    empty and is still an override, because "" there means "the provider's
-    default", not "unset".
-    """
-    table, field = key.split(".", 1)
-    return getattr(getattr(cfg.app, table), field) == stored
 
 
 def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:

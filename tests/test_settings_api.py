@@ -215,14 +215,14 @@ class TestFeaturedCap:
         assert settings.stored == {}
 
     async def test_the_key_is_writable_and_reaches_the_config(self):
-        """Storing a key the overlay does not apply would silently change nothing."""
-        from cyris.adapters.store.settings import WRITABLE_KEYS, apply_to
-        from cyris.config import AppConfig, Config
+        """Storing a key the loader does not read would silently change nothing."""
+        from cyris.adapters.store.settings import WRITABLE_KEYS
+        from cyris.config import RawConfig, resolve_config
 
         assert "digest.max_featured" in WRITABLE_KEYS
 
-        cfg = Config(app=AppConfig(), sources={})
-        apply_to(cfg, {"digest.max_featured": 9})
+        raw = RawConfig(toml={}, sources={}, config_file_found=False)
+        cfg = resolve_config(raw, d1_settings={"digest.max_featured": 9})
 
         assert cfg.app.digest.max_featured == 9
 

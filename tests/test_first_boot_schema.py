@@ -52,7 +52,7 @@ def test_the_settings_read_finds_its_table_on_first_boot(tmp_path, monkeypatch) 
 
     cfg = bootstrap.load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 
-    assert cfg.settings_from_d1 == []
+    assert cfg.present_settings() == {}
     assert db.query("SELECT name FROM sqlite_master WHERE name = 'settings'").rows
 
 

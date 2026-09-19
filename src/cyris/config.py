@@ -8,6 +8,7 @@ import logging
 import os
 import tomllib
 import zoneinfo
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -125,8 +126,6 @@ class RoutingConfig(BaseModel):
 
 
 class GeneralConfig(BaseModel):
-    # Grade D, file fallback: the effective schedule is the D1 settings row.
-    # This is what a deployment falls back to when that row is absent.
     digest_schedule: DigestSchedule = Field(default_factory=lambda: ["08:00", "20:00"])
     timezone: Timezone = "Asia/Taipei"
     digest_window_hours: int = Field(default=24, ge=1, le=168)
@@ -404,9 +403,6 @@ class Config(BaseModel):
     # Which one won: a D1-backed deployment silently falling back to the file is
     # exactly the kind of half-migration `cyris doctor` exists to surface.
     sources_origin: Literal["sources.yaml", "d1"] = "sources.yaml"
-    # Grade-D keys this run took from the D1 `settings` table rather than the
-    # file. Same reason as above: which home won has to be reportable.
-    settings_from_d1: list[str] = Field(default_factory=list)
     # Grade-D keys this deployment's one home does not hold. Never raises at load:
     # the commands that fill the home have to start while it is empty.
     missing_settings: list[str] = Field(default_factory=list)
@@ -438,23 +434,24 @@ class Config(BaseModel):
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
 
-def load_config(
+@dataclass(frozen=True)
+class RawConfig:
+    """What the two files say, before any home for grade-D settings is chosen."""
+
+    toml: dict[str, Any]
+    sources: dict[str, SourceConfig]
+    config_file_found: bool
+
+
+def read_config_files(
     config_path: Path | None = None,
     sources_path: Path | None = None,
-) -> Config:
-    """Load and validate configuration from TOML and YAML files.
-
-    Args:
-        config_path: Path to cyris.toml. Defaults to ./cyris.toml.
-        sources_path: Path to sources.yaml. Defaults to ./sources.yaml.
-
-    Returns:
-        Validated Config object.
+) -> RawConfig:
+    """Read cyris.toml and sources.yaml, and load the `.env` beside the config.
 
     Raises:
         TOMLDecodeError: If the config file exists but is malformed.
-        ValueError: If required env vars are missing.
-        ValidationError: If config structure is invalid.
+        ValidationError: If sources.yaml is invalid.
     """
     config_path = config_path or Path("cyris.toml")
     sources_path = sources_path or Path("sources.yaml")
@@ -476,9 +473,6 @@ def load_config(
         logger.warning("Sources file not found: %s", sources_path)
         raw_yaml = {}
 
-    app_config = AppConfig.model_validate(raw_toml)
-    settings_values, missing_settings = _file_settings(raw_toml)
-
     sources_config = SourcesConfig.model_validate(raw_yaml or {})
 
     defaults = sources_config.defaults
@@ -486,17 +480,62 @@ def load_config(
         if source.language == "auto" and "language" in defaults:
             source.language = defaults["language"]
 
-    sources_dict = {s.name: s for s in sources_config.sources}
-
-    from_d1 = _sources_from_d1(app_config)
-    return Config(
-        app=app_config,
-        sources=from_d1 or sources_dict,
-        sources_origin="d1" if from_d1 else "sources.yaml",
-        missing_settings=missing_settings,
-        settings_values=settings_values,
+    return RawConfig(
+        toml=raw_toml,
+        sources={s.name: s for s in sources_config.sources},
         config_file_found=config_file_found,
     )
+
+
+def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) -> Config:
+    """The Config the files describe, with grade-D settings from exactly one home.
+
+    `d1_settings` None makes cyris.toml the home: an invalid value there fails the
+    load, because the file is fixed in an editor. Otherwise the D1 rows are the
+    home and the file's grade-D keys are ignored; a row that fails its rule counts
+    as missing, because D1 is fixed through /settings, which has to start.
+    """
+    if d1_settings is None:
+        app_config = AppConfig.model_validate(raw.toml)
+        settings_values, missing_settings = _file_settings(raw.toml)
+    else:
+        settings_values, missing_settings = _stored_settings(d1_settings)
+        app_config = AppConfig.model_validate(_with_settings(raw.toml, settings_values))
+    return Config(
+        app=app_config,
+        sources=raw.sources,
+        missing_settings=missing_settings,
+        settings_values=settings_values,
+        config_file_found=raw.config_file_found,
+    )
+
+
+def load_config(
+    config_path: Path | None = None,
+    sources_path: Path | None = None,
+) -> Config:
+    """Load and validate configuration from TOML and YAML files.
+
+    cyris.toml is the home of every grade-D setting here; a D1 deployment is
+    resolved by `bootstrap.load_effective_config`, which reads D1 instead.
+
+    Args:
+        config_path: Path to cyris.toml. Defaults to ./cyris.toml.
+        sources_path: Path to sources.yaml. Defaults to ./sources.yaml.
+
+    Returns:
+        Validated Config object.
+
+    Raises:
+        TOMLDecodeError: If the config file exists but is malformed.
+        ValueError: If a value is invalid (pydantic's ValidationError is one).
+    """
+    cfg = resolve_config(read_config_files(config_path, sources_path))
+    from_d1 = _sources_from_d1(cfg.app)
+    if from_d1:
+        cfg.sources = from_d1
+        cfg.sources_origin = "d1"
+    return cfg
 
 
 def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
@@ -511,6 +550,41 @@ def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
         else:
             missing.append(key)
     return values, sorted(missing)
+
+
+def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The grade-D rows that pass their rule, and the keys without one that does."""
+    values: dict[str, Any] = {}
+    missing: list[str] = []
+    for key in GRADE_D_KEYS:
+        if key not in stored:
+            missing.append(key)
+            continue
+        try:
+            values[key] = validate_setting(key, stored[key])
+        except ValueError as e:
+            logger.warning("Ignoring D1 setting %s: %s", key, e)
+            missing.append(key)
+    return values, sorted(missing)
+
+
+def _with_settings(raw_toml: dict, values: dict[str, Any]) -> dict[str, Any]:
+    """The file with its grade-D keys replaced by `values`, key by key.
+
+    Key level, not table level: `[llm_provider] api_key` and `[vote_similarity]
+    threshold` share a table with grade-D keys and still come from the file.
+    """
+    merged: dict[str, Any] = {}
+    for table, body in raw_toml.items():
+        if isinstance(body, dict):
+            body = {k: v for k, v in body.items() if f"{table}.{k}" not in GRADE_D_KEYS}
+        merged[table] = body
+    for key, value in values.items():
+        table, field = key.split(".", 1)
+        if not isinstance(merged.get(table), dict):
+            merged[table] = {}
+        merged[table][field] = value
+    return merged
 
 
 def _sources_from_d1(app_config: AppConfig) -> dict[str, SourceConfig] | None:
