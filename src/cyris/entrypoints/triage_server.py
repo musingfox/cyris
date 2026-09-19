@@ -3,6 +3,7 @@
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from aiohttp import web
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescape
@@ -46,13 +47,10 @@ class TriageServer:
         host: str = "127.0.0.1",
         port: int = 8766,
         settings=None,
-        llm_provider=None,
-        schedule: list[str] | None = None,
-        max_featured: int = 5,
+        values: dict[str, Any] | None = None,
         sources: dict[str, SourceConfig] | None = None,
         sources_origin: str = "",
         source_store=None,
-        notify_webhook: str = "",
     ) -> None:
         self._host = host
         self._port = port
@@ -60,9 +58,9 @@ class TriageServer:
         # `backend = "json"` deployment has nowhere to put a runtime setting, so
         # its owner edits `cyris.toml` by hand.
         self._settings = settings
-        self._llm_provider = llm_provider
-        self._schedule = schedule or []
-        self._max_featured = max_featured
+        # The grade-D values the deployment's home holds, by `table.field`; a key
+        # absent here is missing. Each successful save updates it.
+        self._values = dict(values or {})
         # Already resolved by `load_effective_config` — D1's `sources` table under
         # a D1 store, empty or not; `sources.yaml` otherwise.
         self._sources = sources or {}
@@ -70,7 +68,6 @@ class TriageServer:
         # The write surface (§7 #15). Absent on a `backend = "json"` deployment,
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
-        self._notify_webhook = notify_webhook
         self._settings_page = render_settings_page()
         self._app = web.Application()
         self._app.router.add_get("/api/build", self._handle_build)
@@ -103,12 +100,17 @@ class TriageServer:
         return web.json_response({"git_sha": os.environ.get("CYRIS_GIT_SHA", "")})
 
     async def _handle_get_settings(self, request: web.Request) -> web.Response:
-        """What is configured now, and which providers this machine could switch to."""
+        """Every runtime setting and which are missing, and what this machine could switch to."""
         from cyris.adapters.notify import mask_discord_webhook_url
-        from cyris.bootstrap import default_models
-        from cyris.config import LLMProviderConfig
+        from cyris.bootstrap import default_models, embedding_defaults
+        from cyris.config import GRADE_D_KEYS, LLMProviderConfig
+        from cyris.diagnostics.doctor import EMBEDDING_ENV
+        from cyris.service_layer.prompts import _language_names
 
-        current = self._llm_provider
+        values = {key: self._values.get(key) for key in GRADE_D_KEYS}
+        webhook = values["notify.discord_webhook_url"]
+        if webhook:
+            values["notify.discord_webhook_url"] = mask_discord_webhook_url(webhook)
         providers = []
         models = default_models()
         for name in models:
@@ -126,14 +128,22 @@ class TriageServer:
                     "configured": ready,
                 }
             )
+        embedding_providers = [
+            {
+                "name": name,
+                "env_var": env[0],
+                "default_model": embedding_defaults(name)["model"],
+                "configured": all(os.environ.get(var) for var in env),
+            }
+            for name, env in EMBEDDING_ENV.items()
+        ]
         return web.json_response(
             {
-                "provider": current.provider if current else None,
-                "model": (current.model if current else "") or "",
+                "values": values,
+                "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
                 "providers": providers,
-                "schedule": self._schedule,
-                "max_featured": self._max_featured,
-                "notify_webhook": mask_discord_webhook_url(self._notify_webhook),
+                "embedding_providers": embedding_providers,
+                "languages": list(_language_names()),
                 "writable": self._settings is not None,
             }
         )
@@ -179,7 +189,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-        self._llm_provider = candidate
+        self._values.update({"llm_provider.provider": provider, "llm_provider.model": model})
         logger.info("LLM provider set to %s · %s", provider, model or "(default model)")
         return web.json_response(
             {
@@ -255,7 +265,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-        self._schedule = times
+        self._values["general.digest_schedule"] = times
         logger.info("Digest schedule set to %s", ", ".join(times))
         return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
 
@@ -291,7 +301,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-        self._max_featured = max_featured
+        self._values["digest.max_featured"] = max_featured
         logger.info("Featured cap set to %d", max_featured)
         return web.json_response(
             {"ok": True, "max_featured": max_featured, "note": "Effective next digest."}
@@ -320,7 +330,7 @@ class TriageServer:
                 self._settings.set({"notify.discord_webhook_url": ""})
             except Exception as e:  # noqa: BLE001 - the reason belongs in the response
                 return web.json_response({"ok": False, "error": str(e)}, status=500)
-            self._notify_webhook = ""
+            self._values["notify.discord_webhook_url"] = ""
             logger.info("Discord notifications turned off")
             return web.json_response(
                 {
@@ -351,7 +361,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-        self._notify_webhook = url
+        self._values["notify.discord_webhook_url"] = url
         logger.info("Discord webhook saved")
         return web.json_response(
             {

@@ -66,24 +66,27 @@ document.querySelectorAll("form.tab").forEach((form) => {
 });
 
 function render() {
+  const values = state.values;
   $("providers").innerHTML = state.providers.map((p) => `
     <label class="choice${p.configured ? "" : " unavailable"}">
       <input type="radio" name="provider" value="${esc(p.name)}"
-             ${p.name === state.provider && p.configured ? "checked" : ""}
+             ${p.name === values["llm_provider.provider"] && p.configured ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
       <span class="name">${esc(p.name)}</span>
       ${p.configured
         ? `<span class="label">Key ready</span>`
         : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
     </label>`).join("");
-  $("model-input").value = state.model;
+  $("model-input").value = values["llm_provider.model"] ?? "";
   updateHint();
   $("providers").addEventListener("change", updateHint);
-  const [m, e] = state.schedule || [];
+  const [m, e] = values["general.digest_schedule"] || [];
   if (m) $("morning").value = parseInt(m, 10);
   if (e) $("evening").value = parseInt(e, 10);
-  if (state.max_featured) $("max-featured").value = state.max_featured;
-  if (state.notify_webhook) $("discord-webhook").value = state.notify_webhook;
+  if (values["digest.max_featured"] != null) $("max-featured").value = values["digest.max_featured"];
+  if (values["notify.discord_webhook_url"]) {
+    $("discord-webhook").value = values["notify.discord_webhook_url"];
+  }
   if (state.writable) {
     document.querySelectorAll("form.tab").forEach((form) => markClean(form));
   } else {
@@ -126,8 +129,8 @@ $("model-form").addEventListener("submit", async (e) => {
   try {
     const model = $("model-input").value.trim();
     const data = await post("/api/settings", {provider: p.name, model});
-    state.provider = data.provider;
-    state.model = data.model;
+    state.values["llm_provider.provider"] = data.provider;
+    state.values["llm_provider.model"] = data.model;
     markClean(form, sent);
     show("ok", `${data.detail}\n${data.note}`, "model-result");
   } catch (err) {
@@ -203,7 +206,7 @@ $("notify-form").addEventListener("submit", async (e) => {
   refresh(form);
   try {
     const data = await post("/api/settings/notify", {discord_webhook_url: url});
-    state.notify_webhook = data.discord_webhook_url;
+    state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
     // The stored value comes back masked; an edit typed meanwhile is kept.
     if (field.value === url) field.value = data.discord_webhook_url;
     markClean(form, {...sent, "discord-webhook": data.discord_webhook_url});

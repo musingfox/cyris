@@ -83,6 +83,25 @@ def test_the_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypat
     assert kwargs["source_store"] is None
 
 
+def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], monkeypatch) -> None:
+    """The page gets what the home holds and nothing more: an empty D1 holds nothing."""
+    from fakes import SqliteD1
+
+    db = SqliteD1()
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "db")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+
+    result = _run(config)
+
+    assert result.exit_code == 0, result.output
+    [(_args, kwargs)] = FakeServer.calls
+    assert kwargs["values"] == {}
+    assert kwargs["settings"] is not None
+
+
 def test_help_describes_the_settings_server() -> None:
     result = runner.invoke(app, ["triage-ui", "--help"])
     assert result.exit_code == 0

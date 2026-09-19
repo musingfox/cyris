@@ -126,10 +126,13 @@ class Fixture:
 def build_fixture(kind: str) -> Fixture:
     """A `readonly` deployment (no settings store, no source table) or a `writable` one."""
     common = {
-        "llm_provider": LLMProviderConfig(provider="gemini", model=""),
-        "schedule": ["08:00", "20:00"],
-        "max_featured": 5,
-        "notify_webhook": STORED_WEBHOOK,
+        "values": {
+            "llm_provider.provider": "gemini",
+            "llm_provider.model": "",
+            "general.digest_schedule": ["08:00", "20:00"],
+            "digest.max_featured": 5,
+            "notify.discord_webhook_url": STORED_WEBHOOK,
+        },
         "sources": _seed_sources(),
         "sources_origin": "sources.yaml",
     }

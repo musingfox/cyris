@@ -3,7 +3,7 @@
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from cyris.config import LLMProviderConfig
+from cyris.config import GRADE_D_KEYS
 from cyris.entrypoints.triage_server import TriageServer
 
 
@@ -24,16 +24,8 @@ def settings():
     return FakeSettings()
 
 
-async def _client(
-    settings=None, llm_provider=None, schedule=None, max_featured=5, notify_webhook=""
-):
-    server = TriageServer(
-        settings=settings,
-        llm_provider=llm_provider,
-        schedule=schedule,
-        max_featured=max_featured,
-        notify_webhook=notify_webhook,
-    )
+async def _client(settings=None, values=None):
+    server = TriageServer(settings=settings, values=values)
     client = TestClient(TestServer(server._app))
     await client.start_server()
     return client
@@ -45,13 +37,15 @@ class TestSettingsApi:
     ):
         monkeypatch.setenv("GEMINI_API_KEY", "g")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        client = await _client(settings, LLMProviderConfig(provider="gemini", model="x"))
+        client = await _client(
+            settings, {"llm_provider.provider": "gemini", "llm_provider.model": "x"}
+        )
 
         data = await (await client.get("/api/settings")).json()
         await client.close()
 
-        assert data["provider"] == "gemini"
-        assert data["model"] == "x"
+        assert data["values"]["llm_provider.provider"] == "gemini"
+        assert data["values"]["llm_provider.model"] == "x"
         assert data["writable"] is True
         by_name = {p["name"]: p for p in data["providers"]}
         assert by_name["gemini"]["configured"] is True
@@ -60,7 +54,7 @@ class TestSettingsApi:
         assert by_name["gemini"]["default_model"]  # something to fall back to
 
     async def test_an_unknown_provider_is_rejected_before_any_call(self, settings):
-        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings)
 
         res = await client.post("/api/settings", json={"provider": "mistral", "model": "x"})
         body = await res.json()
@@ -74,7 +68,7 @@ class TestSettingsApi:
         self, settings, monkeypatch
     ):
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings)
 
         res = await client.post("/api/settings", json={"provider": "openai", "model": ""})
         body = await res.json()
@@ -92,7 +86,7 @@ class TestSettingsApi:
             raise RuntimeError("models/gemini-3.7-flashh is not found")
 
         monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", boom)
-        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings)
 
         res = await client.post(
             "/api/settings", json={"provider": "gemini", "model": "gemini-3.7-flashh"}
@@ -113,7 +107,7 @@ class TestSettingsApi:
             return LLMResponse(text="pong", input_tokens=1, output_tokens=1)
 
         monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", ok)
-        client = await _client(settings, LLMProviderConfig(provider="anthropic"))
+        client = await _client(settings)
 
         res = await client.post(
             "/api/settings", json={"provider": "gemini", "model": "gemini-3.7-flash"}
@@ -129,7 +123,7 @@ class TestSettingsApi:
 
     async def test_without_a_settings_store_the_page_refuses_to_save(self, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "g")
-        client = await _client(None, None)
+        client = await _client(None)
 
         listing = await (await client.get("/api/settings")).json()
         res = await client.post("/api/settings", json={"provider": "gemini", "model": ""})
@@ -139,17 +133,54 @@ class TestSettingsApi:
         assert res.status == 409
 
 
-class TestScheduleApi:
-    async def test_the_current_schedule_is_reported(self, settings):
-        client = await _client(settings, None, schedule=["08:00", "20:00"])
+class TestEveryKeyReported:
+    async def test_an_empty_home_reports_every_key_missing(self, settings):
+        client = await _client(settings, {})
 
         data = await (await client.get("/api/settings")).json()
         await client.close()
 
-        assert data["schedule"] == ["08:00", "20:00"]
+        assert data["missing"] == sorted(GRADE_D_KEYS)
+        assert data["values"] == dict.fromkeys(GRADE_D_KEYS)
+        assert data["writable"] is True
+
+    async def test_embedding_readiness_follows_the_environment(self, settings, monkeypatch):
+        monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")
+        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        client = await _client(settings, {})
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        by_name = {p["name"]: p for p in data["embedding_providers"]}
+        assert set(by_name) == {"workers_ai", "gemini"}
+        assert by_name["workers_ai"]["configured"] is True
+        assert by_name["workers_ai"]["default_model"] == "@cf/baai/bge-m3"
+        assert by_name["workers_ai"]["env_var"] == "CLOUDFLARE_EMBEDDING_API_TOKEN"
+        assert by_name["gemini"]["configured"] is False
+        assert by_name["gemini"]["env_var"] == "GEMINI_API_KEY"
+
+    async def test_the_output_languages_are_offered(self, settings):
+        client = await _client(settings, {})
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert {"zh-Hant", "en"} <= set(data["languages"])
+
+
+class TestScheduleApi:
+    async def test_the_current_schedule_is_reported(self, settings):
+        client = await _client(settings, {"general.digest_schedule": ["08:00", "20:00"]})
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["values"]["general.digest_schedule"] == ["08:00", "20:00"]
 
     async def test_two_whole_hours_are_stored_earliest_first(self, settings):
-        client = await _client(settings, None, schedule=["08:00", "20:00"])
+        client = await _client(settings)
 
         res = await client.post("/api/settings/schedule", json={"times": ["21:00", "07:00"]})
         body = await res.json()
@@ -162,7 +193,7 @@ class TestScheduleApi:
     async def test_a_half_hour_is_refused_rather_than_rounded(self, settings):
         """The cron tick is hourly. Accepting 08:30 would fire at 08:00 and the
         reader would never learn why."""
-        client = await _client(settings, None, schedule=["08:00", "20:00"])
+        client = await _client(settings)
 
         res = await client.post("/api/settings/schedule", json={"times": ["08:30", "20:00"]})
         body = await res.json()
@@ -173,7 +204,7 @@ class TestScheduleApi:
         assert settings.stored == {}
 
     async def test_one_time_is_refused(self, settings):
-        client = await _client(settings, None, schedule=["08:00", "20:00"])
+        client = await _client(settings)
 
         res = await client.post("/api/settings/schedule", json={"times": ["08:00"]})
         await client.close()
@@ -186,15 +217,15 @@ class TestFeaturedCap:
     """`max_featured` is grade D — a reader preference with a writer, not a constant."""
 
     async def test_the_page_reports_the_cap_a_run_would_use(self, settings):
-        client = await _client(settings, None, max_featured=3)
+        client = await _client(settings, {"digest.max_featured": 3})
 
         data = await (await client.get("/api/settings")).json()
         await client.close()
 
-        assert data["max_featured"] == 3
+        assert data["values"]["digest.max_featured"] == 3
 
     async def test_a_new_cap_is_stored_under_the_key_the_config_reads(self, settings):
-        client = await _client(settings, None, max_featured=5)
+        client = await _client(settings)
 
         res = await client.post("/api/settings/digest", json={"max_featured": 8})
         body = await res.json()
@@ -206,7 +237,7 @@ class TestFeaturedCap:
 
     async def test_a_cap_of_zero_is_refused(self, settings):
         """A featured section of none is an empty band, not a preference."""
-        client = await _client(settings, None)
+        client = await _client(settings)
 
         res = await client.post("/api/settings/digest", json={"max_featured": 0})
         await client.close()
@@ -277,8 +308,10 @@ class TestSettingsPageCarriesNoCredential:
         monkeypatch.setenv("GEMINI_API_KEY", "cyris-probe-sentinel-key")
         client = await _client(
             settings,
-            LLMProviderConfig(provider="gemini"),
-            notify_webhook="https://discord.com/api/webhooks/123/abcTOKEN",
+            {
+                "llm_provider.provider": "gemini",
+                "notify.discord_webhook_url": "https://discord.com/api/webhooks/123/abcTOKEN",
+            },
         )
 
         response = await client.get(path)
@@ -292,7 +325,8 @@ class TestSettingsPageCarriesNoCredential:
 class TestNotifyWebhookMaskedInSettingsPayload:
     async def test_the_current_webhook_is_returned_with_its_token_replaced(self, settings):
         client = await _client(
-            settings, notify_webhook="https://discord.com/api/webhooks/123/abcTOKEN"
+            settings,
+            {"notify.discord_webhook_url": "https://discord.com/api/webhooks/123/abcTOKEN"},
         )
 
         res = await client.get("/api/settings")
@@ -302,16 +336,19 @@ class TestNotifyWebhookMaskedInSettingsPayload:
         import json
 
         body = json.loads(text)
-        assert body["notify_webhook"] == "https://discord.com/api/webhooks/123/••••"
+        assert body["values"]["notify.discord_webhook_url"] == (
+            "https://discord.com/api/webhooks/123/••••"
+        )
         assert "abcTOKEN" not in text
 
-    async def test_an_empty_webhook_is_reported_as_empty(self, settings):
-        client = await _client(settings)
+    async def test_an_empty_webhook_is_reported_as_off_not_missing(self, settings):
+        client = await _client(settings, {"notify.discord_webhook_url": ""})
 
         data = await (await client.get("/api/settings")).json()
         await client.close()
 
-        assert data["notify_webhook"] == ""
+        assert data["values"]["notify.discord_webhook_url"] == ""
+        assert "notify.discord_webhook_url" not in data["missing"]
 
 
 class TestNotifyWebhookWrite:
@@ -390,7 +427,9 @@ class TestNotifyWebhookWrite:
             raise AssertionError("turning notifications off must not call Discord")
 
         monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", probe)
-        client = await _client(settings, notify_webhook="https://discord.com/api/webhooks/1/tok")
+        client = await _client(
+            settings, {"notify.discord_webhook_url": "https://discord.com/api/webhooks/1/tok"}
+        )
 
         res = await client.post("/api/settings/notify", json={"off": True})
         body = await res.json()
@@ -404,7 +443,7 @@ class TestNotifyWebhookWrite:
             "note": "Notifications are off. The next run finishes without a message.",
         }
         assert settings.calls == [{"notify.discord_webhook_url": ""}]
-        assert data["notify_webhook"] == ""
+        assert data["values"]["notify.discord_webhook_url"] == ""
 
     async def test_without_a_settings_store_the_page_refuses_to_save(self):
         client = await _client(None)
@@ -470,7 +509,9 @@ class TestNotifyWebhookWrite:
         data = await (await client.get("/api/settings")).json()
         await client.close()
 
-        assert data["notify_webhook"] == "https://discord.com/api/webhooks/1/••••"
+        assert data["values"]["notify.discord_webhook_url"] == (
+            "https://discord.com/api/webhooks/1/••••"
+        )
 
 
 class TestLlmDiagnostics:
@@ -496,7 +537,7 @@ class TestLlmDiagnostics:
             return LLMResponse(text="pong", input_tokens=1, output_tokens=1)
 
         monkeypatch.setattr("cyris.adapters.openai_client.OpenAIClient.complete", ok)
-        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings)
 
         res = await client.post(
             "/api/diagnostics/llm", json={"provider": "openai", "model": "gpt-5-mini"}
@@ -517,7 +558,7 @@ class TestLlmDiagnostics:
             raise RuntimeError("User location is not supported for the API use")
 
         monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", refused)
-        client = await _client(settings, LLMProviderConfig(provider="gemini"))
+        client = await _client(settings)
 
         res = await client.post(
             "/api/diagnostics/llm", json={"provider": "gemini", "model": "gemini-3.7-flash"}
@@ -540,7 +581,7 @@ class TestLlmDiagnostics:
             return LLMResponse(text="pong", input_tokens=1, output_tokens=1)
 
         monkeypatch.setattr("cyris.adapters.gemini_client.GeminiClient.complete", ok)
-        client = await _client(None, None)
+        client = await _client(None)
 
         res = await client.post("/api/diagnostics/llm", json={"provider": "gemini"})
         await client.close()
@@ -548,7 +589,7 @@ class TestLlmDiagnostics:
         assert res.status == 200
 
     async def test_an_unknown_provider_is_rejected_before_any_call(self, settings):
-        client = await _client(settings, None)
+        client = await _client(settings)
 
         res = await client.post("/api/diagnostics/llm", json={"provider": "mistral"})
         body = await res.json()

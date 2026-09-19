@@ -213,9 +213,9 @@ async def probe_llm(llm_cfg) -> Check:
 EMBEDDING_PROBE_TEXT = "cyris embedding probe"
 
 # The key each embedding provider reads, then anything else its REST path needs.
-_EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
-    "gemini": ("GEMINI_API_KEY",),
+EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
     "workers_ai": ("CLOUDFLARE_EMBEDDING_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"),
+    "gemini": ("GEMINI_API_KEY",),
 }
 
 
@@ -245,7 +245,7 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
     from cyris.bootstrap import embedding_defaults
 
     model = model or embedding_defaults(provider)["model"]
-    env = _EMBEDDING_ENV[provider]
+    env = EMBEDDING_ENV[provider]
     unset = [name for name in env if not os.environ.get(name)]
     if unset:
         return Check("embedding probe", "fail", f"{unset[0]} is not set")
