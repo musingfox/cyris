@@ -21,7 +21,7 @@ import asyncio
 import dataclasses
 import json
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -177,6 +177,61 @@ def registry_problems(checks: Iterable[Check]) -> list[str]:
     return problems
 
 
+def first_vote_urls() -> dict[str, list[str]]:
+    """What the first vote group of each item kind sends a vote for."""
+    digest = content()
+    features = [item for section in digest.featured_articles for item in section.items]
+    return {
+        ".lead-story": features[0].urls,
+        ".featured-item": features[1].urls,
+        ".news-cluster": digest.news_clusters[0].items[0].urls,
+        ".article-item": digest.fan_sections[0].items[0].urls,
+        ".attention-item": digest.attention_sections[0].items[0].urls,
+        ".headline-item": digest.filtered_headlines[0].urls,
+    }
+
+
+def _voted(urls: list[str]) -> Callable[[Fixture], str | None]:
+    """A receipt: one bare up vote arrived for each of `urls`, in any order, with no credential."""
+    wanted = sorted(json.dumps({"url": url, "vote": "up", "digest_date": DATE}) for url in urls)
+
+    def receipt(fixture: Fixture) -> str | None:
+        if not fixture.posts:
+            return "no vote arrived"
+        sent = [sorted(key.lower() for key in headers) for headers in fixture.post_headers]
+        if any("authorization" in headers for headers in sent):
+            return f"a vote carried a credential: {sent}"
+        bodies = sorted(
+            json.dumps({key: post.get(key) for key in ("url", "vote", "digest_date")})
+            for post in fixture.posts
+        )
+        extra = [sorted(set(post) - {"url", "vote", "digest_date"}) for post in fixture.posts]
+        if bodies != wanted or any(extra):
+            return f"posts: {fixture.posts}"
+        return None
+
+    return receipt
+
+
+def _up(kind: str) -> str:
+    return f'{kind} .promote-btn[data-vote="up"]'
+
+
+def _strip(mark: str) -> str:
+    """A sabotage: the page takes `mark` off every vote button as soon as it is put on."""
+    return f"""new MutationObserver(() => {{
+        $$(".promote-btn.{mark}").forEach((b) => b.classList.remove("{mark}"));
+    }}).observe(document.body, {{subtree: true, attributes: true, attributeFilter: ["class"]}});"""
+
+
+# Installed before the page loads: a page that learned a credential would send it with the vote.
+SEND_CREDENTIAL = """{
+const realFetch = window.fetch;
+window.fetch = (input, init) => init && init.method === "POST"
+  ? realFetch(input, {...init, headers: {...init.headers, Authorization: "x"}})
+  : realFetch(input, init);
+}"""
+
 # Chromium keeps one profile for the whole run, and a fixture's origin is only as
 # fresh as its port, so every check starts from a browser that has voted nothing.
 FORGET_VOTES = "localStorage.removeItem('cyris-votes');\n"
@@ -201,6 +256,10 @@ const expectEveryKind = (measure) => {
     }
   }
   expect(!problems.length, problems.join("; "));
+};
+// The page scrolls smoothly, and a press must land where the button has settled.
+const bringIntoView = (selector) => {
+  $(selector).scrollIntoView({block: "center", behavior: "instant"});
 };
 const oneRow = (group) => {
   const up = $('[data-vote="up"]', group).getBoundingClientRect();
@@ -247,6 +306,50 @@ _CHECKS: list[Check] = [
             });""",
         )
         for width in WIDTHS
+    ),
+    # A real pointer press on each kind's first up button: the button is hit, every URL
+    # of its group is voted on, and the button is marked. The phone run is caught by a
+    # page that drops the mark, the desktop run by a page that sends a credential.
+    *(
+        Check(
+            id=f"vote-click-{kind.lstrip('.')}-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act=f"""
+                await signedIn();
+                bringIntoView({json.dumps(_up(kind))});
+            """,
+            gestures=({"press": _up(kind), "pointer": "mouse"}, {"release": True}),
+            script=f"""
+                const up = $({json.dumps(_up(kind))});
+                await waitFor(() => up.classList.contains("done"), "the vote marked done");
+            """,
+            sabotage=_strip("done") if width == 360 else "",
+            sabotage_preload=SEND_CREDENTIAL if width == 1440 else "",
+            receipt=_voted(urls),
+        )
+        for kind, urls in first_vote_urls().items()
+        for width in (360, 1440)
+    ),
+    Check(
+        id="vote-failure-marks-error",
+        fixture="vote-fails",
+        path=PAGE,
+        act=f"""
+            await signedIn();
+            bringIntoView({json.dumps(_up(".news-cluster"))});
+        """,
+        gestures=({"press": _up(".news-cluster"), "pointer": "mouse"}, {"release": True}),
+        script=f"""
+            const up = $({json.dumps(_up(".news-cluster"))});
+            await waitFor(() => up.classList.contains("error"), "the vote marked failed");
+            expect(!up.classList.contains("done"), "up is marked done");
+            const stored = localStorage.getItem("cyris-votes");
+            expect(!stored || stored === "{{}}", `stored: ${{stored}}`);
+        """,
+        sabotage=_strip("error"),
+        receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
 ]
 

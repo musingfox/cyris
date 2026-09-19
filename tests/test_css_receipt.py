@@ -853,6 +853,19 @@ def test_every_raw_probe_check_is_named_once_and_can_be_sabotaged():
 EXPECTED_DIGEST_IDS = {
     *(f"votes-one-row-{width}" for width in (360, 880, 1000, 1440)),
     *(f"votes-beside-meta-{width}" for width in (360, 880, 1000, 1440)),
+    *(
+        f"vote-click-{kind}-{width}"
+        for kind in (
+            "lead-story",
+            "featured-item",
+            "news-cluster",
+            "article-item",
+            "attention-item",
+            "headline-item",
+        )
+        for width in (360, 1440)
+    ),
+    "vote-failure-marks-error",
 }
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
@@ -902,6 +915,17 @@ async def test_the_digest_probe_fixture_signs_every_kind_in(kind):
     [(status, body)] = await _raw_answers(digest_probe.build_fixture(kind), [("GET", "/api/vote")])
     assert status == 200
     assert json.loads(body) == {"authorized": True}
+
+
+async def test_the_digest_probe_fixture_keeps_a_refused_vote():
+    fixture = digest_probe.build_fixture("vote-fails")
+    [(status, _)] = await _raw_answers(fixture, [("POST", "/api/vote")])
+    assert status == 502
+    assert fixture.posts == [PENDING_TWO_UP]
+
+
+def test_the_digest_probe_clicks_a_cluster_that_votes_on_three_urls():
+    assert len(digest_probe.first_vote_urls()[".news-cluster"]) == 3
 
 
 def test_the_digest_probe_fixture_refuses_an_unknown_kind():
