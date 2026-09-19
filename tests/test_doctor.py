@@ -68,22 +68,42 @@ async def test_the_vault_check_is_gone_on_d1_and_creates_no_directory(tmp_path: 
     assert not (tmp_path / "never-created").exists()
 
 
-async def test_a_d1_store_with_unpushed_sources_warns(tmp_path: Path) -> None:
-    """The Worker would be polling its bundled snapshot; that is not visible anywhere else."""
+def test_an_empty_d1_sources_table_fails_with_the_push_hint(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
+    cfg.sources = {}
+
+    check = doctor._check_sources(cfg)
+
+    assert check.status == "fail"
+    assert check.detail == "no sources in D1"
+    assert check.fix == "Add one on /settings, or run `cyris sources push`."
+    assert "bundled" not in check.detail
+
+
+def test_d1_sources_are_counted_as_from_d1(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "d1"
+    # The origin field is not what names the home: the backend is.
     cfg.sources_origin = "sources.yaml"
+    feeds = [SourceConfig(name=f"F{i}", url=f"https://a.test/{i}") for i in range(50)]
+    mail = [
+        SourceConfig(name=f"M{i}", type="newsletter", email_match=f"from:m{i}@a.test")
+        for i in range(2)
+    ]
+    cfg.sources = {s.name: s for s in feeds + mail}
 
-    check = _by_name(await doctor.run_checks(cfg), "sources")
+    check = doctor._check_sources(cfg)
 
-    assert check.status == "warn"
-    assert "cyris sources push" in check.fix
+    assert check.status == "ok"
+    assert check.detail.startswith("50 RSS, 2 email-only, ")
+    assert check.detail.endswith(" — from D1")
 
 
 async def test_the_sources_check_names_where_they_came_from(tmp_path: Path) -> None:
     check = _by_name(await doctor.run_checks(_config(tmp_path)), "sources")
 
-    assert "from sources.yaml" in check.detail
+    assert check.detail.endswith("— from sources.yaml")
 
 
 async def test_no_sources_is_a_failure(tmp_path: Path) -> None:

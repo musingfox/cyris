@@ -47,29 +47,23 @@ def _writable(path: Path) -> bool:
 
 
 def _check_sources(cfg: Config) -> Check:
+    if cfg.app.store.is_d1:
+        home, fix = "D1", "Add one on /settings, or run `cyris sources push`."
+        if not cfg.sources:
+            return Check("sources", "fail", "no sources in D1", fix)
+    else:
+        home, fix = "sources.yaml", "Add feeds to sources.yaml (see sources.example.yaml)."
     feeds = [s for s in cfg.sources.values() if s.url and s.type == "rss"]
     email = [s for s in cfg.sources.values() if s.email_match]
     summarize = [s for s in cfg.sources.values() if s.tier == Tier.SUMMARIZE]
-    detail = (
-        f"{len(feeds)} RSS, {len(email)} email-only, {len(summarize)} on the summarize tier "
-        f"— from {cfg.sources_origin}"
-    )
     if not feeds and not email:
-        return Check(
-            "sources",
-            "fail",
-            "no usable sources",
-            "Add feeds to sources.yaml (see sources.example.yaml).",
-        )
-    if cfg.app.store.is_d1 and cfg.sources_origin != "d1":
-        return Check(
-            "sources",
-            "warn",
-            detail,
-            "The store is on D1 but the sources table is empty or unreachable, so the "
-            "RSS Worker is polling its bundled snapshot. Run `cyris sources push`.",
-        )
-    return Check("sources", "ok", detail)
+        return Check("sources", "fail", "no usable sources", fix)
+    return Check(
+        "sources",
+        "ok",
+        f"{len(feeds)} RSS, {len(email)} email-only, {len(summarize)} on the summarize tier "
+        f"— from {home}",
+    )
 
 
 def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
