@@ -404,7 +404,7 @@ async def test_every_settings_scroll_asks_for_the_reduced_motion_preference(
 
 async def test_each_settings_form_names_its_category(triage: TestClient) -> None:
     ids = set(re.findall(r'\bid="([^"]+)"', await _served(triage, "/settings")))
-    for category in ("model", "digest", "notify"):
+    for category in ("model", "digest", "pipeline", "notify"):
         assert {f"{category}-form", f"save-{category}", f"{category}-result"} <= ids
     assert ids.isdisjoint({"form", "save", "result"})
 
@@ -438,7 +438,7 @@ async def test_settings_never_asks_the_browser_to_confirm(triage: TestClient, pa
     assert not _uses_confirm(await _served(triage, path))
 
 
-SETTINGS_HASHES = ["#model", "#digest", "#notifications", "#sources"]
+SETTINGS_HASHES = ["#model", "#digest", "#pipeline", "#notifications", "#sources"]
 
 
 def _hash_targets(html: str) -> set[str]:
@@ -451,7 +451,7 @@ def test_an_element_named_like_a_category_is_reported() -> None:
     assert _hash_targets('<input id="model">') == {"model"}
 
 
-async def test_the_category_list_links_the_four_hashes(triage: TestClient) -> None:
+async def test_the_category_list_links_the_five_hashes(triage: TestClient) -> None:
     page = await _served(triage, "/settings")
     nav = re.search(r'<nav class="settings-nav".*?</nav>', page, re.DOTALL)
     assert nav, "no category list"

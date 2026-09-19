@@ -558,7 +558,8 @@ CHECKS: list[Check] = [
         preload=HOLD_SETTINGS,
         act="await sleep(300);",
         script="""
-            const live = ["model", "digest", "notifications"].filter((t) => !saveOf(t).disabled);
+            const tabs = ["model", "digest", "pipeline", "notifications"];
+            const live = tabs.filter((t) => !saveOf(t).disabled);
             expect(live.length === 0, `enabled before settings loaded: ${live}`);
         """,
         sabotage="""saveOf("digest").disabled = false;""",
@@ -1003,10 +1004,10 @@ CHECKS: list[Check] = [
         path="/settings",
         preload=reject_get("/api/settings"),
         act="""
-            await waitFor(() => $$("form.tab .actions-line .notice.err").length === 3, "3 notices");
+            await waitFor(() => $$("form.tab .actions-line .notice.err").length === 4, "4 notices");
         """,
         script="""
-            const tabs = ["model", "digest", "notifications"];
+            const tabs = ["model", "digest", "pipeline", "notifications"];
             const wrong = tabs.filter((t) => !noticeOf(t).classList.contains("err")
               || !noticeOf(t).textContent.startsWith("Could not load settings: TypeError: boom"));
             expect(wrong.length === 0, `wrong notices: ${wrong}`);
@@ -1273,6 +1274,7 @@ CHECKS: list[Check] = [
             expect(notice.textContent.startsWith("Not set yet: ")
               && notice.textContent.includes("Timezone"), notice.textContent);
             expect(navOf("digest").classList.contains("missing"), "Digest has no missing mark");
+            expect($('.settings-nav a[data-tab="pipeline"].missing'), "Pipeline has no mark");
             const dot = getComputedStyle($(".missing-dot", navOf("digest"))).visibility;
             expect(dot === "visible", `the dot is ${dot}`);
             const checked = $$("input[name=provider]:checked").map((input) => input.value);
@@ -1390,13 +1392,67 @@ CHECKS: list[Check] = [
         receipt=_calls([]),
     ),
     Check(
+        id="hash-pipeline",
+        fixture="readonly",
+        path="/settings#pipeline",
+        script="""
+            expect(same(panels(), ["pipeline"]), `visible panels: ${panels()}`);
+            expect(same(currentTabs(), ["#pipeline"]), `current: ${currentTabs()}`);
+        """,
+        sabotage="""$('.tab[data-tab="model"]').hidden = false;""",
+    ),
+    Check(
+        id="pipeline-posts-changed-only",
+        fixture="writable",
+        path="/settings#pipeline",
+        act="""
+            await settingsLoaded();
+            ctx.loaded = $("#max-articles").value;
+            setValue($("#max-articles"), "400");
+            saveOf("pipeline").click();
+            await waitFor(() => visible(noticeOf("pipeline")) && saveOf("pipeline").disabled,
+              "the save");
+        """,
+        script="""
+            expect(ctx.loaded === "200", `loaded: ${ctx.loaded}`);
+            const notice = $("#pipeline-result"), text = notice.textContent;
+            expect(!notice.classList.contains("err"), `an error: ${text}`);
+            expect(text === "Articles per run: 400. Effective next run.", `notice: ${text}`);
+            expect(!navOf("pipeline").classList.contains("dirty"), "Pipeline is still marked");
+        """,
+        sabotage_preload=rewrite_post(
+            "/api/settings/values", 'body.values["general.digest_window_hours"] = 24;'
+        ),
+        receipt=_calls([{"digest.max_articles_per_digest": 400}]),
+    ),
+    Check(
+        id="pipeline-refusal",
+        fixture="writable",
+        path="/settings#pipeline",
+        act="""
+            await settingsLoaded();
+            setValue($("#featured-threshold"), "150");
+            saveOf("pipeline").click();
+            await waitFor(() => visible(noticeOf("pipeline")), "the notice");
+        """,
+        script="""
+            const notice = $("#pipeline-result"), text = notice.textContent;
+            expect(visible(notice) && notice.classList.contains("err"), `not an error: ${text}`);
+            expect(notice.parentElement === saveOf("pipeline").parentElement, "not beside Save");
+            expect(text.startsWith("Featured score not saved: routing.score_threshold: "), text);
+            expect(navOf("pipeline").classList.contains("dirty"), "Pipeline lost its dirty mark");
+        """,
+        sabotage="""$("#pipeline-result").hidden = true;""",
+        receipt=_calls([]),
+    ),
+    Check(
         id="readonly-settings",
         fixture="readonly",
         path="/settings#model",
         act="""
             await settingsLoaded();
             ctx.notices = {};
-            for (const tab of ["model", "digest", "notifications"]) {
+            for (const tab of ["model", "digest", "pipeline", "notifications"]) {
               location.hash = tab;
               await waitFor(() => same(panels(), [tab]), tab);
               const notice = noticeOf(tab);
@@ -1408,7 +1464,8 @@ CHECKS: list[Check] = [
         script="""
             const unexplained = Object.keys(ctx.notices).filter((tab) => !ctx.notices[tab]);
             expect(unexplained.length === 0, `no read-only notice: ${unexplained}`);
-            const live = ["model", "digest", "notifications"].filter((t) => !saveOf(t).disabled);
+            const tabs = ["model", "digest", "pipeline", "notifications"];
+            const live = tabs.filter((t) => !saveOf(t).disabled);
             expect(live.length === 0, `enabled: ${live}`);
             expect(!$(".settings-nav a.dirty"), "a category is marked unsaved");
         """,
@@ -1514,7 +1571,7 @@ const shownFields = () =>
 const noticeOf = (tab) => $(".actions-line .notice", $(`form.tab[data-tab="${tab}"]`));
 const eachCategory = async (measure) => {
   const problems = [];
-  for (const tab of ["model", "digest", "notifications", "sources"]) {
+  for (const tab of ["model", "digest", "pipeline", "notifications", "sources"]) {
     location.hash = tab;
     await waitFor(() => same(panels(), [tab]), tab);
     problems.push(...measure(tab));

@@ -67,6 +67,7 @@
       <nav class="settings-nav" aria-label="Settings sections">
         <a class="label" href="#model" data-tab="model">Model <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#digest" data-tab="digest">Digest <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
@@ -141,6 +142,51 @@
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
               <div class="notice" id="digest-result" hidden></div>
+            </div>
+          </div>
+        </form>
+
+        <form class="tab" data-tab="pipeline" id="pipeline-form" novalidate hidden>
+          <div class="tab-head">
+            <h2 class="heading">Pipeline</h2>
+            <p class="small">How far back each run looks, how much it reads, and where it cuts.</p>
+            <div class="notice err" id="pipeline-missing" hidden></div>
+          </div>
+          <div class="form">
+            <div class="field">
+              <label class="label" for="window-hours">Window (hours)</label>
+              <input class="input narrow" id="window-hours" type="number" min="1" max="168" autocomplete="off">
+              <p class="small">How far back a run looks for articles.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="max-articles">Articles per run</label>
+              <input class="input narrow" id="max-articles" type="number" min="1" autocomplete="off">
+              <p class="small">The most articles one run scores and digests.</p>
+              <details class="more"><summary>More</summary><p class="small">Set it above a day's volume, or the run drops the rest.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="featured-threshold">Featured score</label>
+              <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" autocomplete="off">
+              <p class="small">A section can lead the page when one of its articles scores at least this.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="summarize-threshold">Summary score</label>
+              <input class="input narrow" id="summarize-threshold" type="number" min="0" max="100" autocomplete="off">
+              <p class="small">A summarize-tier article scoring below this is listed for attention instead of summarized.</p>
+            </div>
+            <div class="field">
+              <span class="label">Characters read</span>
+              <div class="field-row">
+                <div class="field"><label class="small" for="scoring-snippet">Scoring</label><input class="input narrow" id="scoring-snippet" type="number" min="1" autocomplete="off"></div>
+                <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" autocomplete="off"></div>
+                <div class="field"><label class="small" for="filter-snippet">Headlines</label><input class="input narrow" id="filter-snippet" type="number" min="1" autocomplete="off"></div>
+              </div>
+              <p class="small">How much of each article the model reads at each step.</p>
+              <details class="more"><summary>More</summary><p class="small">More costs more per call.</p></details>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" id="save-pipeline" disabled>Save</button>
+              <div class="notice" id="pipeline-result" hidden></div>
             </div>
           </div>
         </form>

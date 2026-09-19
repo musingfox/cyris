@@ -602,6 +602,9 @@ EXPECTED_IDS = {
     "digest-posts-new-fields",
     "digest-style-empty",
     "digest-bad-timezone",
+    "hash-pipeline",
+    "pipeline-posts-changed-only",
+    "pipeline-refusal",
 }
 
 

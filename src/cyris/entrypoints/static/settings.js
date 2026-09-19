@@ -2,8 +2,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 let state = null;
 
-const TABS = ["model", "digest", "notifications", "sources"];
-const SETTINGS_NOTICES = ["model-result", "digest-result", "notify-result"];
+const TABS = ["model", "digest", "pipeline", "notifications", "sources"];
+const SETTINGS_NOTICES = ["model-result", "digest-result", "pipeline-result", "notify-result"];
 
 // The category lives in the hash, not the path: the Worker guards /settings by
 // exact match, and a hash never leaves the browser.
@@ -78,6 +78,23 @@ const FIELDS = {
   },
   "digest.output_language": {tab: "digest", label: "Output language", controls: ["output-language"]},
   "digest.style_prompt": {tab: "digest", label: "Style", controls: ["style-prompt"]},
+  "general.digest_window_hours": {tab: "pipeline", label: "Window (hours)", controls: ["window-hours"]},
+  "digest.max_articles_per_digest": {
+    tab: "pipeline", label: "Articles per run", controls: ["max-articles"],
+  },
+  "routing.score_threshold": {tab: "pipeline", label: "Featured score", controls: ["featured-threshold"]},
+  "routing.summarize_score_threshold": {
+    tab: "pipeline", label: "Summary score", controls: ["summarize-threshold"],
+  },
+  "digest.scoring_snippet_length": {
+    tab: "pipeline", label: "Characters read (Scoring)", controls: ["scoring-snippet"],
+  },
+  "digest.summarize_snippet_length": {
+    tab: "pipeline", label: "Characters read (Summary)", controls: ["summarize-snippet"],
+  },
+  "digest.filter_snippet_length": {
+    tab: "pipeline", label: "Characters read (Headlines)", controls: ["filter-snippet"],
+  },
   "notify.discord_webhook_url": {
     tab: "notifications", label: "Discord webhook", controls: ["discord-webhook"],
   },
@@ -130,6 +147,13 @@ const PLAIN = {
   "max-output": "digest.max_articles_per_digest_output",
   "output-language": "digest.output_language",
   "style-prompt": "digest.style_prompt",
+  "window-hours": "general.digest_window_hours",
+  "max-articles": "digest.max_articles_per_digest",
+  "featured-threshold": "routing.score_threshold",
+  "summarize-threshold": "routing.summarize_score_threshold",
+  "scoring-snippet": "digest.scoring_snippet_length",
+  "summarize-snippet": "digest.summarize_snippet_length",
+  "filter-snippet": "digest.filter_snippet_length",
 };
 
 function markSet(keys) {
@@ -301,6 +325,18 @@ $("digest-form").addEventListener("submit", async (e) => {
   saving.delete(form);
   markClean(form, stored);
   show(failed ? "err" : "ok", lines.join("\n"), "digest-result");
+});
+
+$("pipeline-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = $("pipeline-form");
+  const stored = {...clean.get(form)};
+  saving.add(form);
+  refresh(form);
+  const plain = await savePlain(form, stored);
+  saving.delete(form);
+  markClean(form, stored);
+  if (plain) show(plain.ok ? "ok" : "err", plain.line, "pipeline-result");
 });
 
 $("notify-form").addEventListener("submit", async (e) => {
