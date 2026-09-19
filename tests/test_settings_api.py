@@ -912,3 +912,38 @@ class TestLlmDiagnostics:
 
         assert res.status == 400
         assert "mistral" in body["error"]
+
+
+SETTINGS_ROUTES = [
+    "/api/settings",
+    "/api/settings/schedule",
+    "/api/settings/values",
+    "/api/settings/vote-similarity",
+    "/api/settings/notify",
+]
+
+
+class TestEverySettingsWriteGuardsAlike:
+    @pytest.mark.parametrize("route", SETTINGS_ROUTES)
+    async def test_without_a_store_every_route_refuses(self, route):
+        client = await _client(None)
+
+        res = await client.post(route, json={})
+        body = await res.json()
+        await client.close()
+
+        assert (res.status, body["error"]) == (
+            409,
+            "this deployment has no settings store to write",
+        )
+
+    @pytest.mark.parametrize("route", SETTINGS_ROUTES)
+    async def test_a_body_that_is_not_an_object_is_refused(self, settings, route):
+        client = await _client(settings)
+
+        res = await client.post(route, json=["not", "an", "object"])
+        body = await res.json()
+        await client.close()
+
+        assert (res.status, body["error"]) == (400, "invalid JSON")
+        assert settings.calls == []

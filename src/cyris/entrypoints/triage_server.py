@@ -159,6 +159,30 @@ class TriageServer:
             }
         )
 
+    async def _settings_body(self, request: web.Request) -> dict | web.Response:
+        """The JSON object a settings write sent, or the response refusing it."""
+        if self._settings is None:
+            return web.json_response(
+                {"ok": False, "error": "this deployment has no settings store to write"},
+                status=409,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict):
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        return body
+
+    def _store(self, values: dict[str, Any]) -> web.Response | None:
+        """Write `values` to the settings store and this server's copy; the 500 if D1 refuses."""
+        try:
+            self._settings.set(values)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        self._values.update(values)
+        return None
+
     async def _handle_post_settings(self, request: web.Request) -> web.Response:
         """Validate against the live provider, then write the D1 settings row.
 
@@ -172,15 +196,9 @@ class TriageServer:
         from cyris.config import LLMProviderConfig
         from cyris.diagnostics.doctor import probe_llm
 
-        if self._settings is None:
-            return web.json_response(
-                {"ok": False, "error": "this deployment has no settings store to write"},
-                status=409,
-            )
-        try:
-            body = await request.json()
-        except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        body = await self._settings_body(request)
+        if isinstance(body, web.Response):
+            return body
 
         provider = (body.get("provider") or "").strip()
         model = (body.get("model") or "").strip()
@@ -201,12 +219,10 @@ class TriageServer:
                 return web.json_response({"ok": False, "error": probe.detail}, status=400)
             detail = probe.detail
 
-        try:
-            self._settings.set({"llm_provider.provider": provider, "llm_provider.model": model})
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        chosen = {"llm_provider.provider": provider, "llm_provider.model": model}
+        if (refused := self._store(chosen)) is not None:
+            return refused
 
-        self._values.update({"llm_provider.provider": provider, "llm_provider.model": model})
         logger.info("LLM provider set to %s · %s", provider, model or "(default model)")
         return web.json_response(
             {
@@ -262,27 +278,18 @@ class TriageServer:
         """Set the two digest hours. The cron tick is hourly and reads this."""
         from cyris.service_layer.schedule import validate_schedule
 
-        if self._settings is None:
-            return web.json_response(
-                {"ok": False, "error": "this deployment has no settings store to write"},
-                status=409,
-            )
-        try:
-            body = await request.json()
-        except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        body = await self._settings_body(request)
+        if isinstance(body, web.Response):
+            return body
 
         try:
             times = validate_schedule([str(t).strip() for t in body.get("times") or []])
         except ValueError as e:
             return web.json_response({"ok": False, "error": str(e)}, status=400)
 
-        try:
-            self._settings.set({"general.digest_schedule": times})
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if (refused := self._store({"general.digest_schedule": times})) is not None:
+            return refused
 
-        self._values["general.digest_schedule"] = times
         logger.info("Digest schedule set to %s", ", ".join(times))
         return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
 
@@ -290,17 +297,11 @@ class TriageServer:
         """Store any of the plain settings, all or nothing, each through its own rule."""
         from cyris.config import validate_setting
 
-        if self._settings is None:
-            return web.json_response(
-                {"ok": False, "error": "this deployment has no settings store to write"},
-                status=409,
-            )
-        try:
-            body = await request.json()
-        except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        body = await self._settings_body(request)
+        if isinstance(body, web.Response):
+            return body
 
-        values = body.get("values") if isinstance(body, dict) else None
+        values = body.get("values")
         if not isinstance(values, dict) or not values:
             return web.json_response(
                 {"ok": False, "error": "values must name at least one setting"}, status=400
@@ -316,12 +317,9 @@ class TriageServer:
             except ValueError as e:
                 return web.json_response({"ok": False, "error": f"{key}: {e}"}, status=400)
 
-        try:
-            self._settings.set(validated)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if (refused := self._store(validated)) is not None:
+            return refused
 
-        self._values.update(validated)
         logger.info("Settings saved: %s", ", ".join(sorted(validated)))
         return web.json_response({"ok": True, "values": validated, "note": "Effective next run."})
 
@@ -335,17 +333,9 @@ class TriageServer:
         """
         from cyris.config import validate_setting
 
-        if self._settings is None:
-            return web.json_response(
-                {"ok": False, "error": "this deployment has no settings store to write"},
-                status=409,
-            )
-        try:
-            body = await request.json()
-        except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
-        if not isinstance(body, dict):
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        body = await self._settings_body(request)
+        if isinstance(body, web.Response):
+            return body
 
         values = {}
         for field in ("enabled", "provider", "model", "max_seeds"):
@@ -367,12 +357,9 @@ class TriageServer:
         else:
             detail = "Not checked: vote similarity is off. Turning it on checks the embedder first."
 
-        try:
-            self._settings.set(values)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if (refused := self._store(values)) is not None:
+            return refused
 
-        self._values.update(values)
         logger.info(
             "Vote similarity saved: %s", "on" if values["vote_similarity.enabled"] else "off"
         )
@@ -393,22 +380,13 @@ class TriageServer:
         """
         from cyris.adapters.notify import mask_discord_webhook_url
 
-        if self._settings is None:
-            return web.json_response(
-                {"ok": False, "error": "this deployment has no settings store to write"},
-                status=409,
-            )
-        try:
-            body = await request.json()
-        except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        body = await self._settings_body(request)
+        if isinstance(body, web.Response):
+            return body
 
         if body.get("off") is True:
-            try:
-                self._settings.set({"notify.discord_webhook_url": ""})
-            except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-                return web.json_response({"ok": False, "error": str(e)}, status=500)
-            self._values["notify.discord_webhook_url"] = ""
+            if (refused := self._store({"notify.discord_webhook_url": ""})) is not None:
+                return refused
             logger.info("Discord notifications turned off")
             return web.json_response(
                 {
@@ -434,12 +412,9 @@ class TriageServer:
         if probe.status != "ok":
             return web.json_response({"ok": False, "error": probe.detail}, status=400)
 
-        try:
-            self._settings.set({"notify.discord_webhook_url": url})
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if (refused := self._store({"notify.discord_webhook_url": url})) is not None:
+            return refused
 
-        self._values["notify.discord_webhook_url"] = url
         logger.info("Discord webhook saved")
         return web.json_response(
             {
