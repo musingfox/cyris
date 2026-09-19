@@ -312,6 +312,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .input.narrow { width: 96px; }
 .input.invalid { border-color: var(--warn); }
 .input[aria-invalid="true"] { border-color: var(--warn); }
+.select[aria-invalid="true"] { border-color: var(--warn); }
 textarea.input { height: auto; padding-block: var(--s-3); line-height: 1.5; resize: vertical; }
 details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); list-style: none; }
 details.more summary::before { content: "+ "; }
@@ -723,7 +724,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
                 <label class="choice"><input type="radio" name="provider" id="p-gemini" value="gemini" checked><span class="name">gemini</span><span class="label">Key ready</span></label>
                 <label class="choice"><input type="radio" name="provider" id="p-workers" value="workers_ai"><span class="name">workers_ai</span><span class="label">Key ready</span></label>
                 <label class="choice unavailable"><input type="radio" name="provider" id="p-openai" value="openai" disabled><span class="name">openai</span><span class="label" style="color:var(--warn)">OPENAI_API_KEY missing</span></label>
-                <label class="choice"><input type="radio" name="provider" id="p-none" value="none"><span class="name">None — plain excerpts</span><span class="label"></span></label>
+                <label class="choice"><input type="radio" name="provider" id="p-none" value="none"><span class="name">None — plain excerpts</span><span class="label">No key needed</span></label>
               </div>
             </fieldset>
             <div class="field">
