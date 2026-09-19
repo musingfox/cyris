@@ -521,7 +521,6 @@
                     <p class="summary">{{ lead_story.summary }}</p>
                     <div class="meta">
                         <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>{% if lead_story.ref_urls | length > 1 %} {{ source_list(lead_story) }}{% endif %}
-                        {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">Read more →</a>{% endif %}
                         {{ promote_btn(lead_story) }}
                     </div>
                 </article>

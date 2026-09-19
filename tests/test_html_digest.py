@@ -481,6 +481,18 @@ def test_the_lead_score_pill_sits_above_its_title(tmp_path):
     assert "Source:" not in card
 
 
+def test_the_lead_links_its_article_once_through_its_title(tmp_path):
+    lead = DigestItem(title="Lead", summary="s", sources=["S"], urls=["https://a.test"])
+    content = _content(
+        "2026-04-15", "evening", featured_articles=[DigestSection(heading="F", items=[lead])]
+    )
+    digest = HtmlDigestWriter(tmp_path).render(content)
+    card = digest[digest.index('<article class="lead-story">') :].split("</article>", 1)[0]
+    assert card.count('href="https://a.test"') == 1
+    title = r'<h2>\s*<a href="https://a.test" target="_blank" rel="noopener">Lead</a>'
+    assert re.search(title, card)
+
+
 def test_without_features_the_card_leads_with_the_first_thematic_story(tmp_path):
     content = _content(
         "2026-04-15",
