@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ARCHITECTURE = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 ENV_EXAMPLE = (ROOT / ".env.example").read_text(encoding="utf-8")
+CLAUDE_MD = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
 
 def _section(doc: str, start: str, end: str) -> str:
@@ -24,6 +25,42 @@ def test_section_5_grades_the_webhook_d_in_settings() -> None:
     assert cells[1] != "C"
     assert "`settings`" in row
     assert "/settings" in row
+    assert "CYRIS_DISCORD_WEBHOOK_URL" not in row
+    assert "cannot turn notifications off" not in row
+
+
+def _row(section: str, first_cell: str) -> str:
+    return next(line for line in section.splitlines() if line.startswith(f"| {first_cell} "))
+
+
+def test_section_4_names_no_fallback_for_sources_or_settings() -> None:
+    section = _section(ARCHITECTURE, "## 4.", "## 5.")
+    for datum in ("Source definitions", "Runtime settings"):
+        assert "fallback" not in _row(section, datum), datum
+
+
+def test_section_5_names_provider_none() -> None:
+    section = _section(ARCHITECTURE, "## 5.", "## 6.")
+    assert '"none"' in _row(section, "LLM provider + model")
+
+
+def test_section_7_closes_17_and_drops_the_per_key_origin_step() -> None:
+    section = _section(ARCHITECTURE, "## 7.", "## 8.")
+    assert "per-key origin" not in _row(section, "34")
+    assert _row(section, "~~17~~").startswith("| ~~17~~ | ~~")
+
+
+def test_claude_md_names_settings_push_and_no_bundled_feed_list() -> None:
+    assert "cyris settings push" in CLAUDE_MD
+    assert "bundled src/feeds.json" not in CLAUDE_MD
+
+
+def test_unreleased_names_settings_push_provider_none_and_the_retired_variable() -> None:
+    unreleased = _section(CHANGELOG, "## [Unreleased]", "## [")
+    assert "cyris settings push" in unreleased
+    assert 'provider = "none"' in unreleased
+    removed = _section(unreleased, "### Removed", "\n### ")
+    assert "CYRIS_DISCORD_WEBHOOK_URL" in removed
 
 
 def test_section_4_puts_the_webhook_in_settings() -> None:

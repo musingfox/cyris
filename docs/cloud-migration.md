@@ -213,6 +213,12 @@ news day rather than an outage. `feeds.json` keeps existing as the Worker's
 bundled fallback for the same reason. `cyris doctor` warns when the store is on
 D1 but sources still came from the file, because nothing else makes that visible.
 
+> **2026-09-19: reversed.** Each deployment now has one home. A `d1` deployment reads
+> sources (and runtime settings) from D1 alone: an empty `sources` table stops
+> `cyris run` and polls nothing in `workers/rss/`, which logs how to fill it, and
+> `feeds.json` is deleted. A fork polling the author's feeds, and a table nobody
+> noticed was empty, were what the fallback cost. `docs/architecture.md` §5 has the rules.
+
 ### Cutover order
 
 Done 2026-08-25 — kept as the record of what was run, and as the recipe for

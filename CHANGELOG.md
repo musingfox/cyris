@@ -7,6 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`cyris settings push`.** Copies each runtime setting D1 lacks from a
+  `cyris.toml`, validating every value first, and never overwrites a row. It
+  prints the D1 database id it bound to before anything else, so a push to the
+  wrong database is visible and, being fill-only, harmless.
+- **`provider = "none"`.** Excerpt-only digests are now a stated choice, valid in
+  `cyris.toml` and D1: no LLM client is built and no key is needed, `cyris doctor`
+  reports it as ok, and the run is not flagged degraded. The Model category on
+  `/settings` offers it as `None — plain excerpts`.
+- **Every runtime setting on `/settings`.** Twenty keys across Model (the LLM, the
+  embedder and vote similarity), Digest, a new Pipeline category and
+  Notifications. A missing one is marked in its field, at the top of its category
+  and with a warn dot on the category list. Turning vote similarity on checks the
+  embedder with one real call first; notifications turn off with a confirmed
+  Turn off.
+
 - **Deploying is now a reference to a published image.** A second dispatch-only
   workflow renders a derived Wrangler config whose `image` names
   `registry.cloudflare.com/<account>/cyris-app` at a tag or a digest, and deploys
@@ -71,7 +86,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Discord webhook is set on `/settings` (D1), with `CYRIS_DISCORD_WEBHOOK_URL` as the fallback.
+- Discord webhook is set on `/settings` (D1).
+- **One home per deployment for runtime settings and sources.** A `d1`
+  deployment reads them from D1 `settings` and `sources` alone, a `json` one from
+  `cyris.toml` and `sources.yaml` alone. A missing setting or an empty source
+  list stops `cyris run` (and the commands that read settings) with the missing
+  names and the fix; `cyris doctor` fails on them, and on a `d1` deployment whose
+  `cyris.toml` still sets a runtime setting it ignores. `/settings`,
+  `cyris settings push`, `cyris sources push|list` and `cyris promote-sync` still
+  start on an empty D1, so a first boot can be filled.
 - **Grade C is seven environment variables, down from twelve.**
   `CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name — the same
   string in `.env` twice, so `StoreConfig`'s fallback chain had never chosen its
@@ -99,6 +122,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **Every fallback behind a runtime setting or a source.** The `cyris.toml`
+  overlay under D1, the code defaults of all twenty runtime settings, the
+  `sources.yaml` fallback under D1, and the RSS Worker's bundled `feeds.json`
+  (with `gen-feeds.py`) are gone. The RSS Worker polls only the D1 table: an
+  empty one polls nothing and logs how to fill it, an unreadable one fails the
+  poll.
+- **`CYRIS_DISCORD_WEBHOOK_URL`.** Nothing reads the webhook from the environment
+  any more, so `.env.example`, the Deploy button and the app Worker stop asking
+  for it and forwarding it.
 - **The swipe deck.** Raw's triage view replaced it. `/static/index.html`, its
   script and stylesheet, and the container routes `GET /`, `GET /triage`,
   `GET /api/articles`, `GET /api/stats` and `POST /api/articles/{accept,reject,undo}`

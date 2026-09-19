@@ -34,7 +34,7 @@ summarization in the middle, an HTML digest on Cloudflare Pages out.
 - Turns a 👍/👎 into an accept or reject in the store, and can suppress later articles
   sitting close to a downvote
 - Lets you triage the borderline ones card by card in the raw page's triage view, and
-  serves `/settings` for the LLM provider, digest hours, and the source list
+  serves `/settings` for every runtime setting and the source list
 
 ## Two ways to run it
 
@@ -96,14 +96,14 @@ and cyris reads a window out of the buffer, so nothing expires between runs. Dep
 ## Running it locally
 
 Python 3.12+, [uv](https://github.com/astral-sh/uv), and one LLM API key — Anthropic
-Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token. Without a key the
-pipeline still runs and digests plain excerpts.
+Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token. Without one, set
+`[llm_provider] provider = "none"` and the digest lists plain excerpts.
 
 ```bash
 git clone https://github.com/musingfox/cyris.git && cd cyris
 uv sync --dev
 
-cp cyris.toml.example cyris.toml           # LLM provider, store backend, digest hours
+cp cyris.toml.example cyris.toml           # every runtime setting, plus the store backend
 cp .env.example .env                       # add your API key
 cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
 
@@ -116,16 +116,18 @@ Keep `[store] backend = "json"`: the article store and the usage log are files u
 yours — a cron entry per digest hour, or `docker compose up -d`, which runs the same
 image with supercronic reading `docker/crontab`.
 
-`sources.yaml` is the source list, and `cyris.toml` holds everything else. There is no
-`/settings` here, because there is no server running to serve it.
+`sources.yaml` is the source list, and `cyris.toml` holds everything else. Every runtime
+setting in `cyris.toml.example` is required: a key left out stops the run and is named,
+because no value for one lives in code. There is no `/settings` here, because there is
+no server running to serve it.
 
 ## Running it on Cloudflare
 
 The deployment is a Container fronted by a Worker: an hourly Cron Trigger runs
 `cyris run --if-due` plus `promote-sync` and the instance exits, while the `/settings`
 server wakes on request and sleeps again. State is D1 and the digest is published to Pages.
-Digest hours and the LLM provider live in D1, so changing either is a write on
-`/settings`, not a rebuild. Deploy steps, the secret list and auth are in
+Every runtime setting lives in D1, so changing one is a write on `/settings`, not a
+rebuild. Deploy steps, the secret list and auth are in
 [`workers/app/README.md`](workers/app/README.md).
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris)
@@ -134,10 +136,12 @@ The button clones this repo into your own GitHub account, builds the container i
 with Workers Builds, and deploys the Worker, its Durable Object and the hourly cron. It
 asks for each secret in [`.env.example`](.env.example).
 
-**One thing to do after it finishes.** The LLM provider is a runtime setting in D1, not
-a deploy field — a deployed container has no `cyris.toml` to read one from. Open
-`/settings` and pick the provider matching the key you pasted. Until you do, the hourly
-run still publishes, but as plain excerpts.
+**One thing to do after it finishes.** The runtime settings live in D1, not in deploy
+fields — a deployed container has no `cyris.toml` to read them from. Open `/settings`:
+every setting not yet stored is marked, and each hourly run stops, naming them, until
+all are saved and the Sources category holds at least one source. Pick the LLM provider
+matching the key you pasted, or `None — plain excerpts`; set the Discord webhook or turn
+notifications off. `cyris settings push` does the same from a `cyris.toml`.
 
 **What the button cannot provision.** One step before the form, two values decided in
 it, and one dashboard step:
@@ -160,8 +164,8 @@ is optional: [`workers/rss/`](workers/rss/README.md) (feed buffer),
 `CYRIS_PROMOTE_TOKEN`, kept apart because a vote button is a public capability.
 
 **Point the rss Worker at the same D1 database as the app.** Its button provisions a
-fresh one, and a fresh one has an empty `sources` table — the Worker then falls back to
-the feed list bundled in `src/feeds.json` and buffers feeds you never chose.
+fresh one, and a fresh one has an empty `sources` table — the Worker then polls nothing
+and says `sources table is empty` in its log.
 
 **Do not leave a local install running against the same Pages project.** Two schedulers
 publishing one archive is the failure mode; `docker compose down` before you cut over.
@@ -170,7 +174,10 @@ publishing one archive is the failure mode; `docker compose down` before you cut
 
 `cyris store migrate` copies the JSON store into D1 without overwriting anything, and
 `cyris store diff` compares them article by article before you switch. Then flip
-`[store] backend` to `"d1"` and `cyris sources push` to fill the source table. **Pick
+`[store] backend` to `"d1"`, run `cyris settings push` to copy the runtime settings into
+D1 and `cyris sources push` to fill the source table, and delete the runtime settings
+from `cyris.toml` — a D1 deployment ignores them, and `cyris doctor` fails until they are
+gone. **Pick
 one backend** — they are alternatives, never a pair; running both splits decisions that
 `INSERT OR IGNORE` cannot heal.
 
@@ -182,7 +189,7 @@ one backend** — they are alternatives, never a pair; running both splits decis
 
 **On a Cloudflare install, most of it is not yours to type.** The container already runs
 `cyris run --if-due`, `cyris promote-sync` and `cyris triage-ui`, and `/settings` covers
-the provider, the digest hours and editing one source. What is left is the work that has
+every runtime setting and editing one source. What is left is the work that has
 no UI — and it runs from a clone anywhere, because every command reaches D1 over REST:
 an `.env` with the deployment's database id and Cloudflare token is the whole setup.
 
@@ -191,6 +198,8 @@ cyris doctor                  Before the first run, and after any config change:
                               non-zero on anything that would break a run
 cyris store migrate|diff      The move into D1, and the comparison to run before you
                               trust it
+cyris settings push           Copy the runtime settings D1 lacks from cyris.toml;
+                              never overwrites a row
 cyris sources push|list       Make D1 match sources.yaml, removals included; show what
                               it serves. /settings edits one source, this replaces all
 cyris articles list|accept|   Bulk work on the store: the only way to reach pending

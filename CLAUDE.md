@@ -91,7 +91,7 @@ src/cyris/
 │   ├── embedding.py         # WorkersAIEmbedder + GeminiEmbedder (implement Embedder)
 │   ├── cloudflare.py        # Account-level Cloudflare checks, tied to no single Worker
 │   ├── store/               # ArticleStore (JSON partitions) + D1ArticleStore (schema.sql), both dedup by URL;
-│   │                        #   settings.py = grade-D runtime settings, D1 first / cyris.toml fallback;
+│   │                        #   settings.py = grade-D runtime settings, a D1 deployment's only home;
 │   │                        #   source_store.py, tags.py, stories.py = the other D1 tables;
 │   │                        #   newsletter_dedup.py = the save-time dedup rule both stores share;
 │   │                        #   runs.py = one `digest_runs` row per run, every path;
@@ -124,8 +124,8 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
 ├── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
 │                     #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
-└── rss/              # Hourly feed buffer: cron polls the D1 `sources` table (falling back to
-                      #   the bundled src/feeds.json) → D1, cyris pulls
+└── rss/              # Hourly feed buffer: cron polls the D1 `sources` table (an empty one
+                      #   polls nothing) → D1, cyris pulls
                       #   (adapters/fetch/rss_worker_source.py). Needs Workers Paid.
 ```
 
@@ -149,7 +149,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured) and `CloudflareNewsletterSource`.
 - **`Embedder`** (`ports.py`) — vote-similarity embeddings, selected in `build_embedder()`: `WorkersAIEmbedder` (`@cf/baai/bge-m3`, the default) or `GeminiEmbedder`. Neither caches — a run is ~600 texts ≈ 20 neurons. Each provider carries its **own** threshold, in `src/cyris/provider_defaults.json` (reasons in `docs/architecture.md` §5); the cosine scales differ, so reusing one number across providers silently disables the feature.
-- **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it).
+- **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it). `provider = "none"` builds no client: the digest lists plain excerpts by choice, needs no key, and is not flagged degraded.
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation would fail at the CLI, not at import, so `tests/test_protocol_conformance.py` checks every implementation against its Protocol instead.
 - **Output sinks** — `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
@@ -165,16 +165,17 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |
 | `cyris llm-compare` | Digest one window with several providers (`--arm provider:model`, repeatable), side by side |
-| `cyris triage-ui` | Serve `/settings`, which picks the LLM provider and model (verified against the live API before storing), the two digest hours, and the Discord webhook, all written to D1 `settings`, and adds/edits/retires sources in D1 `sources` |
+| `cyris triage-ui` | Serve `/settings`: every runtime setting in five categories (Model, Digest, Pipeline, Notifications, Sources), written to D1 `settings`, with missing ones marked. The LLM and, while vote similarity is on, the embedder are verified against the live API before storing; sources are added, edited and retired in D1 `sources`. It starts on an empty D1, so it is how a first boot is filled |
+| `cyris settings push` | Copy each runtime setting D1 lacks from a `cyris.toml`; never overwrites a row, prints the D1 database id first. The CLI way to fill a first boot or cut a deployment over |
 | `cyris articles list\|accept\|reject\|clean\|score` | Article store management (`export` went with the vault in M1) |
 | `cyris store migrate\|diff` | Copy the JSON store into D1; compare the two backends. Like every command that opens D1, they create the tables first — `diff` reads only, but not from a database it leaves untouched |
 | `cyris sources push\|list` | Make D1's source table match `sources.yaml`; show what it serves. Both create the tables first, `list` included — a `database_id` pointing somewhere else gets them |
 
 ### Configuration Files
 
-- `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[notify]` webhook, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the **fallback**, not the source of truth: `bootstrap.load_effective_config` overlays D1 `settings` on top, always in that order — see `docs/architecture.md` §5
-- `sources.yaml` — RSS/newsletter source definitions with tier and tags. The editable format and the fallback; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table instead, and `cyris sources push` is what fills it. An empty or unreachable table falls back to the file on both sides, so a half-migrated deployment keeps fetching; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
-- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own — kept apart because it is not a secret, see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`; `CYRIS_DISCORD_WEBHOOK_URL` is the fallback. `.env.example` is the full list
+- `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[notify]` webhook, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the home only under `[store] backend = "json"`; a D1 deployment reads them from D1 `settings` alone and `cyris doctor` fails on any the file still sets. Either way a missing key stops the run — no value lives in code. See `docs/architecture.md` §5
+- `sources.yaml` — RSS/newsletter source definitions with tier and tags. The `json` backend's list; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table alone, and `cyris sources push` is what fills it from the file. An empty table stops `cyris run` and polls nothing in the Worker; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
+- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own — kept apart because it is not a secret, see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`, and no environment variable supplies it. `.env.example` is the full list
 
 ### Agent Vault (`agent-vault/`)
 
@@ -201,7 +202,7 @@ Agent-owned state directory, entirely gitignored — nothing under it is in vers
 - pytest with `pytest-asyncio` (auto mode) for async tests
 - Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
 - Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest or raw-page vote, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
-- Digest output language is configurable via `[digest] output_language`, a **BCP 47 tag** (default `zh-Hant`). `service_layer/languages.json` maps the tag to the wording the model receives; an unlisted tag is substituted verbatim, which is what keeps an older config holding a plain language name working. Prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
+- Digest output language is configurable via `[digest] output_language`, a **BCP 47 tag** (`cyris.toml.example` uses `zh-Hant`; there is no code default). `service_layer/languages.json` maps the tag to the wording the model receives; an unlisted tag is substituted verbatim, which is what keeps an older config holding a plain language name working. Prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan are fallbacks behind it. The constraint is that a returned URL should not repeat across issues — the store dedups by URL, so a later issue of the same source whose link repeats under a different subject falls back to its synthetic `newsletter:{id}` URL and loses its link (a different source, or the same subject, is still skipped; see `adapters/store/newsletter_dedup.py`). `tests/test_newsletter.py` enforces it (distinct post URLs, distinct synthetic URLs, and where `homepage` may land); read those before changing the extractor. Real-sample coverage is in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo
 - Link-health counters on `DigestContent` measure two different things: `synthetic_url_count` counts every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health); `dead_link_count` counts only items that reached the digest with no clickable link (what a reader hits). Each has its own test, but nothing asserts they disagree on one run — so don't "fix" them into agreement
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers

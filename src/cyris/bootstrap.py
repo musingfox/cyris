@@ -283,8 +283,7 @@ def build_deps(
 
             if d1 is not None:
                 # The site's file list lives in D1, so the archive does not have
-                # to live on this machine. Local files are the no-D1 fallback,
-                # same shape as `sources.yaml` behind the `sources` table.
+                # to live on this machine. Local files are the no-D1 fallback.
                 from cyris.adapters.output.pages_manifest import D1PagesManifest
                 from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
 
