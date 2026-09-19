@@ -1,12 +1,14 @@
 """HTML digest output writer for newspaper-style rendering."""
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from cyris.domain.models import DigestContent, DigestItem, StoredArticle
+from cyris.service_layer.schedule import PERIOD_ORDER
 
 
 def _hostname(url: str) -> str:
@@ -122,13 +124,18 @@ class HtmlDigestWriter:
 
         return file_path
 
-    def render_index(self, filenames: list[str]) -> str:
+    def render_index(
+        self, filenames: list[str], *, period_order: Sequence[str] = PERIOD_ORDER
+    ) -> str:
         """The archive page, from the list of files the site is made of.
 
         Takes names rather than a directory because the archive no longer has to
         be a directory: with the site published from a manifest, the list comes
         from D1. `write_index` keeps the directory-scanning behaviour for the
         unconfigured local case.
+
+        A day's issues follow `period_order`, the order the schedule fires them
+        in, latest first; a label outside it sorts below the known ones of its day.
         """
         template = self.env.get_template("index.html.j2")
 
@@ -152,7 +159,10 @@ class HtmlDigestWriter:
                     }
                 )
 
-        digests.sort(key=lambda d: (d["date"], d["period"]), reverse=True)
+        rank = {period: i for i, period in enumerate(period_order)}
+        digests.sort(
+            key=lambda d: (d["date"], rank.get(d["period"], -1), d["period"]), reverse=True
+        )
 
         return template.render(digests=digests)
 

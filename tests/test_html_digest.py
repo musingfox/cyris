@@ -219,6 +219,61 @@ def test_render_index_ignores_non_digests(tmp_path):
     assert "2026-04-15-morning.html" in html
 
 
+def _issue_order(html: str, names: list[str]) -> list[str]:
+    """The given digest pages in the order the archive first links them."""
+    return sorted(names, key=lambda name: html.index(f'href="{name}"'))
+
+
+def test_a_days_later_issue_is_listed_above_its_earlier_one(tmp_path):
+    names = ["2026-04-15-morning.html", "2026-04-15-evening.html", "2026-04-14-evening.html"]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names)
+
+    assert _issue_order(html, names) == [
+        "2026-04-15-evening.html",
+        "2026-04-15-morning.html",
+        "2026-04-14-evening.html",
+    ]
+
+
+def test_the_same_day_order_is_read_from_the_period_order(tmp_path):
+    names = ["2026-04-15-morning.html", "2026-04-15-evening.html"]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names, period_order=("evening", "morning"))
+
+    assert _issue_order(html, names) == ["2026-04-15-morning.html", "2026-04-15-evening.html"]
+
+
+def test_any_number_of_issues_a_day_follows_the_period_order(tmp_path):
+    names = ["2026-04-15-dawn.html", "2026-04-15-noon.html", "2026-04-15-dusk.html"]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names, period_order=("dawn", "noon", "dusk"))
+
+    assert _issue_order(html, names) == [
+        "2026-04-15-dusk.html",
+        "2026-04-15-noon.html",
+        "2026-04-15-dawn.html",
+    ]
+
+
+def test_a_label_outside_the_period_order_follows_the_known_ones_of_its_day(tmp_path):
+    names = [
+        "2026-04-15-alpha.html",
+        "2026-04-15-morning.html",
+        "2026-04-15-zeta.html",
+        "2026-04-15-evening.html",
+    ]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names)
+
+    assert _issue_order(html, names) == [
+        "2026-04-15-evening.html",
+        "2026-04-15-morning.html",
+        "2026-04-15-zeta.html",
+        "2026-04-15-alpha.html",
+    ]
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

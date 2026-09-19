@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from cyris.service_layer.schedule import due_period, validate_schedule
+from cyris.service_layer.schedule import PERIOD_ORDER, due_period, validate_schedule
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -20,6 +20,13 @@ def test_the_earlier_hour_is_the_morning_digest():
 
 def test_the_later_hour_is_the_evening_digest():
     assert due_period(_at(20), ["08:00", "20:00"]) == "evening"
+
+
+def test_the_period_order_is_the_order_the_schedule_fires_them_in():
+    """The archive sorts a day's issues by this; the earlier hour's label comes first."""
+    fired = (due_period(_at(8), ["08:00", "20:00"]), due_period(_at(20), ["08:00", "20:00"]))
+
+    assert PERIOD_ORDER == fired == ("morning", "evening")
 
 
 def test_order_in_the_list_does_not_decide_which_is_which():

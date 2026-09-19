@@ -11,9 +11,13 @@ Hour granularity is the contract, not a rounding: an hourly tick cannot honour
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, get_args
 
 Period = Literal["morning", "evening"]
+
+# The order a day's issues are published in: `due_period` gives the first label to
+# the earlier hour. The archive sorts a day's issues by it.
+PERIOD_ORDER: tuple[str, ...] = get_args(Period)
 
 
 def validate_schedule(times: list[str]) -> list[str]:
