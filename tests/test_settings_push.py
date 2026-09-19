@@ -2,30 +2,15 @@
 
 from pathlib import Path
 
-import pytest
 from fakes import SqliteD1, settings_toml
 from typer.testing import CliRunner
 
-from cyris.adapters.store.d1 import apply_schema
 from cyris.adapters.store.settings import D1Settings
 from cyris.entrypoints.cli import app
 
 runner = CliRunner()
 
 WEBHOOK = "https://discord.com/api/webhooks/123/abcTOKEN"
-
-
-@pytest.fixture
-def d1(monkeypatch: pytest.MonkeyPatch) -> SqliteD1:
-    """Local sqlite behind the D1 client name, and credentials for it (see test_doctor)."""
-    db = SqliteD1()
-    apply_schema(db)
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
-    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "db")
-    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-    return db
 
 
 def _push(tmp_path: Path, toml: str):

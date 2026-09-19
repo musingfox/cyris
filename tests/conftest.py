@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fakes import SqliteD1
 
 from cyris.domain.models import (
     Article,
@@ -25,6 +26,21 @@ def _clear_b_grade_env(monkeypatch):
 
     for name in B_GRADE_ENV_VARS.values():
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture
+def d1(monkeypatch: pytest.MonkeyPatch) -> SqliteD1:
+    """A D1 deployment whose database is local sqlite with the schema applied.
+
+    Patched by name, where `build_d1_client` constructs it (see test_doctor).
+    """
+    db = SqliteD1()
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "db")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+    return db
 
 
 def newsletter_fixtures_dir() -> Path:

@@ -20,18 +20,6 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def d1(monkeypatch: pytest.MonkeyPatch) -> SqliteD1:
-    """A D1 deployment whose database is local sqlite. Patched by name: see test_doctor."""
-    db = SqliteD1()
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kw: db)
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
-    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "db")
-    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
-    return db
-
-
-@pytest.fixture
 def built(monkeypatch: pytest.MonkeyPatch) -> list[object]:
     """Records every `build_deps` call: nothing is fetched without one."""
     calls: list[object] = []
