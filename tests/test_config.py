@@ -601,3 +601,56 @@ class TestValidateSetting:
 
         with pytest.raises(ValueError, match="Mars/Base"):
             _load_tmp(tmp_path, config_file)
+
+
+class TestProviderNone:
+    """`provider = "none"` is a deliberate excerpt-only deployment, not a missing key."""
+
+    LLM_KEYS = ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "CLOUDFLARE_AI_TOKEN")
+
+    def test_it_passes_the_key_check_with_no_llm_key(self, monkeypatch):
+        from cyris.config import AppConfig, Config, LLMProviderConfig
+
+        for name in self.LLM_KEYS:
+            monkeypatch.delenv(name, raising=False)
+        cfg = Config(
+            app=AppConfig(llm_provider=LLMProviderConfig(provider="none", model="")),
+            sources={},
+        )
+
+        assert cfg.validate_required_keys() is None
+
+    def test_it_does_not_pull_an_llm_key_into_the_config(self, monkeypatch):
+        from cyris.config import LLMProviderConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sentinel-anthropic-key")
+        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct-1")
+        cfg = LLMProviderConfig(provider="none", model="")
+
+        assert cfg.api_key == ""
+        assert cfg.account_id == ""
+        assert "sentinel-anthropic-key" not in cfg.model_dump_json()
+
+    def test_it_names_no_key_variable(self):
+        from cyris.config import LLMProviderConfig
+
+        assert LLMProviderConfig(provider="none", model="").api_key_env_var == ""
+
+    def test_it_is_a_valid_setting_while_empty_is_not(self):
+        from cyris.config import validate_setting
+
+        assert validate_setting("llm_provider.provider", "none") == "none"
+        with pytest.raises(ValueError):
+            validate_setting("llm_provider.provider", "")
+
+    def test_a_real_provider_without_its_key_still_fails(self, monkeypatch):
+        from cyris.config import AppConfig, Config, LLMProviderConfig
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        cfg = Config(
+            app=AppConfig(llm_provider=LLMProviderConfig(provider="anthropic")),
+            sources={},
+        )
+
+        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+            cfg.validate_required_keys()

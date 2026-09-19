@@ -147,9 +147,9 @@ class GeneralConfig(BaseModel):
 
 
 class LLMProviderConfig(BaseModel):
-    # No default provider — the user opts in explicitly. Unset ⇒ degraded
-    # (excerpt-only) mode instead of silently defaulting to one vendor.
-    provider: Literal["anthropic", "gemini", "openai", "workers_ai"] | None = None
+    # No default provider — the user opts in explicitly. "none" ⇒ excerpt-only
+    # by choice: no client is built and no key is needed.
+    provider: Literal["anthropic", "gemini", "openai", "workers_ai", "none"] | None = None
     model: str = ""  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     api_key: str = ""
     account_id: str = ""  # workers_ai only: its REST path is per-account
@@ -160,11 +160,14 @@ class LLMProviderConfig(BaseModel):
             "gemini": "GEMINI_API_KEY",
             "openai": "OPENAI_API_KEY",
             "workers_ai": "CLOUDFLARE_AI_TOKEN",
+            "none": "",
         }.get(self.provider or "", "ANTHROPIC_API_KEY")
 
     @model_validator(mode="after")
     def inject_api_key(self) -> "LLMProviderConfig":
-        if self.provider and not self.api_key:
+        if self.provider in (None, "none"):
+            return self
+        if not self.api_key:
             self.api_key = os.environ.get(self.api_key_env_var, "")
         if self.provider == "workers_ai":
             if not self.api_key:
@@ -427,13 +430,14 @@ class Config(BaseModel):
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
 
-        The LLM is optional: with no provider configured the pipeline runs in
-        degraded (excerpt-only) mode, so only a provider that IS set but is
-        missing its key counts as an error.
+        The LLM is optional: provider "none" (or none configured) runs the
+        excerpt-only digest, so only a real provider that is missing its key
+        counts as an error.
         """
         missing = self.missing_store_keys()
-        if self.app.llm_provider.provider and not self.app.llm_provider.api_key:
-            missing.append(self.app.llm_provider.api_key_env_var)
+        llm = self.app.llm_provider
+        if llm.provider not in (None, "none") and not llm.api_key:
+            missing.append(llm.api_key_env_var)
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
