@@ -200,7 +200,11 @@ class HtmlDigestWriter:
         months: dict[str, list[dict]] = {}
         for digest in digests:
             if digest is not latest:
-                months.setdefault(digest["date"][:7], []).append(digest)
+                rows = months.setdefault(digest["date"][:7], [])
+                # Label-independent: whatever a day's periods are called, and however
+                # many there are, its second row onward says it continues the day.
+                digest["same_day"] = bool(rows) and rows[-1]["date"] == digest["date"]
+                rows.append(digest)
 
         return template.render(
             digests=digests,

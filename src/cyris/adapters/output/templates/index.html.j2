@@ -30,6 +30,7 @@
         .archive-row .date, .front-card .date { font-family: var(--font-mono); font-size: calc(22px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
         .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
         .archive-row .actions { grid-column: 4; }
+        .archive-row.same-day .date { color: var(--text-faint); }
 
         .latest { color: var(--accent); }
 
@@ -93,7 +94,7 @@
         <section class="panel">
             <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length }} issue{{ "" if panel.issues | length == 1 else "s" }}</span></div>
             {% for digest in panel.issues %}
-            <div class="archive-row">
+            <div class="archive-row{{ ' same-day' if digest.same_day }}">
                 <span class="date">{{ digest.date }}</span>
                 <span class="label">{{ digest.period }}</span>
                 {{ actions(digest) }}

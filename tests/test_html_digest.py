@@ -546,6 +546,67 @@ def test_the_card_topics_are_escaped(tmp_path):
     assert "<script>alert(1)" not in card
 
 
+def _row_classes(html: str) -> list[tuple[str, str]]:
+    """(date and period, class attribute) of every archive row, in page order."""
+    return [
+        (f"{date} {period}", cls)
+        for cls, date, period in re.findall(
+            r'<div class="(archive-row[^"]*)"><span class="date">([^<]+)</span>'
+            r'<span class="label">([^<]+)</span>',
+            _tight(html),
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("labels", "order"), [(("dusk", "noon", "dawn"), ("dawn", "noon", "dusk")), ("cba", "abc")]
+)
+def test_a_days_later_rows_are_marked_as_the_same_day(tmp_path, labels, order):
+    late, mid, early = labels
+    names = [
+        "2026-04-16-evening.html",
+        f"2026-04-15-{late}.html",
+        f"2026-04-15-{mid}.html",
+        f"2026-04-15-{early}.html",
+        "2026-04-14-evening.html",
+    ]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names, period_order=order)
+
+    assert _row_classes(html) == [
+        (f"2026-04-15 {late}", "archive-row"),
+        (f"2026-04-15 {mid}", "archive-row same-day"),
+        (f"2026-04-15 {early}", "archive-row same-day"),
+        ("2026-04-14 evening", "archive-row"),
+    ]
+
+
+def test_a_row_below_the_card_of_its_own_day_is_not_marked(tmp_path):
+    names = ["2026-04-15-morning.html", "2026-04-15-evening.html"]
+
+    html = HtmlDigestWriter(tmp_path).render_index(names)
+
+    assert _card_line("2026-04-15", "evening") in _card(html)
+    assert _row_classes(html) == [("2026-04-15 morning", "archive-row")]
+
+
+def test_a_panels_first_row_is_never_marked(tmp_path):
+    names = [
+        "2026-05-01-evening.html",
+        "2026-05-01-morning.html",
+        "2026-04-30-evening.html",
+        "2026-04-30-morning.html",
+        "2026-03-31-evening.html",
+    ]
+
+    html = _tight(HtmlDigestWriter(tmp_path).render_index(names))
+
+    firsts = re.findall(
+        r'<section class="panel"><div class="panel-head">.*?</div><div class="([^"]*)"', html
+    )
+    assert firsts == ["archive-row", "archive-row", "archive-row"]
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

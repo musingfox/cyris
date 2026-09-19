@@ -646,6 +646,10 @@ def test_the_headline_card_is_the_prototype_card() -> None:
     assert "font-weight: 600" in index[".front-card h2"]
 
 
+def test_a_same_day_row_dims_its_date() -> None:
+    assert _parsed("index")[".archive-row.same-day .date"] == {"color: var(--text-faint)"}
+
+
 def test_the_receipt_archive_carries_the_card_title() -> None:
     assert "<h2>Featured Story</h2>" in _source("index")
 
