@@ -726,6 +726,8 @@ def test_every_digest_spacing_is_on_the_scale() -> None:
         (".x{padding:28px 0}", 1),
         ("@media (max-width: 720px){.x{padding:16px 12px 60px}}", 1),
         (".x{gap:1px}", 1),
+        (".x{margin:-3px}", 1),
+        (".x{margin:0 -0.5em}", 1),
         (".x{margin:var(--s-8) 0 var(--s-6)}", 0),
         (".x{margin:0 auto}", 0),
         (".x{width:24px;min-width:36px;left:0}", 0),

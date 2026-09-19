@@ -463,7 +463,7 @@ _SPACING = re.compile(
     r"(?:margin|padding|scroll-margin|scroll-padding)(?:-[\w-]+)?|(?:row-|column-)?gap"
 )
 _SCALE_TOKEN = re.compile(r"var\(--s-\d+\)")
-_SPACING_LENGTH = re.compile(r"(?<![\w.-])(\d*\.?\d+)(?:px|r?em|%)(?![\w%])")
+_SPACING_LENGTH = re.compile(r"(?<![\w.-])-?(\d*\.?\d+)(?:px|r?em|%)(?![\w%])")
 
 
 def spacing_literals(
