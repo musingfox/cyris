@@ -17,6 +17,11 @@ def _hostname(url: str) -> str:
     return urlsplit(url).hostname or url
 
 
+def _plural(n: int, noun: str) -> str:
+    """'1 issue', '2 issues': the one English plural the templates need."""
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
 def _features(content: DigestContent) -> list[DigestItem]:
     """The issue's full-summary stories in reading order; the first is its lead.
 
@@ -81,6 +86,7 @@ class HtmlDigestWriter:
             autoescape=select_autoescape(["html", "xml"], default=True),
         )
         self.env.filters["hostname"] = _hostname
+        self.env.filters["plural"] = _plural
 
     def render(self, content: DigestContent, raw_page: bool = False) -> str:
         """Transform DigestContent into complete HTML document.

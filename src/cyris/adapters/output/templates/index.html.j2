@@ -75,18 +75,18 @@
         <article class="front-card">
             <div class="line"><span class="label latest">Latest</span><span class="date">{{ latest.date }}</span><span class="label">{{ latest.period }}</span></div>
             {% if card.lead is not none %}<h2>{{ card.lead }}</h2>{% endif %}
-            {% if card.count is not none %}<span class="data">{{ card.count }} article{{ "" if card.count == 1 else "s" }}</span>{% endif %}
+            {% if card.count is not none %}<span class="data">{{ card.count | plural("article") }}</span>{% endif %}
             {% if card.topics is not none %}<p class="small">{{ card.topics }}</p>{% endif %}
             {{ actions(latest) }}
         </article>
         {% for panel in months %}
         <section class="panel">
-            <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length }} issue{{ "" if panel.issues | length == 1 else "s" }}</span></div>
+            <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length | plural("issue") }}</span></div>
             {% for digest in panel.issues %}
             <div class="list-row archive-row{{ ' same-day' if digest.same_day }}">
                 <span class="date">{{ digest.date }}</span>
                 <span class="label">{{ digest.period }}</span>
-                {% if digest["count"] is not none %}<span class="small">{{ digest["count"] }} article{{ "" if digest["count"] == 1 else "s" }}</span>{% endif %}
+                {% if digest["count"] is not none %}<span class="small">{{ digest["count"] | plural("article") }}</span>{% endif %}
                 {{ actions(digest) }}
             </div>
             {% endfor %}
@@ -98,7 +98,7 @@
         </div>
         {% endif %}
 
-        <div class="footer">// cyris &middot; {{ digests | length }} issue{{ "" if digests | length == 1 else "s" }}</div>
+        <div class="footer">// cyris &middot; {{ digests | length | plural("issue") }}</div>
     </div>
     {% include "_probe_script.html.j2" %}
 </body>

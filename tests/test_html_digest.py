@@ -705,6 +705,18 @@ def test_the_archive_checks_an_absent_field_one_way():
     assert [c for c in conditions if not c.endswith(" is not none")] == []
 
 
+@pytest.mark.parametrize(("n", "said"), [(0, "0 issues"), (1, "1 issue"), (2, "2 issues")])
+def test_the_templates_count_in_english_plurals(n, said):
+    env = HtmlDigestWriter("unused").env
+    assert env.from_string('{{ n | plural("issue") }}').render(n=n) == said
+
+
+def test_no_template_spells_its_own_plural():
+    templates = (Path(html_digest.__file__).parent / "templates").glob("*.j2")
+    spelled = re.compile(r"==\s*1\s+else\s+[\"']s[\"']")
+    assert [t.name for t in templates if spelled.search(t.read_text())] == []
+
+
 def test_a_digest_is_named_by_its_date_and_period():
     assert HtmlDigestWriter.digest_filename("2026-04-16", "evening") == "2026-04-16-evening.html"
 

@@ -74,7 +74,7 @@
     {% with view="raw" %}{% include "_issue_bar.html.j2" %}{% endwith %}
     <div class="container">
         <div class="page-head">
-            <span class="label">All articles · {{ total }} article{{ "" if total == 1 else "s" }} · {{ groups | length }} source{{ "" if groups | length == 1 else "s" }}</span>
+            <span class="label">All articles · {{ total | plural("article") }} · {{ groups | length | plural("source") }}</span>
             <h1 class="display">What this run <em>judged</em></h1>
             <p class="small">Everything the run decided on, plus what is still pending. The digest shows a selection of it.</p>
             <div class="seg gated" role="group" aria-label="Article view" id="raw-views" hidden><button type="button" data-raw-view="list" aria-pressed="true">List</button><button type="button" data-raw-view="triage" aria-pressed="false">Triage</button></div>
