@@ -180,9 +180,15 @@ class TriageServer:
                 {"ok": False, "error": f"unknown provider {provider!r}"}, status=400
             )
 
-        probe = await probe_llm(candidate)
-        if probe.status != "ok":
-            return web.json_response({"ok": False, "error": probe.detail}, status=400)
+        if provider == "none":
+            # Nothing to call, and a leftover model must not outlive its provider.
+            model = ""
+            detail = "No model is called: digests list plain excerpts."
+        else:
+            probe = await probe_llm(candidate)
+            if probe.status != "ok":
+                return web.json_response({"ok": False, "error": probe.detail}, status=400)
+            detail = probe.detail
 
         try:
             self._settings.set({"llm_provider.provider": provider, "llm_provider.model": model})
@@ -196,7 +202,7 @@ class TriageServer:
                 "ok": True,
                 "provider": provider,
                 "model": model,
-                "detail": probe.detail,
+                "detail": detail,
                 # This server holds no LLM of its own; every run resolves settings
                 # fresh, so the change lands on the next digest.
                 "note": "Saved. The next digest run picks this up.",

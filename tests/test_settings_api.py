@@ -133,6 +133,61 @@ class TestSettingsApi:
         assert res.status == 409
 
 
+class TestProviderNone:
+    @pytest.fixture(autouse=True)
+    def no_probe(self, monkeypatch):
+        async def probe(*a, **kw):
+            raise AssertionError("provider none must not call a model")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_llm", probe)
+
+    async def test_none_is_stored_without_a_probe(self, settings):
+        client = await _client(settings, {})
+
+        res = await client.post("/api/settings", json={"provider": "none", "model": ""})
+        body = await res.json()
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert res.status == 200
+        assert body == {
+            "ok": True,
+            "provider": "none",
+            "model": "",
+            "detail": "No model is called: digests list plain excerpts.",
+            "note": "Saved. The next digest run picks this up.",
+        }
+        assert settings.calls == [{"llm_provider.provider": "none", "llm_provider.model": ""}]
+        assert data["values"]["llm_provider.provider"] == "none"
+
+    async def test_a_leftover_model_is_stored_empty(self, settings):
+        client = await _client(settings)
+
+        await client.post("/api/settings", json={"provider": "none", "model": "gemini-3.8-flash"})
+        await client.close()
+
+        assert settings.stored["llm_provider.model"] == ""
+
+    async def test_an_empty_provider_is_not_none(self, settings):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings", json={"provider": ""})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "unknown provider ''"
+        assert settings.calls == []
+
+    async def test_without_a_settings_store_none_is_refused(self):
+        client = await _client(None)
+
+        res = await client.post("/api/settings", json={"provider": "none", "model": ""})
+        await client.close()
+
+        assert res.status == 409
+
+
 class TestEveryKeyReported:
     async def test_an_empty_home_reports_every_key_missing(self, settings):
         client = await _client(settings, {})
