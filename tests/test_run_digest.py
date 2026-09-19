@@ -643,29 +643,54 @@ def test_a_failed_count_read_still_publishes_every_issue(tmp_path: Path, caplog)
     assert "d1 down" in errors[0].getMessage()
 
 
-async def test_run_digest_warns_when_no_llm_provider_is_configured(tmp_path: Path) -> None:
-    """A fresh deploy publishes excerpts until a provider is chosen; say so.
-
-    This is the first-run failure a deploy is least likely to notice: the digest
-    goes out, looks thin, and nothing reports a cause.
-    """
-    article = Article(
-        id=1,
-        title="Enterprise AI Adoption",
-        url="https://example.com/ai",
-        content="Enterprises accelerate AI adoption.",
-        published_at=datetime.now(UTC) - timedelta(hours=1),
-        source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
-        source_tags=["tech"],
+def _one_article_source() -> FakeSource:
+    return FakeSource(
+        [
+            Article(
+                id=1,
+                title="Enterprise AI Adoption",
+                url="https://example.com/ai",
+                content="Enterprises accelerate AI adoption.",
+                published_at=datetime.now(UTC) - timedelta(hours=1),
+                source_name="TechSource",
+                source_tier=Tier.SUMMARIZE,
+                source_tags=["tech"],
+            )
+        ]
     )
-    deps, _ = make_deps(tmp_path, llm=None, source=FakeSource([article]))
+
+
+async def test_run_digest_warns_when_a_chosen_provider_builds_no_client(tmp_path: Path) -> None:
+    """A provider whose key is missing publishes excerpts; say so.
+
+    The digest goes out, looks thin, and nothing else reports a cause.
+    """
+    deps, _ = make_deps(tmp_path, llm=None, source=_one_article_source())
+    cfg = make_config(
+        agent_vault=deps.cfg.app.agent_vault,
+        llm_provider={"provider": "gemini", "model": "gemini-3.8-flash"},
+    )
+    messages: list[str] = []
+    deps = replace(deps, cfg=cfg, on_progress=messages.append)
+
+    await run_digest(deps, RunOptions(period="morning"))
+
+    assert any(m.startswith("WARNING: no LLM client for gemini") for m in messages), messages
+
+
+async def test_a_provider_none_run_reports_plain_excerpts_without_a_warning(
+    tmp_path: Path,
+) -> None:
+    """Provider none is a choice: report it, never as something to fix."""
+    deps, _ = make_deps(tmp_path, llm=None, source=_one_article_source())
+    assert deps.cfg.app.llm_provider.provider == "none"
     messages: list[str] = []
     deps = replace(deps, on_progress=messages.append)
 
     await run_digest(deps, RunOptions(period="morning"))
 
-    assert any("no LLM provider configured" in m for m in messages), messages
+    assert not [m for m in messages if "WARNING" in m], messages
+    assert any("provider none" in m and "plain excerpts" in m for m in messages), messages
 
 
 def _run_summary(caplog) -> dict:

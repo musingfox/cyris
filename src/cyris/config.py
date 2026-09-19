@@ -139,6 +139,10 @@ class LLMProviderConfig(BaseModel):
     account_id: str = ""  # workers_ai only: its REST path is per-account
 
     @property
+    def chooses_no_llm(self) -> bool:
+        return self.provider == "none"
+
+    @property
     def api_key_env_var(self) -> str:
         return {
             "gemini": "GEMINI_API_KEY",

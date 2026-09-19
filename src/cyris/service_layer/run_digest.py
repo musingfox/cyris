@@ -105,14 +105,17 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     now = now_in_timezone(tz)
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
 
-    # A fresh deploy has no provider until one is chosen on /settings, and the
-    # digest that goes out before then is plain excerpts. Say so on every run:
-    # a quietly worse digest is the failure a first deploy is most likely to hit
-    # and least likely to notice.
-    if deps.llm is None:
+    # A provider whose key is missing builds no client, and its digest is plain
+    # excerpts. Say so on every run: a quietly worse digest is the failure least
+    # likely to be noticed. Provider none is the same digest by choice.
+    llm_cfg = cfg.app.llm_provider
+    if deps.llm is None and llm_cfg.chooses_no_llm:
+        progress("LLM provider none: this digest lists plain excerpts, by choice.")
+    elif deps.llm is None:
         progress(
-            "WARNING: no LLM provider configured — this digest is plain excerpts, "
-            "unscored and unsummarised. Choose a provider on /settings."
+            f"WARNING: no LLM client for {llm_cfg.provider} — this digest is plain excerpts, "
+            "unscored and unsummarised. Set its API key, or choose another provider "
+            "on /settings."
         )
 
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
