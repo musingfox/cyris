@@ -157,16 +157,17 @@
 
         /* === META ROWS === */
         /* One row model for every item: flex, so a vote group is a flex item
-           whatever display the vote probe gives it. */
+           whatever display the vote probe gives it. Its type is the .label role. */
         .meta {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: var(--s-3);
             font-family: var(--font-mono);
+            font-weight: 500;
             font-size: calc(14px * var(--type-scale));
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: .1em;
             color: var(--text-faint);
         }
 

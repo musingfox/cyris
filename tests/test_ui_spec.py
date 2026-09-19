@@ -645,17 +645,9 @@ def test_every_item_title_takes_the_title_role_from_one_rule() -> None:
 def test_every_meta_row_is_one_base_rule_and_the_lead_names_its_variant() -> None:
     digest = _parsed("digest")
     assert sorted(key for key in digest if ".meta" in key) == [".meta", ".meta.ruled"]
-    assert {
-        "display: flex",
-        "flex-wrap: wrap",
-        "align-items: center",
-        "gap: var(--s-3)",
-        "font-family: var(--font-mono)",
-        "font-size: calc(14px * var(--type-scale))",
-        "text-transform: uppercase",
-        "letter-spacing: 0.08em",
-        "color: var(--text-faint)",
-    } <= set(digest[".meta"])
+    layout = {"display: flex", "flex-wrap: wrap", "align-items: center", "gap: var(--s-3)"}
+    # A meta row speaks in the one label voice, so its type is the .label rule's, exactly.
+    assert digest[".meta"] == layout | digest[".label"]
     assert digest[".meta.ruled"] == {
         "margin-top: var(--s-6)",
         "padding-top: var(--s-5)",
