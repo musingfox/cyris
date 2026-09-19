@@ -79,6 +79,7 @@ def run(
     try:
         cfg = load_effective_config(config_path, sources_path)
         cfg.validate_required_keys()
+        cfg.require_complete_settings()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -164,6 +165,7 @@ def vote_sim(
 
     try:
         cfg = load_effective_config(config_path, sources_path)
+        cfg.require_complete_settings()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -270,6 +272,7 @@ def embed_compare(
     try:
         # also loads .env into the environment
         cfg = load_effective_config(config_path, sources_path)
+        cfg.require_complete_settings()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -419,6 +422,7 @@ def llm_compare(
     try:
         # also loads .env into the environment
         cfg = load_effective_config(config_path, sources_path)
+        cfg.require_complete_settings()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -800,6 +804,7 @@ def articles_score(
     try:
         cfg = load_effective_config(config_path, sources_path)
         cfg.validate_required_keys()
+        cfg.require_complete_settings()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fakes import settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store import ArticleStore
@@ -18,14 +19,9 @@ runner = CliRunner()
 def setup_store(tmp_path: Path) -> tuple[Path, Path, Path, ArticleStore]:
     """Create a store with test articles and a minimal config."""
     # Create config files
-    toml_content = f'''
-[general]
-timezone = "Asia/Taipei"
-
-[llm_provider]
-api_key = "test"
-model = "test"
-
+    toml_content = (
+        settings_toml()
+        + f'''
 [obsidian]
 user_vault_path = "{tmp_path / "vault"}"
 digest_folder = "Digests"
@@ -33,6 +29,7 @@ digest_folder = "Digests"
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
 '''
+    )
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(toml_content)
     sources_path = tmp_path / "sources.yaml"
@@ -159,20 +156,16 @@ def test_articles_accept_without_vault(setup_store: tuple[Path, Path, Path, Arti
     """Test accepting articles without vault_path configured."""
     tmp_path, config_path, sources_path, store = setup_store
     # Create config without vault_path
-    toml_content = f'''
-[general]
-timezone = "Asia/Taipei"
-
-[llm_provider]
-api_key = "test"
-model = "test"
-
+    toml_content = (
+        settings_toml()
+        + f'''
 [obsidian]
 digest_folder = "Digests"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
 '''
+    )
     config_path.write_text(toml_content)
 
     result = runner.invoke(

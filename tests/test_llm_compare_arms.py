@@ -102,6 +102,7 @@ def test_a_none_arm_is_refused_as_no_model():
 
 
 def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):
+    from fakes import settings_toml
     from typer.testing import CliRunner
 
     from cyris.entrypoints.cli import app
@@ -110,8 +111,7 @@ def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):
     monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
     config = tmp_path / "cyris.toml"
     config.write_text(
-        '[llm_provider]\nprovider = "anthropic"\n'
-        "[html_output]\nenabled = true\n"
+        settings_toml(**{"llm_provider.provider": "anthropic"}) + "[html_output]\nenabled = true\n"
         f'[agent_vault]\npath = "{tmp_path / "vault"}"\n'
     )
 

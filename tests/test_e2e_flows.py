@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fakes import settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store.article_store import ArticleStore
@@ -51,22 +52,9 @@ def _patch_feeds(by_url: dict[str, list[dict]]):
 def e2e_config(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     """Create minimal config files and directories for E2E tests."""
     # Create cyris.toml
-    toml_content = f'''
-[general]
-timezone = "Asia/Taipei"
-digest_window_hours = 12
-digest_schedule = ["08:00", "20:00"]
-
-[notify]
-discord_webhook_url = ""
-
-[llm_provider]
-api_key = "test-anthropic-key"
-model = "claude-sonnet-4-6"
-
-[digest]
-max_articles_per_digest = 200
-
+    toml_content = (
+        settings_toml(**{"general.digest_window_hours": 12})
+        + f'''
 [html_output]
 enabled = true
 output_dir = "{tmp_path / "html"}"
@@ -74,6 +62,7 @@ output_dir = "{tmp_path / "html"}"
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
 '''
+    )
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(toml_content)
 

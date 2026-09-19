@@ -397,6 +397,10 @@ def _missing_store_keys(app_config: "AppConfig") -> list[str]:
     return missing
 
 
+class IncompleteSettingsError(ValueError):
+    """A command that reads runtime settings was started while some are missing."""
+
+
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
@@ -418,6 +422,20 @@ class Config(BaseModel):
     def missing_store_keys(self) -> list[str]:
         """Env vars a D1 store needs and does not have; empty when json or complete."""
         return _missing_store_keys(self.app)
+
+    def require_complete_settings(self) -> None:
+        """Raise IncompleteSettingsError naming every grade-D key the home lacks."""
+        if not self.missing_settings:
+            return
+        keys = ", ".join(self.missing_settings)
+        if self.app.store.is_d1:
+            raise IncompleteSettingsError(
+                f"Missing settings in D1: {keys}. Set them on /settings, or run "
+                "`cyris settings push` to copy them from cyris.toml."
+            )
+        raise IncompleteSettingsError(
+            f"Missing from cyris.toml: {keys}. cyris.toml.example lists every key."
+        )
 
     def validate_required_keys(self) -> None:
         """Raise ValueError if required API keys are missing.
