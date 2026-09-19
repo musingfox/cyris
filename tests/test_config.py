@@ -549,3 +549,55 @@ def test_code_defaults_match_the_config_defaults_they_shadow() -> None:
         inspect.signature(layer_by_score).parameters["max_featured"].default
         == defaults.digest.max_featured
     )
+
+
+class TestValidateSetting:
+    """One rule per grade-D key, wherever the value comes from."""
+
+    @pytest.mark.parametrize(
+        ("key", "value", "expected"),
+        [
+            ("general.timezone", "Europe/Berlin", "Europe/Berlin"),
+            ("general.digest_schedule", ["20:00", "08:00"], ["08:00", "20:00"]),
+            ("digest.max_articles_per_digest", 400, 400),
+            ("routing.score_threshold", 0, 0),
+            ("digest.output_language", "x-klingon", "x-klingon"),
+            ("digest.style_prompt", "", ""),
+            ("llm_provider.model", "", ""),
+            ("vote_similarity.model", "", ""),
+            ("notify.discord_webhook_url", "", ""),
+        ],
+    )
+    def test_an_acceptable_value_comes_back(self, key, value, expected):
+        from cyris.config import validate_setting
+
+        assert validate_setting(key, value) == expected
+
+    @pytest.mark.parametrize(
+        ("key", "value", "match"),
+        [
+            ("general.timezone", "Mars/Base", "Mars/Base"),
+            ("general.digest_schedule", ["08:30", "20:00"], "whole hour"),
+            ("digest.max_featured", 0, None),
+            ("digest.max_articles_per_digest", 0, None),
+            ("digest.filter_snippet_length", 0, None),
+            ("routing.score_threshold", 101, None),
+            ("general.digest_window_hours", 169, None),
+            ("digest.output_language", "  ", None),
+            ("llm_provider.provider", None, "required"),
+            ("vote_similarity.provider", "openai", None),
+            ("digest.bogus", 1, "not a settings key"),
+        ],
+    )
+    def test_an_unacceptable_value_is_refused(self, key, value, match):
+        from cyris.config import validate_setting
+
+        with pytest.raises(ValueError, match=match):
+            validate_setting(key, value)
+
+    def test_a_json_file_with_an_unknown_timezone_fails_the_load(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[general]\ntimezone = "Mars/Base"\n')
+
+        with pytest.raises(ValueError, match="Mars/Base"):
+            _load_tmp(tmp_path, config_file)

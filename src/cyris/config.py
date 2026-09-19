@@ -7,13 +7,23 @@ Sensitive values are injected from environment variables.
 import logging
 import os
 import tomllib
+import zoneinfo
+from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 from cyris.domain.models import SourceConfig
+from cyris.service_layer.schedule import validate_schedule
 
 
 def _load_dotenv(env_path: Path | None = None) -> None:
@@ -104,6 +114,25 @@ class NotifyConfig(BaseModel):
         return self
 
 
+def _known_timezone(name: str) -> str:
+    try:
+        zoneinfo.ZoneInfo(name)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"{name!r} is not a timezone this server knows") from None
+    return name
+
+
+def _not_blank(text: str) -> str:
+    if not text.strip():
+        raise ValueError("must not be empty")
+    return text
+
+
+Timezone = Annotated[str, AfterValidator(_known_timezone)]
+DigestSchedule = Annotated[list[str], AfterValidator(validate_schedule)]
+NonBlank = Annotated[str, AfterValidator(_not_blank)]
+
+
 class RoutingConfig(BaseModel):
     score_threshold: int = Field(default=70, ge=0, le=100)  # Featured article threshold
     summarize_score_threshold: int = Field(default=70, ge=0, le=100)
@@ -112,8 +141,8 @@ class RoutingConfig(BaseModel):
 class GeneralConfig(BaseModel):
     # Grade D, file fallback: the effective schedule is the D1 settings row.
     # This is what a deployment falls back to when that row is absent.
-    digest_schedule: list[str] = Field(default_factory=lambda: ["08:00", "20:00"])
-    timezone: str = "Asia/Taipei"
+    digest_schedule: DigestSchedule = Field(default_factory=lambda: ["08:00", "20:00"])
+    timezone: Timezone = "Asia/Taipei"
     digest_window_hours: int = Field(default=24, ge=1, le=168)
 
 
@@ -151,15 +180,15 @@ class LLMProviderConfig(BaseModel):
 
 
 class DigestConfig(BaseModel):
-    max_articles_per_digest: int = 200
-    max_articles_per_digest_output: int = 15
+    max_articles_per_digest: int = Field(default=200, ge=1)
+    max_articles_per_digest_output: int = Field(default=15, ge=1)
     # How many featured sections lead the page. A reader preference, not a
     # measurement — see docs/architecture.md §5.
     max_featured: int = Field(default=5, ge=1)
-    scoring_snippet_length: int = 1000
-    summarize_snippet_length: int = 1000
+    scoring_snippet_length: int = Field(default=1000, ge=1)
+    summarize_snippet_length: int = Field(default=1000, ge=1)
     filter_snippet_length: int = Field(default=500, ge=1)
-    output_language: str = "zh-Hant"  # BCP 47 tag; service_layer/languages.json names it
+    output_language: NonBlank = "zh-Hant"  # BCP 47 tag; service_layer/languages.json names it
     style_prompt: str = ""  # optional reader-defined tone/focus injected into prompts
 
 
@@ -325,6 +354,40 @@ class AppConfig(BaseModel):
     rss: RssConfig = Field(default_factory=RssConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
     vote_similarity: VoteSimilarityConfig = Field(default_factory=VoteSimilarityConfig)
+
+
+_SETTINGS_TABLES: dict[str, type[BaseModel]] = {
+    "general": GeneralConfig,
+    "notify": NotifyConfig,
+    "llm_provider": LLMProviderConfig,
+    "digest": DigestConfig,
+    "routing": RoutingConfig,
+    "vote_similarity": VoteSimilarityConfig,
+}
+
+
+@cache
+def _setting_adapter(key: str) -> TypeAdapter:
+    # The field's own type and constraints, without its table: validating one key
+    # must not need values for the others.
+    table, field = key.split(".", 1)
+    info = _SETTINGS_TABLES[table].model_fields[field]
+    if not info.metadata:
+        return TypeAdapter(info.annotation)
+    return TypeAdapter(Annotated[(info.annotation, *info.metadata)])
+
+
+def validate_setting(key: str, value: Any) -> Any:
+    """The value a grade-D key would hold, or a ValueError saying why it cannot."""
+    if key not in GRADE_D_KEYS:
+        raise ValueError(f"not a settings key: {key}")
+    if value is None:
+        raise ValueError(f"{key} is required")
+    try:
+        return _setting_adapter(key).validate_python(value)
+    except ValidationError as e:
+        reasons = [err["msg"].removeprefix("Value error, ") for err in e.errors()]
+        raise ValueError("; ".join(reasons)) from None
 
 
 class SourcesConfig(BaseModel):
