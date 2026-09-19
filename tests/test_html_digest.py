@@ -489,6 +489,19 @@ def test_without_content_the_card_has_no_title(tmp_path):
     assert "<h2" not in _card_for(tmp_path, None)
 
 
+@pytest.mark.parametrize(
+    ("included", "shown"), [(22, "22 articles"), (1, "1 article"), (0, "0 articles")]
+)
+def test_the_card_counts_the_articles_the_digest_included(tmp_path, included, shown):
+    content = _content("2026-04-15", "evening", articles_included=included)
+
+    assert f'<span class="data">{shown}</span>' in _card_for(tmp_path, content)
+
+
+def test_without_content_the_card_has_no_count(tmp_path):
+    assert 'class="data"' not in _card_for(tmp_path, None)
+
+
 def test_write_index(tmp_path):
     """C4 Test 1: write_index creates index.html with links."""
     # Create one digest

@@ -85,6 +85,7 @@
         <article class="front-card">
             <div class="line"><span class="label latest">Latest</span><span class="date">{{ latest.date }}</span><span class="label">{{ latest.period }}</span></div>
             {% if card.lead %}<h2>{{ card.lead }}</h2>{% endif %}
+            {% if "count" in card %}<span class="data">{{ card["count"] }} article{{ "" if card["count"] == 1 else "s" }}</span>{% endif %}
             {{ actions(latest) }}
         </article>
         {% for panel in months %}

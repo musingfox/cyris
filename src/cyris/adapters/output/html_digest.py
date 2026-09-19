@@ -189,6 +189,7 @@ class HtmlDigestWriter:
                 latest = listed
                 features = _features(content)
                 card["lead"] = features[0].title if features else None
+                card["count"] = content.articles_included
 
         months: dict[str, list[dict]] = {}
         for digest in digests:
