@@ -449,7 +449,7 @@ class TestVoteSimilarity:
 
         fake.result = Check("embedding probe", "ok", "workers_ai · @cf/baai/bge-m3 answered")
         fake.calls = calls
-        monkeypatch.setattr("cyris.diagnostics.doctor.probe_embedder", fake)
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_embedder", fake)
         return fake
 
     async def test_turning_it_on_stores_all_four_after_the_probe(self, settings, probe):

@@ -193,7 +193,7 @@ def probe_environment() -> Iterator[SimpleNamespace]:
         contextlib.chdir(home),
         mock.patch.dict(os.environ, present),
         mock.patch("cyris.diagnostics.doctor.probe_llm", llm),
-        mock.patch("cyris.diagnostics.doctor.probe_embedder", embedder),
+        mock.patch("cyris.entrypoints.triage_server.probe_embedder", embedder),
         mock.patch("cyris.entrypoints.triage_server.probe_discord", discord),
     ):
         for name in absent:

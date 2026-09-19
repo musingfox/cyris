@@ -10,7 +10,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescap
 from pydantic import ValidationError
 
 from cyris.adapters.output import html_digest
-from cyris.diagnostics.doctor import probe_discord
+from cyris.diagnostics.doctor import probe_discord, probe_embedder
 from cyris.domain.models import SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -343,7 +343,6 @@ class TriageServer:
         be able to complete its settings.
         """
         from cyris.config import validate_setting
-        from cyris.diagnostics import doctor
 
         if self._settings is None:
             return web.json_response(
@@ -368,7 +367,7 @@ class TriageServer:
                 return web.json_response({"ok": False, "error": f"{key}: {e}"}, status=400)
 
         if values["vote_similarity.enabled"]:
-            probe = await doctor.probe_embedder(
+            probe = await probe_embedder(
                 values["vote_similarity.provider"], values["vote_similarity.model"]
             )
             if probe.status != "ok":
