@@ -51,6 +51,10 @@ KIND_SELECTORS = (
 # The widths the ticket accepts the page at.
 WIDTHS = (360, 880, 1000, 1440)
 
+# Widths the masthead sets title and stats card side by side at, densest just above
+# the breakpoint, where the fallback-font title is widest for its column.
+HEAD_WIDTHS = (721, 740, 760, 800, 880, 1000, 1440)
+
 
 def url_of(slug: str) -> str:
     return f"https://example.test/{slug}"
@@ -273,6 +277,13 @@ const oneRow = (group) => {
   const down = $('[data-vote="down"]', group).getBoundingClientRect();
   return Math.abs(up.top - down.top) > 1 ? `up at ${up.top}, down at ${down.top}` : "";
 };
+// How far the issue title's text runs past the stats card's left edge. The title's
+// box is its grid column, so the text's own extent is read, not the box.
+const titleOverrun = () => {
+  const range = document.createRange();
+  range.selectNodeContents($(".issue-title"));
+  return range.getBoundingClientRect().right - $(".stats-card").getBoundingClientRect().left;
+};
 const besideMeta = (group) => {
   const before = group.previousElementSibling;
   if (!before) return "nothing before the vote group";
@@ -351,6 +362,22 @@ _CHECKS: list[Check] = [
             ),
         )
         for width in WIDTHS
+    ),
+    # Above the breakpoint the title sits beside the stats card, and in the fallback
+    # font the probe renders, it must still stop short of it.
+    *(
+        Check(
+            id=f"head-fits-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            script="""
+                const overrun = titleOverrun();
+                expect(overrun <= 0, `the title runs ${overrun}px into the stats card`);
+            """,
+            sabotage="""$(".headline-block").style.gridTemplateColumns = "minmax(0, 1fr) 100%";""",
+        )
+        for width in HEAD_WIDTHS
     ),
     # A real pointer press on each kind's first up button: the button is hit, every URL
     # of its group is voted on, and the button is marked. The phone run is caught by a

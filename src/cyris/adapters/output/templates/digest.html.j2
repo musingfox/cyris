@@ -37,7 +37,9 @@
         .headline-block {
             margin-top: var(--s-8);
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 320px;
+            /* The stats column narrows with the page, so the fallback-font title,
+               wider than Instrument Serif, clears it from 721px up. */
+            grid-template-columns: minmax(0, 1fr) min(37vw, 320px);
             gap: var(--s-12);
             align-items: end;
             /* The fallback font sets the title wider than a phone's column until the
