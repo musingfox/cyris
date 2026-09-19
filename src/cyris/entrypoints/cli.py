@@ -1018,6 +1018,81 @@ def store_diff(
     typer.echo(f"\nshared: {len(local.keys() & remote.keys())}, differing: {mismatched}")
 
 
+settings_app = typer.Typer(help="Fill D1's runtime settings from a cyris.toml")
+app.add_typer(settings_app, name="settings")
+
+
+@settings_app.command("push")
+def settings_push(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Copy each runtime setting D1 lacks from cyris.toml. Never overwrites a row."""
+    import json
+    import tomllib
+
+    from cyris.adapters.notify import mask_discord_webhook_url
+    from cyris.adapters.store.settings import D1Settings
+    from cyris.config import GRADE_D_KEYS, validate_setting
+
+    # The file itself, not cfg.app: a D1 deployment's load ignores these keys.
+    raw = tomllib.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+    from_file: dict = {}
+    for key in GRADE_D_KEYS:
+        table, field = key.split(".", 1)
+        body = raw.get(table)
+        if not isinstance(body, dict) or field not in body:
+            continue
+        try:
+            from_file[key] = validate_setting(key, body[field])
+        except ValueError as e:
+            typer.echo(f"{config_path}: {key}: {e}", err=True)
+            raise typer.Exit(1) from e
+
+    cfg, client = _force_d1_client(config_path, sources_path)
+    typer.echo(f"D1 database {cfg.app.store.database_id}")
+    settings = D1Settings(client)
+    in_d1: dict = {}
+    for key, value in settings.all().items():
+        try:
+            in_d1[key] = validate_setting(key, value)
+        except ValueError:
+            continue  # an invalid row counts as missing, so the file may replace it
+
+    def shown(key: str, value) -> str:
+        if key == "notify.discord_webhook_url":
+            value = mask_discord_webhook_url(value)
+        return json.dumps(value, ensure_ascii=False)
+
+    added: dict = {}
+    kept = missing = 0
+    for key in sorted(GRADE_D_KEYS):
+        if key in in_d1:
+            kept += 1
+            note = ""
+            if key not in from_file:
+                note = " (not in file)"
+            elif from_file[key] != in_d1[key]:
+                note = f" (file has {shown(key, from_file[key])})"
+            typer.echo(f"  {'kept':<9}{key}{note}")
+        elif key in from_file:
+            added[key] = from_file[key]
+            typer.echo(f"  {'added':<9}{key} = {shown(key, from_file[key])}")
+        else:
+            missing += 1
+            typer.echo(f"  {'missing':<9}{key} — in neither D1 nor {config_path}")
+    if added:
+        settings.set(added)
+    typer.echo(
+        f"Added {len(added)} of {len(GRADE_D_KEYS)} settings from {config_path}; "
+        f"{kept} kept; {missing} still missing."
+    )
+
+
 sources_app = typer.Typer(help="Keep source definitions in D1 so adding a feed is not a rebuild")
 app.add_typer(sources_app, name="sources")
 
