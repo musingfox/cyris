@@ -3,10 +3,10 @@
 It parses CSS from pages and stylesheets into comparable rules, reads the parts
 of ``docs/design/ui-language.md`` the tests check against (the section 2 tokens
 and colour exceptions), names what breaks the spec (colour literals, hand-written
-font stacks, unscaled font sizes, off-spec transitions, shadows, rem sizes,
-off-token radii, style attributes, repeated component blocks), maps which CSS partials a
-page template includes, and renders the fixed index, digest and raw pages those
-checks read.
+font stacks, unscaled font sizes, off-spec transitions, shadows, off-scale
+spacing, rem sizes, off-token radii, style attributes, repeated component
+blocks), maps which CSS partials a page template includes, and renders the fixed
+index, digest and raw pages those checks read.
 """
 
 import re
@@ -457,6 +457,35 @@ def box_shadows(css_source: str) -> list[str]:
         if declaration.split(":", 1)[0].strip() == "box-shadow"
         and declaration.split(":", 1)[1].strip() != "none"
     ]
+
+
+_SPACING = re.compile(
+    r"(?:margin|padding|scroll-margin|scroll-padding)(?:-[\w-]+)?|(?:row-|column-)?gap"
+)
+_SCALE_TOKEN = re.compile(r"var\(--s-\d+\)")
+_SPACING_LENGTH = re.compile(r"(?<![\w.-])(\d*\.?\d+)(?:px|r?em|%)(?![\w%])")
+
+
+def spacing_literals(
+    css_source: str, exempt: frozenset[tuple[str, str]] = frozenset()
+) -> list[str]:
+    """Name every margin, padding or gap that sets a length off the spacing scale.
+
+    The scale's ``var(--s-N)`` tokens, ``0`` and ``auto`` pass; any other nonzero
+    length is a literal. Widths, offsets and track sizes are geometry, not
+    spacing, so they are not read. ``exempt`` lets through exact ``(rule key,
+    declaration)`` pairs the spec sets by value, and nothing near them.
+    """
+    found = []
+    for key, declarations in _rules(css_source).items():
+        for declaration in declarations:
+            prop, value = (part.strip() for part in declaration.split(":", 1))
+            if (key, declaration) in exempt or not _SPACING.fullmatch(prop):
+                continue
+            lengths = _SPACING_LENGTH.findall(_SCALE_TOKEN.sub("", value))
+            if any(float(number) for number in lengths):
+                found.append(f"{key} | {declaration}")
+    return found
 
 
 _REM = re.compile(r"(?<![\w-])\d*\.?\d+rem\b")

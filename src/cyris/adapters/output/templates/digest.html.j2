@@ -31,11 +31,11 @@
         {% with container_width="1240px", container_relative=true, glow="80% 60%", line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
 
         /* === MASTHEAD === */
-        {% with masthead_padding="28px 0 24px", masthead_margin="48px", masthead_rule=true,
-                  subtitle_margin="18px"  %}{% include "_masthead.css.j2" %}{% endwith %}
+        {% with masthead_padding="var(--s-8) 0 var(--s-6)", masthead_margin="var(--s-12)",
+                  masthead_rule=true, subtitle_margin="var(--s-5)"  %}{% include "_masthead.css.j2" %}{% endwith %}
 
         .headline-block {
-            margin-top: 36px;
+            margin-top: var(--s-8);
             display: grid;
             grid-template-columns: minmax(0, 1fr) 320px;
             gap: var(--s-12);
@@ -87,8 +87,7 @@
 
         /* === SECTION HEADERS === */
         .section {
-            margin-bottom: 64px;
-            scroll-margin-top: 24px;
+            margin-bottom: var(--s-16);
         }
 
         .section-tag {
@@ -109,7 +108,7 @@
         .section-description {
             color: var(--text-dim);
             font-size: calc(20px * var(--type-scale));
-            margin-bottom: 24px;
+            margin-bottom: var(--s-6);
             max-width: 70ch;
         }
 
@@ -199,7 +198,7 @@
         .featured-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-            margin-bottom: 56px;
+            margin-bottom: var(--s-12);
             border-top: 1px solid var(--border);
             border-left: 1px solid var(--border);
         }
@@ -210,7 +209,7 @@
             background: var(--bg-elev);
             border-right: 1px solid var(--border);
             border-bottom: 1px solid var(--border);
-            padding: 28px;
+            padding: var(--s-6);
             transition: background-color var(--t-fast);
             position: relative;
         }
@@ -219,7 +218,7 @@
             background: var(--surface);
         }
 
-        .featured-item h3 { margin-bottom: 12px; }
+        .featured-item h3 { margin-bottom: var(--s-3); }
 
         .featured-item .summary {
             font-size: calc(20px * var(--type-scale));
@@ -235,8 +234,8 @@
         /* === NEWS CLUSTERS === */
         .news-cluster {
             border-left: 2px solid var(--border-strong);
-            padding: 18px 0 18px 22px;
-            margin-bottom: 20px;
+            padding: var(--s-4) 0 var(--s-4) var(--s-5);
+            margin-bottom: var(--s-5);
             transition: border-color var(--t-fast);
         }
 
@@ -244,7 +243,7 @@
             border-left-color: var(--accent);
         }
 
-        .news-cluster h3 { margin-bottom: 10px; }
+        .news-cluster h3 { margin-bottom: var(--s-2); }
 
         .news-cluster .summary {
             font-size: calc(20px * var(--type-scale));
@@ -255,14 +254,14 @@
 
         /* === ARTICLE ITEM (Thematic) === */
         .thematic-block {
-            margin-bottom: 36px;
+            margin-bottom: var(--s-8);
         }
 
         .thematic-block h3 {
-            margin-bottom: 18px;
+            margin-bottom: var(--s-4);
             display: flex;
             align-items: baseline;
-            gap: 12px;
+            gap: var(--s-3);
         }
 
         .thematic-block h3::before {
@@ -272,13 +271,13 @@
         }
 
         .article-item {
-            padding: 20px 0;
+            padding: var(--s-5) 0;
             border-bottom: 1px solid var(--border);
         }
 
         .article-item:last-child { border-bottom: none; }
 
-        .article-item h4 { margin-bottom: 10px; }
+        .article-item h4 { margin-bottom: var(--s-2); }
 
         .article-item .summary {
             font-size: calc(20px * var(--type-scale));
@@ -295,7 +294,7 @@
         }
 
         .attention-item {
-            padding: 16px 18px;
+            padding: var(--s-4) var(--s-5);
             background: var(--bg-elev);
             border: 1px solid var(--border);
             transition: border-color var(--t-fast);
@@ -303,7 +302,7 @@
 
         .attention-item:hover { border-color: var(--border-strong); }
 
-        .attention-item h4 { margin-bottom: 8px; }
+        .attention-item h4 { margin-bottom: var(--s-2); }
 
         .attention-item .snippet {
             font-size: calc(20px * var(--type-scale));
@@ -316,14 +315,14 @@
         .headlines-compact {
             border: 1px solid var(--border);
             background: var(--bg-elev);
-            padding: 4px 0;
+            padding: var(--s-1) 0;
         }
 
         .headline-item {
             display: flex;
             align-items: baseline;
-            gap: 14px;
-            padding: 10px 22px;
+            gap: var(--s-3);
+            padding: var(--s-2) var(--s-5);
             font-size: calc(16px * var(--type-scale));
             line-height: 1.5;
             border-bottom: 1px dashed var(--border);
@@ -352,8 +351,8 @@
         .headline-item .text a:hover { color: var(--accent); }
 
         /* === FOOTER === */
-        {% with layout="block", justify=false, align_center=false, margin_top="80px",
-                  padding_top="32px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
+        {% with layout="block", justify=false, align_center=false, margin_top="var(--s-20)",
+                  padding_top="var(--s-8)", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
 
         /* === GENERIC LINK === */
         /* :where() keeps these at a bare `a`'s specificity, so every link rule
@@ -388,7 +387,7 @@
         .src-fold > summary::-webkit-details-marker { display: none; }
         .src-fold > summary::after { content: ' ▾'; }
         .src-fold[open] > summary::after { content: ' ▴'; }
-        .src-list { display: block; padding-top: 4px; }
+        .src-list { display: block; padding-top: var(--s-1); }
     </style>
 </head>
 <body>

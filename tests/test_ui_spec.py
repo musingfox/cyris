@@ -22,6 +22,7 @@ from css_rules import (
     parse_style_block,
     receipt_fixtures,
     rem_values,
+    spacing_literals,
     spec_colour_exceptions,
     style_attributes,
     unscaled_font_sizes,
@@ -717,6 +718,52 @@ def test_the_digest_breaks_only_at_the_spec_breakpoint() -> None:
     widths = {key.split(" | ")[0] for key in digest if key.startswith("@media (max-width")}
     assert widths == {"@media (max-width: 720px)"}
     assert digest["@media (max-width: 720px) | .section"] == {"margin-bottom: var(--s-12)"}
+
+
+# Section 4 sets the pill's padding by value; it is the one spacing literal on the page.
+PILL_PADDING = frozenset({(".pill", "padding: 2px 10px")})
+
+
+def test_every_digest_spacing_is_on_the_scale() -> None:
+    assert spacing_literals(_source("digest"), PILL_PADDING) == []
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        (".x{padding:28px 0}", 1),
+        ("@media (max-width: 720px){.x{padding:16px 12px 60px}}", 1),
+        (".x{gap:1px}", 1),
+        (".x{margin:var(--s-8) 0 var(--s-6)}", 0),
+        (".x{margin:0 auto}", 0),
+        (".x{width:24px;min-width:36px;left:0}", 0),
+    ],
+)
+def test_a_spacing_off_the_scale_is_reported(css: str, reported: int) -> None:
+    assert len(spacing_literals(css)) == reported
+
+
+def test_the_pill_padding_passes_only_with_its_exemption() -> None:
+    assert len(spacing_literals(".pill{padding:2px 10px}")) == 1
+    assert spacing_literals(".pill{padding:2px 10px}", PILL_PADDING) == []
+
+
+def test_the_digest_passes_its_masthead_and_footer_scale_spacing() -> None:
+    sites = include_sites(HtmlDigestWriter("unused-by-these-tests").env, "digest.html.j2")
+    assert sites["_masthead.css.j2"] == {
+        "masthead_padding": "var(--s-8) 0 var(--s-6)",
+        "masthead_margin": "var(--s-12)",
+        "masthead_rule": True,
+        "subtitle_margin": "var(--s-5)",
+    }
+    assert sites["_footer.css.j2"] == {
+        "layout": "block",
+        "justify": False,
+        "align_center": False,
+        "margin_top": "var(--s-20)",
+        "padding_top": "var(--s-8)",
+        "gap": None,
+    }
 
 
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
