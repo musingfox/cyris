@@ -10,6 +10,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescap
 from pydantic import ValidationError
 
 from cyris.adapters.output import html_digest
+from cyris.config import SETTINGS_FIELDS
 from cyris.diagnostics.doctor import probe_discord, probe_embedder
 from cyris.domain.models import SourceConfig
 
@@ -20,19 +21,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 # The grade-D keys stored through the generic values route. The rest need their
 # own route: the LLM and the embedder are probed, the schedule and the webhook
 # have their own rules.
-PLAIN_KEYS: tuple[str, ...] = (
-    "general.timezone",
-    "general.digest_window_hours",
-    "digest.max_articles_per_digest",
-    "digest.max_articles_per_digest_output",
-    "digest.max_featured",
-    "digest.scoring_snippet_length",
-    "digest.summarize_snippet_length",
-    "digest.filter_snippet_length",
-    "digest.output_language",
-    "digest.style_prompt",
-    "routing.score_threshold",
-    "routing.summarize_score_threshold",
+PLAIN_KEYS: tuple[str, ...] = tuple(
+    key for key, field in SETTINGS_FIELDS.items() if field["route"] == "plain"
 )
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -160,6 +150,7 @@ class TriageServer:
         return web.json_response(
             {
                 "values": values,
+                "fields": SETTINGS_FIELDS,
                 "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
                 "providers": providers,
                 "embedding_providers": embedding_providers,

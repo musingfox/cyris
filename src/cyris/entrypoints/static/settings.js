@@ -73,48 +73,13 @@ document.querySelectorAll("form.tab").forEach((form) => {
   form.addEventListener("change", () => edited(form));
 });
 
-// Each runtime setting's field: the category it sits in, the label a notice names
-// it by, and the controls marked while it is not set.
-const FIELDS = {
-  "llm_provider.provider": {tab: "model", label: "Provider", controls: ["providers"]},
-  "llm_provider.model": {tab: "model", label: "Model", controls: ["model-input"]},
-  "general.digest_schedule": {tab: "digest", label: "Publish hours", controls: ["morning", "evening"]},
-  "general.timezone": {tab: "digest", label: "Timezone", controls: ["timezone"]},
-  "digest.max_featured": {tab: "digest", label: "Featured sections", controls: ["max-featured"]},
-  "digest.max_articles_per_digest_output": {
-    tab: "digest", label: "Articles in the digest", controls: ["max-output"],
-  },
-  "digest.output_language": {tab: "digest", label: "Output language", controls: ["output-language"]},
-  "digest.style_prompt": {tab: "digest", label: "Style", controls: ["style-prompt"]},
-  "general.digest_window_hours": {tab: "pipeline", label: "Window (hours)", controls: ["window-hours"]},
-  "digest.max_articles_per_digest": {
-    tab: "pipeline", label: "Articles per run", controls: ["max-articles"],
-  },
-  "routing.score_threshold": {tab: "pipeline", label: "Featured score", controls: ["featured-threshold"]},
-  "routing.summarize_score_threshold": {
-    tab: "pipeline", label: "Summary score", controls: ["summarize-threshold"],
-  },
-  "digest.scoring_snippet_length": {
-    tab: "pipeline", label: "Characters read (Scoring)", controls: ["scoring-snippet"],
-  },
-  "digest.summarize_snippet_length": {
-    tab: "pipeline", label: "Characters read (Summary)", controls: ["summarize-snippet"],
-  },
-  "digest.filter_snippet_length": {
-    tab: "pipeline", label: "Characters read (Headlines)", controls: ["filter-snippet"],
-  },
-  "vote_similarity.provider": {
-    tab: "model", label: "Embedding provider", controls: ["embedding-providers"],
-  },
-  "vote_similarity.model": {
-    tab: "model", label: "Embedding model", controls: ["embedding-model-input"],
-  },
-  "vote_similarity.enabled": {tab: "model", label: "Vote similarity", controls: ["vote-enabled"]},
-  "vote_similarity.max_seeds": {tab: "model", label: "Votes compared", controls: ["vote-seeds"]},
-  "notify.discord_webhook_url": {
-    tab: "notifications", label: "Discord webhook", controls: ["discord-webhook"],
-  },
-};
+// Each runtime setting's field, from the server's registry: the category it sits
+// in, the label a notice names it by, the controls marked while it is not set, and
+// the route that saves it.
+let FIELDS = {};
+// The settings saved through /api/settings/values, by the id of their control.
+let PLAIN = {};
+const keysSavedBy = (route) => Object.keys(FIELDS).filter((key) => FIELDS[key].route === route);
 
 // A control's own placeholder, which a missing value covers with "Not set".
 document.querySelectorAll("[placeholder]").forEach((el) => {
@@ -156,22 +121,6 @@ function markMissing() {
   }
 }
 
-// The settings saved through /api/settings/values, by the id of their control.
-const PLAIN = {
-  "timezone": "general.timezone",
-  "max-featured": "digest.max_featured",
-  "max-output": "digest.max_articles_per_digest_output",
-  "output-language": "digest.output_language",
-  "style-prompt": "digest.style_prompt",
-  "window-hours": "general.digest_window_hours",
-  "max-articles": "digest.max_articles_per_digest",
-  "featured-threshold": "routing.score_threshold",
-  "summarize-threshold": "routing.summarize_score_threshold",
-  "scoring-snippet": "digest.scoring_snippet_length",
-  "summarize-snippet": "digest.summarize_snippet_length",
-  "filter-snippet": "digest.filter_snippet_length",
-};
-
 function markSet(keys) {
   state.missing = state.missing.filter((key) => !keys.includes(key));
   markMissing();
@@ -179,6 +128,8 @@ function markSet(keys) {
 
 function render() {
   const values = state.values;
+  FIELDS = state.fields;
+  PLAIN = Object.fromEntries(keysSavedBy("plain").map((key) => [FIELDS[key].controls[0], key]));
   $("providers").innerHTML = state.providers.map((p) => `
     <label class="choice${p.configured ? "" : " unavailable"}">
       <input type="radio" name="provider" value="${esc(p.name)}"
@@ -266,12 +217,6 @@ function show(kind, text, target) {
   el.hidden = false;
 }
 
-const LLM_KEYS = ["llm_provider.provider", "llm_provider.model"];
-const VOTE_KEYS = [
-  "vote_similarity.enabled", "vote_similarity.provider", "vote_similarity.model",
-  "vote_similarity.max_seeds",
-];
-
 // One Save, two routes: the LLM part is checked against its provider, the vote
 // part against its embedder when it is on. Only a changed part is sent; a part
 // that saved becomes clean, one that failed stays dirty.
@@ -292,7 +237,7 @@ $("model-form").addEventListener("submit", async (e) => {
       const data = await post("/api/settings", {provider: p.name, model: sent["model-input"].trim()});
       state.values["llm_provider.provider"] = data.provider;
       state.values["llm_provider.model"] = data.model;
-      markSet(LLM_KEYS);
+      markSet(keysSavedBy("llm"));
       keep(LLM_PART);
       lines.push(`${data.detail}\n${data.note}`);
     } catch (err) {
@@ -314,7 +259,7 @@ $("model-form").addEventListener("submit", async (e) => {
       const data = await post("/api/settings/vote-similarity", body);
       Object.assign(state.values, data.values);
       $("vote-enabled").querySelector('option[value=""]')?.remove();
-      markSet(VOTE_KEYS);
+      markSet(keysSavedBy("vote"));
       keep(VOTE_PART);
       lines.push(`${data.detail}\n${data.note}`);
     } catch (err) {
@@ -395,7 +340,7 @@ $("digest-form").addEventListener("submit", async (e) => {
       const data = await post("/api/settings/schedule", {times});
       lines.push(`Digest hours: ${data.times.join(" and ")}. ${data.note}`);
       Object.assign(stored, {morning, evening});
-      markSet(["general.digest_schedule"]);
+      markSet(keysSavedBy("schedule"));
     } catch (err) {
       failed = true;
       lines.push(`Digest hours not saved: ${err.message || err}`);
@@ -434,7 +379,7 @@ $("notify-form").addEventListener("submit", async (e) => {
     state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
     // The stored value comes back masked; an edit typed meanwhile is kept.
     if (field.value === url) field.value = data.discord_webhook_url;
-    markSet(["notify.discord_webhook_url"]);
+    markSet(keysSavedBy("notify"));
     showNotifyState();
     markClean(form, {...sent, "discord-webhook": data.discord_webhook_url});
     show("ok", `${data.detail} ${data.note}`, "notify-result");
@@ -476,7 +421,7 @@ $("notify-off").addEventListener("click", async () => {
     const data = await post("/api/settings/notify", {off: true});
     state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
     $("discord-webhook").value = data.discord_webhook_url;
-    markSet(["notify.discord_webhook_url"]);
+    markSet(keysSavedBy("notify"));
     showNotifyState();
     markClean(form);
     show("ok", data.note, "notify-result");

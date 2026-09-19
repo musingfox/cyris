@@ -38,7 +38,7 @@ from cdp_probe import Check, base_prelude, chromium, require_node, run_all, serv
 from css_computed import find_browser
 
 from cyris.adapters.notify import mask_discord_webhook_url
-from cyris.config import LLMProviderConfig
+from cyris.config import GRADE_D_KEYS, LLMProviderConfig
 from cyris.diagnostics.doctor import Check as DoctorCheck
 from cyris.domain.models import SourceConfig, Tier
 from cyris.entrypoints.triage_server import TriageServer
@@ -116,8 +116,7 @@ def _seed_sources() -> dict[str, SourceConfig]:
     return {source.name: source for source in listed}
 
 
-# Every runtime setting set, so no check meets a missing-value marker it did not ask for.
-PROBE_VALUES = {
+_PROBE_VALUES = {
     "general.digest_schedule": ["08:00", "20:00"],
     "general.timezone": "Asia/Taipei",
     "general.digest_window_hours": 24,
@@ -139,6 +138,9 @@ PROBE_VALUES = {
     "vote_similarity.model": "",
     "vote_similarity.max_seeds": 200,
 }
+# Every runtime setting set, so no check meets a missing-value marker it did not ask
+# for; a key the registry adds without a value here fails at import.
+PROBE_VALUES = {key: _PROBE_VALUES[key] for key in GRADE_D_KEYS}
 
 
 @dataclass

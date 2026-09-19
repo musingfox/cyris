@@ -4,11 +4,10 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
+from cyris.config import GRADE_D_KEYS
 from cyris.service_layer.ports import LLMResponse
 
-# One explicit value for every grade-D key. Tests build their settings from this,
-# never from a code default, so a test states every value it runs on.
-TEST_SETTINGS: dict[str, Any] = {
+_TEST_VALUES: dict[str, Any] = {
     "general.digest_schedule": ["08:00", "20:00"],
     "general.timezone": "Asia/Taipei",
     "general.digest_window_hours": 24,
@@ -31,6 +30,10 @@ TEST_SETTINGS: dict[str, Any] = {
     "vote_similarity.model": "",
     "vote_similarity.max_seeds": 200,
 }
+# One explicit value for every grade-D key, in the registry's order: a key added
+# there without a value here fails at import. Tests build their settings from
+# this, never from a code default, so a test states every value it runs on.
+TEST_SETTINGS: dict[str, Any] = {key: _TEST_VALUES[key] for key in GRADE_D_KEYS}
 
 
 def pipeline_settings(**overrides: Any) -> dict[str, Any]:

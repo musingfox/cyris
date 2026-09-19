@@ -4,12 +4,14 @@ Loads cyris.toml (app config) and sources.yaml (source definitions).
 Sensitive values are injected from environment variables.
 """
 
+import json
 import logging
 import os
 import tomllib
 import zoneinfo
 from dataclasses import dataclass
 from functools import cache
+from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -70,31 +72,14 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
     return data
 
 
-# Every grade-D setting (docs/architecture.md §5), as `table.field`. One list serves
-# as the required set, the D1 whitelist and the /settings fields, so a key cannot be
-# required without a writer or writable without a reader.
-GRADE_D_KEYS: tuple[str, ...] = (
-    "general.digest_schedule",
-    "general.timezone",
-    "general.digest_window_hours",
-    "llm_provider.provider",
-    "llm_provider.model",
-    "notify.discord_webhook_url",
-    "digest.max_articles_per_digest",
-    "digest.max_articles_per_digest_output",
-    "digest.max_featured",
-    "digest.scoring_snippet_length",
-    "digest.summarize_snippet_length",
-    "digest.filter_snippet_length",
-    "digest.output_language",
-    "digest.style_prompt",
-    "routing.score_threshold",
-    "routing.summarize_score_threshold",
-    "vote_similarity.enabled",
-    "vote_similarity.provider",
-    "vote_similarity.model",
-    "vote_similarity.max_seeds",
+# Every grade-D setting (docs/architecture.md §5), as `table.field`, with the
+# /settings field that edits it: its category, label, controls and save route.
+# One registry is the required set, the D1 whitelist and the page's fields, so a
+# key cannot be required without a writer or writable without a reader.
+SETTINGS_FIELDS: dict[str, dict[str, Any]] = json.loads(
+    (files("cyris") / "settings_fields.json").read_text(encoding="utf-8")
 )
+GRADE_D_KEYS: tuple[str, ...] = tuple(SETTINGS_FIELDS)
 
 
 class NotifyConfig(BaseModel):

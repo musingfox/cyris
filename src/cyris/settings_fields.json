@@ -1,0 +1,163 @@
+{
+  "llm_provider.provider": {
+    "tab": "model",
+    "label": "Provider",
+    "controls": [
+      "providers"
+    ],
+    "route": "llm"
+  },
+  "llm_provider.model": {
+    "tab": "model",
+    "label": "Model",
+    "controls": [
+      "model-input"
+    ],
+    "route": "llm"
+  },
+  "vote_similarity.provider": {
+    "tab": "model",
+    "label": "Embedding provider",
+    "controls": [
+      "embedding-providers"
+    ],
+    "route": "vote"
+  },
+  "vote_similarity.model": {
+    "tab": "model",
+    "label": "Embedding model",
+    "controls": [
+      "embedding-model-input"
+    ],
+    "route": "vote"
+  },
+  "vote_similarity.enabled": {
+    "tab": "model",
+    "label": "Vote similarity",
+    "controls": [
+      "vote-enabled"
+    ],
+    "route": "vote"
+  },
+  "vote_similarity.max_seeds": {
+    "tab": "model",
+    "label": "Votes compared",
+    "controls": [
+      "vote-seeds"
+    ],
+    "route": "vote"
+  },
+  "general.digest_schedule": {
+    "tab": "digest",
+    "label": "Publish hours",
+    "controls": [
+      "morning",
+      "evening"
+    ],
+    "route": "schedule"
+  },
+  "general.timezone": {
+    "tab": "digest",
+    "label": "Timezone",
+    "controls": [
+      "timezone"
+    ],
+    "route": "plain"
+  },
+  "digest.max_featured": {
+    "tab": "digest",
+    "label": "Featured sections",
+    "controls": [
+      "max-featured"
+    ],
+    "route": "plain"
+  },
+  "digest.max_articles_per_digest_output": {
+    "tab": "digest",
+    "label": "Articles in the digest",
+    "controls": [
+      "max-output"
+    ],
+    "route": "plain"
+  },
+  "digest.output_language": {
+    "tab": "digest",
+    "label": "Output language",
+    "controls": [
+      "output-language"
+    ],
+    "route": "plain"
+  },
+  "digest.style_prompt": {
+    "tab": "digest",
+    "label": "Style",
+    "controls": [
+      "style-prompt"
+    ],
+    "route": "plain"
+  },
+  "general.digest_window_hours": {
+    "tab": "pipeline",
+    "label": "Window (hours)",
+    "controls": [
+      "window-hours"
+    ],
+    "route": "plain"
+  },
+  "digest.max_articles_per_digest": {
+    "tab": "pipeline",
+    "label": "Articles per run",
+    "controls": [
+      "max-articles"
+    ],
+    "route": "plain"
+  },
+  "routing.score_threshold": {
+    "tab": "pipeline",
+    "label": "Featured score",
+    "controls": [
+      "featured-threshold"
+    ],
+    "route": "plain"
+  },
+  "routing.summarize_score_threshold": {
+    "tab": "pipeline",
+    "label": "Summary score",
+    "controls": [
+      "summarize-threshold"
+    ],
+    "route": "plain"
+  },
+  "digest.scoring_snippet_length": {
+    "tab": "pipeline",
+    "label": "Characters read (Scoring)",
+    "controls": [
+      "scoring-snippet"
+    ],
+    "route": "plain"
+  },
+  "digest.summarize_snippet_length": {
+    "tab": "pipeline",
+    "label": "Characters read (Summary)",
+    "controls": [
+      "summarize-snippet"
+    ],
+    "route": "plain"
+  },
+  "digest.filter_snippet_length": {
+    "tab": "pipeline",
+    "label": "Characters read (Headlines)",
+    "controls": [
+      "filter-snippet"
+    ],
+    "route": "plain"
+  },
+  "notify.discord_webhook_url": {
+    "tab": "notifications",
+    "label": "Discord webhook",
+    "controls": [
+      "discord-webhook"
+    ],
+    "route": "notify"
+  }
+}
