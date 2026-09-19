@@ -168,6 +168,17 @@ def test_clusters_are_headed_at_h3_and_radar_items_at_h4():
     assert "<h5" not in digest
 
 
+def test_every_body_title_carries_the_title_class_and_block_titles_the_large_one():
+    digest = receipt_fixtures()[1]
+    main = digest[digest.index("<main>") : digest.index("</main>")]
+    h3s = re.findall(r"<h3\b[^>]*>", main)
+    h4s = re.findall(r"<h4\b[^>]*>", main)
+    # Two featured cards, one cluster, the Following block and the radar block.
+    assert h3s == ['<h3 class="item-title lg">'] * 5
+    # The Following article and the radar item.
+    assert h4s == ['<h4 class="item-title">'] * 2
+
+
 def test_render_optional_score(tmp_path):
     """C1 Test 3: DigestItem with score=None renders without error."""
     content = DigestContent(

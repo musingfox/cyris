@@ -549,18 +549,15 @@ TYPE_ROLES = [
     (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
     (18, "digest", ".lead-story .summary", "20px"),
     (19, "digest", ".lead-story .meta", "14px"),
-    (20, "digest", ".featured-item h3", "22px"),
+    (20, "digest", ".item-title.lg", "22px"),
     (21, "digest", ".featured-item .summary", "20px"),
     (22, "digest", ".featured-item .meta", "14px"),
     (23, "digest", ".pill", "14px"),
-    (24, "digest", ".news-cluster h3", "22px"),
     (25, "digest", ".news-cluster .summary", "20px"),
-    (26, "digest", ".thematic-block h3", "22px"),
     (27, "digest", ".thematic-block h3::before", "14px"),
-    (28, "digest", ".article-item h4", "20px"),
+    (28, "digest", ".item-title", "20px"),
     (29, "digest", ".article-item .summary", "20px"),
     (30, "digest", ".article-item .meta", "14px"),
-    (31, "digest", ".attention-item h4", "20px"),
     (32, "digest", ".attention-item .snippet", "20px"),
     (33, "digest", ".news-cluster .meta, .attention-item .meta", "14px"),
     (34, "digest", ".headline-item", "16px"),
@@ -626,6 +623,26 @@ def test_labels_keep_one_size_on_narrow_screens(key: str) -> None:
 def test_a_section_tag_is_a_label_with_no_number_or_heading_beside_it() -> None:
     digest = _parsed("digest")
     assert [key for key in digest if ".section-heading" in key or ".section-tag .id" in key] == []
+
+
+def test_every_item_title_takes_the_title_role_from_one_rule() -> None:
+    digest = _parsed("digest")
+    assert {
+        "font-weight: 600",
+        "line-height: 1.3",
+        "font-size: calc(20px * var(--type-scale))",
+    } <= set(digest[".item-title"])
+    assert digest[".item-title.lg"] == {"font-size: calc(22px * var(--type-scale))"}
+    assert {".item-title a", ".item-title a:hover"} <= set(digest)
+    typeset = ("font-size", "font-weight", "line-height", "letter-spacing", "color")
+    per_kind = [
+        f"{key} | {declaration}"
+        for key, declarations in digest.items()
+        if key.endswith((" h3", " h4", " h5", " h3 a", " h4 a", " h5 a"))
+        for declaration in declarations
+        if declaration.split(":", 1)[0] in typeset
+    ]
+    assert per_kind == []
 
 
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
