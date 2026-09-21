@@ -340,11 +340,7 @@ _CHECKS: list[Check] = [
             width=width,
             act="await signedIn();",
             script=f"""const problem = overflow("{width}"); expect(!problem, problem);""",
-            sabotage=(
-                """$(".headline-block").style.overflowX = "visible";"""
-                if width == 360
-                else f"""$(".container").style.minWidth = "{width + 300}px";"""
-            ),
+            sabotage=f"""$(".container").style.minWidth = "{width + 300}px";""",
         )
         for width in WIDTHS
     ),
@@ -409,10 +405,25 @@ _CHECKS: list[Check] = [
         receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
 ]
+# A sabotage: the masthead stops clipping the title the fallback font sets too wide.
+UNCLIPPED_MASTHEAD = """$(".headline-block").style.overflowX = "visible";"""
+
+
+def _largest(check: Check) -> Check:
+    """`check` again at the largest type size, under its own name."""
+    twin = largest_twin(check, check.id.replace("fits-", "fits-largest-"), "signed-in-largest")
+    # The masthead's `overflow-x: clip` is load-bearing at this size alone: on a phone the
+    # fallback-font title is wider than the viewport at 1.125 and fits at 1. So this twin
+    # takes the clip away instead of inheriting its twin's page-width sabotage.
+    return (
+        dataclasses.replace(twin, sabotage=UNCLIPPED_MASTHEAD) if check.id == "fits-360" else twin
+    )
+
+
 # The page never scrolls sideways at the largest type size either, and the title still
 # clears the stats card where it has the least room.
 _CHECKS += [
-    largest_twin(check, check.id.replace("fits-", "fits-largest-"), "signed-in-largest")
+    _largest(check)
     for check in _CHECKS
     if check.id in {f"fits-{width}" for width in WIDTHS}
     or check.id == f"head-fits-{TIGHTEST_HEAD_WIDTH}"
