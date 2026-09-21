@@ -100,14 +100,18 @@ class GeminiEmbedder:
         return [vectors[t] for t in texts]
 
     async def _post_batch(self, http: httpx.AsyncClient, batch: list[str]) -> list[list[float]]:
-        url = f"{GEMINI_API_ROOT}/{self._model}:batchEmbedContents?key={self._api_key}"
+        # The key rides in a header, never in the query string: httpx logs every
+        # request URL at INFO, and `HTTPStatusError` embeds it too, so a `?key=`
+        # here would print GEMINI_API_KEY into Workers Logs on every run. The
+        # sibling LLM client has always used this header.
+        url = f"{GEMINI_API_ROOT}/{self._model}:batchEmbedContents"
         request: dict[str, object] = {"model": f"models/{self._model}"}
         if self._dims:
             request["outputDimensionality"] = self._dims
         payload = {"requests": [{**request, "content": {"parts": [{"text": t}]}} for t in batch]}
         for attempt in range(MAX_RETRIES):
             started = time.monotonic()
-            response = await http.post(url, json=payload)
+            response = await http.post(url, json=payload, headers={"x-goog-api-key": self._api_key})
             self.usage.api_seconds += time.monotonic() - started
             self.usage.requests += 1
             if response.status_code == 429:

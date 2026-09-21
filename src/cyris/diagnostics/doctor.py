@@ -236,8 +236,10 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
     """Ask the embedding provider whether this model answers, with one real call.
 
     What `probe_llm` is for the LLM: a model id typo passes every static check.
-    Never raises. Gemini carries its key in the URL query, so every key value is
-    scrubbed from the detail before it can reach a page or a log.
+    Never raises. The key is scrubbed from the detail before it can reach a page
+    or a log — no longer because Gemini carried it in the URL query (it rides in
+    `x-goog-api-key` since 2026-09-21), but because a provider is free to quote
+    what it rejected back at us, and this detail is rendered on `/settings`.
     """
     from cyris.bootstrap import EMBEDDING_ENV, embedding_defaults, make_embedder
 

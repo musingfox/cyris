@@ -44,6 +44,22 @@ def mask_discord_webhook_url(url: str) -> str:
     return f"{url.rsplit('/', 1)[0]}/{WEBHOOK_MASK}"
 
 
+# The same endpoint structure as `_DISCORD_WEBHOOK`, unanchored: this one finds
+# the URL *inside* a log line or a traceback rather than validating one on its own.
+_DISCORD_WEBHOOK_IN_TEXT = re.compile(
+    r"(https://(?:discord|discordapp)\.com/api(?:/v\d+)?/webhooks/[^/\s]+)/([^/\s\"'<>]+)"
+)
+
+
+def redact_webhook_tokens(text: str) -> str:
+    """Mask the posting token of every Discord webhook URL appearing in `text`.
+
+    The id is left readable: it names which webhook without being the credential,
+    and a masked line nobody can trace back to a webhook is no longer a log line.
+    """
+    return _DISCORD_WEBHOOK_IN_TEXT.sub(rf"\1/{WEBHOOK_MASK}", text)
+
+
 def _render_section_embed(section: DigestSection) -> str:
     """Render a DigestSection as Discord markdown text."""
     lines: list[str] = []

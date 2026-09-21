@@ -42,6 +42,27 @@ def patched_client(monkeypatch):
     return install
 
 
+async def test_the_gemini_embedder_sends_its_key_as_a_header_not_a_query_string(patched_client):
+    """Same rule the Gemini LLM client already follows (`gemini_client.py`).
+
+    A key in `?key=` is printed by httpx's own INFO request log and embedded in
+    every `HTTPStatusError`; a key in a header is in neither.
+    """
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"embeddings": [{"values": [3.0, 4.0]}]})
+
+    patched_client(handler)
+    await GeminiEmbedder("secret-gemini-key").embed(["今彩539開獎"])
+
+    [request] = seen
+    assert request.url.query == b""
+    assert "secret-gemini-key" not in str(request.url)
+    assert request.headers["x-goog-api-key"] == "secret-gemini-key"
+
+
 async def test_workers_ai_returns_unit_vectors_and_records_what_it_charged(patched_client):
     patched_client(lambda r: httpx.Response(200, json=workers_response([[3.0, 4.0]])))
     embedder = WorkersAIEmbedder("tok", "acct")

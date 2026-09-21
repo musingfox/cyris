@@ -34,6 +34,33 @@ def _echo_d1_failure(error: Exception) -> None:
     )
 
 
+class _RedactCredentials(logging.Filter):
+    """Mask a Discord webhook's posting token wherever a record carries it.
+
+    Discord puts the token in the URL path, so unlike every other credential here
+    it cannot be moved to a header — see `adapters/embedding.py`, which was the
+    one that could. What is left is to catch it on the way out, and there are
+    three ways it arrives: httpx's own `HTTP Request: POST <url>` line at INFO,
+    an `HTTPStatusError` whose message embeds the URL, and the traceback
+    `notify.send_discord` logs with `exc_info=True`. The last one never passes
+    through the message, which is why `exc_text` is rewritten too.
+
+    The container's stdout is Workers Logs for seven days.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from cyris.adapters.notify import redact_webhook_tokens
+
+        message = record.getMessage()
+        if (masked := redact_webhook_tokens(message)) != message:
+            record.msg, record.args = masked, ()
+        if record.exc_info and record.exc_text is None:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = redact_webhook_tokens(record.exc_text)
+        return True
+
+
 def _setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -41,6 +68,11 @@ def _setup_logging(verbose: bool = False) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         stream=sys.stderr,
     )
+    # On the root handler, not on one logger: the leak is not httpx's to fix, and
+    # the next library to log a URL would reopen it.
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(f, _RedactCredentials) for f in handler.filters):
+            handler.addFilter(_RedactCredentials())
 
 
 @app.command("run")
