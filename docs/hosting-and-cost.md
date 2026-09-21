@@ -23,10 +23,13 @@ tail, and `sleepAfter` is 5 m for the `ui` role.
 | Workers requests / CPU | not measured | 10 M requests, 30 M CPU-ms [1] | — |
 | Durable Object duration | **not stated** for container-backed objects [6] | 400,000 GB-s [6] | — |
 
-LLM spend, measured: **$0.875 across 33 runs in September** and **~$0.0118 per run** — two separate
-readings that do not divide into each other, both carried as given. Everything metered sits under
-5 % of its allotment, so the bill is the **$5/month account minimum** [1], not usage: about
-**$6.3/month today** against about **$1.3/month** for §4's stack (measured), the $5 being the gap.
+LLM spend, measured from `usage_log` on 2026-09-21: the month's total is **$0.875 across 33 runs**,
+but runs before 2026-09-18 logged **$0.00** because `gemini-3.8-flash` carried no price in the model
+table until then (`feat(models): price gemini-3.8-flash`). The month's average therefore understates
+the real figure. The seven priced runs, 09-18 to 09-21, cost **$0.2251**, i.e. **~$0.032 per run**, so
+two runs a day is **~$1.9/month**. Everything metered sits under 5 % of its allotment, so the bill is
+the **$5/month account minimum** [1], not usage: about **$6.9/month today** against about
+**$1.9/month** for §4's stack, the $5 being the whole gap.
 
 ## 2. What binds the paid plan
 
@@ -65,7 +68,7 @@ with the feed count. Cron Triggers themselves are free — 5 per account [2]; CP
 | Inbound newsletters | IMAP polling from the job, or Mailgun Free (1 inbound route) [25] / Resend Free (inbound counted against 3,000/month, 100/day) [26] | $0 |
 | Durable backup | R2 free tier 10 GB-month [27], or Backblaze B2 "first 10GB storage is always free" [28] | $0 |
 | Admin UI | run locally on demand — no hosted always-on tier | $0 |
-| Total | LLM spend unchanged (§1); every row above is $0 | ~$1.3/month |
+| Total | LLM spend unchanged (§1); every row above is $0 | ~$1.9/month |
 
 Ruled out, with the one figure that did it: **Vercel** — Hobby cron runs **once per day** minimum,
 anything more frequent "will fail during deployment" [20]. **Netlify** — scheduled functions have a
