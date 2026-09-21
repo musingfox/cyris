@@ -38,10 +38,8 @@
             margin-top: var(--s-8);
             display: grid;
             /* The stats column narrows with the page, so the fallback-font title,
-               wider than Instrument Serif, clears it from 721px up. Above type scale 1
-               it narrows by the scale too, the one column width the scale moves
-               (ui-language.md §3); at 1 and below the middle term never wins. */
-            grid-template-columns: minmax(0, 1fr) min(37vw, 37vw / var(--type-scale), 320px);
+               wider than Instrument Serif, clears it from 721px up. */
+            grid-template-columns: minmax(0, 1fr) min(37vw, 320px);
             gap: var(--s-12);
             align-items: end;
             /* The fallback font sets the title wider than a phone's column until the

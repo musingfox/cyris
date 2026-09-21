@@ -64,9 +64,8 @@ WIDTHS = (360, 880, 1000, 1440)
 # the breakpoint, where the fallback-font title is widest for its column.
 HEAD_WIDTHS = (721, 740, 760, 800, 880, 1000, 1440)
 
-# Where the stats column narrowed with the page before the type size existed, and where
-# the unfixed column let the largest-size title overrun it.
-NARROW_HEAD_WIDTHS = (721, 740, 760, 800, 880)
+# The head width the title has the least room at, so the largest type size is checked there.
+TIGHTEST_HEAD_WIDTH = 721
 
 
 def url_of(slug: str) -> str:
@@ -365,44 +364,6 @@ _CHECKS: list[Check] = [
         )
         for width in HEAD_WIDTHS
     ),
-    # At the largest type size the stats column narrows further, so the larger title
-    # still clears it. Below 881px today's column is what let it overrun.
-    *(
-        Check(
-            id=f"head-fits-largest-{width}",
-            fixture="signed-in-largest",
-            path=PAGE,
-            width=width,
-            script="""
-                expectLargestScale();
-                const overrun = titleOverrun();
-                expect(overrun <= 0, `the title runs ${overrun}px into the stats card`);
-            """,
-            sabotage=f"""$(".headline-block").style.gridTemplateColumns = "minmax(0, 1fr) {
-                "min(37vw, 320px)" if width in NARROW_HEAD_WIDTHS else "100%"
-            }";""",
-        )
-        for width in HEAD_WIDTHS
-    ),
-    # At type scale 1 the stats column is exactly what it was before the type size.
-    *(
-        Check(
-            id=f"head-unchanged-{width}",
-            fixture="signed-in",
-            path=PAGE,
-            width=width,
-            script="""
-                const tracks = getComputedStyle($(".headline-block")).gridTemplateColumns;
-                const stats = parseFloat(tracks.split(" ")[1]);
-                const wanted = Math.min(innerWidth * 0.37, 320);
-                expect(Math.abs(stats - wanted) <= 0.5, `stats ${stats}px, wanted ${wanted}px`);
-            """,
-            sabotage="""
-                $(".headline-block").style.gridTemplateColumns = "minmax(0, 1fr) min(33vw, 320px)";
-            """,
-        )
-        for width in (721, 760, 800, 880)
-    ),
     # A real pointer press on each item kind's first up button: the button is hit, every
     # URL of its group is voted on, and the button is marked. The phone run is caught by
     # a page that drops the mark, the desktop run by a page that sends a credential.
@@ -448,11 +409,13 @@ _CHECKS: list[Check] = [
         receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
 ]
-# The page never scrolls sideways at the largest type size either.
+# The page never scrolls sideways at the largest type size either, and the title still
+# clears the stats card where it has the least room.
 _CHECKS += [
     largest_twin(check, check.id.replace("fits-", "fits-largest-"), "signed-in-largest")
     for check in _CHECKS
     if check.id in {f"fits-{width}" for width in WIDTHS}
+    or check.id == f"head-fits-{TIGHTEST_HEAD_WIDTH}"
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]
