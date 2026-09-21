@@ -84,7 +84,7 @@ updated: 2026-09-19
 
 ## 3. 字級
 
-下表是 2026-09-17 定下的基準，對應 `--type-scale: 1`。
+下表是基準，對應 `--type-scale: 1`。2026-09-17 定下，2026-09-21 整體下調一級（每個值乘 0.875 後取整）：實際閱讀後判斷原本的基準偏大，而倍率的三級是給讀者微調用的，不該把 `Smaller` 當成正常尺寸。
 
 - **每個 `font-size` 都寫成 `calc(基準值 * var(--type-scale))`**，clamp 也包在裡面，例如
   `calc(clamp(52px, 8vw, 96px) * var(--type-scale))`。之後的字級調整設定（`docs/architecture.md`
@@ -95,14 +95,14 @@ updated: 2026-09-19
 
 | 角色 | 規格 | 用在 |
 |---|---|---|
-| display | Instrument Serif 400，clamp(52px, 8vw, 96px)，行高 1，字距 −0.03em，`em` 為斜體 `--accent` | 頁面大標（archive、raw、settings） |
-| issue title | Instrument Serif 400，clamp(64px, 10vw, 136px)，行高 .92，字距 −0.04em | digest 刊頭大標 |
-| heading | Geist 600，28px，行高 1.3，字距 −0.015em | 面板標題、settings 分類標題 |
-| title | Geist 600，20–22px，行高 1.3 | 列表項目、來源名稱；triage 卡片標題 30px |
-| body | Geist 400，20px，行高 1.65，`--text-dim` | 說明、摘要 |
-| small | Geist 400，16px，行高 1.5，`--text-dim` | 欄位說明、表格內容 |
-| label | Geist Mono 500，14px，大寫，字距 0.1em，`--text-faint` | 導覽、分頁、欄位名、按鈕、區塊標記 |
-| data | Geist Mono 400，16px，`tabular-nums`；archive 日期 22px | 日期、分數、數量、URL |
+| display | Instrument Serif 400，clamp(46px, 7vw, 84px)，行高 1，字距 −0.03em，`em` 為斜體 `--accent` | 頁面大標（archive、raw、settings） |
+| issue title | Instrument Serif 400，clamp(56px, 8.75vw, 119px)，行高 .92，字距 −0.04em | digest 刊頭大標 |
+| heading | Geist 600，24px，行高 1.3，字距 −0.015em | 面板標題、settings 分類標題 |
+| title | Geist 600，18–19px，行高 1.3 | 列表項目、來源名稱；triage 卡片標題 26px |
+| body | Geist 400，18px，行高 1.65，`--text-dim` | 說明、摘要 |
+| small | Geist 400，14px，行高 1.5，`--text-dim` | 欄位說明、表格內容 |
+| label | Geist Mono 500，12px，大寫，字距 0.1em，`--text-faint` | 導覽、分頁、欄位名、按鈕、區塊標記 |
+| data | Geist Mono 400，14px，`tabular-nums`；archive 日期 19px | 日期、分數、數量、URL |
 
 ## 4. 元件
 

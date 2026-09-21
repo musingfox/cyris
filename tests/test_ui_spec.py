@@ -536,38 +536,38 @@ def _parsed(page: str) -> dict[str, set[str] | list[str]]:
 # The signed-off role table: (row, pages, key, base). Every base is multiplied by
 # --type-scale on the page.
 TYPE_ROLES = [
-    (1, "index digest raw", "body", "16px"),
-    (2, "index digest raw", ".brand-name", "16px"),
-    (3, "digest", ".subtitle", "14px"),
-    (4, "index raw", ".display", "clamp(52px, 8vw, 96px)"),
-    (5, "index digest raw", ".footer", "14px"),
-    (6, "index digest raw", ".btn", "14px"),
-    (9, "digest", ".issue-title", "clamp(64px, 10vw, 136px)"),
-    (10, "digest", ".stats-card", "16px"),
-    (12, "digest", ".section-tag", "14px"),
-    (14, "digest", ".section-description", "20px"),
-    (17, "digest", ".lead-story h2", "clamp(32px, 4.5vw, 52px)"),
-    (18, "digest", ".lead-story .summary", "20px"),
-    (19, "digest", ".meta", "14px"),
-    (20, "digest", ".item-title.lg", "22px"),
-    (21, "digest", ".featured-item .summary", "20px"),
-    (23, "digest", ".pill", "14px"),
-    (25, "digest", ".news-cluster .summary", "20px"),
-    (27, "digest", ".thematic-block h3::before", "14px"),
-    (28, "digest", ".item-title", "20px"),
-    (29, "digest", ".article-item .summary", "20px"),
-    (32, "digest", ".attention-item .snippet", "20px"),
-    (34, "digest", ".headline-item", "16px"),
-    (35, "digest", ".headline-item .idx", "16px"),
-    (36, "index", ".archive-row .date, .front-card .date", "22px"),
-    (39, "index", ".empty-message", "16px"),
-    (40, "raw", ".source-name", "20px"),
-    (42, "raw", ".state", "13px"),
-    (43, "raw", ".score", "16px"),
-    (46, "raw", ".card h2", "30px"),
-    (47, "index", ".front-card h2", "22px"),
-    (44, "index digest raw", ".label", "14px"),
-    (45, "index digest raw", ".data", "16px"),
+    (1, "index digest raw", "body", "14px"),
+    (2, "index digest raw", ".brand-name", "14px"),
+    (3, "digest", ".subtitle", "12px"),
+    (4, "index raw", ".display", "clamp(46px, 7vw, 84px)"),
+    (5, "index digest raw", ".footer", "12px"),
+    (6, "index digest raw", ".btn", "12px"),
+    (9, "digest", ".issue-title", "clamp(56px, 8.75vw, 119px)"),
+    (10, "digest", ".stats-card", "14px"),
+    (12, "digest", ".section-tag", "12px"),
+    (14, "digest", ".section-description", "18px"),
+    (17, "digest", ".lead-story h2", "clamp(28px, 4vw, 46px)"),
+    (18, "digest", ".lead-story .summary", "18px"),
+    (19, "digest", ".meta", "12px"),
+    (20, "digest", ".item-title.lg", "19px"),
+    (21, "digest", ".featured-item .summary", "18px"),
+    (23, "digest", ".pill", "12px"),
+    (25, "digest", ".news-cluster .summary", "18px"),
+    (27, "digest", ".thematic-block h3::before", "12px"),
+    (28, "digest", ".item-title", "18px"),
+    (29, "digest", ".article-item .summary", "18px"),
+    (32, "digest", ".attention-item .snippet", "18px"),
+    (34, "digest", ".headline-item", "14px"),
+    (35, "digest", ".headline-item .idx", "14px"),
+    (36, "index", ".archive-row .date, .front-card .date", "19px"),
+    (39, "index", ".empty-message", "14px"),
+    (40, "raw", ".source-name", "18px"),
+    (42, "raw", ".state", "11px"),
+    (43, "raw", ".score", "14px"),
+    (46, "raw", ".card h2", "26px"),
+    (47, "index", ".front-card h2", "19px"),
+    (44, "index digest raw", ".label", "12px"),
+    (45, "index digest raw", ".data", "14px"),
 ]
 TYPE_CASES = [
     (row, page, key, base) for row, pages, key, base in TYPE_ROLES for page in pages.split()
@@ -583,7 +583,7 @@ def test_each_font_size_follows_the_role_table(row: int, page: str, key: str, ba
 
 def test_the_issue_title_takes_the_issue_title_role() -> None:
     assert (
-        "font-size: calc(clamp(64px, 10vw, 136px) * var(--type-scale))"
+        "font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale))"
         in _parsed("digest")[".issue-title"]
     )
 
@@ -591,7 +591,7 @@ def test_the_issue_title_takes_the_issue_title_role() -> None:
 @pytest.mark.parametrize("page", ["index", "raw"])
 def test_the_page_title_is_the_display_component(page: str) -> None:
     assert {
-        "font-size: calc(clamp(52px, 8vw, 96px) * var(--type-scale))",
+        "font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale))",
         "line-height: 1",
         "letter-spacing: -.03em",
     } <= set(_parsed(page)[".display"])
@@ -627,9 +627,9 @@ def test_every_item_title_takes_the_title_role_from_one_rule() -> None:
     assert {
         "font-weight: 600",
         "line-height: 1.3",
-        "font-size: calc(20px * var(--type-scale))",
+        "font-size: calc(18px * var(--type-scale))",
     } <= set(digest[".item-title"])
-    assert digest[".item-title.lg"] == {"font-size: calc(22px * var(--type-scale))"}
+    assert digest[".item-title.lg"] == {"font-size: calc(19px * var(--type-scale))"}
     assert {".item-title a", ".item-title a:hover"} <= set(digest)
     typeset = ("font-size", "font-weight", "line-height", "letter-spacing", "color")
     per_kind = [
@@ -815,7 +815,7 @@ def test_the_receipt_archive_carries_the_card_title() -> None:
 
 
 def test_the_empty_archive_message_takes_the_small_role() -> None:
-    assert "font-size: calc(16px * var(--type-scale))" in _parsed("index")[".empty-message"]
+    assert "font-size: calc(14px * var(--type-scale))" in _parsed("index")[".empty-message"]
 
 
 def test_the_raw_state_column_fits_the_larger_state_label() -> None:
@@ -875,7 +875,7 @@ def test_raw_rows_are_the_prototype_rows() -> None:
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])
 def test_every_page_scales_its_inherited_text(page: str) -> None:
     body = _parsed(page)["body"]
-    assert "font-size: calc(16px * var(--type-scale))" in body
+    assert "font-size: calc(14px * var(--type-scale))" in body
     assert isinstance(body, list) and body[0].startswith("font-family")
 
 
@@ -937,7 +937,7 @@ def test_an_unscaled_font_size_is_reported(css: str) -> None:
 
 def test_a_scaled_clamp_is_not_reported() -> None:
     assert (
-        unscaled_font_sizes(".x{font-size:calc(clamp(52px, 8vw, 96px) * var(--type-scale))}") == []
+        unscaled_font_sizes(".x{font-size:calc(clamp(46px, 7vw, 84px) * var(--type-scale))}") == []
     )
 
 
@@ -1012,7 +1012,7 @@ def test_the_settings_page_breaks_only_where_the_spec_does() -> None:
 
 def test_the_settings_page_scales_its_text_without_a_body_gutter() -> None:
     body = parse_style_block(_source("settings"))["body"]
-    assert "font-size: calc(16px * var(--type-scale))" in body
+    assert "font-size: calc(14px * var(--type-scale))" in body
     assert [d for d in body if d.startswith("padding")] == []
 
 
@@ -1065,7 +1065,7 @@ def test_settings_says_one_sentence_in_view_and_folds_the_rest() -> None:
 def test_a_settings_source_name_takes_the_title_role() -> None:
     """§3 gives source names the title role, 20–22px."""
     name = parse_style_block(_source("settings"))["table.src .name"]
-    assert "font-size: calc(20px * var(--type-scale))" in name
+    assert "font-size: calc(18px * var(--type-scale))" in name
 
 
 # The old page's inline form and table rules, which the ticket moved to shared components.

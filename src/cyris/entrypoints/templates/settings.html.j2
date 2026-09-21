@@ -11,7 +11,7 @@
   <style>
     /* This page's own layout. Every shared control and role comes from
        style.css; a rule here that another page also needs belongs there. */
-    body { font-size: calc(16px * var(--type-scale)); line-height: 1.6; min-height: 100vh; }
+    body { font-size: calc(14px * var(--type-scale)); line-height: 1.6; min-height: 100vh; }
     a { color: inherit; }
     button, input, select, textarea { font: inherit; color: inherit; }
     .page { max-width: 1240px; margin: 0 auto; padding: var(--s-12) var(--s-4) var(--s-20); }
@@ -35,15 +35,15 @@
     .table-wrap { overflow-x: auto; border: 1px solid var(--border); background: var(--bg-elev); }
     table.src { width: 100%; border-collapse: collapse; min-width: 640px; }
     table.src th { text-align: left; padding: var(--s-2) var(--s-5); background: var(--surface); border-bottom: 1px solid var(--border); }
-    table.src td { padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border); font-size: calc(16px * var(--type-scale)); vertical-align: middle; }
+    table.src td { padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border); font-size: calc(14px * var(--type-scale)); vertical-align: middle; }
     table.src tr.src-row { cursor: pointer; transition: background-color var(--t-fast); }
     table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
-    table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(20px * var(--type-scale)); }
+    table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
     table.src tr.editor > td { background: var(--surface); padding: var(--s-5); border-bottom: 1px solid var(--border-strong); }
     tr.editor .form { max-width: none; }
     .editor-title { margin-bottom: var(--s-4); }
     .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
-    table.src .target { font-family: var(--font-mono); font-size: calc(16px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
+    table.src .target { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
     @media (max-width: 720px) {
       .page { padding-top: var(--s-8); }
       .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
