@@ -374,6 +374,8 @@ overwrites, so a human triage decision recorded on the losing side is lost unles
 ## 5. Configuration: four grades
 
 Every setting belongs to exactly one grade. Mixing them is what makes a deployment un-portable.
+What each of these choices costs to host — measured usage against the plan's allotments, the free
+plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 
 | Grade | Home | Changing it costs | Who sets it |
 |---|---|---|---|
