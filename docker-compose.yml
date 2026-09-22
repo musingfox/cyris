@@ -11,4 +11,7 @@ services:
       # Plain `up -d` won't do it: compose sees no config change and leaves it running.
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
+      # The json store and the generated HTML. Inside the container they would go
+      # with it on the next recreate.
+      - ./agent-vault:/app/agent-vault
     restart: unless-stopped

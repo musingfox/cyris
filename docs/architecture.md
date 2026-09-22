@@ -633,8 +633,8 @@ one `cyris run --if-due` (or `--period`, when a manual `POST /run?period=` set
 `CYRIS_RUN_PERIOD`) plus one `promote-sync` and exits, so the instance stops billing without
 waiting for a sleep timer — `promote-sync` runs even when the run fails, and the pass exits with
 the run's status; `ui` serves `/settings`; the default is the
-supercronic loop, which now has no scheduled user and dies with `docker/crontab` whenever someone
-gets to it.
+supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` install. Compose
+bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate.
 
 **`stop()` is one SIGTERM, and the image has to be able to receive it.** For a day the `ui`
 instance never slept: per-instance metrics showed it holding 132 MB at **zero CPU every hour**

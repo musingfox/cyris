@@ -40,8 +40,8 @@ PY
     export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
     exec cyris triage-ui --host 0.0.0.0 --port 8766 $CONF
     ;;
-  # ponytail: the Mac mini's role, alive only until M5's cutover. Deleting it
-  # takes supercronic and docker/crontab with it.
+  # The local scheduler for a docker compose install, which has no Workers Cron
+  # to fire the tick; the default so compose needs no CYRIS_ROLE.
   cron)
     exec supercronic /app/crontab
     ;;
