@@ -10,7 +10,7 @@ import { handleRequest } from "./router.js";
 import { createTypeScale } from "./type_scale.js";
 
 // Every secret the pipeline reads from the environment. The provider is a
-// runtime setting in D1, so all three LLM keys ride along — passing only the
+// runtime setting in D1, so every LLM key rides along — passing only the
 // configured one would make switching provider on /settings a redeploy.
 const SECRETS = {
   CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID,
@@ -23,6 +23,7 @@ const SECRETS = {
   ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
   GEMINI_API_KEY: env.GEMINI_API_KEY,
   OPENAI_API_KEY: env.OPENAI_API_KEY,
+  CLOUDFLARE_AI_TOKEN: env.CLOUDFLARE_AI_TOKEN,
 };
 
 // Grade-B deployment identity. The deployer sets these as Worker secrets or

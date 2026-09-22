@@ -17,6 +17,7 @@ _SECRETS = (
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "OPENAI_API_KEY",
+    "CLOUDFLARE_AI_TOKEN",
 )
 
 
