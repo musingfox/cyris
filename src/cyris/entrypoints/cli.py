@@ -46,12 +46,32 @@ class _RedactCredentials(logging.Filter):
     through the message, which is why `exc_text` is rewritten too.
 
     The container's stdout is Workers Logs for seven days.
+
+    One path this does **not** cover, stated so it is not mistaken for covered:
+    an exception that escapes a command is rendered by Typer's Rich traceback
+    straight to stderr, never through logging. It prints source lines, not
+    values — `pretty_exceptions_show_locals` is False by default (checked
+    against typer 0.24.1) — so a runtime credential does not appear there
+    today. Pinning that one keyword argument would not make the path safe
+    either; what would is not letting the exception escape.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
         from cyris.adapters.notify import redact_webhook_tokens
 
-        message = record.getMessage()
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - a logging bug must stay a logging bug
+            # `%` arguments that do not match the format string. A filter runs in
+            # `Handler.handle`, outside the try/except that wraps `emit`, so
+            # raising here would abort a digest run over a wrong `%d` — where
+            # before this class existed the same record only produced a note on
+            # stderr. The record goes on to fail in `format` and reach
+            # `Handler.handleError`, which prints `record.args` raw, so masking
+            # the arguments is what keeps the swallow from becoming the leak.
+            record.args = _redacted_args(record.args)
+            return True
+
         if (masked := redact_webhook_tokens(message)) != message:
             record.msg, record.args = masked, ()
         if record.exc_info and record.exc_text is None:
@@ -59,6 +79,18 @@ class _RedactCredentials(logging.Filter):
         if record.exc_text:
             record.exc_text = redact_webhook_tokens(record.exc_text)
         return True
+
+
+def _redacted_args(args: object) -> object:
+    """Mask every string in a record's `%` arguments, tuple or mapping."""
+    from cyris.adapters.notify import redact_webhook_tokens
+
+    mask = lambda value: redact_webhook_tokens(value) if isinstance(value, str) else value  # noqa: E731
+    if isinstance(args, dict):
+        return {key: mask(value) for key, value in args.items()}
+    if isinstance(args, tuple):
+        return tuple(mask(value) for value in args)
+    return mask(args)
 
 
 def _setup_logging(verbose: bool = False) -> None:
