@@ -76,7 +76,8 @@ export default {
     }
 
     const auth = request.headers.get("Authorization");
-    if (auth !== `Bearer ${env.NEWSLETTER_TOKEN}`) {
+    // An unset secret would otherwise accept the literal header "Bearer undefined".
+    if (!env.NEWSLETTER_TOKEN || auth !== `Bearer ${env.NEWSLETTER_TOKEN}`) {
       return json({ error: "unauthorized" }, 401);
     }
 

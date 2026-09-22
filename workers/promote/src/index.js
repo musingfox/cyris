@@ -25,7 +25,8 @@ export default {
     }
 
     const auth = request.headers.get("Authorization");
-    if (auth !== `Bearer ${env.PROMOTE_TOKEN}`) {
+    // An unset secret would otherwise accept the literal header "Bearer undefined".
+    if (!env.PROMOTE_TOKEN || auth !== `Bearer ${env.PROMOTE_TOKEN}`) {
       return json({ error: "unauthorized" }, 401);
     }
 

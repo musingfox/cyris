@@ -122,7 +122,8 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
-    if (request.headers.get("Authorization") !== `Bearer ${env.RSS_TOKEN}`) {
+    // An unset secret would otherwise accept the literal header "Bearer undefined".
+    if (!env.RSS_TOKEN || request.headers.get("Authorization") !== `Bearer ${env.RSS_TOKEN}`) {
       return json({ error: "unauthorized" }, 401);
     }
 
