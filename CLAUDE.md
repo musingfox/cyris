@@ -62,6 +62,8 @@ Clean-architecture layering: **entrypoints → service_layer → domain**, with 
 src/cyris/
 ├── bootstrap.py      # Composition root: Deps container + build_deps(cfg)
 ├── config.py         # Loads cyris.toml + sources.yaml (Pydantic validation)
+├── settings_fields.json  # The grade-D key registry: every runtime setting, its /settings category and label
+├── provider_defaults.json # Per-provider defaults: each LLM's default model, each embedder's model and threshold
 ├── domain/           # Pure business models and rules (pydantic/stdlib only)
 │   ├── models.py            # Article, StoredArticle, DigestContent, Tier, ArticleState, ...
 │   ├── selection.py         # Score-based selection: layer_by_score, split_summarize_tier_by_score
@@ -118,8 +120,8 @@ src/cyris/
 workers/              # Cloudflare Workers (deployed to the user's CF account)
 ├── app/              # The Container and its door: hourly Cron Trigger runs the pipeline
 │                     #   (CYRIS_ROLE=run, one pass then exits), any HTTP request wakes the
-│                     #   /settings server (CYRIS_ROLE=ui). Auth = Cloudflare Access + CYRIS_UI_TOKEN
-│                     #   cookie. Its `wrangler.toml` is at the repo root, because the image is
+│                     #   /settings server (CYRIS_ROLE=ui). Auth = CYRIS_UI_TOKEN cookie, plus
+│                     #   Cloudflare Access on a custom hostname if you add it. Its `wrangler.toml` is at the repo root, because the image is
 │                     #   built from the whole repo — deploy from there, not from this directory
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
 ├── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
@@ -127,6 +129,13 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 └── rss/              # Hourly feed buffer: cron polls the D1 `sources` table (an empty one
                       #   polls nothing) → D1, cyris pulls
                       #   (adapters/fetch/rss_worker_source.py). Needs Workers Paid.
+
+website/              # The landing page: its own Pages project, deployed with `bun run deploy:website`
+                      #   (not the digest's project, and not `bun run deploy`)
+scripts/              # check.sh (the CI gate), derive-wrangler-config.sh (the deploy workflow's
+                      #   config), backfill_pages_manifest.py, and the CDP page probes (*_probe.py)
+docs/                 # architecture.md (read first); install-local.md, install-cloudflare.md and
+                      #   operations.md (install and run a deployment); design/ (UI spec); history
 ```
 
 ### Key Data Flow
@@ -175,7 +184,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[notify]` webhook, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the home only under `[store] backend = "json"`; a D1 deployment reads them from D1 `settings` alone and `cyris doctor` fails on any the file still sets. Either way a missing key stops the run — no value lives in code. See `docs/architecture.md` §5
 - `sources.yaml` — RSS/newsletter source definitions with tier and tags. The `json` backend's list; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table alone, and `cyris sources push` is what fills it from the file. An empty table stops `cyris run` and polls nothing in the Worker; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
-- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own — kept apart because it is not a secret, see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`, and no environment variable supplies it. `.env.example` is the full list
+- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own, kept a separate value; `CLOUDFLARE_AI_TOKEN` for the `workers_ai` LLM provider; `CYRIS_UI_TOKEN`, the `/settings` login, read by the app Worker alone; see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`, and no environment variable supplies it. `.env.example` is the full list
 
 ### Agent Vault (`agent-vault/`)
 
@@ -200,7 +209,7 @@ Agent-owned state directory, entirely gitignored — nothing under it is in vers
 - Ruff for linting and formatting (line-length 100, see `pyproject.toml [tool.ruff]` for rule selection)
 - Pydantic v2 for all data models and config validation
 - pytest with `pytest-asyncio` (auto mode) for async tests
-- Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary
+- Source tiers determine processing depth: `filter` = aggressive discard, `summarize` = full summary, `fan` = passthrough (never scored, filtered or summarized)
 - Article lifecycle states: `pending` → `accepted`/`rejected`/`awaiting_triage`. A non-null `triaged_at` is what marks a state as a *human* decision (digest or raw-page vote, `cyris articles accept|reject`) rather than the pipeline's own verdict — `update_states` refuses to overwrite stamped rows, and only stamped rows seed vote similarity
 - Digest output language is configurable via `[digest] output_language`, a **BCP 47 tag** (`cyris.toml.example` uses `zh-Hant`; there is no code default). `service_layer/languages.json` maps the tag to the wording the model receives; an unlisted tag is substituted verbatim, which is what keeps an older config holding a plain language name working. Prompts inject it via the `<output_language>` placeholder in `service_layer/prompts.py`. `[digest] style_prompt` injects reader-defined tone/focus
 - Newsletter canonical links (`adapters/fetch/newsletter.py`): an issue's 原文 link is chosen structurally — normalize candidates, keep content URLs, take the sender's host (from the source's `homepage`, else the most frequent host), then deepest path → most frequent → first seen. The hostname allowlist and the "網頁版/view in browser" keyword scan are fallbacks behind it. The constraint is that a returned URL should not repeat across issues — the store dedups by URL, so a later issue of the same source whose link repeats under a different subject falls back to its synthetic `newsletter:{id}` URL and loses its link (a different source, or the same subject, is still skipped; see `adapters/store/newsletter_dedup.py`). `tests/test_newsletter.py` enforces it (distinct post URLs, distinct synthetic URLs, and where `homepage` may land); read those before changing the extractor. Real-sample coverage is in `tests/test_newsletter_real_fixtures.py`; samples stay outside this repo

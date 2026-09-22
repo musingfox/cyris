@@ -14,7 +14,7 @@ newsletter email → cyris@<your-domain>
 ```
 
 RSS-capable newsletters (all Substacks, most Ghost/Squarespace sites via
-`?format=rss`) are just feeds: list them in `sources.yaml` like any other. Use
+`?format=rss`) are just feeds: add them as ordinary RSS sources. Use
 this Worker only for genuinely email-only sources, since it is the one part of
 cyris that needs a domain you control.
 
@@ -69,27 +69,32 @@ Used for throughput and parsing-cost monitoring.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/newsletter)
 
+Part of the Cloudflare install; the whole order is in
+[docs/install-cloudflare.md](../../docs/install-cloudflare.md#optional-workers).
 Email Routing still has to be set up by hand — it needs a domain you control,
 and it is the one step no button can do.
 
 Prereqs: a domain on your Cloudflare account (Email Routing does **not** work on
-`*.workers.dev`), and `wrangler` logged in (`npx wrangler whoami`).
+`*.workers.dev`), and `wrangler` logged in (`bunx wrangler whoami`).
 
 ```bash
 cd workers/newsletter
 bun install                                   # postal-mime (MIME parser)
 
-# 1. Create the KV namespace, then paste its id into wrangler.toml
-npx wrangler kv namespace create NEWSLETTERS  # → copy the printed id into kv_namespaces
+# 1. Create the KV namespace, then replace the id in wrangler.toml with it
+#    (the committed id belongs to another account)
+bunx wrangler kv namespace create NEWSLETTERS  # → copy the printed id into kv_namespaces
 
 # 2. Deploy
-npx wrangler deploy                           # prints https://cyris-newsletter.<sub>.workers.dev
+bunx wrangler deploy                           # prints https://cyris-newsletter.<sub>.workers.dev
 
-# 3. Set the shared token (same value goes in cyris .env as CYRIS_WORKER_TOKEN,
-#    the one bearer all three Workers accept)
-TOKEN=$(openssl rand -hex 32)
+# 3. Set the bearer. Its value is the app's CYRIS_WORKER_TOKEN, which the rss
+#    and newsletter Workers share (promote has its own). Secrets cannot be read
+#    back, so keep this value. If rss already has one, export
+#    CYRIS_WORKER_TOKEN=<it> first; otherwise a new one is generated:
+TOKEN=${CYRIS_WORKER_TOKEN:-$(openssl rand -hex 32)}; echo "$TOKEN"
 printf 'NEWSLETTER_TOKEN=%s\n' "$TOKEN" > .dev.vars      # local dev
-printf '%s' "$TOKEN" | npx wrangler secret put NEWSLETTER_TOKEN
+printf '%s' "$TOKEN" | bunx wrangler secret put NEWSLETTER_TOKEN
 
 # 4. Verify (no auth → 401, with auth → [])
 curl -s -o /dev/null -w '%{http_code}\n' https://cyris-newsletter.<sub>.workers.dev/newsletters
@@ -119,20 +124,25 @@ forwarded body, so one-off manual forwards work too.
 
 ## Wire into cyris
 
-`cyris.toml`:
-```toml
-[newsletter]
-worker_url = "https://cyris-newsletter.<sub>.workers.dev"
-# token via env: CYRIS_WORKER_TOKEN
-```
-`.env`: `CYRIS_WORKER_TOKEN=<same token as the Worker secret>`
+On Cloudflare, from the repo root, set the app's secrets:
 
-`build_deps` adds the pull source to `fetch_sources` when both are set.
+```bash
+bunx wrangler secret put CYRIS_NEWSLETTER_WORKER_URL --env-file /dev/null  # https://cyris-newsletter.<sub>.workers.dev
+bunx wrangler secret put CYRIS_WORKER_TOKEN --env-file /dev/null           # same value as NEWSLETTER_TOKEN
+```
+
+The app pulls from this Worker only when both are set. For a local install, the same
+two values are `[newsletter] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN` in
+`.env`.
 
 ## Add a new email-only newsletter
 
 1. Gmail filter: forward that sender → `cyris@<your-domain>`.
-2. `sources.yaml`: add an `email_match` entry so cyris tags tier/tags:
+2. Add a source with `type: newsletter` and `email_match` so cyris assigns its
+   tier and tags. On Cloudflare the source list is D1: add it on `/settings` →
+   Sources, or put it in `sources.yaml` and run `cyris sources push` (editing
+   `sources.yaml` alone does nothing there). A local install reads `sources.yaml`
+   directly.
    ```yaml
    - name: "Example Newsletter"
      type: newsletter
@@ -145,5 +155,5 @@ Unmatched senders are pulled but skipped (and ACKed, so they don't pile up).
 ## Local dev
 
 ```bash
-npx wrangler dev   # uses .dev.vars; email() can be exercised with `wrangler dev` email test tooling
+bunx wrangler dev   # uses .dev.vars; email() can be exercised with `wrangler dev` email test tooling
 ```

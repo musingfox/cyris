@@ -1,9 +1,14 @@
 # cyris-rss — hourly feed buffer on Cloudflare
 
 Polls every RSS/Atom feed once an hour into **D1**, so the 24h digest window has
-something to read. The feed list is the `sources` table the app writes, and
-nothing else: an empty table polls no feed and logs `sources table is empty`
-until a source is added on `/settings` or with `cyris sources push`.
+something to read. The feed list is the app's D1 `sources` table, which `/settings`
+and `cyris sources push` write, and nothing else. This Worker therefore shares the
+app's database, and it creates only its own `articles` table: against a D1 the app has
+never reached, every poll fails with `could not read sources from D1: … no such
+table`, and with the table present but empty it logs `sources table is empty`.
+
+Part of the Cloudflare install; the whole order is in
+[docs/install-cloudflare.md](../../docs/install-cloudflare.md#optional-workers).
 
 ```
 cron 0 * * * *
@@ -18,18 +23,9 @@ Free the scheduled handler died with *Exceeded CPU Limit* on every tick — pars
 
 ## Why this exists
 
-A feed snapshot holds far less than a day for high-volume sources — measured
-2026-08-06:
-
-| feed | items | span |
-|------|-------|------|
-| 中央社 財經 | 20 | 2h23m |
-| 中央社 國際 | 20 | 4h27m |
-| The Verge | 10 | 3h01m |
-
-Fetching at digest time therefore misses most of the window. A same-window URL
-diff against Miniflux lost 141 of 317 articles, all from these sources. Hourly
-polling into a retention buffer is what closes that gap.
+A feed publishes only its current snapshot, and a busy one holds 2–4 hours of it, so
+fetching at digest time misses much of a 24h window. Hourly polling into a retention
+buffer closes that gap.
 
 ## Endpoints (Bearer `RSS_TOKEN`)
 
@@ -45,44 +41,53 @@ digest crashes. Rows age out after 8 days, matching the ArticleStore's dedup sca
 
 ## Deploy
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/rss)
-
-The button provisions a **fresh** D1 database and rewrites the id in
-`wrangler.toml`. Repoint it at the app's database afterwards, or this Worker
-reads an empty `sources` table and polls nothing. By hand:
+Deploy it after the app has booted once against its D1 (so the tables exist) and holds
+at least one source.
 
 ```bash
 cd workers/rss
 bun install
 
-# 1. Point wrangler.toml at the SAME D1 database the app uses — paste the id you
-#    put in the app's CYRIS_STORE_DATABASE_ID. This Worker reads the `sources`
-#    table the app writes, so a database of its own means it reads an empty table
-#    and polls nothing. If you have not created one yet:
-npx wrangler d1 create cyris               # → copy database_id into wrangler.toml
-#    The `articles` table needs no setup step: the Worker creates it on its
-#    first poll or request (src/index.js, `SCHEMA`), which is also what a
-#    Deploy to Cloudflare button relies on. Note the button provisions a *fresh*
-#    database and rewrites the id, so a button deploy needs this repointed after.
+# 1. Point wrangler.toml at the app's D1: set both database_name and database_id
+#    under [[d1_databases]] to the database whose UUID is the app's
+#    CYRIS_STORE_DATABASE_ID. The committed values belong to another account.
 
-# 2. Auth token (same value goes into cyris's .env as CYRIS_WORKER_TOKEN,
-#    the one bearer all three Workers accept)
-npx wrangler secret put RSS_TOKEN
-
-npx wrangler deploy
+# 2. Deploy, then set the bearer. It becomes the app's CYRIS_WORKER_TOKEN, the
+#    token the rss and newsletter Workers share (promote has its own). Secrets
+#    cannot be read back, so keep this value: the app and newsletter need it too.
+#    If newsletter already has one, export CYRIS_WORKER_TOKEN=<it> first.
+TOKEN=${CYRIS_WORKER_TOKEN:-$(openssl rand -hex 32)}; echo "$TOKEN"
+bunx wrangler deploy
+printf '%s' "$TOKEN" | bunx wrangler secret put RSS_TOKEN
 ```
 
-Then in `cyris.toml`:
+Then, from the repo root, point the app at it:
 
-```toml
-[rss]
-worker_url = "https://cyris-rss.<subdomain>.workers.dev"
-# Token via env: CYRIS_WORKER_TOKEN
+```bash
+bunx wrangler secret put CYRIS_RSS_WORKER_URL --env-file /dev/null   # https://cyris-rss.<subdomain>.workers.dev
+bunx wrangler secret put CYRIS_WORKER_TOKEN --env-file /dev/null     # same value as RSS_TOKEN
 ```
+
+Both must be set, or the app keeps polling feeds directly. Check the buffer with
+`POST /poll` and then `GET /stats`, each with `Authorization: Bearer <RSS_TOKEN>`.
+
+The Deploy to Cloudflare button below provisions a **fresh** D1 database and writes
+its id into the `wrangler.toml` of the repository it clones for you. Edit
+`database_name` and `database_id` there to the app's database and push, so Workers
+Builds redeploys it; then set `RSS_TOKEN` and the two app secrets as above.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/rss)
+
+For a local install that uses the `json` store, the app side is `[rss] worker_url` in
+`cyris.toml` plus `CYRIS_WORKER_TOKEN` in `.env`; the feed list still has to be in D1
+(`cyris sources push`).
 
 ## Local development
 
 ```bash
+# The local D1 starts empty: apply the app's schema first, or /poll fails with
+# "no such table: sources"
+npx wrangler d1 execute DB --local --file ../../src/cyris/adapters/store/schema.sql
 npx wrangler dev --local --port 8799 --var RSS_TOKEN:devtoken
 
 curl -X POST -H 'Authorization: Bearer devtoken' localhost:8799/poll

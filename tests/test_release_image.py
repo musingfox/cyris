@@ -64,10 +64,10 @@ def test_outstanding_work_no_longer_counts_the_release_item() -> None:
 
 
 def test_local_docker_instructions_are_unchanged() -> None:
-    text = (ROOT / "workers/app/README.md").read_text(encoding="utf-8")
+    text = (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
     collapsed = " ".join(text.split())
-    assert "the image is built locally by `wrangler`, so Docker must be running" in collapsed
-    assert "builds ./Dockerfile, pushes, deploys" in text
+    assert "**Docker running.** `wrangler deploy` builds the image from `./Dockerfile`" in collapsed
+    assert "This builds the image, pushes it, and deploys `cyris-app`" in collapsed
 
 
 def test_architecture_does_not_claim_deploys_need_no_docker() -> None:

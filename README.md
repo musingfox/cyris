@@ -38,38 +38,36 @@ summarization in the middle, an HTML digest on Cloudflare Pages out.
 
 ## Two ways to run it
 
-Pick one before you read further — the rest of this file is written for both, marked as
-such.
-
 |  | **Local** | **On Cloudflare** |
 |---|---|---|
-| What runs it | `cyris run` on your machine, on your own schedule | a Container behind a Worker, on an hourly cron |
+| What runs it | `cyris run` on your machine, hourly from cron or `docker compose` | a Container behind a Worker, on an hourly Cron Trigger |
 | Where the state lives | JSON files under `agent-vault/` | D1 |
-| Where the digest goes | an HTML file on disk | published to Pages, with an archive |
-| Feeds | polled when the digest runs | buffered hourly, so nothing expires between runs |
-| 👍/👎 on the digest and the raw page | no | yes |
-| Email-only newsletters | no | yes, with your own domain |
-| Needs | Python, uv, an LLM key | the same, plus a Cloudflare account (Workers Paid, US$5/mo, for the schedule and the buffer) |
+| Where the settings live | `cyris.toml` and `sources.yaml` | D1, edited on `/settings` |
+| Where the digest goes | HTML files on disk | published to Pages, with an archive at a URL |
+| Feeds | polled when the digest runs | the same, or buffered hourly by `workers/rss` |
+| 👍/👎 on the digest and the raw page | no | with `workers/promote` |
+| Email-only newsletters | no | with `workers/newsletter` and your own domain |
+| Needs | Python 3.12+ and uv | Workers Paid (US$5/mo), plus Docker and bun to deploy |
+
+Either way, an LLM API key is optional: provider `none` lists plain excerpts.
 
 Local is a complete install, not a demo: same pipeline, same prompts, same digest. What
 it gives up is everything that needs to be *somewhere* — an archive with a URL, buttons
 a reader can press, an inbox that receives mail. You can start local and move later;
 `cyris store migrate` exists for exactly that.
 
-### What needs what
+### What needs what on Cloudflare
 
-Within the Cloudflare track, nothing below the first row is required. Start at the top
-and add only what you want.
+Only the first row is required. Start at the top and add only what you want.
 
 | Feature | Needs | Cost |
 |---|---|---|
-| RSS digest, HTML output | An LLM API key | LLM usage only |
-| Better feed coverage (see below) | A Cloudflare account, Workers Paid | US$5/mo |
-| Production schedule + `/settings` | Same Workers Paid plan; a domain is an optional Access layer | same US$5/mo |
-| Digest votes 👍/👎 | A Cloudflare account | Free tier |
-| Published HTML digest | A Cloudflare account | Free tier |
-| **Email-only newsletters** | A Cloudflare account **and your own domain** | Domain registration |
-| State in the cloud (`[store] backend = "d1"`) | A Cloudflare account | Free tier |
+| The app: schedule, D1, Pages archive, `/settings` | A Cloudflare account on Workers Paid | US$5/mo; see [what one deployment spends](docs/hosting-and-cost.md) |
+| LLM summaries | An LLM API key, or provider `none` | LLM usage only |
+| Better feed coverage (`workers/rss`) | The same Workers Paid plan | included |
+| Digest votes 👍/👎 (`workers/promote`) | A KV namespace; readers log in on the app's hostname | Free tier |
+| **Email-only newsletters** (`workers/newsletter`) | **Your own domain** on Cloudflare, with Email Routing | Domain registration |
+| Cloudflare Access in front of `/settings` | Your own domain | Domain registration |
 | Vote-similarity filtering | A Workers AI embedding token, or Gemini | Inference only |
 
 **Email Routing is the one thing that cannot be automated away.** It needs a domain you
@@ -83,115 +81,40 @@ if you attach your own hostname.
 
 This is the sharpest difference between the two tracks.
 
-**Local — polled at digest time.** cyris fetches each feed when the digest runs and
-keeps the entries inside the window. Nothing to set up, but a feed only publishes its
-current snapshot, and a busy one holds 2–4 hours of it. Measured against an hourly
-aggregator over the same 24h window, a digest-time poll saw 176 of 317 articles.
+**Polled at digest time.** cyris fetches each feed when the digest runs and keeps the
+entries inside the window. Nothing to set up, but a feed only publishes its current
+snapshot, and a busy one holds 2–4 hours of it, so part of a 24-hour window is gone
+before the digest looks.
 
-**Cloudflare — buffered hourly.** `workers/rss` polls every feed on the hour into D1,
-and cyris reads a window out of the buffer, so nothing expires between runs. Deploy
-`workers/rss/`, then set `[rss] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN` in
-`.env` — see [`workers/rss/README.md`](workers/rss/README.md).
+**Buffered hourly, on Cloudflare.** [`workers/rss`](workers/rss/README.md) polls every
+feed on the hour into D1, and cyris reads a window out of the buffer, so nothing
+expires between runs. It is wired into the app with the `CYRIS_RSS_WORKER_URL` and
+`CYRIS_WORKER_TOKEN` secrets.
 
-## Running it locally
+## Installing
 
-Python 3.12+, [uv](https://github.com/astral-sh/uv), and one LLM API key — Anthropic
-Claude, Google Gemini, OpenAI, or a Cloudflare Workers AI token. Without one, set
-`[llm_provider] provider = "none"` and the digest lists plain excerpts.
+Pick a track and follow its guide from the top:
 
-```bash
-git clone https://github.com/musingfox/cyris.git && cd cyris
-uv sync --dev
+- **Local**: [docs/install-local.md](docs/install-local.md)
+- **Cloudflare**: [docs/install-cloudflare.md](docs/install-cloudflare.md)
 
-cp cyris.toml.example cyris.toml           # every runtime setting, plus the store backend
-cp .env.example .env                       # add your API key
-cp sources.example.yaml sources.yaml       # then define your RSS/newsletter sources
-
-uv run cyris doctor                # says what is still missing before you find out at 08:00
-uv run cyris run                   # fetch → score → digest
-```
-
-Keep `[store] backend = "json"`: the article store and the usage log are files under
-`[agent_vault] path`, and the digest is written to `agent-vault/html/`. Scheduling is
-yours — a cron entry per digest hour, or `docker compose up -d`, which runs the same
-image with supercronic reading `docker/crontab`.
-
-`sources.yaml` is the source list, and `cyris.toml` holds everything else. Every runtime
-setting in `cyris.toml.example` is required: a key left out stops the run and is named,
-because no value for one lives in code. There is no `/settings` here, because there is
-no server running to serve it.
-
-## Running it on Cloudflare
-
-The deployment is a Container fronted by a Worker: an hourly Cron Trigger runs
-`cyris run --if-due` plus `promote-sync` and the instance exits, while the `/settings`
-server wakes on request and sleeps again. State is D1 and the digest is published to Pages.
-Every runtime setting lives in D1, so changing one is a write on `/settings`, not a
-rebuild. Deploy steps, the secret list and auth are in
-[`workers/app/README.md`](workers/app/README.md).
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris)
-
-The button clones this repo into your own GitHub account, builds the container image
-with Workers Builds, and deploys the Worker, its Durable Object and the hourly cron. It
-asks for each secret in [`.env.example`](.env.example).
-
-**One thing to do after it finishes.** The runtime settings live in D1, not in deploy
-fields — a deployed container has no `cyris.toml` to read them from. Open `/settings`:
-every setting not yet stored is marked, and each hourly run stops, naming them, until
-all are saved and the Sources category holds at least one source. Pick the LLM provider
-matching the key you pasted, or `None — plain excerpts`; set the Discord webhook or turn
-notifications off. `cyris settings push` does the same from a `cyris.toml`.
-
-**What the button cannot provision.** One step before the form, two values decided in
-it, and one dashboard step:
-
-1. **Create the D1 database** (`wrangler d1 create cyris`, or the dashboard) and pass
-   its UUID as `CYRIS_STORE_DATABASE_ID`. The container reaches D1 over REST rather than
-   through a binding, so there is nothing for the deploy to provision. `cyris` creates
-   the tables on first boot.
-2. **Name the Pages project** in `CYRIS_PROMOTE_PAGES_PROJECT` — the first publish
-   creates it. `DIGEST_ORIGIN` is only needed when the archive lives somewhere other
-   than `<project>.pages.dev`, such as a custom domain.
-3. **Attach a domain and Cloudflare Access**, if you want the second auth layer or
-   email-only newsletters. Both are dashboard steps.
-
-The other three Workers are separate deploys — one button deploys one Worker — and each
-is optional: [`workers/rss/`](workers/rss/README.md) (feed buffer),
-[`workers/promote/`](workers/promote/README.md) (vote queue),
-[`workers/newsletter/`](workers/newsletter/README.md) (email ingestion). `rss` and
-`newsletter` accept the `CYRIS_WORKER_TOKEN` you set on the app; `promote` has its own
-`CYRIS_PROMOTE_TOKEN`, kept apart because a vote button is a public capability.
-
-**Point the rss Worker at the same D1 database as the app.** Its button provisions a
-fresh one, and a fresh one has an empty `sources` table — the Worker then polls nothing
-and says `sources table is empty` in its log.
-
-**Do not leave a local install running against the same Pages project.** Two schedulers
-publishing one archive is the failure mode; `docker compose down` before you cut over.
-
-### Moving from local to Cloudflare
-
-`cyris store migrate` copies the JSON store into D1 without overwriting anything, and
-`cyris store diff` compares them article by article before you switch. Then flip
-`[store] backend` to `"d1"`, run `cyris settings push` to copy the runtime settings into
-D1 and `cyris sources push` to fill the source table, and delete the runtime settings
-from `cyris.toml` — a D1 deployment ignores them, and `cyris doctor` fails until they are
-gone. **Pick
-one backend** — they are alternatives, never a pair; running both splits decisions that
-`INSERT OR IGNORE` cannot heal.
+Moving a local install to Cloudflare later is the last section of the local guide.
+Updating, rolling back and checking a running deployment are in
+[docs/operations.md](docs/operations.md).
 
 ## The CLI
 
 **On a local install, the CLI is the whole application.** `cyris run` is the pipeline,
-`cyris triage-ui` serves `/settings`, `cyris articles ...` is how the store is managed.
+`cyris triage-ui` shows `/settings` read-only, `cyris articles ...` is how the store is
+managed.
 `cyris --help` lists everything.
 
 **On a Cloudflare install, most of it is not yours to type.** The container already runs
 `cyris run --if-due`, `cyris promote-sync` and `cyris triage-ui`, and `/settings` covers
 every runtime setting and editing one source. What is left is the work that has
-no UI — and it runs from a clone anywhere, because every command reaches D1 over REST:
-an `.env` with the deployment's database id and Cloudflare token is the whole setup.
+no UI — and it runs from a clone anywhere, because every command reaches D1 over REST.
+The clone's `.env` is in
+[Running the CLI against the deployment](docs/install-cloudflare.md#running-the-cli-against-the-deployment).
 
 ```
 cyris doctor                  Before the first run, and after any config change: exits
@@ -268,8 +191,9 @@ scripts/check.sh        # everything CI runs: JS tests, ruff, pytest
 - **Style**: ruff (line length 100); Pydantic v2 for all models and config
 - **Commits**: keep them atomic; lint + tests green before a PR
 
-Digest output language is `[digest] output_language`, a BCP 47 tag (default `zh-Hant`);
-`[digest] style_prompt` injects a custom tone or focus into the prompts.
+Digest output language is `[digest] output_language`, a BCP 47 tag with no default
+(the example uses `zh-Hant`); `[digest] style_prompt` injects a custom tone or focus
+into the prompts.
 
 ## License
 

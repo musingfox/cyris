@@ -58,12 +58,12 @@ def test_the_deploy_form_asks_for_nothing_the_worker_ignores() -> None:
 
 
 def test_manual_deploy_sets_every_required_secret() -> None:
-    """The copy-pasteable loop in the app README must cover every **Required** field."""
+    """The install guide's `secret bulk` file must cover every **Required** field."""
     required = {k for k, desc in _bindings().items() if desc.startswith("**Required.**")}
-    readme = (ROOT / "workers/app/README.md").read_text(encoding="utf-8")
-    loop = re.search(r"for s in (.*?); do", readme, re.S)
-    assert loop, "the secret-setting loop is gone from workers/app/README.md"
-    assert required - set(re.findall(r"[A-Z][A-Z0-9_]+", loop.group(1))) == set()
+    guide = (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
+    block = re.search(r"# \.env\.cloud(.*?)```", guide, re.S)
+    assert block, "the .env.cloud secrets file is gone from docs/install-cloudflare.md"
+    assert required - set(re.findall(r"^([A-Z][A-Z0-9_]+)=", block.group(1), re.M)) == set()
 
 
 def test_every_worker_is_deployable_by_button() -> None:
@@ -76,7 +76,7 @@ def test_every_worker_is_deployable_by_button() -> None:
     serve — a fork that looks deployed and returns nothing.
     """
     app_button = "?url=https://github.com/musingfox/cyris)"
-    assert app_button in (ROOT / "README.md").read_text(encoding="utf-8")
+    assert app_button in (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
 
     for worker in sorted(p.parent for p in ROOT.glob("workers/*/wrangler.toml")):
         name = worker.name

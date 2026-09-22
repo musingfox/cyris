@@ -46,7 +46,7 @@ def test_section_5_names_provider_none() -> None:
 
 def test_section_7_closes_17_and_drops_the_per_key_origin_step() -> None:
     section = _section(ARCHITECTURE, "## 7.", "## 8.")
-    assert "per-key origin" not in _row(section, "34")
+    assert "per-key origin" not in _row(section, "~~34~~")
     assert _row(section, "~~17~~").startswith("| ~~17~~ | ~~")
 
 

@@ -308,7 +308,7 @@ html[lang="zh-Hant"] { --serif: 'Songti TC', 'Noto Serif CJK TC', serif; }
         <h2 class="section-heading" id="start-title" data-zh="從小開始，讓它成為你日常的一部分。">Start small. Make it part of your day.</h2>
         <div class="run-options">
             <article class="run-card"><p class="eyebrow" data-zh="在你的電腦上">On your machine</p><h3 data-zh="讀你的第一份摘要。">Read your first digest.</h3><p data-zh="本機檔案、自訂排程，不需要部署到雲端。">Local files, your own schedule, no cloud deployment required.</p><ul><li data-zh="Python 3.12+、uv，以及你的供應商憑證">Python 3.12+, uv, and your provider credentials</li><li data-zh="執行管線時擷取 RSS">RSS fetched when you run the pipeline</li><li data-zh="磁碟上的 JSON 儲存與 HTML 輸出">JSON storage and HTML output on disk</li></ul><a class="btn" href="#local-setup" data-zh="本機快速開始 <span aria-hidden=&quot;true&quot;>↓</span>">Local quickstart <span aria-hidden="true">↓</span></a></article>
-            <article class="run-card cloud"><p class="eyebrow" data-zh="在 Cloudflare 上">On Cloudflare</p><h3 data-zh="讓你的摘要自動成形。">Let your digest come together.</h3><p data-zh="排程容器、D1 儲存，以及 Pages 上的 HTML 封存。">A scheduled container, D1 storage, and an HTML archive on Pages.</p><ul><li data-zh="需要 Workers 付費方案；可能產生使用費">Requires Workers Paid; usage charges may apply</li><li data-zh="可選用 Workers 進行 RSS 緩衝、投票與電子郵件">Optional Workers for RSS buffering, votes, and email</li><li data-zh="僅提供電子郵件的電子報需要你自己的網域">Email-only newsletters require your own domain</li></ul><a class="btn" href="https://github.com/musingfox/cyris/blob/main/workers/app/README.md" data-zh="雲端設定指南 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup guide <span aria-hidden="true">↗</span></a></article>
+            <article class="run-card cloud"><p class="eyebrow" data-zh="在 Cloudflare 上">On Cloudflare</p><h3 data-zh="讓你的摘要自動成形。">Let your digest come together.</h3><p data-zh="排程容器、D1 儲存，以及 Pages 上的 HTML 封存。">A scheduled container, D1 storage, and an HTML archive on Pages.</p><ul><li data-zh="需要 Workers 付費方案；可能產生使用費">Requires Workers Paid; usage charges may apply</li><li data-zh="可選用 Workers 進行 RSS 緩衝、投票與電子郵件">Optional Workers for RSS buffering, votes, and email</li><li data-zh="僅提供電子郵件的電子報需要你自己的網域">Email-only newsletters require your own domain</li></ul><a class="btn" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" data-zh="雲端設定指南 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup guide <span aria-hidden="true">↗</span></a></article>
         </div>
         <details class="setup" id="local-setup" open>
             <summary data-zh="本機快速開始——從來源到摘要">Local quickstart — from source to digest</summary>
@@ -327,11 +327,11 @@ uv run cyris doctor
 uv run cyris run</code></pre>
             </div>
         </details>
-        <p class="setup-note" data-zh="AI 處理會使用你的供應商帳戶。若未設定金鑰，管線會退回純文字摘錄。 <a href=&quot;https://github.com/musingfox/cyris#running-it-locally&quot;>閱讀完整設定說明 ↗</a>">AI processing uses your provider account. Without a configured key, the pipeline falls back to plain excerpts. <a href="https://github.com/musingfox/cyris#running-it-locally">Read the full setup instructions ↗</a></p>
+        <p class="setup-note" data-zh="AI 處理會使用你的供應商帳戶。若未設定金鑰，管線會退回純文字摘錄。 <a href=&quot;https://github.com/musingfox/cyris/blob/main/docs/install-local.md&quot;>閱讀完整設定說明 ↗</a>">AI processing uses your provider account. Without a configured key, the pipeline falls back to plain excerpts. <a href="https://github.com/musingfox/cyris/blob/main/docs/install-local.md">Read the full setup instructions ↗</a></p>
     </div>
 </section>
 </main>
-<div class="wrap"><footer><span data-zh="Cyris · AGPL-3.0-or-later · © 2026 musingfox">Cyris · AGPL-3.0-or-later · © 2026 musingfox</span><div class="footer-links"><a href="https://github.com/musingfox/cyris" data-zh="GitHub">GitHub</a><a href="https://github.com/musingfox/cyris/blob/main/docs/architecture.md" data-zh="架構">Architecture</a><a href="https://github.com/musingfox/cyris/blob/main/workers/app/README.md" data-zh="部署指南">Deployment guide</a></div></footer></div>
+<div class="wrap"><footer><span data-zh="Cyris · AGPL-3.0-or-later · © 2026 musingfox">Cyris · AGPL-3.0-or-later · © 2026 musingfox</span><div class="footer-links"><a href="https://github.com/musingfox/cyris" data-zh="GitHub">GitHub</a><a href="https://github.com/musingfox/cyris/blob/main/docs/architecture.md" data-zh="架構">Architecture</a><a href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" data-zh="部署指南">Deployment guide</a></div></footer></div>
 <script>
 (() => {
     const root = document.documentElement;

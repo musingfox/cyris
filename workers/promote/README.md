@@ -28,26 +28,37 @@ none; those pages only ever meant "I read this properly".
 
 ## Deploy
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/promote)
-
-The button provisions its own KV namespace and rewrites the id in
-`wrangler.toml`; the id committed there is a working default, not a leak — it
-grants nothing without an API token scoped to that account.
-
-By hand instead:
+Part of the Cloudflare install; the whole order is in
+[docs/install-cloudflare.md](../../docs/install-cloudflare.md#optional-workers). It
+works on the Free plan, but votes reach it only through the app Worker, which needs
+Workers Paid.
 
 ```bash
 cd workers/promote
-npx wrangler kv namespace create PROMOTIONS   # → copy the id into wrangler.toml
-npx wrangler secret put PROMOTE_TOKEN
-npx wrangler deploy
+bunx wrangler kv namespace create PROMOTIONS   # → replace the id in wrangler.toml;
+                                               #   the committed one is another account's
+bunx wrangler deploy
+bunx wrangler secret put PROMOTE_TOKEN          # openssl rand -hex 32
 ```
 
-Then set the same token as `CYRIS_PROMOTE_TOKEN` on `cyris-app`, and point the
-app at this Worker with `CYRIS_PROMOTE_WORKER_URL`. Leave either unset and the
-digest simply renders without vote buttons.
+Then, from the repo root, point the app at it:
 
-**The token is not a secret in the usual sense**, but it is no longer rendered
-into published pages either: votes go through the app's same-origin
-`/api/vote`, which attaches the bearer server-side. Keep it distinct from
-`CYRIS_WORKER_TOKEN`, which the rss and newsletter Workers accept.
+```bash
+bunx wrangler secret put CYRIS_PROMOTE_WORKER_URL --env-file /dev/null   # https://cyris-promote.<subdomain>.workers.dev
+bunx wrangler secret put CYRIS_PROMOTE_TOKEN --env-file /dev/null        # same value as PROMOTE_TOKEN
+```
+
+Keep the token distinct from `CYRIS_WORKER_TOKEN`, which the rss and newsletter
+Workers share. It stays server-side: votes go through the app's same-origin
+`/api/vote`, which attaches the bearer.
+
+The vote buttons appear for any reader logged in on the app's hostname, whether or
+not this Worker is wired. Without `CYRIS_PROMOTE_WORKER_URL` a click is refused with
+503, and with the URL but no `CYRIS_PROMOTE_TOKEN` the promote Worker answers 401.
+Readers following Discord links reach the app's hostname only when
+`CYRIS_PROMOTE_CUSTOM_DOMAIN` names it; on `pages.dev` there are no buttons.
+
+The Deploy to Cloudflare button provisions its own KV namespace; set `PROMOTE_TOKEN`
+and the two app secrets afterwards as above.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/promote)
