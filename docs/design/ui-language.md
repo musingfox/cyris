@@ -283,7 +283,7 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 ## 8. Current gaps and landing order
 
 Of the gaps surveyed on 2026-09-17, steps 1 to 3 landed on 2026-09-18 and steps 4, 6 and 7 landed on
-2026-09-19. Step 1 added the §2 tokens, the §3 type, focus and reduced motion, fixed two hardcoded colours,
+2026-09-19. Step 1 added the §2 tokens, the §3 type, focus and reduced motion, removed two hardcoded colours,
 and added the component CSS comparison test. Step 2 put the site bar and issue bar on archive, digest and
 raw. Step 3 rebuilt settings to §6. Step 4 rebuilt raw's list to §6 and added the triage view that appears
 only after signing in, and the deck was deleted the same day (`triage-raw-list-merge`). Step 6 turned the
