@@ -163,6 +163,24 @@ def test_provider_none_is_reported_as_a_choice(tmp_path: Path, monkeypatch) -> N
     )
 
 
+@pytest.mark.parametrize("backend, where", [("json", "in [llm_provider]"), ("d1", "on /settings")])
+def test_a_missing_key_offers_provider_none_where_this_backend_keeps_it(
+    tmp_path: Path, monkeypatch, backend: str, where: str
+) -> None:
+    for key in _LLM_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    cfg = _config(tmp_path, llm_provider={"provider": "gemini", "model": "m"})
+    cfg.app.store.backend = backend
+
+    check = doctor._check_llm(cfg)
+
+    assert check.status == "fail"
+    assert check.fix == (
+        f'Put GEMINI_API_KEY in .env. Or set the provider to "none" {where} '
+        "for plain-excerpt digests."
+    )
+
+
 def test_doctor_on_a_none_provider_config_passes_the_llm_check(tmp_path: Path, monkeypatch) -> None:
     from fakes import settings_toml
     from typer.testing import CliRunner

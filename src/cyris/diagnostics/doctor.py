@@ -146,6 +146,8 @@ def _check_llm(cfg: Config) -> Check:
         if llm.provider == "workers_ai":
             hint += " CLOUDFLARE_EMBEDDING_API_TOKEN also works: the same Workers AI "
             hint += "permission covers text models."
+        where = "on /settings" if cfg.app.store.is_d1 else "in [llm_provider]"
+        hint += f' Or set the provider to "none" {where} for plain-excerpt digests.'
         return Check(
             "llm provider",
             "fail",
