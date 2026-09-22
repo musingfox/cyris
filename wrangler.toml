@@ -31,6 +31,14 @@ preview_urls = false
 crons = ["0 * * * *"]
 
 [[containers]]
+# The registry repository this image is pushed to, and the container
+# application it deploys. Explicit because wrangler otherwise derives it
+# from the Worker name plus the class name, while the release workflow
+# carries its own IMAGE_NAME — and on 2026-09-21 the two disagreed, so a
+# local `wrangler deploy` and a CI deploy pushed to different repositories
+# and each silently reverted the other. `tests/test_deploy_inputs.py` now
+# holds all three to one string.
+name = "cyris-app-cyriscontainer"
 class_name = "CyrisContainer"
 # Relative to this file; its directory is the build context, so the whole repo
 # is what the image is built from.

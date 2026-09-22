@@ -104,3 +104,44 @@ def test_container_placement_excludes_asia_pacific() -> None:
     regions = config["containers"][0]["constraints"]["regions"]
     assert regions
     assert set(regions) <= {"ENAM", "WNAM", "EEUR", "WEUR"}
+
+
+def _container_image_name() -> str:
+    """The registry repository `wrangler deploy` builds into, from the tracked config."""
+    containers = tomllib.loads((ROOT / "wrangler.toml").read_text(encoding="utf-8"))["containers"]
+    [container] = containers
+    return container["name"]
+
+
+def _workflow_image_name(rel: str) -> str:
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    [name] = re.findall(r"^\s+IMAGE_NAME:\s*(\S+)", text, re.M)
+    return name
+
+
+def test_the_container_image_name_is_stated_rather_than_derived() -> None:
+    """Left unset, wrangler derives it from the Worker name plus the class name.
+
+    A derived name is one nothing in this repo can be held to, and the release
+    workflow carries an IMAGE_NAME of its own — so the two drift with no diff to
+    notice.
+    """
+    assert _container_image_name()
+
+
+def test_every_deploy_path_pushes_to_one_registry_repository() -> None:
+    """A local `wrangler deploy` and a CI deploy must land in the same repository.
+
+    On 2026-09-21 they did not: the tracked config left the name to wrangler
+    (`cyris-app-cyriscontainer`) while both workflows said `cyris-app`, so each
+    path pointed the live container application at an image the other had never
+    written. A CI deploy after a local one silently served the older code — the
+    shape that ships a reverted security fix with a green deploy log.
+    """
+    names = {
+        "wrangler.toml": _container_image_name(),
+        "release-image.yml": _workflow_image_name(".github/workflows/release-image.yml"),
+        "deploy.yml": _workflow_image_name(".github/workflows/deploy.yml"),
+    }
+
+    assert len(set(names.values())) == 1, names

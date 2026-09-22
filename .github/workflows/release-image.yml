@@ -12,7 +12,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: cyris-app
+  # Must equal `[[containers]] name` in wrangler.toml: that is the repository a
+  # local `wrangler deploy` pushes to, and pointing the same container
+  # application at two repositories lets either path silently serve the other's
+  # older image. tests/test_deploy_inputs.py holds them together.
+  IMAGE_NAME: cyris-app-cyriscontainer
 
 jobs:
   release:
