@@ -90,6 +90,8 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
 - **Allowed literal exceptions:** the brand square's glow `rgba(198,255,61,.45)`, the site bar's
   translucent background `rgba(7,7,10,.88)`, the primary button's hover background `#d4ff66`, and the dots'
   `border-radius: 50%`. A new exception must be written into this bullet.
+- Inline SVG illustration coordinates, paths and stroke widths are drawing geometry, not UI spacing.
+  Illustrations inherit token colours; their outer size and margins still use the spacing scale.
 - **All spacing is on the scale.** The digest body's former values such as 14/18/22/28/36/44/56px moved
   onto the scale in step 7 (`digest-issue-page-layout`); there are no exceptions after it.
 
@@ -146,6 +148,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **destructive confirm** | No `window.confirm`. On the first press, the danger button turns into `Confirm …` in place and takes an `--warn-tint` background; only a second press within 3 seconds acts, otherwise it reverts |
 | **section marker** | The label role, preceded by a 24px × 1px `--accent` line, spaced `--s-3` |
 | **footer** | 1px `--border` above, Geist Mono 14px uppercase, letter spacing 0.08em, `--text-faint`. It holds generation info only, never navigation |
+| **feature flow** | Landing-page explanation, not an app mockup. An ordered list of three illustrated steps: subscriptions, per-source processing, reading. Three equal columns with `--s-12` gaps; one column with `--s-16` gaps at 720px. SVGs are decorative (`aria-hidden`, non-focusable), 100% wide and `2 × --s-20` high, followed by `--s-6`, a 19px title and 14px small text with `--s-2` between them. Text carries the full meaning without the drawings. Line art uses `--text-dim`; `--accent` marks the resulting digest only. Static chevrons point along reading order, right on desktop and down on phones; no animation, fake controls, dates or fictional articles. The `#system` prototype shows the same illustration |
 
 ### Interaction
 

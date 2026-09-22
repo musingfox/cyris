@@ -419,6 +419,17 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
   .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; gap: var(--s-2); }
   .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
 }
+.feature-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-12); list-style: none; margin: var(--s-8) 0 0; padding: 0; }
+.feature-flow li { position: relative; min-width: 0; text-align: center; }
+.feature-flow li:not(:last-child)::after { content: ""; position: absolute; top: var(--s-20); right: calc(-1 * var(--s-8)); width: var(--s-3); height: var(--s-3); border-top: 1px solid var(--text-dim); border-right: 1px solid var(--text-dim); transform: rotate(45deg); }
+.feature-flow svg { display: block; width: 100%; height: calc(var(--s-20) * 2); margin-bottom: var(--s-6); color: var(--text-dim); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.feature-flow .result { color: var(--accent); }
+.feature-flow h3 { margin-bottom: var(--s-2); font: 600 calc(19px * var(--type-scale))/1.3 var(--font-sans); }
+.feature-flow p { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
+@media (max-width: 720px) {
+  .feature-flow { grid-template-columns: minmax(0, 1fr); gap: var(--s-16); }
+  .feature-flow li:not(:last-child)::after { top: auto; right: calc(50% - var(--s-2)); bottom: calc(-1 * var(--s-8)); transform: rotate(135deg); }
+}
 </style>
 </head>
 <body>
@@ -688,6 +699,42 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
           <div class="notice">Verified with gemini. Applies from the next run.</div>
         </div>
       </div>
+    </div>
+    <div class="sys-section">
+      <span class="label">Feature flow · Landing page</span>
+      <ol class="feature-flow">
+        <li>
+          <svg viewBox="0 0 240 160" aria-hidden="true" focusable="false">
+            <path d="M48 30h66v84H48zM58 20h66v84M62 92h36"/>
+            <circle cx="65" cy="72" r="2"/>
+            <path d="M63 57a17 17 0 0 1 17 17M63 45a29 29 0 0 1 29 29"/>
+            <path d="M132 70h64v48h-64zM132 70l32 25 32-25M132 118l22-20M196 118l-22-20"/>
+            <path d="M81 126v12h82v-8" stroke-dasharray="3 5"/>
+          </svg>
+          <h3>Bring your subscriptions</h3>
+          <p>RSS feeds and newsletters</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 240 160" aria-hidden="true" focusable="false">
+            <path d="M26 80h30M56 36v88M56 36h36M56 80h36M56 124h36"/>
+            <path d="M100 24h36l-12 14v12h-12V38zM104 70h28M104 80h20M104 90h24M102 124h32m-10-10 10 10-10 10"/>
+            <path d="M148 36h36M148 80h36M148 124h36M184 36v88M184 80h30"/>
+          </svg>
+          <h3>Set each source’s depth</h3>
+          <p>Filter, summarize, or keep excerpts</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 240 160" aria-hidden="true" focusable="false">
+            <path d="M152 26h44v76M162 18h44v76M164 42h20M164 54h20M174 66h10"/>
+            <g class="result">
+              <path d="M36 62q30-12 60 2 30-14 60-2v68q-30-12-60 2-30-14-60-2zM96 64v68"/>
+              <path d="M48 78q16-5 34 1M48 90q16-5 34 1M48 102q16-5 24-1M110 79q16-6 32-1M110 91q16-6 32-1M110 103q16-6 24-3"/>
+            </g>
+          </svg>
+          <h3>Read, then explore</h3>
+          <p>Highlights, plus this run’s articles and pending items</p>
+        </li>
+      </ol>
     </div>
   </main>
 </section>
