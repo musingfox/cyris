@@ -26,8 +26,8 @@ function makeDeps({
   };
   wrappedContainer.calls = [];
 
-  const startRun = async () => {
-    startRun.calls.push(true);
+  const startRun = async (period) => {
+    startRun.calls.push(period);
     return { started: "run", at: "t" };
   };
   startRun.calls = [];
@@ -230,6 +230,45 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
         expect(deps.probeGemini.calls, row.path).toHaveLength(0);
       }
     }
+  });
+});
+
+describe("ManualRunPeriod", () => {
+  it("POST /run?period=evening starts a run for that period", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("POST", "/run?period=evening", { cookie: await sessionCookie() }),
+      env(),
+      deps,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(deps.startRun.calls).toEqual(["evening"]);
+  });
+
+  it("POST /run with no period leaves the schedule to decide", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("POST", "/run", { cookie: await sessionCookie() }),
+      env(),
+      deps,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(deps.startRun.calls).toEqual([undefined]);
+  });
+
+  it("rejects an unknown period before starting a run", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("POST", "/run?period=noon", { cookie: await sessionCookie() }),
+      env(),
+      deps,
+    );
+
+    expect(resp.status).toBe(400);
+    expect(await resp.json()).toHaveProperty("error");
+    expect(deps.startRun.calls).toHaveLength(0);
   });
 });
 

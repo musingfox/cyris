@@ -18,6 +18,9 @@ export const PROTECTED = (path) =>
 
 const VOTE_ONLY = (path) => path === "/api/vote";
 
+// `cyris run --period` takes these; anything else would reach the container and fail there.
+const RUN_PERIODS = ["morning", "evening"];
+
 const sha256 = async (text) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -230,7 +233,12 @@ export async function handleRequest(request, env, deps) {
   }
 
   if (request.method === "POST" && url.pathname === "/run") {
-    return json(await deps.startRun());
+    const period = url.searchParams.get("period");
+    if (period === null) return json(await deps.startRun());
+    if (!RUN_PERIODS.includes(period)) {
+      return json({ error: `period must be one of ${RUN_PERIODS.join(", ")}` }, 400);
+    }
+    return json(await deps.startRun(period));
   }
 
   const response = await deps.container(request);

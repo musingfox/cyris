@@ -28,7 +28,11 @@ PY
     # Votes sync even when the run stops (say, on incomplete settings); the
     # pass still exits with the run's failure.
     status=0
-    cyris run --if-due $CONF || status=$?
+    if [ -n "${CYRIS_RUN_PERIOD:-}" ]; then
+      cyris run --period "$CYRIS_RUN_PERIOD" $CONF || status=$?
+    else
+      cyris run --if-due $CONF || status=$?
+    fi
     cyris promote-sync $CONF
     exit "$status"
     ;;

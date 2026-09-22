@@ -629,7 +629,8 @@ is a full snapshot of one manifest. Bringing the cloud one up is therefore not a
 one goes down in the same sitting.
 
 **The image carries three roles, and `CYRIS_ROLE` picks one** (`docker/entrypoint.sh`). `run` does
-one `cyris run --if-due` plus one `promote-sync` and exits, so the instance stops billing without
+one `cyris run --if-due` (or `--period`, when a manual `POST /run?period=` set
+`CYRIS_RUN_PERIOD`) plus one `promote-sync` and exits, so the instance stops billing without
 waiting for a sleep timer — `promote-sync` runs even when the run fails, and the pass exits with
 the run's status; `ui` serves `/settings`; the default is the
 supercronic loop, which now has no scheduled user and dies with `docker/crontab` whenever someone

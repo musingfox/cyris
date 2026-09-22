@@ -167,5 +167,6 @@ mode**, so stop the local one in the same sitting:
 docker compose down       # in the repo root, on the Mac mini
 ```
 
-Verify the cloud side first: `POST /run` (authenticated) fires the tick by hand
-and should advance `pages_manifest`.
+Verify the cloud side first: `POST /run?period=morning` (authenticated; or
+`evening`) runs that digest now and should advance `pages_manifest`. Plain
+`POST /run` fires the tick by hand, which does nothing outside the two digest hours.

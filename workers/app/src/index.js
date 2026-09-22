@@ -151,9 +151,12 @@ const injectStyle = (response, html) =>
     .transform(response);
 
 // A separate instance from the UI: this one runs the pipeline once and exits,
-// so it stops billing without waiting for a sleep timer.
-async function startRun() {
-  await getContainer(env.CYRIS, "run").start({ envVars: containerEnv("run") });
+// so it stops billing without waiting for a sleep timer. A period skips the
+// schedule check, so a manual run works outside the two digest hours.
+async function startRun(period) {
+  const envVars = containerEnv("run");
+  if (period) envVars.CYRIS_RUN_PERIOD = period;
+  await getContainer(env.CYRIS, "run").start({ envVars });
   return { started: "run", at: new Date().toISOString() };
 }
 
