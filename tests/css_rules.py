@@ -276,11 +276,11 @@ def canonical_colour(literal: str) -> str:
 
 
 def spec_colour_exceptions(markdown: str) -> set[str]:
-    """Read the colour literals the spec's ``允許的字面值例外`` bullet allows."""
+    """Read the colour literals the spec's ``Allowed literal exceptions`` bullet allows."""
     lines = markdown.splitlines()
-    start = next((i for i, line in enumerate(lines) if "允許的字面值例外" in line), None)
+    start = next((i for i, line in enumerate(lines) if "Allowed literal exceptions" in line), None)
     if start is None:
-        raise ValueError("the spec has no 允許的字面值例外 line")
+        raise ValueError("the spec has no Allowed literal exceptions line")
     bullet = [lines[start]]
     for line in lines[start + 1 :]:
         if not line.strip() or not line[0].isspace() or line.lstrip().startswith("- "):
@@ -289,7 +289,7 @@ def spec_colour_exceptions(markdown: str) -> set[str]:
     spans = re.findall(r"`([^`]+)`", " ".join(bullet))
     allowed = {canonical_colour(span) for span in spans if _COLOUR.fullmatch(span)}
     if not allowed:
-        raise ValueError("the spec's 允許的字面值例外 line names no colour")
+        raise ValueError("the spec's Allowed literal exceptions line names no colour")
     return allowed
 
 
