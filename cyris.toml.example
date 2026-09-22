@@ -1,5 +1,16 @@
 # Cyris configuration — copy to cyris.toml and fill in your values.
 # Secrets (API keys, tokens) come from the environment / .env, never here.
+#
+# Edit these first:
+#   [llm_provider] provider and model — match the key in .env, or provider = "none"
+#                  with model = "" for plain excerpts and no key
+#   [general]      timezone and digest_schedule — the hours are read in that zone
+#   [digest]       output_language — the language headlines and summaries are written in
+# The rest works as shipped. Every key in [general], [notify], [llm_provider],
+# [digest], [routing] and [vote_similarity] (threshold aside) must stay present:
+# none has a default in code, and a missing one stops the run.
+# On a Cloudflare deployment ([store] backend = "d1") those keys live in D1 and
+# are set on /settings or with `cyris settings push`; this file does not set them.
 
 [general]
 digest_schedule = ["08:00", "20:00"]   # local clock times to run the digest
@@ -63,9 +74,8 @@ publish_enabled = false                 # or CYRIS_PROMOTE_PUBLISH_ENABLED
 pages_project = ""                      # or CYRIS_PROMOTE_PAGES_PROJECT
 custom_domain = ""                      # or CYRIS_PROMOTE_CUSTOM_DOMAIN
 # Token via env: CYRIS_PROMOTE_TOKEN — deliberately not CYRIS_WORKER_TOKEN.
-# Since private-votes-public-archive, the token is server-side only (never rendered
-# into HTML). Votes go through POST /api/vote on the Worker (Access-only), which
-# attaches the token server-side and forwards to the promote Worker.
+# It stays server-side: readers vote through the app Worker's POST /api/vote,
+# which attaches the token and forwards the vote to the promote Worker.
 
 [newsletter]
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).

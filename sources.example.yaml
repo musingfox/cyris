@@ -4,11 +4,12 @@
 # Tiers:
 #   filter    - High-volume general news. Most articles discarded; only significant headlines kept.
 #   summarize - High-quality sources. Each article gets a paragraph summary.
+#   fan       - Sources you follow as they are. Passed through: never scored, filtered or summarized.
 #
 # Copy this file to sources.yaml and customize with your own feeds.
 # The entries below are a representative sample covering every source shape:
-# summarize/filter tiers, a paywalled feed, a newsletter matched by email,
-# and language overrides for non-English sources.
+# summarize/filter tiers, a newsletter matched by email, and a language override
+# for a non-English source.
 
 defaults:
   tier: filter
@@ -41,8 +42,9 @@ sources:
     tags: [tech, startup]
 
   # --- Email-only newsletter (no RSS): ingested via the Cloudflare newsletter Worker ---
-  # `type: newsletter` + `email_match` instead of a url; needs the [newsletter] Worker
-  # configured in cyris.toml (see docs). Matches incoming mail by From: header.
+  # `type: newsletter` + `email_match` instead of a url; needs the newsletter Worker
+  # wired in ([newsletter] worker_url in cyris.toml, or CYRIS_NEWSLETTER_WORKER_URL on
+  # the app Worker). Matches incoming mail by From: header.
   # `homepage` is where this newsletter publishes, and it does two jobs. Its host tells
   # the extractor which links in the email are the sender's own, so the issue's canonical link
   # comes from those rather than from whichever domain the issue happens to quote most.

@@ -17,8 +17,8 @@ const SECRETS = {
   CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN,
   CLOUDFLARE_EMBEDDING_API_TOKEN: env.CLOUDFLARE_EMBEDDING_API_TOKEN,
   CYRIS_WORKER_TOKEN: env.CYRIS_WORKER_TOKEN,
-  // Separate because it is not a secret: it is rendered into every published
-  // digest page so the vote buttons work in the reader's browser.
+  // Separate from CYRIS_WORKER_TOKEN: older published pages carry it in their
+  // vote buttons, so rotating it would break those buttons.
   CYRIS_PROMOTE_TOKEN: env.CYRIS_PROMOTE_TOKEN,
   ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
   GEMINI_API_KEY: env.GEMINI_API_KEY,

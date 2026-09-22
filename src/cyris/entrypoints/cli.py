@@ -219,7 +219,7 @@ def vote_sim(
     """Preview what vote similarity would suppress, without running the pipeline.
 
     Read-only: judges the articles already in the store for the window and prints
-    the diff, so the effect can be compared before `[vote_similarity] enabled`
+    the diff, so the effect can be compared before `\\[vote_similarity] enabled`
     is turned on.
     """
     _setup_logging(verbose)

@@ -1,6 +1,6 @@
 #!/bin/sh
-# One image, three roles. The Container runtime picks one with CYRIS_ROLE; the
-# Mac mini's compose file picks none and gets the default.
+# One image, three roles. The Container runtime picks one with CYRIS_ROLE; a
+# local docker compose install picks none and gets the default.
 set -eu
 
 CONF="--config /app/cyris.toml --sources /app/sources.yaml"

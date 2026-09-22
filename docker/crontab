@@ -1,7 +1,7 @@
 # Cyris schedule — supercronic fires at container-local clock (TZ set in compose).
 #
 # The tick is hourly and unconditional; `--if-due` asks the effective digest
-# schedule (D1 `settings`, falling back to `cyris.toml [general]`) whether this
+# schedule (`cyris.toml [general]` on a json install, D1 `settings` on d1) whether this
 # hour is a digest hour, and derives --period from which of the two it is.
 # A fixed `0 8,20` line could not do that: this file is baked into the image, so
 # changing the times would mean a rebuild.

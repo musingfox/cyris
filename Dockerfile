@@ -37,12 +37,15 @@ COPY docker/crontab /app/crontab
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
 # compose bind-mounts ./sources.yaml over this path; a clone has no sources.yaml,
-# so bake the tracked example. cyris.toml is optional (defaults + env).
+# so bake the tracked example. No cyris.toml is baked: a D1 container reads its
+# runtime settings and sources from D1 and its identity from the environment,
+# while a compose (json) install must bind-mount one, because runtime settings
+# have no defaults in code.
 COPY sources.example.yaml /app/sources.yaml
 
 ARG GIT_SHA
 ENV CYRIS_GIT_SHA=${GIT_SHA}
 
 # CYRIS_ROLE picks the role: `run` for the Workers Cron tick, `ui` for the
-# triage server, and the default `cron` for the Mac mini's supercronic loop.
+# triage server, and the default `cron` for a local compose install's supercronic loop.
 CMD ["/app/entrypoint.sh"]

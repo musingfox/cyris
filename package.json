@@ -35,7 +35,7 @@
         "description": "**Required.** The Pages project name the digest deploys to. The Worker serves the archive from `<name>.pages.dev` unless `DIGEST_ORIGIN` overrides it."
       },
       "ANTHROPIC_API_KEY": {
-        "description": "One LLM key is required. **After the deploy finishes, open `/settings` and choose the matching provider** — it lives in D1, not in this form, and until you pick one every digest is plain excerpts. [Anthropic Claude](https://console.anthropic.com/)."
+        "description": "Optional: one LLM key for the provider you choose, or none if you choose `None — plain excerpts`. **After the deploy finishes, open `/settings` and choose the provider** — it lives in D1, not in this form, and until one is saved every run stops. [Anthropic Claude](https://console.anthropic.com/)."
       },
       "GEMINI_API_KEY": {
         "description": "Alternative to `ANTHROPIC_API_KEY`; pick `gemini` on `/settings` to use it — [Google AI Studio](https://aistudio.google.com/apikey)."
@@ -56,10 +56,10 @@
         "description": "Optional. The `workers/newsletter/` email ingester. Needs a domain on Cloudflare Email Routing — the one setup step that cannot be automated."
       },
       "CYRIS_PROMOTE_WORKER_URL": {
-        "description": "Optional. The `workers/promote/` vote Worker, e.g. `https://cyris-promote.<sub>.workers.dev`. Blank disables the 👍/👎 buttons."
+        "description": "Optional. The `workers/promote/` vote Worker, e.g. `https://cyris-promote.<sub>.workers.dev`. Blank means a 👍/👎 click is refused (503) instead of recorded."
       },
       "CYRIS_PROMOTE_TOKEN": {
-        "description": "Optional, and **not** a secret: every digest published before 2026-09-01 has it baked in, so it cannot be rotated without breaking the vote buttons across the archive. Newer pages vote through this Worker's `POST /api/vote`, which attaches it server-side. Keep it distinct from `CYRIS_WORKER_TOKEN`."
+        "description": "Optional. The `workers/promote/` bearer, the same value as that Worker's `PROMOTE_TOKEN`. It stays server-side: readers vote through this Worker's `POST /api/vote`, which attaches it. Keep it distinct from `CYRIS_WORKER_TOKEN`."
       },
       "CYRIS_PROMOTE_CUSTOM_DOMAIN": {
         "description": "Optional. The hostname readers use, if you attached one. On a domainless deploy set it to this Worker's `*.workers.dev` hostname."
