@@ -55,8 +55,8 @@ def test_claude_md_names_settings_push_and_no_bundled_feed_list() -> None:
     assert "bundled src/feeds.json" not in CLAUDE_MD
 
 
-def test_unreleased_names_settings_push_provider_none_and_the_retired_variable() -> None:
-    unreleased = _section(CHANGELOG, "## [Unreleased]", "## [")
+def test_0_3_0_names_settings_push_provider_none_and_the_retired_variable() -> None:
+    unreleased = _section(CHANGELOG, "## [0.3.0]", "## [")
     assert "cyris settings push" in unreleased
     assert 'provider = "none"' in unreleased
     removed = _section(unreleased, "### Removed", "\n### ")
@@ -93,8 +93,8 @@ def test_deploy_facing_copy_does_not_name_the_old_table() -> None:
         assert "[general.notify]" not in (ROOT / rel).read_text(encoding="utf-8")
 
 
-def test_unreleased_names_the_webhook_on_settings_and_keeps_the_shipped_bullet() -> None:
-    unreleased = _section(CHANGELOG, "## [Unreleased]", "## [")
+def test_0_3_0_names_the_webhook_on_settings_and_keeps_the_shipped_bullet() -> None:
+    unreleased = _section(CHANGELOG, "## [0.3.0]", "## [")
     assert "Discord webhook" in unreleased
     assert "/settings" in unreleased
     assert (

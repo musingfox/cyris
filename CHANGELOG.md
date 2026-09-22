@@ -5,161 +5,170 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-22
+
+cyris now runs end to end on Cloudflare: a Container behind a Worker runs the
+pipeline on an hourly Cron Trigger, keeps its state in D1 and publishes to Pages,
+and `/settings` edits every runtime setting and source. A local install with the
+`json` store still works and is the other supported path. This release removes
+several 0.2.0 features and makes every runtime setting required, so read
+*Upgrading from 0.2.0* first.
+
+### Upgrading from 0.2.0
+
+For a local (`json`) install:
+
+- **Every runtime setting is required now.** There are no defaults in code: a
+  missing key stops `cyris run` and names itself. Compare your `cyris.toml` with
+  `cyris.toml.example` and add what is missing (new since 0.2.0: `[store]`,
+  `[notify] discord_webhook_url`, in `[digest]` the three snippet lengths,
+  `max_featured` and `type_scale`, and in `[vote_similarity]` `provider`,
+  `model` and `max_seeds`), then run `cyris doctor`, which
+  lists every missing key and fails on any table this build no longer reads.
+- **Turn on `[html_output] enabled = true`.** It was off in the 0.2.0 example,
+  and with the Obsidian writer gone it is a local install's only output.
+- **Delete the tables that are gone:** `[miniflux]`, `[obsidian]` and `[email]`.
+  The Discord webhook moved from `[general.notify]` to `[notify]
+  discord_webhook_url`, and `CYRIS_DISCORD_WEBHOOK_URL` is no longer read.
+- **Vote similarity names its embedding provider.** 0.2.0 embedded with Gemini
+  at `threshold = 0.68`. Keep `provider = "gemini"`, or switch to
+  `"workers_ai"` and delete `threshold`: each provider has its own calibrated
+  cutoff, and 0.68 on `workers_ai` would stop it suppressing anything.
+- **Choose the LLM provider explicitly.** `[llm_provider] provider` is
+  `anthropic`, `gemini`, `openai`, `workers_ai`, or `none` for plain excerpts
+  with no key. A real provider whose key is missing stops the run.
+- **`output_language` is a BCP 47 tag** (`zh-Hant`, `en`, `ja`). A plain
+  language name, as 0.2.0 used, still works unchanged.
+- **Scheduling:** `cyris schedule` and launchd are gone. Either run
+  `docker compose up -d`, which now keeps `./agent-vault` on the host, or add one
+  hourly cron line, `cd <repo> && uv run cyris run --if-due`, which picks the
+  period from `[general] digest_schedule`.
+- **Miniflux is gone:** feeds are polled directly at digest time, or buffered by
+  `workers/rss/` if you deploy it. `aliases:` in `sources.yaml` is no longer
+  read. Email-only newsletters need `workers/newsletter/`, because the local
+  email server is gone.
+
+To move to Cloudflare, follow `docs/install-cloudflare.md`. `cyris store
+migrate` copies the local store into D1, and `cyris settings push` and
+`cyris sources push` fill D1 from your `cyris.toml` and `sources.yaml`.
+
 ### Added
 
-- **Type size.** One site-wide setting, `digest.type_scale` (Smaller 0.875,
-  Default 1, Larger 1.125), under Digest on `/settings`. The app Worker applies it
-  to every HTML page it serves within a minute, issues already published included;
-  pages opened on pages.dev directly stay at 1.
-- **`cyris settings push`.** Copies each runtime setting D1 lacks from a
-  `cyris.toml`, validating every value first, and never overwrites a row. It
-  prints the D1 database id it bound to before anything else, so a push to the
-  wrong database is visible and, being fill-only, harmless.
-- **`provider = "none"`.** Excerpt-only digests are now a stated choice, valid in
-  `cyris.toml` and D1: no LLM client is built and no key is needed, `cyris doctor`
-  reports it as ok, and the run is not flagged degraded. The Model category on
-  `/settings` offers it as `None — plain excerpts`.
-- **Every runtime setting on `/settings`.** Twenty-one keys across Model (the LLM, the
-  embedder and vote similarity), Digest, a new Pipeline category and
-  Notifications. A missing one is marked in its field, at the top of its category
-  and with a warn dot on the category list. Turning vote similarity on checks the
-  embedder with one real call first; notifications turn off with a confirmed
-  Turn off.
-
-- **Deploying is now a reference to a published image.** A second dispatch-only
-  workflow renders a derived Wrangler config whose `image` names
-  `registry.cloudflare.com/<account>/cyris-app` at a tag or a digest, and deploys
-  with `--config`; the tracked `wrangler.toml` still builds `./Dockerfile` and
-  stays free of any account identity. It is separate from the build because the
-  two fail differently, and because pinning to an already-published image is this
-  path's job — the build workflow refuses to republish a commit.
-- **`cyris doctor --deployment <url>`.** Signs in to a deployment, asks it which
-  image it starts (`/api/build`, answered by the `ui` role from the `CYRIS_GIT_SHA`
-  baked into the image) and counts the distance to local HEAD. Cloudflare exposes
-  no way to read the image a Worker version references, so the deployment saying
-  so itself is the only answer there is.
-- **CI release workflow for container images.** A manually dispatched GitHub Actions
-  workflow builds and verifies the release image before pushing the immutable commit
-  tag and mutable `release` tag to Cloudflare's registry.
-- **cyris runs in a Cloudflare Container.** `workers/app/` fronts the existing
-  image with a Worker: an hourly Cron Trigger replaces `docker/crontab`
-  (`--if-due` reads its schedule from D1, so the logic moved unchanged), and any
-  HTTP request wakes the triage UI, which sleeps five minutes later via
-  `onActivityExpired → stop()`. One image, three roles, picked by `CYRIS_ROLE`:
-  `run` does one pipeline pass and exits so the instance stops billing, `ui`
-  serves the deck, and the default keeps the local supercronic loop for
-  development. The Mac mini's `docker compose` was stopped the same day — two
-  schedulers publishing to one Pages manifest is the failure this cutover had to
-  avoid, so it is not additive.
-- **Auth on the triage UI**, which had none: `127.0.0.1` was the whole security
-  boundary, and a Container is a public write surface. Two layers —
-  Cloudflare Access on the route (who you are; a dashboard step, because the
-  hostname and policy are deployment identity) and `CYRIS_UI_TOKEN` checked in
-  the Worker, where `/login` sets an HttpOnly cookie holding the token's
-  SHA-256. Anything without it gets the form or a `401` before a byte reaches
-  the container. Preview URLs are disabled: an Access application binds to one
-  hostname, so a second hostname is a door it does not cover.
-- **Source editing on `/settings`.** `POST /api/sources` upserts one row and
-  `DELETE /api/sources/{name}` retires it — name, url, type, tier, tags,
-  `homepage`, `email_match`, over the `sources` row that already existed. Adding
-  a feed was previously an edit to `sources.yaml` plus `cyris sources push`, and
-  in the Container that file is baked into the image. A write against an *empty*
-  table seeds it with the run's effective sources first: an empty table means
-  "use `sources.yaml`", so a single insert would otherwise flip the pipeline to
-  D1 holding one feed and silently stop every other one.
-
-- **`cyris doctor`.** A read-only pass over sources, LLM provider, vault paths,
-  the article store, every Worker, and whether the digest can actually be
-  published — with a fix line per problem and a non-zero exit when something
-  would break a run. Every credential is checked by asking the API it is *for*:
-  `/user/tokens/verify` answers only for user tokens and calls a working
-  account-owned token invalid, so the store check runs a real query and the
-  publish check asks the Pages API about the project.
-- **`cyris sources push` / `cyris sources list`.** Source definitions can live in
-  D1, which is what makes adding a feed a write instead of an image rebuild —
-  `workers/rss/` reads the same table at poll time. `sources.yaml` stays the
-  editable format and the fallback: an empty or unreachable table falls back to
-  the file on both sides, so a half-migrated deployment keeps fetching rather
-  than silently polling nothing.
-- **Article store on Cloudflare D1** (`[store] backend = "d1"`, off by default).
-  `D1ArticleStore` implements the same contract as the JSON store over D1's HTTP
-  query API, and the usage log moves into the same database. `cyris store migrate`
-  copies the local store in without ever overwriting a decision already made
-  there; `cyris store diff` compares the two backends field by field. With state
-  in D1, a dead local machine loses nothing.
+- **The Cloudflare deployment** (`workers/app/`). One image runs in three roles:
+  `run` does one pipeline pass per hourly Cron Trigger and exits, `ui` serves
+  `/settings` and stops after five idle minutes, and `cron` is the supercronic
+  loop a local `docker compose` install uses. The first boot creates the D1
+  tables and the first publish creates the Pages project. An authenticated
+  `POST /run` starts a pass by hand. A Deploy to Cloudflare button exists for
+  each of the four Workers, and `.env.example` lists what the app's deploy form
+  asks for.
+- **Auth on `/settings` and the vote API.** `/login` takes `CYRIS_UI_TOKEN` and
+  sets an HttpOnly cookie, and the Worker answers anything without it before the
+  container wakes. Cloudflare Access is an optional second layer on a custom
+  hostname (`CYRIS_UI_ACCESS_HOST`).
+- **Article store on D1** (`[store] backend = "d1"`). The LLM usage log, tags,
+  stories and story membership live in the same database. `cyris store migrate`
+  copies the JSON store in without overwriting a decision already made there,
+  and `cyris store diff` compares the two.
+- **Every runtime setting on `/settings`**: twenty-one keys in the Model, Digest,
+  Pipeline and Notifications categories, plus a Sources category that adds,
+  edits and retires feeds. Missing settings are marked. An LLM or embedder is
+  checked with one real call, and a Discord webhook with Discord itself, before
+  it is saved.
+- **`cyris settings push` and `cyris sources push|list`.** They fill D1 from
+  `cyris.toml` and `sources.yaml`. `settings push` never overwrites a row and
+  prints the database id first.
+- **`cyris doctor`.** It checks sources, the LLM provider, the store, every
+  Worker and whether the digest can be published, prints a fix line per problem
+  and exits non-zero when a run would break. `--deployment <url>` adds which
+  image production runs, how far this checkout is ahead of it, and the last
+  run's commit and status.
+- **Two more LLM providers**: OpenAI and Cloudflare Workers AI (`workers_ai`,
+  with `CLOUDFLARE_AI_TOKEN`), plus `provider = "none"` for excerpt-only digests
+  by choice. `cyris llm-compare` digests one window with several providers side
+  by side.
+- **Workers AI embeddings** (`@cf/baai/bge-m3`) are the default for vote
+  similarity, with no local cache. Each embedding provider keeps its own
+  calibrated threshold in `src/cyris/provider_defaults.json`.
+- **Pages publishing over REST.** Publishing uses the Pages direct-upload API
+  instead of shelling out to `wrangler`. With D1 the site's file list lives in
+  the `pages_manifest` table, and a deploy is refused when it would drop more
+  than one live digest page.
+- **A record of every run.** Each run logs one `run_summary` JSON line and, with
+  D1, writes one `digest_runs` row, on every path including a crash. A run whose
+  configured LLM did no work is flagged as degraded in its Discord message.
+- **A redesigned reader UI.** One design language (`docs/design/ui-language.md`)
+  now covers the archive, digest, raw and settings pages. The archive leads with
+  a headline card and groups issues by month, and every page has a site bar. A
+  signed-in reader gets a triage view on the raw page. A site-wide type size is
+  set on `/settings`.
+- **Two rejection reasons**, `not_interested` and `already_known`. A down vote
+  records `not_interested`, and `cyris articles reject --reason` takes either.
+- **`[digest] max_featured`** sets how many sections lead the digest.
+- **A CI release workflow and a deploy workflow**, both dispatch-only GitHub
+  Actions. The first builds and publishes the container image by commit; the
+  second deploys a published image by tag or digest. Container placement is limited to North America,
+  because Gemini and OpenAI refuse some egress locations.
 
 ### Changed
 
-- Discord webhook is set on `/settings` (D1).
-- **One home per deployment for runtime settings and sources.** A `d1`
-  deployment reads them from D1 `settings` and `sources` alone, a `json` one from
-  `cyris.toml` and `sources.yaml` alone. A missing setting or an empty source
-  list stops `cyris run` (and the commands that read settings) with the missing
-  names and the fix; `cyris doctor` fails on them, and on a `d1` deployment whose
-  `cyris.toml` still sets a runtime setting it ignores. `/settings`,
-  `cyris settings push`, `cyris sources push|list` and `cyris promote-sync` still
-  start on an empty D1, so a first boot can be filled.
-- **Grade C is seven environment variables, down from twelve.**
-  `CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name — the same
-  string in `.env` twice, so `StoreConfig`'s fallback chain had never chosen its
-  second branch. Probed against the live account, the two are indistinguishable
-  (D1 200, Pages 200, upload-token 200, Workers AI 401, R2 403).
-  `CLOUDFLARE_EMBEDDING_API_TOKEN` stays: it is genuinely a different permission.
-`rss` and `newsletter` share one `CYRIS_WORKER_TOKEN` — two random values but
-  never two trust domains, since they shared one `.env` and now one Worker secret
-  store. `promote` keeps its own `CYRIS_PROMOTE_TOKEN` and is **not a secret**:
-  the digest's vote buttons run in the reader's browser, so the token is rendered
-  into every published page. Merging it in was a same-day mistake, caught when
-  the 20:00 digest published the shared value in plain HTML; the dividing line is
-  published-vs-secret, not one-value-vs-three.
-- `ArticleRepository` now declares all 13 methods its callers use, not the 10 the
-  digest run touches — a partial implementation used to fail at the triage UI
-  instead of at the boundary.
+- **One home for runtime settings and sources per deployment** (breaking). A
+  `d1` deployment reads them from D1 alone and a `json` one from `cyris.toml` and
+  `sources.yaml` alone. A missing setting or an empty source list stops the run,
+  and `cyris doctor` fails on either. On `json`, `/settings` is read-only.
+- **The RSS Worker reads the D1 `sources` table.** An empty table polls nothing
+  and logs how to fill it; an unreadable one fails the poll.
+- **Worker tokens.** `rss` and `newsletter` share `CYRIS_WORKER_TOKEN`. The vote
+  Worker keeps its own `CYRIS_PROMOTE_TOKEN`, and it is no longer rendered into
+  published pages: readers vote through the app Worker's `POST /api/vote`, which
+  adds the token server-side. `CYRIS_D1_API_TOKEN` is gone; `CLOUDFLARE_API_TOKEN`
+  covers D1 and Pages.
+- **The raw page** lists every article this run judged plus what is still
+  pending, grouped by source, and is written as HTML only.
+- `--dry-run` renders the HTML digest.
+- `ArticleRepository` declares every method its callers use, and a test checks
+  each implementation against it.
 
 ### Fixed
 
-- **A malformed LLM response no longer costs a scoring run its scores and tags.**
-  `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only
-  after the loop, so one bad batch aborted the pass and took every completed
-  batch's tags with it — `run_digest` caught it and the digest shipped silently
-  unscored. Each batch now carries its own guard, and so does the tag write.
+- A malformed LLM batch no longer costs the scoring pass its other batches'
+  scores and tags, and a malformed filter entry is skipped with a warning.
+- News clustering no longer drops articles the model left out of its answer.
+- A failed usage-log write no longer costs the period its digest.
+- Newsletter issues that share a link are kept as separate articles.
+- Discord webhook tokens and API keys no longer appear in the run log.
+- `POST /run?period=morning|evening` runs that digest outside the scheduled
+  hours; before, a manual run outside them did nothing.
+- The app Worker forwards `CLOUDFLARE_AI_TOKEN` to the container, so the
+  `workers_ai` provider gets its own token on Cloudflare.
+- `cyris doctor` names `provider = "none"` as the alternative to a missing LLM
+  key.
+- `docker compose` bind-mounts `./agent-vault`, so a `json` install's store and
+  HTML survive `--force-recreate`.
 
 ### Removed
 
-- **Every fallback behind a runtime setting or a source.** The `cyris.toml`
-  overlay under D1, the code defaults of all twenty runtime settings, the
-  `sources.yaml` fallback under D1, and the RSS Worker's bundled `feeds.json`
-  (with `gen-feeds.py`) are gone. The RSS Worker polls only the D1 table: an
-  empty one polls nothing and logs how to fill it, an unreadable one fails the
-  poll.
-- **`CYRIS_DISCORD_WEBHOOK_URL`.** Nothing reads the webhook from the environment
-  any more, so `.env.example`, the Deploy button and the app Worker stop asking
-  for it and forwarding it.
-- **The swipe deck.** Raw's triage view replaced it. `/static/index.html`, its
-  script and stylesheet, and the container routes `GET /`, `GET /triage`,
-  `GET /api/articles`, `GET /api/stats` and `POST /api/articles/{accept,reject,undo}`
-  are gone, so `cyris triage-ui` serves `/settings` alone and opens no article
-  store. The deck was the only UI over the cross-day pending backlog: pending
-  rows outside an issue are now reachable only through
-  `cyris articles list|accept|reject`. Undoing a verdict and the `already_known`
-  reason from a UI go with it, and so does `ArticleRepository.reset_to_pending`,
-  whose only caller was the deck's undo.
-- **Miniflux.** `MinifluxSource`, `MinifluxClient` and `SourceMatcher` are gone,
-  and with them the Postgres dependency, the `[miniflux]` config section,
-  `CYRIS_MINIFLUX_API_KEY`, and the `miniflux` + `db` services in
-  `docker-compose.yml`. RSS now comes from the Cloudflare feed buffer, or from
-  `RssSource` polling feeds directly when `[rss]` is unconfigured. Re-measured on
-  2026-08-25 against a live direct poll: buffer 179 URLs, poll 95, **0 the poll
-  saw that the buffer had not** — the buffer is a strict superset, and direct
-  polling alone would have lost 84 of 179 articles to feed snapshots expiring.
-- **Source aliases.** `aliases:` in `sources.yaml` mapped a feed's `<title>` to
-  a source name, which only mattered while Miniflux served articles keyed by feed
-  title. Every remaining source names itself from `sources.yaml` directly, so the
-  whole parameter was being threaded through four adapters and read by none.
-- **`FetchSource.mark_as_read`** and `SaveResult.miniflux_ids`. Every remaining
-  source implemented `mark_as_read` as a no-op — the newsletter Worker ACKs its
-  queue inside `fetch_articles` — so the read state that is left lives entirely in
-  the article store.
+All of these are breaking.
+
+- **Miniflux**: `MinifluxSource`, the Postgres dependency, `[miniflux]`,
+  `CYRIS_MINIFLUX_API_KEY` and the `miniflux` and `db` compose services. Source
+  `aliases:` went with it.
+- **The Obsidian digest writer**: `[obsidian]`, `CYRIS_VAULT_PATH`,
+  `cyris articles export` and the `-raw.md` companion. The digest's output is
+  the HTML page.
+- **Preference learning**: `cyris learn` and `cyris run --disable-learning`.
+  Vote similarity is the personalization.
+- **The local email path**: `cyris email-server`, `[email]` and
+  `CYRIS_EMAIL_WEBHOOK_SECRET`. The newsletter Worker is the only email path.
+- **`cyris schedule`** and the launchd plists.
+- **Tracked topics** and the event store behind them.
+- **The swipe deck** and its container routes. The raw page's triage view
+  replaced it; pending articles outside an issue are reached through
+  `cyris articles list|accept|reject`.
+- **Every fallback behind a runtime setting or a source**: the code defaults,
+  the `cyris.toml` and `sources.yaml` fallbacks under D1, and the RSS Worker's
+  bundled feed list.
+- **`CYRIS_DISCORD_WEBHOOK_URL`.** The webhook is a runtime setting.
 
 ## [0.2.0] — 2026-08-24
 
@@ -229,6 +238,7 @@ Initial public release.
 - Docker Compose stack (Miniflux + Postgres + cyris) and macOS launchd scheduling.
 - Optional Cloudflare Workers for email-newsletter ingestion and promote/HTML publish.
 
-[Unreleased]: https://github.com/musingfox/cyris/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/musingfox/cyris/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/musingfox/cyris/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/musingfox/cyris/releases/tag/v0.2.0
 [0.1.0]: https://github.com/musingfox/cyris/releases/tag/v0.1.0

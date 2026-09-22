@@ -110,8 +110,8 @@ def test_git_sha_directives_reject_bad_placement() -> None:
 
 def test_changelog_names_ci_release_workflow() -> None:
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    unreleased = text.split("## [Unreleased]", 1)[1].split("## [0.2.0]", 1)[0]
-    assert "CI release workflow" in unreleased
+    release = text.split("## [0.3.0]", 1)[1].split("## [0.2.0]", 1)[0]
+    assert "CI release workflow" in release
 
 
 def _release_job() -> dict:
