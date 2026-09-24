@@ -97,6 +97,7 @@ src/cyris/
 │   │                        #   source_store.py, tags.py, stories.py = the other D1 tables;
 │   │                        #   newsletter_dedup.py = the save-time dedup rule both stores share;
 │   │                        #   runs.py = one `digest_runs` row per run, every path;
+│   │                        #   digests.py = each issue's final DigestContent + raw-page flag;
 │   │                        #   archive_meta.py = the archive rows' article counts, read from `usage_log`
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
