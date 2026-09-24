@@ -25,6 +25,7 @@ case "${CYRIS_ROLE:-cron}" in
         kill -TERM "$child" 2>/dev/null || true
         wait "$child" || true
       fi
+      echo "entrypoint: SIGTERM, stopping" >&2
       exit 143
     }
     trap on_term TERM

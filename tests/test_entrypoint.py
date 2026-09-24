@@ -98,9 +98,12 @@ class _RunPass:
     def __init__(self, tmp_path: Path, python_body: str, cyris_body: str) -> None:
         assert DASH is not None
         env, self.calls = _stubbed_env(tmp_path, "run", python_body, cyris_body)
-        self.proc = subprocess.Popen(
-            [DASH, str(ENTRYPOINT)], env=env, cwd=tmp_path, start_new_session=True
-        )
+        # A file, not a pipe: a step the shell leaves behind would hold a pipe open.
+        self.stderr = tmp_path / "stderr.log"
+        with self.stderr.open("wb") as err:
+            self.proc = subprocess.Popen(
+                [DASH, str(ENTRYPOINT)], env=env, cwd=tmp_path, stderr=err, start_new_session=True
+            )
 
     def wait_for_call(self, line: str, timeout: float = 5.0) -> None:
         deadline = time.monotonic() + timeout
@@ -112,6 +115,9 @@ class _RunPass:
         """SIGTERM the shell alone, as `Container.stop()` does; its exit code."""
         self.proc.send_signal(signal.SIGTERM)
         return self.proc.wait(timeout=within)
+
+    def stderr_lines(self) -> list[str]:
+        return self.stderr.read_text().splitlines()
 
     def cleanup(self) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -168,18 +174,29 @@ class TestRunRoleProbesEgress:
 class TestRunRoleStopsOnSigterm:
     """`Container.stop()` is one SIGTERM to the shell, which is PID 1 in the `run` role."""
 
-    def test_sigterm_during_the_run_ends_the_pass_with_143(self, run_pass) -> None:
-        p = run_pass(cyris_body='test "$1" = run && exec sleep 30; exit 0')
+    @pytest.mark.parametrize(
+        "run_body",
+        [
+            pytest.param("exec sleep 30", id="killed-by-the-signal"),
+            # The real `cyris run` catches SIGTERM and exits 143 itself, and then dash
+            # prints no job-status line, so the entrypoint's own line is all stderr has.
+            pytest.param("trap 'exit 143' TERM; sleep 30 & wait $!", id="exits-143-itself"),
+        ],
+    )
+    def test_sigterm_during_the_run_ends_the_pass_with_143(self, run_pass, run_body: str) -> None:
+        p = run_pass(cyris_body=f'test "$1" = run && {{ {run_body}; }}; exit 0')
         p.wait_for_call("cyris run")
         assert p.terminate(within=3) == 143
         time.sleep(0.5)
         assert _calls(p.calls) == ["python", "cyris run"]
+        assert "entrypoint: SIGTERM, stopping" in p.stderr_lines()
 
     def test_sigterm_during_the_probe_ends_the_pass_before_the_run(self, run_pass) -> None:
         p = run_pass(python_body="exec sleep 2")
         p.wait_for_call("python")
         assert p.terminate(within=4) == 143
         assert _calls(p.calls) == ["python"]
+        assert "entrypoint: SIGTERM, stopping" in p.stderr_lines()
 
     def test_sigterm_reaches_the_running_run(self, run_pass, tmp_path: Path) -> None:
         pidfile = tmp_path / "step.pid"
