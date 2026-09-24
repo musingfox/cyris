@@ -952,6 +952,26 @@ async def test_a_run_that_raises_is_recorded_as_an_error(tmp_path: Path) -> None
     assert summary["fetched"] == 1
 
 
+async def test_a_run_stopped_by_sigterm_is_recorded_as_an_error(tmp_path: Path) -> None:
+    # `cyris run` turns SIGTERM into SystemExit(143), which is not an Exception:
+    # only a `finally` still records the run it cut short.
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps, recorded = _recording(deps)
+
+    def terminated(*args, **kwargs):
+        raise SystemExit(143)
+
+    deps.store.save = terminated
+
+    with pytest.raises(SystemExit) as exc:
+        await run_digest(deps, RunOptions())
+
+    assert exc.value.code == 143
+    [summary] = recorded
+    assert summary["status"] == "error"
+    assert "wall_seconds" in summary
+
+
 async def test_a_run_that_dies_before_fetching_is_recorded(tmp_path: Path, monkeypatch) -> None:
     async def refuse(**kwargs):
         raise RuntimeError("no network")
