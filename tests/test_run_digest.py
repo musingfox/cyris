@@ -1271,3 +1271,32 @@ async def test_an_empty_window_stores_no_digest_and_names_no_error(tmp_path: Pat
     assert report.status == "no_articles"
     assert "digest_store_error" not in _run_summary(caplog)
     assert _digest_count(db) == 0
+
+
+async def test_a_preview_leaves_the_stored_digest_untouched(tmp_path: Path) -> None:
+    from cyris.utils.timezone import now_in_timezone
+
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path, _notify_llm(), FakeSource([_notify_article()]), discord_contents=contents
+    )
+    deps, store, db = _stored_digests(deps)
+    # A preview saves no articles, so it can only digest what the store already holds.
+    deps.store.save([_notify_article()])
+    today = now_in_timezone(deps.cfg.app.general.timezone).strftime("%Y-%m-%d")
+    published = DigestContent(
+        date=today,
+        period="morning",
+        sources_processed=1,
+        articles_received=99,
+        articles_included=99,
+        usage=UsageStats(),
+    )
+    store.save(published, raw_page=True)
+
+    report = await run_digest(deps, RunOptions(dry_run=True))
+
+    assert report.status == "ok"
+    assert contents and contents[0].date == today
+    assert _digest_count(db) == 1
+    assert store.load(today, "morning").content.articles_included == 99
