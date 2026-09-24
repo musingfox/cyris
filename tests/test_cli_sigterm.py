@@ -6,6 +6,9 @@ stop is a SIGTERM. Python's default for it kills the process outright, so
 """
 
 import signal
+import subprocess
+import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -54,3 +57,63 @@ def test_run_puts_the_previous_sigterm_handler_back() -> None:
     _invoke_run_recording_sigterm_handler()
 
     assert signal.getsignal(signal.SIGTERM) == before
+
+
+_CHILD = """
+import asyncio
+import time
+from unittest.mock import MagicMock, patch
+
+
+async def fake_run_digest(deps, options):
+    print("started", flush=True)
+    try:
+        {blocking}
+    finally:
+        print("finally ran", flush=True)
+
+
+with (
+    patch("cyris.bootstrap.load_effective_config", MagicMock()),
+    patch("cyris.bootstrap.build_deps", MagicMock()),
+    patch("cyris.service_layer.run_digest.run_digest", fake_run_digest),
+):
+    from cyris.entrypoints.cli import app
+
+    app(["run"])
+"""
+
+
+def _sigterm_run_blocked_in(blocking: str) -> tuple[int, str, float]:
+    child = subprocess.Popen(
+        [sys.executable, "-c", _CHILD.format(blocking=blocking)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "started"
+        sent = time.monotonic()
+        child.send_signal(signal.SIGTERM)
+        stdout, _ = child.communicate(timeout=10)
+        return child.returncode, stdout, time.monotonic() - sent
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_sigterm_during_a_blocking_call_runs_cleanup_and_exits_143() -> None:
+    returncode, stdout, elapsed = _sigterm_run_blocked_in("time.sleep(30)")
+
+    assert returncode == 143
+    assert "finally ran" in stdout
+    assert elapsed < 2
+
+
+def test_sigterm_while_awaiting_runs_cleanup_and_exits_143() -> None:
+    returncode, stdout, elapsed = _sigterm_run_blocked_in("await asyncio.sleep(30)")
+
+    assert returncode == 143
+    assert "finally ran" in stdout
+    assert elapsed < 2
