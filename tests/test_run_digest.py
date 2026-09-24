@@ -1154,3 +1154,18 @@ async def test_a_configured_provider_that_spent_nothing_is_still_degraded(tmp_pa
     await run_digest(deps, RunOptions())
 
     assert recorded[0]["degraded"] is True
+
+
+async def test_a_run_without_a_digest_store_writes_its_pages_as_before(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    assert deps.digest_store is None
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert "digest_store_error" not in _run_summary(caplog)
+    assert report.html_path is not None and report.html_path.exists()
+    assert list(report.html_path.parent.glob("*-raw.html"))

@@ -65,3 +65,9 @@ def test_a_d1_deployment_stores_its_digest_in_its_own_d1(tmp_path: Path, db) -> 
     assert db.query("SELECT date, period FROM digests").rows == [
         {"date": content.date, "period": content.period}
     ]
+
+
+def test_a_json_backend_has_no_digest_store(tmp_path: Path) -> None:
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
+
+    assert bootstrap.build_deps(cfg).digest_store is None
