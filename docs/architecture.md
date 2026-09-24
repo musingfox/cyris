@@ -740,7 +740,7 @@ Delivered, with the receipt each one was signed off on:
 | ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | `cloud-m1-delete-before-porting` |
 | ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | `schedule-settings-d1` |
 | ~~**M3**~~ | Publish → **Pages REST**; the archive → **D1 `pages_manifest`**, not R2 | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ✅ A page rendered only in memory went live, and all 57 archived digests survived a deploy driven purely by the manifest. `check-missing` recognised 57/57, which is what proves the hash formula | `cloud-p3` |
-| ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below | `cloud-p3` · `evaluate-embedding-provider` |
+| ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below. The provider choice was reversed on 2026-09-21: production embeds with `gemini-embedding-001` again, see “Why M4 did not use Vectorize” | `cloud-p3` · `evaluate-embedding-provider` |
 
 Two things this table deliberately makes explicit:
 
@@ -914,9 +914,12 @@ allowance. The observed run: 1,221 texts, 13 requests, 17.9s wall, 42 neurons. I
 extended a seed's life, which its own docstring implied it did: `vote_similarity._voted` reads
 seeds from store rows, so a deleted row takes its seed with it, cached vector or not.
 
-Reverting this is a config line (`provider`) plus restoring a cache class, not an architecture
-change. `GeminiEmbedder` and `cyris embed-compare` stay for comparison; both are deletion
-candidates once `bge-m3` has weeks of production behind it.
+The provider half has since been reverted, as a config line: production embeds with
+`gemini-embedding-001` from 2026-09-21, after a 189-vote re-measurement found it predicts votes
+significantly better than `bge-m3` (`docs/vote-signal-measurement.md`, "Re-measured on 189
+votes"). The cache stayed deleted — a run embeds ~300 titles, and neither provider caches.
+`WorkersAIEmbedder` stays as the example config's provider; `cyris embed-compare` stays for the
+next comparison.
 
 ### A fixed threshold is the wrong shape (found while collecting M4's receipt)
 

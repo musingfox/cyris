@@ -293,6 +293,46 @@ rather than a model difference. Recording each side of the boundary (`kept_max` 
 **Closing condition:** a disagreement appears, or the downvote set grows past one obvious
 class and they still agree. Elapsed time alone does not settle it.
 
+## Re-measured on 189 votes — 2026-09-18
+
+The closing condition above was met by growth, not by the parity run, which had stopped on
+2026-08-27. Downvotes went from 2 in one class to 57 across several — lottery, domestic
+politics, eclipses — and at that size the providers separate.
+
+Method: the 189 articles with a `triaged_at` (132 up, 57 down). A fixed seed draws 10 up and
+10 down as examples; the other 169 are the test set. An article's score is its cosine to the
+nearest upvote minus its cosine to the nearest downvote, read as AUC, with confidence
+intervals from 1,000 paired bootstrap resamples. Titles only.
+
+| model | 20 seeds | all other votes as seeds | all other votes, lottery excluded |
+|---|---|---|---|
+| `gemini-embedding-001` | 0.971 | **0.992** | **0.983** |
+| `gemini-embedding-2` | 0.956 | 0.986 | 0.969 |
+| `bge-m3` | 0.937 | 0.977 | 0.950 |
+
+- `gemini-embedding-001` beats `bge-m3` significantly in every column: +0.034 (+0.010 to
+  +0.066) at 20 seeds, +0.015 (+0.002 to +0.034) with all votes, +0.032 (+0.002 to +0.070)
+  with lottery excluded.
+- `gemini-embedding-2` cannot be told apart from either.
+- The task prefixes Google documents (`task: classification`, `sentence similarity`, and 001's
+  `CLASSIFICATION` / `SEMANTIC_SIMILARITY`) did not help and were slightly worse.
+- Adding the excerpt did not help Gemini (0.992 against 0.991) and helped `bge-m3` a little
+  (0.977 against 0.984).
+
+**Verdict: production uses `gemini-embedding-001`.** The 2026-08-10 reason for `bge-m3` was
+co-location, chosen because price, storage and quality all measured flat. Quality no longer
+does, and co-location buys nothing a reader sees. D1 `settings` holds
+`vote_similarity.provider = "gemini"`; the first production run to embed was
+2026-09-21T00:02Z, and `digest_runs` shows every run since embedding 246–348 titles.
+
+`cyris.toml.example` keeps `workers_ai`. Vote similarity ships off there, and `bge-m3`
+needs no key beyond the Cloudflare ones a deployment already has; a fork that turns the
+feature on should read this section first.
+
+`gemini-embedding-001` retires on 2028-05-14 and Google names `gemini-embedding-2` as its
+replacement. That move is not free: 0.68 is a property of 001's cosine scale (see the
+thresholds in `docs/architecture.md` §5), so the replacement needs its own calibration.
+
 ## Consequence for the option ranking
 
 Round 1's `opt-rule-filter` ADOPT does not survive: the rule it recommends is
