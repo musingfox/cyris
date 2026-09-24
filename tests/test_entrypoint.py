@@ -175,6 +175,25 @@ class TestRunRoleStopsOnSigterm:
         time.sleep(0.5)
         assert _calls(p.calls) == ["python", "cyris run"]
 
+    def test_sigterm_reaches_the_running_run(self, run_pass, tmp_path: Path) -> None:
+        pidfile = tmp_path / "step.pid"
+        p = run_pass(cyris_body=f"test \"$1\" = run && echo $$ > '{pidfile}' && exec sleep 30")
+        p.wait_for_call("cyris run")
+        p.terminate(within=5)
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), 0)
+
+    def test_sigterm_reaches_the_running_promote_sync(self, run_pass, tmp_path: Path) -> None:
+        pidfile = tmp_path / "step.pid"
+        p = run_pass(
+            cyris_body=f"test \"$1\" = promote-sync && echo $$ > '{pidfile}' && exec sleep 30\n"
+            "exit 0"
+        )
+        p.wait_for_call("cyris promote-sync")
+        p.terminate(within=5)
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), 0)
+
 
 class TestContainerRoleDefaultsToD1Store:
     def test_run_defaults_store_to_d1(self, tmp_path: Path) -> None:

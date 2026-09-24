@@ -28,7 +28,19 @@ PY
     # This shell is PID 1, and Container.stop() is one SIGTERM to it. A shell
     # runs a trap only after its foreground command returns, so each step runs
     # in the background and the shell waits on it, which a trapped signal ends.
-    trap 'exit 143' TERM
+    # The signal goes on to the running step, and the pass ends when that step
+    # does, so `cyris run` gets to finish its own shutdown instead of being
+    # orphaned.
+    child=
+    on_term() {
+      trap '' TERM
+      if [ -n "$child" ]; then
+        kill -TERM "$child" 2>/dev/null || true
+        wait "$child" || true
+      fi
+      exit 143
+    }
+    trap on_term TERM
     step() {
       "$@" &
       child=$!
