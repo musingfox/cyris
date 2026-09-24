@@ -70,6 +70,7 @@ flowchart TB
         EMB["Embedder"]
         TAGS["D1TagStore"]
         STORIES["D1StoryStore"]
+        DIGESTS["D1DigestStore"]
     end
 
     subgraph EXT["External"]
@@ -102,6 +103,7 @@ flowchart TB
     RUN -->|direct inject| EMB
     RUN -->|direct inject| TAGS
     RUN -->|direct inject| STORIES
+    RUN -->|direct inject| DIGESTS
 
     LLM --> API
     STORE --> CFW
@@ -113,6 +115,7 @@ flowchart TB
     USAGE --> CFW
     TAGS --> CFW
     STORIES --> CFW
+    DIGESTS --> CFW
     NOTI --> DISC
     EMB --> CFW
     HTML -->|json backend only| FS
@@ -124,7 +127,7 @@ flowchart TB
     class P1,P2,P3 port;
     class HTML,FS fallback;
     class RSS,FEEDS bad;
-    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,EMB cloud;
+    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,DIGESTS,EMB cloud;
 ```
 
 **Legend**: 🟢 Protocol boundary　🟠 the `json` backend's fallback path　🔴 must not exist in the
@@ -164,7 +167,7 @@ test.
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `D1TagStore`, `D1StoryStore` | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `D1TagStore`, `D1StoryStore`, `D1DigestStore` | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -859,18 +862,19 @@ directory on one Mac mini.
 This also removed the blocker: every token in `.env` answers **403** on `/r2/buckets`. R2 is enabled
 on the account (a bucket already exists), so it is a missing `R2 → Edit` permission, not a missing
 service. Nothing now waits on it. If independent durable backups of rendered digests are ever wanted
-— they are otherwise unrecoverable, since the LLM summaries are not stored — R2 is where they go,
-and the token edit becomes worth making. That is a durability decision, not a cloud-move blocker.
+— since 2026-09-24 a digest page can be re-rendered from D1 `digests` (§4), but that copy shares an
+account with Pages — R2 is where they go, and the token edit becomes worth making. That is a durability decision, not a cloud-move blocker.
 
 **The local-directory writer stays** as the no-D1 fallback: `backend = "json"` keeps writing
 `agent-vault/html/` and deploying a directory.
 
 **What this costs, stated plainly.** Three things a reviewer should be able to check:
 
-- **Durability.** Digest HTML holds LLM summaries stored nowhere else, so the deployed site is not
-  just the archive's *home*, it is its only copy. Deleting the Pages project deletes history. This
-  is better than what it replaced — one gitignored directory on one Mac mini — and worse than a
-  copy in R2. It is a decision, not an oversight; tracked in §7.
+- **Durability.** Until 2026-09-24 digest HTML held LLM summaries stored nowhere else, so the
+  deployed site was the archive's only copy. Since then every run also stores its `DigestContent`
+  in D1 `digests` (§4), so deleting the Pages project no longer deletes a digest's content; the
+  raw companion pages and the issues published before that date still live only on Pages. Both
+  copies sit in one Cloudflare account; an off-account copy is tracked in §7.
 - **Recovery.** If D1 is lost, `pages_manifest` is empty and the next deploy would be a full
   snapshot of this run's files alone — wiping every live page. That is now refused two ways.
   An empty manifest against a Pages project that already has deployments (and no receipt)
@@ -1003,7 +1007,7 @@ home won, because there is only one.
 | ~~11~~ | ~~Retire the local JSON store~~ | Done 2026-08-29: the M-ship receipt landed (a scheduled container run advanced `pages_manifest` while every local file stayed frozen), and `agent-vault/articles/` was deleted. `cyris store migrate\|diff` **were not** removed with it — checked 2026-08-30, both are still on the CLI, and they still have a subject: `backend = "json"` remains the no-D1 fallback |
 | ~~12~~ | ~~Post-rebuild cleanup~~ | Done 2026-08-29 in the same window: `[miniflux]`, both embeddings caches, `agent-vault/html/` and its bind mount are gone. `agent-vault/` now holds ~52KB and no pipeline state. (2026-09-22: `docker-compose.yml` bind-mounts the whole `./agent-vault` again, for a `json` compose install; see §6.) |
 | 13 | Replace the absolute similarity threshold with a relative one | Superseded in shape by M-behaviour (`docs/milestones/schema-first-interleave.md`): suppression must carry a reason and a clock, not a recalibrated cosine. `[vote_similarity]` is **off** in production since 2026-08-28 — the stale cutoff was suppressing measurably (2→24 downvote seeds took suppression from 8 to 45 on a fixed window); off is the honest state until the replacement lands |
-| 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Digest HTML holds LLM summaries stored nowhere else, so deleting the Pages project deletes history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`). 2026-09-24 showed a second way to lose an issue: a deployment that lands after `_page_is_live` gives up never reaches `pages_manifest`, so the next deploy, a full snapshot, drops the page. That morning's issue was put back into the manifest by hand from the live site, and the verify window went from 10s to two minutes; a deploy slower than that still loses its page. The D1 half is done 2026-09-24: every non-dry-run run stores its final `DigestContent` and raw-page flag in D1 `digests` (§4), so a lost digest page can be re-rendered, though its raw companion page cannot. Still open: a copy off Cloudflare, since D1 and Pages sit in one account (ticket `offsite-digest-backup`) |
+| 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Until 2026-09-24 digest HTML held LLM summaries stored nowhere else, so deleting the Pages project deleted history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`). 2026-09-24 showed a second way to lose an issue: a deployment that lands after `_page_is_live` gives up never reaches `pages_manifest`, so the next deploy, a full snapshot, drops the page. That morning's issue was put back into the manifest by hand from the live site, and the verify window went from 10s to two minutes; a deploy slower than that still loses its page. The D1 half is done 2026-09-24: every non-dry-run run stores its final `DigestContent` and raw-page flag in D1 `digests` (§4), so a lost digest page can be re-rendered, though its raw companion page cannot. `D1DigestStore.load` is that re-render path; nothing in the pipeline calls it yet, so it is not dead code. Still open: a copy off Cloudflare, since D1 and Pages sit in one account (ticket `offsite-digest-backup`) |
 | ~~32~~ | ~~Every run leaves a D1 row — the empty ones and the exceptions included~~ | Done 2026-09-17. `run_digest`'s `finally` logs the `run_summary` line and then hands the same dict to `Deps.record_run`, bound in `build_deps` only when D1 is wired, which inserts one `digest_runs` row stamped with the image's `CYRIS_GIT_SHA`; the call has its own `try/except`, so a D1 outage costs the row, never the run's result, exception or log line. `degraded` comes from `is_degraded_run` on the content path and is NULL where no content exists, agreeing with the Discord flag. Dry runs write too, and `last()` ignores them. `doctor --deployment` now prints a `last run` line under `deployment image`, comparing the last run's sha with the one production starts — the runtime half #33 (`doctor-deployment-provenance`) left open; it warns, never fails, because a sha lags a deploy until the next run. What it replaced: On 2026-09-14 the 08:00 run left nothing: no `usage_log` row, no page, no notification. `no_articles` returns before storing, writing usage, publishing and notifying, so "ran and fetched an empty set" and "never started" leave the same trace — nothing — and telling them apart meant chasing a stream that expires in seven days. The row should record the degraded judgement through `is_degraded_run`, so it agrees with the notification. `run_summary` already has the right semantics (emitted in a `finally`, `status=error` on the exception path) but reaches only stdout, which is the operational window and not the record. A new table, not a new column: `schema.sql` is all `CREATE ... IF NOT EXISTS` applied at every entrypoint, so an existing deployment gets it on the next boot. The build sha rides along and corroborates #31 after the fact; it is not what a revert is judged by. Ticket `run-receipt-in-d1` |
 | ~~33~~ | ~~`doctor` says which image production runs, and how far behind it is~~ | Done 2026-09-15. Printing the local sha would not have helped — `doctor` on a laptop reports the laptop — and the online half has exactly one source: Cloudflare documents no way to read the image a Worker version references (no Containers resource in the API reference; a version's response carries at most a Durable Object's container name) and injects no image identity into a running container. So the `ui` role answers `/api/build` with its baked `CYRIS_GIT_SHA`, and `doctor --deployment <url>` signs in with `CYRIS_UI_TOKEN`, reads it and counts the distance to local HEAD; any request wakes that instance, so the question is answerable on demand rather than at the next cron hour. A checkout ahead of production warns rather than fails — that is every working day. ✅ First run against the real deployment: `/login` answered 302 and the cookie carried, `/api/build` answered **404** — production still runs the 2026-09-14 image, which predates the endpoint. That is the check working, and a 404 after a successful sign-in gets its own verdict rather than the hostname hint a dead host would get. A green run needs #30's deploy path (`deploy-from-registry-image`); the runtime half — which sha the last pipeline run executed — is an acceptance line on #32. Ticket `doctor-deployment-provenance` |
 | — | Legitimate archive prune has no in-band path | The scale guard refuses a deploy that would drop more than one live digest page. Intentionally shrinking the archive has to go around the guard |

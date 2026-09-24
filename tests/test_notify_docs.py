@@ -108,6 +108,7 @@ def test_section_2_still_injects_notify_directly() -> None:
     row = next(line for line in section.splitlines() if "`notify`" in line)
     assert row == (
         "| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, "
-        "`sync_promotions`, `append_usage`, `notify`, `D1TagStore`, `D1StoryStore` | "
+        "`sync_promotions`, `append_usage`, `notify`, `D1TagStore`, `D1StoryStore`, "
+        "`D1DigestStore` | "
         "**Medium** — the core calls them directly; a second backend needs a Protocol first |"
     )
