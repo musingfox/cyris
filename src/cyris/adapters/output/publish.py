@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -143,11 +144,11 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     if client is None:
         return False
 
-    outcome = _deploy_until_verdict(client, lambda: (client.deploy(html_dir), None), deadline)
-    if outcome is None:
+    deployment = _deploy_until_verdict(client, lambda: client.deploy(html_dir), deadline)
+    if deployment is None:
         return False
     if not _page_is_live(pages_project, slug, deadline):
-        _report_unlanded(outcome[0])
+        _report_unlanded(deployment)
         return False
     logger.info("Published HTML digest to Pages project %s", pages_project)
     return True
@@ -245,16 +246,18 @@ def publish_site(
                 ", ".join(sorted(missing)[:5]),
             )
             return False
-    outcome = _deploy_until_verdict(
-        client,
-        lambda: client.deploy_manifest(
+    updated: dict[str, str] = {}
+
+    def deploy() -> DeploymentRecord:
+        nonlocal updated
+        record, updated = client.deploy_manifest(
             new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
-        ),
-        deadline,
-    )
-    if outcome is None:
+        )
+        return record
+
+    deployment = _deploy_until_verdict(client, deploy, deadline)
+    if deployment is None:
         return False
-    deployment, updated = outcome
     if deployment.landed:
         # Before the alias check, not after it: on 2026-09-24 a deployment was at
         # `success` while the alias still served the fallback, and a manifest that
@@ -301,21 +304,21 @@ def _client(pages_project: str) -> PagesClient | None:
 
 
 def _deploy_until_verdict(
-    client: PagesClient, deploy, deadline: _Deadline
-) -> tuple[DeploymentRecord, object] | None:
+    client: PagesClient, deploy: Callable[[], DeploymentRecord], deadline: _Deadline
+) -> DeploymentRecord | None:
     """Deploy until an attempt is not refused or failed; None once attempts run out.
 
-    `deploy` returns (record, payload). What comes back has landed or has no
-    verdict yet. Only a deployment Cloudflare refused or reported failed is
-    deployed again: one merely slow is waited on, because on 2026-09-24 each
-    identical redeploy only restarted the wait.
+    What comes back has landed or has no verdict yet. Only a deployment
+    Cloudflare refused or reported failed is deployed again: one merely slow is
+    waited on, because on 2026-09-24 each identical redeploy only restarted the
+    wait.
     """
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
         if not deadline.fits(pages_deploy.DEPLOY_WORST_CASE_SECONDS):
             logger.error("Pages deploy attempt %d skipped: publish budget exhausted", attempt)
             return None
         try:
-            deployment, payload = deploy()
+            deployment = deploy()
         except (PagesDeployError, httpx.HTTPError) as e:
             logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
             continue
@@ -329,7 +332,7 @@ def _deploy_until_verdict(
                 attempt,
             )
             continue
-        return deployment, payload
+        return deployment
     return None
 
 
