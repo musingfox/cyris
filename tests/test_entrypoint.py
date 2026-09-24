@@ -175,6 +175,12 @@ class TestRunRoleStopsOnSigterm:
         time.sleep(0.5)
         assert _calls(p.calls) == ["python", "cyris run"]
 
+    def test_sigterm_during_the_probe_ends_the_pass_before_the_run(self, run_pass) -> None:
+        p = run_pass(python_body="exec sleep 2")
+        p.wait_for_call("python")
+        assert p.terminate(within=4) == 143
+        assert _calls(p.calls) == ["python"]
+
     def test_sigterm_reaches_the_running_run(self, run_pass, tmp_path: Path) -> None:
         pidfile = tmp_path / "step.pid"
         p = run_pass(cyris_body=f"test \"$1\" = run && echo $$ > '{pidfile}' && exec sleep 30")
