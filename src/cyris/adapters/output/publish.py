@@ -39,6 +39,10 @@ VERIFY_INTERVAL_SECONDS = 5
 # Reading the archive that is already live waits on no propagation.
 LIVE_INDEX_POLLS = 3
 VERIFY_TIMEOUT_SECONDS = 15
+# A direct upload reached `success` within 2s on 2026-09-24, so 30s of polling is
+# generous; a deployment still without a verdict after it goes to the alias check.
+STAGE_POLLS = 6
+STAGE_INTERVAL_SECONDS = 5
 
 _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
@@ -218,7 +222,7 @@ def publish_site(
         except (PagesDeployError, httpx.HTTPError) as e:
             logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
             continue
-        _log_created(deployment)
+        deployment = _await_verdict(client, deployment)
         if not _page_is_live(pages_project, slug):
             return False
         # Only after the page is proven live: a manifest recording a deploy
@@ -272,11 +276,16 @@ def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
     except (PagesDeployError, httpx.HTTPError) as e:
         logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
         return False
-    _log_created(deployment)
+    _await_verdict(client, deployment)
     return True
 
 
-def _log_created(deployment: DeploymentRecord) -> None:
+def _await_verdict(client: PagesClient, deployment: DeploymentRecord) -> DeploymentRecord:
+    """Re-read a deployment until Cloudflare says it landed or failed, or polls run out.
+
+    A poll that errors is a poll spent, not a failed deployment: the deployment
+    itself may be fine, and only Cloudflare's own answer decides that.
+    """
     # Whether a direct upload is already at deploy/success on creation has never
     # been observed; every run's log answers it.
     logger.info(
@@ -286,6 +295,17 @@ def _log_created(deployment: DeploymentRecord) -> None:
         deployment.status,
         deployment.url,
     )
+    for poll in range(1, STAGE_POLLS + 1):
+        if deployment.landed or deployment.failed:
+            break
+        time.sleep(STAGE_INTERVAL_SECONDS)
+        try:
+            deployment = client.get_deployment(deployment.id)
+        except (PagesDeployError, httpx.HTTPError) as e:
+            logger.warning(
+                "Pages deployment %s: stage read failed (poll %d): %s", deployment.id, poll, e
+            )
+    return deployment
 
 
 def _page_is_live(pages_project: str, slug: str) -> bool:

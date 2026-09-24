@@ -182,6 +182,63 @@ def test_the_create_stage_is_logged_once(monkeypatch, caplog):
     assert len(matching) == 1
 
 
+QUEUED = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "queued", "active")
+ACTIVE = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "deploy", "active")
+
+
+def _publish_with_stages(monkeypatch, *, created, stages, live=True):
+    """publish_site over a populated manifest: the create call reports `created`,
+    each re-read answers the next of `stages`. Returns (result, deployed, asked, store)."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: live)
+    _skip_live_index(monkeypatch)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed, records=created)
+    asked = _stub_stages(monkeypatch, *stages)
+    store = _Store({"/old.html": "old"})
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+    return ok, deployed, asked, store
+
+
+def test_a_deployment_landed_on_creation_is_not_reread(monkeypatch):
+    _ok, _deployed, asked, _store = _publish_with_stages(
+        monkeypatch, created=(LANDED,), stages=(LANDED,)
+    )
+
+    assert asked == []
+
+
+def test_a_queued_deployment_is_reread_until_it_lands(monkeypatch):
+    _ok, _deployed, asked, store = _publish_with_stages(
+        monkeypatch, created=(QUEUED,), stages=(ACTIVE, ACTIVE, LANDED)
+    )
+
+    assert asked == ["dep-1"] * 3
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
+
+
+def test_a_failed_stage_read_is_a_spent_poll_not_a_failed_deployment(monkeypatch, caplog):
+    with caplog.at_level("WARNING", logger=publish_mod.logger.name):
+        _ok, _deployed, asked, store = _publish_with_stages(
+            monkeypatch, created=(QUEUED,), stages=(httpx.ConnectError("reset"), LANDED)
+        )
+
+    assert len(asked) == 2
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
+
+
+def test_a_deployment_that_never_reports_a_verdict_is_reread_a_bounded_number_of_times(
+    monkeypatch,
+):
+    _ok, _deployed, asked, _store = _publish_with_stages(
+        monkeypatch, created=(QUEUED,), stages=(ACTIVE,)
+    )
+
+    assert len(asked) == publish_mod.STAGE_POLLS == 6
+
+
 def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch):
     """The manifest describes the deployed site. Recording a deploy that did not
     land would describe a site that does not exist."""
