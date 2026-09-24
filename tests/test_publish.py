@@ -59,8 +59,15 @@ def _fake_get(monkeypatch, *pages):
 
 
 def test_the_create_stage_is_logged_even_when_cloudflare_reports_none(monkeypatch, caplog):
-    _fake_deploy(monkeypatch, records=(DeploymentRecord("dep-2", None, None, None),))
+    blank = DeploymentRecord("dep-2", None, None, None)
+    _fake_deploy(monkeypatch, records=(blank,))
+    monkeypatch.setattr(publish_mod.PagesClient, "get_deployment", lambda _self, _id: blank)
     _fake_get(monkeypatch, LIVE_PAGE)
+
+    def real_request(*_args, **_kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("reached the real Cloudflare API")
+
+    monkeypatch.setattr(pages_deploy.httpx, "Client", real_request)
 
     with caplog.at_level("INFO"):
         publish_html_digest(Path("html"), "cyris-digest", SLUG)
