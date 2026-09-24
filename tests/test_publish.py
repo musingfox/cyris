@@ -124,6 +124,25 @@ def test_a_refused_deployment_is_retried(monkeypatch):
     assert len(runs) == 2
 
 
+FAILED = DeploymentRecord("dep-1", None, "deploy", "failure")
+
+
+def test_a_deployment_cloudflare_reports_failed_is_deployed_again(monkeypatch):
+    runs = _fake_deploy(monkeypatch, records=(FAILED, LANDED))
+    _fake_get(monkeypatch, LIVE_PAGE)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert len(runs) == 2
+
+
+def test_failed_deployment_retries_are_bounded(monkeypatch):
+    runs = _fake_deploy(monkeypatch, records=(FAILED,))
+    _fake_get(monkeypatch, LIVE_PAGE)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert len(runs) == publish_mod.DEPLOY_ATTEMPTS
+
+
 def test_refused_deployment_retries_are_bounded(monkeypatch):
     runs = _fake_deploy(monkeypatch, fails=True)
 

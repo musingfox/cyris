@@ -239,6 +239,53 @@ def test_a_deployment_that_never_reports_a_verdict_is_reread_a_bounded_number_of
     assert len(asked) == publish_mod.STAGE_POLLS == 6
 
 
+FAILED = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "deploy", "failure")
+CANCELED = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "deploy", "canceled")
+
+
+def test_a_deployment_cloudflare_reports_failed_is_deployed_again(monkeypatch, caplog):
+    with caplog.at_level("ERROR"):
+        ok, deployed, _asked, store = _publish_with_stages(
+            monkeypatch, created=(FAILED, LANDED), stages=(LANDED,)
+        )
+
+    assert len(deployed) == 2
+    assert store.saved is not None
+    assert ok is True
+    errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert any("dep-1" in m and "failure" in m for m in errors)
+
+
+def test_a_deployment_canceled_while_waiting_is_deployed_again(monkeypatch):
+    ok, deployed, _asked, store = _publish_with_stages(
+        monkeypatch, created=(QUEUED, LANDED), stages=(CANCELED,)
+    )
+
+    assert len(deployed) == 2
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
+    assert ok is True
+
+
+def test_failed_deployments_are_retried_a_bounded_number_of_times(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+
+    def verified(*_a, **_k):  # pragma: no cover - must not be reached
+        raise AssertionError("verified a deployment Cloudflare says failed")
+
+    monkeypatch.setattr(publish_mod, "_page_is_live", verified)
+    _skip_live_index(monkeypatch)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed, records=(FAILED,))
+    store = _Store({"/old.html": "old"})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert len(deployed) == publish_mod.DEPLOY_ATTEMPTS == 3
+    assert store.saved is None
+
+
 def test_a_landed_deployment_is_recorded_even_before_its_page_is_live(monkeypatch):
     """On 2026-09-24 a deployment reached `success` within 2s while the alias still
     served the fallback, and the page was lost: the manifest only recorded pages

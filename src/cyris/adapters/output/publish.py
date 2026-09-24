@@ -114,17 +114,17 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     if not pages_project:
         logger.warning("Pages publish enabled but promote.pages_project is empty")
         return False
+    client = _client(pages_project)
+    if client is None:
+        return False
 
-    for attempt in range(1, DEPLOY_ATTEMPTS + 1):
-        if not _deploy_once(html_dir, pages_project, attempt):
-            continue
-        if not _page_is_live(pages_project, slug):
-            return False
-        logger.info(
-            "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
-        )
-        return True
-    return False
+    outcome = _deploy_until_verdict(client, lambda: (client.deploy(html_dir), None))
+    if outcome is None:
+        return False
+    if not _page_is_live(pages_project, slug):
+        return False
+    logger.info("Published HTML digest to Pages project %s", pages_project)
+    return True
 
 
 def _project_exists_with_deployments(client: PagesClient, pages_project: str) -> bool:
@@ -218,30 +218,26 @@ def publish_site(
                 ", ".join(sorted(missing)[:5]),
             )
             return False
-    for attempt in range(1, DEPLOY_ATTEMPTS + 1):
-        try:
-            deployment, updated = client.deploy_manifest(
-                new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
-            )
-        except (PagesDeployError, httpx.HTTPError) as e:
-            logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
-            continue
-        deployment = _await_verdict(client, deployment)
-        if deployment.landed:
-            # Before the alias check, not after it: on 2026-09-24 a deployment
-            # was at `success` while the alias still served the fallback, and a
-            # manifest that waited for the alias lost that page to the next
-            # full-snapshot deploy.
-            manifest_store.save(updated)
-        if not _page_is_live(pages_project, slug):
-            return False
-        if not deployment.landed:
-            manifest_store.save(updated)
-        logger.info(
-            "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
-        )
-        return True
-    return False
+    outcome = _deploy_until_verdict(
+        client,
+        lambda: client.deploy_manifest(
+            new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
+        ),
+    )
+    if outcome is None:
+        return False
+    deployment, updated = outcome
+    if deployment.landed:
+        # Before the alias check, not after it: on 2026-09-24 a deployment was at
+        # `success` while the alias still served the fallback, and a manifest that
+        # waited for the alias lost that page to the next full-snapshot deploy.
+        manifest_store.save(updated)
+    if not _page_is_live(pages_project, slug):
+        return False
+    if not deployment.landed:
+        manifest_store.save(updated)
+    logger.info("Published HTML digest to Pages project %s", pages_project)
+    return True
 
 
 def _fetch_live(pages_project: str, path: str) -> bytes | None:
@@ -275,18 +271,32 @@ def _client(pages_project: str) -> PagesClient | None:
     return PagesClient(account, token, pages_project)
 
 
-def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
-    """One direct-upload deployment. Whether it is *live* is `_page_is_live`'s job."""
-    client = _client(pages_project)
-    if client is None:
-        return False
-    try:
-        deployment = client.deploy(html_dir)
-    except (PagesDeployError, httpx.HTTPError) as e:
-        logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
-        return False
-    _await_verdict(client, deployment)
-    return True
+def _deploy_until_verdict(client: PagesClient, deploy) -> tuple[DeploymentRecord, object] | None:
+    """Deploy until an attempt is not refused or failed; None once attempts run out.
+
+    `deploy` returns (record, payload). What comes back has landed or has no
+    verdict yet. Only a deployment Cloudflare refused or reported failed is
+    deployed again: one merely slow is waited on, because on 2026-09-24 each
+    identical redeploy only restarted the wait.
+    """
+    for attempt in range(1, DEPLOY_ATTEMPTS + 1):
+        try:
+            deployment, payload = deploy()
+        except (PagesDeployError, httpx.HTTPError) as e:
+            logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
+            continue
+        deployment = _await_verdict(client, deployment)
+        if deployment.failed:
+            logger.error(
+                "Pages deployment %s ended %s at stage %s (attempt %d)",
+                deployment.id,
+                deployment.status,
+                deployment.stage,
+                attempt,
+            )
+            continue
+        return deployment, payload
+    return None
 
 
 def _await_verdict(client: PagesClient, deployment: DeploymentRecord) -> DeploymentRecord:
