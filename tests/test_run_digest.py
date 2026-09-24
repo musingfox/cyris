@@ -1,5 +1,6 @@
 """Direct tests for the run_digest use case."""
 
+import asyncio
 import json
 import re
 from dataclasses import replace
@@ -953,22 +954,45 @@ async def test_a_run_that_raises_is_recorded_as_an_error(tmp_path: Path) -> None
 
 
 async def test_a_run_stopped_by_sigterm_is_recorded_as_an_error(tmp_path: Path) -> None:
-    # `cyris run` turns SIGTERM into SystemExit(143), which is not an Exception:
-    # only a `finally` still records the run it cut short.
-    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    # `cyris run` answers SIGTERM by cancelling the task, and CancelledError is not
+    # an Exception: only a `finally` still records the run it cut short.
+    fetching = asyncio.Event()
+
+    class HangingSource(FakeSource):
+        async def fetch_articles(self, **kwargs) -> list[Article]:
+            fetching.set()
+            await asyncio.Event().wait()
+            return []
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), HangingSource([]))
     deps, recorded = _recording(deps)
+    task = asyncio.create_task(run_digest(deps, RunOptions()))
+    await fetching.wait()
 
-    def terminated(*args, **kwargs):
-        raise SystemExit(143)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
-    deps.store.save = terminated
-
-    with pytest.raises(SystemExit) as exc:
-        await run_digest(deps, RunOptions())
-
-    assert exc.value.code == 143
     [summary] = recorded
     assert summary["status"] == "error"
+    assert "wall_seconds" in summary
+
+
+async def test_a_sigterm_while_the_run_is_recorded_keeps_the_record(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    recorded: list[dict] = []
+
+    def record_run(summary: dict) -> None:
+        asyncio.current_task().cancel()
+        recorded.append(summary)
+
+    deps = replace(deps, record_run=record_run)
+    task = asyncio.create_task(run_digest(deps, RunOptions()))
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    [summary] = recorded
     assert "wall_seconds" in summary
 
 
