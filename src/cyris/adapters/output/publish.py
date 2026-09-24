@@ -379,5 +379,5 @@ def _page_is_live(pages_project: str, slug: str) -> bool:
             date,
             poll,
         )
-    logger.error("Pages deploy reported success but %s is not live", url)
+    logger.error("Pages verify: %s is not live; the digest is not published", url)
     return False

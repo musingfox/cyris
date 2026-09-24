@@ -74,10 +74,11 @@ def test_live_page_confirms_the_deploy(monkeypatch):
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
 
 
-def test_a_created_deployment_without_a_live_page_is_a_failure(monkeypatch):
-    """A deployment id is not a live page, and the 404 fallback answers 200 — that
-    silently dropped the Discord link on 2026-08-18 evening and 2026-08-20 morning.
-    The transport changed; the reason for verifying it did not."""
+def test_a_landed_deployment_without_a_live_page_is_not_published(monkeypatch):
+    """Cloudflare saying `success` is not the page being served, and the 404
+    fallback answers 200 — that silently dropped the Discord link on 2026-08-18
+    evening and 2026-08-20 morning. The alias serving the page's own title is what
+    makes the digest count as published."""
     _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
 
@@ -90,9 +91,12 @@ def test_a_deployed_page_is_polled_not_redeployed(monkeypatch):
     same files cannot make an edge serve them sooner."""
     runs = _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, *([ARCHIVE_PAGE] * (publish_mod.VERIFY_POLLS - 1)), LIVE_PAGE)
+    slept = []
+    monkeypatch.setattr(publish_mod.time, "sleep", slept.append)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
     assert len(runs) == 1
+    assert sum(slept) == 120, "the verify window is two minutes of waiting"
 
 
 def test_the_verify_window_outlasts_the_2026_09_24_delay():
@@ -109,11 +113,14 @@ def test_verification_tolerates_propagation_delay(monkeypatch):
 
 
 def test_a_page_that_never_goes_live_is_not_redeployed(monkeypatch):
+    """The alias decides the return and nothing else: a landed deployment is not
+    redeployed because its page is slow to show."""
     runs = _fake_deploy(monkeypatch)
-    _fake_get(monkeypatch, ARCHIVE_PAGE)
+    calls = _fake_get(monkeypatch, ARCHIVE_PAGE)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
     assert len(runs) == 1
+    assert len(calls) == publish_mod.VERIFY_POLLS == 25
 
 
 def test_a_refused_deployment_is_retried(monkeypatch):
@@ -165,6 +172,17 @@ def test_a_refused_deployment_skips_verification(monkeypatch):
 
     def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
         raise AssertionError("should not verify a deploy that never ran")
+
+    monkeypatch.setattr(publish_mod.httpx, "get", explode)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+
+
+def test_a_deployment_cloudflare_reports_failed_skips_verification(monkeypatch):
+    _fake_deploy(monkeypatch, records=(FAILED,))
+
+    def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("should not verify a deployment Cloudflare says failed")
 
     monkeypatch.setattr(publish_mod.httpx, "get", explode)
 

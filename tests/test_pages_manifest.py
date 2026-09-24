@@ -337,6 +337,14 @@ def test_a_deployment_with_no_stage_at_all_is_recorded_once_its_page_is_live(mon
     assert ok is True
 
 
+def test_a_landed_deployment_whose_page_is_live_is_published(monkeypatch):
+    ok, _deployed, _asked, _store = _publish_with_stages(
+        monkeypatch, created=(LANDED,), stages=(LANDED,), live=True
+    )
+
+    assert ok is True
+
+
 def test_a_deployment_with_no_verdict_and_no_live_page_is_a_clear_failure(monkeypatch, caplog):
     with caplog.at_level("ERROR"):
         ok, deployed, _asked, store = _publish_with_stages(
