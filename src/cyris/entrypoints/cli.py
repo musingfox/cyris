@@ -107,6 +107,10 @@ def _setup_logging(verbose: bool = False) -> None:
             handler.addFilter(_RedactCredentials())
 
 
+def _exit_on_sigterm(signum: int, frame: object) -> None:
+    raise SystemExit(128 + signal.SIGTERM)
+
+
 @app.command("run")
 def run(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing")] = False,
@@ -161,7 +165,15 @@ def run(
 
     deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run)
     options = RunOptions(period=period, dry_run=dry_run, force=force)
-    report = asyncio.run(run_digest(deps, options))
+    # The Container stops a run with SIGTERM, whose default kills the process
+    # without unwinding — `run_digest`'s `finally`, which records the run, would
+    # never run. Raising SystemExit unwinds it instead; 143 is 128 + SIGTERM,
+    # the status a shell reports for the signal.
+    previous = signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    try:
+        report = asyncio.run(run_digest(deps, options))
+    finally:
+        signal.signal(signal.SIGTERM, previous)
     if report.rendered:
         typer.echo(report.rendered)
 
