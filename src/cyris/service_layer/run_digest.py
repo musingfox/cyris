@@ -338,6 +338,16 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             logger.error("Failed to load the window's collected articles: %s", e)
 
         raw_page = deps.html_writer is not None and bool(collected)
+        if raw_page and deps.publish_site is None:
+            # Raw goes first so the archive index the digest write regenerates
+            # already sees it and offers its All articles entry. Own try/except:
+            # a broken raw page must not cost the digest its publish.
+            try:
+                raw = deps.html_writer.write_raw(content.date, content.period, collected)
+                progress(f"Raw page written to {raw}")
+            except Exception as e:
+                logger.error("Failed to write raw HTML page: %s", e)
+                raw_page = False
 
         # After the last change to `content` and the raw-page decision, before any
         # page is written or published: the row must reproduce the page the reader
@@ -365,20 +375,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 except Exception as e:
                     logger.error("Failed to publish the HTML digest: %s", e)
             else:
-                # Raw goes first so the archive index the digest write regenerates
-                # already sees it and offers its All articles entry. Own try/except:
-                # a broken raw page must not cost the digest its publish.
-                raw_written = False
-                if collected:
-                    try:
-                        raw = deps.html_writer.write_raw(content.date, content.period, collected)
-                        raw_written = True
-                        progress(f"Raw page written to {raw}")
-                    except Exception as e:
-                        logger.error("Failed to write raw HTML page: %s", e)
-
                 try:
-                    report.html_path = deps.html_writer.write(content, raw_page=raw_written)
+                    report.html_path = deps.html_writer.write(content, raw_page=raw_page)
                     progress(f"HTML digest written to {report.html_path}")
                 except Exception as e:
                     logger.error("Failed to write HTML digest: %s", e)

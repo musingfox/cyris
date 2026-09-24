@@ -1373,3 +1373,27 @@ async def test_the_stored_digest_renders_the_published_page(
     rerendered = writer.render(row.content, raw_page=row.raw_page).encode("utf-8")
     assert rerendered == published["/" + writer.digest_filename(key["date"], key["period"])]
     assert ("/" + writer.raw_filename(key["date"], key["period"]) in published) is collected
+
+
+@pytest.mark.parametrize("raw_written", [True, False])
+async def test_the_stored_digest_renders_the_written_page(
+    tmp_path: Path, raw_written: bool
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, store, db = _stored_digests(deps)
+    if not raw_written:
+
+        def refuse(*_args):
+            raise OSError("disk full")
+
+        deps.html_writer.write_raw = refuse
+
+    report = await run_digest(deps, RunOptions())
+
+    [key] = db.query("SELECT date, period FROM digests").rows
+    row = store.load(key["date"], key["period"])
+    assert row.raw_page is raw_written
+    on_disk = report.html_path.read_text(encoding="utf-8")
+    assert deps.html_writer.render(row.content, raw_page=row.raw_page) == on_disk
+    if not raw_written:
+        assert on_disk != deps.html_writer.render(row.content, raw_page=True)
