@@ -675,7 +675,8 @@ the child's `finally` nor `promote-sync` having run. So a run outliving its 15-m
 was never stopped by `stop()`. The fix has two halves. The `run)` branch traps TERM and runs each
 step in the background under `wait`, because a shell acts on a trapped signal only once its
 foreground command returns; the trap sends TERM on to the step that is running, waits for it and
-exits 143, so nothing after it starts. The egress probe stays in the foreground, so a TERM during
+exits 143 — or with the run's own status, when a failed run is followed by a stopped
+`promote-sync` — so nothing after it starts. The egress probe stays in the foreground, so a TERM during
 it ends the pass when the probe returns. And `cyris run` answers SIGTERM by cancelling its
 pipeline task and exiting 143, so `run_digest`'s `finally` still logs `run_summary` and writes the
 `digest_runs` row. A cancellation lands only at an `await`: a sync call in flight — a D1 write

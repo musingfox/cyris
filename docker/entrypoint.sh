@@ -29,6 +29,10 @@ case "${CYRIS_ROLE:-cron}" in
         wait "$child" || true
       fi
       echo "entrypoint: SIGTERM, stopping" >&2
+      # A run that already failed keeps its status; 143 would hide it.
+      if [ "${status:-0}" -ne 0 ]; then
+        exit "$status"
+      fi
       exit 143
     }
     trap on_term TERM

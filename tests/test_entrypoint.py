@@ -210,6 +210,11 @@ class TestRunRoleStopsOnSigterm:
         assert _calls(p.calls) == ["python"]
         assert "entrypoint: SIGTERM, stopping" in p.stderr_lines()
 
+    def test_sigterm_after_a_failed_run_keeps_the_run_status(self, run_pass) -> None:
+        p = run_pass(cyris_body='test "$1" = run && exit 3; exec sleep 30')
+        p.wait_for_call("cyris promote-sync")
+        assert p.terminate(within=3) == 3
+
     @pytest.mark.parametrize("step", ["run", "promote-sync"])
     def test_sigterm_reaches_the_running_step(self, run_pass, tmp_path: Path, step: str) -> None:
         pidfile = tmp_path / "step.pid"
