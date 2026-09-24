@@ -122,6 +122,7 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     if outcome is None:
         return False
     if not _page_is_live(pages_project, slug):
+        _report_unlanded(outcome[0])
         return False
     logger.info("Published HTML digest to Pages project %s", pages_project)
     return True
@@ -233,6 +234,7 @@ def publish_site(
         # waited for the alias lost that page to the next full-snapshot deploy.
         manifest_store.save(updated)
     if not _page_is_live(pages_project, slug):
+        _report_unlanded(deployment)
         return False
     if not deployment.landed:
         manifest_store.save(updated)
@@ -297,6 +299,21 @@ def _deploy_until_verdict(client: PagesClient, deploy) -> tuple[DeploymentRecord
             continue
         return deployment, payload
     return None
+
+
+def _report_unlanded(deployment: DeploymentRecord) -> None:
+    if deployment.landed:
+        return
+    # The deployment's own url is not probed, only named: whether it serves
+    # sooner than the alias is unknown, and an operator can open it by hand.
+    logger.error(
+        "Pages deployment %s gave no verdict (last stage %s, status %s) and its page is "
+        "not live; not recorded. Deployment url: %s",
+        deployment.id,
+        deployment.stage,
+        deployment.status,
+        deployment.url,
+    )
 
 
 def _await_verdict(client: PagesClient, deployment: DeploymentRecord) -> DeploymentRecord:

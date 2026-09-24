@@ -337,6 +337,19 @@ def test_a_deployment_with_no_stage_at_all_is_recorded_once_its_page_is_live(mon
     assert ok is True
 
 
+def test_a_deployment_with_no_verdict_and_no_live_page_is_a_clear_failure(monkeypatch, caplog):
+    with caplog.at_level("ERROR"):
+        ok, deployed, _asked, store = _publish_with_stages(
+            monkeypatch, created=(QUEUED,), stages=(QUEUED,), live=False
+        )
+
+    assert ok is False
+    assert len(deployed) == 1
+    assert store.saved is None
+    errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert any("dep-1" in m and "queued" in m for m in errors)
+
+
 def test_a_manifest_that_cannot_be_saved_fails_the_publish_loudly(monkeypatch):
     """The next full snapshot would drop this page, so the operator has to hear it."""
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")

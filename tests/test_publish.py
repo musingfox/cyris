@@ -143,6 +143,16 @@ def test_failed_deployment_retries_are_bounded(monkeypatch):
     assert len(runs) == publish_mod.DEPLOY_ATTEMPTS
 
 
+def test_a_deployment_with_no_verdict_and_no_live_page_is_not_redeployed(monkeypatch):
+    queued = DeploymentRecord("dep-1", None, "queued", "active")
+    runs = _fake_deploy(monkeypatch, records=(queued,))
+    monkeypatch.setattr(publish_mod.PagesClient, "get_deployment", lambda _self, _id: queued)
+    _fake_get(monkeypatch, ARCHIVE_PAGE)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert len(runs) == 1
+
+
 def test_refused_deployment_retries_are_bounded(monkeypatch):
     runs = _fake_deploy(monkeypatch, fails=True)
 
