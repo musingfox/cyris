@@ -19,7 +19,17 @@ ENTRYPOINT = ROOT / "docker" / "entrypoint.sh"
 # The image's /bin/sh is dash, and macOS's sh is bash: signal handling differs between the
 # two, so the SIGTERM behaviour is only evidence when dash itself runs the script.
 DASH = shutil.which("dash")
-needs_dash = pytest.mark.skipif(DASH is None, reason="dash is not installed")
+
+
+def _needs_dash(dash: str | None, ci: str | None) -> pytest.MarkDecorator:
+    """Skip without dash on a laptop; in CI a missing dash fails, since a skip there would
+    pass the SIGTERM tests without their evidence."""
+    if dash is None and ci:
+        pytest.fail("dash is not installed; CI must run the SIGTERM tests under it")
+    return pytest.mark.skipif(dash is None, reason="dash is not installed")
+
+
+needs_dash = _needs_dash(DASH, os.environ.get("CI"))
 SHELLS = ["sh", pytest.param("dash", marks=needs_dash)]
 
 
@@ -216,6 +226,15 @@ class TestRunRoleStopsOnSigterm:
         p.terminate(within=5)
         with pytest.raises(ProcessLookupError):
             os.kill(int(pidfile.read_text()), 0)
+
+
+class TestDashIsRequiredInCi:
+    def test_a_missing_dash_fails_in_ci(self) -> None:
+        with pytest.raises(pytest.fail.Exception):
+            _needs_dash(None, "true")
+
+    def test_a_missing_dash_skips_locally(self) -> None:
+        assert _needs_dash(None, None).args == (True,)
 
 
 class TestContainerRoleDefaultsToD1Store:
