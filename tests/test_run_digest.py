@@ -1202,3 +1202,26 @@ async def test_the_stored_digest_is_the_final_content(tmp_path: Path, caplog) ->
     assert loaded.synthetic_url_count == 1
     assert loaded.dead_link_count is not None
     assert loaded.usage.api_calls == _run_summary(caplog)["llm"]["api_calls"]
+
+
+class _ExplodingDigestStore:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def save(self, content, *, raw_page) -> None:
+        from cyris.adapters.store.d1 import D1Error
+
+        self.calls += 1
+        raise D1Error("D1 unavailable")
+
+
+async def test_a_failed_digest_write_leaves_the_run_as_it_was(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    digest_store = _ExplodingDigestStore()
+    deps = replace(deps, digest_store=digest_store)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert digest_store.calls == 1
+    assert report.status == "ok"
+    assert report.html_path is not None and report.html_path.exists()
