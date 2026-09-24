@@ -645,7 +645,8 @@ one goes down in the same sitting.
 one `cyris run --if-due` (or `--period`, when a manual `POST /run?period=` set
 `CYRIS_RUN_PERIOD`) plus one `promote-sync` and exits, so the instance stops billing without
 waiting for a sleep timer — `promote-sync` runs even when the run fails, and the pass exits with
-the run's status; `ui` serves `/settings`; the default is the
+the run's status. A SIGTERM ends the pass instead: it exits 143 and skips what has not started
+(below); `ui` serves `/settings`; the default is the
 supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` install. Compose
 bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate.
 
@@ -664,6 +665,24 @@ lines of `docker run` on a stock `python:3.12-slim`. The fix is the handler
 existing `finally: await server.stop()` runs. Anything else that ever becomes PID 1 in this image
 inherits the same obligation. Receipt: last request 08:11:18Z on 2026-08-31, `container stopped
 { exitCode: 0, reason: 'exit' }` at 08:16:31Z — 5 min 13 s — and the instance back to `inactive`.
+
+**The `run` role had the same hole, one level down.** Its PID 1 is the entrypoint shell, not
+Python, and the shell had neither `exec` nor `trap`. Reproduced on 2026-09-24 with the real
+`docker/entrypoint.sh` and a stub `cyris run` on the production base image: PID 1's `SigCgt` was
+`0000000000010002` (SIGINT and SIGCHLD, no SIGTERM), the container was still running 12 s after
+`docker kill -s TERM`, and only the SIGKILL of `docker stop` ended it, `ExitCode=137`, with neither
+the child's `finally` nor `promote-sync` having run. So a run outliving its 15-minute `sleepAfter`
+was never stopped by `stop()`. The fix has two halves. The `run)` branch traps TERM and runs each
+step in the background under `wait`, because a shell acts on a trapped signal only once its
+foreground command returns; the trap sends TERM on to the step that is running, waits for it and
+exits 143, so nothing after it starts. The egress probe stays in the foreground, so a TERM during
+it ends the pass when the probe returns. And `cyris run` turns SIGTERM into `SystemExit(143)`, so
+`run_digest`'s `finally` still logs `run_summary` and writes the `digest_runs` row. The pass
+therefore ends only when that `finally` — a D1 write with `D1Client`'s own retries — returns; no
+bound is claimed here for how long that takes or for when Cloudflare would follow with a SIGKILL.
+`tests/test_entrypoint.py` runs the real script under `dash`, the image's `/bin/sh`. The
+production receipt, `onStop` logging `{ exitCode: 143 }` for a run stopped by `sleepAfter`, is
+pending.
 
 **Auth is one layer always, two if you own a domain** (`workers/app/`). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. That layer deploys with the Worker, so a `*.workers.dev` fork is not an open write surface. Preview URLs stay disabled: a second public hostname is a second door.
 
@@ -987,7 +1006,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 | # | What | Today | Target | Ticket |
 |---|---|---|---|---|
 | ~~4~~ | ~~Scheduling~~ | Done 2026-08-30: `[triggers] crons = ["0 * * * *"]` on `cyris-app`, the same D1 gate, the same `--if-due` code | — | `cloud-p3` |
-| ~~5~~ | ~~`onActivityExpired` → `stop()`~~ — done 2026-08-31 | The hook was written on 08-30 and did nothing for a day: `stop()` is a SIGTERM and the image's PID 1 had no handler for it (§6). `cli.py` now installs one. The `run` role never depended on this — it exits when the pipeline pass ends, which is why it is a separate instance | ✅ Idle 5 min → `container stopped { exitCode: 0, reason: 'exit' }`, instance `inactive` | `cloud-p3` |
+| ~~5~~ | ~~`onActivityExpired` → `stop()`~~ — done 2026-08-31 | The hook was written on 08-30 and did nothing for a day: `stop()` is a SIGTERM and the image's PID 1 had no handler for it (§6). `cli.py` now installs one. The `run` role does not need the idle timer to stop — it exits when the pipeline pass ends, which is why it is a separate instance — but it had the same hole when the timer did fire, closed 2026-09-24 (§6, and the SIGTERM row in the next table) | ✅ Idle 5 min → `container stopped { exitCode: 0, reason: 'exit' }`, instance `inactive` | `cloud-p3` |
 
 ### Blocking one-button deploy
 
@@ -1027,7 +1046,7 @@ home won, because there is only one.
 | — | Legitimate archive prune has no in-band path | The scale guard refuses a deploy that would drop more than one live digest page. Intentionally shrinking the archive has to go around the guard |
 | — | `-raw.html` is outside the archive-shortfall signal | The live index lists digest pages only. A wrong D1 that kept every dated digest but dropped every `-raw.html` listing would pass |
 | ~~—~~ | ~~D1 calls have no total time budget~~ | Closed 2026-09-24 by the cheaper fix (ticket `d1-call-time-budget`). The worry was the run's tail outlasting the shared 5-minute `sleepAfter`: `D1Client` retries a query for up to 4 × 60s + 12s, outside publish's 180s bound, and the slowest run in `digest_runs` already took 196s before promote-sync. A D1 deadline could not have bounded the run anyway — the LLM calls have none. Instead the `run` instance now gets its own `RUN_SLEEP_AFTER = "15m"` in `workers/app/src/index.js`, chosen from the Durable Object's own name (`ctx.id.name === "run"`) so a restart mid-run keeps it; it exits on its own, so the timer is only a cap on a hung run. `ui` keeps 5 minutes. A Python Worker, which would remove the timer entirely, was spiked the same day and not taken: sync `httpx` times out on fresh isolates, `aiohttp` cannot connect, `blake3` has no Pyodide wheel, and startup already used 934 of 1000 ms |
-| — | Whether the run role stops on SIGTERM is unverified | The run container's PID 1 is `/bin/sh` without `exec` or `trap`, so what happens when `sleepAfter` sends SIGTERM mid-run is unknown. A follow-up candidate, no ticket yet: reproduce with `docker kill -s TERM` on a `run` container |
+| ~~—~~ | ~~Whether the run role stops on SIGTERM is unverified~~ | Done 2026-09-24. It did not: reproduced with `docker kill -s TERM` on a `run` container, PID 1's `SigCgt` lacked TERM, the container was still running 12 s later, and it exited 137 only after SIGKILL. The entrypoint now traps TERM, forwards it to the running step, waits for it and exits 143; `cyris run` raises `SystemExit(143)` on SIGTERM, so the pass ends when `run_digest`'s `finally` (the D1 `digest_runs` write) returns. No SIGKILL bound is claimed. The production receipt — `onStop` logging `exitCode: 143` for a run stopped by `sleepAfter` — is pending (§6) |
 
 ### The reader-facing surfaces
 

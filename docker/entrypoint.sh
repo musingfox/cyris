@@ -25,15 +25,27 @@ try:
 except Exception as e:
     print(json.dumps({"event": "egress_probe", "error": str(e)[:200]}))
 PY
+    # This shell is PID 1, and Container.stop() is one SIGTERM to it. A shell
+    # runs a trap only after its foreground command returns, so each step runs
+    # in the background and the shell waits on it, which a trapped signal ends.
+    trap 'exit 143' TERM
+    step() {
+      "$@" &
+      child=$!
+      rc=0
+      wait "$child" || rc=$?
+      child=
+      return "$rc"
+    }
     # Votes sync even when the run stops (say, on incomplete settings); the
     # pass still exits with the run's failure.
     status=0
     if [ -n "${CYRIS_RUN_PERIOD:-}" ]; then
-      cyris run --period "$CYRIS_RUN_PERIOD" $CONF || status=$?
+      step cyris run --period "$CYRIS_RUN_PERIOD" $CONF || status=$?
     else
-      cyris run --if-due $CONF || status=$?
+      step cyris run --if-due $CONF || status=$?
     fi
-    cyris promote-sync $CONF
+    step cyris promote-sync $CONF
     exit "$status"
     ;;
   ui)

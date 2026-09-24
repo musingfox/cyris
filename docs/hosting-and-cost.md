@@ -9,7 +9,9 @@ source list, and a vendor number that does not exist is **not stated**, never es
 
 Container rows come from 60 digest runs/month at ~64 s each (measured) on `instance_type = "basic"`
 — 1/4 vCPU, 1 GiB memory, 4 GB disk [4]; the `run` role exits when the run ends, so it has no idle
-tail, and `sleepAfter` is 5 m for the `ui` role (the `run` role's 15 m is only a cap on a hung run).
+tail, and `sleepAfter` is 5 m for the `ui` role (the `run` role's 15 m is only a cap on a hung run:
+its SIGTERM now ends the pass with exit 143 once the running step's cleanup returns, which until
+2026-09-24 it did not — the shell PID 1 ignored the signal).
 
 | Meter | Measured | Workers Paid included | Used |
 | --- | --- | --- | --- |

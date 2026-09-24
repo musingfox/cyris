@@ -112,7 +112,8 @@ async function probeGemini(model) {
 
 // The run instance exits on its own when its pass ends, so its timer is only a
 // cap on a hung run. 5m is too short for that: the slowest run in digest_runs
-// took 196s before promote-sync, and PID 1 acting on SIGTERM would cut it off.
+// took 196s before promote-sync, and the run role's PID 1 acts on SIGTERM
+// (docker/entrypoint.sh), so stop() ends the pass it lands on.
 const RUN_SLEEP_AFTER = "15m";
 const RUN_INSTANCE = "run";
 
