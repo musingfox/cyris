@@ -23,7 +23,7 @@ class D1DigestStore:
 
     def save(self, content: DigestContent, *, raw_page: bool) -> None:
         self._db.query(
-            "INSERT INTO digests (date, period, content, raw_page, saved_at) "
+            "INSERT OR REPLACE INTO digests (date, period, content, raw_page, saved_at) "
             "VALUES (?, ?, ?, ?, ?)",
             [
                 content.date,

@@ -91,3 +91,16 @@ def test_another_period_loads_nothing() -> None:
     store.save(_content("morning"), raw_page=True)
 
     assert store.load("2026-09-24", "evening") is None
+
+
+def test_a_rerun_replaces_the_issue_row() -> None:
+    db = SqliteD1()
+    store = D1DigestStore(db)
+
+    store.save(_content(articles_included=5), raw_page=True)
+    store.save(_content(articles_included=7), raw_page=False)
+
+    assert db.query("SELECT COUNT(*) AS n FROM digests").rows == [{"n": 1}]
+    loaded = store.load("2026-09-24", "morning")
+    assert loaded.content.articles_included == 7
+    assert loaded.raw_page is False
