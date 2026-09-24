@@ -175,6 +175,18 @@ class PagesClient:
             )
         logger.info("Pages project %s created", self._project)
 
+    def get_deployment(self, deployment_id: str) -> DeploymentRecord:
+        """Re-read one deployment's current stage, for one still in progress at creation."""
+        project = f"/accounts/{self._account}/pages/projects/{self._project}"
+        with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
+            body = self._call(
+                client,
+                "GET",
+                f"{project}/deployments/{deployment_id}",
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+        return DeploymentRecord.from_result(body.get("result"))
+
     # ---- the protocol ---------------------------------------------------
 
     def deploy(self, directory: Path, branch: str = "main") -> DeploymentRecord:

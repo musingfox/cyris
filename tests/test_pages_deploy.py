@@ -277,3 +277,27 @@ def test_a_refused_creation_is_an_error_rather_than_a_silent_no_op(monkeypatch):
         _probe(handler, monkeypatch).create_project()
 
     assert caught.value.status == 403
+
+
+def test_a_deployment_is_reread_by_its_id(monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        result = {"id": "dep-1", "latest_stage": {"name": "deploy", "status": "success"}}
+        return httpx.Response(200, json={"success": True, "result": result})
+
+    assert _probe(handler, monkeypatch).get_deployment("dep-1").landed is True
+    assert len(seen) == 1
+    assert seen[0].method == "GET"
+    assert seen[0].url.path.endswith("/pages/projects/proj/deployments/dep-1")
+
+
+def test_rereading_a_deployment_cloudflare_does_not_know_is_an_error(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"success": False, "errors": [{"code": 8000009}]})
+
+    with pytest.raises(PagesDeployError, match="8000009") as caught:
+        _probe(handler, monkeypatch).get_deployment("dep-1")
+
+    assert caught.value.status == 404
