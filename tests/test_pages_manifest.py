@@ -8,8 +8,16 @@ import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.output import publish as publish_mod
+from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.pages_manifest import D1PagesManifest
 from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
+
+LANDED = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "deploy", "success")
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
 
 
 @pytest.fixture
@@ -71,11 +79,14 @@ class _Store:
         self.saved = manifest
 
 
-def _stub_client(monkeypatch, *, deployed):
+def _stub_client(monkeypatch, *, deployed, records=(LANDED,)):
+    """`records` are the deployments Cloudflare reports on creation, in turn; the
+    last one repeats."""
+
     def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
         deployed.append((new_files, manifest))
         merged = {**manifest, **{p: "new" for p in new_files}}
-        return "dep-1", merged
+        return records[min(len(deployed), len(records)) - 1], merged
 
     monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
 
@@ -130,6 +141,45 @@ def test_a_populated_manifest_does_not_probe_or_touch_the_receipt(monkeypatch):
     assert ok is True
     assert receipt.exists_calls == 0
     assert receipt.records == []
+
+
+def _stub_stages(monkeypatch, *stages):
+    """`get_deployment` answers each record in turn (an exception is raised); the
+    last one repeats. Returns the ids it was asked for."""
+    asked = []
+
+    def get_deployment(_self, deployment_id):
+        asked.append(deployment_id)
+        answer = stages[min(len(asked), len(stages)) - 1]
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(publish_mod.PagesClient, "get_deployment", get_deployment)
+    return asked
+
+
+def test_the_create_stage_is_logged_once(monkeypatch, caplog):
+    """Whether a direct upload is already deploy/success on creation is unobserved;
+    one production log line has to answer it."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
+    _skip_live_index(monkeypatch)
+    queued = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "queued", "active")
+    _stub_client(monkeypatch, deployed=[], records=(queued,))
+    _stub_stages(monkeypatch, LANDED)
+
+    with caplog.at_level("INFO"):
+        publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(True))
+
+    tokens = ("dep-1", "queued", "active", "https://ab12.proj.pages.dev")
+    matching = [
+        r
+        for r in caplog.records
+        if r.levelname == "INFO" and all(t in r.getMessage() for t in tokens)
+    ]
+    assert len(matching) == 1
 
 
 def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch):
@@ -321,7 +371,7 @@ def test_the_receipt_is_written_before_upload(monkeypatch):
 
     def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
         events.append("deploy")
-        return "dep-1", {**manifest, **{p: "new" for p in new_files}}
+        return LANDED, {**manifest, **{p: "new" for p in new_files}}
 
     monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
 
@@ -615,7 +665,7 @@ def test_deploy_retries_do_not_reread_the_live_index(monkeypatch):
             raise publish_mod.PagesDeployError("upload failed")
         deployed.append((new_files, manifest))
         merged = {**manifest, **{p: "new" for p in new_files}}
-        return "dep-1", merged
+        return LANDED, merged
 
     monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
 

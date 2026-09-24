@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from cyris.adapters.output.pages_deploy import PagesClient, PagesDeployError
+from cyris.adapters.output.pages_deploy import DeploymentRecord, PagesClient, PagesDeployError
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ def publish_site(
         except (PagesDeployError, httpx.HTTPError) as e:
             logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
             continue
-        logger.info("Pages deployment %s created (%d file(s))", deployment, len(updated))
+        _log_created(deployment)
         if not _page_is_live(pages_project, slug):
             return False
         # Only after the page is proven live: a manifest recording a deploy
@@ -272,8 +272,20 @@ def _deploy_once(html_dir: Path, pages_project: str, attempt: int) -> bool:
     except (PagesDeployError, httpx.HTTPError) as e:
         logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
         return False
-    logger.info("Pages deployment %s created", deployment)
+    _log_created(deployment)
     return True
+
+
+def _log_created(deployment: DeploymentRecord) -> None:
+    # Whether a direct upload is already at deploy/success on creation has never
+    # been observed; every run's log answers it.
+    logger.info(
+        "Pages deployment %s created: stage %s, status %s, url %s",
+        deployment.id,
+        deployment.stage,
+        deployment.status,
+        deployment.url,
+    )
 
 
 def _page_is_live(pages_project: str, slug: str) -> bool:

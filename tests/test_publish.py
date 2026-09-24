@@ -6,9 +6,11 @@ import httpx
 import pytest
 
 from cyris.adapters.output import publish as publish_mod
+from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.publish import publish_html_digest
 
 SLUG = "2026-08-20-morning"
+LANDED = DeploymentRecord("dep-1", "https://ab12.cyris-digest.pages.dev", "deploy", "success")
 LIVE_PAGE = "<html><head><title>CYRIS // 2026-08-20 · morning</title></head></html>"
 # A missing page is served as the Archive index — HTTP 200, and its body even
 # lists other digests' dates. Only the <title> tells them apart.
@@ -26,16 +28,16 @@ def _credentials(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
 
 
-def _fake_deploy(monkeypatch, *, fails=False, fail_first=0):
-    """Stub the direct-upload client. Whether the deploy *worked* is _page_is_live's
-    question, and that is what these tests are about."""
+def _fake_deploy(monkeypatch, *, fails=False, fail_first=0, records=(LANDED,)):
+    """Stub the direct-upload client. `records` are the deployments it reports, in
+    turn; the last one repeats."""
     runs = []
 
     def deploy(_self, _directory, branch="main"):
         runs.append(branch)
         if fails or len(runs) <= fail_first:
             raise publish_mod.PagesDeployError("boom")
-        return "dep-1"
+        return records[min(len(runs) - fail_first, len(records)) - 1]
 
     monkeypatch.setattr(publish_mod.PagesClient, "deploy", deploy)
     return runs
@@ -52,6 +54,17 @@ def _fake_get(monkeypatch, *pages):
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
     return calls
+
+
+def test_the_create_stage_is_logged_even_when_cloudflare_reports_none(monkeypatch, caplog):
+    _fake_deploy(monkeypatch, records=(DeploymentRecord("dep-2", None, None, None),))
+    _fake_get(monkeypatch, LIVE_PAGE)
+
+    with caplog.at_level("INFO"):
+        publish_html_digest(Path("html"), "cyris-digest", SLUG)
+
+    infos = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("dep-2" in m and "None" in m for m in infos)
 
 
 def test_live_page_confirms_the_deploy(monkeypatch):
