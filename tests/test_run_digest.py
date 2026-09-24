@@ -1300,3 +1300,15 @@ async def test_a_preview_leaves_the_stored_digest_untouched(tmp_path: Path) -> N
     assert contents and contents[0].date == today
     assert _digest_count(db) == 1
     assert store.load(today, "morning").content.articles_included == 99
+
+
+async def test_a_run_without_html_output_still_stores_its_digest(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, store, db = _stored_digests(replace(deps, html_writer=None))
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert _digest_count(db) == 1
+    [row] = db.query("SELECT date, period FROM digests").rows
+    assert store.load(row["date"], row["period"]).raw_page is False
