@@ -189,6 +189,23 @@ def test_a_deployment_cloudflare_reports_failed_skips_verification(monkeypatch):
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
 
 
+def test_slow_refusals_are_not_retried_past_the_publish_budget(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(publish_mod, "_clock", lambda: now[0])
+    runs = []
+
+    def deploy(_self, _directory, branch="main"):
+        runs.append(branch)
+        now[0] += 100
+        raise publish_mod.PagesDeployError("timed out")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy", deploy)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert len(runs) == 1
+    assert now[0] <= publish_mod.PUBLISH_BUDGET_SECONDS
+
+
 def test_unreachable_page_is_a_failure(monkeypatch):
     _fake_deploy(monkeypatch)
 

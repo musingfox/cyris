@@ -17,6 +17,7 @@ from pathlib import Path
 
 import httpx
 
+from cyris.adapters.output import pages_deploy
 from cyris.adapters.output.pages_deploy import DeploymentRecord, PagesClient, PagesDeployError
 
 logger = logging.getLogger(__name__)
@@ -33,11 +34,12 @@ DEPLOY_ATTEMPTS = 3
 # is exactly what this guard is for. A same-size-but-different archive is caught
 # regardless, because the check is a set difference and not a count.
 ARCHIVE_SHORTFALL_TOLERANCE = 1
-# Deploy attempts retry a deployment Cloudflare refused, never one it accepted:
-# on 2026-09-24 three deployments each reached `success` within 2s, the page was
-# still the fallback 35s after the first, and each redeploy only restarted the
-# wait. A new page usually shows by the second poll, but its worst case is not
-# measured, so the window is two minutes — spent only on a slow day.
+# Deploy attempts retry a deployment Cloudflare refused or reported failed, never
+# one still in progress: on 2026-09-24 three deployments each reached `success`
+# within 2s, the page was still the fallback 35s after the first, and each
+# redeploy only restarted the wait. A new page usually shows by the second poll,
+# but its worst case is not measured, so the window is 24 sleeps of 5s — two
+# minutes, spent only on a slow day, and cut short by the publish budget.
 VERIFY_POLLS = 25
 VERIFY_INTERVAL_SECONDS = 5
 # Reading the archive that is already live waits on no propagation.
@@ -47,6 +49,28 @@ VERIFY_TIMEOUT_SECONDS = 15
 # generous; a deployment still without a verdict after it goes to the alias check.
 STAGE_POLLS = 6
 STAGE_INTERVAL_SECONDS = 5
+# The run container sleeps 5 minutes after it starts (`sleepAfter` in
+# workers/app/src/index.js), whatever it is doing. Publishing gets 180s of that
+# and the pipeline before it plus notify and record_run after it get the rest; a
+# whole run measured ~64s. No step starts unless its worst case fits the budget,
+# so retries and polls never add up past it.
+PUBLISH_BUDGET_SECONDS = 180
+RUN_RESERVE_SECONDS = 120
+# upload-token, check-missing, upload, upsert-hashes, deployments: one bucket
+# holds a run's three pages, so an attempt is five requests.
+DEPLOY_CALLS = 5
+
+# Patched by tests instead of time.monotonic, which the whole process shares.
+_clock = time.monotonic
+
+
+class _Deadline:
+    def __init__(self, seconds: float) -> None:
+        self._at = _clock() + seconds
+
+    def fits(self, worst_case: float) -> bool:
+        return _clock() + worst_case <= self._at
+
 
 _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
@@ -114,14 +138,15 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
     if not pages_project:
         logger.warning("Pages publish enabled but promote.pages_project is empty")
         return False
+    deadline = _Deadline(PUBLISH_BUDGET_SECONDS)
     client = _client(pages_project)
     if client is None:
         return False
 
-    outcome = _deploy_until_verdict(client, lambda: (client.deploy(html_dir), None))
+    outcome = _deploy_until_verdict(client, lambda: (client.deploy(html_dir), None), deadline)
     if outcome is None:
         return False
-    if not _page_is_live(pages_project, slug):
+    if not _page_is_live(pages_project, slug, deadline):
         _report_unlanded(outcome[0])
         return False
     logger.info("Published HTML digest to Pages project %s", pages_project)
@@ -163,6 +188,7 @@ def publish_site(
     if not pages_project:
         logger.warning("Pages publish enabled but promote.pages_project is empty")
         return False
+    deadline = _Deadline(PUBLISH_BUDGET_SECONDS)
     client = _client(pages_project)
     if client is None:
         return False
@@ -224,6 +250,7 @@ def publish_site(
         lambda: client.deploy_manifest(
             new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
         ),
+        deadline,
     )
     if outcome is None:
         return False
@@ -233,7 +260,7 @@ def publish_site(
         # `success` while the alias still served the fallback, and a manifest that
         # waited for the alias lost that page to the next full-snapshot deploy.
         manifest_store.save(updated)
-    if not _page_is_live(pages_project, slug):
+    if not _page_is_live(pages_project, slug, deadline):
         _report_unlanded(deployment)
         return False
     if not deployment.landed:
@@ -273,7 +300,9 @@ def _client(pages_project: str) -> PagesClient | None:
     return PagesClient(account, token, pages_project)
 
 
-def _deploy_until_verdict(client: PagesClient, deploy) -> tuple[DeploymentRecord, object] | None:
+def _deploy_until_verdict(
+    client: PagesClient, deploy, deadline: _Deadline
+) -> tuple[DeploymentRecord, object] | None:
     """Deploy until an attempt is not refused or failed; None once attempts run out.
 
     `deploy` returns (record, payload). What comes back has landed or has no
@@ -282,12 +311,15 @@ def _deploy_until_verdict(client: PagesClient, deploy) -> tuple[DeploymentRecord
     identical redeploy only restarted the wait.
     """
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
+        if not deadline.fits(DEPLOY_CALLS * pages_deploy.TIMEOUT_SECONDS):
+            logger.error("Pages deploy attempt %d skipped: publish budget exhausted", attempt)
+            return None
         try:
             deployment, payload = deploy()
         except (PagesDeployError, httpx.HTTPError) as e:
             logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
             continue
-        deployment = _await_verdict(client, deployment)
+        deployment = _await_verdict(client, deployment, deadline)
         if deployment.failed:
             logger.error(
                 "Pages deployment %s ended %s at stage %s (attempt %d)",
@@ -316,7 +348,9 @@ def _report_unlanded(deployment: DeploymentRecord) -> None:
     )
 
 
-def _await_verdict(client: PagesClient, deployment: DeploymentRecord) -> DeploymentRecord:
+def _await_verdict(
+    client: PagesClient, deployment: DeploymentRecord, deadline: _Deadline
+) -> DeploymentRecord:
     """Re-read a deployment until Cloudflare says it landed or failed, or polls run out.
 
     A poll that errors is a poll spent, not a failed deployment: the deployment
@@ -334,6 +368,8 @@ def _await_verdict(client: PagesClient, deployment: DeploymentRecord) -> Deploym
     for poll in range(1, STAGE_POLLS + 1):
         if deployment.landed or deployment.failed:
             break
+        if not deadline.fits(STAGE_INTERVAL_SECONDS + pages_deploy.TIMEOUT_SECONDS):
+            break
         time.sleep(STAGE_INTERVAL_SECONDS)
         try:
             deployment = client.get_deployment(deployment.id)
@@ -344,7 +380,7 @@ def _await_verdict(client: PagesClient, deployment: DeploymentRecord) -> Deploym
     return deployment
 
 
-def _page_is_live(pages_project: str, slug: str) -> bool:
+def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
     """Fetch the deployed page and assert it is the digest, not the 404 fallback.
 
     wrangler exits 0 without deploying, and truncates its own output mid-upload,
@@ -360,6 +396,8 @@ def _page_is_live(pages_project: str, slug: str) -> bool:
     date = slug[:10]
     url = f"https://{pages_project}.pages.dev/{slug}"
     for poll in range(1, VERIFY_POLLS + 1):
+        if not deadline.fits(VERIFY_INTERVAL_SECONDS + VERIFY_TIMEOUT_SECONDS):
+            break
         if poll > 1:
             time.sleep(VERIFY_INTERVAL_SECONDS)
         try:

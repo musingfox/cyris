@@ -98,7 +98,7 @@ def _skip_live_index(monkeypatch):
 def test_the_run_deploys_its_pages_plus_the_whole_archive(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     _skip_live_index(monkeypatch)
     deployed = []
     _stub_client(monkeypatch, deployed=deployed)
@@ -120,7 +120,7 @@ def test_the_run_deploys_its_pages_plus_the_whole_archive(monkeypatch):
 def test_a_populated_manifest_does_not_probe_or_touch_the_receipt(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     _skip_live_index(monkeypatch)
 
     def probed(_self):
@@ -376,6 +376,117 @@ def test_a_manifest_that_cannot_be_saved_fails_the_publish_loudly(monkeypatch):
         )
 
 
+class _FakeClock:
+    """Stands in for `publish._clock`; every stub below spends its full timeout."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+def _slow_cloudflare(monkeypatch):
+    """A day when every Pages request hangs until its timeout: the live index reads
+    on the third try (55s of prefix). Returns (clock, alias GETs)."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    clock = _FakeClock()
+    monkeypatch.setattr(publish_mod, "_clock", clock)
+    monkeypatch.setattr(publish_mod.time, "sleep", clock.advance)
+    index_reads, alias_reads = [], []
+
+    def get(url, **_k):
+        clock.advance(publish_mod.VERIFY_TIMEOUT_SECONDS)
+        if url == "https://proj.pages.dev/":
+            index_reads.append(url)
+            if len(index_reads) <= 2:
+                raise httpx.ConnectError("timed out")
+            return httpx.Response(200, content=b"")
+        alias_reads.append(url)
+        return httpx.Response(200, text="<title>Archive</title>")
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+    return clock, alias_reads
+
+
+def test_a_slow_deploy_attempt_is_not_retried_past_the_publish_budget(monkeypatch):
+    clock, _alias = _slow_cloudflare(monkeypatch)
+    calls = []
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        calls.append(1)
+        clock.advance(100)
+        raise publish_mod.PagesDeployError("timed out")
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", _Store({"/old.html": "old"}), "proj", _Receipt()
+    )
+
+    assert ok is False
+    assert len(calls) == 1
+    assert clock.now == 155 <= publish_mod.PUBLISH_BUDGET_SECONDS
+
+
+def test_a_slow_verdict_is_not_waited_on_past_the_publish_budget(monkeypatch):
+    clock, alias = _slow_cloudflare(monkeypatch)
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        clock.advance(100)
+        return QUEUED, {**manifest, **{p: "new" for p in new_files}}
+
+    asked = []
+
+    def get_deployment(_self, deployment_id):
+        asked.append(deployment_id)
+        clock.advance(20)
+        return ACTIVE
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+    monkeypatch.setattr(publish_mod.PagesClient, "get_deployment", get_deployment)
+    store = _Store({"/old.html": "old"})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert len(asked) == 1
+    assert alias == []
+    assert store.saved is None
+    assert clock.now <= publish_mod.PUBLISH_BUDGET_SECONDS
+
+
+def test_the_budget_leaves_a_fast_retry_alone(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    _skip_live_index(monkeypatch)
+    monkeypatch.setattr(
+        publish_mod.httpx,
+        "get",
+        lambda _u, **_k: httpx.Response(200, text="<title>CYRIS // 2026-08-27</title>"),
+    )
+    deployed = []
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        deployed.append(1)
+        if len(deployed) == 1:
+            raise publish_mod.PagesDeployError("refused")
+        return LANDED, {**manifest, **{p: "new" for p in new_files}}
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "2026-08-27-morning", _Store({"/old.html": "old"}), "proj", _Receipt()
+    )
+
+    assert ok is True
+    assert len(deployed) == 2
+
+
 def test_an_archived_page_is_recovered_from_the_live_site(monkeypatch):
     """Pages 308s `.html` to the clean URL, so the redirect has to be followed or
     the bytes come back as a redirect body."""
@@ -407,7 +518,7 @@ def test_bootstrap_partial_accepts_run_digest_calling_convention(monkeypatch):
 
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
     _stub_client(monkeypatch, deployed=[])
     store = _Store({})
@@ -425,7 +536,7 @@ def test_bootstrap_partial_accepts_run_digest_calling_convention(monkeypatch):
 def test_a_first_ever_deploy_goes_through(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
     deployed = []
     _stub_client(monkeypatch, deployed=deployed)
@@ -524,7 +635,7 @@ def test_an_empty_manifest_refuses_when_the_project_already_has_deployments(monk
 def test_the_receipt_is_written_before_upload(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
     events = []
 
@@ -581,7 +692,7 @@ def test_a_receipt_skips_the_probe_on_the_next_empty_manifest_run(monkeypatch):
 def test_a_preexisting_receipt_does_not_probe(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     _skip_live_index(monkeypatch)
 
     def probed(_self):
@@ -751,7 +862,7 @@ def test_archive_shortfall_is_empty_when_the_live_archive_lists_nothing():
 def _env(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
 
 
 def _counting_get(monkeypatch, *, body=b""):
@@ -1000,7 +1111,7 @@ def test_fetch_live_index_empty_archive_is_an_empty_set_not_unread(monkeypatch, 
 def _publish_env(monkeypatch, *, live_paths, deployed):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     body = _index_body(*live_paths)
     monkeypatch.setattr(
         publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(200, content=body)
@@ -1134,7 +1245,7 @@ def test_a_receipt_from_a_failed_upload_does_not_wedge_the_next_publish(monkeypa
     of that non-existent site would wait forever for what only a deploy makes."""
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
 
     def boom(_u, **_k):
@@ -1155,7 +1266,7 @@ def test_a_receipt_from_a_failed_upload_does_not_wedge_the_next_publish(monkeypa
 def test_publish_refuses_when_the_live_archive_cannot_be_read(monkeypatch, caplog):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
 
     def boom(_u, **_k):
@@ -1180,7 +1291,7 @@ def test_publish_refuses_when_the_live_archive_cannot_be_read(monkeypatch, caplo
 def test_publish_refuses_when_the_live_archive_answers_500(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
     monkeypatch.setattr(publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(500, content=b""))
     deployed = []
@@ -1198,7 +1309,7 @@ def test_a_project_that_does_not_exist_yet_is_created_and_published_to(monkeypat
     """Deploy buttons create Workers, not Pages projects. The run creates its own."""
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: True)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
 
     def probe(_self):
         raise publish_mod.PagesDeployError("GET ... -> 404 Project not found", 404)

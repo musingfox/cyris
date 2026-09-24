@@ -42,7 +42,12 @@ API_ROOT = "https://api.cloudflare.com/client/v4"
 # ponytail: every deploy names every file, and the upload token caps a deployment
 # at 20,000 (`max_file_count_allowed` in its JWT). Four files a day is ~13 years.
 # When it matters, prune the archive tail — do not add a storage tier for it.
-TIMEOUT_SECONDS = 120
+#
+# Per request, and httpx counts it per phase of inactivity, not in total. A
+# deploy sends three rendered pages and a few hundred hashes, and deployments
+# reached `success` within 2s on 2026-09-24; 20s is what lets five calls, a
+# verdict read and the live-index read fit publish's 180s budget.
+TIMEOUT_SECONDS = 20
 # wrangler's own ceilings (MAX_BUCKET_SIZE / MAX_BUCKET_FILE_COUNT).
 MAX_BUCKET_BYTES = 40 * 1024 * 1024
 MAX_BUCKET_FILES = 2000
