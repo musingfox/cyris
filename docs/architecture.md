@@ -680,6 +680,9 @@ it ends the pass when the probe returns. And `cyris run` turns SIGTERM into `Sys
 `run_digest`'s `finally` still logs `run_summary` and writes the `digest_runs` row. The pass
 therefore ends only when that `finally` — a D1 write with `D1Client`'s own retries — returns; no
 bound is claimed here for how long that takes or for when Cloudflare would follow with a SIGKILL.
+Whether it follows at all is unverified: Cloudflare's platform-details page says a SIGKILL comes 15
+minutes after the SIGTERM, while the `ui` receipt above is an instance that kept running through a
+day of repeated `stop()` calls.
 `tests/test_entrypoint.py` runs the real script under `dash`, the image's `/bin/sh`. The
 production receipt, `onStop` logging `{ exitCode: 143 }` for a run stopped by `sleepAfter`, is
 pending.
