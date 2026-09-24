@@ -215,6 +215,8 @@ class Deps:
     # `{(date, period): articles_included}` for the archive's history rows; D1 only,
     # so the json path's rows show no count.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
+    # Keeps each issue's final content in D1; None under json, whose pages are the record.
+    digest_store: Any | None = None
 
 
 def build_promotion_sync(
@@ -256,9 +258,11 @@ def build_deps(
     tag_store = None
     story_store = None
     record_run = None
+    digest_store = None
     archive_counts: Callable[[], dict[tuple[str, str], int]] = dict
     if d1 is not None:
         from cyris.adapters.store.archive_meta import D1ArchiveMeta
+        from cyris.adapters.store.digests import D1DigestStore
         from cyris.adapters.store.runs import D1RunLog
         from cyris.adapters.store.stories import D1StoryStore
         from cyris.adapters.store.tags import D1TagStore
@@ -267,6 +271,7 @@ def build_deps(
         story_store = D1StoryStore(d1)
         record_run = D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record
         archive_counts = D1ArchiveMeta(d1).article_counts
+        digest_store = D1DigestStore(d1)
 
     fetch_sources: list[FetchSource] = []
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
@@ -346,4 +351,5 @@ def build_deps(
         embedding_threshold=embedding_threshold(cfg),
         record_run=record_run,
         archive_counts=archive_counts,
+        digest_store=digest_store,
     )

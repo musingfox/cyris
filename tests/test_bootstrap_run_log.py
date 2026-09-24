@@ -7,6 +7,7 @@ from fakes import SqliteD1, make_config
 
 from cyris import bootstrap
 from cyris.config import AgentVaultConfig, Config
+from cyris.domain.models import DigestContent, UsageStats
 
 _SUMMARY = {"status": "ok", "period": "morning", "dry_run": False}
 
@@ -47,3 +48,20 @@ def test_a_json_backend_records_no_run(tmp_path: Path) -> None:
     cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
 
     assert bootstrap.build_deps(cfg).record_run is None
+
+
+def test_a_d1_deployment_stores_its_digest_in_its_own_d1(tmp_path: Path, db) -> None:
+    content = DigestContent(
+        date="2026-09-24",
+        period="morning",
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+        usage=UsageStats(),
+    )
+
+    bootstrap.build_deps(_d1_config(tmp_path)).digest_store.save(content, raw_page=True)
+
+    assert db.query("SELECT date, period FROM digests").rows == [
+        {"date": content.date, "period": content.period}
+    ]
