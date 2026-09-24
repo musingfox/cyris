@@ -30,6 +30,7 @@ import json
 import logging
 import mimetypes
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -70,6 +71,39 @@ class PagesDeployError(RuntimeError):
     def __init__(self, message: str, status: int | None = None) -> None:
         super().__init__(message)
         self.status = status
+
+
+@dataclass(frozen=True)
+class DeploymentRecord:
+    """Cloudflare's own account of one deployment: where it is, and how it went.
+
+    An id alone says only that the POST was accepted, and accepted is not landed.
+    """
+
+    id: str
+    url: str | None
+    stage: str | None
+    status: str | None
+
+    @classmethod
+    def from_result(cls, result: dict) -> DeploymentRecord:
+        if not isinstance(result, dict) or not result.get("id"):
+            raise PagesDeployError(f"deployment result carries no id: {result!r}")
+        latest = result.get("latest_stage") or {}
+        return cls(
+            id=result["id"],
+            url=result.get("url"),
+            stage=latest.get("name"),
+            status=latest.get("status"),
+        )
+
+    @property
+    def landed(self) -> bool:
+        return self.stage == "deploy" and self.status == "success"
+
+    @property
+    def failed(self) -> bool:
+        return self.status in ("failure", "canceled")
 
 
 class PagesClient:
@@ -143,7 +177,7 @@ class PagesClient:
 
     # ---- the protocol ---------------------------------------------------
 
-    def deploy(self, directory: Path, branch: str = "main") -> str:
+    def deploy(self, directory: Path, branch: str = "main") -> DeploymentRecord:
         """Deploy every file under `directory`. The local-archive path."""
         files = _collect(directory)
         if not files:
@@ -156,12 +190,12 @@ class PagesClient:
         manifest: dict[str, str],
         recover: Callable[[str], bytes | None],
         branch: str = "main",
-    ) -> tuple[str, dict[str, str]]:
+    ) -> tuple[DeploymentRecord, dict[str, str]]:
         """Deploy this run's files plus everything the manifest already names.
 
         `manifest` is path → hash for the archive; `recover(path)` fetches the
         bytes of an archived file, and is called only for the rare asset
-        Cloudflare has evicted. Returns the deployment id and the new manifest.
+        Cloudflare has evicted. Returns the deployment record and the new manifest.
         """
         files = [
             {
@@ -194,12 +228,12 @@ class PagesClient:
         files: list[dict],
         branch: str = "main",
         recover: Callable[[str], bytes | None] | None = None,
-    ) -> str:
+    ) -> DeploymentRecord:
         """Upload what the account is missing, then deploy every file given.
 
-        Returns the deployment id. Raises `PagesDeployError` on any failed step —
-        deciding whether a failed publish should stop the digest is the caller's
-        call, not this adapter's.
+        Returns the deployment as Cloudflare reported it on creation. Raises
+        `PagesDeployError` on any failed step — deciding whether a failed publish
+        should stop the digest is the caller's call, not this adapter's.
         """
 
         with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
@@ -287,7 +321,7 @@ class PagesClient:
                     "branch": (None, branch),
                 },
             )
-        return body["result"]["id"]
+        return DeploymentRecord.from_result(body.get("result"))
 
 
 def _ext(path: str) -> str:

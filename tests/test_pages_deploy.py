@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from cyris.adapters.output.pages_deploy import (
+    DeploymentRecord,
     PagesClient,
     PagesDeployError,
     _buckets,
@@ -85,10 +86,81 @@ def test_only_the_files_the_account_lacks_are_uploaded(tmp_path, monkeypatch):
     client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
-    assert client.deploy(tmp_path) == "dep-1"
+    assert client.deploy(tmp_path).id == "dep-1"
     assert len(seen["uploaded"]) == 1, "an asset the account already holds was re-uploaded"
     assert sorted(seen["manifest"]) == ["/2026-08-27-morning.html", "/index.html"]
     assert seen["branch"], "without the production branch this lands as a preview"
+
+
+def _deploying(deployment_result):
+    """Every protocol step answers success; the deployments POST answers `deployment_result`."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/upload-token"):
+            return httpx.Response(200, json={"success": True, "result": {"jwt": "j"}})
+        if request.url.path.endswith("/check-missing"):
+            return httpx.Response(200, json={"success": True, "result": []})
+        if request.url.path.endswith("/deployments"):
+            return httpx.Response(200, json={"success": True, "result": deployment_result})
+        return httpx.Response(200, json={"success": True, "result": None})
+
+    return handler
+
+
+def test_a_deploy_returns_cloudflares_verdict_on_the_deployment(tmp_path, monkeypatch):
+    """Accepted is not landed: the stage Cloudflare reports is what the caller acts on."""
+    result = {
+        "id": "dep-1",
+        "url": "https://f64788e9.proj.pages.dev",
+        "latest_stage": {"name": "deploy", "status": "success"},
+    }
+    client, patched = _routed(_deploying(result), tmp_path)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    record = client.deploy(tmp_path)
+
+    url = "https://f64788e9.proj.pages.dev"
+    assert record == DeploymentRecord("dep-1", url, "deploy", "success")
+    assert record.landed is True
+    assert record.failed is False
+
+
+@pytest.mark.parametrize(
+    ("stage", "landed", "failed"),
+    [
+        ({"name": "queued", "status": "active"}, False, False),
+        ({"name": "deploy", "status": "failure"}, False, True),
+        # Success at a stage before `deploy` is progress, not a landed deployment.
+        ({"name": "build", "status": "success"}, False, False),
+    ],
+)
+def test_only_deploy_success_is_landed(tmp_path, monkeypatch, stage, landed, failed):
+    client, patched = _routed(_deploying({"id": "dep-1", "latest_stage": stage}), tmp_path)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    record = client.deploy(tmp_path)
+
+    assert record.landed is landed
+    assert record.failed is failed
+
+
+def test_a_deployment_without_a_stage_is_neither_landed_nor_failed(tmp_path, monkeypatch):
+    client, patched = _routed(_deploying({"id": "dep-1"}), tmp_path)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    record = client.deploy(tmp_path)
+
+    assert (record.stage, record.status) == (None, None)
+    assert record.landed is False
+    assert record.failed is False
+
+
+def test_a_deployment_result_without_an_id_is_an_error(tmp_path, monkeypatch):
+    client, patched = _routed(_deploying({"url": "https://x.proj.pages.dev"}), tmp_path)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    with pytest.raises(PagesDeployError, match="no id"):
+        client.deploy(tmp_path)
 
 
 def test_a_step_that_answers_success_false_is_an_error(tmp_path, monkeypatch):
