@@ -208,21 +208,13 @@ class TestRunRoleStopsOnSigterm:
         assert _calls(p.calls) == ["python"]
         assert "entrypoint: SIGTERM, stopping" in p.stderr_lines()
 
-    def test_sigterm_reaches_the_running_run(self, run_pass, tmp_path: Path) -> None:
-        pidfile = tmp_path / "step.pid"
-        p = run_pass(cyris_body=f"test \"$1\" = run && echo $$ > '{pidfile}' && exec sleep 30")
-        p.wait_for_call("cyris run")
-        p.terminate(within=5)
-        with pytest.raises(ProcessLookupError):
-            os.kill(int(pidfile.read_text()), 0)
-
-    def test_sigterm_reaches_the_running_promote_sync(self, run_pass, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("step", ["run", "promote-sync"])
+    def test_sigterm_reaches_the_running_step(self, run_pass, tmp_path: Path, step: str) -> None:
         pidfile = tmp_path / "step.pid"
         p = run_pass(
-            cyris_body=f"test \"$1\" = promote-sync && echo $$ > '{pidfile}' && exec sleep 30\n"
-            "exit 0"
+            cyris_body=f"test \"$1\" = {step} && echo $$ > '{pidfile}' && exec sleep 30\nexit 0"
         )
-        p.wait_for_call("cyris promote-sync")
+        p.wait_for_call(f"cyris {step}")
         p.terminate(within=5)
         with pytest.raises(ProcessLookupError):
             os.kill(int(pidfile.read_text()), 0)
