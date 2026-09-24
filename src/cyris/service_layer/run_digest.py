@@ -347,6 +347,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 deps.digest_store.save(content, raw_page=raw_page)
             except Exception as e:
                 logger.error("Failed to store the digest content: %s", e)
+                summary["digest_store_error"] = str(e)
 
         # HTML output (optional, non-blocking)
         if deps.html_writer is not None:

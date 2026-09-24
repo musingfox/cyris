@@ -1225,3 +1225,49 @@ async def test_a_failed_digest_write_leaves_the_run_as_it_was(tmp_path: Path) ->
     assert digest_store.calls == 1
     assert report.status == "ok"
     assert report.html_path is not None and report.html_path.exists()
+
+
+async def test_a_failed_digest_write_is_named_in_the_summary_and_the_run_row(
+    tmp_path: Path, caplog
+) -> None:
+    from fakes import SqliteD1
+
+    from cyris.adapters.store.runs import D1RunLog
+
+    db = SqliteD1()
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps = replace(
+        deps, digest_store=_ExplodingDigestStore(), record_run=D1RunLog(db, "sha1").record
+    )
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    summary = _run_summary(caplog)
+    assert summary["digest_store_error"] == "D1 unavailable"
+    assert summary["status"] == "ok"
+    [row] = db.query("SELECT summary FROM digest_runs").rows
+    assert json.loads(row["summary"])["digest_store_error"] == "D1 unavailable"
+
+
+async def test_a_stored_digest_leaves_no_error_in_the_summary(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, _store, db = _stored_digests(deps)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert "digest_store_error" not in _run_summary(caplog)
+    assert _digest_count(db) == 1
+
+
+async def test_an_empty_window_stores_no_digest_and_names_no_error(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, _store, db = _stored_digests(deps)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+    assert "digest_store_error" not in _run_summary(caplog)
+    assert _digest_count(db) == 0
