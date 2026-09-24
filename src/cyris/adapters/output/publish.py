@@ -52,8 +52,11 @@ STAGE_INTERVAL_SECONDS = 5
 # The run container sleeps 5 minutes after it starts (`sleepAfter` in
 # workers/app/src/index.js), whatever it is doing. Publishing gets 180s of that
 # and the pipeline before it plus notify and record_run after it get the rest; a
-# whole run measured ~64s. No step starts unless its worst case fits the budget,
-# so retries and polls never add up past it.
+# whole run measured ~64s. No Pages request starts unless its defined worst case
+# fits the budget, so retries and polls never add up past it. Outside that bound:
+# recovering an evicted asset (15s each), upload buckets beyond the first, and
+# the D1 calls around the deploy. httpx's timeout is per phase of inactivity, not
+# per request, so even a defined worst case is an estimate, not a hard deadline.
 PUBLISH_BUDGET_SECONDS = 180
 RUN_RESERVE_SECONDS = 120
 
