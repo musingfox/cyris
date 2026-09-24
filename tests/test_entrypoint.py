@@ -23,16 +23,28 @@ ENTRYPOINT = ROOT / "docker" / "entrypoint.sh"
 DASH = shutil.which("dash")
 
 
-def _needs_dash(dash: str | None, ci: str | None) -> pytest.MarkDecorator:
+def _require_dash(dash: str | None, ci: str | None) -> None:
     """Skip without dash on a laptop; in CI a missing dash fails, since a skip there would
-    pass the SIGTERM tests without their evidence."""
-    if dash is None and ci:
-        pytest.fail("dash is not installed; CI must run the SIGTERM tests under it")
-    return pytest.mark.skipif(dash is None, reason="dash is not installed")
+    pass the SIGTERM tests without their evidence. Per test, so the rest still run."""
+    if dash is None:
+        if ci:
+            pytest.fail("dash is not installed; CI must run the SIGTERM tests under it")
+        pytest.skip("dash is not installed")
 
 
-needs_dash = _needs_dash(DASH, os.environ.get("CI"))
-SHELLS = ["sh", pytest.param("dash", marks=needs_dash)]
+@pytest.fixture
+def dash() -> None:
+    _require_dash(DASH, os.environ.get("CI"))
+
+
+needs_dash = pytest.mark.usefixtures("dash")
+
+
+@pytest.fixture(params=["sh", "dash"])
+def shell(request: pytest.FixtureRequest) -> str:
+    if request.param == "dash":
+        request.getfixturevalue("dash")
+    return request.param
 
 
 def _recorded_env(
@@ -153,19 +165,16 @@ def run_pass(tmp_path: Path):
 class TestRunRoleProbesEgress:
     """Gemini and OpenAI refuse by egress location, and placement moves between runs."""
 
-    @pytest.mark.parametrize("shell", SHELLS)
     def test_probe_runs_before_the_pipeline(self, tmp_path: Path, shell: str) -> None:
         code, calls = _run_role(tmp_path, "run", "exit 0", shell=shell)
         assert code == 0
         assert calls == ["python", "cyris run", "cyris promote-sync"]
 
-    @pytest.mark.parametrize("shell", SHELLS)
     def test_a_failed_probe_does_not_stop_the_run(self, tmp_path: Path, shell: str) -> None:
         code, calls = _run_role(tmp_path, "run", "exit 1", shell=shell)
         assert code == 0
         assert calls == ["python", "cyris run", "cyris promote-sync"]
 
-    @pytest.mark.parametrize("shell", SHELLS)
     def test_a_failed_run_still_syncs_votes_and_fails_the_pass(
         self, tmp_path: Path, shell: str
     ) -> None:
@@ -256,10 +265,14 @@ on_term
 class TestDashIsRequiredInCi:
     def test_a_missing_dash_fails_in_ci(self) -> None:
         with pytest.raises(pytest.fail.Exception):
-            _needs_dash(None, "true")
+            _require_dash(None, "true")
 
     def test_a_missing_dash_skips_locally(self) -> None:
-        assert _needs_dash(None, None).args == (True,)
+        with pytest.raises(pytest.skip.Exception):
+            _require_dash(None, None)
+
+    def test_an_installed_dash_runs(self) -> None:
+        _require_dash("/bin/dash", "true")
 
 
 class TestContainerRoleDefaultsToD1Store:
