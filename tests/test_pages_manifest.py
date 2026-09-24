@@ -315,6 +315,28 @@ def test_a_deployment_that_lands_after_creation_is_recorded(monkeypatch):
     assert store.saved == {"/old.html": "old", "/new.html": "new"}
 
 
+def test_a_deployment_without_a_verdict_is_recorded_once_its_page_is_live(monkeypatch):
+    """Whether a direct upload ever reports deploy/success is unobserved. If it never
+    does, the live page is still a receipt the manifest can follow."""
+    ok, deployed, _asked, store = _publish_with_stages(
+        monkeypatch, created=(QUEUED,), stages=(ACTIVE,)
+    )
+
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
+    assert ok is True
+    assert len(deployed) == 1
+
+
+def test_a_deployment_with_no_stage_at_all_is_recorded_once_its_page_is_live(monkeypatch):
+    blank = DeploymentRecord("dep-1", None, None, None)
+    ok, _deployed, _asked, store = _publish_with_stages(
+        monkeypatch, created=(blank,), stages=(blank,)
+    )
+
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
+    assert ok is True
+
+
 def test_a_manifest_that_cannot_be_saved_fails_the_publish_loudly(monkeypatch):
     """The next full snapshot would drop this page, so the operator has to hear it."""
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
