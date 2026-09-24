@@ -165,3 +165,16 @@ CREATE TABLE IF NOT EXISTS digest_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_digest_runs_finished ON digest_runs(finished_at);
+
+-- One row per issue, last run wins, like `stories`. `content` is the whole
+-- DigestContent as JSON, so a later field needs no migration; `raw_page` is the
+-- one render input DigestContent lacks: 1 when that run's digest page linked a
+-- raw companion page.
+CREATE TABLE IF NOT EXISTS digests (
+  date     TEXT NOT NULL,
+  period   TEXT NOT NULL,
+  content  TEXT NOT NULL,
+  raw_page INTEGER NOT NULL CHECK (raw_page IN (0, 1)),
+  saved_at TEXT NOT NULL,
+  PRIMARY KEY (date, period)
+);
