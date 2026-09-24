@@ -682,8 +682,11 @@ pipeline task and exiting 143, so `run_digest`'s `finally` still logs `run_summa
 `digest_runs` row. A cancellation lands only at an `await`: a sync call in flight — a D1 write
 with `D1Client`'s own retries, the `digest_runs` write itself — finishes first rather than being
 torn, and a SIGTERM that arrives once nothing is left to await lets the run end with its own
-status (the entrypoint still exits 143). The pass therefore ends only when that `finally`
-returns; no bound is claimed here for how long that takes or for when Cloudflare would follow
+status (the entrypoint still exits 143). Nor does the process end when that `finally` returns:
+`asyncio.run` then joins the default executor's threads — an `asyncio.to_thread` call still in
+flight, the vote sync in `run_digest.py` or a feed parse in `rss_source.py` — for up to 300 s
+(CPython's `THREAD_JOIN_TIMEOUT`), and the interpreter's exit joins any still running after that.
+No bound is claimed here for how long the pass takes to end or for when Cloudflare would follow
 with a SIGKILL.
 Whether it follows at all is unverified: Cloudflare's platform-details page says a SIGKILL comes 15
 minutes after the SIGTERM, while the `ui` receipt above is an instance that kept running through a
