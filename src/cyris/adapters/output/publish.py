@@ -264,6 +264,13 @@ def publish_site(
         # waited for the alias lost that page to the next full-snapshot deploy.
         manifest_store.save(updated)
     if not _page_is_live(pages_project, slug, deadline):
+        if deployment.landed:
+            logger.warning(
+                "Pages deployment %s landed but its page is not live yet; the deployment "
+                "was recorded in the manifest. Deployment url: %s",
+                deployment.id,
+                deployment.url,
+            )
         _report_unlanded(deployment)
         return False
     if not deployment.landed:

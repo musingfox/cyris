@@ -306,6 +306,27 @@ def test_a_landed_deployment_is_recorded_even_before_its_page_is_live(monkeypatc
     assert len(deployed) == 1
 
 
+def test_a_landed_deployment_whose_page_is_not_live_is_named_as_recorded(monkeypatch, caplog):
+    """The publish fails, so the operator has to learn that the page will still come:
+    which deployment it was, where to open it, and that the manifest kept it."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: False)
+    _skip_live_index(monkeypatch)
+    _stub_client(monkeypatch, deployed=[])
+
+    with caplog.at_level("WARNING", logger=publish_mod.logger.name):
+        publish_mod.publish_site({"/new.html": b"x"}, "slug", _Store({}), "proj", _Receipt(True))
+
+    tokens = ("dep-1", "https://ab12.proj.pages.dev", "manifest")
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING" and all(t in r.getMessage() for t in tokens)
+    ]
+    assert len(warnings) == 1
+
+
 def test_a_deployment_that_lands_after_creation_is_recorded(monkeypatch):
     ok, _deployed, _asked, store = _publish_with_stages(
         monkeypatch, created=(QUEUED,), stages=(LANDED,)
