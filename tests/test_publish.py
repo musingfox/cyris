@@ -109,15 +109,15 @@ def test_a_deployed_page_is_polled_not_redeployed(monkeypatch):
 
 
 def _sleep_after_seconds(source: str) -> int:
-    match = re.search(r'sleepAfter\s*=\s*"(\d+)([smh])"', source)
-    assert match, "sleepAfter is not a literal this test can read; pin the budget against it"
+    match = re.search(r'RUN_SLEEP_AFTER\s*=\s*"(\d+)([smh])"', source)
+    assert match, "RUN_SLEEP_AFTER is not a literal this test can read; pin the budget against it"
     value, unit = match.groups()
     return int(value) * {"s": 1, "m": 60, "h": 3600}[unit]
 
 
 def test_the_sleep_after_parser_fails_rather_than_skipping():
-    with pytest.raises(AssertionError, match="sleepAfter"):
-        _sleep_after_seconds("sleepAfter = SLEEP_AFTER;")
+    with pytest.raises(AssertionError, match="RUN_SLEEP_AFTER"):
+        _sleep_after_seconds("const RUN_SLEEP_AFTER = SLEEP_AFTER;")
 
 
 def test_the_publish_time_budget_fits_inside_the_containers_sleep_after():
@@ -138,7 +138,7 @@ def test_the_publish_time_budget_fits_inside_the_containers_sleep_after():
     assert prefix + first_try <= p.PUBLISH_BUDGET_SECONDS
     index_js = Path(__file__).parents[1] / "workers" / "app" / "src" / "index.js"
     sleep_after = _sleep_after_seconds(index_js.read_text())
-    assert sleep_after == 300
+    assert sleep_after == 900
     assert sleep_after >= p.PUBLISH_BUDGET_SECONDS + p.RUN_RESERVE_SECONDS
 
 

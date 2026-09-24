@@ -110,11 +110,19 @@ async function probeGemini(model) {
   }
 }
 
+// The run instance exits on its own when its pass ends, so its timer is only a
+// cap on a hung run. 5m is too short for that: the slowest run in digest_runs
+// took 196s before promote-sync, and PID 1 acting on SIGTERM would cut it off.
+const RUN_SLEEP_AFTER = "15m";
+const RUN_INSTANCE = "run";
+
 export class CyrisContainer extends Container {
   defaultPort = 8766;
   // Idle time is billed. §7 called the default 10 minutes ~10 container-hours
-  // per 60 runs, which is why the hook below exists at all.
-  sleepAfter = "5m";
+  // per 60 runs, which is why the hook below exists at all. Read from the
+  // instance's own name, not from start()'s options, so a Durable Object
+  // restart mid-run keeps the run's timer.
+  sleepAfter = this.ctx.id.name === RUN_INSTANCE ? RUN_SLEEP_AFTER : "5m";
 
   // Without a role the image runs the Mac mini's supercronic loop, which in the
   // cloud would be a second scheduler racing the Workers Cron above.
@@ -157,7 +165,7 @@ const injectStyle = (response, html) =>
 async function startRun(period) {
   const envVars = containerEnv("run");
   if (period) envVars.CYRIS_RUN_PERIOD = period;
-  await getContainer(env.CYRIS, "run").start({ envVars });
+  await getContainer(env.CYRIS, RUN_INSTANCE).start({ envVars });
   return { started: "run", at: new Date().toISOString() };
 }
 
