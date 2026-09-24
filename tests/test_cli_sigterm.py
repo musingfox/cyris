@@ -21,33 +21,25 @@ runner = CliRunner()
 def _invoke_run_recording_sigterm_handler() -> tuple[object, list[object]]:
     recorded: list[object] = []
 
-    def fake_asyncio_run(coro: object) -> SimpleNamespace:
+    async def fake_run_digest(deps: object, options: object) -> SimpleNamespace:
         recorded.append(signal.getsignal(signal.SIGTERM))
-        coro.close()  # type: ignore[attr-defined]
         return SimpleNamespace(rendered="")
 
     with (
         patch("cyris.bootstrap.load_effective_config", MagicMock()),
         patch("cyris.bootstrap.build_deps", MagicMock()),
-        patch("cyris.entrypoints.cli.asyncio.run", fake_asyncio_run),
+        patch("cyris.service_layer.run_digest.run_digest", fake_run_digest),
     ):
         result = runner.invoke(app, ["run"])
     return result, recorded
 
 
-def test_run_enters_the_pipeline_with_a_sigterm_handler_that_exits_143() -> None:
+def test_run_enters_the_pipeline_with_sigterm_handled() -> None:
     result, recorded = _invoke_run_recording_sigterm_handler()
 
     assert result.exit_code == 0, result.output
     [handler] = recorded
     assert handler is not signal.SIG_DFL
-    assert callable(handler)
-    try:
-        handler(signal.SIGTERM, None)
-    except SystemExit as exit_:
-        assert exit_.code == 143
-    else:
-        raise AssertionError("the SIGTERM handler did not raise SystemExit")
 
 
 def test_run_puts_the_previous_sigterm_handler_back() -> None:
@@ -61,15 +53,18 @@ def test_run_puts_the_previous_sigterm_handler_back() -> None:
 _CHILD = """
 import asyncio
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
 async def fake_run_digest(deps, options):
     print("started", flush=True)
     try:
-        {blocking}
+        {body}
     finally:
+        {cleanup}
         print("finally ran", flush=True)
+    return SimpleNamespace(rendered="")
 
 
 with (
@@ -83,9 +78,9 @@ with (
 """
 
 
-def _sigterm_run_blocked_in(blocking: str) -> tuple[int, str]:
+def _sigterm_run(body: str, cleanup: str = "pass") -> tuple[int, str]:
     child = subprocess.Popen(
-        [sys.executable, "-c", _CHILD.format(blocking=blocking)],
+        [sys.executable, "-c", _CHILD.format(body=body, cleanup=cleanup)],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -101,15 +96,28 @@ def _sigterm_run_blocked_in(blocking: str) -> tuple[int, str]:
         child.wait()
 
 
-def test_sigterm_during_a_blocking_call_runs_cleanup_and_exits_143() -> None:
-    returncode, stdout = _sigterm_run_blocked_in("time.sleep(30)")
+def test_sigterm_during_a_blocking_call_lets_it_finish_then_exits_143() -> None:
+    # A D1 write is a sync call; tearing it midway could leave half its chunks written.
+    returncode, stdout = _sigterm_run(
+        'time.sleep(1); print("call finished", flush=True); await asyncio.sleep(30)'
+    )
 
     assert returncode == 143
+    assert "call finished" in stdout
     assert "finally ran" in stdout
 
 
 def test_sigterm_while_awaiting_runs_cleanup_and_exits_143() -> None:
-    returncode, stdout = _sigterm_run_blocked_in("await asyncio.sleep(30)")
+    returncode, stdout = _sigterm_run("await asyncio.sleep(30)")
 
     assert returncode == 143
     assert "finally ran" in stdout
+
+
+def test_sigterm_during_cleanup_lets_the_cleanup_finish() -> None:
+    # The cleanup is where the run is recorded. Nothing awaits after it, so the
+    # cancellation has nowhere to land and the run ends with its own status.
+    returncode, stdout = _sigterm_run("pass", cleanup="time.sleep(1)")
+
+    assert "finally ran" in stdout
+    assert returncode == 0

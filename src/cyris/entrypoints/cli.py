@@ -107,10 +107,6 @@ def _setup_logging(verbose: bool = False) -> None:
             handler.addFilter(_RedactCredentials())
 
 
-def _exit_on_sigterm(signum: int, frame: object) -> None:
-    raise SystemExit(128 + signal.SIGTERM)
-
-
 @app.command("run")
 def run(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing")] = False,
@@ -140,7 +136,7 @@ def run(
     _setup_logging(verbose)
 
     from cyris.bootstrap import build_deps, load_effective_config
-    from cyris.service_layer.run_digest import RunOptions, run_digest
+    from cyris.service_layer.run_digest import RunOptions, RunReport, run_digest
     from cyris.service_layer.schedule import due_period
     from cyris.utils.timezone import now_in_timezone
 
@@ -165,15 +161,25 @@ def run(
 
     deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run)
     options = RunOptions(period=period, dry_run=dry_run, force=force)
+
     # The Container stops a run with SIGTERM, whose default kills the process
     # without unwinding — `run_digest`'s `finally`, which records the run, would
-    # never run. Raising SystemExit unwinds it instead; 143 is 128 + SIGTERM,
-    # the status a shell reports for the signal.
-    previous = signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    # never run. Cancelling the task unwinds it instead, and only at an await:
+    # an exception raised from a signal handler could tear a sync D1 write,
+    # the record in that `finally` included. 143 is 128 + SIGTERM, the status
+    # a shell reports for the signal.
+    async def _run() -> RunReport:
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGTERM, asyncio.current_task().cancel)
+        try:
+            return await run_digest(deps, options)
+        finally:
+            loop.remove_signal_handler(signal.SIGTERM)
+
     try:
-        report = asyncio.run(run_digest(deps, options))
-    finally:
-        signal.signal(signal.SIGTERM, previous)
+        report = asyncio.run(_run())
+    except asyncio.CancelledError:
+        raise typer.Exit(128 + signal.SIGTERM) from None
     if report.rendered:
         typer.echo(report.rendered)
 

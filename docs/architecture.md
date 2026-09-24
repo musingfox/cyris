@@ -676,10 +676,14 @@ was never stopped by `stop()`. The fix has two halves. The `run)` branch traps T
 step in the background under `wait`, because a shell acts on a trapped signal only once its
 foreground command returns; the trap sends TERM on to the step that is running, waits for it and
 exits 143, so nothing after it starts. The egress probe stays in the foreground, so a TERM during
-it ends the pass when the probe returns. And `cyris run` turns SIGTERM into `SystemExit(143)`, so
-`run_digest`'s `finally` still logs `run_summary` and writes the `digest_runs` row. The pass
-therefore ends only when that `finally` — a D1 write with `D1Client`'s own retries — returns; no
-bound is claimed here for how long that takes or for when Cloudflare would follow with a SIGKILL.
+it ends the pass when the probe returns. And `cyris run` answers SIGTERM by cancelling its
+pipeline task and exiting 143, so `run_digest`'s `finally` still logs `run_summary` and writes the
+`digest_runs` row. A cancellation lands only at an `await`: a sync call in flight — a D1 write
+with `D1Client`'s own retries, the `digest_runs` write itself — finishes first rather than being
+torn, and a SIGTERM that arrives once nothing is left to await lets the run end with its own
+status (the entrypoint still exits 143). The pass therefore ends only when that `finally`
+returns; no bound is claimed here for how long that takes or for when Cloudflare would follow
+with a SIGKILL.
 Whether it follows at all is unverified: Cloudflare's platform-details page says a SIGKILL comes 15
 minutes after the SIGTERM, while the `ui` receipt above is an instance that kept running through a
 day of repeated `stop()` calls.
@@ -1049,7 +1053,7 @@ home won, because there is only one.
 | — | Legitimate archive prune has no in-band path | The scale guard refuses a deploy that would drop more than one live digest page. Intentionally shrinking the archive has to go around the guard |
 | — | `-raw.html` is outside the archive-shortfall signal | The live index lists digest pages only. A wrong D1 that kept every dated digest but dropped every `-raw.html` listing would pass |
 | ~~—~~ | ~~D1 calls have no total time budget~~ | Closed 2026-09-24 by the cheaper fix (ticket `d1-call-time-budget`). The worry was the run's tail outlasting the shared 5-minute `sleepAfter`: `D1Client` retries a query for up to 4 × 60s + 12s, outside publish's 180s bound, and the slowest run in `digest_runs` already took 196s before promote-sync. A D1 deadline could not have bounded the run anyway — the LLM calls have none. Instead the `run` instance now gets its own `RUN_SLEEP_AFTER = "15m"` in `workers/app/src/index.js`, chosen from the Durable Object's own name (`ctx.id.name === "run"`) so a restart mid-run keeps it; it exits on its own, so the timer is only a cap on a hung run. `ui` keeps 5 minutes. A Python Worker, which would remove the timer entirely, was spiked the same day and not taken: sync `httpx` times out on fresh isolates, `aiohttp` cannot connect, `blake3` has no Pyodide wheel, and startup already used 934 of 1000 ms |
-| ~~—~~ | ~~Whether the run role stops on SIGTERM is unverified~~ | Done 2026-09-24. It did not: reproduced with `docker kill -s TERM` on a `run` container, PID 1's `SigCgt` lacked TERM, the container was still running 12 s later, and it exited 137 only after SIGKILL. The entrypoint now traps TERM, forwards it to the running step, waits for it and exits 143; `cyris run` raises `SystemExit(143)` on SIGTERM, so the pass ends when `run_digest`'s `finally` (the D1 `digest_runs` write) returns. No SIGKILL bound is claimed. The production receipt — `onStop` logging `exitCode: 143` for a run stopped by `sleepAfter` — is pending (§6) |
+| ~~—~~ | ~~Whether the run role stops on SIGTERM is unverified~~ | Done 2026-09-24. It did not: reproduced with `docker kill -s TERM` on a `run` container, PID 1's `SigCgt` lacked TERM, the container was still running 12 s later, and it exited 137 only after SIGKILL. The entrypoint now traps TERM, forwards it to the running step, waits for it and exits 143; `cyris run` cancels its pipeline on SIGTERM and exits 143, so the pass ends when `run_digest`'s `finally` (the D1 `digest_runs` write) returns. No SIGKILL bound is claimed. The production receipt — `onStop` logging `exitCode: 143` for a run stopped by `sleepAfter` — is pending (§6) |
 
 ### The reader-facing surfaces
 
