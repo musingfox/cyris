@@ -1,10 +1,12 @@
 """Tests for the Cloudflare Pages publish step."""
 
+import re
 from pathlib import Path
 
 import httpx
 import pytest
 
+from cyris.adapters.output import pages_deploy
 from cyris.adapters.output import publish as publish_mod
 from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.publish import publish_html_digest
@@ -99,9 +101,38 @@ def test_a_deployed_page_is_polled_not_redeployed(monkeypatch):
     assert sum(slept) == 120, "the verify window is two minutes of waiting"
 
 
-def test_the_verify_window_outlasts_the_2026_09_24_delay():
-    """That morning the page was still the fallback 35s after the first deployment."""
-    assert (publish_mod.VERIFY_POLLS - 1) * publish_mod.VERIFY_INTERVAL_SECONDS > 35
+def _sleep_after_seconds(source: str) -> int:
+    match = re.search(r'sleepAfter\s*=\s*"(\d+)([smh])"', source)
+    assert match, "sleepAfter is not a literal this test can read; pin the budget against it"
+    value, unit = match.groups()
+    return int(value) * {"s": 1, "m": 60, "h": 3600}[unit]
+
+
+def test_the_sleep_after_parser_fails_rather_than_skipping():
+    with pytest.raises(AssertionError, match="sleepAfter"):
+        _sleep_after_seconds("sleepAfter = SLEEP_AFTER;")
+
+
+def test_the_publish_time_budget_fits_inside_the_containers_sleep_after():
+    """On 2026-09-24 the verify window was the only thing named; the deploy
+    timeouts around it could add up to minutes past the container's clock."""
+    p, d = publish_mod, pages_deploy
+    # The verify window is two minutes of sleeps; the stage wait is half a minute.
+    assert (p.VERIFY_POLLS - 1) * p.VERIFY_INTERVAL_SECONDS == 120
+    assert p.STAGE_POLLS * p.STAGE_INTERVAL_SECONDS == 30
+    # The worst prefix (first-publish probe, or the live-index read), one attempt
+    # and one verdict read always fit, so the budget never skips the first try.
+    prefix = max(
+        2 * d.TIMEOUT_SECONDS,
+        p.LIVE_INDEX_POLLS * p.VERIFY_TIMEOUT_SECONDS
+        + (p.LIVE_INDEX_POLLS - 1) * p.VERIFY_INTERVAL_SECONDS,
+    )
+    first_try = p.DEPLOY_CALLS * d.TIMEOUT_SECONDS + p.STAGE_INTERVAL_SECONDS + d.TIMEOUT_SECONDS
+    assert prefix + first_try <= p.PUBLISH_BUDGET_SECONDS
+    index_js = Path(__file__).parents[1] / "workers" / "app" / "src" / "index.js"
+    sleep_after = _sleep_after_seconds(index_js.read_text())
+    assert sleep_after == 300
+    assert sleep_after >= p.PUBLISH_BUDGET_SECONDS + p.RUN_RESERVE_SECONDS
 
 
 def test_verification_tolerates_propagation_delay(monkeypatch):
