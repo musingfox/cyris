@@ -1169,3 +1169,36 @@ async def test_a_run_without_a_digest_store_writes_its_pages_as_before(
     assert "digest_store_error" not in _run_summary(caplog)
     assert report.html_path is not None and report.html_path.exists()
     assert list(report.html_path.parent.glob("*-raw.html"))
+
+
+def _stored_digests(deps: Deps):
+    from fakes import SqliteD1
+
+    from cyris.adapters.store.digests import D1DigestStore
+
+    db = SqliteD1()
+    store = D1DigestStore(db)
+    return replace(deps, digest_store=store), store, db
+
+
+def _digest_count(db) -> int:
+    return db.query("SELECT COUNT(*) AS n FROM digests").rows[0]["n"]
+
+
+async def test_the_stored_digest_is_the_final_content(tmp_path: Path, caplog) -> None:
+    source = FakeSource(
+        [_notify_article(), _fan_article(article_id=8, title="Synth", url="newsletter:abc")]
+    )
+    deps, _ = make_deps(tmp_path, _notify_llm(), source)
+    deps, store, db = _stored_digests(deps)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert _digest_count(db) == 1
+    [row] = db.query("SELECT date, period FROM digests").rows
+    loaded = store.load(row["date"], row["period"]).content
+    assert loaded.synthetic_url_count == 1
+    assert loaded.dead_link_count is not None
+    assert loaded.usage.api_calls == _run_summary(caplog)["llm"]["api_calls"]

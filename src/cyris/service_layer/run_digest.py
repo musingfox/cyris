@@ -337,6 +337,14 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         except Exception as e:
             logger.error("Failed to load the window's collected articles: %s", e)
 
+        raw_page = deps.html_writer is not None and bool(collected)
+
+        # After the last change to `content` and the raw-page decision, before any
+        # page is written or published: the row must reproduce the page the reader
+        # gets, and a failed publish must not cost the period its content.
+        if deps.digest_store is not None:
+            deps.digest_store.save(content, raw_page=raw_page)
+
         # HTML output (optional, non-blocking)
         if deps.html_writer is not None:
             filename = deps.html_writer.digest_filename(content.date, content.period)
