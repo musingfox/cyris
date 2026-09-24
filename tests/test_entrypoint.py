@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shutil
 import signal
 import stat
 import subprocess
+import textwrap
 import time
 from pathlib import Path
 
@@ -218,6 +220,32 @@ class TestRunRoleStopsOnSigterm:
         p.terminate(within=5)
         with pytest.raises(ProcessLookupError):
             os.kill(int(pidfile.read_text()), 0)
+
+    def test_sigterm_before_the_step_pid_is_recorded_still_reaches_it(self, tmp_path: Path) -> None:
+        # A TERM landing between `"$@" &` and `child=$!` finds `child` still empty;
+        # no test can time the real window, so this runs the real trap inside it.
+        match = re.search(r"^( *)on_term\(\) \{\n.*?^\1\}\n", ENTRYPOINT.read_text(), re.M | re.S)
+        assert match is not None
+        pidfile = tmp_path / "step.pid"
+        harness = f"""{textwrap.dedent(match.group(0))}
+child=
+sh -c 'echo $$ > "{pidfile}"; exec sleep 30' &
+while [ ! -s "{pidfile}" ]; do sleep 0.05; done
+on_term
+"""
+        assert DASH is not None
+        # Not a pipe: a step the harness leaves behind would hold it open.
+        result = subprocess.run(
+            [DASH, "-c", harness], timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        pid = int(pidfile.read_text())
+        try:
+            assert result.returncode == 143
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
 
 
 class TestDashIsRequiredInCi:

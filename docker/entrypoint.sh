@@ -21,6 +21,9 @@ case "${CYRIS_ROLE:-cron}" in
     child=
     on_term() {
       trap '' TERM
+      # A TERM between `"$@" &` and `child=$!` finds `child` still empty;
+      # `$!` is unset until the first step starts.
+      child=${child:-${!:-}}
       if [ -n "$child" ]; then
         kill -TERM "$child" 2>/dev/null || true
         wait "$child" || true
