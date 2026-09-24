@@ -1312,3 +1312,15 @@ async def test_a_run_without_html_output_still_stores_its_digest(tmp_path: Path)
     assert _digest_count(db) == 1
     [row] = db.query("SELECT date, period FROM digests").rows
     assert store.load(row["date"], row["period"]).raw_page is False
+
+
+async def test_a_failed_publish_keeps_the_stored_digest(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.promote.pages_project = "cyris-digest"
+    deps, _store, db = _stored_digests(replace(deps, publish_site=lambda _pages, _slug: False))
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert _run_summary(caplog)["status"] == "publish_failed"
+    assert _digest_count(db) == 1
