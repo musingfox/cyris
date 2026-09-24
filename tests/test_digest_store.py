@@ -80,3 +80,14 @@ def test_each_period_keeps_its_own_row() -> None:
     assert store.load("2026-09-24", "morning").content == morning
     assert store.load("2026-09-24", "evening").content == evening
     assert db.query("SELECT COUNT(*) AS n FROM digests").rows == [{"n": 2}]
+
+
+def test_an_empty_table_loads_nothing() -> None:
+    assert D1DigestStore(SqliteD1()).load("2026-09-24", "evening") is None
+
+
+def test_another_period_loads_nothing() -> None:
+    store = D1DigestStore(SqliteD1())
+    store.save(_content("morning"), raw_page=True)
+
+    assert store.load("2026-09-24", "evening") is None

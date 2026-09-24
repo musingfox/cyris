@@ -35,10 +35,13 @@ class D1DigestStore:
         )
 
     def load(self, date: str, period: str) -> StoredDigest | None:
-        row = self._db.query(
+        rows = self._db.query(
             "SELECT content, raw_page FROM digests WHERE date = ? AND period = ?",
             [date, period],
-        ).rows[0]
+        ).rows
+        if not rows:
+            return None
+        row = rows[0]
         return StoredDigest(
             content=DigestContent.model_validate_json(row["content"]),
             raw_page=bool(row["raw_page"]),
