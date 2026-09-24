@@ -29,10 +29,15 @@ DEPLOY_ATTEMPTS = 3
 # is exactly what this guard is for. A same-size-but-different archive is caught
 # regardless, because the check is a set difference and not a count.
 ARCHIVE_SHORTFALL_TOLERANCE = 1
-# Cloudflare Pages serves the extensionless clean URL almost immediately, but
-# not always on the first read.
-VERIFY_POLLS = 3
+# Deploy attempts retry a deployment Cloudflare refused, never one it accepted:
+# on 2026-09-24 three deployments each reached `success` within 2s, the page was
+# still the fallback 35s after the first, and each redeploy only restarted the
+# wait. A new page usually shows by the second poll, but its worst case is not
+# measured, so the window is two minutes — spent only on a slow day.
+VERIFY_POLLS = 25
 VERIFY_INTERVAL_SECONDS = 5
+# Reading the archive that is already live waits on no propagation.
+LIVE_INDEX_POLLS = 3
 VERIFY_TIMEOUT_SECONDS = 15
 
 _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
@@ -67,7 +72,7 @@ def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
 
 def _fetch_live_index(pages_project: str) -> set[str] | None:
     url = f"https://{pages_project}.pages.dev/"
-    for poll in range(1, VERIFY_POLLS + 1):
+    for poll in range(1, LIVE_INDEX_POLLS + 1):
         if poll > 1:
             time.sleep(VERIFY_INTERVAL_SECONDS)
         try:
@@ -103,11 +108,14 @@ def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
         return False
 
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
-        if _deploy_once(html_dir, pages_project, attempt) and _page_is_live(pages_project, slug):
-            logger.info(
-                "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
-            )
-            return True
+        if not _deploy_once(html_dir, pages_project, attempt):
+            continue
+        if not _page_is_live(pages_project, slug):
+            return False
+        logger.info(
+            "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
+        )
+        return True
     return False
 
 
@@ -211,14 +219,15 @@ def publish_site(
             logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
             continue
         logger.info("Pages deployment %s created (%d file(s))", deployment, len(updated))
-        if _page_is_live(pages_project, slug):
-            # Only after the page is proven live: a manifest recording a deploy
-            # that did not land would describe a site that does not exist.
-            manifest_store.save(updated)
-            logger.info(
-                "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
-            )
-            return True
+        if not _page_is_live(pages_project, slug):
+            return False
+        # Only after the page is proven live: a manifest recording a deploy
+        # that did not land would describe a site that does not exist.
+        manifest_store.save(updated)
+        logger.info(
+            "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
+        )
+        return True
     return False
 
 

@@ -26,14 +26,14 @@ def _credentials(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
 
 
-def _fake_deploy(monkeypatch, *, fails=False):
+def _fake_deploy(monkeypatch, *, fails=False, fail_first=0):
     """Stub the direct-upload client. Whether the deploy *worked* is _page_is_live's
     question, and that is what these tests are about."""
     runs = []
 
     def deploy(_self, _directory, branch="main"):
         runs.append(branch)
-        if fails:
+        if fails or len(runs) <= fail_first:
             raise publish_mod.PagesDeployError("boom")
         return "dep-1"
 
@@ -71,13 +71,20 @@ def test_a_created_deployment_without_a_live_page_is_a_failure(monkeypatch):
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
 
 
-def test_a_no_op_deploy_is_retried(monkeypatch):
+def test_a_deployed_page_is_polled_not_redeployed(monkeypatch):
+    """On 2026-09-24 three deployments each reached `success` within 2s, and each was
+    followed by a fresh one because its page had not propagated yet. Redeploying the
+    same files cannot make an edge serve them sooner."""
     runs = _fake_deploy(monkeypatch)
-    # Every poll of the first deploy sees the fallback; the retry lands.
-    _fake_get(monkeypatch, *([ARCHIVE_PAGE] * publish_mod.VERIFY_POLLS), LIVE_PAGE)
+    _fake_get(monkeypatch, *([ARCHIVE_PAGE] * (publish_mod.VERIFY_POLLS - 1)), LIVE_PAGE)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
-    assert len(runs) == 2
+    assert len(runs) == 1
+
+
+def test_the_verify_window_outlasts_the_2026_09_24_delay():
+    """That morning the page was still the fallback 35s after the first deployment."""
+    assert (publish_mod.VERIFY_POLLS - 1) * publish_mod.VERIFY_INTERVAL_SECONDS > 35
 
 
 def test_verification_tolerates_propagation_delay(monkeypatch):
@@ -88,9 +95,24 @@ def test_verification_tolerates_propagation_delay(monkeypatch):
     assert len(calls) == 2
 
 
-def test_retries_are_bounded(monkeypatch):
+def test_a_page_that_never_goes_live_is_not_redeployed(monkeypatch):
     runs = _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert len(runs) == 1
+
+
+def test_a_refused_deployment_is_retried(monkeypatch):
+    runs = _fake_deploy(monkeypatch, fail_first=1)
+    _fake_get(monkeypatch, LIVE_PAGE)
+
+    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert len(runs) == 2
+
+
+def test_refused_deployment_retries_are_bounded(monkeypatch):
+    runs = _fake_deploy(monkeypatch, fails=True)
 
     assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
     assert len(runs) == publish_mod.DEPLOY_ATTEMPTS

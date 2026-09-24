@@ -146,6 +146,22 @@ def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch)
     assert store.saved is None
 
 
+def test_a_deployment_that_is_not_live_yet_is_not_redeployed(monkeypatch):
+    """A deployment that succeeded is waited on, not replaced: on 2026-09-24 three
+    identical redeploys in 35s each restarted the wait they were meant to end."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: False)
+    _skip_live_index(monkeypatch)
+    deployed = []
+    _stub_client(monkeypatch, deployed=deployed)
+
+    store = _Store({"/old.html": "old"})
+
+    assert publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt()) is False
+    assert len(deployed) == 1
+
+
 def test_an_archived_page_is_recovered_from_the_live_site(monkeypatch):
     """Pages 308s `.html` to the clean URL, so the redirect has to be followed or
     the bytes come back as a redirect body."""
