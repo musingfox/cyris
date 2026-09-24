@@ -1,9 +1,12 @@
 """Publish the HTML digest directory to Cloudflare Pages.
 
 Deploying goes through `pages_deploy.PagesClient` (the REST direct-upload
-protocol), not `wrangler pages deploy`. Verifying it stayed exactly as it was —
-`_page_is_live` is the receipt that caught the 2026-08-18/08-20 silent failures,
-and swapping the transport underneath it is no reason to trust the new one more.
+protocol), not `wrangler pages deploy`. What the deploy is recorded as follows
+Cloudflare's own verdict on the deployment — its stage — because the manifest
+has to name what the next full snapshot must keep, and that is what Cloudflare
+deployed, not what the edge happens to serve yet. Whether the digest counts as
+*published* is still `_page_is_live`'s call: it is the receipt that caught the
+2026-08-18/08-20 silent failures, and the reader's link depends on it.
 """
 
 import logging
@@ -20,10 +23,11 @@ logger = logging.getLogger(__name__)
 
 DEPLOY_ATTEMPTS = 3
 # One page, because one is the largest shortfall this system can legitimately
-# produce. A deploy that lands while `_page_is_live` says otherwise never
-# reaches `save()`, so the site leads the manifest by that run's page — but the
-# lead cannot accumulate: the next deploy is a full snapshot of `new_files` plus
-# the manifest, and that page is in neither, so it is dropped and the count
+# produce. Two things put the site one page ahead of the manifest: a deployment
+# that landed but whose manifest save then failed, and one Cloudflare gave no
+# verdict on and whose page the alias did not serve in time, which lands later.
+# The lead cannot accumulate: the next deploy is a full snapshot of `new_files`
+# plus the manifest, and that page is in neither, so it is dropped and the count
 # returns to one. Anything above that is a database describing a different
 # archive: a staging clone or a point-in-time restore a few days behind, which
 # is exactly what this guard is for. A same-size-but-different archive is caught
@@ -223,11 +227,16 @@ def publish_site(
             logger.error("Pages deploy failed (attempt %d): %s", attempt, e)
             continue
         deployment = _await_verdict(client, deployment)
+        if deployment.landed:
+            # Before the alias check, not after it: on 2026-09-24 a deployment
+            # was at `success` while the alias still served the fallback, and a
+            # manifest that waited for the alias lost that page to the next
+            # full-snapshot deploy.
+            manifest_store.save(updated)
         if not _page_is_live(pages_project, slug):
             return False
-        # Only after the page is proven live: a manifest recording a deploy
-        # that did not land would describe a site that does not exist.
-        manifest_store.save(updated)
+        if not deployment.landed:
+            manifest_store.save(updated)
         logger.info(
             "Published HTML digest to Pages project %s (attempt %d)", pages_project, attempt
         )

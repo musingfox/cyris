@@ -239,34 +239,51 @@ def test_a_deployment_that_never_reports_a_verdict_is_reread_a_bounded_number_of
     assert len(asked) == publish_mod.STAGE_POLLS == 6
 
 
-def test_a_deploy_that_never_went_live_does_not_update_the_manifest(monkeypatch):
-    """The manifest describes the deployed site. Recording a deploy that did not
-    land would describe a site that does not exist."""
+def test_a_landed_deployment_is_recorded_even_before_its_page_is_live(monkeypatch):
+    """On 2026-09-24 a deployment reached `success` within 2s while the alias still
+    served the fallback, and the page was lost: the manifest only recorded pages
+    seen live, so the next full-snapshot deploy dropped it. What Cloudflare says it
+    deployed is recorded; what the alias serves decides only the return. And a
+    deployment that succeeded is waited on, not replaced: three identical redeploys
+    that morning each restarted the wait they were meant to end."""
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: False)
-    _skip_live_index(monkeypatch)
-    _stub_client(monkeypatch, deployed=[])
-    store = _Store({"/old.html": "old"})
-
-    assert publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt()) is False
-    assert store.saved is None
-
-
-def test_a_deployment_that_is_not_live_yet_is_not_redeployed(monkeypatch):
-    """A deployment that succeeded is waited on, not replaced: on 2026-09-24 three
-    identical redeploys in 35s each restarted the wait they were meant to end."""
-    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
-    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: False)
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: False)
     _skip_live_index(monkeypatch)
     deployed = []
     _stub_client(monkeypatch, deployed=deployed)
-
     store = _Store({"/old.html": "old"})
 
     assert publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt()) is False
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
     assert len(deployed) == 1
+
+
+def test_a_deployment_that_lands_after_creation_is_recorded(monkeypatch):
+    ok, _deployed, _asked, store = _publish_with_stages(
+        monkeypatch, created=(QUEUED,), stages=(LANDED,)
+    )
+
+    assert ok is True
+    assert store.saved == {"/old.html": "old", "/new.html": "new"}
+
+
+def test_a_manifest_that_cannot_be_saved_fails_the_publish_loudly(monkeypatch):
+    """The next full snapshot would drop this page, so the operator has to hear it."""
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
+    _skip_live_index(monkeypatch)
+    _stub_client(monkeypatch, deployed=[])
+
+    class _Down(_Store):
+        def save(self, manifest):
+            raise RuntimeError("d1 down")
+
+    with pytest.raises(RuntimeError, match="d1 down"):
+        publish_mod.publish_site(
+            {"/new.html": b"x"}, "slug", _Down({"/old.html": "old"}), "proj", _Receipt()
+        )
 
 
 def test_an_archived_page_is_recovered_from_the_live_site(monkeypatch):
@@ -447,11 +464,17 @@ def test_a_receipt_skips_the_probe_on_the_next_empty_manifest_run(monkeypatch):
         return False
 
     monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", probe)
-    _stub_client(monkeypatch, deployed=[])
+    refused = [True]
+
+    def deploy_manifest(_self, new_files, manifest, recover, branch="main"):
+        if refused[0]:
+            raise publish_mod.PagesDeployError("upload failed")
+        return LANDED, {**manifest, **{p: "new" for p in new_files}}
+
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
     store = _Store({})
     receipt = _Receipt()
-    live = [False]
-    monkeypatch.setattr(publish_mod, "_page_is_live", lambda _p, _s: live[0])
+    monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
 
     first = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", receipt)
     assert first is False
@@ -459,7 +482,7 @@ def test_a_receipt_skips_the_probe_on_the_next_empty_manifest_run(monkeypatch):
     assert receipt.present is True
     assert len(probes) == 1
 
-    live[0] = True
+    refused[0] = False
     second = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", receipt)
     assert second is True
     assert len(probes) == 1
