@@ -6,6 +6,7 @@ import json
 import httpx
 import pytest
 
+from cyris.adapters.output import pages_deploy
 from cyris.adapters.output.pages_deploy import (
     DeploymentRecord,
     PagesClient,
@@ -90,6 +91,33 @@ def test_only_the_files_the_account_lacks_are_uploaded(tmp_path, monkeypatch):
     assert len(seen["uploaded"]) == 1, "an asset the account already holds was re-uploaded"
     assert sorted(seen["manifest"]) == ["/2026-08-27-morning.html", "/index.html"]
     assert seen["branch"], "without the production branch this lands as a preview"
+
+
+def test_a_one_bucket_deploy_makes_the_requests_its_worst_case_counts(tmp_path, monkeypatch):
+    """publish budgets an attempt at `DEPLOY_WORST_CASE_SECONDS`; that is only true
+    while a deploy that uploads makes `DEPLOY_REQUESTS` requests."""
+    paths = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith("/upload-token"):
+            return httpx.Response(200, json={"success": True, "result": {"jwt": "j"}})
+        if request.url.path.endswith("/check-missing"):
+            hashes = json.loads(request.content)["hashes"]
+            return httpx.Response(200, json={"success": True, "result": hashes})
+        if request.url.path.endswith("/deployments"):
+            return httpx.Response(200, json={"success": True, "result": {"id": "dep-1"}})
+        return httpx.Response(200, json={"success": True, "result": None})
+
+    client, patched = _routed(handler, tmp_path)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    client.deploy(tmp_path)
+
+    assert len(paths) == pages_deploy.DEPLOY_REQUESTS
+    assert pages_deploy.DEPLOY_WORST_CASE_SECONDS == (
+        pages_deploy.DEPLOY_REQUESTS * pages_deploy.TIMEOUT_SECONDS
+    )
 
 
 def _deploying(deployment_result):

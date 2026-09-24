@@ -48,6 +48,11 @@ API_ROOT = "https://api.cloudflare.com/client/v4"
 # reached `success` within 2s on 2026-09-24; 20s is what lets five calls, a
 # verdict read and the live-index read fit publish's 180s budget.
 TIMEOUT_SECONDS = 20
+# upload-token, check-missing, upload, upsert-hashes, deployments: one bucket
+# holds a run's three pages, so a deploy is five requests. Recovering an evicted
+# asset, or a second upload bucket, is not in this worst case.
+DEPLOY_REQUESTS = 5
+DEPLOY_WORST_CASE_SECONDS = DEPLOY_REQUESTS * TIMEOUT_SECONDS
 # wrangler's own ceilings (MAX_BUCKET_SIZE / MAX_BUCKET_FILE_COUNT).
 MAX_BUCKET_BYTES = 40 * 1024 * 1024
 MAX_BUCKET_FILES = 2000

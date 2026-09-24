@@ -134,7 +134,7 @@ def test_the_publish_time_budget_fits_inside_the_containers_sleep_after():
         p.LIVE_INDEX_POLLS * p.VERIFY_TIMEOUT_SECONDS
         + (p.LIVE_INDEX_POLLS - 1) * p.VERIFY_INTERVAL_SECONDS,
     )
-    first_try = p.DEPLOY_CALLS * d.TIMEOUT_SECONDS + p.STAGE_INTERVAL_SECONDS + d.TIMEOUT_SECONDS
+    first_try = d.DEPLOY_WORST_CASE_SECONDS + p.STAGE_INTERVAL_SECONDS + d.TIMEOUT_SECONDS
     assert prefix + first_try <= p.PUBLISH_BUDGET_SECONDS
     index_js = Path(__file__).parents[1] / "workers" / "app" / "src" / "index.js"
     sleep_after = _sleep_after_seconds(index_js.read_text())

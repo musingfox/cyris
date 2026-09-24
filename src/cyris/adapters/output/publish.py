@@ -56,9 +56,6 @@ STAGE_INTERVAL_SECONDS = 5
 # so retries and polls never add up past it.
 PUBLISH_BUDGET_SECONDS = 180
 RUN_RESERVE_SECONDS = 120
-# upload-token, check-missing, upload, upsert-hashes, deployments: one bucket
-# holds a run's three pages, so an attempt is five requests.
-DEPLOY_CALLS = 5
 
 # Patched by tests instead of time.monotonic, which the whole process shares.
 _clock = time.monotonic
@@ -311,7 +308,7 @@ def _deploy_until_verdict(
     identical redeploy only restarted the wait.
     """
     for attempt in range(1, DEPLOY_ATTEMPTS + 1):
-        if not deadline.fits(DEPLOY_CALLS * pages_deploy.TIMEOUT_SECONDS):
+        if not deadline.fits(pages_deploy.DEPLOY_WORST_CASE_SECONDS):
             logger.error("Pages deploy attempt %d skipped: publish budget exhausted", attempt)
             return None
         try:
