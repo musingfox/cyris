@@ -539,7 +539,9 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
         usage=UsageStats(),
     )
 
-    pages = _render_site(deps, content, [_stored_article()] if collected else [])
+    pages = _render_site(
+        deps, content, [_stored_article()] if collected else [], raw_page=collected
+    )
 
     index = pages["/index.html"].decode("utf-8")
     assert ('href="2026-04-15-evening-raw.html">All articles</a>' in index) is linked
@@ -550,7 +552,7 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
 
 
 def _published_index(deps, content: DigestContent) -> str:
-    return _render_site(deps, content, [])["/index.html"].decode("utf-8")
+    return _render_site(deps, content, [], raw_page=False)["/index.html"].decode("utf-8")
 
 
 def _run_content(date: str, period: str, lead: str, included: int) -> DigestContent:
@@ -599,7 +601,7 @@ def test_the_published_digest_is_keyed_by_the_writers_file_name(tmp_path: Path, 
         archive_counts=lambda: {},
     )
 
-    pages = _render_site(deps, _run_content("2026-04-16", "evening", "Lead", 1), [])
+    pages = _render_site(deps, _run_content("2026-04-16", "evening", "Lead", 1), [], raw_page=False)
 
     assert "/2026-04-16-evening-v2.html" in pages
     assert "/2026-04-16-evening.html" not in pages
@@ -1324,3 +1326,50 @@ async def test_a_failed_publish_keeps_the_stored_digest(tmp_path: Path, caplog) 
 
     assert _run_summary(caplog)["status"] == "publish_failed"
     assert _digest_count(db) == 1
+
+
+class _StoreLosingTheWindowAfterVerdicts:
+    """The real store, except the window can no longer be read once states are written."""
+
+    def __init__(self, store) -> None:
+        self._store = store
+        self._judged = False
+
+    def __getattr__(self, name):
+        return getattr(self._store, name)
+
+    def update_states(self, *args, **kwargs):
+        self._judged = True
+        return self._store.update_states(*args, **kwargs)
+
+    def load_by_time_range(self, *args, **kwargs):
+        if self._judged:
+            raise RuntimeError("window unreadable")
+        return self._store.load_by_time_range(*args, **kwargs)
+
+
+@pytest.mark.parametrize("collected", [True, False])
+async def test_the_stored_digest_renders_the_published_page(
+    tmp_path: Path, collected: bool
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.promote.pages_project = "cyris-digest"
+    published: dict[str, bytes] = {}
+
+    def capture(pages: dict[str, bytes], _slug: str) -> bool:
+        published.update(pages)
+        return True
+
+    deps, store, db = _stored_digests(replace(deps, publish_site=capture))
+    if not collected:
+        deps = replace(deps, store=_StoreLosingTheWindowAfterVerdicts(deps.store))
+
+    await run_digest(deps, RunOptions())
+
+    [key] = db.query("SELECT date, period FROM digests").rows
+    row = store.load(key["date"], key["period"])
+    assert row.raw_page is collected
+    writer = deps.html_writer
+    rerendered = writer.render(row.content, raw_page=row.raw_page).encode("utf-8")
+    assert rerendered == published["/" + writer.digest_filename(key["date"], key["period"])]
+    assert ("/" + writer.raw_filename(key["date"], key["period"]) in published) is collected
