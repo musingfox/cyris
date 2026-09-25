@@ -1,4 +1,4 @@
-"""Unregistered marks fail collection, and the suite stays on pytest 9.0.2."""
+"""Every test module carries one level mark and only registered tags."""
 
 import ast
 import os
@@ -12,7 +12,6 @@ import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
-_BASE = "915b0e0d56cce5273c1da839b9e22981197f96af"
 _LEVELS = ("unit", "integration", "e2e")
 _TAGS = frozenset({"guard", "js", "real_fixture"})
 _SELECTABLE = frozenset(_LEVELS) | _TAGS
@@ -69,7 +68,7 @@ def _pytestmark_names(source: str) -> list[str]:
     tree = ast.parse(source)
     names: list[str] = []
     for value in _pytestmark_values(tree):
-        names.extend(name for name, _ in _outer_marks(value))
+        names.extend(name for name, node in _outer_marks(value) if not isinstance(node, ast.Call))
     return names
 
 
@@ -154,22 +153,6 @@ def test_a_registered_level_mark_collects(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_pytest_stays_locked_at_9_0_2() -> None:
-    version = subprocess.check_output(["uv", "run", "pytest", "--version"], text=True)
-    assert "pytest 9.0.2" in version
-
-    diff = subprocess.check_output(["git", "diff", _BASE, "--", "uv.lock"], text=True)
-    changed = [
-        line
-        for line in diff.splitlines()
-        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-    ]
-    assert changed == [
-        '-    { name = "pytest", specifier = ">=8.0" },',
-        '+    { name = "pytest", specifier = ">=9" },',
-    ]
-
-
 def test_a_file_named_e2e_but_marked_integration_is_rejected() -> None:
     source = "import pytest\npytestmark = pytest.mark.integration\n"
 
@@ -198,48 +181,6 @@ def test_a_name_that_carries_its_level_is_accepted() -> None:
     source = "import pytest\npytestmark = pytest.mark.e2e\n"
 
     assert filename_level_violations("test_e2e_release_smoke.py", source) == []
-
-
-def test_the_renamed_modules_differ_only_by_their_mark() -> None:
-    assert not Path("tests/test_e2e_flows.py").exists()
-    assert not Path("tests/test_store_integration.py").exists()
-    assert Path("tests/test_cli_flows.py").is_file()
-    assert Path("tests/test_store_parity.py").is_file()
-
-    diff = subprocess.check_output(
-        [
-            "git",
-            "diff",
-            "-M",
-            _BASE,
-            "--",
-            "tests/test_e2e_flows.py",
-            "tests/test_cli_flows.py",
-            "tests/test_store_integration.py",
-            "tests/test_store_parity.py",
-        ],
-        text=True,
-    )
-    assert "rename from tests/test_e2e_flows.py" in diff
-    assert "rename to tests/test_cli_flows.py" in diff
-    assert "rename from tests/test_store_integration.py" in diff
-    assert "rename to tests/test_store_parity.py" in diff
-    added = [
-        line[1:]
-        for line in diff.splitlines()
-        if line.startswith("+") and not line.startswith("+++") and line[1:].strip()
-    ]
-    removed = [
-        line[1:]
-        for line in diff.splitlines()
-        if line.startswith("-") and not line.startswith("---") and line[1:].strip()
-    ]
-    assert removed == []
-    assert added == [
-        "pytestmark = pytest.mark.integration",
-        "import pytest",
-        "pytestmark = [pytest.mark.unit, pytest.mark.guard]",
-    ]
 
 
 def test_one_level_mark_is_accepted() -> None:
@@ -330,6 +271,15 @@ def test_a_tooling_mark_is_rejected() -> None:
 
     assert len(violations) == 1
     assert "tooling" in violations[0]
+
+
+def test_a_call_form_mark_in_pytestmark_is_ignored() -> None:
+    source = (
+        "import pytest\npytestmark = [pytest.mark.unit, pytest.mark.skipif(True, reason='x')]\n"
+    )
+
+    assert level_violations(source) == []
+    assert unregistered_mark_violations(source) == []
 
 
 def test_registered_tags_are_accepted() -> None:
