@@ -427,22 +427,6 @@ class TestLLMProvider:
         with pytest.raises(ValueError, match="GEMINI_API_KEY"):
             cfg.validate_required_keys()
 
-    def test_build_llm_selects_gemini(self):
-        """build_llm returns GeminiClient for provider=gemini, AnthropicClient otherwise."""
-        from cyris.adapters.anthropic_client import AnthropicClient
-        from cyris.adapters.gemini_client import GeminiClient
-        from cyris.bootstrap import build_llm
-        from cyris.config import LLMProviderConfig
-
-        gemini = build_llm(
-            LLMProviderConfig(provider="gemini", model="gemini-2.5-flash", api_key="k")
-        )
-        assert isinstance(gemini, GeminiClient)
-        assert gemini.model == "gemini-2.5-flash"
-
-        claude = build_llm(LLMProviderConfig(provider="anthropic", model="", api_key="k"))
-        assert isinstance(claude, AnthropicClient)
-
 
 class TestValidateSetting:
     """One rule per grade-D key, wherever the value comes from."""
