@@ -13,6 +13,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 _BASE = "915b0e0d56cce5273c1da839b9e22981197f96af"
 _LEVELS = ("unit", "integration", "e2e")
+_TAGS = frozenset({"guard", "js", "real_fixture"})
+_SELECTABLE = frozenset(_LEVELS) | _TAGS
 
 
 def _mark_name(node: ast.AST) -> str | None:
@@ -87,6 +89,19 @@ def level_violations(source: str) -> list[str]:
     if len(levels) > 1:
         return [f"two levels on the module pytestmark: {', '.join(levels)}"]
     return []
+
+
+def stray_mark_violations(source: str) -> list[str]:
+    tree = ast.parse(source)
+    allowed: set[int] = set()
+    for value in _pytestmark_values(tree):
+        allowed.update(id(node) for node in ast.walk(value))
+    problems = []
+    for name, node in _outer_marks(tree):
+        if name not in _SELECTABLE or id(node) in allowed:
+            continue
+        problems.append(f"line {node.lineno} applies {name} outside the module pytestmark")
+    return problems
 
 
 def test_strict_markers_is_enabled(request: pytest.FixtureRequest) -> None:
@@ -254,3 +269,39 @@ def test_two_level_marks_are_rejected() -> None:
 
     assert len(violations) == 1
     assert "two levels" in violations[0]
+
+
+def test_a_level_decorator_is_rejected() -> None:
+    source = (
+        "import pytest\n"
+        "pytestmark = pytest.mark.unit\n"
+        "@pytest.mark.integration\n"
+        "def test_a(): pass\n"
+    )
+
+    violations = stray_mark_violations(source)
+
+    assert len(violations) == 1
+    assert "line 3" in violations[0]
+
+
+def test_a_class_level_mark_is_rejected() -> None:
+    source = (
+        "import pytest\n"
+        "pytestmark = pytest.mark.unit\n"
+        "class TestX:\n"
+        "    pytestmark = pytest.mark.e2e\n"
+    )
+
+    violations = stray_mark_violations(source)
+
+    assert len(violations) == 1
+    assert "line 4" in violations[0]
+
+
+def test_a_builtin_mark_bound_to_a_name_is_accepted() -> None:
+    source = (
+        "import pytest\npytestmark = pytest.mark.unit\ndash = pytest.mark.usefixtures('dash')\n"
+    )
+
+    assert stray_mark_violations(source) == []
