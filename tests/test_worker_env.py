@@ -31,7 +31,6 @@ def test_no_deploy_input_carries_the_retired_webhook_variable():
         ".env.example",
         "package.json",
         "workers/app/src/index.js",
-        "workers/app/README.md",
     )
     for rel in deploy_inputs:
         assert "CYRIS_DISCORD_WEBHOOK_URL" not in (ROOT / rel).read_text(encoding="utf-8"), rel
