@@ -59,3 +59,10 @@ def test_gemini_with_an_empty_model_still_builds_its_client():
     assert isinstance(
         build_llm(LLMProviderConfig(provider="gemini", model="", api_key="k")), GeminiClient
     )
+
+
+def test_gemini_honours_an_explicit_model():
+    gemini = build_llm(LLMProviderConfig(provider="gemini", model="gemini-2.5-pro", api_key="k"))
+
+    assert isinstance(gemini, GeminiClient)
+    assert gemini.model == "gemini-2.5-pro"
