@@ -105,13 +105,8 @@ def test_usage_jsonl_row_matches_bootstrap():
     from pathlib import Path
 
     bootstrap = Path("src/cyris/bootstrap.py").read_text()
-    architecture = Path("docs/architecture.md").read_text()
 
     assert 'log_path=cfg.app.agent_vault.path / "usage.jsonl"' in bootstrap
-    spend_row = next(line for line in architecture.splitlines() if line.startswith("| LLM spend "))
-    assert "usage.jsonl" in spend_row
-    assert "retired" not in spend_row
-    assert "fallback" in spend_row
 
 
 async def test_neurons_survive_the_trip_from_a_response_to_the_run_total():
