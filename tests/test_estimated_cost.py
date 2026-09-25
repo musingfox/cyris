@@ -96,19 +96,6 @@ def test_an_unpriced_run_logs_a_null_cost_not_a_zero(tmp_path):
     assert json.loads(log_path.read_text())["estimated_cost_usd"] is None
 
 
-def test_usage_jsonl_row_matches_bootstrap():
-    """§4 called `usage.jsonl` retired while `build_deps` still wrote it.
-
-    Only one of those can be true. The json backend is a supported fallback, so
-    the writer is what stands and §4 has to say so.
-    """
-    from pathlib import Path
-
-    bootstrap = Path("src/cyris/bootstrap.py").read_text()
-
-    assert 'log_path=cfg.app.agent_vault.path / "usage.jsonl"' in bootstrap
-
-
 async def test_neurons_survive_the_trip_from_a_response_to_the_run_total():
     """`complete_json` is the one place every digest call is accounted for.
 

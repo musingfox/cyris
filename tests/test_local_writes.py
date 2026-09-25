@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.unit, pytest.mark.guard]
+pytestmark = pytest.mark.unit
 
 SRC = Path("src/cyris")
 WRITERS = {"write_text", "write_bytes", "mkdir", "touch", "unlink"}

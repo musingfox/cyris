@@ -70,10 +70,10 @@ def test_manual_deploy_sets_every_required_secret() -> None:
     assert required - set(re.findall(r"^([A-Z][A-Z0-9_]+)=", block.group(1), re.M)) == set()
 
 
-def test_every_worker_is_deployable_by_button() -> None:
-    """Four Workers, four buttons, each with guidance for the secrets it needs.
+def test_every_worker_directory_deploys_on_its_own() -> None:
+    """Each Worker ships the files a Deploy to Cloudflare button needs.
 
-    A Deploy to Cloudflare button treats the directory it points at as the whole
+    The button treats the directory it points at as the whole
     repository, so a subdirectory Worker needs its own wrangler.toml and
     package.json. Without `cloudflare.bindings` the deploy page renders the
     fields bare, and an untokened Worker answers 401 to every pull it exists to
