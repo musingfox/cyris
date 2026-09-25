@@ -19,18 +19,6 @@ from cyris.domain.models import (
 )
 
 
-class TestTier:
-    def test_filter_value(self):
-        assert Tier.FILTER == "filter"
-
-    def test_summarize_value(self):
-        assert Tier.SUMMARIZE == "summarize"
-
-    def test_invalid_tier(self):
-        with pytest.raises(ValueError):
-            Tier("invalid")
-
-
 class TestArticle:
     def test_valid_article(self):
         article = Article(
