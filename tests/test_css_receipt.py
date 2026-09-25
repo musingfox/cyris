@@ -22,8 +22,6 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from css_rules import parse_style_block, receipt_fixtures
 
-pytestmark = pytest.mark.integration
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import cdp_probe  # noqa: E402
@@ -51,6 +49,8 @@ from settings_probe import (  # noqa: E402
     build_fixture,
     probe_environment,
 )
+
+pytestmark = pytest.mark.integration
 
 
 def _style(css: str) -> str:
