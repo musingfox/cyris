@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -338,3 +339,56 @@ def test_registered_tags_are_accepted() -> None:
     )
 
     assert unregistered_mark_violations(source) == []
+
+
+def registration_problems(ini: dict) -> list[str]:
+    problems: list[str] = []
+    if ini.get("strict_markers") is not True:
+        problems.append("strict_markers is not enabled")
+    declared = [entry.split(":", 1)[0].strip() for entry in ini.get("markers") or []]
+    for name in (*_LEVELS, *sorted(_TAGS)):
+        if name not in declared:
+            problems.append(f"missing marker {name}")
+    for name in declared:
+        if name not in _SELECTABLE:
+            problems.append(f"unexpected marker {name}")
+    return problems
+
+
+def _pytest_ini() -> dict:
+    data = tomllib.loads(Path("pyproject.toml").read_text())
+    return data["tool"]["pytest"]["ini_options"]
+
+
+def test_the_registered_markers_match_the_six_names() -> None:
+    assert registration_problems(_pytest_ini()) == []
+
+
+def test_a_missing_e2e_marker_is_named() -> None:
+    ini = _pytest_ini()
+    ini["markers"] = [entry for entry in ini["markers"] if not entry.startswith("e2e:")]
+
+    problems = registration_problems(ini)
+
+    assert len(problems) == 1
+    assert "e2e" in problems[0]
+
+
+def test_an_extra_slow_marker_is_named() -> None:
+    ini = _pytest_ini()
+    ini["markers"] = [*ini["markers"], "slow: slow tests"]
+
+    problems = registration_problems(ini)
+
+    assert len(problems) == 1
+    assert "slow" in problems[0]
+
+
+def test_strict_markers_must_stay_enabled() -> None:
+    ini = _pytest_ini()
+    del ini["strict_markers"]
+
+    problems = registration_problems(ini)
+
+    assert len(problems) == 1
+    assert "strict_markers" in problems[0]
