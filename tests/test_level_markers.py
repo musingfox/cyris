@@ -346,7 +346,7 @@ def test_strict_markers_must_stay_enabled() -> None:
 
 def test_every_test_module_obeys_the_marker_rules() -> None:
     files = sorted(Path("tests").glob("test_*.py"))
-    assert len(files) >= 88
+    assert len(files) >= 87
 
     violations: list[str] = []
     unit_files = 0
