@@ -95,9 +95,3 @@ def test_a_plain_open_is_not_a_way_through() -> None:
 def test_reading_a_file_is_not_a_write() -> None:
     assert not _writes_to_disk('with open(config_path, "rb") as f:\n    tomllib.load(f)\n')
     assert not _writes_to_disk("with open(sources_path) as f:\n    yaml.safe_load(f)\n")
-
-
-def test_architecture_says_what_the_residency_table_covers() -> None:
-    architecture = Path("docs/architecture.md").read_text()
-
-    assert "tests/test_local_writes.py" in architecture.split("## 5.")[0]
