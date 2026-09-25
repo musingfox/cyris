@@ -129,6 +129,27 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
     assert {a.original_id for a in stored} == {101, "newsletter-123", 102}
 
 
+def test_save_preserves_ref_urls(store: ArticleStore) -> None:
+    """ref_urls survive save and read-back on both backends."""
+    now = datetime.now(UTC)
+    article = Article(
+        id="newsletter-abc",
+        title="Newsletter Article",
+        url="newsletter:abc",
+        content="Content",
+        published_at=now,
+        source_name="Newsletter",
+        source_tier=Tier.SUMMARIZE,
+        ref_urls=["https://example.com/a"],
+    )
+    store.save([article], now=now)
+
+    reloaded = store.get_by_urls(["newsletter:abc"])
+
+    assert len(reloaded) == 1
+    assert reloaded[0].ref_urls == ["https://example.com/a"]
+
+
 def test_update_states_existing_articles(
     store: ArticleStore, sample_articles: list[Article]
 ) -> None:
