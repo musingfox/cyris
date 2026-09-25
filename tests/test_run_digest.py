@@ -167,6 +167,7 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
 
     assert report.status == "ok"
     assert report.rendered is not None
+    assert deps.store.get_by_urls(["https://example.com/cloud"])[0].state == ArticleState.PENDING
 
 
 async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
