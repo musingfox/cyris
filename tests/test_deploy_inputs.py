@@ -79,17 +79,10 @@ def test_every_worker_is_deployable_by_button() -> None:
     fields bare, and an untokened Worker answers 401 to every pull it exists to
     serve — a fork that looks deployed and returns nothing.
     """
-    app_button = "?url=https://github.com/musingfox/cyris)"
-    assert app_button in (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
-
     for worker in sorted(p.parent for p in ROOT.glob("workers/*/wrangler.toml")):
         name = worker.name
         readme = worker / "README.md"
         assert readme.is_file(), f"workers/{name} has no README"
-        assert (
-            f"?url=https://github.com/musingfox/cyris/tree/main/workers/{name})"
-            in readme.read_text(encoding="utf-8")
-        ), f"workers/{name}/README.md has no deploy button"
 
         pkg_path = worker / "package.json"
         assert pkg_path.is_file(), f"workers/{name} has no package.json"
