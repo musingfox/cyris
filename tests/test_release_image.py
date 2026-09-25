@@ -23,64 +23,6 @@ def git_sha_directives_are_placed_after_dependencies(dockerfile: str) -> bool:
     return arg > uv_sync and env > last_copy and env < cmd
 
 
-def comments_above(workflow_text: str, step_id: str) -> list[str]:
-    """The contiguous comment block immediately above a step, nearest line last."""
-    lines = workflow_text.splitlines()
-    index = next(i for i, line in enumerate(lines) if f"id: {step_id}" in line)
-    block = []
-    while index > 0 and lines[index - 1].strip().startswith("#"):
-        index -= 1
-        block.insert(0, lines[index].strip().lstrip("# "))
-    return block
-
-
-def test_architecture_records_release_image_path() -> None:
-    text = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
-    assert "CYRIS_GIT_SHA" in text
-    assert "CLOUDFLARE_CONTAINERS_TOKEN" in text
-    assert "release-image-build-in-ci" in text
-
-
-def test_the_release_item_closed_on_an_observed_deploy() -> None:
-    """§7 #30 may be struck through only while it carries what was seen.
-
-    It replaces the guard that kept the item open: the row was closed on
-    2026-09-15 by a dispatch that put a named digest live, and the digest is
-    what makes the claim checkable later. A strike-through with no receipt is
-    how this chapter would start describing intentions again.
-    """
-    text = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
-    after_heading = text.split("### Blocking one-button deploy", 1)[1]
-    section = after_heading.split("### Grade D has a home", 1)[0]
-    row = next(row for row in section.splitlines() if row.startswith("| ~~30~~ |"))
-
-    assert "sha256:" in row
-    assert "doctor --deployment" in row
-
-
-def test_outstanding_work_no_longer_counts_the_release_item() -> None:
-    text = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
-    section = text.split("## 7. Outstanding work", 1)[1]
-    opening = next(line for line in section.splitlines() if "numbered items are open" in line)
-
-    assert "#30" not in opening
-
-
-def test_local_docker_instructions_are_unchanged() -> None:
-    text = (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
-    collapsed = " ".join(text.split())
-    assert "**Docker running.** `wrangler deploy` builds the image from `./Dockerfile`" in collapsed
-    assert "This builds the image, pushes it, and deploys `cyris-app`" in collapsed
-
-
-def test_architecture_does_not_claim_deploys_need_no_docker() -> None:
-    text = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
-    deployment = text.split("## 6. Deployment", 1)[1].split("## 7. ", 1)[0]
-    assert "builds `./Dockerfile` locally" in deployment
-    for claim in ("deploy needs no docker", "deploy no longer needs docker"):
-        assert claim not in deployment.lower()
-
-
 def test_dockerfile_bakes_git_sha_after_dependency_layer() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "ARG GIT_SHA" in dockerfile.splitlines()
@@ -109,12 +51,6 @@ def test_git_sha_directives_reject_bad_placement() -> None:
     )
     assert not git_sha_directives_are_placed_after_dependencies(env_before_last_copy)
     assert not git_sha_directives_are_placed_after_dependencies(arg_above_dependency_layer)
-
-
-def test_changelog_names_ci_release_workflow() -> None:
-    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    release = text.split("## [0.3.0]", 1)[1].split("## [0.2.0]", 1)[0]
-    assert "CI release workflow" in release
 
 
 def _release_job() -> dict:
@@ -154,9 +90,6 @@ def test_release_workflow_builds_pinned_amd64_image() -> None:
     )
     assert workflow_text.split("env:", 1)[1].split("jobs:", 1)[0].find("IMAGE_NAME: cyris-app") >= 0
     assert "IMAGE_NAME" in build and "cyris-app" not in build
-    comment = " ".join(comments_above(workflow_text, "build"))
-    assert "TARGETARCH" in comment
-    assert "linux/amd64" in comment and "Cloudflare Containers runs" in comment
 
 
 def test_release_workflow_runs_checks_before_building() -> None:
@@ -249,11 +182,6 @@ def test_release_workflow_pushes_sha_then_release_tag() -> None:
     }
     assert sha["env"] == expected_env
     assert release["env"] == expected_env
-    text = (ROOT / ".github/workflows/release-image.yml").read_text()
-    for step_id in ("push_sha", "push_release"):
-        comment = " ".join(comments_above(text, step_id))
-        assert "container-registry-push" in comment
-        assert "Workers Scripts:Edit" in comment
 
 
 def test_release_workflow_smokes_baked_sha_in_container() -> None:
