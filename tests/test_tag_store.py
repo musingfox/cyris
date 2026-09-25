@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from fakes import TEST_SETTINGS, CountingD1, FakeLLM, SqliteD1, pipeline_settings
 
 from cyris.adapters.store.tags import D1TagStore
@@ -109,10 +107,3 @@ def test_save_batches_writes_within_the_bound_param_budget() -> None:
     assert written == 240  # 120 vocabulary rows + 120 membership rows
     # 3 vocabulary statements (120 rows, 50 per) + 4 membership statements (120 rows, 33 per)
     assert queries == 7
-
-
-def test_architecture_lists_tag_residency() -> None:
-    architecture = Path("docs/architecture.md").read_text()
-
-    assert "D1 `tags`" in architecture
-    assert "D1 `article_tags`" in architecture

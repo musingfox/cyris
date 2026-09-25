@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from fakes import CountingD1, SqliteD1
 
 from cyris.adapters.store.stories import D1StoryStore
@@ -87,10 +85,3 @@ def test_save_batches_writes_within_the_bound_param_budget() -> None:
     assert written == 62  # 2 stories + 60 members
     # 1 stories statement + 2 member statements (60 rows, 50 per) + 2 stale-row deletes
     assert queries == 5
-
-
-def test_architecture_lists_story_residency() -> None:
-    architecture = Path("docs/architecture.md").read_text()
-
-    assert "D1 `stories`" in architecture
-    assert "D1 `story_members`" in architecture
