@@ -86,6 +86,7 @@ def test_save_with_duplicates(store: ArticleStore, sample_articles: list[Article
 
     assert result.saved_count == 1
     assert result.skipped_count == 1
+    assert len(store.load_by_time_range(now - timedelta(hours=1), now + timedelta(hours=1))) == 2
 
 
 def test_save_mixed_ids(store: ArticleStore) -> None:
