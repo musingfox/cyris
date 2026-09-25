@@ -15,6 +15,8 @@ from cyris.adapters.output.pages_deploy import (
     asset_hash,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def test_the_asset_hash_is_blake3_of_base64_plus_extension():
     """Not blake3 of the bytes. Cloudflare's account-wide asset store is keyed by

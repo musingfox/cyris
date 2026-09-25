@@ -4,6 +4,8 @@ import pytest
 
 from cyris.utils.timezone import convert_to_utc, now_in_timezone
 
+pytestmark = pytest.mark.unit
+
 
 class TestConvertToUtc:
     def test_taipei_morning(self):

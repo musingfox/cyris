@@ -5,7 +5,11 @@ model, so a Gemini digest printed roughly four times its real cost with nothing
 in the output naming the vendor the rate came from.
 """
 
+import pytest
+
 from cyris.domain.models import DigestContent, UsageStats
+
+pytestmark = pytest.mark.unit
 
 
 def _usage(model: str, input_tokens: int = 1_000_000, output_tokens: int = 1_000_000):

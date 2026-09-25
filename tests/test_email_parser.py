@@ -12,6 +12,8 @@ from cyris.adapters.fetch.email_parser import (
     unwrap_tracking_redirect,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestParseNewsletter:
     def test_valid_payload(self):

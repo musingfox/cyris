@@ -19,6 +19,8 @@ from cyris.adapters.fetch.newsletter import (
 )
 from cyris.domain.models import Article, SourceConfig, StoredArticle, Tier
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def parsed_body():

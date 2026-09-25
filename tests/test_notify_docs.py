@@ -2,6 +2,10 @@
 
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 ROOT = Path(__file__).resolve().parents[1]
 ARCHITECTURE = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")

@@ -9,6 +9,8 @@ import respx
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.domain.models import UsageStats
 
+pytestmark = pytest.mark.unit
+
 ACCOUNT = "acct-123"
 MODEL = "@cf/openai/gpt-oss-120b"
 RUN_URL = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/ai/run/{MODEL}"

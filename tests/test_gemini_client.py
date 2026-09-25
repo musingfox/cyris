@@ -8,6 +8,8 @@ import respx
 
 from cyris.adapters.gemini_client import GeminiAPIError, GeminiClient
 
+pytestmark = pytest.mark.unit
+
 GENERATE_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 )

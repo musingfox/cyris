@@ -15,6 +15,8 @@ from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(params=["json", "d1"])
 def store(request, tmp_path: Path):

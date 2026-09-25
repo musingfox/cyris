@@ -10,6 +10,8 @@ import cyris.entrypoints
 from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS
 from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
+pytestmark = pytest.mark.unit
+
 SETTINGS_JS = Path(cyris.entrypoints.__file__).parent / "static" / "settings.js"
 
 

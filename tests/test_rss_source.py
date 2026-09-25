@@ -8,6 +8,8 @@ import pytest
 from cyris.adapters.fetch.rss_source import RssSource
 from cyris.domain.models import SourceConfig, Tier
 
+pytestmark = pytest.mark.unit
+
 AFTER = datetime(2026, 3, 17, tzinfo=UTC)
 BEFORE = datetime(2026, 3, 19, tzinfo=UTC)
 

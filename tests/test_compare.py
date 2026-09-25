@@ -20,6 +20,8 @@ from cyris.diagnostics.compare import (
 )
 from cyris.domain.models import Article, ArticleState, SourceConfig, Tier
 
+pytestmark = pytest.mark.unit
+
 
 class _Usage:
     def as_dict(self) -> dict:

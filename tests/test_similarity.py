@@ -2,6 +2,8 @@
 
 import math
 
+import pytest
+
 from cyris.domain.similarity import (
     DEFAULT_THRESHOLD,
     cosine,
@@ -9,6 +11,8 @@ from cyris.domain.similarity import (
     max_similarity,
     normalize,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def unit(*parts: float) -> list[float]:

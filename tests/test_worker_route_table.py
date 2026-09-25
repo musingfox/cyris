@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "workers/app/test/routes.json"
 TRIAGE = ROOT / "src/cyris/entrypoints/triage_server.py"

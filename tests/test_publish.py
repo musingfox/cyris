@@ -11,6 +11,8 @@ from cyris.adapters.output import publish as publish_mod
 from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.publish import publish_html_digest
 
+pytestmark = pytest.mark.unit
+
 SLUG = "2026-08-20-morning"
 LANDED = DeploymentRecord("dep-1", "https://ab12.cyris-digest.pages.dev", "deploy", "success")
 LIVE_PAGE = "<html><head><title>CYRIS // 2026-08-20 · morning</title></head></html>"

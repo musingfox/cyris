@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
+import pytest
+
 from cyris.config import B_GRADE_ENV_VARS
+
+pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER_JS = ROOT / "workers/app/src/index.js"

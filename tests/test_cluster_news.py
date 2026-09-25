@@ -8,6 +8,8 @@ from fakes import FakeLLM
 from cyris.domain.models import Article, Tier, UsageStats
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 
+pytestmark = pytest.mark.unit
+
 
 class TestFilterNews:
     def test_filter_news_mixed_tags(self):

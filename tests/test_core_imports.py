@@ -15,6 +15,10 @@ without touching a digest run.
 import ast
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 SRC = Path("src/cyris")
 CORE = (SRC / "service_layer", SRC / "domain")
 NOT_IN_CORE = ("cyris.adapters", "cyris.bootstrap")

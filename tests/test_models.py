@@ -18,6 +18,8 @@ from cyris.domain.models import (
     is_degraded_run,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestArticle:
     def test_valid_article(self):

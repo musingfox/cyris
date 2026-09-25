@@ -10,6 +10,8 @@ import respx
 from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 from cyris.domain.models import SourceConfig, Tier
 
+pytestmark = pytest.mark.unit
+
 WORKER = "https://cyris-newsletter.example.workers.dev"
 
 

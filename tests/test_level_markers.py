@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 _BASE = "915b0e0d56cce5273c1da839b9e22981197f96af"
 _LEVELS = ("unit", "integration", "e2e")
 

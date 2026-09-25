@@ -1,9 +1,12 @@
 from datetime import datetime
 
+import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
+
+pytestmark = pytest.mark.unit
 
 
 def _content(period: str = "morning", articles_included: int = 5) -> DigestContent:

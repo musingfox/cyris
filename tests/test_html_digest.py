@@ -20,6 +20,8 @@ from cyris.domain.models import (
     UsageStats,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def test_render_with_featured_article(sample_digest_content):
     """C1 Test 1: Featured article renders with DOCTYPE, title, date, styles."""

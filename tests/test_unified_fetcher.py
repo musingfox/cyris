@@ -8,6 +8,8 @@ import pytest
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, Tier
 from cyris.service_layer.fetching import fetch_all_articles
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def rss_articles():

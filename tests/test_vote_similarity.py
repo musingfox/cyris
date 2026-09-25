@@ -8,6 +8,8 @@ from cyris.domain.models import ArticleState, StoredArticle, Tier
 from cyris.domain.similarity import normalize
 from cyris.service_layer.vote_similarity import judge_by_votes
 
+pytestmark = pytest.mark.unit
+
 
 def article(url: str, title: str, state=ArticleState.PENDING, triaged=False) -> StoredArticle:
     return StoredArticle(

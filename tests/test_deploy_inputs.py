@@ -12,6 +12,10 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Set by docker/entrypoint.sh for the `run` and `ui` roles, so the deploy form

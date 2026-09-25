@@ -11,6 +11,9 @@ from cyris.adapters.store.article_store import ArticleStore
 from cyris.domain.language import detect_language
 from cyris.domain.models import StoredArticle, Tier
 
+pytestmark = pytest.mark.unit
+
+
 # --- Language detection tests ---
 
 

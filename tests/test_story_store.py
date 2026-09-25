@@ -1,7 +1,10 @@
+import pytest
 from fakes import CountingD1, SqliteD1
 
 from cyris.adapters.store.stories import D1StoryStore
 from cyris.domain.models import StoryRecord
+
+pytestmark = pytest.mark.unit
 
 
 def test_save_persists_story_and_members_and_reports_rows_written() -> None:

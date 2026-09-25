@@ -3,6 +3,7 @@
 import json
 
 import httpx
+import pytest
 
 from cyris.adapters.notify import (
     build_discord_embeds,
@@ -13,6 +14,8 @@ from cyris.adapters.notify import (
     send_discord,
 )
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
+
+pytestmark = pytest.mark.unit
 
 
 class TestDiscordEmbeds:

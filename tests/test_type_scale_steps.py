@@ -10,6 +10,8 @@ import pytest
 from cyris.config import DigestConfig
 from cyris.entrypoints.triage_server import render_settings_page
 
+pytestmark = pytest.mark.unit
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from cdp_probe import LARGEST_TYPE_SCALE, LARGEST_TYPE_SCALE_STYLE  # noqa: E402

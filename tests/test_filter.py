@@ -4,10 +4,13 @@ import json
 import logging
 from datetime import UTC, datetime
 
+import pytest
 from fakes import FakeLLM
 
 from cyris.domain.models import Article, Tier
 from cyris.service_layer.filtering import filter_articles
+
+pytestmark = pytest.mark.unit
 
 
 class TestFilterArticles:

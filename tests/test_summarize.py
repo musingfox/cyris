@@ -3,10 +3,13 @@
 import json
 from datetime import UTC
 
+import pytest
 from fakes import FakeLLM
 
 from cyris.domain.models import Tier
 from cyris.service_layer.summarize import _group_by_tags, summarize_articles
+
+pytestmark = pytest.mark.unit
 
 
 class TestGroupByTags:

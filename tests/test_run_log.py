@@ -3,9 +3,12 @@
 import json
 import re
 
+import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.store.runs import D1RunLog
+
+pytestmark = pytest.mark.unit
 
 
 def _rows(db: SqliteD1) -> list[dict]:

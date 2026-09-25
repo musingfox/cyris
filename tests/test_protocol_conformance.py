@@ -18,6 +18,8 @@ import inspect
 import textwrap
 from typing import Protocol
 
+import pytest
+
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
 from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
@@ -29,6 +31,8 @@ from cyris.adapters.store.article_store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.service_layer.ports import ArticleRepository, Embedder, FetchSource, LLMClient
+
+pytestmark = pytest.mark.unit
 
 IMPLEMENTATIONS = [
     (ArticleRepository, ArticleStore),

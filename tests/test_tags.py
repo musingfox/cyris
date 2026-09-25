@@ -1,4 +1,8 @@
+import pytest
+
 from cyris.domain.tags import normalize_tag, normalize_tags
+
+pytestmark = pytest.mark.unit
 
 
 def test_normalize_tag_collapses_whitespace():

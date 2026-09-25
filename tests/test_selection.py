@@ -1,5 +1,7 @@
 """Tests for digest article selection with priority fill."""
 
+import pytest
+
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 from cyris.domain.selection import (
     _truncate_sections,
@@ -7,6 +9,8 @@ from cyris.domain.selection import (
     layer_by_score,
     select_digest_articles,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def _make_items(count: int, prefix: str = "item") -> list[DigestItem]:

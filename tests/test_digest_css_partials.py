@@ -29,6 +29,8 @@ from jinja2 import DebugUndefined, Environment, meta
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 
+pytestmark = pytest.mark.unit
+
 PAGE_TEMPLATES = {
     "index": "index.html.j2",
     "digest": "digest.html.j2",

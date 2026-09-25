@@ -7,6 +7,8 @@ import pytest
 
 from cyris.service_layer.schedule import PERIOD_ORDER, due_period, validate_schedule
 
+pytestmark = pytest.mark.unit
+
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 

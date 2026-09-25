@@ -8,6 +8,8 @@ import respx
 
 from cyris.adapters.openai_client import OpenAIClient
 
+pytestmark = pytest.mark.unit
+
 URL = "https://api.openai.com/v1/chat/completions"
 
 

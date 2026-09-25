@@ -12,6 +12,10 @@ This reads the schema instead, so the reminder arrives as a failing test.
 import re
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 SCHEMA = Path("src/cyris/adapters/store/schema.sql")
 ARCHITECTURE = Path("docs/architecture.md")
 

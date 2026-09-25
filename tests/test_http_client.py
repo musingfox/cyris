@@ -6,6 +6,8 @@ import respx
 
 from cyris.adapters.http_client import HttpClient
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_get_success():

@@ -12,6 +12,10 @@ use. Under `[store] backend = "d1"` none of them runs.
 import ast
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 SRC = Path("src/cyris")
 WRITERS = {"write_text", "write_bytes", "mkdir", "touch", "unlink"}
 

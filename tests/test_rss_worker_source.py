@@ -9,6 +9,8 @@ import respx
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.domain.models import SourceConfig, Tier
 
+pytestmark = pytest.mark.unit
+
 WORKER = "https://cyris-rss.test"
 AFTER = datetime(2026, 3, 17, tzinfo=UTC)
 BEFORE = datetime(2026, 3, 19, tzinfo=UTC)

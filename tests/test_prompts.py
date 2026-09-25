@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
 from cyris.domain.models import Article, Tier
 from cyris.service_layer.prompts import (
     FILTER_SYSTEM,
@@ -12,6 +14,8 @@ from cyris.service_layer.prompts import (
     build_summarize_prompt,
     language_wording,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class TestBuildNewsClusterPrompt:
