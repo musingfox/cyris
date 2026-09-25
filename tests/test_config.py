@@ -588,6 +588,11 @@ class TestJsonSettingsFromFileOnly:
         assert key not in cfg.present_settings()
         assert "envTOKEN" not in cfg.model_dump_json()
 
+    def test_general_no_longer_carries_a_notify_field(self):
+        from cyris.config import GeneralConfig
+
+        assert "notify" not in GeneralConfig.model_fields
+
     def test_the_webhook_env_var_name_is_gone(self):
         with pytest.raises(ImportError):
             from cyris.config import DISCORD_WEBHOOK_ENV_VAR  # noqa: F401
