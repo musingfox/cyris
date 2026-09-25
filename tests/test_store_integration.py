@@ -1,4 +1,4 @@
-"""Integration tests for ArticleStore with pipeline and CLI flow."""
+"""The store's dedup window must agree with the RSS Worker's retention."""
 
 
 def test_dedup_window_matches_rss_worker_retention() -> None:

@@ -1,4 +1,5 @@
-"""The Worker route fixture must cover triage_server and router.js path literals."""
+"""Source checks on router.js: the route fixture covers its path literals and
+triage_server's, and its secret compares stay constant-time."""
 
 from __future__ import annotations
 

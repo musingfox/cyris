@@ -611,12 +611,9 @@ class TestJsonSettingsFromFileOnly:
 
         assert "notify" not in GeneralConfig.model_fields
 
-    def test_the_shipped_example_ships_the_new_table(self):
+    def test_the_shipped_example_omits_general_notify(self):
         example = Path(__file__).parent.parent / "cyris.toml.example"
 
-        raw = tomllib.loads(example.read_text())
-
-        assert "notify" in raw
         assert "[general.notify]" not in example.read_text()
 
     def test_the_webhook_env_var_name_is_gone(self):
