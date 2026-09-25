@@ -9,7 +9,7 @@ from cyris.adapters.fetch.email_parser import ParsedNewsletter
 from cyris.adapters.fetch.newsletter import newsletter_article
 from cyris.domain.models import SourceConfig, Tier
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.real_fixture]
 
 
 def _parsed(*, html_content: str = "", text_content: str = "", subject: str) -> ParsedNewsletter:

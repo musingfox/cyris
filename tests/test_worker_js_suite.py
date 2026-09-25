@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.js]
 
 ROOT = Path(__file__).resolve().parents[1]
 VITEST = ROOT / "node_modules/.bin/vitest"

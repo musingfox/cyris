@@ -10,7 +10,7 @@ import pytest
 from cyris.config import DigestConfig
 from cyris.entrypoints.triage_server import render_settings_page
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 

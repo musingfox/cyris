@@ -32,7 +32,7 @@ from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.service_layer.ports import ArticleRepository, Embedder, FetchSource, LLMClient
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 IMPLEMENTATIONS = [
     (ArticleRepository, ArticleStore),

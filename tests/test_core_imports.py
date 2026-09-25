@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 SRC = Path("src/cyris")
 CORE = (SRC / "service_layer", SRC / "domain")

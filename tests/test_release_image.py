@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 ROOT = Path(__file__).resolve().parents[1]
 

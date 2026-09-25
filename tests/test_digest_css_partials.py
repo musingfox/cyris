@@ -29,7 +29,7 @@ from jinja2 import DebugUndefined, Environment, meta
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 PAGE_TEMPLATES = {
     "index": "index.html.j2",
