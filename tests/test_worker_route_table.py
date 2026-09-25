@@ -162,3 +162,12 @@ def test_what_needs_what_does_not_require_a_domain_for_access():
     text = README.read_text()
     table = text.split("### What needs what", 1)[1].split("### Where RSS comes from", 1)[0]
     assert "Access needs **your own domain**" not in table
+
+
+def test_login_and_cookie_compare_via_ct_equal():
+    text = ROUTER.read_text()
+    assert "const ctEqual" in text
+    assert "=== env.CYRIS_UI_TOKEN" not in text
+    assert "!== env.CYRIS_UI_TOKEN" not in text
+    assert "cookie ===" not in text
+    assert "cookie !==" not in text
