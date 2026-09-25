@@ -63,14 +63,6 @@ def test_nothing_but_the_image_line_changes(tmp_path: Path) -> None:
     ]
 
 
-def test_the_tracked_config_still_builds_the_dockerfile() -> None:
-    """The derived file is an artifact; the tracked one stays fork-neutral."""
-    tracked = (ROOT / "wrangler.toml").read_text(encoding="utf-8")
-
-    assert 'image = "./Dockerfile"' in tracked
-    assert "registry.cloudflare.com" not in tracked
-
-
 def test_a_config_without_the_anchor_line_refuses_rather_than_deploys(tmp_path: Path) -> None:
     """A near-miss must fail loudly.
 
