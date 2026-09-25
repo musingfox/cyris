@@ -80,6 +80,15 @@ def filename_level_violations(filename: str, source: str) -> list[str]:
     ]
 
 
+def level_violations(source: str) -> list[str]:
+    levels = [name for name in _pytestmark_names(source) if name in _LEVELS]
+    if not levels:
+        return ["no level mark on the module pytestmark"]
+    if len(levels) > 1:
+        return [f"two levels on the module pytestmark: {', '.join(levels)}"]
+    return []
+
+
 def test_strict_markers_is_enabled(request: pytest.FixtureRequest) -> None:
     assert request.config.getini("strict_markers") is True
 
@@ -215,3 +224,33 @@ def test_the_renamed_modules_differ_only_by_their_mark() -> None:
         "import pytest",
         "pytestmark = [pytest.mark.unit, pytest.mark.guard]",
     ]
+
+
+def test_one_level_mark_is_accepted() -> None:
+    source = "import pytest\npytestmark = pytest.mark.unit\ndef test_a(): pass\n"
+
+    assert level_violations(source) == []
+
+
+def test_one_level_plus_a_tag_is_accepted() -> None:
+    source = "import pytest\npytestmark = [pytest.mark.integration, pytest.mark.js]\n"
+
+    assert level_violations(source) == []
+
+
+def test_a_module_without_a_level_is_rejected() -> None:
+    source = "import pytest\ndef test_a(): pass\n"
+
+    violations = level_violations(source)
+
+    assert len(violations) == 1
+    assert "no level" in violations[0]
+
+
+def test_two_level_marks_are_rejected() -> None:
+    source = "import pytest\npytestmark = [pytest.mark.unit, pytest.mark.integration]\n"
+
+    violations = level_violations(source)
+
+    assert len(violations) == 1
+    assert "two levels" in violations[0]
