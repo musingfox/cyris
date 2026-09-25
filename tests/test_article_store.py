@@ -264,6 +264,24 @@ def test_load_by_time_range_multiple_days(store: ArticleStore) -> None:
     assert [a.original_id for a in articles] == [101, 102, 103]  # Sorted by first_seen_at
 
 
+def test_load_by_time_range_excludes_older_rows(store: ArticleStore) -> None:
+    """A row first seen outside the window stays out of it."""
+    now = datetime.now(UTC)
+    article = Article(
+        id=1,
+        title="Old Article",
+        url="https://example.com/old",
+        content="Old content",
+        published_at=now - timedelta(days=30),
+        source_name="Test Source",
+        source_tier=Tier.FILTER,
+        source_tags=["tech"],
+    )
+    store.save([article], now=now - timedelta(days=30))
+
+    assert store.load_by_time_range(now - timedelta(hours=24), now) == []
+
+
 def test_load_by_time_range_with_state_filter(
     store: ArticleStore, sample_articles: list[Article]
 ) -> None:
