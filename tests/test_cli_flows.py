@@ -14,6 +14,8 @@ from cyris.adapters.store.article_store import ArticleStore
 from cyris.domain.models import Article, ArticleState, Tier
 from cyris.entrypoints.cli import app
 
+pytestmark = pytest.mark.integration
+
 runner = CliRunner()
 
 

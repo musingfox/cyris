@@ -1,5 +1,9 @@
 """The store's dedup window must agree with the RSS Worker's retention."""
 
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
+
 
 def test_dedup_window_matches_rss_worker_retention() -> None:
     """The store's dedup scan and the Worker's prune must span the same days.
