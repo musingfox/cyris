@@ -588,6 +588,17 @@ class TestJsonSettingsFromFileOnly:
         assert key not in cfg.present_settings()
         assert "envTOKEN" not in cfg.model_dump_json()
 
+    def test_the_old_nested_stanza_is_not_read_as_the_webhook(self, tmp_path):
+        """A config left on [general.notify] does not set the webhook: it is missing."""
+        cfg = self._load(
+            tmp_path,
+            settings_toml(omit=["notify.discord_webhook_url"])
+            + '[general.notify]\ndiscord_webhook_url = "https://discord.com/api/webhooks/1/old"\n',
+        )
+
+        assert cfg.app.notify is None
+        assert "notify.discord_webhook_url" in cfg.missing_settings
+
     def test_general_no_longer_carries_a_notify_field(self):
         from cyris.config import GeneralConfig
 
