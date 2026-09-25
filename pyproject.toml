@@ -49,8 +49,8 @@ strict_markers = true
 markers = [
     "unit: one module, exercised through its interface",
     "integration: modules wired together, or a driven CLI",
-    "e2e: a deployed system with no fakes at the edge",
-    "guard: reads source or docs and executes nothing",
+    "e2e: a feature-oriented test against a complete environment",
+    "guard: asserts that two repo sources agree",
     "js: a Worker JavaScript suite",
     "real_fixture: newsletter samples kept outside the repo",
 ]
