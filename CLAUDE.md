@@ -32,6 +32,12 @@ uv run ruff format src/ tests/
 # Run all tests
 uv run pytest
 
+# Run the unit level
+uv run pytest -m unit
+
+# Run unit tests, leaving out guard files
+uv run pytest -m "unit and not guard"
+
 # Run a single test file
 uv run pytest tests/test_config.py
 
@@ -191,6 +197,24 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 Agent-owned state directory, entirely gitignored — nothing under it is in version control. `agent-vault/articles/` holds the persistent article store and `usage.jsonl` the LLM spend, both only while `[store] backend` is `json`; `agent-vault/html/` is the no-D1 publishing fallback. With D1 the directory stays empty, and `tests/test_local_writes.py` is what keeps it that way.
 
+## Testing
+
+Every `tests/test_*.py` file carries exactly one level, `unit`, `integration` or `e2e`, plus any number of tags. A level says how many modules the test exercises. `unit` exercises a single module, with fakes for everything else. `integration` exercises several modules wired together. `e2e` is a feature-oriented test against a complete environment. No file is `e2e` today, because every test fakes the HTTP, D1 or LLM edge. The marker stays registered so a later release-smoke ticket can fill it. `pytest -m e2e` collects nothing and exits 5. A mistyped `-m` name also exits 5 and raises no error, so that exit code alone is not a successful empty run.
+
+**R0.** Some names never count as a module. Value types used as inputs do not count. Those are the pydantic and dataclass models in `domain.models` and `domain.triage`, `ports.LLMResponse` and the Protocols, the config dataclasses, and `email_parser.ParsedNewsletter`. Constants and exception classes imported only for assertions do not count. Everything in `tests/fakes.py` (`FakeLLM`, `SqliteD1`), respx, `httpx.MockTransport` and monkeypatched callables are fakes, and they do not count either.
+
+**R1.** A test is `unit` when it calls the interface of one repo module. That module's calls to pure helpers sitting behind no seam, such as prompts, parse, degrade and keywords, are its implementation, not a second module. The level is decided per test. A file whose tests each exercise a different single module is still `unit`, and a file parametrized over two adapters is `unit` when each item touches one adapter. `tests/test_scoring.py` is `unit` on that rule: its tests cover scoring, and `TestUpdateScores` covers `ArticleStore`, with each test touching one module.
+
+**R2.** A file is `integration` when any one of its tests does any of the following. (a) It drives the CLI, through `CliRunner` or as a `cyris` subprocess. (b) It calls a composition-root builder in `bootstrap`: `build_deps`, `build_store`, `build_llm`, `build_embedder`, `build_promotion_sync`, `build_d1_client` or `load_effective_config`. `cli._build_arm` counts as one of these builders. (c) It runs `run_digest` over a `Deps` built from real adapters. (d) It hands a real object of one repo module to another. The discriminator for (d) is that the output of a module under test flows into another module under test. Using a second module only to build a fixture input or an expected value does not count. (e) It lets a real adapter run behind a seam, with only the leaf faked. `tests/test_config.py` is `integration` because some of its tests call `build_store` and `bootstrap.build_d1_client`, which is (b), even though most tests in that file exercise one module.
+
+The highest level wins, and the file stays whole. One test that meets R2 makes the whole file `integration`. Do not split the lower-level tests into another file to recover them for `-m unit`.
+
+**R3.** `scripts/*.py`, `docker/entrypoint.sh` and the Worker JavaScript count as modules. A test that only reads repo files, or that only introspects source or signatures, exercises nothing. It is `unit`, and it is tagged `guard`. A test that runs one script with its own dependencies stubbed is `unit`. A script that wires into real modules under `src/` is `integration`.
+
+Tags sit beside the level and do not change it. `guard` means the file's purpose is guarding: it reads repo documents, config or templates and asserts that two sources agree. A behaviour file that happens to contain one embedded guard test is not tagged `guard`. `js` means the file drives a Worker JavaScript suite. `real_fixture` means the file needs samples that live outside the repo. `tests/test_ui_spec.py` is `unit` and `guard`. It compares pages from a bare `TriageServer` and from `HtmlDigestWriter` with the UI spec. Rendering both modules only to compare them, with nothing wired from one into the other, does not meet R2(d), so the file stays `unit`.
+
+Put the mark once, directly after the last top-level import. A level alone is `pytestmark = pytest.mark.unit`. A level plus tags is a list with the level first, for example `pytestmark = [pytest.mark.unit, pytest.mark.guard]`. `tests/test_level_markers.py` rejects a file with no level, with two levels, with a level or tag applied anywhere except that assignment, or with a mark outside the six registered names. `strict_markers` in `pyproject.toml` rejects an unregistered mark when the suite is collected.
+
 ## Conventions
 
 - Python 3.12+ required
@@ -217,4 +241,4 @@ Agent-owned state directory, entirely gitignored — nothing under it is in vers
 - Link-health counters on `DigestContent` measure two different things: `synthetic_url_count` counts every article fetched this run whose URL is the synthetic `newsletter:` fallback (extractor health); `dead_link_count` counts only items that reached the digest with no clickable link (what a reader hits). Each has its own test, but nothing asserts they disagree on one run — so don't "fix" them into agreement
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers
 - Mock patching: always patch where the function is **used**, not where it is **defined** (e.g. patch `cyris.service_layer.run_digest.now_in_timezone`, not `cyris.utils.timezone.now_in_timezone`)
-- LLM calls in tests: inject `FakeLLM` (tests/fakes.py) instead of patching the Anthropic SDK; only CLI-level e2e tests patch the single adapter point `cyris.adapters.anthropic_client.anthropic.AsyncAnthropic`
+- LLM calls in tests: inject `FakeLLM` (tests/fakes.py) instead of patching the Anthropic SDK; only the CLI-level integration tests in `tests/test_cli_flows.py` patch the single adapter point `cyris.adapters.anthropic_client.anthropic.AsyncAnthropic`
