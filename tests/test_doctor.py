@@ -12,6 +12,8 @@ from cyris.config import Config, LLMProviderConfig
 from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig, Tier
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):

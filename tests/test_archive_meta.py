@@ -9,6 +9,8 @@ from cyris import bootstrap
 from cyris.adapters.store.archive_meta import D1ArchiveMeta
 from cyris.config import AgentVaultConfig, Config
 
+pytestmark = pytest.mark.integration
+
 
 def _log(db: SqliteD1, logged_at: str, date: str | None, period: str | None, n: int) -> None:
     db.query(

@@ -10,6 +10,8 @@ from cyris.adapters.store.settings import D1Settings
 from cyris.config import validate_setting
 from cyris.entrypoints.cli import app
 
+pytestmark = pytest.mark.integration
+
 KEY = "digest.type_scale"
 runner = CliRunner()
 

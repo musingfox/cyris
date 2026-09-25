@@ -8,6 +8,8 @@ from fakes import SqliteD1
 from cyris.adapters.store.source_store import D1SourceStore
 from cyris.domain.models import SourceConfig, Tier
 
+pytestmark = pytest.mark.integration
+
 CONFIG = """
 [agent_vault]
 path = "{vault}"

@@ -25,6 +25,8 @@ import pytest
 from cyris.adapters.notify import WEBHOOK_MASK
 from cyris.entrypoints.cli import _RedactCredentials, _setup_logging
 
+pytestmark = pytest.mark.integration
+
 WEBHOOK = "https://discord.com/api/webhooks/123456789/s3cr3t-posting-token"
 TOKEN = "s3cr3t-posting-token"
 

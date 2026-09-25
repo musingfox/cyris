@@ -12,6 +12,8 @@ from typer.testing import CliRunner
 
 from cyris.entrypoints.cli import app
 
+pytestmark = pytest.mark.integration
+
 runner = CliRunner()
 
 

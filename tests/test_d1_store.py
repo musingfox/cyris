@@ -14,6 +14,8 @@ from cyris.bootstrap import build_store
 from cyris.config import Config, StoreConfig
 from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def store() -> D1ArticleStore:

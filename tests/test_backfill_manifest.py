@@ -10,6 +10,8 @@ from fakes import SqliteD1
 from cyris.adapters.output.pages_deploy import asset_hash
 from cyris.adapters.output.pages_manifest import D1PagesManifest
 
+pytestmark = pytest.mark.integration
+
 _SCRIPTS = str(Path(__file__).parent.parent / "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)

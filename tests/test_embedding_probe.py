@@ -10,6 +10,8 @@ import pytest
 import cyris.bootstrap  # noqa: F401
 from cyris.diagnostics.doctor import probe_embedder
 
+pytestmark = pytest.mark.integration
+
 
 class Embeddings(list):
     """Every request the embedders send, answered by the handler a test installs."""

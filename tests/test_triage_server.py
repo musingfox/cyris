@@ -9,6 +9,8 @@ from fakes import SqliteD1
 from cyris.adapters.store.article_store import ArticleStore
 from cyris.entrypoints.triage_server import TriageServer
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 async def client() -> TestClient:

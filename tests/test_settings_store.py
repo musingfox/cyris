@@ -16,6 +16,8 @@ from cyris.config import (
     VoteSimilarityConfig,
 )
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def settings():

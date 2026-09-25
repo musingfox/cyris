@@ -12,6 +12,8 @@ from cyris.domain.models import Article, DigestItem, DigestSection, Tier
 from cyris.domain.selection import split_summarize_tier_by_score
 from cyris.service_layer.digest_pipeline import DigestPipeline
 
+pytestmark = pytest.mark.integration
+
 
 def _expected_story_id(date: str, period: str, urls: list[str]) -> str:
     """Computed independently of the implementation: the id formula is a contract."""

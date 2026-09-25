@@ -2,11 +2,14 @@
 
 from pathlib import Path
 
+import pytest
 from fakes import SqliteD1, settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store.settings import D1Settings
 from cyris.entrypoints.cli import app
+
+pytestmark = pytest.mark.integration
 
 runner = CliRunner()
 

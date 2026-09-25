@@ -11,6 +11,8 @@ from cyris.adapters.store import ArticleStore
 from cyris.domain.models import Article, ArticleState, Tier
 from cyris.domain.triage import RejectReason
 
+pytestmark = pytest.mark.integration
+
 WORKER_URL = "https://promote.test.workers.dev"
 TOKEN = "test-token"
 

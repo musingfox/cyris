@@ -7,6 +7,8 @@ import pytest
 
 from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
 
+pytestmark = pytest.mark.integration
+
 
 def workers_response(vectors: list[list[float]], tokens: int = 24, neurons: float = 0.0258):
     return {

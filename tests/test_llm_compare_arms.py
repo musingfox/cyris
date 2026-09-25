@@ -12,6 +12,8 @@ from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.bootstrap import Deps
 from cyris.entrypoints.cli import _build_arm
 
+pytestmark = pytest.mark.integration
+
 
 def test_builds_an_arm_from_provider_and_model(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")

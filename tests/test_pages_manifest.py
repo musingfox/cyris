@@ -12,6 +12,8 @@ from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.pages_manifest import D1PagesManifest
 from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
 
+pytestmark = pytest.mark.integration
+
 LANDED = DeploymentRecord("dep-1", "https://ab12.proj.pages.dev", "deploy", "success")
 
 

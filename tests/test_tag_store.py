@@ -1,8 +1,11 @@
+import pytest
 from fakes import TEST_SETTINGS, CountingD1, FakeLLM, SqliteD1, pipeline_settings
 
 from cyris.adapters.store.tags import D1TagStore
 from cyris.domain.models import Article, Tier
 from cyris.service_layer.digest_pipeline import DigestPipeline
+
+pytestmark = pytest.mark.integration
 
 
 def _news(article_id: int, url: str) -> Article:

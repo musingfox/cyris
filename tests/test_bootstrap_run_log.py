@@ -9,6 +9,8 @@ from cyris import bootstrap
 from cyris.config import AgentVaultConfig, Config
 from cyris.domain.models import DigestContent, UsageStats
 
+pytestmark = pytest.mark.integration
+
 _SUMMARY = {"status": "ok", "period": "morning", "dry_run": False}
 
 

@@ -7,6 +7,8 @@ from fakes import TEST_SETTINGS
 from cyris.config import GRADE_D_KEYS
 from cyris.entrypoints.triage_server import TriageServer
 
+pytestmark = pytest.mark.integration
+
 
 class FakeSettings:
     """Stands in for `D1Settings`; records what the page decided to store."""

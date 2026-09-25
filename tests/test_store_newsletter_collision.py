@@ -17,6 +17,8 @@ from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, SourceConfig, Tier
 from cyris.service_layer.fetching import fetch_all_articles
 
+pytestmark = pytest.mark.integration
+
 NOW = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
 NAV = "https://s.com/account/settings/email"
 

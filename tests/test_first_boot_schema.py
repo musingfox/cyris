@@ -14,6 +14,8 @@ from cyris.adapters.store.d1 import D1Error, apply_schema
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, Tier
 
+pytestmark = pytest.mark.integration
+
 
 def _article(url: str) -> Article:
     return Article(

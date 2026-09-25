@@ -1,9 +1,12 @@
 """The [rss] section and its bootstrap wiring (Cloudflare RSS Worker buffer)."""
 
+import pytest
 from fakes import settings_toml
 
 from cyris.bootstrap import build_deps
 from cyris.config import load_config
+
+pytestmark = pytest.mark.integration
 
 CONFIG = """
 [agent_vault]

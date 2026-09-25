@@ -10,6 +10,8 @@ from fakes import TEST_SETTINGS, make_config, settings_toml
 from cyris.config import GRADE_D_KEYS, load_config
 from cyris.domain.models import Tier
 
+pytestmark = pytest.mark.integration
+
 
 def _copy_example_sources(tmp_path: Path) -> Path:
     path = tmp_path / "sources.yaml"

@@ -31,6 +31,8 @@ from cyris.domain.models import (
 )
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 
+pytestmark = pytest.mark.integration
+
 
 class FakeSource:
     """In-memory FetchSource."""

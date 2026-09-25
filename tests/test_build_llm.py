@@ -1,11 +1,15 @@
 """Which adapter `build_llm` picks, and when it declines to pick one."""
 
+import pytest
+
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.bootstrap import build_llm
 from cyris.config import LLMProviderConfig
+
+pytestmark = pytest.mark.integration
 
 
 def test_anthropic_and_gemini_still_route_to_their_own_clients():

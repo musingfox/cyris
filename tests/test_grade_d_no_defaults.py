@@ -21,6 +21,8 @@ from cyris.config import (
     validate_setting,
 )
 
+pytestmark = pytest.mark.integration
+
 ROOT = Path(__file__).parent.parent
 TABLES = {
     "general": GeneralConfig,

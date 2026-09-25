@@ -11,9 +11,12 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from cyris.entrypoints.cli import app
+
+pytestmark = pytest.mark.integration
 
 runner = CliRunner()
 

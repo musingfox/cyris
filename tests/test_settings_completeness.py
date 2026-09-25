@@ -16,6 +16,8 @@ from cyris.config import GRADE_D_KEYS
 from cyris.domain.models import SourceConfig
 from cyris.entrypoints.cli import app
 
+pytestmark = pytest.mark.integration
+
 runner = CliRunner()
 
 

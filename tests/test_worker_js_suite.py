@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 ROOT = Path(__file__).resolve().parents[1]
 VITEST = ROOT / "node_modules/.bin/vitest"
 RSS_WORKER = ROOT / "workers/rss"

@@ -2,10 +2,13 @@
 
 from pathlib import Path
 
+import pytest
 from fakes import make_config
 
 from cyris import bootstrap
 from cyris.config import AgentVaultConfig, PromoteConfig
+
+pytestmark = pytest.mark.integration
 
 
 def test_no_vote_worker_builds_nothing(tmp_path: Path) -> None:
