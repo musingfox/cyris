@@ -392,3 +392,30 @@ def test_strict_markers_must_stay_enabled() -> None:
 
     assert len(problems) == 1
     assert "strict_markers" in problems[0]
+
+
+def test_every_test_module_obeys_the_marker_rules() -> None:
+    files = sorted(Path("tests").glob("test_*.py"))
+    assert len(files) >= 88
+
+    violations: list[str] = []
+    unit_files = 0
+    integration_files = 0
+    for path in files:
+        source = path.read_text()
+        names = set(_pytestmark_names(source))
+        if "unit" in names:
+            unit_files += 1
+        if "integration" in names:
+            integration_files += 1
+        for problem in (
+            *level_violations(source),
+            *stray_mark_violations(source),
+            *unregistered_mark_violations(source),
+            *filename_level_violations(path.name, source),
+        ):
+            violations.append(f"{path.name}: {problem}")
+
+    assert violations == []
+    assert unit_files >= 1
+    assert integration_files >= 1
