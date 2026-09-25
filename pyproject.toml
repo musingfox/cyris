@@ -45,10 +45,19 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+strict_markers = true
+markers = [
+    "unit: one module, exercised through its interface",
+    "integration: modules wired together, or a driven CLI",
+    "e2e: a deployed system with no fakes at the edge",
+    "guard: reads source or docs and executes nothing",
+    "js: a Worker JavaScript suite",
+    "real_fixture: newsletter samples kept outside the repo",
+]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9",
     "pytest-asyncio>=0.25",
     "pytest-cov>=7.1.0",
     "respx>=0.21",
