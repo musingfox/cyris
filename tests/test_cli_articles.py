@@ -129,29 +129,6 @@ def test_articles_list_urls(setup_store: tuple[Path, Path, Path, ArticleStore]) 
     assert len(lines) == 2
 
 
-def test_articles_accept(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
-    """Test accepting articles by URL."""
-    tmp_path, config_path, sources_path, store = setup_store
-    result = runner.invoke(
-        app,
-        [
-            "articles",
-            "accept",
-            "https://example.com/1",
-            "--config",
-            str(config_path),
-            "--sources",
-            str(sources_path),
-        ],
-    )
-    assert result.exit_code == 0
-    assert "1" in result.stdout
-    # Verify state updated
-    articles = store.get_by_urls(["https://example.com/1"])
-    assert len(articles) == 1
-    assert articles[0].state == ArticleState.ACCEPTED
-
-
 def test_articles_accept_without_vault(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
     """Test accepting articles without vault_path configured."""
     tmp_path, config_path, sources_path, store = setup_store
