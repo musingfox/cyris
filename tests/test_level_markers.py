@@ -305,3 +305,36 @@ def test_a_builtin_mark_bound_to_a_name_is_accepted() -> None:
     )
 
     assert stray_mark_violations(source) == []
+
+
+def unregistered_mark_violations(source: str) -> list[str]:
+    return [
+        f"unregistered mark {name}" for name in _pytestmark_names(source) if name not in _SELECTABLE
+    ]
+
+
+def test_a_slow_mark_is_rejected() -> None:
+    source = "import pytest\npytestmark = [pytest.mark.unit, pytest.mark.slow]\n"
+
+    violations = unregistered_mark_violations(source)
+
+    assert len(violations) == 1
+    assert "slow" in violations[0]
+
+
+def test_a_tooling_mark_is_rejected() -> None:
+    source = "import pytest\npytestmark = [pytest.mark.unit, pytest.mark.tooling]\n"
+
+    violations = unregistered_mark_violations(source)
+
+    assert len(violations) == 1
+    assert "tooling" in violations[0]
+
+
+def test_registered_tags_are_accepted() -> None:
+    source = (
+        "import pytest\n"
+        "pytestmark = [pytest.mark.unit, pytest.mark.guard, pytest.mark.real_fixture]\n"
+    )
+
+    assert unregistered_mark_violations(source) == []
