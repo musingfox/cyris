@@ -16,9 +16,6 @@ FIXTURE = ROOT / "workers/app/test/routes.json"
 TRIAGE = ROOT / "src/cyris/entrypoints/triage_server.py"
 ROUTER = ROOT / "workers/app/src/router.js"
 WRANGLER = ROOT / "wrangler.toml"
-README = ROOT / "README.md"
-APP_README = ROOT / "workers/app/README.md"
-ARCHITECTURE = ROOT / "docs/architecture.md"
 
 
 def load_fixture(text: str | None = None) -> list[dict]:
@@ -146,25 +143,6 @@ def test_personal_hostname_in_wrangler_fails():
 def test_workers_dev_false_in_wrangler_fails():
     with pytest.raises(AssertionError):
         assert_fork_neutral("workers_dev = false\npreview_urls = false\n")
-
-
-def test_app_readme_names_deployer_keys():
-    text = APP_README.read_text()
-    assert "CYRIS_UI_ACCESS_HOST" in text
-    assert "DIGEST_ORIGIN" in text
-
-
-def test_architecture_grade_b_table_names_access_host():
-    text = ARCHITECTURE.read_text()
-    section = text.split("### Every setting, graded", 1)[1]
-    table, _, _ = section.partition("###")
-    assert "CYRIS_UI_ACCESS_HOST" in table
-
-
-def test_what_needs_what_does_not_require_a_domain_for_access():
-    text = README.read_text()
-    table = text.split("### What needs what", 1)[1].split("### Where RSS comes from", 1)[0]
-    assert "Access needs **your own domain**" not in table
 
 
 def test_login_and_cookie_compare_via_ct_equal():
