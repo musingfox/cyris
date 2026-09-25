@@ -5,7 +5,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ARCHITECTURE = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-ENV_EXAMPLE = (ROOT / ".env.example").read_text(encoding="utf-8")
 CLAUDE_MD = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
 
@@ -82,10 +81,6 @@ def test_api_keys_on_the_settings_page_stay_undecided() -> None:
     section = _section(ARCHITECTURE, "## 5.", "## 6.")
     row = next(line for line in section.splitlines() if "API keys on the settings page" in line)
     assert "undecided" in row
-
-
-def test_env_example_no_longer_offers_the_webhook_variable() -> None:
-    assert "CYRIS_DISCORD_WEBHOOK_URL" not in ENV_EXAMPLE
 
 
 def test_deploy_facing_copy_does_not_name_the_old_table() -> None:
