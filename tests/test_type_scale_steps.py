@@ -27,10 +27,20 @@ def _worker_steps(source: str) -> list[float]:
     return [float(step) for step in match.group(1).split(",")]
 
 
-def _page_steps(page: str) -> list[float]:
+def _page_option_values(page: str) -> list[str]:
     select = re.search(r'<select class="select" id="type-scale">(.*?)</select>', page)
     assert select, "the settings page has no type size select"
-    return [float(value) for value in re.findall(r'<option value="([^"]*)"', select.group(1))]
+    return re.findall(r'<option value="([^"]*)"', select.group(1))
+
+
+def _page_steps(page: str) -> list[float]:
+    return [float(value) for value in _page_option_values(page)]
+
+
+def test_the_page_spells_each_option_as_the_stored_value() -> None:
+    # A select stores text. "1.0" is the same float as the stored 1, so the
+    # saved value would no longer preselect.
+    assert _page_option_values(render_settings_page()) == ["0.875", "1", "1.125"]
 
 
 def _assert_steps_agree(worker_source: str, page: str) -> None:
