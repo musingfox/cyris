@@ -83,11 +83,24 @@ jobs:
         run: >-
           docker build --platform linux/amd64 --build-arg GIT_SHA=${{ github.sha }}
           -t "$IMAGE_NAME:${{ github.sha }}" .
+      # The image installs with --no-dev, so a runtime import that only the dev group
+      # satisfies passes check.sh and fails at the first cron tick. Importing every
+      # module here catches it before anything is pushed. `cyris.__main__` is skipped
+      # because importing it runs the CLI.
       - id: smoke
         if: steps.existing.outputs.published != 'true'
-        run: >-
-          docker run --rm --entrypoint sh "$IMAGE_NAME:${{ github.sha }}" -c
-          'test "$CYRIS_GIT_SHA" = "${{ github.sha }}"'
+        run: |
+          image="$IMAGE_NAME:${{ github.sha }}"
+          docker run --rm --entrypoint sh "$image" -c 'test "$CYRIS_GIT_SHA" = "${{ github.sha }}"'
+          docker run --rm "$image" cyris --help > /dev/null
+          docker run --rm -i "$image" python - <<'EOF'
+          import importlib, pkgutil, cyris
+          names = [m.name for m in pkgutil.walk_packages(cyris.__path__, "cyris.")
+                   if not m.name.endswith(".__main__")]
+          for name in names:
+              importlib.import_module(name)
+          print(f"imported {len(names)} cyris modules")
+          EOF
       # Needs the container-registry-push permission. Verified sufficient on 2026-09-15 by
       # a real dispatch: Account -> Workers Scripts:Edit plus the Containers entry in the
       # token picker. The picker's exact label for that second entry is not recorded here.

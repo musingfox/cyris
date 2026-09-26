@@ -192,6 +192,10 @@ def test_release_workflow_smokes_baked_sha_in_container() -> None:
     assert "${{ github.sha }}" in run
     assert "docker run" in run
     assert "sh -c" in run or "--entrypoint" in run
+    assert "cyris --help" in run
+    assert "pkgutil.walk_packages(cyris.__path__" in run
+    assert "importlib.import_module(name)" in run
+    assert '".__main__"' in run
 
 
 def test_spec_binds_git_sha_invariant_to_release_image_tests() -> None:
