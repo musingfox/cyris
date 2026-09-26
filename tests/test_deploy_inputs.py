@@ -53,8 +53,18 @@ def test_env_example_and_deploy_form_name_the_same_variables() -> None:
     assert _env_example() == set(_bindings())
 
 
+def _wrangler_vars() -> dict[str, str]:
+    return tomllib.loads((ROOT / "wrangler.toml").read_text(encoding="utf-8")).get("vars", {})
+
+
 def test_every_variable_the_worker_reads_is_asked_for() -> None:
-    assert _worker_env() - set(_bindings()) == _ENTRYPOINT_DEFAULTED
+    assert _worker_env() - set(_bindings()) == _ENTRYPOINT_DEFAULTED | set(_wrangler_vars())
+
+
+def test_the_worker_name_the_container_asks_about_is_the_deployed_name() -> None:
+    """A different name lists another Worker's domains, or none, and the link goes wrong."""
+    config = tomllib.loads((ROOT / "wrangler.toml").read_text(encoding="utf-8"))
+    assert _wrangler_vars()["CYRIS_APP_WORKER_NAME"] == config["name"]
 
 
 def test_the_deploy_form_asks_for_nothing_the_worker_ignores() -> None:

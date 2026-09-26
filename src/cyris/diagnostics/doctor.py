@@ -567,6 +567,36 @@ def _check_publish_token(cfg: Config) -> list[Check]:
     ]
 
 
+def _check_digest_link(cfg: Config) -> Check:
+    """Which host the Discord digest link will name, asked the way a run asks."""
+    name = "digest link"
+    if cfg.app.promote.custom_domain:
+        return Check(name, "ok", f"{cfg.app.promote.custom_domain}, set explicitly")
+
+    from cyris import bootstrap
+
+    lookup = bootstrap.build_worker_domains()
+    if lookup is None:
+        return Check(name, "skip", "no app Worker to ask — CYRIS_APP_WORKER_NAME is unset")
+    try:
+        hosts = lookup()
+    except Exception as e:  # noqa: BLE001 - every failure leaves the link on pages.dev
+        return Check(
+            name,
+            "warn",
+            f"links go to pages.dev: could not list the app Worker's domains — {e}",
+            "Give CLOUDFLARE_API_TOKEN the Workers Scripts Read permission.",
+        )
+    if not hosts:
+        return Check(
+            name,
+            "warn",
+            "links go to pages.dev, where no vote buttons render: the app Worker has no "
+            "custom domain",
+        )
+    return Check(name, "ok", f"{hosts[0]}, the app Worker's custom domain")
+
+
 # Access cannot cover *.workers.dev, which is exactly why it is the hostname to
 # ask: on the custom domain the request meets an Access login this command has no
 # way to pass, and the failure reads as a dead deployment.
@@ -785,6 +815,7 @@ async def run_checks(
     checks.extend(_check_publish_token(cfg))
     checks.append(_check_output_sink(cfg))
     checks.append(_check_notifications(cfg))
+    checks.append(_check_digest_link(cfg))
     if deployment_url:
         image, online = await _deployment(deployment_url)
         checks.append(image)

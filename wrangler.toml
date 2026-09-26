@@ -15,6 +15,12 @@ compatibility_date = "2026-06-01"
 workers_dev = true
 preview_urls = false
 
+# The Worker's own name, handed to the container: a run asks Cloudflare which
+# custom domains this Worker has, so the Discord digest link can name one.
+# Must equal `name` above; tests/test_deploy_inputs.py holds them together.
+[vars]
+CYRIS_APP_WORKER_NAME = "cyris-app"
+
 # The hourly tick that used to be docker/crontab + supercronic. It is
 # unconditional on purpose: `cyris run --if-due` asks D1 whether this hour is a
 # digest hour and derives --period from which of the two it is, so changing the

@@ -111,6 +111,21 @@ def embedding_threshold(cfg: Config) -> float:
     return embedding_defaults(vote.provider)["threshold"]
 
 
+def build_worker_domains() -> Callable[[], list[str]] | None:
+    """Ask Cloudflare for the app Worker's custom domains, or None without the three inputs.
+
+    `CYRIS_APP_WORKER_NAME` comes from `[vars]` in wrangler.toml, so only the
+    container a Worker starts has it.
+    """
+    from cyris.adapters.cloudflare import list_worker_domains
+
+    inputs = [
+        os.environ.get(name, "")
+        for name in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "CYRIS_APP_WORKER_NAME")
+    ]
+    return partial(list_worker_domains, *inputs) if all(inputs) else None
+
+
 def build_d1_client(cfg: Config) -> Any | None:
     """The D1 connection, or None when `[store] backend` is still json."""
     if not cfg.app.store.is_d1:
@@ -217,6 +232,9 @@ class Deps:
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
     # Keeps each issue's final content in D1; None under json, whose pages are the record.
     digest_store: Any | None = None
+    # The app Worker's custom domains, for the digest link when none is configured;
+    # None where the Worker is unknown, as in a compose install.
+    worker_domains: Callable[[], list[str]] | None = None
 
 
 def build_promotion_sync(
@@ -352,4 +370,5 @@ def build_deps(
         record_run=record_run,
         archive_counts=archive_counts,
         digest_store=digest_store,
+        worker_domains=build_worker_domains(),
     )

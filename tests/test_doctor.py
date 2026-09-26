@@ -1144,3 +1144,68 @@ async def test_a_json_deployment_has_no_file_settings_check(tmp_path: Path) -> N
     names = [c.name for c in await doctor.run_checks(_config(tmp_path), config_path)]
 
     assert "file settings" not in names
+
+
+async def test_an_explicit_custom_domain_is_the_digest_link(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.app.promote.custom_domain = "digest.example.org"
+
+    check = _by_name(await doctor.run_checks(cfg), "digest link")
+
+    assert check.status == "ok"
+    assert "digest.example.org" in check.detail
+
+
+async def test_no_worker_name_means_no_domain_lookup(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("CYRIS_APP_WORKER_NAME", raising=False)
+
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "digest link")
+
+    assert check.status == "skip"
+
+
+def _worker_env(monkeypatch) -> None:
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+    monkeypatch.setenv("CYRIS_APP_WORKER_NAME", "cyris-app")
+
+
+async def test_a_detected_custom_domain_is_the_digest_link(tmp_path: Path, monkeypatch) -> None:
+    _worker_env(monkeypatch)
+    monkeypatch.setattr(
+        "cyris.adapters.cloudflare.list_worker_domains", lambda *_a: ["digest.example.org"]
+    )
+
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "digest link")
+
+    assert check.status == "ok"
+    assert "digest.example.org" in check.detail
+
+
+async def test_a_worker_without_a_custom_domain_links_to_pages_dev(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _worker_env(monkeypatch)
+    monkeypatch.setattr("cyris.adapters.cloudflare.list_worker_domains", lambda *_a: [])
+
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "digest link")
+
+    assert check.status == "warn"
+    assert "pages.dev" in check.detail
+
+
+async def test_a_token_that_cannot_list_domains_names_the_permission(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _worker_env(monkeypatch)
+
+    def denied(*_a):
+        raise RuntimeError("Authentication error")
+
+    monkeypatch.setattr("cyris.adapters.cloudflare.list_worker_domains", denied)
+
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "digest link")
+
+    assert check.status == "warn"
+    assert "Authentication error" in check.detail
+    assert "Workers Scripts Read" in check.fix

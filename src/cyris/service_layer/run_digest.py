@@ -94,6 +94,25 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 logger.error("Failed to record the run: %s", e)
 
 
+def _worker_domain(deps: "Deps") -> str:
+    """The first of the app Worker's custom domains, or "" to fall back to pages.dev.
+
+    Pages lacks `/api/vote`, so a reader who arrives there sees no vote buttons.
+    A failed lookup still falls back, and the warning keeps a token that lacks
+    Workers Scripts Read from passing as a Worker with no domain.
+    """
+    if deps.worker_domains is None:
+        return ""
+    try:
+        hosts = deps.worker_domains()
+    except Exception as e:  # noqa: BLE001 - any failure means the same fallback
+        logger.warning("Could not list the app Worker's custom domains: %s", e)
+        return ""
+    if len(hosts) > 1:
+        logger.info("The app Worker has %s; the digest link uses %s", ", ".join(hosts), hosts[0])
+    return hosts[0] if hosts else ""
+
+
 async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunReport:
     """Run the full pipeline: fetch → store → score → digest → output."""
     cfg = deps.cfg
@@ -393,9 +412,9 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             ):
                 if published:
                     # Cloudflare Pages serves the extensionless clean URL.
-                    # Use custom_domain for operator/self links if set, else pages.dev.
-                    if cfg.app.promote.custom_domain:
-                        digest_url = f"https://{cfg.app.promote.custom_domain}/{slug}"
+                    host = cfg.app.promote.custom_domain or _worker_domain(deps)
+                    if host:
+                        digest_url = f"https://{host}/{slug}"
                     else:
                         digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
                 else:

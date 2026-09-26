@@ -64,6 +64,9 @@ account permissions:
 - **D1 → Edit**: the store, the settings and the source list, including creating
   the tables.
 - **Cloudflare Pages → Edit**: creating the project and uploading each digest.
+- **Workers Scripts → Read**: listing the custom domains attached to `cyris-app`, so
+  the Discord digest link names one. Without it, the link falls back to `pages.dev`
+  and `cyris doctor` warns.
 
 Note your account id as well. Workers AI takes a separate token (step 4), needed only
 if you use it.
@@ -121,10 +124,11 @@ later you can add names to the file and deploy again, or set one with
 
 The output names the Worker's URL, `https://cyris-app.<subdomain>.workers.dev`.
 
-Set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to the hostname readers should open: the custom domain
-attached to `cyris-app` if there is one, with or without Access, otherwise the
-`workers.dev` hostname. Without it, Discord links go to `pages.dev`, where `/api/vote`
-does not exist, so readers never see vote buttons.
+The Discord digest link names the custom domain attached to `cyris-app`, found at
+each run through the Workers Scripts → Read permission from step 3, with or without
+Access. On a domainless deploy, set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to the `workers.dev`
+hostname; set, it overrides the lookup. With neither, Discord links go to `pages.dev`,
+where `/api/vote` does not exist, so readers never see vote buttons.
 
 ## 6. Log in and fill `/settings`
 
@@ -251,8 +255,7 @@ a domain on Cloudflare, Access can be a second layer. Access cannot protect a
    that hostname trust Access instead of the cookie, so setting it before step 3
    proves Access is blocking leaves votes open to anyone.
 
-Set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to that hostname too, as for any attached domain
-(section 5). Scripts against an Access hostname get a 302 rather than a 401 and need an
+The Discord digest link picks up this hostname on its own (section 5). Scripts against an Access hostname get a 302 rather than a 401 and need an
 Access service token; nothing in cyris calls its own UI, so this matters only for your
 own scripts, `curl` in step 7 included. Use the `workers.dev` URL for those.
 

@@ -31,3 +31,27 @@ def check_pages_access(account_id: str, project: str, token: str) -> tuple[bool,
 
     errors = body.get("errors") or [{"message": f"HTTP {resp.status_code}"}]
     return False, "; ".join(str(e.get("message", e)) for e in errors)
+
+
+def list_worker_domains(account_id: str, token: str, service: str) -> list[str]:
+    """The custom domains attached to the Worker named `service`, sorted.
+
+    Needs Workers Scripts Read on the token. Raises RuntimeError carrying the
+    API's own message, so a caller that falls back can still say why.
+    """
+    url = f"{API_ROOT}/accounts/{account_id}/workers/domains"
+    try:
+        resp = httpx.get(
+            url,
+            params={"service": service},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=TIMEOUT_SECONDS,
+        )
+        body = resp.json()
+    except (httpx.HTTPError, ValueError) as e:
+        raise RuntimeError(f"could not reach the Workers domains API: {e}") from e
+
+    if not body.get("success"):
+        errors = body.get("errors") or [{"message": f"HTTP {resp.status_code}"}]
+        raise RuntimeError("; ".join(str(e.get("message", e)) for e in errors))
+    return sorted(d["hostname"] for d in body.get("result") or [] if d.get("hostname"))

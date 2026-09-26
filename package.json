@@ -29,7 +29,7 @@
         "description": "**Required.** Your account id, shown in the dashboard URL and on any Workers page."
       },
       "CLOUDFLARE_API_TOKEN": {
-        "description": "**Required.** An [API token](https://dash.cloudflare.com/profile/api-tokens) with `D1:Edit` and `Cloudflare Pages:Edit`. This is what publishes the digest and reads the store."
+        "description": "**Required.** An [API token](https://dash.cloudflare.com/profile/api-tokens) with `D1:Edit` and `Cloudflare Pages:Edit`. This is what publishes the digest and reads the store. Add `Workers Scripts:Read` so the digest link can find this Worker's custom domain."
       },
       "CYRIS_PROMOTE_PAGES_PROJECT": {
         "description": "**Required.** The Pages project name the digest deploys to. The Worker serves the archive from `<name>.pages.dev` unless `DIGEST_ORIGIN` overrides it."
@@ -62,7 +62,7 @@
         "description": "Optional. The `workers/promote/` bearer, the same value as that Worker's `PROMOTE_TOKEN`. It stays server-side: readers vote through this Worker's `POST /api/vote`, which attaches it. Keep it distinct from `CYRIS_WORKER_TOKEN`."
       },
       "CYRIS_PROMOTE_CUSTOM_DOMAIN": {
-        "description": "Optional. The hostname readers use, if you attached one. On a domainless deploy set it to this Worker's `*.workers.dev` hostname."
+        "description": "Optional. Overrides the digest link's host. Unset, a run uses the custom domain attached to this Worker. On a domainless deploy set it to this Worker's `*.workers.dev` hostname."
       },
       "CLOUDFLARE_EMBEDDING_API_TOKEN": {
         "description": "Optional. A `Workers AI:Read` token for `@cf/baai/bge-m3` vote-similarity filtering. Not the same token as `CLOUDFLARE_API_TOKEN`."

@@ -172,7 +172,9 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
     assert deps.store.get_by_urls(["https://example.com/cloud"])[0].state == ArticleState.PENDING
 
 
-async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
+async def test_publish_outcome_reaches_discord(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """A dead publish must announce itself; silently dropping the link is what
     made the missing 2026-08-18/2026-08-20 digest links look like normal runs."""
 
@@ -219,7 +221,9 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
             path.write_text("<html></html>")
             return path
 
-    async def run_with(publish_ok: bool, run_dir: Path, custom_domain: str = "") -> dict:
+    async def run_with(
+        publish_ok: bool, run_dir: Path, custom_domain: str = "", worker_domains=None
+    ) -> dict:
         deps, _ = make_deps(run_dir, _llm(), FakeSource([_article()]))
         deps.cfg.app.promote.pages_project = "cyris-digest"
         deps.cfg.app.promote.custom_domain = custom_domain
@@ -234,6 +238,7 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
             html_writer=StubHtmlWriter(),
             publish=lambda _slug: publish_ok,
             send_discord=capture,
+            worker_domains=worker_domains,
         )
         await run_digest(deps, RunOptions())
         return sent
@@ -246,9 +251,31 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
     assert ok["digest_url"].startswith("https://cyris-digest.pages.dev/")
     assert ok["digest_url"].endswith("-v2")
 
-    domain = await run_with(True, tmp_path / "domain", custom_domain="digest.example.org")
+    def never_asked() -> list[str]:
+        raise AssertionError("an explicit custom domain needs no lookup")
+
+    domain = await run_with(
+        True, tmp_path / "domain", custom_domain="digest.example.org", worker_domains=never_asked
+    )
     assert domain["digest_url"].startswith("https://digest.example.org/")
     assert domain["digest_url"].endswith("-v2")
+
+    detected = await run_with(
+        True, tmp_path / "detected", worker_domains=lambda: ["a.example.org", "b.example.org"]
+    )
+    assert detected["digest_url"].startswith("https://a.example.org/")
+
+    none = await run_with(True, tmp_path / "none", worker_domains=lambda: [])
+    assert none["digest_url"].startswith("https://cyris-digest.pages.dev/")
+
+    # The fallback is right, but a silent one hides a token missing its permission.
+    def denied() -> list[str]:
+        raise RuntimeError("Authentication error")
+
+    with caplog.at_level("WARNING"):
+        failed_lookup = await run_with(True, tmp_path / "denied", worker_domains=denied)
+    assert failed_lookup["digest_url"].startswith("https://cyris-digest.pages.dev/")
+    assert "Authentication error" in caplog.text
 
 
 def _fan_article(*, article_id: int, title: str, url: str) -> Article:

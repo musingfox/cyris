@@ -38,6 +38,8 @@ const DEPLOYMENT = {
   CYRIS_PROMOTE_WORKER_URL: env.CYRIS_PROMOTE_WORKER_URL,
   CYRIS_NEWSLETTER_WORKER_URL: env.CYRIS_NEWSLETTER_WORKER_URL,
   CYRIS_RSS_WORKER_URL: env.CYRIS_RSS_WORKER_URL,
+  // From [vars] in wrangler.toml, not from the deployer.
+  CYRIS_APP_WORKER_NAME: env.CYRIS_APP_WORKER_NAME,
 };
 
 // Unset or empty Worker bindings become JS undefined/"". Spreading those into
