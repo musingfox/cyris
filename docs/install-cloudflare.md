@@ -121,8 +121,10 @@ later you can add names to the file and deploy again, or set one with
 
 The output names the Worker's URL, `https://cyris-app.<subdomain>.workers.dev`.
 
-Set `CYRIS_PROMOTE_CUSTOM_DOMAIN` on a domainless deploy. Without it, Discord links go
-to `pages.dev`, where `/api/vote` does not exist, so readers never see vote buttons.
+Set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to the hostname readers should open: the custom domain
+attached to `cyris-app` if there is one, with or without Access, otherwise the
+`workers.dev` hostname. Without it, Discord links go to `pages.dev`, where `/api/vote`
+does not exist, so readers never see vote buttons.
 
 ## 6. Log in and fill `/settings`
 
@@ -249,10 +251,10 @@ a domain on Cloudflare, Access can be a second layer. Access cannot protect a
    that hostname trust Access instead of the cookie, so setting it before step 3
    proves Access is blocking leaves votes open to anyone.
 
-Then set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to the same hostname. Scripts against an Access
-hostname get a 302 rather than a 401 and need an Access service token; nothing in cyris
-calls its own UI, so this matters only for your own scripts, `curl` in step 7 included.
-Use the `workers.dev` URL for those.
+Set `CYRIS_PROMOTE_CUSTOM_DOMAIN` to that hostname too, as for any attached domain
+(section 5). Scripts against an Access hostname get a 302 rather than a 401 and need an
+Access service token; nothing in cyris calls its own UI, so this matters only for your
+own scripts, `curl` in step 7 included. Use the `workers.dev` URL for those.
 
 ## Running the CLI against the deployment
 
