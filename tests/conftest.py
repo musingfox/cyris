@@ -29,6 +29,18 @@ def _clear_b_grade_env(monkeypatch):
 
 
 @pytest.fixture
+def backoff_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The LLM clients back off in real seconds; record each delay instead of waiting it."""
+    delays: list[float] = []
+
+    async def record(seconds: float) -> None:
+        delays.append(seconds)
+
+    monkeypatch.setattr("asyncio.sleep", record)
+    return delays
+
+
+@pytest.fixture
 def d1(monkeypatch: pytest.MonkeyPatch) -> SqliteD1:
     """A D1 deployment whose database is local sqlite with the schema applied.
 

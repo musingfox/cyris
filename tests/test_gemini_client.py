@@ -63,7 +63,7 @@ async def test_complete_omits_optional_fields():
     }
 
 
-async def test_retries_on_503_then_succeeds():
+async def test_retries_on_503_then_succeeds(backoff_sleeps):
     async with respx.mock:
         route = respx.post(GENERATE_URL).mock(side_effect=[httpx.Response(503), _ok_response()])
         client = GeminiClient(api_key="k", model="gemini-2.5-flash")
@@ -71,9 +71,10 @@ async def test_retries_on_503_then_succeeds():
 
     assert result.text == "hello"
     assert route.call_count == 2
+    assert backoff_sleeps == [1]
 
 
-async def test_raises_after_retries_exhausted():
+async def test_raises_after_retries_exhausted(backoff_sleeps):
     async with respx.mock:
         route = respx.post(GENERATE_URL).mock(return_value=httpx.Response(503))
         client = GeminiClient(api_key="k", model="gemini-2.5-flash", max_retries=1)
@@ -81,6 +82,7 @@ async def test_raises_after_retries_exhausted():
             await client.complete("hi")
 
     assert route.call_count == 2
+    assert backoff_sleeps == [1]
 
 
 async def test_raises_on_client_error_without_retry():

@@ -142,7 +142,7 @@ async def test_a_provider_that_does_not_bill_in_neurons_reports_none():
     assert usage.neurons is None
 
 
-async def test_retries_on_429_then_succeeds():
+async def test_retries_on_429_then_succeeds(backoff_sleeps):
     async with respx.mock:
         route = respx.post(RUN_URL).mock(
             side_effect=[
@@ -154,6 +154,7 @@ async def test_retries_on_429_then_succeeds():
 
     assert route.call_count == 2
     assert response.text == "ok"
+    assert backoff_sleeps == [1]
 
 
 async def test_does_not_retry_a_403():

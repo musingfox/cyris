@@ -9,6 +9,7 @@ blocks), maps which CSS partials a page template includes, and renders the fixed
 index, digest and raw pages those checks read.
 """
 
+import functools
 import re
 from collections import Counter
 from datetime import UTC, datetime
@@ -545,6 +546,7 @@ def _raw_article(
     )
 
 
+@functools.cache
 def receipt_fixtures() -> tuple[str, str, str]:
     """Render fixed index, complete digest, and raw-page receipt inputs.
 

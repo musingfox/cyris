@@ -95,13 +95,14 @@ async def test_warns_when_the_reply_is_empty(caplog):
     assert "returned no text" in caplog.text
 
 
-async def test_retries_a_429_then_succeeds():
+async def test_retries_a_429_then_succeeds(backoff_sleeps):
     async with respx.mock:
         route = respx.post(URL).mock(side_effect=[httpx.Response(429), _ok()])
         response = await _client().complete("Hi.")
 
     assert route.call_count == 2
     assert response.text == '{"items": []}'
+    assert backoff_sleeps == [1]
 
 
 async def test_a_4xx_reason_reaches_the_caller():

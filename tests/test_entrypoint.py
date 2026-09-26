@@ -215,9 +215,9 @@ class TestRunRoleStopsOnSigterm:
         assert "entrypoint: SIGTERM, stopping" in p.stderr_lines()
 
     def test_sigterm_during_the_probe_ends_the_pass_before_the_run(self, run_pass) -> None:
-        p = run_pass(python_body="exec sleep 2")
+        p = run_pass(python_body="exec sleep 0.5")
         p.wait_for_call("python")
-        assert p.terminate(within=4) == 143
+        assert p.terminate(within=3) == 143
         assert _calls(p.calls) == ["python"]
         assert "entrypoint: SIGTERM, stopping" in p.stderr_lines()
 
