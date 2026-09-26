@@ -140,3 +140,43 @@ def test_the_digest_is_read_back_before_the_deploy() -> None:
 
     assert steps["resolve"][0] < steps["deploy"][0]
     assert "docker manifest inspect" in steps["resolve"][1]["run"]
+
+
+def test_the_deploy_fails_unless_production_reports_the_deployed_image() -> None:
+    """A green deploy means the rollout started, not that the new image serves."""
+    steps = _deploy_steps()
+    index, verify = steps["verify"]
+    run = verify["run"]
+
+    assert steps["deploy"][0] < index
+    assert verify["env"]["DIGEST"] == "${{ steps.resolve.outputs.digest }}"
+    assert "CYRIS_GIT_SHA" in run
+    assert "/login" in run and "/api/build" in run
+    assert "exit 1" in run
+
+
+def test_the_ui_token_reaches_only_the_verify_step() -> None:
+    """The login token grants all of /settings; no other step's code should see it."""
+    steps = _deploy_steps()
+
+    holders = [sid for sid, (_, s) in steps.items() if "secrets.CYRIS_UI_TOKEN" in yaml.dump(s)]
+    assert holders == ["verify"]
+    assert steps["verify"][1]["env"]["CYRIS_DEPLOYMENT_URL"] == "${{ vars.CYRIS_DEPLOYMENT_URL }}"
+
+
+def test_the_session_cookie_is_masked_and_the_token_stays_off_the_command_line() -> None:
+    """The cookie is sha256(token), a credential GitHub does not know to mask."""
+    run = _deploy_steps()["verify"][1]["run"]
+
+    assert "::add-mask::" in run and "sha256sum" in run
+    assert run.index("::add-mask::") < run.index("/login")
+    assert "token@-" in run
+    assert "token=$CYRIS_UI_TOKEN" not in run
+    assert " -v " not in run and "--verbose" not in run
+
+
+def test_the_first_ask_waits_out_a_warm_instance() -> None:
+    """Each request renews a warm instance's five idle minutes, keeping the old image."""
+    run = _deploy_steps()["verify"][1]["run"]
+
+    assert run.index("sleep ") < run.index("/api/build")

@@ -114,5 +114,47 @@ jobs:
       - id: receipt
         run: |
           echo "deployed $IMAGE_NAME@${{ steps.resolve.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Confirm with: cyris doctor --deployment https://<worker>.workers.dev" \
-            >> "$GITHUB_STEP_SUMMARY"
+      # A green deploy means the rollout started, not that the new image serves, so the
+      # job fails unless production names the commit baked into the digest it was given.
+      # The first ask waits: each request renews a warm instance's five idle minutes, and
+      # a warm instance keeps answering from the image it started with. The session
+      # cookie is sha256 of the token, a credential GitHub does not know to mask, and
+      # this repository's logs are public.
+      - id: verify
+        env:
+          CYRIS_UI_TOKEN: ${{ secrets.CYRIS_UI_TOKEN }}
+          CYRIS_DEPLOYMENT_URL: ${{ vars.CYRIS_DEPLOYMENT_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          if [ -z "$CYRIS_UI_TOKEN" ] || [ -z "$CYRIS_DEPLOYMENT_URL" ]; then
+            echo "secret CYRIS_UI_TOKEN and variable CYRIS_DEPLOYMENT_URL are needed to verify" >&2
+            exit 1
+          fi
+          ref="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$IMAGE_NAME@$DIGEST"
+          docker pull -q --platform linux/amd64 "$ref" > /dev/null
+          expected=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$ref" \
+            | sed -n 's/^CYRIS_GIT_SHA=//p')
+          if [ -z "$expected" ]; then
+            echo "the deployed image names no commit, so nothing can be compared" >&2
+            exit 1
+          fi
+          echo "::add-mask::$(printf '%s' "$CYRIS_UI_TOKEN" | sha256sum | cut -d' ' -f1)"
+          base="${CYRIS_DEPLOYMENT_URL%/}"
+          jar="$RUNNER_TEMP/cyris-ui.cookies"
+          trap 'rm -f "$jar"' EXIT
+          online=""
+          for attempt in 1 2; do
+            sleep 360
+            online=$(printf '%s' "$CYRIS_UI_TOKEN" \
+              | curl -sSf -m 120 -c "$jar" -o /dev/null --data-urlencode "token@-" "$base/login" \
+              && curl -sSf -m 120 -b "$jar" "$base/api/build" | jq -r '.git_sha // empty') \
+              || online=""
+            echo "attempt $attempt: production reports ${online:-nothing}, deployed ${expected}"
+            [ "$online" = "$expected" ] && break
+          done
+          if [ "$online" != "$expected" ]; then
+            echo "production does not report the deployed commit $expected" >&2
+            exit 1
+          fi
+          echo "production reports $expected, the deployed commit" >> "$GITHUB_STEP_SUMMARY"

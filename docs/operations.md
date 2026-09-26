@@ -35,9 +35,12 @@ On a fork they need, under Settings → Secrets and variables → Actions:
 |---|---|---|
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | Your account id |
 | Secret | `CLOUDFLARE_CONTAINERS_TOKEN` | An API token with Workers Scripts → Edit plus the Containers edit permission |
+| Variable | `CYRIS_DEPLOYMENT_URL` | The app Worker's `workers.dev` URL, for the deploy's check that production serves the new image |
+| Secret | `CYRIS_UI_TOKEN` | The same value as the `cyris-app` Worker secret; replace both together when you rotate it |
 
-This token is for CI only and never enters the container. `scripts/check.sh` runs the
-test suite; the real-newsletter tests skip when their samples are absent.
+`CLOUDFLARE_CONTAINERS_TOKEN` is for CI only and never enters the container. After `wrangler deploy`, the deploy workflow waits six minutes, logs in to `CYRIS_DEPLOYMENT_URL` and fails unless `/api/build` names the commit baked into the deployed image; it asks once more after another six minutes before giving up.
+
+`scripts/check.sh` runs the test suite; the real-newsletter tests skip when their samples are absent.
 
 Both paths push to the same registry repository, named by `[[containers]] name` in
 `wrangler.toml`, so whichever deployed last is what runs.
@@ -77,7 +80,7 @@ git tag -l --format='%(contents)' image/<short-sha>    # … digest=sha256:…
 gh workflow run "Deploy the container Worker" -f image_tag=sha256:<digest>
 ```
 
-Confirm with `cyris doctor --deployment`, allowing for the warm-instance lag above.
+The workflow's `verify` step confirms the rollout; `cyris doctor --deployment` answers the same question by hand, allowing for the warm-instance lag above.
 
 **On the `wrangler deploy` path**, there is no recorded digest: check out the older
 commit and `bunx wrangler deploy --env-file /dev/null` again. That builds a new image
