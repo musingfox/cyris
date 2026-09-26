@@ -91,12 +91,15 @@ jobs:
           fi
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "deploying $ref ($digest)"
+      # The resolved digest, never the tag: `:release` reads the same on every deploy,
+      # so wrangler would see no change to the container application and roll nothing.
       - id: derive
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
         run: |
           scripts/derive-wrangler-config.sh "$CLOUDFLARE_ACCOUNT_ID" "$IMAGE_NAME" \
-            "${{ inputs.image_tag }}" wrangler.deploy.toml
+            "$DIGEST" wrangler.deploy.toml
           grep '^image = ' wrangler.deploy.toml
       # --containers-rollout immediate: the instance types and limits are
       # unchanged by a deploy that only moves the image, and a gradual rollout

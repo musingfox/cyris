@@ -180,3 +180,16 @@ def test_the_first_ask_waits_out_a_warm_instance() -> None:
     run = _deploy_steps()["verify"][1]["run"]
 
     assert run.index("sleep ") < run.index("/api/build")
+
+
+def test_the_deployed_config_names_the_resolved_digest_not_the_tag() -> None:
+    """`:release` reads the same on every deploy, so wrangler sees no change and rolls nothing.
+
+    Observed 2026-09-21 and again 2026-09-26: the deploy went green and production
+    kept the previous image until it was redeployed by digest.
+    """
+    derive = _deploy_steps()["derive"][1]
+
+    assert derive["env"]["DIGEST"] == "${{ steps.resolve.outputs.digest }}"
+    assert '"$DIGEST"' in derive["run"]
+    assert "inputs.image_tag" not in derive["run"]
