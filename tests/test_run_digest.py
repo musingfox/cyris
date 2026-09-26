@@ -219,9 +219,10 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
             path.write_text("<html></html>")
             return path
 
-    async def run_with(publish_ok: bool, run_dir: Path) -> dict:
+    async def run_with(publish_ok: bool, run_dir: Path, custom_domain: str = "") -> dict:
         deps, _ = make_deps(run_dir, _llm(), FakeSource([_article()]))
         deps.cfg.app.promote.pages_project = "cyris-digest"
+        deps.cfg.app.promote.custom_domain = custom_domain
         sent: dict = {}
 
         async def capture(webhook_url, content, digest_url="", publish_failed=False):
@@ -244,6 +245,10 @@ async def test_publish_outcome_reaches_discord(tmp_path: Path) -> None:
     assert ok["publish_failed"] is False
     assert ok["digest_url"].startswith("https://cyris-digest.pages.dev/")
     assert ok["digest_url"].endswith("-v2")
+
+    domain = await run_with(True, tmp_path / "domain", custom_domain="digest.example.org")
+    assert domain["digest_url"].startswith("https://digest.example.org/")
+    assert domain["digest_url"].endswith("-v2")
 
 
 def _fan_article(*, article_id: int, title: str, url: str) -> Article:

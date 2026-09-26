@@ -407,7 +407,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (`cyris.toml [promote]` fallback) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
 | HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
-| Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done |
+| Promote custom domain | B | `CYRIS_PROMOTE_CUSTOM_DOMAIN` | done — the host of the digest link Discord receives. Unset, the link goes to `pages.dev`, where `/api/vote` does not exist and no vote buttons render; with Access it is the same hostname as `CYRIS_UI_ACCESS_HOST`, which only the Worker reads |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (file fallback) | done |
 | UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
