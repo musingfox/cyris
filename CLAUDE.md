@@ -215,6 +215,14 @@ Tags sit beside the level and do not change it. `guard` means the file's purpose
 
 Put the mark once, directly after the last top-level import. A level alone is `pytestmark = pytest.mark.unit`. A level plus tags is a list with the level first, for example `pytestmark = [pytest.mark.unit, pytest.mark.guard]`. `tests/test_level_markers.py` rejects a file with no level, with two levels, with a level or tag applied anywhere except that assignment, or with a mark outside the six registered names. `strict_markers` in `pyproject.toml` rejects an unregistered mark when the suite is collected.
 
+### Where each check runs
+
+- **Local.** Nothing runs on its own: `.githooks/` is not wired by any setting in the repo. `scripts/check.sh` is the gate you run by hand. It installs both JS packages, runs ruff over `src/`, `tests/` and `scripts/`, then runs pytest, which also drives both Worker JS suites.
+- **Pull request and push to `main`.** `ci.yml` runs ruff over `src/` and `tests/` only, then pytest with the Worker JS suites. Under `CI` a missing JS toolchain fails the suite instead of skipping it. `main` has no branch protection, so CI reports after a commit has landed.
+- **Release.** `release-image.yml` runs `scripts/check.sh` on the dispatched sha. It then builds the image and smoke-tests it before pushing: the baked `CYRIS_GIT_SHA`, `cyris --help`, and an import of every `cyris.*` module, which catches a runtime dependency that only the dev group installs.
+- **Deploy.** `deploy.yml` runs no tests, because it deploys an image the release already checked. After `wrangler deploy`, its `verify` step fails the job unless production's `/api/build` names the commit baked into the deployed digest. The `rss`, `promote` and `newsletter` Workers deploy by hand, with no gate.
+- **Runtime.** Each run writes one `run_summary` log line and one D1 `digest_runs` row. Discord is notified only when a run gets as far as a digest, including one whose publish failed. A run that finds nothing to digest, or raises, alerts no one.
+
 ## Conventions
 
 - Python 3.12+ required
