@@ -139,7 +139,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 
 website/              # The landing page: its own Pages project, deployed with `bun run deploy:website`
                       #   (not the digest's project, and not `bun run deploy`)
-scripts/              # check.sh (the CI gate), derive-wrangler-config.sh (the deploy workflow's
+scripts/              # check.sh (the local and release gate), derive-wrangler-config.sh (the deploy workflow's
                       #   config), backfill_pages_manifest.py, and the CDP page probes (*_probe.py)
 docs/                 # architecture.md (read first); install-local.md, install-cloudflare.md and
                       #   operations.md (install and run a deployment); design/ (UI spec); history
@@ -250,3 +250,4 @@ Put the mark once, directly after the last top-level import. A level alone is `p
 - Test isolation: external resource names (labels, paths, IDs) must be unique per test — use `tmp_path` or random suffixes, never share production identifiers
 - Mock patching: always patch where the function is **used**, not where it is **defined** (e.g. patch `cyris.service_layer.run_digest.now_in_timezone`, not `cyris.utils.timezone.now_in_timezone`)
 - LLM calls in tests: inject `FakeLLM` (tests/fakes.py) instead of patching the Anthropic SDK; only the CLI-level integration tests in `tests/test_cli_flows.py` patch the single adapter point `cyris.adapters.anthropic_client.anthropic.AsyncAnthropic`
+- Retry tests for the LLM clients take the `backoff_sleeps` fixture (`tests/conftest.py`), which records each backoff delay instead of sleeping it; a test never waits out real backoff
