@@ -113,3 +113,4 @@ failure mode**: each publish is a full snapshot of the site, and the two would r
 - **Logs** are in Workers Logs for 7 days (`bunx wrangler tail cyris-app --env-file
   /dev/null` for live output). The permanent record of runs and spend is D1:
   `digest_runs` and `usage_log`.
+- **Failure alerts** go to every configured channel, Discord and email, after the run is recorded, when a run raises inside `run_digest` or fetches nothing while a source failed. The alert carries the error or the failed sources, and the time the run started. A dry run, a SIGTERM-cancelled run, and a run that fails before it starts send no alert. Read `digest_runs` and Workers Logs for those.
