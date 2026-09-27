@@ -123,15 +123,21 @@ def _failure_alert_text(failure: Exception) -> str:
 async def _send_failure_alert(
     deps: "Deps", summary: dict, failure: Exception | None, stamp: str
 ) -> None:
-    """One alert per configured channel after a run that raised.
+    """One alert per configured channel when a run raised or every fetch failed.
 
-    Empty configuration does not call the sender. Each call has its own guard
-    so one channel's failure still leaves the other its attempt.
+    An empty window whose sources all answered is not an alert. Empty
+    configuration does not call the sender. Each call has its own guard so one
+    channel's failure still leaves the other its attempt.
     """
-    if failure is None:
-        return
-    subject = f"Digest run failed: {stamp}"
-    text = _failure_alert_text(failure)
+    if failure is not None:
+        subject = f"Digest run failed: {stamp}"
+        text = _failure_alert_text(failure)
+    else:
+        failed = summary.get("failed_sources") or []
+        if summary.get("status") != "no_articles" or not failed:
+            return
+        subject = f"Digest run fetched nothing: {stamp}"
+        text = "Failed sources: " + ", ".join(failed)
     notify = deps.cfg.app.notify
     if notify.discord_webhook_url:
         try:

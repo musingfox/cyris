@@ -1688,3 +1688,65 @@ async def test_an_error_with_no_message_is_named_by_its_type_alone(tmp_path: Pat
         await run_digest(deps, RunOptions())
 
     assert discord_calls[0][2] == "RuntimeError"
+
+
+_FETCH_SUBJECT = re.compile(
+    r"^Digest run fetched nothing: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$"
+)
+
+
+class BrokenSource(FakeSource):
+    def __init__(self) -> None:
+        super().__init__([])
+
+    async def fetch_articles(self, **kwargs) -> list[Article]:
+        raise RuntimeError("down")
+
+
+class OtherBrokenSource(BrokenSource):
+    pass
+
+
+async def _fetch_failure_alerts(tmp_path: Path, sources: list) -> tuple[object, list, list]:
+    discord_calls: list[tuple] = []
+    mail_calls: list[tuple] = []
+
+    async def discord(webhook_url, subject, text):
+        discord_calls.append((webhook_url, subject, text))
+
+    async def mail(recipient, sender, subject, text):
+        mail_calls.append((recipient, sender, subject, text))
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, fetch_sources=sources)
+    deps = _with_alert_channels(deps, discord, mail)
+    report = await run_digest(deps, RunOptions())
+    return report, discord_calls, mail_calls
+
+
+async def test_a_run_that_fetched_nothing_names_the_failed_source(tmp_path: Path) -> None:
+    report, discord_calls, mail_calls = await _fetch_failure_alerts(tmp_path, [BrokenSource()])
+
+    assert report.status == "no_articles"
+    assert report.failed_sources == ["BrokenSource"]
+    assert len(discord_calls) == 1
+    assert len(mail_calls) == 1
+    assert discord_calls[0][2] == "Failed sources: BrokenSource"
+    assert mail_calls[0][3] == "Failed sources: BrokenSource"
+    assert _FETCH_SUBJECT.match(discord_calls[0][1])
+    assert mail_calls[0][2] == discord_calls[0][1]
+
+
+async def test_a_run_that_fetched_nothing_names_every_failed_source(tmp_path: Path) -> None:
+    _, discord_calls, mail_calls = await _fetch_failure_alerts(
+        tmp_path, [BrokenSource(), OtherBrokenSource()]
+    )
+
+    assert discord_calls[0][2] == "Failed sources: BrokenSource, OtherBrokenSource"
+    assert mail_calls[0][3] == "Failed sources: BrokenSource, OtherBrokenSource"
+
+
+async def test_a_healthy_empty_source_is_left_off_the_failed_fetch_alert(tmp_path: Path) -> None:
+    _, discord_calls, _ = await _fetch_failure_alerts(tmp_path, [BrokenSource(), FakeSource([])])
+
+    assert discord_calls[0][2] == "Failed sources: BrokenSource"
