@@ -149,7 +149,7 @@ async def _send_failure_alert(
         try:
             await deps.send_discord_alert(notify.discord_webhook_url, subject, text)
         except Exception as e:
-            logger.warning("Failure alert: Discord skipped: %s", e)
+            logger.error("Failure alert: Discord skipped: %s", e)
     if not notify.email_to:
         logger.info("Failure alert: no email address set, skipping mail")
     elif deps.send_email_alert is None:
@@ -161,7 +161,7 @@ async def _send_failure_alert(
         try:
             await deps.send_email_alert(notify.email_to, notify.email_from, subject, text)
         except Exception as e:
-            logger.warning("Failure alert: mail skipped: %s", e)
+            logger.error("Failure alert: mail skipped: %s", e)
 
 
 def _worker_domain(deps: "Deps") -> str:

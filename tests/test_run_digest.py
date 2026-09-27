@@ -1901,7 +1901,7 @@ async def _broken_alert(*_args, **_kwargs):
     raise ValueError("alert broke")
 
 
-async def test_a_broken_alert_does_not_replace_the_runs_exception(tmp_path: Path) -> None:
+async def test_a_broken_alert_does_not_replace_the_runs_exception(tmp_path: Path, caplog) -> None:
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, _broken_alert, _broken_alert)
     _exploding_store(deps)
@@ -1910,6 +1910,12 @@ async def test_a_broken_alert_does_not_replace_the_runs_exception(tmp_path: Path
         await run_digest(deps, RunOptions())
 
     assert type(caught.value) is RuntimeError
+    errors = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "ERROR" and r.name == "cyris.service_layer.run_digest"
+    ]
+    assert sum("alert broke" in m for m in errors) == 2
 
 
 async def test_a_broken_alert_does_not_fail_a_run_that_fetched_nothing(tmp_path: Path) -> None:
