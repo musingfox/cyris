@@ -80,10 +80,19 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         "period": options.period,
         "dry_run": options.dry_run,
     }
+    # Held here, not read back off `summary["status"]`: a SIGTERM is a
+    # CancelledError, which is not an Exception, and that run's status is also
+    # "error". Alerting on the status would page somebody for a deploy.
+    failure: Exception | None = None
     try:
         return await _run_digest(deps, options, summary)
+    except Exception as exc:
+        failure = exc
+        raise
     finally:
         summary["wall_seconds"] = round(time.monotonic() - started, 2)
+        # Private to the alert. The logged summary and the run row stay as they were.
+        stamp = summary.pop("_alert_stamp", "")
         logger.info("run_summary %s", json.dumps(summary, ensure_ascii=False, default=str))
         if deps.record_run is not None:
             # Raising in `finally` would replace the run's own exception, or turn
@@ -92,6 +101,48 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 deps.record_run(summary)
             except Exception as e:
                 logger.error("Failed to record the run: %s", e)
+        # After the record. Its own guard, and one per channel inside: composing
+        # the message calls str() on the run error, and a channel that raises
+        # must not replace that error or skip the other channel.
+        try:
+            await _send_failure_alert(deps, summary, failure, stamp)
+        except Exception as e:
+            logger.error("Failed to send the failure alert: %s", e)
+
+
+def _failure_alert_text(failure: Exception) -> str:
+    """`RuntimeError: ...`, or just the type when the message is empty.
+
+    `str(failure)` can itself raise. Callers keep that inside the alert guard.
+    """
+    message = str(failure)
+    name = type(failure).__name__
+    return f"{name}: {message}" if message else name
+
+
+async def _send_failure_alert(
+    deps: "Deps", summary: dict, failure: Exception | None, stamp: str
+) -> None:
+    """One alert per configured channel after a run that raised.
+
+    Empty configuration does not call the sender. Each call has its own guard
+    so one channel's failure still leaves the other its attempt.
+    """
+    if failure is None:
+        return
+    subject = f"Digest run failed: {stamp}"
+    text = _failure_alert_text(failure)
+    notify = deps.cfg.app.notify
+    if notify.discord_webhook_url:
+        try:
+            await deps.send_discord_alert(notify.discord_webhook_url, subject, text)
+        except Exception as e:
+            logger.warning("Failure alert: Discord skipped: %s", e)
+    if notify.email_to and deps.send_email_alert is not None:
+        try:
+            await deps.send_email_alert(notify.email_to, notify.email_from, subject, text)
+        except Exception as e:
+            logger.warning("Failure alert: mail skipped: %s", e)
 
 
 def _worker_domain(deps: "Deps") -> str:
@@ -122,6 +173,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     tz = cfg.app.general.timezone
     notify = cfg.app.notify
     now = now_in_timezone(tz)
+    summary["_alert_stamp"] = f"{options.period}, {now:%Y-%m-%d %H:%M} {tz}"
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
 
     # A provider whose key is missing builds no client, and its digest is plain

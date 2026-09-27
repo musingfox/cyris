@@ -11,7 +11,7 @@ from typing import Any
 
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
-from cyris.adapters.notify import send_discord
+from cyris.adapters.notify import send_discord, send_discord_alert
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.usage_log import append_usage, append_usage_d1
 from cyris.adapters.promotions import sync_promotions
@@ -277,6 +277,7 @@ class Deps:
     # Failure alerts are their own callables, not a sink list: each channel is
     # reached by name, and a missing mail sender is None rather than an entry.
     send_email_alert: Callable[..., Any] | None = None
+    send_discord_alert: Callable[..., Any] = send_discord_alert
 
 
 def build_promotion_sync(

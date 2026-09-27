@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from fakes import FakeLLM, make_config
@@ -30,6 +31,7 @@ from cyris.domain.models import (
     is_degraded_run,
 )
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
+from cyris.utils.timezone import now_in_timezone
 
 pytestmark = pytest.mark.integration
 
@@ -1545,3 +1547,144 @@ async def test_the_stored_digest_renders_the_written_page(
     assert deps.html_writer.render(row.content, raw_page=row.raw_page) == on_disk
     if not raw_written:
         assert on_disk != deps.html_writer.render(row.content, raw_page=True)
+
+
+_FAILED_SUBJECT = re.compile(
+    r"^Digest run failed: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$"
+)
+_ALERT_WEBHOOK = "https://discord.com/api/webhooks/1/alert"
+
+
+def _with_alert_channels(deps: Deps, discord, mail) -> Deps:
+    deps.cfg.app.notify.discord_webhook_url = _ALERT_WEBHOOK
+    deps.cfg.app.notify.email_to = "me@example.org"
+    deps.cfg.app.notify.email_from = "d@example.org"
+    return replace(deps, send_discord_alert=discord, send_email_alert=mail)
+
+
+def _subject_minute(subject: str) -> datetime:
+    found = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2})", subject)
+    assert found is not None
+    return datetime.strptime(found.group(1), "%Y-%m-%d %H:%M").replace(
+        tzinfo=ZoneInfo("Asia/Taipei")
+    )
+
+
+async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Path) -> None:
+    discord_calls: list[tuple] = []
+    mail_calls: list[tuple] = []
+
+    async def discord(webhook_url, subject, text):
+        discord_calls.append((webhook_url, subject, text))
+
+    async def mail(recipient, sender, subject, text):
+        mail_calls.append((recipient, sender, subject, text))
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    assert len(discord_calls) == 1
+    webhook, subject, text = discord_calls[0]
+    assert webhook == _ALERT_WEBHOOK
+    assert _FAILED_SUBJECT.match(subject)
+    assert text == "RuntimeError: the store is gone"
+    assert mail_calls == [("me@example.org", "d@example.org", subject, text)]
+
+
+async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path) -> None:
+    discord_calls: list[tuple] = []
+
+    async def discord(webhook_url, subject, text):
+        discord_calls.append((webhook_url, subject, text))
+
+    async def mail(recipient, sender, subject, text):
+        return None
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    _exploding_store(deps)
+    before = now_in_timezone("Asia/Taipei").replace(second=0, microsecond=0)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    after = now_in_timezone("Asia/Taipei")
+    when = _subject_minute(discord_calls[0][1])
+    assert before <= when <= after
+
+
+async def test_the_failure_alert_is_sent_after_the_run_is_recorded(tmp_path: Path) -> None:
+    events: list[str] = []
+
+    def record(summary: dict) -> None:
+        events.append("record")
+
+    async def discord(webhook_url, subject, text):
+        events.append("discord")
+
+    async def mail(recipient, sender, subject, text):
+        events.append("mail")
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    deps = replace(deps, record_run=record)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    assert events == ["record", "discord", "mail"]
+
+
+async def test_a_failed_run_record_still_alerts_and_keeps_the_store_error(
+    tmp_path: Path,
+) -> None:
+    discord_calls: list[tuple] = []
+    mail_calls: list[tuple] = []
+
+    def record(summary: dict) -> None:
+        raise RuntimeError("d1 down")
+
+    async def discord(webhook_url, subject, text):
+        discord_calls.append((webhook_url, subject, text))
+
+    async def mail(recipient, sender, subject, text):
+        mail_calls.append((recipient, sender, subject, text))
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    deps = replace(deps, record_run=record)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    assert len(discord_calls) == 1
+    assert len(mail_calls) == 1
+
+
+async def test_an_error_with_no_message_is_named_by_its_type_alone(tmp_path: Path) -> None:
+    discord_calls: list[tuple] = []
+
+    async def discord(webhook_url, subject, text):
+        discord_calls.append((webhook_url, subject, text))
+
+    async def mail(recipient, sender, subject, text):
+        return None
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+
+    def explode(*args, **kwargs):
+        raise RuntimeError()
+
+    deps.store.save = explode
+
+    with pytest.raises(RuntimeError):
+        await run_digest(deps, RunOptions())
+
+    assert discord_calls[0][2] == "RuntimeError"
