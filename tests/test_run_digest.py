@@ -1937,3 +1937,64 @@ async def test_an_unprintable_run_error_is_not_replaced_by_its_alert(tmp_path: P
 
     [summary] = recorded
     assert summary["status"] == "error"
+
+
+def _info(caplog) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "INFO" and r.name == "cyris.service_layer.run_digest"
+    ]
+
+
+async def test_a_due_alert_with_no_channel_configured_says_which_it_skipped(
+    tmp_path: Path, caplog
+) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = replace(deps, send_discord_alert=discord, send_email_alert=mail)
+    assert deps.cfg.app.notify.discord_webhook_url == ""
+    assert deps.cfg.app.notify.email_to == ""
+    _exploding_store(deps)
+
+    with (
+        caplog.at_level("INFO", logger="cyris.service_layer.run_digest"),
+        pytest.raises(RuntimeError, match="the store is gone"),
+    ):
+        await run_digest(deps, RunOptions())
+
+    messages = _info(caplog)
+    assert "Failure alert: no webhook set, skipping Discord" in messages
+    assert "Failure alert: no email address set, skipping mail" in messages
+    assert discord_calls == []
+    assert mail_calls == []
+
+
+async def test_a_due_mail_alert_without_api_credentials_is_a_warning(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.email_to = "me@example.org"
+    assert deps.send_email_alert is None
+    _exploding_store(deps)
+
+    with (
+        caplog.at_level("WARNING", logger="cyris.service_layer.run_digest"),
+        pytest.raises(RuntimeError, match="the store is gone"),
+    ):
+        await run_digest(deps, RunOptions())
+
+    assert any(
+        r.levelname == "WARNING" and "CLOUDFLARE_ACCOUNT_ID" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+async def test_a_finished_run_with_no_webhook_logs_no_failure_alert(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    assert deps.cfg.app.notify.discord_webhook_url == ""
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert not any("Failure alert:" in r.getMessage() for r in caplog.records)

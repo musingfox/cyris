@@ -143,12 +143,21 @@ async def _send_failure_alert(
         subject = f"Digest run fetched nothing: {stamp}"
         text = "Failed sources: " + ", ".join(failed)
     notify = deps.cfg.app.notify
-    if notify.discord_webhook_url:
+    if not notify.discord_webhook_url:
+        logger.info("Failure alert: no webhook set, skipping Discord")
+    else:
         try:
             await deps.send_discord_alert(notify.discord_webhook_url, subject, text)
         except Exception as e:
             logger.warning("Failure alert: Discord skipped: %s", e)
-    if notify.email_to and deps.send_email_alert is not None:
+    if not notify.email_to:
+        logger.info("Failure alert: no email address set, skipping mail")
+    elif deps.send_email_alert is None:
+        logger.warning(
+            "Failure alert: an email address is set, but CLOUDFLARE_ACCOUNT_ID or "
+            "CLOUDFLARE_API_TOKEN is missing, so no mail can be sent"
+        )
+    else:
         try:
             await deps.send_email_alert(notify.email_to, notify.email_from, subject, text)
         except Exception as e:
