@@ -1807,3 +1807,34 @@ async def test_a_finished_digest_sends_the_digest_and_no_failure_alert(tmp_path:
     assert notifications == ["discord"]
     assert discord_calls == []
     assert mail_calls == []
+
+
+async def test_a_dry_run_that_raises_sends_no_failure_alert(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def refuse(**kwargs):
+        raise RuntimeError("no network")
+
+    monkeypatch.setattr("cyris.service_layer.run_digest.fetch_all_articles", refuse)
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = _with_alert_channels(deps, discord, mail)
+
+    with pytest.raises(RuntimeError, match="no network"):
+        await run_digest(deps, RunOptions(dry_run=True))
+
+    assert discord_calls == []
+    assert mail_calls == []
+
+
+async def test_a_dry_run_that_fetched_nothing_sends_no_failure_alert(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, fetch_sources=[BrokenSource()])
+    deps = _with_alert_channels(deps, discord, mail)
+
+    report = await run_digest(deps, RunOptions(dry_run=True))
+
+    assert report.status == "no_articles"
+    assert discord_calls == []
+    assert mail_calls == []

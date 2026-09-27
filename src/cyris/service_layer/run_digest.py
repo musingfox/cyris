@@ -129,6 +129,10 @@ async def _send_failure_alert(
     configuration does not call the sender. Each call has its own guard so one
     channel's failure still leaves the other its attempt.
     """
+    # A preview never alerts, whether it raised or fetched nothing. The check
+    # sits inside this guard: it must not become a new exception of its own.
+    if summary.get("dry_run"):
+        return
     if failure is not None:
         subject = f"Digest run failed: {stamp}"
         text = _failure_alert_text(failure)
