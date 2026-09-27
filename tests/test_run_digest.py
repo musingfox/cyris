@@ -1864,3 +1864,27 @@ async def test_a_run_cancelled_by_sigterm_sends_no_failure_alert(tmp_path: Path)
     assert mail_calls == []
     [summary] = recorded
     assert summary["status"] == "error"
+
+
+async def test_a_broken_discord_alert_still_sends_the_mail(tmp_path: Path) -> None:
+    mail_calls: list[tuple] = []
+
+    async def discord(webhook_url, subject, text):
+        raise ValueError("discord broke")
+
+    async def mail(recipient, sender, subject, text):
+        mail_calls.append((recipient, sender, subject, text))
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    assert len(mail_calls) == 1
+    recipient, sender, subject, text = mail_calls[0]
+    assert recipient == "me@example.org"
+    assert sender == "d@example.org"
+    assert text == "RuntimeError: the store is gone"
+    assert _FAILED_SUBJECT.match(subject)
