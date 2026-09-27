@@ -126,15 +126,39 @@ def build_worker_domains() -> Callable[[], list[str]] | None:
     return partial(list_worker_domains, *inputs) if all(inputs) else None
 
 
-def build_send_email() -> Callable[..., Any] | None:
-    """The digest mail bound to this account's Email Sending API, or None without it."""
-    from cyris.adapters.mail import send_digest_mail
+def _email_api_credentials() -> tuple[str, str] | None:
+    """The account and token Email Sending actually accepts, or None if either is missing.
 
+    `CLOUDFLARE_API_TOKEN` is the account token. The Workers AI and embedding
+    tokens are different permissions and cannot send mail.
+    """
     account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
     token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
     if not (account_id and token):
         return None
+    return account_id, token
+
+
+def build_send_email() -> Callable[..., Any] | None:
+    """The digest mail bound to this account's Email Sending API, or None without it."""
+    from cyris.adapters.mail import send_digest_mail
+
+    credentials = _email_api_credentials()
+    if credentials is None:
+        return None
+    account_id, token = credentials
     return partial(send_digest_mail, account_id=account_id, token=token)
+
+
+def build_send_email_alert() -> Callable[..., Any] | None:
+    """The failure-alert mail bound to the same account, or None without it."""
+    from cyris.adapters.mail import send_alert_mail
+
+    credentials = _email_api_credentials()
+    if credentials is None:
+        return None
+    account_id, token = credentials
+    return partial(send_alert_mail, account_id=account_id, token=token)
 
 
 def build_d1_client(cfg: Config) -> Any | None:
@@ -250,6 +274,9 @@ class Deps:
     # prototype, and the multi-channel shape waits until it is done (2026-09-27).
     # None without a Cloudflare account and token to send with.
     send_email: Callable[..., Any] | None = None
+    # Failure alerts are their own callables, not a sink list: each channel is
+    # reached by name, and a missing mail sender is None rather than an entry.
+    send_email_alert: Callable[..., Any] | None = None
 
 
 def build_promotion_sync(
@@ -387,4 +414,5 @@ def build_deps(
         digest_store=digest_store,
         worker_domains=build_worker_domains(),
         send_email=build_send_email(),
+        send_email_alert=build_send_email_alert(),
     )
