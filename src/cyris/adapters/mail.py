@@ -121,3 +121,25 @@ async def send_digest_mail(
         logger.info("Digest mail %s to %s", status, recipient)
     except RuntimeError as e:
         logger.warning("Digest mail to %s failed: %s", recipient, e)
+
+
+async def send_alert_mail(
+    recipient: str,
+    sender: str,
+    subject: str,
+    text: str,
+    *,
+    account_id: str,
+    token: str,
+) -> None:
+    """Mail a plain-text failure alert. Does nothing without a recipient.
+
+    Failures are logged, not raised, as `send_discord_alert` does: a lost
+    message must not mask the run exception that triggered it.
+    """
+    if not recipient:
+        return
+    try:
+        await send_mail(account_id, token, sender, recipient, subject, text)
+    except RuntimeError as e:
+        logger.warning("Alert mail to %s failed: %s", recipient, e)

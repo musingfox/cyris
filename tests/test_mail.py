@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from cyris.adapters.mail import build_digest_mail, send_digest_mail, send_mail
+from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
 pytestmark = pytest.mark.unit
@@ -187,3 +187,57 @@ class TestDigestMail:
             )
 
         assert "forbidden" in caplog.text
+
+
+class TestAlertMail:
+    @respx.mock
+    async def test_posts_plain_text_without_html(self):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(200, json=_result(delivered=["me@example.org"]))
+        )
+
+        await send_alert_mail(
+            "me@example.org",
+            "digest@example.org",
+            "S",
+            "B",
+            account_id=ACCOUNT,
+            token="tok",
+        )
+
+        assert json.loads(route.calls.last.request.content) == {
+            "to": "me@example.org",
+            "from": "digest@example.org",
+            "subject": "S",
+            "text": "B",
+        }
+
+    @respx.mock
+    async def test_empty_recipient_sends_nothing(self):
+        await send_alert_mail("", "digest@example.org", "S", "B", account_id=ACCOUNT, token="tok")
+
+        assert respx.calls.call_count == 0
+
+    @respx.mock
+    async def test_refusal_is_logged_not_raised(self, caplog):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(
+                403,
+                json={"success": False, "errors": [{"code": 10102, "message": "forbidden"}]},
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = await send_alert_mail(
+                "me@example.org",
+                "digest@example.org",
+                "S",
+                "B",
+                account_id=ACCOUNT,
+                token="tok-secret",
+            )
+
+        assert result is None
+        assert route.call_count == 1
+        assert "forbidden" in caplog.text
+        assert "tok-secret" not in caplog.text
