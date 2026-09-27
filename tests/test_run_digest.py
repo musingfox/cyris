@@ -1838,3 +1838,29 @@ async def test_a_dry_run_that_fetched_nothing_sends_no_failure_alert(tmp_path: P
     assert report.status == "no_articles"
     assert discord_calls == []
     assert mail_calls == []
+
+
+async def test_a_run_cancelled_by_sigterm_sends_no_failure_alert(tmp_path: Path) -> None:
+    fetching = asyncio.Event()
+
+    class HangingSource(FakeSource):
+        async def fetch_articles(self, **kwargs) -> list[Article]:
+            fetching.set()
+            await asyncio.Event().wait()
+            return []
+
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), HangingSource([]))
+    deps = _with_alert_channels(deps, discord, mail)
+    deps, recorded = _recording(deps)
+    task = asyncio.create_task(run_digest(deps, RunOptions()))
+    await fetching.wait()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert discord_calls == []
+    assert mail_calls == []
+    [summary] = recorded
+    assert summary["status"] == "error"
