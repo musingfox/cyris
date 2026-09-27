@@ -1888,3 +1888,52 @@ async def test_a_broken_discord_alert_still_sends_the_mail(tmp_path: Path) -> No
     assert sender == "d@example.org"
     assert text == "RuntimeError: the store is gone"
     assert _FAILED_SUBJECT.match(subject)
+
+
+class StrlessError(Exception):
+    """An exception whose message cannot be rendered."""
+
+    def __str__(self) -> str:
+        raise ValueError("no string")
+
+
+async def _broken_alert(*_args, **_kwargs):
+    raise ValueError("alert broke")
+
+
+async def test_a_broken_alert_does_not_replace_the_runs_exception(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, _broken_alert, _broken_alert)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone") as caught:
+        await run_digest(deps, RunOptions())
+
+    assert type(caught.value) is RuntimeError
+
+
+async def test_a_broken_alert_does_not_fail_a_run_that_fetched_nothing(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, fetch_sources=[BrokenSource()])
+    deps = _with_alert_channels(deps, _broken_alert, _broken_alert)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+
+
+async def test_an_unprintable_run_error_is_not_replaced_by_its_alert(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, _broken_alert, _broken_alert)
+    deps, recorded = _recording(deps)
+
+    def explode(*args, **kwargs):
+        raise StrlessError()
+
+    deps.store.save = explode
+
+    with pytest.raises(StrlessError):
+        await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["status"] == "error"
