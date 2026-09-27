@@ -107,6 +107,7 @@ src/cyris/
 │   │                        #   archive_meta.py = the archive rows' article counts, read from `usage_log`
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
+│   │                        #   email_digest.py + templates/email.html.j2 = the digest as a mail body;
 │   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST,
 │   │                        #   pages_manifest.py + pages_receipt.py = the site's file list in D1
 │   ├── notify.py            # Discord notifications

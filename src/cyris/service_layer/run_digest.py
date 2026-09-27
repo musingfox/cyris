@@ -325,6 +325,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     report = RunReport(status="ok", failed_sources=failed_sources)
     digest_url = ""  # online (Cloudflare Pages) URL, set after a successful publish
     publish_failed = False
+    raw_page = False
     if options.dry_run:
         report.rendered = deps.html_writer.render(content) if deps.html_writer else ""
     else:
@@ -446,6 +447,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             content,
             digest_url=digest_url,
             publish_failed=publish_failed,
+            raw_page=raw_page,
         )
 
     summary["status"] = "publish_failed" if publish_failed else "ok"

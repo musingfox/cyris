@@ -1,0 +1,177 @@
+{#- One issue as a mail body. Every colour arrives by value through `c`, and the
+    palette macro is rendered twice: light as the default, the page's own dark
+    tokens under prefers-color-scheme. Layout rules take `t`, the same tokens. -#}
+{% macro palette(c) -%}
+        body, .body { background: {{ c['bg'] }}; color: {{ c['text'] }}; }
+        .brand, .section-tag, .meta, .idx, .footer { color: {{ c['text-faint'] }}; }
+        .mark, .rule { background: {{ c['accent'] }}; }
+        .issue-title, .title, .title a, .lead-title, .lead-title a, .wire a { color: {{ c['text'] }}; }
+        .issue-title em, .stats b { color: {{ c['accent'] }}; }
+        .stats, .summary, .desc, .meta a, .footer a { color: {{ c['text-dim'] }}; }
+        .btn.primary { background: {{ c['accent'] }}; border-color: {{ c['accent'] }}; color: {{ c['bg'] }}; }
+        .btn.secondary { background: {{ c['surface-2'] }}; border-color: {{ c['border-strong'] }}; color: {{ c['text-dim'] }}; }
+        .notice { border-left-color: {{ c['warn'] }}; background: {{ c['warn-tint'] }}; color: {{ c['text'] }}; }
+        .lead { background: {{ c['surface'] }}; border-color: {{ c['border-strong'] }}; }
+        .pill { color: {{ c['accent'] }}; border-color: {{ c['accent-dim'] }}; background: {{ c['accent-tint'] }}; }
+        .item, .wire li, .footer { border-color: {{ c['border'] }}; }
+{%- endmacro -%}
+{#- A cluster's sources, one link per article: the page's own labelling rule. -#}
+{% macro source_links(item) -%}
+{%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
+{%- for url in urls %}{% set label = url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url %}{% if url.startswith('http') %}<a href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
+{%- endmacro -%}
+{% macro title_link(item) -%}
+{% if item.link %}<a href="{{ item.link }}">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}
+{%- endmacro -%}
+{% macro meta(item) -%}
+<p class="meta">{{ item.sources | join(' · ') }}{% if item.ref_urls | length > 1 %} · {{ source_links(item) }}{% endif %}</p>
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>CYRIS // {{ content.date }} · {{ content.period }}</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+    <style>
+        :root { color-scheme: light dark; supported-color-schemes: light dark; }
+        body, .body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
+        .wrap { max-width: {{ t['measure'] }}; margin: 0 auto; padding: {{ t['s-8'] }} {{ t['s-4'] }} {{ t['s-12'] }}; font-family: {{ t['font-sans'] }}; }
+        .preheader { display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; opacity: 0; }
+        .brand, .section-tag, .meta, .btn, .idx { font-family: {{ t['font-mono'] }}; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+        .brand { margin: 0 0 {{ t['s-5'] }}; }
+        .mark { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: {{ t['s-3'] }}; }
+        .issue-title { font-family: {{ t['font-serif'] }}; font-weight: 400; font-size: 56px; line-height: .92; letter-spacing: -.04em; margin: 0 0 {{ t['s-5'] }}; }
+        .issue-title em { font-style: italic; }
+        .stats { font-family: {{ t['font-mono'] }}; font-size: 14px; font-variant-numeric: tabular-nums; margin: 0 0 {{ t['s-6'] }}; }
+        .stats b { font-weight: 500; }
+        .actions { margin: 0 0 {{ t['s-12'] }}; }
+        .btn { display: inline-block; padding: {{ t['s-3'] }} {{ t['s-5'] }}; line-height: 18px; border: 1px solid; border-radius: {{ t['r-control'] }}; text-decoration: none; margin: 0 {{ t['s-2'] }} {{ t['s-2'] }} 0; }
+        .notice { padding: {{ t['s-2'] }} {{ t['s-3'] }}; border-left: 2px solid; font-size: 14px; line-height: 1.5; margin: 0 0 {{ t['s-12'] }}; }
+        .section { margin: 0 0 {{ t['s-12'] }}; }
+        .section-tag { margin: 0 0 {{ t['s-5'] }}; }
+        .rule { display: inline-block; width: 24px; height: 1px; vertical-align: middle; margin-right: {{ t['s-3'] }}; }
+        .lead { padding: {{ t['s-6'] }}; border: 1px solid; }
+        .pill { display: inline-block; padding: 2px 10px; border: 1px solid; border-radius: {{ t['r-tag'] }}; font-family: {{ t['font-mono'] }}; font-size: 12px; letter-spacing: .04em; margin: 0 0 {{ t['s-3'] }}; }
+        .lead-title { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; margin: 0 0 {{ t['s-3'] }}; }
+        .title { font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 {{ t['s-2'] }}; }
+        .title a, .lead-title a, .wire a { text-decoration: none; }
+        .summary { font-size: 18px; line-height: 1.65; margin: 0 0 {{ t['s-3'] }}; }
+        .desc { font-size: 14px; line-height: 1.5; margin: 0 0 {{ t['s-3'] }}; }
+        .meta { margin: 0; line-height: 1.6; }
+        .meta a, .footer a { text-decoration: underline; }
+        .item { padding: {{ t['s-5'] }} 0; border-top: 1px solid; }
+        .wire { list-style: none; margin: 0; padding: 0; }
+        .wire li { padding: {{ t['s-3'] }} 0; border-top: 1px solid; font-size: 16px; line-height: 1.5; }
+        .idx { margin-right: {{ t['s-3'] }}; }
+        .footer { margin: {{ t['s-12'] }} 0 0; padding: {{ t['s-5'] }} 0 0; border-top: 1px solid; font-family: {{ t['font-mono'] }}; font-size: 12px; line-height: 1.8; }
+{{ palette(light) }}
+        @media (prefers-color-scheme: dark) {
+{{ palette(dark) }}
+        }
+    </style>
+</head>
+<body class="body">
+    <div class="preheader">{{ lead_story.title if lead_story else content.news_clusters[0].heading if content.news_clusters else '' }} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
+    <div class="wrap">
+        <p class="brand"><span class="mark"></span>Cyris · {{ period_label }} · {{ content.date }}</p>
+        <h1 class="issue-title">Signal<em>/</em>Noise</h1>
+        <p class="stats">{{ content.sources_processed }} sources · {{ content.articles_received }} received · <b>{{ content.articles_included }} included</b></p>
+        {% if digest_url %}
+        <p class="actions"><a class="btn primary" href="{{ digest_url }}">Read online</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">All articles</a>{% endif %}</p>
+        {% elif publish_failed %}
+        <p class="notice">Publishing the online edition failed, so this issue has no page to open.</p>
+        {% endif %}
+
+        {% if lead_story %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>Top story</h2>
+            <article class="lead">
+                {% if lead_story.score %}<span class="pill">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
+                <h3 class="lead-title">{{ title_link(lead_story) }}</h3>
+                <p class="summary">{{ lead_story.summary }}</p>
+                {{ meta(lead_story) }}
+            </article>
+        </section>
+        {% endif %}
+
+        {% if featured_articles %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>Features</h2>
+            {% for item in featured_articles %}
+            <article class="item">
+                {% if item.score %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+                <h3 class="title">{{ title_link(item) }}</h3>
+                <p class="summary">{{ item.summary }}</p>
+                {{ meta(item) }}
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if content.news_clusters %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>In Focus</h2>
+            {% for cluster in content.news_clusters %}
+            <article class="item">
+                <h3 class="title">{{ cluster.heading }}</h3>
+                {% for item in cluster.items %}
+                <p class="summary">{{ item.summary }}</p>
+                <p class="meta">{{ source_links(item) }}</p>
+                {% endfor %}
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if content.fan_sections %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>Following</h2>
+            {% for sec in content.fan_sections %}
+            {% for item in sec.items %}
+            <article class="item">
+                <h3 class="title">{{ title_link(item) }}</h3>
+                {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
+                <p class="meta">{{ sec.heading }} · {{ item.sources | join(' · ') }}</p>
+            </article>
+            {% endfor %}
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if content.attention_sections %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>On the Radar</h2>
+            {% for sec in content.attention_sections %}
+            <p class="desc">{{ sec.heading }}{% if sec.description %} — {{ sec.description }}{% endif %}</p>
+            {% for item in sec.items %}
+            <article class="item">
+                <h3 class="title">{{ title_link(item) }}</h3>
+                <p class="summary">{{ item.summary }}</p>
+                {{ meta(item) }}
+            </article>
+            {% endfor %}
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if content.filtered_headlines %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>The Wire</h2>
+            <ol class="wire">
+                {% for item in content.filtered_headlines %}
+                <li><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}</li>
+                {% endfor %}
+            </ol>
+        </section>
+        {% endif %}
+
+        <footer class="footer">
+            <div>// Generated by Cyris · {{ content.usage.total_tokens }} tokens · {{ content.usage.api_calls }} api calls</div>
+            {% if site %}<div><a href="{{ site }}/">Archive</a> · <a href="{{ site }}/settings">Settings</a> — mail goes to the address set on Settings</div>{% endif %}
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "light": {
+    "bg": "#ffffff",
+    "bg-elev": "#fafafc",
+    "surface": "#f4f4f7",
+    "surface-2": "#ececf1",
+    "border": "#e4e4eb",
+    "border-strong": "#cdcdd8",
+    "text": "#0d0d14",
+    "text-dim": "#4a4a5c",
+    "text-faint": "#6b6b7e",
+    "accent": "#4a7a00",
+    "accent-dim": "#9dbf5c",
+    "warn": "#c2185b",
+    "accent-tint": "rgba(74, 122, 0, 0.08)",
+    "warn-tint": "rgba(194, 24, 91, 0.08)"
+  }
+}

@@ -936,7 +936,9 @@ async def test_a_run_mails_the_digest_beside_discord(tmp_path: Path) -> None:
     deps.cfg.app.notify.email_from = "digest@example.org"
     mailed: list[dict] = []
 
-    async def capture(recipient, sender, content, digest_url="", publish_failed=False):
+    async def capture(
+        recipient, sender, content, digest_url="", publish_failed=False, raw_page=False
+    ):
         mailed.append({"recipient": recipient, "sender": sender, "digest_url": digest_url})
 
     deps = replace(deps, send_email=capture)
@@ -946,6 +948,26 @@ async def test_a_run_mails_the_digest_beside_discord(tmp_path: Path) -> None:
     assert mailed == [
         {"recipient": "me@example.org", "sender": "digest@example.org", "digest_url": ""}
     ]
+
+
+async def test_a_dry_run_mails_like_it_notifies_discord(tmp_path: Path) -> None:
+    deps, notifications = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.email_to = "me@example.org"
+    deps.cfg.app.notify.email_from = "digest@example.org"
+    mailed: list[bool] = []
+
+    async def capture(
+        recipient, sender, content, digest_url="", publish_failed=False, raw_page=False
+    ):
+        mailed.append(raw_page)
+
+    deps = replace(deps, send_email=capture)
+    # A preview saves nothing it fetches, so it digests only what is already pending.
+    deps.store.save([_notify_article()])
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    assert notifications == ["discord"]
+    assert mailed == [False]
 
 
 async def test_a_run_with_no_email_address_mails_nothing_and_says_so(

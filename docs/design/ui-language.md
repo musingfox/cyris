@@ -109,7 +109,8 @@ original baseline was judged too large, and the multiplier's three steps are for
 - The multiplier has only three values: 0.875, 1 and 1.125. It is `digest.type_scale` in D1 `settings`,
   set in the Digest category of `/settings`; the app Worker adds `<style>html:root{--type-scale:X}</style>`
   to every HTML page it serves, so published issues follow it too (issues from before 2026-09-18 have
-  hardcoded font sizes and are unaffected). Opening pages.dev directly always gives 1.
+  hardcoded font sizes and are unaffected). Opening pages.dev directly always gives 1, and so does the
+  mail (§6 *email*).
 - Uppercase is applied only in CSS (`text-transform: uppercase`); text in the HTML keeps its normal case.
 
 | Role | Spec | Used for |
@@ -272,6 +273,45 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 - Each category has exactly one primary `Save`, disabled when nothing has changed; a category with unsaved
   changes gets an `--accent` dot in the list.
 - The prototype governs the fields' names, help text and `More` text.
+
+### email
+
+The mail a run sends is its own document, not the digest page: mail clients run no script, and Gmail
+drops CSS custom properties and `prefers-color-scheme`. `templates/email.html.j2` renders the §2 tokens in
+by value, from `_tokens.css.j2` and the light palette below (`adapters/output/email_palette.json`).
+
+- **Light is the default and dark follows the reader.** The light palette applies first; under
+  `@media (prefers-color-scheme: dark)` the §2 colours replace it, and the head declares
+  `color-scheme: light dark` so Apple Mail does not re-tint either. Gmail ignores the media query and
+  inverts the light message itself, which stays legible; an inverted dark one would not.
+- **The accent is darker in light.** `#c6ff3d` cannot carry text on white, so the light `--accent` is a
+  dark lime that passes 4.5:1 as text on `--bg` and `--surface`, and under the primary button's `--bg`
+  label. `tests/test_email_digest.py` computes those ratios.
+- **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections keep the page's labels and
+  order: Top story, Features, In Focus, Following, On the Radar, The Wire. The lead is the headline card's
+  square panel; every other item is separated by a `--border` hairline.
+- **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
+  published, the archive and Settings, all on the digest link's own host; a failed publish shows a
+  `--warn` notice instead.
+- **Type at the baseline.** Nothing serves the mail, so `digest.type_scale` does not reach it. Web fonts
+  come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack.
+
+| Token | Light |
+|---|---|
+| `--bg` | `#ffffff` |
+| `--bg-elev` | `#fafafc` |
+| `--surface` | `#f4f4f7` |
+| `--surface-2` | `#ececf1` |
+| `--border` | `#e4e4eb` |
+| `--border-strong` | `#cdcdd8` |
+| `--text` | `#0d0d14` |
+| `--text-dim` | `#4a4a5c` |
+| `--text-faint` | `#6b6b7e` |
+| `--accent` | `#4a7a00` |
+| `--accent-dim` | `#9dbf5c` |
+| `--warn` | `#c2185b` |
+| `--accent-tint` | `rgba(74, 122, 0, 0.08)` |
+| `--warn-tint` | `rgba(194, 24, 91, 0.08)` |
 
 ## 7. Where styles live
 

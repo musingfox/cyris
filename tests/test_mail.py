@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from cyris.adapters.mail import build_digest_mail, send_digest_mail, send_mail
-from cyris.domain.models import DigestContent
+from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
 pytestmark = pytest.mark.unit
 
@@ -133,6 +133,18 @@ class TestDigestMail:
         assert "Publishing the online edition failed" in text
         assert "http" not in text
 
+    def test_the_text_part_lists_what_the_issue_holds(self):
+        content = _content()
+        content.news_clusters = [DigestSection(heading="Cluster Heading", items=[])]
+        content.filtered_headlines = [
+            DigestItem(title="Wire One", summary="", sources=["W"], urls=["https://w.test/1"])
+        ]
+
+        _, text = build_digest_mail(content, "https://digest.example.org/x")
+
+        assert "In Focus" in text and "Cluster Heading" in text
+        assert "The Wire" in text and "Wire One — https://w.test/1" in text
+
     @respx.mock
     async def test_it_sends_through_the_rest_api(self):
         route = respx.post(SEND_URL).mock(
@@ -151,6 +163,8 @@ class TestDigestMail:
         sent = json.loads(route.calls.last.request.content)
         assert sent["subject"] == "Morning digest 2026-09-27"
         assert "https://digest.example.org/x" in sent["text"]
+        assert sent["html"].startswith("<!DOCTYPE html>")
+        assert 'href="https://digest.example.org/x"' in sent["html"]
 
     @respx.mock
     async def test_no_recipient_sends_nothing(self):

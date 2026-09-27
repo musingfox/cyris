@@ -13,7 +13,9 @@ import httpx
 
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import period_label
-from cyris.domain.models import DigestContent
+from cyris.adapters.output.email_digest import render_digest_email
+from cyris.adapters.output.html_digest import _features
+from cyris.domain.models import DigestContent, DigestItem
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +62,14 @@ async def send_mail(
     return "queued" if recipient in (result.get("queued") or []) else "delivered"
 
 
+def _line(item: DigestItem) -> str:
+    return f"- {item.title} — {item.link}" if item.link else f"- {item.title}"
+
+
 def build_digest_mail(
     content: DigestContent, digest_url: str = "", publish_failed: bool = False
 ) -> tuple[str, str]:
-    """The subject and plain-text body announcing one issue."""
+    """The subject and plain-text body: the issue's sections, as the HTML part orders them."""
     title = f"{period_label(content.period)} digest {content.date}"
     lines = [title, ""]
     if digest_url:
@@ -75,6 +81,18 @@ def build_digest_mail(
         f"Kept {content.articles_included} of {content.articles_received} articles "
         f"from {content.sources_processed} sources.",
     ]
+    features = _features(content)
+    sections = [
+        ("Top story", [_line(item) for item in features[:1]]),
+        ("Features", [_line(item) for item in features[1:]]),
+        ("In Focus", [f"- {cluster.heading}" for cluster in content.news_clusters]),
+        ("Following", [_line(i) for sec in content.fan_sections for i in sec.items]),
+        ("On the Radar", [_line(i) for sec in content.attention_sections for i in sec.items]),
+        ("The Wire", [_line(item) for item in content.filtered_headlines]),
+    ]
+    for label, entries in sections:
+        if entries:
+            lines += ["", label, *entries]
     return title, "\n".join(lines)
 
 
@@ -84,6 +102,7 @@ async def send_digest_mail(
     content: DigestContent,
     digest_url: str = "",
     publish_failed: bool = False,
+    raw_page: bool = False,
     *,
     account_id: str,
     token: str,
@@ -96,8 +115,9 @@ async def send_digest_mail(
     if not recipient:
         return
     subject, text = build_digest_mail(content, digest_url, publish_failed)
+    html = render_digest_email(content, digest_url, raw_page, publish_failed)
     try:
-        status = await send_mail(account_id, token, sender, recipient, subject, text)
+        status = await send_mail(account_id, token, sender, recipient, subject, text, html)
         logger.info("Digest mail %s to %s", status, recipient)
     except RuntimeError as e:
         logger.warning("Digest mail to %s failed: %s", recipient, e)
