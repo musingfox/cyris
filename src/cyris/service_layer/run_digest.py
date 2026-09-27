@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from cyris.domain.models import NO_LLM_MODEL, ArticleState, UsageStats, is_degraded_run
 from cyris.domain.selection import count_dead_links, layer_by_score
@@ -72,6 +73,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
     this is what the seven-day window is for.
     """
     started = time.monotonic()
+    started_at = datetime.now(UTC)
     summary: dict[str, object] = {
         "event": "run_summary",
         # Overwritten on every path that returns; an exception leaves it as it
@@ -91,8 +93,6 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         raise
     finally:
         summary["wall_seconds"] = round(time.monotonic() - started, 2)
-        # Private to the alert. The logged summary and the run row stay as they were.
-        stamp = summary.pop("_alert_stamp", "")
         logger.info("run_summary %s", json.dumps(summary, ensure_ascii=False, default=str))
         if deps.record_run is not None:
             # Raising in `finally` would replace the run's own exception, or turn
@@ -105,7 +105,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         # the message calls str() on the run error, and a channel that raises
         # must not replace that error or skip the other channel.
         try:
-            await _send_failure_alert(deps, summary, failure, stamp)
+            await _send_failure_alert(deps, options, summary, failure, started_at)
         except Exception as e:
             logger.error("Failed to send the failure alert: %s", e)
 
@@ -121,27 +121,34 @@ def _failure_alert_text(failure: Exception) -> str:
 
 
 async def _send_failure_alert(
-    deps: "Deps", summary: dict, failure: Exception | None, stamp: str
+    deps: "Deps",
+    options: RunOptions,
+    summary: dict,
+    failure: Exception | None,
+    started_at: datetime,
 ) -> None:
-    """One alert per configured channel when a run raised or every fetch failed.
+    """One alert per configured channel when a run raised, or fetched nothing
+    while at least one source failed.
 
     An empty window whose sources all answered is not an alert. Empty
     configuration does not call the sender. Each call has its own guard so one
     channel's failure still leaves the other its attempt.
     """
-    # A preview never alerts, whether it raised or fetched nothing. The check
-    # sits inside this guard: it must not become a new exception of its own.
-    if summary.get("dry_run"):
+    if options.dry_run:
         return
     if failure is not None:
-        subject = f"Digest run failed: {stamp}"
+        headline = "Digest run failed"
         text = _failure_alert_text(failure)
     else:
         failed = summary.get("failed_sources") or []
         if summary.get("status") != "no_articles" or not failed:
             return
-        subject = f"Digest run fetched nothing: {stamp}"
+        headline = "Digest run fetched nothing"
         text = "Failed sources: " + ", ".join(failed)
+    tz = deps.cfg.app.general.timezone
+    subject = (
+        f"{headline}: {options.period}, {started_at.astimezone(ZoneInfo(tz)):%Y-%m-%d %H:%M} {tz}"
+    )
     notify = deps.cfg.app.notify
     if not notify.discord_webhook_url:
         logger.info("Failure alert: no webhook set, skipping Discord")
@@ -192,7 +199,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     tz = cfg.app.general.timezone
     notify = cfg.app.notify
     now = now_in_timezone(tz)
-    summary["_alert_stamp"] = f"{options.period}, {now:%Y-%m-%d %H:%M} {tz}"
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
 
     # A provider whose key is missing builds no client, and its digest is plain

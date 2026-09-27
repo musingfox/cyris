@@ -1617,6 +1617,24 @@ async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path
     assert before <= when <= after
 
 
+async def test_a_run_that_fails_before_reading_its_clock_still_alerts_with_the_time(
+    tmp_path: Path, monkeypatch
+) -> None:
+    discord_calls, _, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+
+    def no_clock(tz_name: str) -> datetime:
+        raise ValueError("no clock")
+
+    monkeypatch.setattr("cyris.service_layer.run_digest.now_in_timezone", no_clock)
+
+    with pytest.raises(ValueError, match="no clock"):
+        await run_digest(deps, RunOptions())
+
+    assert _FAILED_SUBJECT.match(discord_calls[0][1])
+
+
 async def test_the_failure_alert_is_sent_after_the_run_is_recorded(tmp_path: Path) -> None:
     events: list[str] = []
 
