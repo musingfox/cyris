@@ -75,15 +75,15 @@ async def test_unknown_source_falls_back_to_filter_tier():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_worker_failure_degrades_to_empty():
-    """A dead buffer must not sink the digest — other sources still run."""
+async def test_a_failed_buffer_read_raises():
+    """`fetch_all_articles` skips a raising source and lists it in `failed_sources`,
+    which is what the failed-fetch alert reads; an empty list would hide the outage."""
     respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(500))
 
-    articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
-        after=AFTER, before=BEFORE, sources={}
-    )
-
-    assert articles == []
+    with pytest.raises(httpx.HTTPStatusError):
+        await CloudflareRssSource(WORKER, "tok").fetch_articles(
+            after=AFTER, before=BEFORE, sources={}
+        )
 
 
 @respx.mock

@@ -115,7 +115,12 @@ class FetchSource(Protocol):
         sources: dict[str, SourceConfig],
         limit: int = 200,
     ) -> list[Article]:
-        """Fetch articles within a time window."""
+        """Fetch articles within a time window.
+
+        Raise when the source cannot be read at all: `fetch_all_articles` then lists
+        it in `failed_sources`, where the failed-fetch alert looks. Returning [] makes
+        an outage read as a quiet window.
+        """
         ...
 
     async def health_check(self) -> bool:

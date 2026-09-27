@@ -39,18 +39,16 @@ class CloudflareRssSource:
             "before": before.isoformat(),
             "limit": limit,
         }
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-                resp = await client.get(
-                    f"{self._worker_url}/articles",
-                    params=params,
-                    headers={"Authorization": f"Bearer {self._token}"},
-                )
-            resp.raise_for_status()
-            rows = resp.json()
-        except (httpx.HTTPError, ValueError):
-            logger.warning("RSS worker read failed", exc_info=True)
-            return []
+        # A failed read raises rather than returning []: `fetch_all_articles` skips the
+        # source and lists it in `failed_sources`, which the failed-fetch alert reads.
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            resp = await client.get(
+                f"{self._worker_url}/articles",
+                params=params,
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+        resp.raise_for_status()
+        rows = resp.json()
 
         articles = []
         for row in rows:

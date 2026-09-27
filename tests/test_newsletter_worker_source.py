@@ -112,6 +112,20 @@ async def test_empty_queue_no_ack():
     assert not ack.called
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_failed_pull_raises_and_acks_nothing():
+    """A dead queue raises, so the run lists this source under `failed_sources`."""
+    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(500))
+    ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
+
+    src = CloudflareNewsletterSource(WORKER, "tok")
+    after, before = _now()
+    with pytest.raises(httpx.HTTPStatusError):
+        await src.fetch_articles(after, before, _source())
+    assert not ack.called
+
+
 def test_is_private_reply_detects_direct_re():
     # T1
     assert CloudflareNewsletterSource._is_private_reply({"subject": "Re: 關於上一期的問題"}) is True

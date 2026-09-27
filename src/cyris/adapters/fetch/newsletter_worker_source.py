@@ -86,15 +86,13 @@ class CloudflareNewsletterSource:
         build and the caller's store-write loses at most this batch — acceptable
         for a personal newsletter inbox.
         """
-        try:
-            resp = httpx.get(
-                f"{self._worker_url}/newsletters", headers=self._headers(), timeout=TIMEOUT_SECONDS
-            )
-            resp.raise_for_status()
-            queued = resp.json()
-        except httpx.HTTPError:
-            logger.warning("Newsletter worker pull failed", exc_info=True)
-            return []
+        # A failed pull raises rather than returning []: `fetch_all_articles` skips the
+        # source and lists it in `failed_sources`, which the failed-fetch alert reads.
+        resp = httpx.get(
+            f"{self._worker_url}/newsletters", headers=self._headers(), timeout=TIMEOUT_SECONDS
+        )
+        resp.raise_for_status()
+        queued = resp.json()
 
         if not queued:
             return []

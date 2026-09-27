@@ -9,9 +9,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
+import respx
 from fakes import FakeLLM, make_config
 
+from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store import ArticleStore
 from cyris.bootstrap import Deps
@@ -1720,6 +1723,21 @@ async def _fetch_failure_alerts(tmp_path: Path, sources: list) -> tuple[object, 
     deps = _with_alert_channels(deps, discord, mail)
     report = await run_digest(deps, RunOptions())
     return report, discord_calls, mail_calls
+
+
+@respx.mock
+async def test_a_dead_rss_buffer_alerts_as_a_failed_fetch(tmp_path: Path) -> None:
+    worker = "https://cyris-rss.test"
+    respx.get(f"{worker}/articles").mock(return_value=httpx.Response(503))
+
+    report, discord_calls, mail_calls = await _fetch_failure_alerts(
+        tmp_path, [CloudflareRssSource(worker, "tok")]
+    )
+
+    assert report.status == "no_articles"
+    assert report.failed_sources == ["CloudflareRssSource"]
+    assert discord_calls[0][2] == "Failed sources: CloudflareRssSource"
+    assert len(mail_calls) == 1
 
 
 async def test_a_run_that_fetched_nothing_names_the_failed_source(tmp_path: Path) -> None:
