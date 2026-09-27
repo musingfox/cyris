@@ -1,6 +1,7 @@
 """Tests for notification senders."""
 
 import json
+import logging
 
 import httpx
 import pytest
@@ -12,6 +13,7 @@ from cyris.adapters.notify import (
     mask_discord_webhook_url,
     parse_discord_webhook_url,
     send_discord,
+    send_discord_alert,
 )
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
 
@@ -527,3 +529,102 @@ class TestParseDiscordWebhookUrl:
 
     def test_empty_is_rejected(self):
         assert parse_discord_webhook_url("") is None
+
+
+def _discord_transport(monkeypatch, handler) -> None:
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "cyris.adapters.notify.httpx.AsyncClient",
+        lambda: client(transport=httpx.MockTransport(handler)),
+    )
+
+
+def _warning_records(caplog):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "cyris.adapters.notify" and record.levelno == logging.WARNING
+    ]
+
+
+class TestSendDiscordAlert:
+    async def test_posts_plain_content(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        _discord_transport(monkeypatch, handler)
+        webhook = "https://discord.com/api/webhooks/123/s3cr3t-token"
+
+        await send_discord_alert(webhook, "S", "B")
+
+        assert len(requests) == 1
+        assert str(requests[0].url) == webhook
+        assert json.loads(requests[0].content) == {"content": "S\nB"}
+
+    async def test_truncates_content_to_discord_limit(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        _discord_transport(monkeypatch, handler)
+        text = "x" * 2500
+
+        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", "S", text)
+
+        content = json.loads(requests[0].content)["content"]
+        assert content == ("S\n" + text)[:2000]
+        assert len(content) == 2000
+
+    async def test_empty_webhook_posts_nothing(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        _discord_transport(monkeypatch, handler)
+
+        await send_discord_alert("", "S", "B")
+
+        assert requests == []
+
+    async def test_http_error_is_logged_not_raised(self, monkeypatch, caplog):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(404)
+
+        _discord_transport(monkeypatch, handler)
+
+        with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
+            result = await send_discord_alert(
+                "https://discord.com/api/webhooks/123/s3cr3t-token", "S", "B"
+            )
+
+        assert result is None
+        assert len(requests) == 1
+        assert len(_warning_records(caplog)) == 1
+
+    async def test_connect_error_is_logged_not_raised(self, monkeypatch, caplog):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            raise httpx.ConnectError("no route")
+
+        _discord_transport(monkeypatch, handler)
+
+        with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
+            result = await send_discord_alert(
+                "https://discord.com/api/webhooks/123/s3cr3t-token", "S", "B"
+            )
+
+        assert result is None
+        assert len(requests) == 1
+        assert len(_warning_records(caplog)) == 1

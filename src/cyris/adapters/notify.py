@@ -259,3 +259,25 @@ async def send_discord(
             logger.debug("Discord webhook sent: %d embeds", len(payload["embeds"]))
     except httpx.HTTPError:
         logger.warning("Discord webhook failed", exc_info=True)
+
+
+# Discord rejects a webhook message whose content field exceeds this.
+_DISCORD_CONTENT_MAX = 2000
+
+
+async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:
+    """Post a plain failure alert. Does nothing without a webhook.
+
+    Failures are logged, not raised: the alert must not mask the run exception
+    that triggered it. There is no digest behind this message.
+    """
+    if not webhook_url:
+        return
+
+    content = f"{subject}\n{text}"[:_DISCORD_CONTENT_MAX]
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(webhook_url, json={"content": content})
+            resp.raise_for_status()
+    except httpx.HTTPError as e:
+        logger.warning("Discord alert failed: %s", e)
