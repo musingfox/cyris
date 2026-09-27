@@ -1046,7 +1046,7 @@ def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> No
 
 def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
     assert doctor._check_settings(_config(tmp_path)) == doctor.Check(
-        "settings", "ok", "all 21 set in cyris.toml"
+        "settings", "ok", "all 23 set in cyris.toml"
     )
 
 
@@ -1054,7 +1054,7 @@ def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
 
-    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 21 set in D1")
+    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 23 set in D1")
 
 
 async def test_a_json_deployment_without_a_file_fails_listing_every_key(
@@ -1209,3 +1209,56 @@ async def test_a_token_that_cannot_list_domains_names_the_permission(
     assert check.status == "warn"
     assert "Authentication error" in check.detail
     assert "Workers Scripts Read" in check.fix
+
+
+async def test_mail_with_no_address_is_off(tmp_path: Path) -> None:
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "mail")
+
+    assert check.status == "skip"
+    assert "off" in check.detail
+
+
+async def test_mail_names_both_addresses_it_would_use(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+    cfg = _config(tmp_path)
+    cfg.app.notify.email_to = "me@example.org"
+    cfg.app.notify.email_from = "digest@example.org"
+
+    check = _by_name(await doctor.run_checks(cfg), "mail")
+
+    assert check.status == "ok"
+    assert "me@example.org" in check.detail and "digest@example.org" in check.detail
+
+
+async def test_mail_without_cloudflare_credentials_warns(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    cfg = _config(tmp_path)
+    cfg.app.notify.email_to = "me@example.org"
+    cfg.app.notify.email_from = "digest@example.org"
+
+    check = _by_name(await doctor.run_checks(cfg), "mail")
+
+    assert check.status == "warn"
+    assert "CLOUDFLARE_API_TOKEN" in check.detail
+
+
+async def test_a_notify_table_missing_only_the_mail_keys_is_reported_not_raised(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from fakes import settings_toml
+
+    from cyris.config import load_config
+
+    # The state an upgraded deployment starts in: the webhook stored, the mail keys not.
+    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(settings_toml(omit=["notify.email_to", "notify.email_from"]))
+    cfg = load_config(config_path, tmp_path / "nope.yaml")
+
+    checks = await doctor.run_checks(cfg)
+
+    assert "notify.email_to" in _by_name(checks, "settings").detail
+    assert _by_name(checks, "discord").detail == "not set — see settings"
+    assert _by_name(checks, "mail").detail == "not set — see settings"

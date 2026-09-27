@@ -231,6 +231,17 @@
               <p class="small" id="notify-state" hidden>Notifications are off.</p>
               <details class="more"><summary>More</summary><p class="small">It is saved only after Discord confirms it exists. Turn off clears it: runs then finish without a message.</p></details>
             </div>
+            <div class="field">
+              <label class="label" for="email-to">Email to</label>
+              <input class="input" id="email-to" type="email" placeholder="you@example.com" autocomplete="off">
+              <p class="small">Leave it empty to send no mail.</p>
+              <details class="more"><summary>More</summary><p class="small">It must be a verified destination address in Cloudflare Email Routing. It is saved only after a test message reaches it.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="email-from">Email from</label>
+              <input class="input" id="email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
+              <p class="small">An address on your Email Routing domain.</p>
+            </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-notify" disabled>Save</button>
               <button class="btn danger" type="button" id="notify-off" hidden>Turn off</button>

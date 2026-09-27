@@ -126,6 +126,17 @@ def build_worker_domains() -> Callable[[], list[str]] | None:
     return partial(list_worker_domains, *inputs) if all(inputs) else None
 
 
+def build_send_email() -> Callable[..., Any] | None:
+    """The digest mail bound to this account's Email Sending API, or None without it."""
+    from cyris.adapters.mail import send_digest_mail
+
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    if not (account_id and token):
+        return None
+    return partial(send_digest_mail, account_id=account_id, token=token)
+
+
 def build_d1_client(cfg: Config) -> Any | None:
     """The D1 connection, or None when `[store] backend` is still json."""
     if not cfg.app.store.is_d1:
@@ -235,6 +246,10 @@ class Deps:
     # The app Worker's custom domains, for the digest link when none is configured;
     # None where the Worker is unknown, as in a compose install.
     worker_domains: Callable[[], list[str]] | None = None
+    # Beside `send_discord`, not behind a sink list: the email channel is a
+    # prototype, and the multi-channel shape waits until it is done (2026-09-27).
+    # None without a Cloudflare account and token to send with.
+    send_email: Callable[..., Any] | None = None
 
 
 def build_promotion_sync(
@@ -371,4 +386,5 @@ def build_deps(
         archive_counts=archive_counts,
         digest_store=digest_store,
         worker_domains=build_worker_domains(),
+        send_email=build_send_email(),
     )

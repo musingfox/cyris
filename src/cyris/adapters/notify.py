@@ -60,6 +60,11 @@ def redact_webhook_tokens(text: str) -> str:
     return _DISCORD_WEBHOOK_IN_TEXT.sub(rf"\1/{WEBHOOK_MASK}", text)
 
 
+def period_label(period: str) -> str:
+    """How a message names the period: `morning` reads as `Morning`."""
+    return {"morning": "Morning", "evening": "Evening"}.get(period, period)
+
+
 def _render_section_embed(section: DigestSection) -> str:
     """Render a DigestSection as Discord markdown text."""
     lines: list[str] = []
@@ -99,8 +104,7 @@ def build_discord_embeds(
     Discord limits: 4096 chars per embed description, max 10 embeds per message.
     Embed order mirrors the HTML digest's section order.
     """
-    period_labels = {"morning": "Morning", "evening": "Evening"}
-    label = period_labels.get(content.period, content.period)
+    label = period_label(content.period)
     embeds: list[dict] = []
 
     # --- Featured articles ---

@@ -784,8 +784,8 @@ def _check_output_sink(cfg: Config) -> Check:
 
 def _check_notifications(cfg: Config) -> Check:
     # Missing is the settings check's to report; reading the table first would
-    # judge a value nobody set.
-    if "notify.discord_webhook_url" in cfg.missing_settings:
+    # judge a value nobody set. Any missing notify key leaves the whole table None.
+    if cfg.app.notify is None or "notify.discord_webhook_url" in cfg.missing_settings:
         return Check("discord", "skip", "not set — see settings")
     if cfg.app.notify.discord_webhook_url:
         return Check("discord", "ok", "webhook set")
@@ -795,6 +795,22 @@ def _check_notifications(cfg: Config) -> Check:
         "off — runs finish without a message",
         "Set one on /settings to get a message per digest.",
     )
+
+
+def _check_mail(cfg: Config) -> Check:
+    if cfg.app.notify is None or "notify.email_to" in cfg.missing_settings:
+        return Check("mail", "skip", "not set — see settings")
+    notify = cfg.app.notify
+    if not notify.email_to:
+        return Check("mail", "skip", "off — runs send no mail")
+    if not (os.environ.get("CLOUDFLARE_ACCOUNT_ID") and os.environ.get("CLOUDFLARE_API_TOKEN")):
+        return Check(
+            "mail",
+            "warn",
+            "an address is set, but CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is missing",
+            "Set both; the token needs Email Sending: Edit.",
+        )
+    return Check("mail", "ok", f"to {notify.email_to} from {notify.email_from}")
 
 
 async def run_checks(
@@ -815,6 +831,7 @@ async def run_checks(
     checks.extend(_check_publish_token(cfg))
     checks.append(_check_output_sink(cfg))
     checks.append(_check_notifications(cfg))
+    checks.append(_check_mail(cfg))
     checks.append(_check_digest_link(cfg))
     if deployment_url:
         image, online = await _deployment(deployment_url)

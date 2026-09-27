@@ -15,6 +15,8 @@ _TEST_VALUES: dict[str, Any] = {
     "llm_provider.model": "",
     # Off: a test that runs the pipeline must never reach a real Discord channel.
     "notify.discord_webhook_url": "",
+    "notify.email_to": "",
+    "notify.email_from": "",
     "digest.max_articles_per_digest": 200,
     "digest.max_articles_per_digest_output": 15,
     "digest.max_featured": 5,

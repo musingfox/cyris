@@ -110,6 +110,7 @@ src/cyris/
 │   │                        #   publish.py + pages_deploy.py = Pages direct upload over REST,
 │   │                        #   pages_manifest.py + pages_receipt.py = the site's file list in D1
 │   ├── notify.py            # Discord notifications
+│   ├── mail.py              # Email notifications over Cloudflare Email Service's REST API
 │   ├── promotions.py        # Cloud Worker promotion sync
 │   └── http_client.py       # Shared httpx client
 ├── diagnostics/      # Off the pipeline: tools whose subject is the deployment, not
@@ -189,7 +190,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 ### Configuration Files
 
-- `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[notify]` webhook, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the home only under `[store] backend = "json"`; a D1 deployment reads them from D1 `settings` alone and `cyris doctor` fails on any the file still sets. Either way a missing key stops the run — no value lives in code. See `docs/architecture.md` §5
+- `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[notify]` webhook and mail addresses, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the home only under `[store] backend = "json"`; a D1 deployment reads them from D1 `settings` alone and `cyris doctor` fails on any the file still sets. Either way a missing key stops the run — no value lives in code. See `docs/architecture.md` §5
 - `sources.yaml` — RSS/newsletter source definitions with tier and tags. The `json` backend's list; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table alone, and `cyris sources push` is what fills it from the file. An empty table stops `cyris run` and polls nothing in the Worker; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link, and when an issue has no link at all it is appended to `ref_urls` so the reader still has somewhere to go (never `Article.url` — see below)
 - `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own, kept a separate value; `CLOUDFLARE_AI_TOKEN` for the `workers_ai` LLM provider; `CYRIS_UI_TOKEN`, the `/settings` login, read by the app Worker alone; see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`, and no environment variable supplies it. `.env.example` is the full list
 
@@ -221,7 +222,7 @@ Put the mark once, directly after the last top-level import. A level alone is `p
 - **Pull request and push to `main`.** `ci.yml` runs ruff over `src/` and `tests/` only, then pytest with the Worker JS suites. Under `CI` a missing JS toolchain fails the suite instead of skipping it. `main` has no branch protection, so CI reports after a commit has landed.
 - **Release.** `release-image.yml` runs `scripts/check.sh` on the dispatched sha. It then builds the image and smoke-tests it before pushing: the baked `CYRIS_GIT_SHA`, `cyris --help`, and an import of every `cyris.*` module, which catches a runtime dependency that only the dev group installs.
 - **Deploy.** `deploy.yml` runs no tests, because it deploys an image the release already checked. After `wrangler deploy`, its `verify` step fails the job unless production's `/api/build` names the commit baked into the deployed digest. The `rss`, `promote` and `newsletter` Workers deploy by hand, with no gate.
-- **Runtime.** Each run writes one `run_summary` log line and one D1 `digest_runs` row. Discord is notified only when a run gets as far as a digest, including one whose publish failed. A run that finds nothing to digest, or raises, alerts no one.
+- **Runtime.** Each run writes one `run_summary` log line and one D1 `digest_runs` row. Discord, and email when a recipient is set, are notified only when a run gets as far as a digest, including one whose publish failed. A run that finds nothing to digest, or raises, alerts no one.
 
 ## Conventions
 

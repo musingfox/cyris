@@ -67,6 +67,8 @@ account permissions:
 - **Workers Scripts → Read**: listing the custom domains attached to `cyris-app`, so
   the Discord digest link names one. Without it, the link falls back to `pages.dev`
   and `cyris doctor` warns.
+- **Email Sending → Edit**: mailing each digest, needed only if you set an email
+  address in step 6.
 
 Note your account id as well. Workers AI takes a separate token (step 4), needed only
 if you use it.
@@ -140,7 +142,7 @@ The first request after a deploy starts the container, so the page can take a mi
 right after the very first deploy, container routes can fail for several minutes
 while Cloudflare provisions it.
 
-`/settings` marks every setting that D1 does not hold yet. All 21 are required and
+`/settings` marks every setting that D1 does not hold yet. All 23 are required and
 none has a default in code, so save every category until nothing is marked:
 
 - **Model**: the LLM provider and model, checked against the live API before it is
@@ -148,10 +150,14 @@ none has a default in code, so save every category until nothing is marked:
   stays off; its fields are stored as one unit.
 - **Digest** and **Pipeline**: publish hours, timezone, output language, limits and
   thresholds.
-- **Notifications**: a Discord webhook, or turn it off.
+- **Notifications**: a Discord webhook, or turn it off; and an email recipient and
+  sender, or leave the recipient empty. The recipient must first be a verified
+  destination address (Email Service → Email Routing → Destination Addresses, then
+  open the verification mail), and the sender must be an address on your Email Routing
+  domain. Save sends a test message and stores the pair only if it is delivered.
 - **Sources**: add at least one RSS source.
 
-Until all 21 are saved, every run stops with `Missing settings in D1: …`; with no
+Until all 23 are saved, every run stops with `Missing settings in D1: …`; with no
 source it stops with `No sources in D1`. `cyris settings push` and
 `cyris sources push` do the same from a clone (see
 [Running the CLI against the deployment](#running-the-cli-against-the-deployment)).

@@ -432,6 +432,22 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         publish_failed=publish_failed,
     )
 
+    if not notify.email_to:
+        logger.info("No email address configured — skipping the digest mail")
+    elif deps.send_email is None:
+        logger.warning(
+            "An email address is set, but CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN "
+            "is missing, so no mail can be sent"
+        )
+    else:
+        await deps.send_email(
+            notify.email_to,
+            notify.email_from,
+            content,
+            digest_url=digest_url,
+            publish_failed=publish_failed,
+        )
+
     summary["status"] = "publish_failed" if publish_failed else "ok"
     summary["digest_url"] = digest_url
 

@@ -19,6 +19,8 @@ digest_window_hours = 24
 
 [notify]
 discord_webhook_url = ""                # "" means off; paste a Discord webhook URL to get a message per digest
+email_to = ""                           # "" means off; a verified Email Routing destination address
+email_from = ""                         # an address on one of the account's Email Routing domains
 
 [llm_provider]
 # "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY), "openai" (OPENAI_API_KEY),

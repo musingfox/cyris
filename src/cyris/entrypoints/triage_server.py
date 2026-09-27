@@ -94,6 +94,7 @@ class TriageServer:
         self._app.router.add_post("/api/settings/values", self._handle_post_values)
         self._app.router.add_post("/api/settings/vote-similarity", self._handle_post_vote)
         self._app.router.add_post("/api/settings/notify", self._handle_post_notify)
+        self._app.router.add_post("/api/settings/email", self._handle_post_email)
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
@@ -432,6 +433,78 @@ class TriageServer:
                 "discord_webhook_url": mask_discord_webhook_url(url),
                 "detail": probe.detail,
                 "note": "Saved. The next digest run picks this up.",
+            }
+        )
+
+    async def _handle_post_email(self, request: web.Request) -> web.Response:
+        """Store the mail addresses only after a test message reaches the recipient.
+
+        An empty recipient turns mail off and sends nothing. Unlike the webhook,
+        both addresses are shown in full, so clearing one by accident is undone
+        by typing it again: off needs no separate action.
+        """
+        from cyris.adapters.mail import send_mail
+
+        body = await self._settings_body(request)
+        if isinstance(body, web.Response):
+            return body
+
+        recipient = (body.get("email_to") or "").strip()
+        sender = (body.get("email_from") or "").strip()
+        values = {"notify.email_to": recipient, "notify.email_from": sender}
+
+        if not recipient:
+            if (refused := self._store(values)) is not None:
+                return refused
+            logger.info("Digest mail turned off")
+            return web.json_response(
+                {"ok": True, **values, "note": "Mail is off. The next run sends no message."}
+            )
+
+        if not sender:
+            return web.json_response(
+                {"ok": False, "error": "Enter the address the digest is sent from, too."},
+                status=400,
+            )
+
+        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+        token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+        if not (account_id and token):
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": (
+                        "This deployment has no CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN, "
+                        "so it cannot send mail. Set both, then save again."
+                    ),
+                },
+                status=400,
+            )
+
+        try:
+            status = await send_mail(
+                account_id,
+                token,
+                sender,
+                recipient,
+                "Cyris test message",
+                "This address will receive a message for every digest.",
+            )
+        except RuntimeError as e:
+            return web.json_response(
+                {"ok": False, "error": f"The test message was not sent: {e}"}, status=400
+            )
+
+        if (refused := self._store(values)) is not None:
+            return refused
+
+        logger.info("Digest mail addresses saved")
+        return web.json_response(
+            {
+                "ok": True,
+                **values,
+                "detail": f"A test message was {status} to {recipient}.",
+                "note": "Saved. The next digest run mails this address.",
             }
         )
 

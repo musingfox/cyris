@@ -84,6 +84,8 @@ GRADE_D_KEYS: tuple[str, ...] = tuple(SETTINGS_FIELDS)
 
 class NotifyConfig(BaseModel):
     discord_webhook_url: str  # "" ⇒ notifications off
+    email_to: str  # "" ⇒ no mail
+    email_from: str
 
 
 def _known_timezone(name: str) -> str:

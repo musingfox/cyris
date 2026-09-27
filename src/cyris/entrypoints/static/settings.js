@@ -175,6 +175,8 @@ function render() {
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
   }
+  $("email-to").value = values["notify.email_to"] ?? "";
+  $("email-from").value = values["notify.email_from"] ?? "";
   showNotifyState();
   markMissing();
   if (state.writable) {
@@ -376,27 +378,54 @@ $("pipeline-form").addEventListener("submit", async (e) => {
   if (plain) show(plain.ok ? "ok" : "err", plain.line, "pipeline-result");
 });
 
+// The Notifications form saves in two parts too: the webhook and the mail addresses.
+const DISCORD_PART = (field) => field === "discord-webhook";
+const EMAIL_PART = (field) => !DISCORD_PART(field);
+
 $("notify-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = $("notify-form"), field = $("discord-webhook");
-  const url = field.value, sent = snapshot(form);
+  const stored = {...clean.get(form)}, sent = snapshot(form);
+  const changed = (part) => Object.keys(sent).some((f) => part(f) && sent[f] !== stored[f]);
+  const keep = (part) => Object.keys(sent).filter(part).forEach((f) => { stored[f] = sent[f]; });
+  const lines = [];
+  let failed = false;
   saving.add(form);
   refresh(form);
-  try {
-    const data = await post("/api/settings/notify", {discord_webhook_url: url});
-    state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
-    // The stored value comes back masked; an edit typed meanwhile is kept.
-    if (field.value === url) field.value = data.discord_webhook_url;
-    markSet(keysSavedBy("notify"));
-    showNotifyState();
-    markClean(form, {...sent, "discord-webhook": data.discord_webhook_url});
-    show("ok", `${data.detail} ${data.note}`, "notify-result");
-  } catch (err) {
-    show("err", err.message, "notify-result");
-  } finally {
-    saving.delete(form);
-    refresh(form);
+  if (changed(DISCORD_PART)) {
+    const url = sent["discord-webhook"];
+    try {
+      const data = await post("/api/settings/notify", {discord_webhook_url: url});
+      state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
+      // The stored value comes back masked; an edit typed meanwhile is kept.
+      if (field.value === url) field.value = data.discord_webhook_url;
+      markSet(keysSavedBy("notify"));
+      showNotifyState();
+      stored["discord-webhook"] = data.discord_webhook_url;
+      lines.push(`${data.detail} ${data.note}`);
+    } catch (err) {
+      failed = true;
+      lines.push(err.message);
+    }
   }
+  if (changed(EMAIL_PART)) {
+    show("ok", "Sending a test message…", "notify-result");
+    try {
+      const data = await post("/api/settings/email",
+        {email_to: sent["email-to"], email_from: sent["email-from"]});
+      state.values["notify.email_to"] = data["notify.email_to"];
+      state.values["notify.email_from"] = data["notify.email_from"];
+      markSet(keysSavedBy("email"));
+      keep(EMAIL_PART);
+      lines.push(data.detail ? `${data.detail} ${data.note}` : data.note);
+    } catch (err) {
+      failed = true;
+      lines.push(err.message);
+    }
+  }
+  saving.delete(form);
+  markClean(form, stored);
+  show(failed ? "err" : "ok", lines.join("\n"), "notify-result");
 });
 
 // "" is off by choice; a missing webhook is neither on nor off yet.
@@ -431,7 +460,8 @@ $("notify-off").addEventListener("click", async () => {
     $("discord-webhook").value = data.discord_webhook_url;
     markSet(keysSavedBy("notify"));
     showNotifyState();
-    markClean(form);
+    // Only the webhook is saved; unsaved mail edits stay dirty.
+    markClean(form, {...clean.get(form), "discord-webhook": data.discord_webhook_url});
     show("ok", data.note, "notify-result");
   } catch (err) {
     show("err", err.message, "notify-result");

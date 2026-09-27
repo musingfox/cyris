@@ -132,6 +132,8 @@ _PROBE_VALUES = {
     "llm_provider.provider": "gemini",
     "llm_provider.model": "",
     "notify.discord_webhook_url": STORED_WEBHOOK,
+    "notify.email_to": "",
+    "notify.email_from": "",
     "digest.max_articles_per_digest": 200,
     "digest.max_articles_per_digest_output": 15,
     "digest.max_featured": 5,
@@ -953,6 +955,35 @@ CHECKS: list[Check] = [
         """,
         sabotage=f"""$("#discord-webhook").value = {json.dumps(NEW_WEBHOOK)};""",
         receipt=_last_call({"notify.discord_webhook_url": NEW_WEBHOOK}),
+    ),
+    Check(
+        id="notify-email-part-alone",
+        fixture="writable",
+        path="/settings#notifications",
+        preload=answer_post(
+            "/api/settings/email",
+            "Promise.resolve(Response.json({ok: true, "
+            '"notify.email_to": "me@example.org", "notify.email_from": "d@example.org", '
+            'detail: "A test message was delivered to me@example.org.", '
+            'note: "Saved. The next digest run mails this address."}))',
+        ),
+        act="""
+            await settingsLoaded();
+            setValue($("#email-to"), "me@example.org");
+            setValue($("#email-from"), "d@example.org");
+            saveOf("notifications").click();
+            await waitFor(() => visible($("#notify-result"))
+              && !$("#notify-result").textContent.startsWith("Sending"), "the notice");
+        """,
+        script="""
+            const notice = $("#notify-result"), text = notice.textContent;
+            expect(!notice.classList.contains("err"), `an error: ${text}`);
+            expect(text.includes("delivered to me@example.org"), `notice: ${text}`);
+            expect(saveOf("notifications").disabled, "the Save is still live");
+        """,
+        sabotage="""$("#notify-result").classList.add("err");""",
+        # Only the mail part changed, so the webhook route is never asked to store.
+        receipt=_calls([]),
     ),
     Check(
         id="notice-unreachable",

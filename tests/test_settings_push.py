@@ -37,9 +37,9 @@ def test_an_empty_d1_gets_every_key_from_a_complete_file(tmp_path: Path, d1: Sql
     result, config_path = _push(tmp_path, settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 21
+    assert len(D1Settings(d1).all()) == 23
     assert result.stdout.rstrip().endswith(
-        f"Added 21 of 21 settings from {config_path}; 0 kept; 0 still missing."
+        f"Added 23 of 23 settings from {config_path}; 0 kept; 0 still missing."
     )
 
 
@@ -127,4 +127,4 @@ def test_a_d1_deployments_file_is_still_read(tmp_path: Path, d1: SqliteD1) -> No
     result, _ = _push(tmp_path, '[store]\nbackend = "d1"\n\n' + settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 21
+    assert len(D1Settings(d1).all()) == 23

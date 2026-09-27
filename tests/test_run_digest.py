@@ -930,6 +930,53 @@ async def test_a_run_with_a_webhook_stays_quiet_and_still_notifies(
     assert sent["webhook_url"] == "https://discord.com/api/webhooks/1/run-log"
 
 
+async def test_a_run_mails_the_digest_beside_discord(tmp_path: Path) -> None:
+    deps, notifications = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.email_to = "me@example.org"
+    deps.cfg.app.notify.email_from = "digest@example.org"
+    mailed: list[dict] = []
+
+    async def capture(recipient, sender, content, digest_url="", publish_failed=False):
+        mailed.append({"recipient": recipient, "sender": sender, "digest_url": digest_url})
+
+    deps = replace(deps, send_email=capture)
+    await run_digest(deps, RunOptions())
+
+    assert notifications == ["discord"]
+    assert mailed == [
+        {"recipient": "me@example.org", "sender": "digest@example.org", "digest_url": ""}
+    ]
+
+
+async def test_a_run_with_no_email_address_mails_nothing_and_says_so(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    assert deps.cfg.app.notify.email_to == ""
+
+    async def never(*args, **kwargs):
+        raise AssertionError("no address, no mail")
+
+    deps = replace(deps, send_email=never)
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert "No email address configured" in caplog.text
+
+
+async def test_an_address_without_a_sender_to_mail_it_is_a_warning(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.email_to = "me@example.org"
+    deps.cfg.app.notify.email_from = "digest@example.org"
+    assert deps.send_email is None
+
+    with caplog.at_level("WARNING", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert "CLOUDFLARE_ACCOUNT_ID" in caplog.text
+
+
 def _recording(deps: Deps) -> tuple[Deps, list[dict]]:
     recorded: list[dict] = []
     return replace(deps, record_run=recorded.append), recorded

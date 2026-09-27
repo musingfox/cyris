@@ -168,5 +168,21 @@
       "discord-webhook"
     ],
     "route": "notify"
+  },
+  "notify.email_to": {
+    "tab": "notifications",
+    "label": "Email to",
+    "controls": [
+      "email-to"
+    ],
+    "route": "email"
+  },
+  "notify.email_from": {
+    "tab": "notifications",
+    "label": "Email from",
+    "controls": [
+      "email-from"
+    ],
+    "route": "email"
   }
 }

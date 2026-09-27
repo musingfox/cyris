@@ -1,6 +1,10 @@
 """Choosing a provider and the digest hours from the settings page."""
 
+import json
+
+import httpx
 import pytest
+import respx
 from aiohttp.test_utils import TestClient, TestServer
 from fakes import TEST_SETTINGS
 
@@ -984,4 +988,129 @@ class TestEverySettingsWriteGuardsAlike:
         await client.close()
 
         assert (res.status, body["error"]) == (400, "invalid JSON")
+        assert settings.calls == []
+
+
+EMAIL_SEND = "https://api.cloudflare.com/client/v4/accounts/acct-1/email/sending/send"
+
+
+@pytest.fixture
+def cloudflare_env(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct-1")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+
+
+class TestEmailSettingsWrite:
+    async def test_the_page_has_both_address_fields_in_the_notify_form(self):
+        from cyris.entrypoints.triage_server import render_settings_page
+
+        page = render_settings_page()
+        start = page.index('id="notify-form"')
+        form = page[start : page.index("</form>", start)]
+
+        assert 'id="email-to"' in form
+        assert 'id="email-from"' in form
+
+    @respx.mock
+    async def test_a_pair_the_test_message_reaches_is_stored(self, settings, cloudflare_env):
+        route = respx.post(EMAIL_SEND).mock(
+            return_value=httpx.Response(
+                200,
+                json={"success": True, "result": {"delivered": ["me@example.org"]}},
+            )
+        )
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/email",
+            json={"email_to": " me@example.org ", "email_from": "digest@example.org"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200 and body["ok"] is True
+        assert "me@example.org" in body["detail"]
+        assert settings.calls == [
+            {"notify.email_to": "me@example.org", "notify.email_from": "digest@example.org"}
+        ]
+        sent = json.loads(route.calls.last.request.content)
+        assert (sent["to"], sent["from"]) == ("me@example.org", "digest@example.org")
+
+    @respx.mock
+    async def test_a_pair_cloudflare_refuses_is_never_stored(self, settings, cloudflare_env):
+        respx.post(EMAIL_SEND).mock(
+            return_value=httpx.Response(
+                403,
+                json={"success": False, "errors": [{"code": 10102, "message": "forbidden"}]},
+            )
+        )
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/email",
+            json={"email_to": "me@example.org", "email_from": "digest@example.org"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "forbidden" in body["error"]
+        assert settings.calls == []
+
+    @respx.mock
+    async def test_an_empty_recipient_turns_mail_off_without_sending(
+        self, settings, cloudflare_env
+    ):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/email", json={"email_to": "", "email_from": ""})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200 and body["ok"] is True
+        assert settings.calls == [{"notify.email_to": "", "notify.email_from": ""}]
+        assert respx.calls.call_count == 0
+
+    @respx.mock
+    async def test_a_recipient_without_a_sender_is_refused(self, settings, cloudflare_env):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/email", json={"email_to": "me@example.org", "email_from": ""}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "sent from" in body["error"]
+        assert settings.calls == []
+        assert respx.calls.call_count == 0
+
+    @respx.mock
+    async def test_without_cloudflare_credentials_the_pair_is_refused(self, settings, monkeypatch):
+        monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/email",
+            json={"email_to": "me@example.org", "email_from": "digest@example.org"},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert "CLOUDFLARE_ACCOUNT_ID" in body["error"]
+        assert settings.calls == []
+        assert respx.calls.call_count == 0
+
+    async def test_the_addresses_are_not_plain_values(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"notify.email_to": "me@example.org"}}
+        )
+        await client.close()
+
+        assert res.status == 400
         assert settings.calls == []

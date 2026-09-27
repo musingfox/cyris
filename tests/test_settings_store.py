@@ -58,8 +58,8 @@ def test_several_grade_d_keys_are_stored_in_one_set(settings):
     assert settings.all() == {"routing.score_threshold": 80, "vote_similarity.max_seeds": 50}
 
 
-def test_the_whitelist_is_exactly_the_twenty_one_grade_d_keys():
-    assert len(GRADE_D_KEYS) == 21
+def test_the_whitelist_is_exactly_the_twenty_three_grade_d_keys():
+    assert len(GRADE_D_KEYS) == 23
     assert set(WRITABLE_KEYS) == set(GRADE_D_KEYS)
 
 
