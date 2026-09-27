@@ -1750,3 +1750,60 @@ async def test_a_healthy_empty_source_is_left_off_the_failed_fetch_alert(tmp_pat
     _, discord_calls, _ = await _fetch_failure_alerts(tmp_path, [BrokenSource(), FakeSource([])])
 
     assert discord_calls[0][2] == "Failed sources: BrokenSource"
+
+
+def _recording_alert_fakes() -> tuple[list, list, object, object]:
+    discord_calls: list[tuple] = []
+    mail_calls: list[tuple] = []
+
+    async def discord(webhook_url, subject, text):
+        discord_calls.append((webhook_url, subject, text))
+
+    async def mail(recipient, sender, subject, text):
+        mail_calls.append((recipient, sender, subject, text))
+
+    return discord_calls, mail_calls, discord, mail
+
+
+async def test_an_empty_healthy_window_sends_no_failure_alert(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = _with_alert_channels(deps, discord, mail)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+    assert discord_calls == []
+    assert mail_calls == []
+
+
+async def test_nothing_pending_sends_no_failure_alert_even_if_a_source_failed(
+    tmp_path: Path,
+) -> None:
+    article = _notify_article()
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([article]))
+    deps.store.save([article])
+    assert deps.store.accept([article.url]) == 1
+    deps = replace(deps, fetch_sources=[BrokenSource(), FakeSource([article])])
+    deps = _with_alert_channels(deps, discord, mail)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_pending"
+    assert report.failed_sources == ["BrokenSource"]
+    assert discord_calls == []
+    assert mail_calls == []
+
+
+async def test_a_finished_digest_sends_the_digest_and_no_failure_alert(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, notifications = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert notifications == ["discord"]
+    assert discord_calls == []
+    assert mail_calls == []
