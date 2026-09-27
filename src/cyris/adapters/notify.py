@@ -274,10 +274,12 @@ async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:
     if not webhook_url:
         return
 
+    subject = redact_webhook_tokens(subject)
+    text = redact_webhook_tokens(text)
     content = f"{subject}\n{text}"[:_DISCORD_CONTENT_MAX]
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(webhook_url, json={"content": content})
             resp.raise_for_status()
     except httpx.HTTPError as e:
-        logger.warning("Discord alert failed: %s", e)
+        logger.warning("Discord alert failed: %s", redact_webhook_tokens(str(e)))

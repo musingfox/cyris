@@ -241,3 +241,29 @@ class TestAlertMail:
         assert route.call_count == 1
         assert "forbidden" in caplog.text
         assert "tok-secret" not in caplog.text
+
+    @respx.mock
+    async def test_subject_and_text_redact_webhook_tokens(self):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(200, json=_result(delivered=["me@example.org"]))
+        )
+        leak = (
+            "HTTPStatusError: Client error '404 Not Found' for url "
+            "'https://discord.com/api/webhooks/999/s3cr3t-token'"
+        )
+        masked = "https://discord.com/api/webhooks/999/\u2022\u2022\u2022\u2022"
+
+        await send_alert_mail(
+            "me@example.org",
+            "digest@example.org",
+            leak,
+            leak,
+            account_id=ACCOUNT,
+            token="tok",
+        )
+
+        sent = json.loads(route.calls.last.request.content)
+        assert "s3cr3t-token" not in sent["subject"]
+        assert "s3cr3t-token" not in sent["text"]
+        assert masked in sent["subject"]
+        assert masked in sent["text"]

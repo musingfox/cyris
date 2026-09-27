@@ -12,7 +12,7 @@ import logging
 import httpx
 
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
-from cyris.adapters.notify import period_label
+from cyris.adapters.notify import period_label, redact_webhook_tokens
 from cyris.adapters.output.email_digest import render_digest_email
 from cyris.adapters.output.html_digest import _features
 from cyris.domain.models import DigestContent, DigestItem
@@ -139,7 +139,9 @@ async def send_alert_mail(
     """
     if not recipient:
         return
+    subject = redact_webhook_tokens(subject)
+    text = redact_webhook_tokens(text)
     try:
         await send_mail(account_id, token, sender, recipient, subject, text)
     except RuntimeError as e:
-        logger.warning("Alert mail to %s failed: %s", recipient, e)
+        logger.warning("Alert mail to %s failed: %s", recipient, redact_webhook_tokens(str(e)))

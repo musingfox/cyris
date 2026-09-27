@@ -628,3 +628,55 @@ class TestSendDiscordAlert:
         assert result is None
         assert len(requests) == 1
         assert len(_warning_records(caplog)) == 1
+
+
+_LEAK = (
+    "HTTPStatusError: Client error '404 Not Found' for url "
+    "'https://discord.com/api/webhooks/999/s3cr3t-token'"
+)
+_MASKED = "https://discord.com/api/webhooks/999/\u2022\u2022\u2022\u2022"
+
+
+class TestDiscordAlertRedaction:
+    async def test_body_redacts_a_token_in_the_text(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        _discord_transport(monkeypatch, handler)
+
+        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", "S", _LEAK)
+
+        body = requests[0].content.decode()
+        assert "s3cr3t-token" not in body
+        assert _MASKED in body
+
+    async def test_body_redacts_a_token_in_the_subject(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        _discord_transport(monkeypatch, handler)
+
+        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", _LEAK, "B")
+
+        body = requests[0].content.decode()
+        assert "s3cr3t-token" not in body
+        assert _MASKED in body
+
+    async def test_failure_log_redacts_the_webhook_token(self, monkeypatch, caplog):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404)
+
+        _discord_transport(monkeypatch, handler)
+
+        with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
+            await send_discord_alert("https://discord.com/api/webhooks/999/s3cr3t-token", "S", "B")
+
+        assert "404" in caplog.text
+        assert _MASKED in caplog.text
+        assert "s3cr3t-token" not in caplog.text
