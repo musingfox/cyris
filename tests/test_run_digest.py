@@ -1570,7 +1570,7 @@ def _subject_minute(subject: str) -> datetime:
     )
 
 
-async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Path) -> None:
+def _recording_alert_fakes() -> tuple[list, list, object, object]:
     discord_calls: list[tuple] = []
     mail_calls: list[tuple] = []
 
@@ -1579,6 +1579,12 @@ async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Pat
 
     async def mail(recipient, sender, subject, text):
         mail_calls.append((recipient, sender, subject, text))
+
+    return discord_calls, mail_calls, discord, mail
+
+
+async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, discord, mail)
@@ -1596,13 +1602,7 @@ async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Pat
 
 
 async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path) -> None:
-    discord_calls: list[tuple] = []
-
-    async def discord(webhook_url, subject, text):
-        discord_calls.append((webhook_url, subject, text))
-
-    async def mail(recipient, sender, subject, text):
-        return None
+    discord_calls, _, discord, mail = _recording_alert_fakes()
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, discord, mail)
@@ -1661,17 +1661,10 @@ async def test_the_failure_alert_is_sent_after_the_run_is_recorded(tmp_path: Pat
 async def test_a_failed_run_record_still_alerts_and_keeps_the_store_error(
     tmp_path: Path,
 ) -> None:
-    discord_calls: list[tuple] = []
-    mail_calls: list[tuple] = []
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
 
     def record(summary: dict) -> None:
         raise RuntimeError("d1 down")
-
-    async def discord(webhook_url, subject, text):
-        discord_calls.append((webhook_url, subject, text))
-
-    async def mail(recipient, sender, subject, text):
-        mail_calls.append((recipient, sender, subject, text))
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, discord, mail)
@@ -1686,13 +1679,7 @@ async def test_a_failed_run_record_still_alerts_and_keeps_the_store_error(
 
 
 async def test_an_error_with_no_message_is_named_by_its_type_alone(tmp_path: Path) -> None:
-    discord_calls: list[tuple] = []
-
-    async def discord(webhook_url, subject, text):
-        discord_calls.append((webhook_url, subject, text))
-
-    async def mail(recipient, sender, subject, text):
-        return None
+    discord_calls, _, discord, mail = _recording_alert_fakes()
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, discord, mail)
@@ -1726,14 +1713,7 @@ class OtherBrokenSource(BrokenSource):
 
 
 async def _fetch_failure_alerts(tmp_path: Path, sources: list) -> tuple[object, list, list]:
-    discord_calls: list[tuple] = []
-    mail_calls: list[tuple] = []
-
-    async def discord(webhook_url, subject, text):
-        discord_calls.append((webhook_url, subject, text))
-
-    async def mail(recipient, sender, subject, text):
-        mail_calls.append((recipient, sender, subject, text))
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
     deps = replace(deps, fetch_sources=sources)
@@ -1768,19 +1748,6 @@ async def test_a_healthy_empty_source_is_left_off_the_failed_fetch_alert(tmp_pat
     _, discord_calls, _ = await _fetch_failure_alerts(tmp_path, [BrokenSource(), FakeSource([])])
 
     assert discord_calls[0][2] == "Failed sources: BrokenSource"
-
-
-def _recording_alert_fakes() -> tuple[list, list, object, object]:
-    discord_calls: list[tuple] = []
-    mail_calls: list[tuple] = []
-
-    async def discord(webhook_url, subject, text):
-        discord_calls.append((webhook_url, subject, text))
-
-    async def mail(recipient, sender, subject, text):
-        mail_calls.append((recipient, sender, subject, text))
-
-    return discord_calls, mail_calls, discord, mail
 
 
 async def test_an_empty_healthy_window_sends_no_failure_alert(tmp_path: Path) -> None:
