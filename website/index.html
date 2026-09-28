@@ -67,9 +67,11 @@ nav { position: sticky; top: 0; z-index: 20; height: var(--bar-h); background: r
 .nav-links a, .eyebrow, .setup summary { font: 500 calc(12px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .nav-links a { color: var(--text-faint); text-decoration: none; }
 .nav-links a:hover { color: var(--text); }
-.language-toggle, .theme-toggle, .btn { height: 44px; padding: 0 var(--s-5); border: 1px solid var(--border-strong); border-radius: var(--r-control); background: var(--surface-2); cursor: pointer; }
+.language-toggle, .theme-toggle, .icon-link, .btn { height: 44px; padding: 0 var(--s-5); border: 1px solid var(--border-strong); border-radius: var(--r-control); background: var(--surface-2); cursor: pointer; }
 .language-toggle, .theme-toggle { font: 500 calc(12px * var(--type-scale))/1 var(--font-mono); }
-.theme-toggle { width: 44px; padding: 0; display: inline-grid; place-items: center; }
+.theme-toggle, .icon-link { width: 44px; padding: 0; display: inline-grid; place-items: center; }
+.nav-links .icon-link { color: var(--text); }
+.icon-link svg { width: 18px; height: 18px; fill: currentColor; }
 .theme-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .theme-toggle .icon-moon, .theme-toggle[data-theme="light"] .icon-sun { display: none; }
 .theme-toggle[data-theme="light"] .icon-moon { display: block; }
@@ -79,13 +81,17 @@ nav { position: sticky; top: 0; z-index: 20; height: var(--bar-h); background: r
 .hero-intro { text-align: center; }
 .hero h1 { margin: var(--s-4) 0 var(--s-6); font: 400 calc(clamp(46px,7vw,84px) * var(--type-scale))/1 var(--font-serif); letter-spacing: -.03em; text-wrap: balance; }
 .hero h1 em, .section-heading em { color: var(--accent); font-family: var(--font-serif); font-weight: 400; }
-.hero-description { max-width: var(--measure); margin-inline: auto; color: var(--text-dim); }
+.hero-description { max-width: var(--measure); margin-inline: auto; color: var(--text-dim); text-wrap: pretty; }
+.hero-note { margin-top: var(--s-3); color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
+.proof { max-width: var(--measure); margin: var(--s-8) auto 0; padding-top: var(--s-4); border-top: 1px solid var(--border); color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
+.proof strong { color: var(--text); font-weight: 600; }
+.hero-shot { display: block; width: 100%; height: auto; margin-top: var(--s-12); border: 1px solid var(--border-strong); }
 .ctas { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-8); }
 .hero .ctas { justify-content: center; }
 .btn { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s-2); text-decoration: none; font: 500 calc(12px * var(--type-scale))/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn.primary:hover { background: #d4ff66; }
-.btn:not(.primary):hover, .language-toggle:hover, .theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+.btn:not(.primary):hover, .language-toggle:hover, .theme-toggle:hover, .icon-link:hover { color: var(--text); border-color: var(--accent); }
 .how-heading { max-width: var(--measure); margin-bottom: var(--s-6); }
 .how-heading h2 { margin: var(--s-3) 0; font: 600 calc(24px * var(--type-scale))/1.3 var(--font-sans); }
 .how-heading p:not(.eyebrow) { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
@@ -102,10 +108,6 @@ section { padding: var(--s-16) 0; border-top: 1px solid var(--border); }
 .run-card { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-6); }
 .run-card h3 { margin: var(--s-4) 0 var(--s-3); font-size: calc(19px * var(--type-scale)); font-weight: 600; }
 .control p, .run-card p, .run-card li { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
-.tier-list { display: grid; grid-template-columns: auto minmax(0,1fr); column-gap: var(--s-3); margin: var(--s-4) 0 0; }
-.tier-list > div { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; padding: var(--s-3) 0; border-top: 1px solid var(--border); }
-.tier-list dt { font: 500 calc(12px * var(--type-scale))/1.5 var(--font-mono); }
-.tier-list dd { margin: 0; color: var(--text-dim); font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
 .control-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--s-12); }
 .controls { display: grid; gap: var(--s-5); }
 .control { padding-bottom: var(--s-5); border-bottom: 1px solid var(--border); }
@@ -130,7 +132,7 @@ html[lang="zh-Hant"] .hero h1 { font-size: calc(clamp(46px,7vw,72px) * var(--typ
 html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,serif; }
 @media (max-width: 720px) {
     .wrap { width: calc(100% - 32px); }
-    .nav-links > a { display: none; }
+    .nav-links > a:not(.icon-link) { display: none; }
     .hero { padding: var(--s-12) 0 var(--s-8); }
     .control-grid, .run-options { grid-template-columns: minmax(0,1fr); gap: var(--s-6); }
     .feature-flow { grid-template-columns: minmax(0, 1fr); gap: var(--s-16); }
@@ -152,10 +154,10 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
         <div class="nav-links">
             <a href="#how" data-zh="運作方式">How it works</a>
             <a href="#control" data-zh="文章管理">Article review</a>
-            <a href="https://github.com/musingfox/cyris" data-zh="GitHub <span aria-hidden=&quot;true&quot;>↗</span>">GitHub <span aria-hidden="true">↗</span></a>
             <a href="#start" data-zh="部署方式">Setup</a>
             <button class="language-toggle" type="button" aria-label="Switch to Traditional Chinese">繁體中文</button>
             <button class="theme-toggle" type="button" aria-label="Preview light theme" title="Preview light theme"><svg class="icon-sun" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg><svg class="icon-moon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"></path></svg></button>
+            <a class="icon-link" href="https://github.com/musingfox/cyris" aria-label="GitHub" title="GitHub"><svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg></a>
         </div>
     </div>
 </nav>
@@ -163,12 +165,15 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
 <header class="hero" id="top">
     <div class="wrap hero-intro">
         <p class="eyebrow accent" data-zh="開放原始碼，可自行託管">Open source, self-hosted</p>
-        <h1 data-zh="&lt;em&gt;讀的完&lt;/em&gt;的閱讀清單">A reading list with <em>an end.</em></h1>
-        <p class="hero-description" data-zh="用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。">Use Cyris to collect your RSS feeds and newsletters into one digest. Read selected articles first and check the full list for more. Run Cyris on your computer or deploy it to Cloudflare.</p>
+        <h1 data-zh="&lt;em&gt;讀得完&lt;/em&gt;的閱讀清單">A reading list with <em>an end.</em></h1>
+        <p class="hero-description" data-zh="你會精挑每一段送進模型 context window 的內容。Cyris 用同樣的方式替你的注意力把關：讀完那些你訂了卻不再打開的 RSS 與電子報，交給你一份讀得完的摘要。">You pick every token that reaches your model’s context window. Cyris does the same for your attention: it reads the feeds and newsletters you stopped opening and hands you a digest short enough to finish.</p>
         <div class="ctas">
-            <a class="btn primary" href="#start" data-zh="選擇部署方式">Choose your setup</a>
-            <a class="btn" href="#how" data-zh="查看功能圖解 <span aria-hidden=&quot;true&quot;>↓</span>">See how it works <span aria-hidden="true">↓</span></a>
+            <a class="btn primary" href="#start" data-zh="產生你的第一份摘要">Get your first digest</a>
+            <a class="btn" href="https://cyris-digest.pages.dev/" data-zh="看一期真實摘要 <span aria-hidden=&quot;true&quot;>↗</span>">See a live digest <span aria-hidden="true">↗</span></a>
         </div>
+        <p class="hero-note" data-zh="免費、開源，不需要 AI 金鑰就能開始。">Free and open source. No AI key needed to start.</p>
+        <p class="proof" data-zh="維護者自己的部署，2026 年 8 月 28 日至 9 月 27 日共 56 期：平均每期收進 &lt;strong&gt;91 篇&lt;/strong&gt;文章，留下 &lt;strong&gt;13 篇&lt;/strong&gt;，AI 費用約 &lt;strong&gt;US$0.03&lt;/strong&gt;。">The maintainer’s own deployment, 56 issues from Aug 28 to Sep 27, 2026: an average issue took in <strong>91 articles</strong>, kept <strong>13</strong>, and cost about <strong>US$0.03</strong> in AI.</p>
+        <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest built from 13 public tech feeds: 64 articles received, 12 included, led by a top story">
     </div>
 </header>
 <section id="how" aria-labelledby="how-title">
@@ -176,7 +181,7 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
         <div class="how-heading">
             <p class="eyebrow" data-zh="運作方式">How it works</p>
             <h2 id="how-title" data-zh="快速閱讀或深度檢視">Read the highlights or explore the details.</h2>
-            <p data-zh="選擇來源與處理深度，先讀摘要，再按需要查看完整清單。">Choose your sources and processing depth. Start with the digest, then consult the full list when you need it.</p>
+            <p data-zh="選擇來源與處理深度，同一則新聞的多篇報導會整合成一則摘要。先讀摘要，再按需要查看完整清單。">Choose your sources and processing depth. Reports on the same news story merge into one summary. Start with the digest, then consult the full list when you need it.</p>
         </div>
         <ol class="feature-flow">
             <li>
@@ -211,34 +216,30 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
                 <p data-zh="精選內容與本次處理、待處理的文章">Highlights, plus this run’s articles and pending items</p>
             </li>
         </ol>
-        <details class="setup">
-            <summary data-zh="處理細節：來源分級與新聞整合">Processing details: source tiers and news grouping</summary>
-            <div class="setup-body">
-                <dl class="tier-list">
-                    <div><dt>filter</dt><dd data-zh="大量篩除雜訊，只留下重點標題。">Filter out most items and keep key headlines.</dd></div>
-                    <div><dt>summarize</dt><dd data-zh="依評分整理成完整摘要或簡短介紹。">Use scores to select full summaries or brief mentions.</dd></div>
-                    <div><dt>fan</dt><dd data-zh="保留原文標題與摘錄，略過 AI 評分、篩選與摘要。">Keep original titles and excerpts; skip AI scoring, filtering, and summaries.</dd></div>
-                </dl>
-                <p data-zh="將新聞來源設為 filter 並加上 news 標籤，就能閱讀同主題報導的整合摘要。想知道細節，再開啟原文。">For sources set to filter and tagged news, read reports on the same topic in one summary. Open the originals for details.</p>
-            </div>
-        </details>
     </div>
 </section>
 <section id="control" aria-labelledby="control-title">
     <div class="wrap">
         <div class="control-grid">
-            <div><p class="eyebrow accent" data-zh="文章管理">Article review</p><h2 class="section-heading" id="control-title" data-zh="檢視文章，&lt;br&gt;&lt;em&gt;調整取捨。&lt;/em&gt;">Review articles<br>and <em>change a verdict.</em></h2></div>
+            <div><p class="eyebrow accent" data-zh="文章管理">Article review</p><h2 class="section-heading" id="control-title" data-zh="篇幅很短，&lt;br&gt;&lt;em&gt;但一篇都不藏。&lt;/em&gt;">Nothing is hidden<br>to make it <em>short.</em></h2></div>
             <div class="controls">
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↗</span>查看完整文章清單"><span class="symbol" aria-hidden="true">↗</span>Review the full article list</h3><p data-zh="從摘要開啟該次處理的文章清單，按來源查看入選、未入選與待處理內容。">Open an issue’s article list to review accepted, rejected, and pending items by source.</p></article>
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↑</span>Upvote：接受文章"><span class="symbol" aria-hidden="true">↑</span>Upvote: accept an article</h3><p data-zh="將這篇文章標為接受。啟用相似度篩選後，新文章若與正評的相似度不低於負評，就不會被這道篩選排除。">Mark this article as accepted. With similarity filtering enabled, a new article at least as similar to an upvoted article as to a downvoted one passes this filter.</p></article>
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↓</span>Downvote：拒絕文章"><span class="symbol" aria-hidden="true">↓</span>Downvote: reject an article</h3><p data-zh="將這篇文章標為拒絕。啟用相似度篩選後，後續文章若與負評的相似度達到門檻，且高於正評，就會被排除。">Mark this article as rejected. With similarity filtering enabled, future articles are excluded when their similarity to a downvoted article reaches the threshold and exceeds their similarity to an upvoted one.</p></article>
-                <div>
-                    <p class="setup-note" data-zh="要讓投票影響後續文章，需設定 embedding 模型並啟用 Vote similarity。未啟用時，投票只改變該篇文章的接受或拒絕狀態。">To apply votes to future articles, configure an embedding model and enable Vote similarity. Without it, votes only change the accepted or rejected state of the article you vote on.</p>
-                    <p class="setup-note" data-zh="投票需要登入。若使用自訂網域，建議搭配 Cloudflare Access 限制可操作的人員；Access 不適用於 workers.dev 網址。">Sign-in is required to vote. On a custom domain, we recommend Cloudflare Access to restrict who can vote; Access is not available on workers.dev URLs.</p>
-                </div>
+                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↗</span>看它略過了什麼"><span class="symbol" aria-hidden="true">↗</span>See what it left out</h3><p data-zh="每期摘要都附上完整清單，沒入選的文章也在裡面。">Every issue links to the full list of what it collected, dropped articles included.</p></article>
+                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↑↓</span>用投票教它"><span class="symbol" aria-hidden="true">↑↓</span>Teach it with a vote</h3><p data-zh="用 Upvote 或 Downvote 接受或拒絕文章。投票也能讓之後的執行略過相似的文章。">Upvote or downvote to accept or reject an article. Votes can also filter similar articles out of later runs.</p></article>
             </div>
         </div>
         <div class="provider-note"><p class="eyebrow" data-zh="選擇 AI 供應商，或不使用 AI">Choose an AI provider, or none</p><div class="providers"><span>Anthropic</span><span>Google Gemini</span><span>OpenAI</span><span>Cloudflare Workers AI</span><span data-zh="None：原文摘錄">None: plain excerpts</span></div></div>
+    </div>
+</section>
+<section id="delivery" aria-labelledby="delivery-title">
+    <div class="wrap">
+        <div class="control-grid">
+            <div><p class="eyebrow accent" data-zh="接收方式">Delivery</p><h2 class="section-heading" id="delivery-title" data-zh="在信箱或 Discord&lt;br&gt;&lt;em&gt;收到摘要。&lt;/em&gt;">Get it in your<br><em>inbox or Discord.</em></h2></div>
+            <div class="controls">
+                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>@</span>在信箱讀摘要"><span class="symbol" aria-hidden="true">@</span>Read it in your inbox</h3><p data-zh="整期摘要會寄到你的信箱。">The whole digest arrives as an email.</p></article>
+                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>#</span>在 Discord 收到通知"><span class="symbol" aria-hidden="true">#</span>Get a Discord message</h3><p data-zh="每期摘要產生後，你會收到一則附上連結的訊息。">Get a message with a link to each new digest.</p></article>
+                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>!</span>執行失敗時收到警示"><span class="symbol" aria-hidden="true">!</span>Hear when a run fails</h3><p data-zh="你設定的管道也會在執行失敗時通知你。">The channels you set up also tell you when a run fails.</p></article>
+            </div>
+        </div>
     </div>
 </section>
 <section class="start" id="start" aria-labelledby="start-title">
@@ -249,20 +250,20 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
             <article class="run-card">
                 <h3 data-zh="本機執行">On your computer</h3>
                 <p data-zh="在電腦上執行指令，產生 HTML 摘要後用瀏覽器開啟。">Run a command to generate an HTML digest, then open it in your browser.</p>
-                <ul><li data-zh="需要 Python 3.12+ 與 uv">Requires Python 3.12+ and uv</li><li data-zh="手動執行，資料存在本機">Run on demand; keep data on disk</li><li data-zh="郵件匯入與網頁投票另需 Cloudflare Workers">Email and web voting need Cloudflare Workers</li></ul>
+                <ul><li data-zh="需要 Python 3.12+ 與 uv">Requires Python 3.12+ and uv</li><li data-zh="手動執行，資料存在本機">Run on demand; keep data on disk</li><li data-zh="郵件匯入與網頁投票另需 Cloudflare Workers">Email ingestion and web voting need Cloudflare Workers</li></ul>
                 <a class="btn" href="#local-setup" data-zh="本機安裝步驟 <span aria-hidden=&quot;true&quot;>↓</span>">Local setup <span aria-hidden="true">↓</span></a>
             </article>
             <article class="run-card cloud">
                 <h3 data-zh="Cloudflare 自動發布">Publish on Cloudflare</h3>
                 <p data-zh="設定發布時間，讓 Cyris 定時產生摘要，再到網站閱讀與管理。">Set publishing hours so Cyris can generate digests on schedule. Read them and manage your settings on the web.</p>
-                <ul><li data-zh="需要 Cloudflare Workers 付費方案">Requires Cloudflare Workers Paid</li><li data-zh="資料存於 D1，摘要發布至 Pages">Data in D1; digests on Pages</li><li data-zh="郵件匯入另需自己的網域與 Email Routing">Email ingestion needs your domain and Email Routing</li></ul>
+                <ul><li data-zh="需要 Cloudflare Workers 付費方案（每月 US$5）">Requires Cloudflare Workers Paid (US$5/month)</li><li data-zh="資料存於 D1，摘要發布至 Pages">Data in D1; digests on Pages</li><li data-zh="收發郵件另需自己的網域與 Email Routing">Email ingestion and delivery need your domain and Email Routing</li></ul>
                 <a class="btn" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" data-zh="雲端部署步驟 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup <span aria-hidden="true">↗</span></a>
             </article>
         </div>
         <details class="setup" id="local-setup" open>
             <summary data-zh="本機快速開始：從來源到摘要">Local quickstart: from source to digest</summary>
             <div class="setup-body">
-                <p data-zh="複製範例檔案，設定來源。選擇 <code>provider = &quot;none&quot;</code> 使用原文摘錄，或填入所選 AI 供應商的憑證。本機使用時，請將儲存後端設為 <code>json</code>。">Copy the example files and choose your sources. Set <code>provider = "none"</code> for plain excerpts, or supply credentials for your selected AI provider. Keep the store backend set to <code>json</code> for local use.</p>
+                <p data-zh="複製範例檔案並填入來源。選一個 AI 供應商，或設定 <code>provider = &quot;none&quot;</code>，不需要 API 金鑰就能開始。">Copy the example files and add your sources. Pick an AI provider, or set <code>provider = "none"</code> to start without an API key.</p>
 <pre><code>git clone https://github.com/musingfox/cyris.git
 cd cyris
 uv sync
@@ -276,7 +277,7 @@ uv run cyris doctor
 uv run cyris run</code></pre>
             </div>
         </details>
-        <p class="setup-note" data-zh="選擇 None 可略過 LLM。其他 AI 供應商需要憑證，並可能收取用量費；缺少必要憑證會停止執行。 <a href=&quot;https://github.com/musingfox/cyris/blob/main/docs/install-local.md&quot;>閱讀完整安裝說明 ↗</a>">Choose None to skip LLM calls. Other AI providers require credentials and may charge for usage; missing required credentials stop the run. <a href="https://github.com/musingfox/cyris/blob/main/docs/install-local.md">Read the full setup instructions ↗</a></p>
+        <p class="setup-note" data-zh="<a href=&quot;https://github.com/musingfox/cyris/blob/main/docs/install-local.md&quot;>閱讀完整安裝說明 ↗</a>"><a href="https://github.com/musingfox/cyris/blob/main/docs/install-local.md">Read the full setup instructions ↗</a></p>
     </div>
 </section>
 </main>
@@ -307,11 +308,11 @@ uv run cyris run</code></pre>
             darkTheme: 'Preview dark theme'
         },
         'zh-Hant': {
-            title: 'Cyris: 讀的完的閱讀清單',
+            title: 'Cyris: 讀得完的閱讀清單',
             description: '用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。',
-            ogTitle: 'Cyris: 讀的完的閱讀清單',
+            ogTitle: 'Cyris: 讀得完的閱讀清單',
             ogDescription: '用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。',
-            twitterTitle: 'Cyris: 讀的完的閱讀清單',
+            twitterTitle: 'Cyris: 讀得完的閱讀清單',
             twitterDescription: '用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。',
             language: 'English',
             languageLabel: '切換至英文',
