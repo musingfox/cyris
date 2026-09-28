@@ -52,7 +52,7 @@ Optional: `[notify] discord_webhook_url` for a Discord message per digest, and
 Then put the matching key in `.env` (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
 `OPENAI_API_KEY`, or `CLOUDFLARE_AI_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for
 `workers_ai`), and replace the sample feeds in `sources.yaml` with yours. Each source
-takes a tier; see [How sources are processed](../README.md#how-sources-are-processed).
+takes a tier; see [How sources are processed](sources.md).
 Email-only newsletters (`type: newsletter`) are inert locally.
 
 ## 4. Check the configuration

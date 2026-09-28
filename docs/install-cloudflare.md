@@ -155,7 +155,8 @@ none has a default in code, so save every category until nothing is marked:
   destination address (Email Service → Email Routing → Destination Addresses, then
   open the verification mail), and the sender must be an address on your Email Routing
   domain. Save sends a test message and stores the pair only if it is delivered.
-- **Sources**: add at least one RSS source.
+- **Sources**: add at least one RSS source. Each takes a tier; see
+  [How sources are processed](sources.md).
 
 Until all 23 are saved, every run stops with `Missing settings in D1: …`; with no
 source it stops with `No sources in D1`. `cyris settings push` and
@@ -308,6 +309,21 @@ fail and do not mean anything is wrong:
 
 Do not run `cyris run` from this clone while the Worker's cron is active: two
 schedulers publishing one Pages project is the failure mode.
+
+The rest of the CLI, for work with no UI (`cyris --help` lists everything):
+
+```
+cyris doctor                  Before the first run, and after any config change: exits
+                              non-zero on anything that would break a run
+cyris store migrate|diff      The move into D1, and the comparison to run before you
+                              trust it
+cyris articles list|accept|   Bulk work on the store: the only way to reach pending
+      reject|score|clean      rows outside an issue, and to delete old rows
+cyris llm-compare             Digest one window with several providers, side by side,
+cyris embed-compare           or judge it with both embedding providers, before
+cyris vote-sim                switching; vote-sim previews what similarity would
+                              suppress before you enable it
+```
 
 ## The Deploy to Cloudflare button (experimental)
 

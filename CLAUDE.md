@@ -144,7 +144,8 @@ website/              # The landing page: its own Pages project, deployed with `
 scripts/              # check.sh (the local and release gate), derive-wrangler-config.sh (the deploy workflow's
                       #   config), backfill_pages_manifest.py, and the CDP page probes (*_probe.py)
 docs/                 # architecture.md (read first); install-local.md, install-cloudflare.md and
-                      #   operations.md (install and run a deployment); design/ (UI spec); history
+                      #   operations.md (install and run a deployment); sources.md (source tiers);
+                      #   design/ (UI spec); history
 ```
 
 ### Key Data Flow
