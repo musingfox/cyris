@@ -98,6 +98,9 @@ A 級是 B 級的基礎，也是 B 級的退路。濃縮失敗、逾時，或濃
 - **並行度與每次 run 的處理上限。** `GeminiClient` 單次呼叫逾時 120 秒、最多重試 2 次（`src/cyris/adapters/gemini_client.py:39-40`）。
 - **新介面的形狀。** YouTube 要送非文字內容，但現有的 `LLMClient.complete` 只收文字（`src/cyris/service_layer/ports.py:27-39`）。
 - **代理模式。** 文件號稱最多省 88% token，但能不能用在 YouTube 網址上還沒驗證。
+- **先從 Worker 實測 YouTube 頻道 feed。** 2026-09-28 只從 Mac 抓過，Cloudflare Worker 抓不抓得到還沒驗證；有兩則第三方紀錄說 Worker 抓得到（https://gist.github.com/walkure/cf3b112b4705bdfffdec9cedee6d6e4d 、https://philippdubach.com/posts/degoogling-cost-me-my-youtube-feed-so-i-made-my-own/ ）。這個 feed 有兩個已知風險：
+  - YouTube 的 robots.txt 在 `User-agent: *` 底下禁止 `/feeds/videos.xml`（https://www.youtube.com/robots.txt ，2026-09-28 查）。
+  - miniflux 維護者回報，從 2025 年 12 月起，這個 feed 每天 09:00 到 12:00 UTC 會間歇回 404，所有客戶端都受影響（https://github.com/miniflux/v2/issues/4261 ）。buffer 每小時輪詢一次，feed 保留最近 15 筆，所以這段空窗只會延後抓取，不會漏掉影片。
 
 ## 什麼會推翻這個里程碑
 
@@ -107,6 +110,7 @@ A 級是 B 級的基礎，也是 B 級的退路。濃縮失敗、逾時，或濃
 - **某個節目的 guid 在不同次輪詢間改變。** Apple 規範要求 guid 永遠不變（https://podcasters.apple.com/support/823-podcast-requirements ）。不照做的來源要另訂鍵的規則。
 - **需要原本的節目筆記。** 例如想重試失敗的濃縮，或並列原文與濃縮文。覆寫內容欄位做不到，要改成獨立的表。
 - **逐項偵測誤判造成實際損失。** 這時改用來源旗標。
+- **YouTube 頻道 feed 在 Worker 上持續抓不到。** 這時改用 YouTube Data API 的 `playlistItems.list`：每次呼叫 1 單位配額，預設每天 10,000 單位，但需要一把新的 C 級 API key（https://developers.google.com/youtube/v3/docs/playlistItems/list 、https://developers.google.com/youtube/v3/getting-started ）。影片的鍵仍是觀看網址，所以不用重新產生任何鍵；但這是 RSS 以外的新抓取路徑，要寫新程式碼。
 
 沒選的方向：
 
