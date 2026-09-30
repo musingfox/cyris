@@ -484,6 +484,10 @@ class TestSelectPrimaryContentUrl:
             == "https://www.patreon.com/ieo/posts/x-123"
         )
 
+    def test_one_path_on_two_publications_under_one_domain_stays_ambiguous(self):
+        candidates = ["https://alice.substack.com/p/welcome", "https://bob.substack.com/p/welcome"]
+        assert select_primary_content_url(candidates, from_domain="substack.com") is None
+
     def test_different_queries_without_a_bare_form_stay_ambiguous(self):
         candidates = ["https://s.com/a/read?id=1", "https://s.com/a/read?id=2"]
         assert select_primary_content_url(candidates, "s.com") is None
@@ -563,6 +567,14 @@ class TestNewsletterViewUrlResolutionOrder:
         )
         assert art is not None
         assert art.url == "https://www.site.com/posts/hello"
+
+    def test_esp_archive_link_drops_an_entity_escaped_recipient_param(self, source_summarize):
+        html = '<a href="https://mailchi.mp/abc/28?x=1&amp;e=tok&amp;c2id=Z">View</a>'
+        art = newsletter_article(
+            _make_parsed(text_content="本期開場白……", html_content=html), source_summarize
+        )
+        assert art is not None
+        assert art.url == "https://mailchi.mp/abc/28?x=1"
 
     def test_labelled_text_link_drops_per_recipient_params(self, source_summarize):
         art = newsletter_article(

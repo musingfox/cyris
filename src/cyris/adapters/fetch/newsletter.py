@@ -20,7 +20,7 @@ from cyris.adapters.fetch.email_parser import (
     strip_tracking_params,
     unwrap_tracking_redirect,
 )
-from cyris.adapters.fetch.keywords import is_view_url_host, view_in_browser_re
+from cyris.adapters.fetch.keywords import canonical_host, is_view_url_host, view_in_browser_re
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -42,9 +42,12 @@ def _find_newsletter_view_url(html: str) -> str | None:
     """
     if not html:
         return None
-    # stdlib re is sufficient for controlled newsletter html
-    hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', html, re.I)
-    for href in hrefs:
+    # HTMLParser, not a regex over raw html: it decodes &amp; in the attribute, so
+    # a recipient parameter written as "&amp;e=" is seen as "e" and stripped.
+    parser = _HrefParser()
+    with suppress(Exception):
+        parser.feed(html)
+    for href in parser.hrefs:
         try:
             if is_view_url_host((urlsplit(href).hostname or "").lower()):
                 return strip_tracking_params(href, extra_params=NEWSLETTER_TRACKING_PARAMS)
@@ -105,16 +108,19 @@ def _is_sender_host(host: str, sender_host: str, from_domain: str) -> bool:
 def _distinct_pages(urls: list[str]) -> list[str]:
     """Collapse links that name one page into one, keeping first-seen order.
 
-    Two sender hosts serving one path are one page, and so is a page and a
-    query-string variant of it (a share or tracking suffix the strip lists do not
-    cover yet). Query variants with no bare form stay apart: on one path, different
-    queries can be different pages.
+    A page and a query-string variant of it are one page (a share or tracking
+    suffix the strip lists do not cover yet), and so is one path on two hosts that
+    `host_aliases` in keywords.json names as one site. Different hosts are otherwise
+    different pages, even under one parent domain, and query variants with no bare
+    form stay apart: on one path, different queries can be different pages.
     """
-    by_path: dict[str, list[str]] = {}
+    by_page: dict[tuple[str, str], list[str]] = {}
     for url in urls:
-        by_path.setdefault(urlparse(url).path.rstrip("/"), []).append(url)
+        parsed = urlparse(url)
+        key = (canonical_host((parsed.hostname or "").lower()), parsed.path.rstrip("/"))
+        by_page.setdefault(key, []).append(url)
     pages: list[str] = []
-    for variants in by_path.values():
+    for variants in by_page.values():
         bare = [url for url in variants if not urlparse(url).query]
         pages.extend(bare[:1] or variants)
     return pages

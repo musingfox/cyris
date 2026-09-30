@@ -124,3 +124,8 @@ def tracking_params() -> frozenset[str]:
 def base_tracking_params() -> frozenset[str]:
     """Parameters stripped from every link, newsletter or feed."""
     return frozenset(_vocabulary()["base_tracking_params"])
+
+
+def canonical_host(hostname: str) -> str:
+    """The host a known alias stands for (`host_aliases`), else the host itself."""
+    return _vocabulary()["host_aliases"].get(hostname, hostname)
