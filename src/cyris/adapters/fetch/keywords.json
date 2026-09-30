@@ -18,7 +18,7 @@
   "view_url_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
   "reject_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
   "reject_path_contains": ["unsubscribe"],
-  "reject_path_segments": ["checkout"],
+  "reject_path_segments": ["checkout", "comments", "settings"],
   "reject_path_suffixes": [
     ".avif",
     ".bmp",

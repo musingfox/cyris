@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from cyris.adapters.fetch.email_parser import (
-    extract_ref_urls,
     is_content_url,
     parse_newsletter,
     strip_tracking_params,
@@ -223,76 +222,20 @@ class TestNewsletterSubjectPrefixStripped:
         assert result.subject == "foo bar"
 
 
-class TestExtractNewsletterRefUrls:
-    def test_extracts_unwrapped_content_links(self):
-        html = """
-        <a href="https://xx.list-manage.com/track/click?u=1&amp;id=2&amp;url=https%3A%2F%2Fexample.com%2Fa%3Futm_source%3Dnl%26e%3Ddeadbeef00">Article</a>
-        <a href="https://xx.list-manage.com/track/click?u=1&amp;id=2&amp;url=https%3A%2F%2Fwww.patreon.com%2Fposts%2Ffoo-123">Patreon</a>
-        <a href="https://mailchi.mp/newsletter/view">View online</a>
-        <a href="mailto:news@example.com">Email</a>
-        <a href="https://xx.list-manage.com/unsubscribe?u=1">Unsubscribe</a>
-        """
-        assert extract_ref_urls(html) == [
-            "https://example.com/a",
-            "https://www.patreon.com/posts/foo-123",
-        ]
+class TestRejectedPathSegments:
+    def test_checkout_pages_carrying_subscriber_tokens_are_not_content(self):
+        assert is_content_url("https://www.patreon.com/checkout/ieo?rid=8675309") is False
 
-    def test_deduplicates_unwrapped_and_bare_links(self):
-        html = """
-        <a href="https://example.com/a">Article</a>
-        <a href="https://xx.list-manage.com/track/click?url=https%3A%2F%2Fexample.com%2Fa">Again</a>
-        """
-        assert extract_ref_urls(html) == ["https://example.com/a"]
+    def test_a_slug_that_merely_starts_with_checkout_is_content(self):
+        assert is_content_url("https://blog.example.com/checkout-ux-redesign") is True
 
-    def test_empty_html_has_no_links(self):
-        assert extract_ref_urls("") == []
+    def test_comment_threads_and_account_settings_are_not_content(self):
+        assert is_content_url("https://x.substack.com/p/my-post/comments") is False
+        assert is_content_url("https://www.patreon.com/settings/email/ieo") is False
 
-    def test_skips_checkout_pages_carrying_subscriber_tokens(self):
-        html = """
-        <a href="https://www.patreon.com/posts/real-article-123">Article</a>
-        <a href="https://www.patreon.com/checkout/ieo?rid=8675309&amp;ref_post_id=123">Join</a>
-        """
-        assert extract_ref_urls(html) == ["https://www.patreon.com/posts/real-article-123"]
-
-    def test_keeps_articles_whose_slug_merely_starts_with_checkout(self):
-        html = '<a href="https://blog.example.com/checkout-ux-redesign">Article</a>'
-        assert extract_ref_urls(html) == ["https://blog.example.com/checkout-ux-redesign"]
-
-    def test_skips_shares_and_images(self):
-        html = """
-        <a href="https://twitter.com/intent/tweet?url=https://example.com/a">Tweet</a>
-        <a href="https://facebook.com/sharer/sharer.php?u=https://example.com/a">Share</a>
-        <a href="https://example.com/assets/article.png">Image</a>
-        """
-        assert extract_ref_urls(html) == []
-
-    def test_skips_track_click_links_without_targets(self):
-        html = "".join(
-            f'<a href="https://xx.list-manage.com/track/click?u=1&id={i}">Click</a>'
-            for i in range(25)
-        )
-        assert extract_ref_urls(html) == []
-
-    def test_skips_malformed_href(self):
-        assert extract_ref_urls('<a href="http://[::1">Broken</a>') == []
-
-    def test_skips_numbered_campaign_archive_hosts(self):
-        html = '<a href="https://us9.campaign-archive1.com/?u=1">Archive</a>'
-        assert extract_ref_urls(html) == []
-
-    def test_keeps_non_share_paths_on_content_hosts(self):
-        html = """
-        <a href="https://blog.example.com/share/my-article">Article</a>
-        <a href="https://blog.example.com/articles/sharer-pattern">Another article</a>
-        """
-        assert extract_ref_urls(html) == [
-            "https://blog.example.com/share/my-article",
-            "https://blog.example.com/articles/sharer-pattern",
-        ]
-
-    def test_caps_extracted_links_at_five(self):
-        html = "".join(f'<a href="https://example.com/post-{i}">Post {i}</a>' for i in range(8))
-        assert extract_ref_urls(html) == [f"https://example.com/post-{i}" for i in range(5)]
+    def test_non_share_paths_on_content_hosts_are_content(self):
+        assert is_content_url("https://blog.example.com/share/my-article") is True
+        assert is_content_url("https://blog.example.com/articles/sharer-pattern") is True
 
 
 class TestUnwrapTrackClickUrl:

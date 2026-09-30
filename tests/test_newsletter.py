@@ -16,6 +16,7 @@ from cyris.adapters.fetch.newsletter import (
     harvest_url_candidates,
     newsletter_article,
     select_primary_content_url,
+    sender_domain,
 )
 from cyris.domain.models import Article, SourceConfig, StoredArticle, Tier
 
@@ -50,11 +51,12 @@ def _make_parsed(
     text_content: str = "本文內容",
     html_content: str = "",
     source_name: str = "Test",
+    from_email: str = "list@example.com",
 ) -> ParsedNewsletter:
     return ParsedNewsletter(
         source_name=source_name,
         subject=subject,
-        from_email="list@example.com",
+        from_email=from_email,
         date=datetime(2026, 7, 13),
         html_content=html_content,
         text_content=text_content,
@@ -443,6 +445,53 @@ class TestSelectPrimaryContentUrl:
             is None
         )
 
+    def test_without_a_known_sender_nothing_is_canonical(self):
+        assert select_primary_content_url(["https://s.com/posts/issue-1"]) is None
+
+    def test_from_domain_identifies_the_sender_without_a_homepage(self):
+        candidates = ["https://blog.acme.com/a/b", "https://www.s.com/posts/issue-1"]
+        assert (
+            select_primary_content_url(candidates, from_domain="s.com")
+            == "https://www.s.com/posts/issue-1"
+        )
+
+    def test_configured_homepage_host_beats_the_from_domain(self):
+        candidates = ["https://s.com/posts/issue-1", "https://esp.example/p/issue-1-copy"]
+        assert (
+            select_primary_content_url(candidates, "s.com", "esp.example")
+            == "https://s.com/posts/issue-1"
+        )
+
+    def test_query_variants_and_comment_threads_are_one_page(self):
+        candidates = [
+            "https://x.substack.com/p/my-post",
+            "https://x.substack.com/p/my-post/comments",
+            "https://x.substack.com/p/my-post?action=share",
+        ]
+        assert (
+            select_primary_content_url(candidates, from_domain="substack.com")
+            == "https://x.substack.com/p/my-post"
+        )
+
+    def test_one_path_on_two_sender_hosts_is_one_page(self):
+        candidates = [
+            "https://www.patreon.com/ieo/posts/x-123",
+            "https://open.patreon.com/ieo/posts/x-123",
+            "https://www.patreon.com/settings/email/ieo",
+        ]
+        assert (
+            select_primary_content_url(candidates, from_domain="patreon.com")
+            == "https://www.patreon.com/ieo/posts/x-123"
+        )
+
+    def test_different_queries_without_a_bare_form_stay_ambiguous(self):
+        candidates = ["https://s.com/a/read?id=1", "https://s.com/a/read?id=2"]
+        assert select_primary_content_url(candidates, "s.com") is None
+
+    def test_a_second_sender_post_keeps_the_issue_ambiguous(self):
+        candidates = ["https://x.substack.com/p/my-post", "https://x.substack.com/p/previous-issue"]
+        assert select_primary_content_url(candidates, from_domain="substack.com") is None
+
     def test_shallow_paths_and_esp_hosts_are_not_content_urls(self):
         assert select_primary_content_url(["https://s.com/join"], "s.com") is None
         assert select_primary_content_url(["https://mailchi.mp/abc/no-28"], "s.com") is None
@@ -499,6 +548,46 @@ class TestNewsletterViewUrlResolutionOrder:
         assert art.url == "https://site.com/posts/hello"
         assert "e=" not in art.url
         assert "utm_" not in art.url
+
+    def test_from_domain_finds_the_post_without_a_homepage(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(
+                text_content="hello",
+                html_content=(
+                    '<a href="https://www.site.com/posts/hello?utm_source=n">x</a>'
+                    '<a href="https://blog.other.com/a/quoted">q</a>'
+                ),
+                from_email="Site Weekly <news@site.com>",
+            ),
+            source_summarize,
+        )
+        assert art is not None
+        assert art.url == "https://www.site.com/posts/hello"
+
+    def test_labelled_text_link_drops_per_recipient_params(self, source_summarize):
+        art = newsletter_article(
+            _make_parsed(
+                text_content="網頁版 (https://site.com/x?post_id=7&c2id=Z&ref=keep)\n",
+                html_content="",
+            ),
+            source_summarize,
+        )
+        assert art is not None
+        assert art.url == "https://site.com/x?ref=keep"
+
+
+class TestSenderDomain:
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            ("news@Site.com", "site.com"),
+            ("Site Weekly <news@mail.site.com>", "mail.site.com"),
+            ("", ""),
+            ("no address", ""),
+        ],
+    )
+    def test_reads_the_address_domain(self, header, expected):
+        assert sender_domain(header) == expected
 
 
 class TestSourceHomepageFallback:
