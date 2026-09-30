@@ -229,10 +229,6 @@ class TestRejectedPathSegments:
     def test_a_slug_that_merely_starts_with_checkout_is_content(self):
         assert is_content_url("https://blog.example.com/checkout-ux-redesign") is True
 
-    def test_comment_threads_and_account_settings_are_not_content(self):
-        assert is_content_url("https://x.substack.com/p/my-post/comments") is False
-        assert is_content_url("https://www.patreon.com/settings/email/ieo") is False
-
     def test_non_share_paths_on_content_hosts_are_content(self):
         assert is_content_url("https://blog.example.com/share/my-article") is True
         assert is_content_url("https://blog.example.com/articles/sharer-pattern") is True

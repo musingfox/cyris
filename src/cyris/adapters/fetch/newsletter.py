@@ -20,7 +20,12 @@ from cyris.adapters.fetch.email_parser import (
     strip_tracking_params,
     unwrap_tracking_redirect,
 )
-from cyris.adapters.fetch.keywords import canonical_host, is_view_url_host, view_in_browser_re
+from cyris.adapters.fetch.keywords import (
+    canonical_host,
+    fits_platform_post_shape,
+    is_view_url_host,
+    view_in_browser_re,
+)
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -134,8 +139,11 @@ def select_primary_content_url(
     Path depth and frequency describe link shape, not canonical confidence. A URL
     is canonical only when the message links a single content page on the sender's
     own host: the configured homepage host, else the From address's domain. The
-    sender is known, never voted in by link counts. Anything else returns None and
-    callers use the explicit view-link or synthetic-URL fallback.
+    sender is known, never voted in by link counts. On a large platform's host only
+    that platform's post shape counts (`platform_post_paths` in keywords.json), which
+    is what keeps its legal, settings and comment pages from making an issue ambiguous.
+    Anything else returns None and callers use the explicit view-link or synthetic-URL
+    fallback.
     """
     sender_host = (sender_host or "").lower()
     from_domain = (from_domain or "").lower()
@@ -148,6 +156,7 @@ def select_primary_content_url(
             if is_content_url(url)
             and _is_sender_host((urlparse(url).hostname or "").lower(), sender_host, from_domain)
             and _path_depth(url) >= _MIN_CONTENT_PATH_DEPTH
+            and fits_platform_post_shape((urlparse(url).hostname or "").lower(), urlparse(url).path)
         )
     )
     pages = _distinct_pages(sender_urls)

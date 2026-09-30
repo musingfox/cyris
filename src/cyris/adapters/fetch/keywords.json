@@ -18,9 +18,14 @@
   "view_url_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
   "reject_host_patterns": ["(?:^|\\.)campaign-archive\\d*\\.com$"],
   "reject_path_contains": ["unsubscribe"],
-  "reject_path_segments": ["checkout", "comments", "settings"],
+  "reject_path_segments": ["checkout"],
   "_comment_host_aliases": "Hosts that serve the same page as another host, so one issue linking both is still one page. Keys and values are exact hostnames: an alias is a known fact about one sender, never inferred from a shared parent domain (alice.substack.com and bob.substack.com are different publications).",
   "host_aliases": { "open.patreon.com": "www.patreon.com" },
+  "_comment_platform_posts": "What a post URL looks like on a large publishing platform, so every other link on that platform's host (legal footer, account settings, comment thread, creator home) is not a candidate for an issue's canonical link. A rule per platform, never per newsletter: a sender on its own domain gets no entry and is judged by structure alone. `host` covers subdomains; each shape is matched segment by segment, `*` standing for exactly one segment.",
+  "platform_post_paths": [
+    { "host": "patreon.com", "shapes": ["/posts/*", "/*/posts/*"] },
+    { "host": "substack.com", "shapes": ["/p/*"] }
+  ],
   "reject_path_suffixes": [
     ".avif",
     ".bmp",

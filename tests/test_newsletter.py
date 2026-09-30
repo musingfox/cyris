@@ -478,6 +478,7 @@ class TestSelectPrimaryContentUrl:
             "https://www.patreon.com/ieo/posts/x-123",
             "https://open.patreon.com/ieo/posts/x-123",
             "https://www.patreon.com/settings/email/ieo",
+            "https://www.patreon.com/policy/legal",
         ]
         assert (
             select_primary_content_url(candidates, from_domain="patreon.com")
@@ -487,6 +488,24 @@ class TestSelectPrimaryContentUrl:
     def test_one_path_on_two_publications_under_one_domain_stays_ambiguous(self):
         candidates = ["https://alice.substack.com/p/welcome", "https://bob.substack.com/p/welcome"]
         assert select_primary_content_url(candidates, from_domain="substack.com") is None
+
+    def test_platform_pages_that_are_not_posts_do_not_compete(self):
+        candidates = [
+            "https://www.patreon.com/ieo/posts/x-123",
+            "https://www.patreon.com/policy/legal",
+            "https://www.patreon.com/settings/email/ieo",
+            "https://www.patreon.com/c/ieo/home",
+        ]
+        assert (
+            select_primary_content_url(candidates, "www.patreon.com")
+            == "https://www.patreon.com/ieo/posts/x-123"
+        )
+
+    def test_a_sender_off_any_platform_is_judged_by_structure_alone(self):
+        # No platform rule for this host: a legal page stays a candidate, so the
+        # issue is ambiguous rather than rescued by a per-site word list.
+        candidates = ["https://s.com/posts/issue-1", "https://s.com/policy/legal"]
+        assert select_primary_content_url(candidates, "s.com") is None
 
     def test_different_queries_without_a_bare_form_stay_ambiguous(self):
         candidates = ["https://s.com/a/read?id=1", "https://s.com/a/read?id=2"]
