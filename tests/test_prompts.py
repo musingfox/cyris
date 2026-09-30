@@ -59,6 +59,11 @@ class TestSummarizeSystemPrompt:
             or "agree" in SUMMARIZE_SYSTEM.lower()
         )
 
+    def test_summarize_contract_associates_summaries_with_article_ids(self):
+        assert '"summaries"' in SUMMARIZE_SYSTEM
+        assert "keyed by that ID" in SUMMARIZE_SYSTEM
+        assert "Never use one shared section" in SUMMARIZE_SYSTEM
+
 
 class TestBuildFilterPrompt:
     def test_build_filter_prompt_custom_snippet_length_500(self):

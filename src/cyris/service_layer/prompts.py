@@ -92,12 +92,16 @@ or complementary viewpoints
 4. When sources conflict, attribute specific claims to sources rather than \
 stating facts without attribution
 
-Respond in JSON format:
+Respond in JSON format. For each returned article ID, provide its own \
+individual summary in an object keyed by that ID. Never use one shared section \
+summary for multiple articles.
 {
   "sections": [
     {
       "heading": "<thematic heading in <output_language>>",
-      "summary": "<3-5 sentence summary in <output_language>>",
+      "summaries": {
+        "<article id>": "<3-5 sentence summary in <output_language>>"
+      },
       "article_ids": [<article id>, ...]
     }
   ]

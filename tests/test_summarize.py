@@ -22,6 +22,13 @@ class TestGroupByTags:
         assert len(groups["tech"]) == 2  # TechCrunch + Stratechery
         assert len(groups["international"]) == 1
 
+    def test_summarize_contract_requires_per_article_summaries(self):
+        from cyris.service_layer.prompts import SUMMARIZE_SYSTEM
+
+        assert '"summaries"' in SUMMARIZE_SYSTEM
+        assert "keyed by that ID" in SUMMARIZE_SYSTEM
+        assert "Never use one shared section" in SUMMARIZE_SYSTEM
+
     def test_no_tags_goes_to_general(self):
         from datetime import datetime
 
@@ -42,6 +49,75 @@ class TestGroupByTags:
 
 
 class TestSummarizeArticles:
+    async def test_same_section_returns_distinct_article_summaries(self, sample_summarize_articles):
+        first = sample_summarize_articles[0]
+        second = first.model_copy(
+            update={
+                "id": 104,
+                "title": "Unrelated second article",
+                "url": "https://example.com/unrelated",
+                "content": "Second article's distinct content.",
+            }
+        )
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Shared theme",
+                            "article_ids": [0, 1],
+                            "summaries": {
+                                "0": "Article one's specific findings.",
+                                "1": "Article two's separate argument.",
+                            },
+                        }
+                    ]
+                }
+            )
+        )
+
+        sections = await summarize_articles(
+            [first, second],
+            llm,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert [item.summary for item in sections[0].items] == [
+            "Article one's specific findings.",
+            "Article two's separate argument.",
+        ]
+
+    async def test_missing_per_article_summary_uses_excerpt(self, sample_summarize_articles):
+        article = sample_summarize_articles[0]
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Shared theme",
+                            "summary": "This shared section summary must not be used.",
+                            "article_ids": [0],
+                        }
+                    ]
+                }
+            )
+        )
+
+        item = (
+            await summarize_articles(
+                [article],
+                llm,
+                snippet_length=1000,
+                output_language="zh-Hant",
+                style_prompt="",
+            )
+        )[0].items[0]
+
+        assert item.summary != "This shared section summary must not be used."
+        assert item.summary == article.content[:300].strip()
+
     async def test_summarize_returns_sections(self, sample_summarize_articles):
         llm = FakeLLM(
             json.dumps(

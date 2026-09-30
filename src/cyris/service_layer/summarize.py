@@ -78,11 +78,12 @@ async def summarize_articles(
             continue
 
         for section_data in data.get("sections", []):
-            # Ids are group-positional indexes; everything else (title, source,
-            # url, ref_urls) comes from the local article, never the LLM echo.
             raw_ids = section_data.get("article_ids") or [
                 ref.get("id") for ref in section_data.get("articles", [])
             ]
+            summary_by_id = section_data.get("summaries", {})
+            if not isinstance(summary_by_id, dict):
+                summary_by_id = {}
             items = []
             for raw_id in raw_ids:
                 try:
@@ -95,10 +96,18 @@ async def summarize_articles(
                     )
                     continue
                 article = group_articles[index]
+                summary = summary_by_id.get(str(raw_id))
+                if not isinstance(summary, str) or not summary.strip():
+                    logger.warning(
+                        "Summarize omitted per-article summary for id %r in tag '%s'",
+                        raw_id,
+                        tag,
+                    )
+                    summary = excerpt(article.content, 300)
                 items.append(
                     DigestItem(
                         title=article.title,
-                        summary=section_data.get("summary", ""),
+                        summary=summary,
                         sources=[article.source_name],
                         urls=[article.url],
                         score=article_scores.get(article.url) if article_scores else None,
