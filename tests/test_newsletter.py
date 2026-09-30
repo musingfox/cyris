@@ -132,7 +132,7 @@ class TestNewsletterBodyIsTheArticle:
         p = _make_parsed()
         assert hasattr(p, "links") is False
 
-    def test_summarize_article_carries_unwrapped_reference_urls(self, source_summarize):
+    def test_unconfirmed_body_link_is_not_a_reader_reference(self, source_summarize):
         p = _make_parsed(
             subject="曼報 #67｜IMAX",
             text_content="本期主文內容……（本文）",
@@ -143,10 +143,10 @@ class TestNewsletterBodyIsTheArticle:
         )
         art = newsletter_article(p, source_summarize)
         assert art is not None
-        assert art.ref_urls == ["https://example.com/post"]
+        assert art.ref_urls == []
         assert art.url.startswith("newsletter:")
 
-    def test_view_url_is_not_a_reference_url(self, source_summarize):
+    def test_external_body_link_does_not_become_a_reference_url(self, source_summarize):
         p = _make_parsed(
             text_content="本文",
             html_content=(
@@ -158,7 +158,7 @@ class TestNewsletterBodyIsTheArticle:
         art = newsletter_article(p, source_summarize)
         assert art is not None
         assert art.url == "https://mailchi.mp/abc/no-28"
-        assert art.ref_urls == ["https://example.com/a"]
+        assert art.ref_urls == []
 
     def test_plain_text_article_has_no_reference_urls(self, source_summarize):
         art = newsletter_article(
@@ -415,91 +415,37 @@ class TestHarvestUrlCandidates:
 
 
 class TestSelectPrimaryContentUrl:
-    def test_configured_homepage_host_beats_a_more_frequent_third_party(self):
-        candidates = [
-            "https://s.com/posts/issue-1",
-            "https://blog.acme.com/a/b",
-            "https://blog.acme.com/a/c",
-            "https://blog.acme.com/a/d",
-        ]
-        assert select_primary_content_url(candidates, "s.com") == "https://s.com/posts/issue-1"
+    def test_selects_only_unambiguous_configured_sender_content_url(self):
+        url = "https://s.com/posts/issue-1"
+        assert select_primary_content_url([url, url], "s.com") == url
 
-    def test_falls_back_to_frequency_when_homepage_host_is_absent(self):
-        candidates = [
-            "https://s.com/posts/issue-1",
-            "https://blog.acme.com/a/b",
-            "https://blog.acme.com/a/c",
-        ]
-        assert (
-            select_primary_content_url(candidates, "never-linked.com")
-            == "https://blog.acme.com/a/b"
-        )
-
-    def test_depth_outranks_frequency(self):
+    def test_deeper_sender_footer_does_not_outrank_article(self):
         assert (
             select_primary_content_url(
                 [
-                    "https://a.com/p/one",
-                    "https://a.com/p/one",
-                    "https://a.com/p/one",
-                    "https://a.com/blog/2026/deep",
-                ]
-            )
-            == "https://a.com/blog/2026/deep"
-        )
-
-    def test_frequency_breaks_depth_ties(self):
-        assert (
-            select_primary_content_url(
-                ["https://a.com/x/y", "https://a.com/x/y", "https://a.com/s/t"]
-            )
-            == "https://a.com/x/y"
-        )
-
-    def test_dominant_host_then_first_seen_on_ties(self):
-        assert (
-            select_primary_content_url(
-                [
-                    "https://a.com/x/y",
-                    "https://b.com/deep/er/path",
-                    "https://a.com/p/q",
-                    "https://a.com/r/s",
-                ]
-            )
-            == "https://a.com/x/y"
-        )
-
-    def test_all_shallow_paths_yield_none(self):
-        assert (
-            select_primary_content_url(
-                ["https://a.com/join", "https://a.com/join", "https://a.com/"]
+                    "https://s.com/posts/issue-1",
+                    "https://s.com/about/legal/archive/2026",
+                ],
+                "s.com",
             )
             is None
         )
 
-    def test_esp_hosts_yield_none(self):
+    def test_host_frequency_is_not_canonical_confidence(self):
         assert (
             select_primary_content_url(
-                ["https://mailchi.mp/abc/no-28", "https://xx.list-manage.com/a/b"]
+                [
+                    "https://blog.example/a/one",
+                    "https://blog.example/a/two",
+                    "https://blog.example/a/three",
+                ]
             )
             is None
         )
 
-    def test_empty_candidates_yield_none(self):
-        assert select_primary_content_url([]) is None
-
-    def test_full_hostname_not_etld_plus_one(self):
-        assert (
-            select_primary_content_url(
-                [
-                    "https://www.patreon.com/ieo/posts/x/y",
-                    "https://open.patreon.com/ieo/posts/x/y",
-                    "https://www.patreon.com/settings/email/ieo",
-                    "https://www.patreon.com/ieo/posts/x/y",
-                ]
-            )
-            == "https://www.patreon.com/ieo/posts/x/y"
-        )
+    def test_shallow_paths_and_esp_hosts_are_not_content_urls(self):
+        assert select_primary_content_url(["https://s.com/join"], "s.com") is None
+        assert select_primary_content_url(["https://mailchi.mp/abc/no-28"], "s.com") is None
 
 
 class TestNewsletterViewUrlResolutionOrder:
@@ -534,13 +480,20 @@ class TestNewsletterViewUrlResolutionOrder:
         expected = "newsletter:" + hashlib.sha256(b"Test NewsletterIssue #1").hexdigest()
         assert art.url == expected
 
-    def test_primary_url_strips_e_and_utm(self, source_summarize):
+    def test_primary_url_strips_e_and_utm(self):
+        source = SourceConfig(
+            name="Test Newsletter",
+            type="newsletter",
+            homepage="https://site.com/newsletter",
+            tier=Tier.SUMMARIZE,
+            tags=[],
+        )
         art = newsletter_article(
             _make_parsed(
                 text_content="hello",
                 html_content='<a href="https://site.com/posts/hello?e=tok&utm_source=n">x</a>',
             ),
-            source_summarize,
+            source,
         )
         assert art is not None
         assert art.url == "https://site.com/posts/hello"
@@ -568,7 +521,7 @@ class TestSourceHomepageFallback:
         source = SourceConfig(
             name="曼報",
             type="newsletter",
-            homepage="https://example.com/newsletter",
+            homepage="https://site.com/newsletter",
             tier=Tier.SUMMARIZE,
         )
         art = newsletter_article(
@@ -576,7 +529,7 @@ class TestSourceHomepageFallback:
         )
         assert art is not None
         assert art.url == "https://site.com/posts/42"
-        assert "https://example.com/newsletter" not in art.ref_urls
+        assert "https://site.com/newsletter" not in art.ref_urls
 
     def test_recipient_token_is_stripped_from_a_configured_homepage(self):
         """A configured homepage is not exempt from the recipient-token guard."""

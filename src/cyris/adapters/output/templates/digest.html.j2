@@ -434,7 +434,7 @@
                     </h2>
                     <p class="summary">{{ lead_story.summary }}</p>
                     <div class="meta ruled">
-                        <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>{% if lead_story.ref_urls | length > 1 %} {{ source_list(lead_story) }}{% endif %}
+                        <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>
                         {{ promote_btn(lead_story) }}
                     </div>
                 </article>
@@ -451,7 +451,7 @@
                         <p class="summary">{{ item.summary }}</p>
                         <div class="meta">
                             {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %}
+                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
                             {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
