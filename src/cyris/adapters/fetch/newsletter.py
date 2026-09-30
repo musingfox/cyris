@@ -103,10 +103,11 @@ def sender_domain(from_email: str) -> str:
 
 
 def _is_sender_host(host: str, sender_host: str, from_domain: str) -> bool:
-    # A configured homepage names the host exactly. Without one, the From domain is
-    # the next known fact: the sender owns that domain and its subdomains.
+    # A configured homepage names the host exactly, up to the aliases `host_aliases`
+    # declares as one site. Without one, the From domain is the next known fact: the
+    # sender owns that domain and its subdomains.
     if sender_host:
-        return host == sender_host
+        return canonical_host(host) == canonical_host(sender_host)
     return bool(from_domain) and (host == from_domain or host.endswith("." + from_domain))
 
 

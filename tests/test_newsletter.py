@@ -485,6 +485,10 @@ class TestSelectPrimaryContentUrl:
             == "https://www.patreon.com/ieo/posts/x-123"
         )
 
+    def test_an_alias_of_the_homepage_host_is_the_sender(self):
+        candidates = ["https://open.patreon.com/ieo/posts/x-123"]
+        assert select_primary_content_url(candidates, "www.patreon.com") == candidates[0]
+
     def test_one_path_on_two_publications_under_one_domain_stays_ambiguous(self):
         candidates = ["https://alice.substack.com/p/welcome", "https://bob.substack.com/p/welcome"]
         assert select_primary_content_url(candidates, from_domain="substack.com") is None
