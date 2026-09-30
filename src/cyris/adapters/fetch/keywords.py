@@ -124,3 +124,22 @@ def tracking_params() -> frozenset[str]:
 def base_tracking_params() -> frozenset[str]:
     """Parameters stripped from every link, newsletter or feed."""
     return frozenset(_vocabulary()["base_tracking_params"])
+
+
+def canonical_host(hostname: str) -> str:
+    """The host a known alias stands for (`host_aliases`), else the host itself."""
+    return _vocabulary()["host_aliases"].get(hostname, hostname)
+
+
+def _shape_matches(shape: str, path: str) -> bool:
+    want = [part for part in shape.split("/") if part]
+    have = [part for part in path.split("/") if part]
+    return len(want) == len(have) and all(w in ("*", h) for w, h in zip(want, have, strict=True))
+
+
+def fits_platform_post_shape(hostname: str, path: str) -> bool:
+    """False only for a known platform's host whose path is not one of its post shapes."""
+    for rule in _vocabulary()["platform_post_paths"]:
+        if host_matches(hostname, rule["host"]):
+            return any(_shape_matches(shape, path) for shape in rule["shapes"])
+    return True

@@ -83,7 +83,6 @@ class _HrefParser(HTMLParser):
             self.hrefs.extend(value for name, value in attrs if name == "href" and value)
 
 
-_MAX_REF_URLS = 5
 # Re-exported: callers import it from here, the values live in keywords.json.
 NEWSLETTER_TRACKING_PARAMS = tracking_params()
 
@@ -110,37 +109,6 @@ def is_content_url(url: str) -> bool:
         # otherwise be offered as this issue's canonical link on the public digest.
         or is_rejected_path(path)
     )
-
-
-def extract_ref_urls(html: str) -> list[str]:
-    """Extract ordered, unique content URLs from newsletter HTML (first _MAX_REF_URLS)."""
-    if not html:
-        return []
-
-    parser = _HrefParser()
-    with suppress(Exception):
-        parser.feed(html)
-    ref_urls: list[str] = []
-    seen: set[str] = set()
-
-    for href in parser.hrefs:
-        try:
-            url = unwrap_tracking_redirect(href)
-        except Exception:
-            continue
-        if not is_content_url(url):
-            continue
-
-        url = strip_tracking_params(url, extra_params=NEWSLETTER_TRACKING_PARAMS)
-        if url not in seen:
-            seen.add(url)
-            ref_urls.append(url)
-            # ponytail: hard cap keeps link-farm newsletters from flooding the reference links;
-            # make it configurable only if a real source needs more
-            if len(ref_urls) >= _MAX_REF_URLS:
-                break
-
-    return ref_urls
 
 
 class ParsedNewsletter(BaseModel):

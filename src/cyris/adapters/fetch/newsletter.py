@@ -8,20 +8,24 @@ import hashlib
 import html
 import logging
 import re
-from collections import Counter
 from contextlib import suppress
+from email.utils import parseaddr
 from urllib.parse import urlparse, urlsplit
 
 from cyris.adapters.fetch.email_parser import (
     NEWSLETTER_TRACKING_PARAMS,
     ParsedNewsletter,
     _HrefParser,
-    extract_ref_urls,
     is_content_url,
     strip_tracking_params,
     unwrap_tracking_redirect,
 )
-from cyris.adapters.fetch.keywords import is_view_url_host, view_in_browser_re
+from cyris.adapters.fetch.keywords import (
+    canonical_host,
+    fits_platform_post_shape,
+    is_view_url_host,
+    view_in_browser_re,
+)
 from cyris.domain.models import Article, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -43,12 +47,15 @@ def _find_newsletter_view_url(html: str) -> str | None:
     """
     if not html:
         return None
-    # stdlib re is sufficient for controlled newsletter html
-    hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', html, re.I)
-    for href in hrefs:
+    # HTMLParser, not a regex over raw html: it decodes &amp; in the attribute, so
+    # a recipient parameter written as "&amp;e=" is seen as "e" and stripped.
+    parser = _HrefParser()
+    with suppress(Exception):
+        parser.feed(html)
+    for href in parser.hrefs:
         try:
             if is_view_url_host((urlsplit(href).hostname or "").lower()):
-                return strip_tracking_params(href)
+                return strip_tracking_params(href, extra_params=NEWSLETTER_TRACKING_PARAMS)
         except Exception:
             continue
     return None
@@ -89,47 +96,72 @@ def _path_depth(url: str) -> int:
     return len([part for part in path.split("/") if part])
 
 
-def select_primary_content_url(candidates: list[str], sender_host: str | None = None) -> str | None:
-    """Pick the sender-owned, deepest, most frequent content URL, or None.
+def sender_domain(from_email: str) -> str:
+    """The domain of a From header's address, lowercased; empty when it has none."""
+    _, at, domain = parseaddr(from_email or "")[1].rpartition("@")
+    return domain.strip(".").lower() if at else ""
 
-    sender_host (the source's configured homepage host) makes the sender's domain
-    known rather than inferred. Without it the most frequent host is only a guess:
-    an issue quoting one self link and three from another blog would hand that
-    blog's article to the digest as this issue's canonical link.
+
+def _is_sender_host(host: str, sender_host: str, from_domain: str) -> bool:
+    # A configured homepage names the host exactly, up to the aliases `host_aliases`
+    # declares as one site. Without one, the From domain is the next known fact: the
+    # sender owns that domain and its subdomains.
+    if sender_host:
+        return canonical_host(host) == canonical_host(sender_host)
+    return bool(from_domain) and (host == from_domain or host.endswith("." + from_domain))
+
+
+def _distinct_pages(urls: list[str]) -> list[str]:
+    """Collapse links that name one page into one, keeping first-seen order.
+
+    A page and a query-string variant of it are one page (a share or tracking
+    suffix the strip lists do not cover yet), and so is one path on two hosts that
+    `host_aliases` in keywords.json names as one site. Different hosts are otherwise
+    different pages, even under one parent domain, and query variants with no bare
+    form stay apart: on one path, different queries can be different pages.
     """
-    content = [url for url in candidates if is_content_url(url)]
-    if not content:
-        return None
+    by_page: dict[tuple[str, str], list[str]] = {}
+    for url in urls:
+        parsed = urlparse(url)
+        key = (canonical_host((parsed.hostname or "").lower()), parsed.path.rstrip("/"))
+        by_page.setdefault(key, []).append(url)
+    pages: list[str] = []
+    for variants in by_page.values():
+        bare = [url for url in variants if not urlparse(url).query]
+        pages.extend(bare[:1] or variants)
+    return pages
 
-    host_order: list[str] = []
-    host_count: Counter[str] = Counter()
-    for url in content:
-        host = (urlparse(url).hostname or "").lower()
-        host_count[host] += 1
-        if host not in host_order:
-            host_order.append(host)
 
+def select_primary_content_url(
+    candidates: list[str], sender_host: str | None = None, from_domain: str | None = None
+) -> str | None:
+    """Return a canonical sender URL only when candidates identify one unambiguously.
+
+    Path depth and frequency describe link shape, not canonical confidence. A URL
+    is canonical only when the message links a single content page on the sender's
+    own host: the configured homepage host, else the From address's domain. The
+    sender is known, never voted in by link counts. On a large platform's host only
+    that platform's post shape counts (`platform_post_paths` in keywords.json), which
+    is what keeps its legal, settings and comment pages from making an issue ambiguous.
+    Anything else returns None and callers use the explicit view-link or synthetic-URL
+    fallback.
+    """
     sender_host = (sender_host or "").lower()
-    if sender_host and sender_host in host_count:
-        dominant = sender_host
-    else:
-        dominant = max(host_order, key=lambda h: (host_count[h], -host_order.index(h)))
-
-    eligible = [
-        url
-        for url in content
-        if (urlparse(url).hostname or "").lower() == dominant
-        and _path_depth(url) >= _MIN_CONTENT_PATH_DEPTH
-    ]
-    if not eligible:
+    from_domain = (from_domain or "").lower()
+    if not sender_host and not from_domain:
         return None
-
-    freq: Counter[str] = Counter()
-    first: dict[str, int] = {}
-    for i, url in enumerate(eligible):
-        freq[url] += 1
-        first.setdefault(url, i)
-    return max(first, key=lambda u: (_path_depth(u), freq[u], -first[u]))
+    sender_urls = list(
+        dict.fromkeys(
+            url
+            for url in candidates
+            if is_content_url(url)
+            and _is_sender_host((urlparse(url).hostname or "").lower(), sender_host, from_domain)
+            and _path_depth(url) >= _MIN_CONTENT_PATH_DEPTH
+            and fits_platform_post_shape((urlparse(url).hostname or "").lower(), urlparse(url).path)
+        )
+    )
+    pages = _distinct_pages(sender_urls)
+    return pages[0] if len(pages) == 1 else None
 
 
 def _find_view_url_in_text(text: str) -> str | None:
@@ -148,7 +180,7 @@ def _find_view_url_in_text(text: str) -> str | None:
         url = _URL_RE.search(line, marker.end())
         if url:
             # trailing sentence punctuation is not part of the URL ("…/posts/1。")
-            return strip_tracking_params(unwrap_tracking_redirect(url.group().rstrip(".,;:。，、")))
+            return _normalize_candidate(url.group().rstrip(".,;:。，、"))
     return None
 
 
@@ -156,8 +188,8 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
     """Return the email body as the Article for this newsletter issue.
 
     0 or 1 article. Content from text_content or unescaped html.
-    Prefer structurally selected sender-domain post URL; else hostname ESP archive;
-    else labelled web-version link in the text body; else synthetic newsletter:ID url.
+    Prefer the one sender-owned post URL; else the labelled web-version link in the
+    text body; else the hostname-matched ESP archive; else synthetic newsletter:ID url.
     Empty body -> None + WARNING (singular per D5).
     """
     article_id = _generate_article_id(source.name, parsed.subject)
@@ -167,10 +199,12 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
             sender_host = urlparse(source.homepage).hostname or ""
     view_url = (
         select_primary_content_url(
-            harvest_url_candidates(parsed.html_content, parsed.text_content), sender_host
+            harvest_url_candidates(parsed.html_content, parsed.text_content),
+            sender_host,
+            sender_domain(parsed.from_email),
         )
-        or _find_newsletter_view_url(parsed.html_content)
         or _find_view_url_in_text(parsed.text_content)
+        or _find_newsletter_view_url(parsed.html_content)
     )
     raw = parsed.text_content.strip() or " ".join(
         html.unescape(re.sub(r"<[^>]+>", " ", parsed.html_content)).split()
@@ -183,19 +217,14 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
             source.name,
         )
         return None
-    ref_urls = extract_ref_urls(parsed.html_content)
+    ref_urls: list[str] = []
     if view_url is None and source.homepage:
-        # This issue has no permalink of its own. Offer the publisher's site so the
-        # reader gets somewhere instead of an unlinked title — as a ref_url, never as
-        # Article.url, which is the store's dedup key: a homepage sitting there would
-        # make every later issue look like a duplicate of the first.
-        # Only the recipient-token strip applies here. is_content_url exists to judge
-        # links harvested from the mail and drops ESP hosts — but a homepage is
-        # configured by hand, and for a Mailchimp-only newsletter the publisher's site
-        # IS its campaign-archive page.
+        # A configured publisher homepage is the only reader link allowed without
+        # a confident per-issue canonical URL. Arbitrary email-body links belong to
+        # the newsletter content, not to the one Article this email represents.
         homepage = strip_tracking_params(source.homepage.strip())
-        if urlparse(homepage).scheme in {"http", "https"} and homepage not in ref_urls:
-            ref_urls = [*ref_urls, homepage]
+        if urlparse(homepage).scheme in {"http", "https"}:
+            ref_urls = [homepage]
 
     return Article(
         id=article_id,

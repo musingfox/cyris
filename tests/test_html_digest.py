@@ -1189,14 +1189,14 @@ def test_mixed_cluster_references_render_while_votes_use_store_urls(tmp_path):
     assert 'data-urls=\'["https://store.example/a", "newsletter:202"]\'' in html
 
 
-def test_newsletter_references_render_for_every_digest_section(tmp_path):
-    """Every newsletter section exposes each original article link."""
+def test_single_newsletter_article_does_not_render_body_links_as_sources(tmp_path):
+    """A newsletter's body links do not turn its one article into many sources."""
     item = DigestItem(
         title="Newsletter item",
         summary="s",
         sources=["Newsletter"],
         urls=["newsletter:abc"],
-        ref_urls=["https://r1.com/a", "https://r2.com/b"],
+        ref_urls=["https://article.example/story", "https://footer.example/privacy"],
     )
     content = DigestContent(
         date="2026-04-15",
@@ -1206,17 +1206,14 @@ def test_newsletter_references_render_for_every_digest_section(tmp_path):
         articles_included=1,
         usage=UsageStats(),
         featured_articles=[DigestSection(heading="Features", items=[item, item])],
-        fan_sections=[DigestSection(heading="Fan", items=[item])],
-        attention_sections=[DigestSection(heading="Attention", items=[item])],
-        filtered_headlines=[item],
     )
 
     html = HtmlDigestWriter(tmp_path).render(content)
 
-    assert html.count('<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>') == 5
-    assert html.count('<span class="source-tag">Newsletter</span>') == 4
-    assert html.count("data-urls='[\"newsletter:abc\"]'") == 5
-    assert "data-urls='[&#34;https://r1.com/a&#34;" not in html
+    assert "2 sources" not in html
+    assert "footer.example" not in html
+    assert html.count('<span class="source-tag">Newsletter</span>') == 2
+    assert html.count("data-urls='[\"newsletter:abc\"]'") == 2
 
 
 def test_fan_item_without_references_keeps_its_store_url(tmp_path):
