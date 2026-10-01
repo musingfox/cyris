@@ -27,7 +27,8 @@ addEventListener("hashchange", route);
 route();
 
 // A category's Save is live only while its form differs from what was last
-// loaded or saved, and the category list marks that form with a dot.
+// loaded or saved, or holds a missing setting it can save as it stands; the
+// category list marks a form that differs with a dot.
 const clean = new Map();
 // A form whose save is in flight keeps its Save disabled and its notice.
 const saving = new Set();
@@ -52,7 +53,8 @@ function refresh(form) {
     && JSON.stringify(snapshot(form)) !== JSON.stringify(clean.get(form));
   // With no provider chosen, there is nothing a model could be checked against.
   const blocked = form.dataset.tab === "model" && partChanged(form, LLM_PART) && !chosen();
-  saveButton(form).disabled = !dirty || blocked || saving.has(form);
+  const pending = clean.has(form) && unsavedIn(form).length > 0;
+  saveButton(form).disabled = !(dirty || pending) || blocked || saving.has(form);
   navLink(form).classList.toggle("dirty", dirty);
 }
 
@@ -80,6 +82,13 @@ let FIELDS = {};
 // The settings saved through /api/settings/values, by the id of their control.
 let PLAIN = {};
 const keysSavedBy = (route) => Object.keys(FIELDS).filter((key) => FIELDS[key].route === route);
+// A missing setting whose answer may be empty, such as Style or Email to, is
+// already answered by its empty field: on a first boot nothing has changed, yet
+// it can be saved as it stands. Not the webhook, whose off is its own action, nor
+// a model, which is saved with its provider.
+const SENT_AS_SHOWN = ["plain", "email"];
+const unsavedIn = (form) => state.may_be_empty.filter((key) => state.missing.includes(key)
+  && SENT_AS_SHOWN.includes(FIELDS[key].route) && form.contains($(FIELDS[key].controls[0])));
 
 // A control's own placeholder, which a missing value covers with "Not set".
 document.querySelectorAll("[placeholder]").forEach((el) => {
@@ -309,10 +318,12 @@ const shownValue = (value) => {
   return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 };
 
-// Every changed plain field of `form` in one request, all or nothing. A field
+// Every changed plain field of `form`, and every one it can save as it stands, in
+// one request, all or nothing. A field
 // that saved takes its sent value in `stored`; the result is one notice line.
 async function savePlain(form, stored) {
-  const ids = Object.keys(PLAIN).filter((id) => form.contains($(id)) && $(id).value !== stored[id]);
+  const ids = Object.keys(PLAIN).filter((id) => form.contains($(id))
+    && ($(id).value !== stored[id] || unsavedIn(form).includes(PLAIN[id])));
   if (!ids.length) return null;
   const sent = Object.fromEntries(ids.map((id) => [id, $(id).value]));
   const values = Object.fromEntries(ids.map((id) => [PLAIN[id], plainValue($(id))]));
@@ -408,7 +419,7 @@ $("notify-form").addEventListener("submit", async (e) => {
       lines.push(err.message);
     }
   }
-  if (changed(EMAIL_PART)) {
+  if (changed(EMAIL_PART) || unsavedIn(form).length) {
     show("ok", "Sending a test message…", "notify-result");
     try {
       const data = await post("/api/settings/email",
@@ -432,7 +443,7 @@ $("notify-form").addEventListener("submit", async (e) => {
 function showNotifyState() {
   const webhook = state.values["notify.discord_webhook_url"];
   $("notify-state").hidden = webhook !== "";
-  $("notify-off").hidden = !(webhook && state.writable);
+  $("notify-off").hidden = !(webhook !== "" && state.writable);
 }
 
 // The spec's destructive confirm, as Retire does it: the stored URL cannot be

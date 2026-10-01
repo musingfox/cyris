@@ -223,6 +223,17 @@ class TestEveryKeyReported:
         assert data["values"] == dict.fromkeys(GRADE_D_KEYS)
         assert data["writable"] is True
 
+    async def test_the_keys_an_empty_field_answers_are_named(self, settings):
+        client = await _client(settings, {})
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert {"digest.style_prompt", "notify.email_to", "notify.email_from"} <= set(
+            data["may_be_empty"]
+        )
+        assert {"general.timezone", "digest.max_featured"}.isdisjoint(data["may_be_empty"])
+
     async def test_embedding_readiness_follows_the_environment(self, settings, monkeypatch):
         monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
