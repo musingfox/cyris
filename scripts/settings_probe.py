@@ -594,6 +594,20 @@ CHECKS: list[Check] = [
         sabotage="""$('input[value="openai"]').disabled = false;""",
     ),
     Check(
+        id="unavailable-state-opaque",
+        fixture="writable",
+        path="/settings#model",
+        act="await providersLoaded();",
+        script="""
+            let opacity = 1;
+            for (let el = $(".label", choice("openai")); el; el = el.parentElement) {
+                opacity *= Number(getComputedStyle(el).opacity);
+            }
+            expect(opacity === 1, `the missing-key state shows at opacity ${opacity}`);
+        """,
+        sabotage="""choice("openai").style.opacity = "0.5";""",
+    ),
+    Check(
         id="model-no-keys",
         fixture="writable",
         path="/settings#model",
