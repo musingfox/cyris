@@ -51,7 +51,33 @@ async function authorized(request, env) {
   return ctEqual(cookie, expected);
 }
 
-const LOGIN_PAGE = (message) => `<!DOCTYPE html>
+const escapeHtml = (text) =>
+  text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+// A path a browser would read as another host: two slashes, or a slash and a
+// backslash. Checked after parsing, because the parser can produce one from a
+// path that did not start with it (a dot segment followed by two slashes).
+const OFF_ORIGIN = /^\/[/\\]/;
+
+// Where a sign-in returns to: a path on this origin, or the archive. Anything
+// that would leave the origin falls back, so /login is never an open redirect,
+// and /login itself would only show the form again.
+export function returnPath(next, origin) {
+  if (typeof next !== "string" || !next.startsWith("/")) return "/";
+  let target;
+  try {
+    target = new URL(next, origin);
+  } catch {
+    return "/";
+  }
+  const path = target.pathname + target.search;
+  if (target.origin !== origin || OFF_ORIGIN.test(path) || target.pathname === "/login") {
+    return "/";
+  }
+  return path;
+}
+
+const LOGIN_PAGE = (message, next = "/") => `<!DOCTYPE html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cyris</title>
 <style>
@@ -63,6 +89,7 @@ const LOGIN_PAGE = (message) => `<!DOCTYPE html>
  p{color:#ff5b8a;margin:0}
 </style>
 <form method="POST" action="/login">
+  <input type="hidden" name="next" value="${escapeHtml(next)}">
   <input type="password" name="token" placeholder="access token" autofocus autocomplete="current-password">
   <button type="submit">Enter</button>
   ${message ? `<p>${message}</p>` : ""}
@@ -187,31 +214,36 @@ export async function handleRequest(request, env, deps) {
   }
 
   if (url.pathname === "/login") {
-    if (request.method !== "POST") return html(LOGIN_PAGE(""));
+    if (request.method !== "POST") {
+      return html(LOGIN_PAGE("", returnPath(url.searchParams.get("next"), url.origin)));
+    }
+    let submitted = "";
+    let next = "/";
+    try {
+      const form = await request.formData();
+      submitted = String(form.get("token") ?? "");
+      next = returnPath(form.get("next"), url.origin);
+    } catch {
+      submitted = "";
+    }
     const token = env.CYRIS_UI_TOKEN;
-    if (!token) return html(LOGIN_PAGE("Wrong token."), 401);
+    if (!token) return html(LOGIN_PAGE("Wrong token.", next), 401);
     if (token.length < MIN_TOKEN_LENGTH) {
       return html(
         LOGIN_PAGE(
           "CYRIS_UI_TOKEN must be at least 32 characters — generate one with `openssl rand -hex 32`",
+          next,
         ),
         503,
       );
     }
-    let submitted = "";
-    try {
-      const form = await request.formData();
-      submitted = String(form.get("token") ?? "");
-    } catch {
-      submitted = "";
-    }
     if (!ctEqual(await sha256(submitted), await sha256(token))) {
-      return html(LOGIN_PAGE("Wrong token."), 401);
+      return html(LOGIN_PAGE("Wrong token.", next), 401);
     }
     return new Response(null, {
       status: 302,
       headers: {
-        Location: "/",
+        Location: next,
         "Set-Cookie":
           `${COOKIE}=${await sha256(token)}; HttpOnly; Secure; ` +
           "SameSite=Lax; Path=/; Max-Age=2592000",
@@ -225,7 +257,9 @@ export async function handleRequest(request, env, deps) {
 
   if (!(await authorized(request, env))) {
     const wantsHtml = (request.headers.get("Accept") || "").includes("text/html");
-    return wantsHtml ? html(LOGIN_PAGE(""), 401) : json({ error: "unauthorized" }, 401);
+    return wantsHtml
+      ? html(LOGIN_PAGE("", returnPath(url.pathname + url.search, url.origin)), 401)
+      : json({ error: "unauthorized" }, 401);
   }
 
   if (request.method === "POST" && url.pathname === "/api/diagnostics/gemini") {
