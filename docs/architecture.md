@@ -559,7 +559,7 @@ unseen. The rules now:
 - **One key list.** `src/cyris/settings_fields.json` names every key with its `/settings` field —
   category, label, controls and save route, and whether a save applies live. `GRADE_D_KEYS` (the required set and `WRITABLE_KEYS`),
   the values route's plain keys, and the page's field map (served on `GET /api/settings`) all
-  derive from it — twenty-one keys, each with a field in one of Model, Digest, Pipeline or
+  derive from it — every key has a field in one of Model, Digest, Pipeline or
   Notifications; `tests/test_settings_fields.py` holds the page to it. `validate_setting` checks one key through its field's own type, so the page,
   `cyris settings push` and the loader accept the same values. An invalid D1 row counts as
   missing, because D1 is fixed through `/settings`, which has to start; an invalid `cyris.toml`
@@ -597,7 +597,7 @@ Cloudflare
 ├── Worker: promote    → KV
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
 │     <your custom domain>         └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
-├── D1: stored_articles · usage_log · sources · settings · pages_manifest · pages_deploy_receipt · digest_runs · digests
+├── D1: every table in src/cyris/adapters/store/schema.sql, each with its §4 row
 ├── Pages: cyris-digest
 └── Workers Logs: the container's stdout, 7 days
 ```
@@ -742,8 +742,8 @@ silently ignored for two days.
 
 ## 7. Outstanding work, and the record of what closed
 
-**Five numbered items are open — #9, #13, #14, #28 and #29 — plus the four unnumbered rows under
-*Waiting on a receipt*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
+**An item is open while its row is not struck through, or while its paragraph says *still
+open*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
 else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
 (why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
 changing one of those decisions means reading why it was made, not because it is pending.
@@ -758,7 +758,7 @@ this repository. A `cyris#N` is a GitHub issue, of which there are few and none 
 
 **M0–M4 are done** (2026-08-27 → 08-30): the cutover, the deletions, settings in D1, Pages over
 REST, cacheless embeddings. Every persistent datum is in Cloudflare and the container holds no
-state. What is left is one platform move, one design track, and the deploy button.
+state. What is left is drawn below.
 
 ```
 now ─┬─ M6 deploy button
@@ -775,7 +775,7 @@ hard edges:  M-behaviour → (closes #13)
 | ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | sources editor on /settings |
 | ~~**M5**~~ | ~~Into the Container~~ — done 2026-08-31 | All four pieces in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran on 08-30 — see §6 on why that is not optional | ✅ **Two digests from a machine that was off.** `usage_log`: `2026-08-30 evening · 61 received · 9 included · $0.025` at 12:01:12Z and `2026-08-31 morning · 42 · 8 · $0.024` at 00:01:12Z, both ~60 s after their cron fired, with the local machine down since 08-30 08:29Z; the row above them is its last. Auth: every unauthenticated path answers `401`, and after Access went on, a request carrying a *valid* cyris cookie still redirects to the Access login — the layers are ordered. ✅ The third clause, *the bill shows the instance sleeping*, took a fix to collect. `containersMetricsAdaptiveGroups` (the dataset the first attempt had the wrong name for) showed the `ui` container holding 132 MB at zero CPU for eight straight hours while `run` behaved correctly, because `stop()`'s SIGTERM was landing on a PID 1 with no handler — §6 has the receipt and the four-line repro. With the handler in `cli.py`, the last request at 08:11:18Z was followed by `container stopped { exitCode: 0, reason: 'exit' }` at 08:16:31Z and the instance returned to `inactive` | Container move |
 | **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | two-layer interest state |
-| **M6** | One-button deploy | Only meaningful once nothing runs locally. First boot creates its own tables since 2026-09-04 — `load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry points. What is still absent is *version evolution*: every statement is `CREATE ... IF NOT EXISTS`, so the next `ADD COLUMN` reaches an existing database with no path to apply it. Do not read "no migration mechanism is needed" as covering that — the sentence it replaces was about first creation, and the two were being conflated (the schema-evolution ticket). The button's shape was settled on 2026-09-04 — see *What the deploy button can and cannot do* below; the config moved to the repo root and the checklist is `.env.example`. First boot also stops every run, naming what is missing, until `/settings` (or `cyris settings push`) holds all twenty-one runtime settings and the `sources` table holds a source: no code default stands in. What is left is the clean-account run itself | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | deploy button |
+| **M6** | One-button deploy | Only meaningful once nothing runs locally. First boot creates its own tables since 2026-09-04 — `load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry points. What is still absent is *version evolution*: every statement is `CREATE ... IF NOT EXISTS`, so the next `ADD COLUMN` reaches an existing database with no path to apply it. Do not read "no migration mechanism is needed" as covering that — the sentence it replaces was about first creation, and the two were being conflated (the schema-evolution ticket). The button's shape was settled on 2026-09-04 — see *What the deploy button can and cannot do* below; the config moved to the repo root and the checklist is `.env.example`. First boot also stops every run, naming what is missing, until `/settings` (or `cyris settings push`) holds every runtime setting and the `sources` table holds a source: no code default stands in. What is left is the clean-account run itself | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | deploy button |
 | **M-media** | Podcasts and YouTube as sources — planned 2026-09-28, not started | The parsers lose podcast episodes today: an item with no `<link>` is dropped, and items that repeat the channel's link collapse onto one key that `INSERT OR IGNORE` keeps for the first episode only; the Worker's parser reads no YouTube description, while the Python fallback does. Depth follows the tier. The design and its costs are in `docs/milestones/multimedia-sources-podcast-youtube.md`; its invariants are the five `proposed` entries that file names under `docs/spec/` | A show whose item links repeat stores one row per episode; a `summarize`-tier episode and video reach the digest summarized from their own content; with the condensation setting empty, no model call is made | podcast and YouTube sources |
 
 **M-persist shipped** with M-ship's window: rejection reasons are a two-way split
@@ -1057,7 +1057,7 @@ parity logs. Added in the same milestone: the two `doctor` checks that would hav
 Both closed by M2 on 2026-08-27 — see §5. The Discord webhook joined them — Done 2026-09-17,
 in the ticket that moved notification credentials to D1: it lives in D1 `settings`, written by `/settings`,
 which asks Discord whether the webhook exists before saving it. Since 2026-09-19 every grade-D key
-has a home and a writer: the twenty-one keys in `GRADE_D_KEYS` each have a `/settings` field, D1 is the
+has a home and a writer: every key in `GRADE_D_KEYS` has a `/settings` field, D1 is the
 only home a `d1` deployment reads, and `cyris doctor` reports what is missing rather than which
 home won, because there is only one.
 
