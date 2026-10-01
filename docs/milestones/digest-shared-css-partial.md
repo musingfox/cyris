@@ -7,7 +7,7 @@ depends: []
 # digest 三頁的 CSS 收斂成參數化的 partial
 
 票私下追蹤，不在這個 repo。
-沒有 blocker。它自己是 `digest-index-archive-layout` 的 blocker
+沒有 blocker。它自己是封存首頁版面那張票的 blocker
 （`docs/milestones/digest-archive-index-layout.md`）。
 
 ## 這個里程碑定下什麼
@@ -119,7 +119,7 @@ Jinja 環境是 `FileSystemLoader(templates_dir)`（`html_digest.py:35-42`），
 `glob("*.j2")`，新增的 partial 會自動被掃到，不需手動登記。
 
 **範圍外**：`static/settings.html` 的內嵌樣式不處理——那是 triage server 服務的檔案，link 得到
-`style.css`，屬於 `settings-page-layout`。
+`style.css`，屬於 /settings 版面重做那一步。
 
 ## 刻意留給動工時的選擇
 
