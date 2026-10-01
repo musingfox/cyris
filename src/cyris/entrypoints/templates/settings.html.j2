@@ -134,7 +134,7 @@
             </div>
             <div class="field">
               <label class="label" for="timezone">Timezone</label>
-              <input class="input" id="timezone" type="text" placeholder="Asia/Taipei" autocomplete="off">
+              <input class="input" id="timezone" type="text" placeholder="UTC" autocomplete="off">
               <p class="small">The clock the publish hours are read in.</p>
             </div>
             <div class="field">
@@ -164,7 +164,7 @@
               <label class="label" for="type-scale">Type size</label>
               <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1">Default</option><option value="1.125">Larger</option></select>
               <p class="small">How large the text is on every page.</p>
-              <details class="more"><summary>More</summary><p class="small">It applies within a minute, to issues already published too, except those from before 2026-09-18 and pages opened on pages.dev directly.</p></details>
+              <details class="more"><summary>More</summary><p class="small">It applies within a minute, to issues already published too, except those rendered before this setting existed and pages opened on pages.dev directly.</p></details>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
@@ -292,7 +292,7 @@
           </div>
         </div>
         <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text" autocomplete="off"></div>
-        <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@letter.com" autocomplete="off">
+        <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@example.com" autocomplete="off">
           <p class="small">Maps a sender to this source.</p>
           <details class="more"><summary>More</summary><p class="small">Email routing itself stays in the Cloudflare dashboard.</p></details></div>
         <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text" autocomplete="off"></div>

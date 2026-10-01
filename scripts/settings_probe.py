@@ -1568,7 +1568,7 @@ CHECKS: list[Check] = [
             expect(!navOf("digest").classList.contains("missing"), "Digest is still marked");
             const field = $("#timezone");
             expect(!field.hasAttribute("aria-invalid"), "the field is still marked");
-            expect(field.placeholder === "Asia/Taipei", `placeholder: ${field.placeholder}`);
+            expect(field.placeholder === "UTC", `placeholder: ${field.placeholder}`);
         """,
         sabotage="""navOf("digest").classList.add("missing");""",
         receipt=_calls([{"general.timezone": "Europe/Berlin"}]),

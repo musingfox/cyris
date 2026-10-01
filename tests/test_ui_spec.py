@@ -1143,3 +1143,50 @@ def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
     rules = parse_style_block(f"<style>{_render_partial('_components.css.j2')}</style>")
     assert rules[".choice.unavailable"] == {"cursor: not-allowed"}
     assert rules[".choice.unavailable input, .choice.unavailable .name"] == {"opacity: .5"}
+
+
+# Every installation renders these files, so an example in them must suit any reader's
+# deployment: RFC 2606 domains for addresses, and no date from one deployment's history.
+PRODUCT_FILES = sorted(
+    path
+    for path in Path(cyris.__file__).parent.rglob("*")
+    if path.is_file() and {"templates", "static"} & set(path.parts)
+)
+RESERVED_DOMAINS = ("example.com", "example.net", "example.org")
+RESERVED_SUFFIXES = (".example", ".invalid", ".test")
+COMMENTS = re.compile(r"/\*.*?\*/|\{#.*?#\}|<!--.*?-->|^\s*//.*?$", re.DOTALL | re.MULTILINE)
+
+
+def _unreserved_addresses(text: str) -> list[str]:
+    domains = re.findall(r"[\w.+-]+@([\w-]+(?:\.[\w-]+)+)", text)
+    return [d for d in domains if d not in RESERVED_DOMAINS and not d.endswith(RESERVED_SUFFIXES)]
+
+
+def _dates_outside_comments(text: str) -> list[str]:
+    return re.findall(r"\b\d{4}-\d{2}-\d{2}\b", COMMENTS.sub("", text))
+
+
+def test_the_product_files_are_found() -> None:
+    names = {path.name for path in PRODUCT_FILES}
+    assert {"settings.html.j2", "digest.html.j2", "settings.js", "style.css"} <= names
+
+
+def test_an_address_on_a_real_domain_is_reported() -> None:
+    planted = 'placeholder="from:hi@letter.com" value="you@example.com" x="a@b.test"'
+    assert _unreserved_addresses(planted) == ["letter.com"]
+
+
+def test_a_date_outside_a_comment_is_reported() -> None:
+    planted = "/* 2026-08-30 */\n  // 2026-08-31\n{# 2026-09-01 #}<p>before 2026-09-18</p>"
+    assert _dates_outside_comments(planted) == ["2026-09-18"]
+
+
+@pytest.mark.parametrize("path", PRODUCT_FILES, ids=lambda path: path.name)
+def test_a_product_example_suits_any_deployment(path: Path) -> None:
+    text = path.read_text()
+    assert _unreserved_addresses(text) == []
+    assert _dates_outside_comments(text) == []
+
+
+def test_the_timezone_example_names_no_region() -> None:
+    assert 'id="timezone" type="text" placeholder="UTC"' in _source("settings")
