@@ -391,7 +391,7 @@ def test_each_raw_source_is_a_panel_of_rows_in_state_score_title_vote_order():
     assert re.search(
         r'<div class="list-row raw-row">\s*<span class="state pending">pending</span>'
         r'\s*<span class="score">0.80</span>'
-        r'\s*<a href="https://example.test/pending-two" target="_blank" rel="noopener">'
+        r'\s*<a href="https://example.test/pending-two" target="_blank" rel="noopener" lang="">'
         r'Pending Two</a>\s*<span class="vote-group"',
         html,
     )

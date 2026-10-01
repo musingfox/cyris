@@ -13,6 +13,7 @@ import functools
 import re
 from collections import Counter
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 from jinja2 import Environment, nodes
@@ -523,6 +524,53 @@ def off_token_radii(css_source: str) -> list[str]:
 def style_attributes(html: str) -> list[str]:
     """Return every ``style`` attribute in HTML, which no CSS guard would otherwise read."""
     return re.findall(r"<[a-zA-Z][^>]*?\sstyle\s*=\s*(?:\"[^\"]*\"|'[^']*')", html)
+
+
+_VOID_ELEMENTS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "source",
+        "track",
+        "wbr",
+    }
+)
+
+
+class _TextLangs(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[tuple[str, str | None]] = []
+        self.runs: dict[str, str | None] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _VOID_ELEMENTS:
+            return
+        inherited = self.stack[-1][1] if self.stack else None
+        self.stack.append((tag, dict(attrs).get("lang", inherited)))
+
+    def handle_endtag(self, tag: str) -> None:
+        while self.stack and self.stack.pop()[0] != tag:
+            pass
+
+    def handle_data(self, data: str) -> None:
+        if data.strip() and self.stack and self.stack[-1][0] not in ("script", "style"):
+            self.runs.setdefault(data.strip(), self.stack[-1][1])
+
+
+def text_langs(html: str) -> dict[str, str | None]:
+    """Each visible text run in a page, mapped to the `lang` it inherits (first occurrence)."""
+    parser = _TextLangs()
+    parser.feed(html)
+    return parser.runs
 
 
 def _item(title: str, url: str, source: str) -> DigestItem:

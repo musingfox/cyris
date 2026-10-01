@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
+from css_rules import text_langs
 
 from cyris.adapters.output.email_digest import (
     LIGHT_PALETTE,
@@ -164,6 +165,38 @@ class TestSections:
             ("Second Feature", "https://feature.test/b"),
         ]:
             assert f'<a href="{url}">{title}</a>' in html
+
+
+class TestLanguage:
+    CONTENT = [
+        "Lead Story",
+        "Lead Story summary.",
+        "Second Feature",
+        "A Cluster",
+        "Cluster summary.",
+        "Fan Item",
+        "Watching — Why these.",
+        "Radar Item",
+        "Wire One",
+    ]
+    CHROME = ["Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire"]
+
+    def test_the_chrome_is_english_and_the_content_carries_the_output_language(self):
+        content = _full().model_copy(update={"output_language": "ja"})
+        html = render_digest_email(content, DIGEST_URL)
+        langs = text_langs(html)
+
+        assert '<html lang="en">' in html
+        assert {text: langs[text] for text in self.CHROME} == dict.fromkeys(self.CHROME, "en")
+        assert {text: langs[text] for text in self.CONTENT} == dict.fromkeys(self.CONTENT, "ja")
+
+    def test_a_plain_language_name_leaves_the_content_language_unknown(self):
+        content = _full().model_copy(update={"output_language": "Traditional Chinese"})
+        html = render_digest_email(content, DIGEST_URL)
+        langs = text_langs(html)
+
+        assert "Traditional Chinese" not in html
+        assert {text: langs[text] for text in self.CONTENT} == dict.fromkeys(self.CONTENT, "")
 
 
 class TestSiteLinks:

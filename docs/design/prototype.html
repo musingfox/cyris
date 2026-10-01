@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -487,7 +487,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
     </div>
     <section class="section">
       <div class="section-tag"><span class="label">Top story</span></div>
-      <article class="lead">
+      <article class="lead" lang="zh-Hant">
         <span class="pill score">0.94</span>
         <h2><a href="#digest">Cloudflare Containers 進入 GA，冷啟動降到兩秒內</a></h2>
         <p class="summary">容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。對排程型工作負載來說，按秒計費與 Worker 前門的組合，讓「每小時醒來一次」的部署不再需要常駐主機。</p>
@@ -500,7 +500,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
     <section class="section">
       <h2 class="section-tag"><span class="label">Features</span></h2>
-      <div class="featured-grid">
+      <div class="featured-grid" lang="zh-Hant">
         <article class="featured-item">
           <h3 class="item-title lg"><a href="#digest">SQLite 的 WAL2 模式合進主線</a></h3>
           <p class="summary">兩個 WAL 檔輪替寫入，checkpoint 不再擋住寫入者。長時間跑寫入的服務終於不用自己排程 checkpoint。</p>
@@ -558,7 +558,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
     <section class="section">
       <h2 class="section-tag"><span class="label">In Focus</span></h2>
-      <div class="news-cluster">
+      <div class="news-cluster" lang="zh-Hant">
         <h3 class="item-title lg">歐盟 AI 法案第二階段生效</h3>
         <div class="summary">通用模型提供者從本月起要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</div>
         <div class="meta">
@@ -570,7 +570,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
     <section class="section">
       <h2 class="section-tag"><span class="label">Following</span></h2>
-      <div class="thematic-block">
+      <div class="thematic-block" lang="zh-Hant">
         <h3 class="item-title lg">本地優先軟體</h3>
         <article class="article-item">
           <h4 class="item-title"><a href="#digest">CRDT 同步在離線編輯器裡的三個坑</a></h4>
@@ -586,7 +586,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
     <section class="section">
       <h2 class="section-tag"><span class="label">On the Radar</span></h2>
-      <div class="thematic-block">
+      <div class="thematic-block" lang="zh-Hant">
         <h3 class="item-title lg">值得留意</h3>
         <div class="attention-list">
           <article class="attention-item">
@@ -605,7 +605,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 
     <section class="section">
       <h2 class="section-tag"><span class="label">The Wire</span></h2>
-      <div class="headlines-compact">
+      <div class="headlines-compact" lang="zh-Hant">
         <div class="headline-item"><span class="idx">001</span><span class="text"><a href="#digest">台積電公布兩奈米良率進度</a></span><span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
         <div class="headline-item"><span class="idx">002</span><span class="text"><a href="#digest">Firefox 將預設啟用 HTTPS-First</a></span><span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
         <div class="headline-item"><span class="idx">003</span><span class="text"><a href="#digest">GitHub Actions 新增 arm64 免費 runner</a></span><span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span></div>
@@ -1051,9 +1051,9 @@ const months = Map.groupBy(older, (i) => i.date.slice(0, 7));
 $("#archive-list").innerHTML = `
   <article class="front-card">
     <div class="line"><span class="label latest">Latest</span><span class="date">${latest.date}</span><span class="label">${latest.period}</span></div>
-    ${latest.lead ? `<h2>${esc(latest.lead)}</h2>` : ""}
+    ${latest.lead ? `<h2 lang="zh-Hant">${esc(latest.lead)}</h2>` : ""}
     ${latest.count ? `<span class="data">${latest.count} articles</span>` : ""}
-    ${latest.topics.length ? `<p class="small">${latest.topics.map(esc).join(" · ")}</p>` : ""}
+    ${latest.topics.length ? `<p class="small" lang="zh-Hant">${latest.topics.map(esc).join(" · ")}</p>` : ""}
     ${issueActions}
   </article>
   ${[...months].map(([month, list]) => `
@@ -1070,7 +1070,8 @@ $("#archive-list").innerHTML = `
 $("#archive-footer").textContent = `// cyris · ${issues.length} issues`;
 
 /* ---- raw: one data set behind both views ---- */
-const articles = rawGroups.flatMap(([source, arts]) => arts.map(([state, score, title]) => ({source, state, score, title})));
+// Scoring records each article's language; this stand-in reads it off the title.
+const articles = rawGroups.flatMap(([source, arts]) => arts.map(([state, score, title]) => ({source, state, score, title, lang: /[\u4e00-\u9fff]/.test(title) ? "zh" : "en"})));
 function renderRaw() {
   $("#raw-groups").innerHTML = rawGroups.map(([name]) => {
     const arts = articles.filter((a) => a.source === name);
@@ -1081,7 +1082,7 @@ function renderRaw() {
       <div class="list-row raw-row">
         <span class="state ${a.state}">${a.state}</span>
         <span class="score">${a.score == null ? "—" : a.score.toFixed(2)}</span>
-        <a href="#raw">${esc(a.title)}</a>
+        <a href="#raw" lang="${a.lang}">${esc(a.title)}</a>
         <span class="votes gated"><button class="btn secondary sm" title="More like this" data-vote="up" data-i="${articles.indexOf(a)}">↑</button><button class="btn secondary sm" title="Less like this" data-vote="down" data-i="${articles.indexOf(a)}">↓</button></span>
       </div>`).join("")}
   </section>`;
@@ -1096,6 +1097,7 @@ function renderDeck() {
   if (!next) return;
   $("#t-source").textContent = next.source;
   $("#t-title").textContent = next.title;
+  $("#t-title").lang = next.lang;
 }
 function vote(article, dir) {
   article.state = dir === "up" ? "accepted" : "rejected";

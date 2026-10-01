@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -88,7 +88,7 @@
             <div class="list-row raw-row">
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
-                <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>
+                <a href="{{ a.url }}" target="_blank" rel="noopener" lang="{{ a.language | lang }}">{{ a.title }}</a>
                 <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>
             </div>
             {% endfor %}
@@ -126,7 +126,9 @@
         }
         document.getElementById('t-source').textContent =
             next.closest('.panel').querySelector('.source-name').textContent;
-        document.getElementById('t-title').textContent = next.querySelector('a').textContent;
+        const title = document.getElementById('t-title');
+        title.textContent = next.querySelector('a').textContent;
+        title.lang = next.querySelector('a').lang;
     }
 
     // List and Triage are two views of the same rows; switching never reloads.

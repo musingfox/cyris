@@ -51,6 +51,13 @@ def _source(name: str) -> str:
 GUARDED = ["index", "digest", "raw", "style.css", "settings"]
 
 
+@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings", "prototype"])
+def test_every_page_says_its_chrome_is_english(page):
+    html = PROTOTYPE.read_text() if page == "prototype" else _source(page)
+
+    assert re.search(r"<html\b[^>]*>", html).group() == '<html lang="en">'
+
+
 def _render_partial(name: str) -> str:
     return HtmlDigestWriter("unused-by-these-tests").env.get_template(name).render()
 
@@ -815,7 +822,7 @@ def test_a_same_day_row_dims_its_date() -> None:
 
 
 def test_the_receipt_archive_carries_the_card_title() -> None:
-    assert "<h2>Featured Story</h2>" in _source("index")
+    assert '<h2 lang="">Featured Story</h2>' in _source("index")
 
 
 def test_the_empty_archive_message_takes_the_small_role() -> None:

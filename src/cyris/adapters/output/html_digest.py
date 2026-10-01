@@ -17,6 +17,16 @@ def _hostname(url: str) -> str:
     return urlsplit(url).hostname or url
 
 
+# A BCP 47 tag's shape: a two- or three-letter language, then hyphenated subtags. A plain
+# language name, which an older `[digest] output_language` may still hold, never matches.
+_LANGUAGE_TAG = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*")
+
+
+def _html_lang(value: str | None) -> str:
+    """`value` as a `lang` attribute: the tag itself, or "" (HTML's unknown) for anything else."""
+    return value if value and _LANGUAGE_TAG.fullmatch(value) else ""
+
+
 def _plural(n: int, noun: str) -> str:
     """'1 issue', '2 issues': the one English plural the templates need."""
     return f"{n} {noun}{'' if n == 1 else 's'}"
@@ -91,6 +101,7 @@ class HeadlineCard:
     lead: str | None = None
     count: int | None = None
     topics: str | None = None
+    lang: str = ""
 
 
 class HtmlDigestWriter:
@@ -131,6 +142,7 @@ class HtmlDigestWriter:
         )
         self.env.filters["hostname"] = _hostname
         self.env.filters["plural"] = _plural
+        self.env.filters["lang"] = _html_lang
 
     def render(self, content: DigestContent, raw_page: bool = False) -> str:
         """Transform DigestContent into complete HTML document.
@@ -167,6 +179,7 @@ class HtmlDigestWriter:
             attention_sections=content.attention_sections,
             filtered_headlines=content.filtered_headlines,
             raw_page=raw_page,
+            content_lang=_html_lang(content.output_language),
         )
 
     def write(self, content: DigestContent, dry_run: bool = False, raw_page: bool = False) -> Path:
@@ -266,6 +279,7 @@ class HtmlDigestWriter:
                     lead=(features[0].title or None) if features else None,
                     count=content.articles_included,
                     topics=" · ".join(section.heading for section in largest[:2]) or None,
+                    lang=_html_lang(content.output_language),
                 )
 
         months: dict[str, list[dict]] = {}

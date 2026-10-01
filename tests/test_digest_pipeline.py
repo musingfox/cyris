@@ -86,6 +86,29 @@ class TestDigestPipeline:
         assert "https://stratechery.com/2026/03/16/weekly-trends" in result.accepted_urls
         assert "https://reuters.com/2026/03/16/tsmc-arizona" in result.rejected_urls
 
+    @pytest.mark.parametrize("fan_articles", [0, 1], ids=["no-articles", "one-article"])
+    async def test_the_content_records_the_language_it_was_written_in(
+        self, sample_sources, fan_articles
+    ):
+        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings(output_language="ja"))
+        articles = [
+            Article(
+                id=90,
+                title="Weekly",
+                url="https://group.example/12",
+                content="Notes.",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Fan source",
+                source_tier=Tier.FAN,
+            )
+        ][:fan_articles]
+
+        result = await pipeline.process(
+            articles, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        assert result.content.output_language == "ja"
+
     async def test_fan_tier_passthrough(self, pipeline, sample_sources):
         """Fan-tier articles bypass LLM, group by source, and are never discarded."""
         fan_articles = [
