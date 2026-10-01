@@ -133,8 +133,8 @@ the seed list, measured at 2 downvote seeds → 8 articles suppressed, 24 seeds 
 - **Reader-facing live preferences stop at the type size** (2026-09-20/21) — the one token axis with
   a grade-D setting, a Worker injection path and a closed allowlist; a theme override has no grade.
 
-Two tickets in the Obsidian vault (`pm/cyris/tasks/`) carry what is left:
-`retire-rss-buffer-worker` and `digest-content-durable-backup`.
+Two privately tracked tickets carry what is left: replacing the RSS buffer Worker with an
+hourly tick that fetches feeds itself, and a durable backup of digest content (architecture §7 #14).
 
 ## Sources
 

@@ -266,7 +266,7 @@ class PromoteConfig(WorkerConfig):
 
     publish_enabled: bool = False
     pages_project: str = ""
-    custom_domain: str = ""  # Custom domain for operator/self links (e.g., digest.musingfox.me)
+    custom_domain: str = ""  # Custom domain for operator/self links (e.g., digest.example.com)
 
     @model_validator(mode="before")
     @classmethod
