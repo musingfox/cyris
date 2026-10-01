@@ -253,7 +253,7 @@ class WorkerConfig(BaseModel):
 
 
 class PromoteConfig(WorkerConfig):
-    """The vote Worker. Its token is **server-side only** (since private-votes-public-archive).
+    """The vote Worker. Its token is **server-side only** (since the private-votes change).
 
     Votes go through `POST /api/vote` on the Worker (Access-only, no UI token),
     which attaches `CYRIS_PROMOTE_TOKEN` server-side and forwards to the promote

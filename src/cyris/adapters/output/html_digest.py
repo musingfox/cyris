@@ -111,7 +111,7 @@ class HtmlDigestWriter:
 
         The promote Worker's URL and bearer used to be constructor arguments,
         rendered into the page so a reader's browser could call the Worker
-        directly. `private-votes-public-archive` moved the vote to the app
+        directly. The private-votes change moved the vote to the app
         Worker's `POST /api/vote`, which attaches the token server-side, and the
         buttons now gate on probing that route rather than on anything the
         renderer knows. Both arguments outlived their last read by four days.
