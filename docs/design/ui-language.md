@@ -14,9 +14,8 @@ Every change that touches a reader-facing page follows this spec: `src/cyris/ada
   directly in a browser. `#system` is the overview of tokens and components, and `#archive`, `#digest`,
   `#raw` (with the triage view) and `#settings/model` are the pages. When the two disagree, this document
   wins, and the prototype is fixed in the same change.
-- **The code has not caught up yet.** §8 lists the current gaps and the landing order. Until it has
-  landed, restyle whichever component you touch to the spec, and do not write another copy of the old
-  style.
+- **Every §8 step has landed.** Where a component still differs from the spec, restyle it to the spec
+  when you touch it, and do not write another copy of the old style.
 - **To depart from the spec, change the spec first.** When you need a component or value the spec does
   not have, write it and its reason into this document before writing the code.
 
