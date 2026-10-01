@@ -911,6 +911,68 @@ CHECKS: list[Check] = [
         ),
     ),
     Check(
+        id="hours-empty-refused-beside-field",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#evening"), "");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the notice");
+        """,
+        script="""
+            const field = $("#hours-error"), text = field.textContent;
+            expect(visible(field) && text === "Evening needs a whole hour from 0 to 23.",
+              `beside the hours: ${visible(field) && text}`);
+            expect($("#evening").classList.contains("invalid"), "Evening is not marked");
+            expect(!$("#morning").classList.contains("invalid"), "Morning is marked");
+            const notice = noticeOf("digest");
+            expect(notice.classList.contains("err")
+              && notice.textContent.startsWith("Digest hours not saved: Evening needs"),
+              `notice: ${notice.textContent}`);
+            expect(navOf("digest").classList.contains("dirty"), "Digest lost its dirty mark");
+        """,
+        sabotage="""$("#hours-error").hidden = true;""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="hours-empty-refused-on-first-boot",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("general.digest_schedule"),
+        act="""
+            await settingsLoaded();
+            setValue($("#evening"), "20");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")), "the notice");
+        """,
+        script="""
+            const field = $("#hours-error"), text = field.textContent;
+            expect(visible(field) && text === "Morning needs a whole hour from 0 to 23.",
+              `beside the hours: ${visible(field) && text}`);
+            expect($("#morning").classList.contains("invalid"), "Morning is not marked");
+        """,
+        sabotage="""$("#morning").classList.remove("invalid");""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="hours-error-clears-on-edit",
+        fixture="writable",
+        path="/settings#digest",
+        act="""
+            await settingsLoaded();
+            setValue($("#evening"), "");
+            saveOf("digest").click();
+            await waitFor(() => visible($("#hours-error")), "the field notice");
+            setValue($("#evening"), "21");
+        """,
+        script="""
+            expect(!visible($("#hours-error")), "the field notice is still shown");
+            expect(!$("#evening").classList.contains("invalid"), "Evening is still marked");
+        """,
+        sabotage="""$("#hours-error").hidden = false;""",
+    ),
+    Check(
         id="notice-hides-on-edit",
         fixture="writable",
         path="/settings#digest",

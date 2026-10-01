@@ -333,18 +333,45 @@ async function savePlain(form, stored) {
   }
 }
 
+const HOURS = [$("morning"), $("evening")];
+
+// An empty hour is refused here: padded, it would reach the server as 00:00.
+// Returns the reason shown beside the hours, or null when both are filled.
+function emptyHours() {
+  const empty = HOURS.filter((input) => input.value === "");
+  HOURS.forEach((input) => input.classList.toggle("invalid", empty.includes(input)));
+  if (!empty.length) {
+    $("hours-error").hidden = true;
+    return null;
+  }
+  const names = empty.map((input) => input.labels[0].textContent).join(" and ");
+  const reason = `${names} ${empty.length > 1 ? "need" : "needs"} a whole hour from 0 to 23.`;
+  show("err", reason, "hours-error");
+  return reason;
+}
+
+HOURS.forEach((input) => input.addEventListener("input", () => {
+  input.classList.remove("invalid");
+  if (!HOURS.some((hour) => hour.classList.contains("invalid"))) $("hours-error").hidden = true;
+}));
+
 // One Save, two endpoints: only a changed part is sent, the hours first, and
 // both are tried. A part that saved becomes clean; one that failed stays dirty.
 $("digest-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = $("digest-form");
-  const [morning, evening] = [$("morning"), $("evening")].map((input) => input.value);
+  const [morning, evening] = HOURS.map((input) => input.value);
   const stored = {...clean.get(form)};
   const lines = [];
   let failed = false;
   saving.add(form);
   refresh(form);
-  if (morning !== stored.morning || evening !== stored.evening) {
+  const hoursChanged = morning !== stored.morning || evening !== stored.evening;
+  const empty = hoursChanged && emptyHours();
+  if (empty) {
+    failed = true;
+    lines.push(`Digest hours not saved: ${empty}`);
+  } else if (hoursChanged) {
     const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
     try {
       const data = await post("/api/settings/schedule", {times});

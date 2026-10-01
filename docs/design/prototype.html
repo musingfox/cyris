@@ -846,6 +846,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
                 <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" value="8"></div>
                 <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" value="20"></div>
               </div>
+              <div class="notice err" id="hours-error" hidden></div>
               <details class="more"><summary>More</summary><p class="small">Whole hours in the timezone below. The tick is hourly, so half hours are refused rather than rounded down.</p></details>
             </div>
             <div class="field">
@@ -1280,6 +1281,15 @@ $$("form.tab").forEach((form) => {
   form.addEventListener("saved", () => { saved = snapshot(); save.disabled = true; navLink.classList.remove("dirty"); });
   form.addEventListener("submit", (e) => {
     e.preventDefault();
+    const hours = $$("#morning, #evening", form);
+    hours.forEach((i) => i.classList.toggle("invalid", i.value === ""));
+    const empty = hours.filter((i) => i.value === "").map((i) => i.labels[0].textContent);
+    if (empty.length) {
+      const hoursError = $("#hours-error");
+      hoursError.textContent = `${empty.join(" and ")} ${empty.length > 1 ? "need" : "needs"} a whole hour from 0 to 23.`;
+      hoursError.hidden = false;
+      return;
+    }
     form.dispatchEvent(new Event("saved"));
     $$('[aria-invalid="true"]', form).forEach((i) => { if (i.value) i.removeAttribute("aria-invalid"); });
     if (!$('[aria-invalid="true"]', form)) {
