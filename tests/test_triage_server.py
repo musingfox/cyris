@@ -6,6 +6,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from fakes import SqliteD1
 
+from cyris.adapters.output.html_digest import FAVICON
 from cyris.adapters.store.article_store import ArticleStore
 from cyris.entrypoints.triage_server import TriageServer
 
@@ -58,6 +59,13 @@ class TestTheDeckIsNotServed:
         self, client: TestClient, path: str
     ) -> None:
         assert (await client.get(path)).status == 200
+
+    async def test_the_favicon_the_settings_page_links_is_served(self, client: TestClient) -> None:
+        response = await client.get("/favicon.svg")
+
+        assert response.status == 200
+        assert response.content_type == "image/svg+xml"
+        assert await response.read() == FAVICON.read_bytes()
 
 
 class TestBuildEndpoint:

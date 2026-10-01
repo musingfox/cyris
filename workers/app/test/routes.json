@@ -4,6 +4,7 @@
   {"path": "/", "method": "GET", "kind": "public", "unauth_status": 200},
   {"path": "/index.html", "method": "GET", "kind": "public", "unauth_status": 200},
   {"path": "/2026-08-30-evening.html", "method": "GET", "kind": "public", "unauth_status": 200},
+  {"path": "/favicon.svg", "method": "GET", "kind": "public", "unauth_status": 200, "container_route": "/favicon.svg"},
   {"path": "/login", "method": "GET", "kind": "login", "unauth_status": 200},
   {"path": "/login", "method": "POST", "kind": "login", "unauth_status": 401},
   {"path": "/api/vote", "method": "GET", "kind": "vote", "unauth_status": 401},
