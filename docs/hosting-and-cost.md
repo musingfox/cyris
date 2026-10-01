@@ -2,13 +2,18 @@
 
 What this deployment spends, what the paid plan buys that the free plan cannot, what a cheaper stack
 would look like, and the platform questions settled on 2026-09-20/21. *Measured* figures come from
-this deployment's D1 and `wrangler d1 info` on those dates; vendor figures carry an `[n]` into the
-source list, and a vendor number that does not exist is **not stated**, never estimated.
+this deployment's D1 and `wrangler d1 info` on those dates, except the idle-tick time, measured
+from Workers Logs, 2026-09-19 to 09-22; vendor figures carry an `[n]` into the source list, and a
+vendor number that does not exist is **not stated**, never estimated.
 
 ## 1. What this deployment actually uses
 
-Container rows come from 60 digest runs/month at ~64 s each (measured) on `instance_type = "basic"`
-— 1/4 vCPU, 1 GiB memory, 4 GB disk [4]; the `run` role exits when the run ends, so it has no idle
+Container rows come from 720 starts/month on `instance_type = "basic"` — 1/4 vCPU, 1 GiB memory,
+4 GB disk [4]. The Cron Trigger starts the `run` role every hour (`scheduled()` in
+`workers/app/src/index.js`), so 60 starts are digest runs at ~64 s each (measured) and the other
+660 exit on `--if-due` at a median of ~28 s per tick, timed from the top of the hour to `container
+stopped`, cold start included (measured from Workers Logs, 2026-09-19 to 09-22). That makes
+60 × 64 s + 660 × 28 s = 22,320 s. The `run` role exits when the run ends, so it has no idle
 tail, and `sleepAfter` is 5 m for the `ui` role (the `run` role's 15 m is only a cap on a hung run:
 its SIGTERM now ends the pass with exit 143 once the running step's in-flight call and cleanup
 return, which until
@@ -19,9 +24,9 @@ return, which until
 | D1 storage | 29.9 MB | 5 GB [7] | 0.6 % |
 | D1 rows read | 53,930 / 24 h ≈ 1.6 M / month | 25 billion / month [7] | < 0.01 % |
 | D1 rows written | 3,285 / 24 h ≈ 99 k / month | 50 million / month [7] | 0.2 % |
-| Container memory | 1 GiB × 3,840 s ≈ 1.07 GiB-hours | 25 GiB-hours [3] | 4.3 % |
-| Container vCPU | 0.25 × 3,840 s = 16 vCPU-minutes | 375 vCPU-minutes [3] | 4.3 % |
-| Container disk | 4 GB × 3,840 s ≈ 4.3 GB-hours | 200 GB-hours [3] | 2.1 % |
+| Container memory | 1 GiB × 22,320 s = 6.2 GiB-hours | 25 GiB-hours [3] | 24.8 % |
+| Container vCPU | 0.25 × 22,320 s = 93 vCPU-minutes | 375 vCPU-minutes [3] | 24.8 % |
+| Container disk | 4 GB × 22,320 s = 24.8 GB-hours | 200 GB-hours [3] | 12.4 % |
 | `ui` awake window | not measured | the same three container meters | — |
 | Workers requests / CPU | not measured | 10 M requests, 30 M CPU-ms [1] | — |
 | Durable Object duration | **not stated** for container-backed objects [6] | 400,000 GB-s [6] | — |
@@ -30,7 +35,7 @@ LLM spend, measured from `usage_log` on 2026-09-21: the month's total is **$0.87
 but runs before 2026-09-18 logged **$0.00** because `gemini-3.8-flash` carried no price in the model
 table until then (`feat(models): price gemini-3.8-flash`). The month's average therefore understates
 the real figure. The seven priced runs, 09-18 to 09-21, cost **$0.2251**, i.e. **~$0.032 per run**, so
-two runs a day is **~$1.9/month**. Everything metered sits under 5 % of its allotment, so the bill is
+two runs a day is **~$1.9/month**. Everything metered sits under 25 % of its allotment, so the bill is
 the **$5/month account minimum** [1], not usage: about **$6.9/month today** against about
 **$1.9/month** for §4's stack, the $5 being the whole gap.
 

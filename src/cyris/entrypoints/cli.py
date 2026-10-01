@@ -1064,7 +1064,7 @@ def store_diff(
         "sources.yaml"
     ),
 ) -> None:
-    """Compare both stores article by article. Silence means they agree."""
+    """Compare both stores article by article; agreement prints only the counts."""
     json_store, d1_store = _load_both_stores(config_path, sources_path)
 
     local = _newest_by_url(json_store.list_articles(state=None, limit=_ALL_ARTICLES))

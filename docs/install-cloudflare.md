@@ -214,6 +214,10 @@ Each is a separate deploy with its own README, and each is wired into the app th
 | [`workers/rss`](../workers/rss/README.md) | Hourly feed buffer, so busy feeds do not expire between digests | Workers Paid; the app's D1, after the app has booted |
 | [`workers/newsletter`](../workers/newsletter/README.md) | Email-only newsletters | Your own domain on Cloudflare with Email Routing |
 
+Each of these Workers' `wrangler.toml` ships ids that belong to another account: a KV
+namespace id in promote and newsletter, a D1 database in rss. Replace them as that
+Worker's README says before its first `wrangler deploy`.
+
 Two bearer tokens connect them. `CYRIS_WORKER_TOKEN` on the app is shared by rss
 (`RSS_TOKEN`) and newsletter (`NEWSLETTER_TOKEN`). `CYRIS_PROMOTE_TOKEN` on the app is
 promote's alone (`PROMOTE_TOKEN`); keep it a different value.
