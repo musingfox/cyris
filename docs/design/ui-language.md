@@ -114,8 +114,8 @@ original baseline was judged too large, and the multiplier's three steps are for
 - Control heights, column widths and spacing do not scale with the multiplier.
 - The multiplier has only three values: 0.875, 1 and 1.125. It is `digest.type_scale` in D1 `settings`,
   set in the Digest category of `/settings`; the app Worker adds `<style>html:root{--type-scale:X}</style>`
-  to every HTML page it serves, so published issues follow it too (issues from before 2026-09-18 have
-  hardcoded font sizes and are unaffected). Opening pages.dev directly always gives 1, and so does the
+  to every HTML page it serves, so published issues follow it too (issues rendered before this setting existed
+  have hardcoded font sizes and are unaffected). Opening pages.dev directly always gives 1, and so does the
   mail (§6 *email*).
 - Uppercase is applied only in CSS (`text-transform: uppercase`); text in the HTML keeps its normal case.
 
