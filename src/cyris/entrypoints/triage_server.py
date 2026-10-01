@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from cyris.adapters.output import html_digest
 from cyris.config import SETTINGS_FIELDS
 from cyris.diagnostics.doctor import probe_discord, probe_embedder
-from cyris.domain.models import SourceConfig
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -557,6 +557,15 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=400)
         if not source.name.strip():
             return web.json_response({"ok": False, "error": "name is required"}, status=400)
+        if not source.fetchable:
+            needs = {
+                "rss": "An RSS source needs a Feed URL.",
+                NEWSLETTER_SOURCE_TYPE: "A newsletter source needs a Sender match.",
+            }
+            error = needs.get(
+                source.type, f"A source's type is rss or newsletter, not {source.type!r}."
+            )
+            return web.json_response({"ok": False, "error": error}, status=400)
 
         try:
             self._source_store.upsert(source)

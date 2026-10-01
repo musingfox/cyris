@@ -32,6 +32,15 @@ class SourceConfig(BaseModel):
     # knowable instead of guessed from link statistics.
     homepage: str | None = None
 
+    @property
+    def fetchable(self) -> bool:
+        """Whether a fetcher reads this source: a feed by its URL, mail by its sender."""
+        if self.type == "rss":
+            return bool(self.url and self.url.strip())
+        if self.type == NEWSLETTER_SOURCE_TYPE:
+            return bool(self.email_match and self.email_match.strip())
+        return False
+
 
 class Article(BaseModel):
     """A fetched article ready for processing."""

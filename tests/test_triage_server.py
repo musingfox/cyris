@@ -177,6 +177,40 @@ class TestSourcesWriteSurface:
         assert resp.status == 400
         assert self.sources.list_sources() == {}
 
+    @pytest.mark.parametrize(
+        ("body", "error"),
+        [
+            ({"type": "rss"}, "An RSS source needs a Feed URL."),
+            ({"type": "rss", "url": "  "}, "An RSS source needs a Feed URL."),
+            ({"type": "newsletter"}, "A newsletter source needs a Sender match."),
+            (
+                {"type": "newsletter", "url": "https://n.test/feed"},
+                "A newsletter source needs a Sender match.",
+            ),
+            (
+                {"type": "web", "url": "https://n.test/feed"},
+                "A source's type is rss or newsletter, not 'web'.",
+            ),
+        ],
+    )
+    async def test_a_source_no_fetcher_reads_is_a_400_not_a_row(
+        self, client: TestClient, body: dict, error: str
+    ) -> None:
+        resp = await client.post("/api/sources", json={"name": "x", **body})
+
+        assert resp.status == 400
+        assert await resp.json() == {"ok": False, "error": error}
+        assert self.sources.list_sources() == {}
+
+    async def test_a_newsletter_with_a_sender_match_is_stored(self, client: TestClient) -> None:
+        resp = await client.post(
+            "/api/sources",
+            json={"name": "Letter", "type": "newsletter", "email_match": "from:hi@letter.test"},
+        )
+
+        assert resp.status == 200
+        assert self.sources.list_sources()["Letter"].email_match == "from:hi@letter.test"
+
 
 class TestLastSource:
     """A deployment with no source stops running, so the page cannot retire the last one."""
