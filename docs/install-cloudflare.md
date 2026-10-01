@@ -9,6 +9,11 @@ end.
 Every step below is for a fresh fork. If you already run cyris locally, do the steps
 in [Moving to Cloudflare](install-local.md#moving-to-cloudflare-later) first.
 
+These steps have been verified on one Cloudflare account only, the maintainer's, which
+already held resources from earlier versions; nobody has yet run them from scratch on a
+new account. If a step fails on yours, an issue naming the step and the error is the
+fastest way to get it fixed.
+
 ## Prerequisites
 
 - **Workers Paid** on your Cloudflare account (US$5/mo). Containers are not available on
