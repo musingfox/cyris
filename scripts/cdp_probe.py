@@ -89,7 +89,8 @@ class Check:
     the page loads.
 
     `media` names CSS media features the browser reports for the whole check,
-    such as `(("prefers-reduced-motion", "reduce"),)`.
+    such as `(("prefers-reduced-motion", "reduce"),)`. `focused` reports the
+    page as the focused window, without which a headless page matches no `:focus`.
 
     A gesture step is `{"press": selector, "pointer": "mouse" | "touch"}`,
     `{"move": dx}`, `{"release": True}` or `{"hover": selector}`; a move or a
@@ -112,6 +113,7 @@ class Check:
     receipt: Callable[[Any], str | None] | None = None
     gestures: tuple[dict, ...] = ()
     media: tuple[tuple[str, str], ...] = ()
+    focused: bool = False
 
     def __post_init__(self) -> None:
         pressed = False
@@ -343,6 +345,7 @@ await call('Network.setBlockedURLs', { urls: ['*fonts.googleapis.com*', '*fonts.
 await call('Emulation.setDeviceMetricsOverride',
   { width: job.width, height: job.height, deviceScaleFactor: 1, mobile: false });
 if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+if (job.focused) await call('Emulation.setFocusEmulationEnabled', { enabled: true });
 const results = [];
 try {
   // Before the first navigation: a page reads matchMedia as it loads.
@@ -385,6 +388,7 @@ try {
 } finally {
   if (job.media.length) await call('Emulation.setEmulatedMedia', { features: [] });
   if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: false });
+  if (job.focused) await call('Emulation.setFocusEmulationEnabled', { enabled: false });
   await call('Emulation.clearDeviceMetricsOverride');
 }
 process.stdout.write(JSON.stringify(results));
@@ -413,6 +417,7 @@ def build_job(check: Check, base: str, sabotaged: bool, prelude: str) -> dict:
         "act": act_expression(check, sabotaged, prelude),
         "gestures": list(check.gestures),
         "media": [{"name": name, "value": value} for name, value in check.media],
+        "focused": check.focused,
         "script": script_expression(check, prelude),
     }
 
