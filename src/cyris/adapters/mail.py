@@ -14,7 +14,7 @@ import httpx
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import period_label, redact_webhook_tokens
 from cyris.adapters.output.email_digest import render_digest_email
-from cyris.adapters.output.html_digest import _features
+from cyris.adapters.output.html_digest import Story, _features
 from cyris.domain.models import DigestContent, DigestItem
 
 logger = logging.getLogger(__name__)
@@ -62,8 +62,14 @@ async def send_mail(
     return "queued" if recipient in (result.get("queued") or []) else "delivered"
 
 
-def _line(item: DigestItem) -> str:
+def _line(item: DigestItem | Story) -> str:
     return f"- {item.title} — {item.link}" if item.link else f"- {item.title}"
+
+
+def _story_lines(story: Story) -> list[str]:
+    if not story.grouped:
+        return [_line(story)]
+    return [_line(story), *(f"  {_line(member)}" for member in story.members)]
 
 
 def build_digest_mail(
@@ -83,8 +89,8 @@ def build_digest_mail(
     ]
     features = _features(content)
     sections = [
-        ("Top story", [_line(item) for item in features[:1]]),
-        ("Features", [_line(item) for item in features[1:]]),
+        ("Top story", [line for story in features[:1] for line in _story_lines(story)]),
+        ("Features", [line for story in features[1:] for line in _story_lines(story)]),
         ("In Focus", [f"- {cluster.heading}" for cluster in content.news_clusters]),
         ("Following", [_line(i) for sec in content.fan_sections for i in sec.items]),
         ("On the Radar", [_line(i) for sec in content.attention_sections for i in sec.items]),

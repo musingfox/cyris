@@ -145,6 +145,25 @@ class TestDigestMail:
         assert "In Focus" in text and "Cluster Heading" in text
         assert "The Wire" in text and "Wire One — https://w.test/1" in text
 
+    def test_the_text_part_lists_a_groups_articles_under_its_heading(self):
+        content = _content()
+        content.featured_articles = [
+            DigestSection(
+                heading="Group heading",
+                summary="s",
+                items=[
+                    DigestItem(title=t, summary="s", sources=["S"], urls=[f"https://g.test/{t}"])
+                    for t in ("A", "B")
+                ],
+            )
+        ]
+
+        _, text = build_digest_mail(content)
+
+        assert (
+            "Top story\n- Group heading\n  - A — https://g.test/A\n  - B — https://g.test/B" in text
+        )
+
     @respx.mock
     async def test_it_sends_through_the_rest_api(self):
         route = respx.post(SEND_URL).mock(

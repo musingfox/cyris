@@ -593,6 +593,77 @@ def test_a_lead_story_with_an_empty_title_shows_no_card_title(tmp_path):
     assert "<h2" not in _card_for(tmp_path, content)
 
 
+def _group(summary: str | None = "Shared summary") -> DigestSection:
+    """A two-article summarize group; summary=None is the degraded shape, one excerpt each."""
+    members = (("Alpha", "A", "https://a.test/1", 7.0), ("Beta", "B", "https://b.test/2", 8.0))
+    return DigestSection(
+        heading="Group heading",
+        summary=summary,
+        items=[
+            DigestItem(
+                title=title,
+                summary=summary or f"{title} excerpt",
+                sources=[source],
+                urls=[url],
+                score=score,
+            )
+            for title, source, url, score in members
+        ],
+    )
+
+
+def _main_of(tmp_path, *featured: DigestSection) -> str:
+    html = HtmlDigestWriter(tmp_path).render(
+        _content("2026-04-15", "evening", featured_articles=list(featured))
+    )
+    return html[html.index("<main>") : html.index("</main>")]
+
+
+def _feature_main(tmp_path, section: DigestSection) -> str:
+    """<main> of a digest whose lead is a single article, so `section` lands in Features."""
+    return _main_of(tmp_path, DigestSection(heading="L", items=_items("Lead")), section)
+
+
+def test_a_group_feature_prints_its_summary_once_under_its_heading(tmp_path):
+    main = _feature_main(tmp_path, _group())
+    assert main.count("Shared summary") == 1
+    assert '<h3 class="item-title lg">Group heading</h3>' in main
+
+
+def test_each_article_in_a_group_keeps_its_own_link_and_vote(tmp_path):
+    main = _feature_main(tmp_path, _group())
+    for title, url in (("Alpha", "https://a.test/1"), ("Beta", "https://b.test/2")):
+        assert re.search(rf'<h4 class="item-title"><a href="{url}"[^>]*>{title}</a></h4>', main)
+        assert f"data-urls='[\"{url}\"]'" in main
+    assert 'data-urls=\'["https://a.test/1", "https://b.test/2"]\'' not in main
+
+
+def test_a_degraded_section_keeps_one_card_per_excerpt(tmp_path):
+    main = _feature_main(tmp_path, _group(summary=None))
+    assert "Alpha excerpt" in main and "Beta excerpt" in main
+    assert "Group heading" not in main
+
+
+def test_a_one_article_group_renders_as_its_article(tmp_path):
+    section = DigestSection(heading="Group heading", summary="S", items=_items("Only"))
+    main = _feature_main(tmp_path, section)
+    assert '<a href="https://example.test/Only/0" target="_blank" rel="noopener">Only</a>' in main
+    assert "Group heading" not in main
+
+
+def test_a_group_lead_lists_its_articles_one_level_below_its_title(tmp_path):
+    main = _main_of(tmp_path, _group())
+    assert main.count("Shared summary") == 1
+    assert re.search(r"<h2>\s*Group heading\s*</h2>", main)
+    assert re.search(r'<h3 class="item-title lg"><a href="https://a.test/1"', main)
+    assert _main_text(f"<main>{main}</main>").levels[:3] == [2, 3, 3]
+
+
+def test_a_group_lead_gives_the_card_its_heading(tmp_path):
+    content = _content("2026-04-15", "evening", featured_articles=[_group()])
+    assert "<h2>Group heading</h2>" in _card_for(tmp_path, content)
+
+
 def test_the_card_title_is_escaped(tmp_path):
     content = _content(
         "2026-04-15",
