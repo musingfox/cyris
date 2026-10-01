@@ -2,7 +2,7 @@
 
 > Status: **the move is done.** Phases 0–2 landed by 2026-08-25 (state in D1); the compute
 > followed on 2026-08-30, when `workers/app/` put the pipeline in a Cloudflare Container and the
-> Mac mini's `docker compose` was stopped. This file is kept for the measurements and the
+> local machine's `docker compose` was stopped. This file is kept for the measurements and the
 > reasoning behind each choice — **the live list of what is and is not done is
 > [`architecture.md`](architecture.md) §7**, not this plan.
 >
@@ -29,7 +29,7 @@ remaining migration is roughly 1,300 lines of adapter rewriting, dominated by
 | Feed buffer | `workers/rss/` cron → D1 |
 | Published digest | Cloudflare Pages |
 
-Still local: the `cyris` container on a Mac mini (digest at 08:00 and 20:00) and
+Still local: the `cyris` container on a local machine (digest at 08:00 and 20:00) and
 the triage UI. Persistent state moved to D1 on 2026-08-25.
 
 ### Why a buffer, and not direct polling
@@ -252,7 +252,7 @@ partitions per `save`, and over SQL that is one query.
 not deferrable scope — per the two-channel model it is the knowledge gate and the only
 source of real-human training signal, and vote similarity seeds from what it writes.
 
-Independently valuable even if phase 3 never happens: once state is in D1, a dead Mac mini
+Independently valuable even if phase 3 never happens: once state is in D1, a dead local machine
 loses nothing.
 
 ## Phase 3 — compute to Container

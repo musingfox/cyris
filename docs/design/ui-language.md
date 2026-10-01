@@ -99,7 +99,7 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
 - Inline SVG illustration coordinates, paths and stroke widths are drawing geometry, not UI spacing.
   Illustrations inherit token colours; their outer size and margins still use the spacing scale.
 - **All spacing is on the scale.** The digest body's former values such as 14/18/22/28/36/44/56px moved
-  onto the scale in step 7 (`digest-issue-page-layout`); there are no exceptions after it.
+  onto the scale in step 7; there are no exceptions after it.
 
 ## 3. Type
 
@@ -181,7 +181,7 @@ Sign in (/login): on the site bar in Settings' place, when the app Worker answer
   in the footer.
 - The archive's headline card and every row have two entries, `Digest` and `All articles`.
 - There is no separate triage page. Articles are judged in raw's triage view; the deck was retired on
-  2026-09-19 (`triage-raw-list-merge`).
+  2026-09-19 (§8 step 4).
 - There is no previous or next issue. The use case is reading each day's issue on that day.
 - A back link must point to a path that exists. `/triage` is a 404 in production.
 
@@ -342,23 +342,23 @@ Of the gaps surveyed on 2026-09-17, steps 1 to 3 landed on 2026-09-18 and steps 
 2026-09-19. Step 1 added the §2 tokens, the §3 type, focus and reduced motion, removed two hardcoded colours,
 and added the component CSS comparison test. Step 2 put the site bar and issue bar on archive, digest and
 raw. Step 3 rebuilt settings to §6. Step 4 rebuilt raw's list to §6 and added the triage view that appears
-only after signing in, and the deck was deleted the same day (`triage-raw-list-merge`). Step 6 turned the
+only after signing in, and the deck was deleted the same day. Step 6 turned the
 archive into a headline card plus year-and-month panels, with a day's later rows set apart by a dimmed
 date. Step 7 rebuilt the digest body to §6: each section's name is printed once by its tag, heading levels
 follow the structure, `.meta` is folded into one base rule, the two body grids share one fluid column rule,
 720px is the only breakpoint left, and all body spacing moved onto the scale. Step 5 below handles the
 remaining gaps.
 
-The landing order, where each step can ship alone. The tickets in parentheses are in the Obsidian vault's
-`pm/cyris/tasks/`:
+The landing order, where each step can ship alone. Each step was its own ticket, tracked privately
+outside this repository:
 
-1. §2 tokens, §3 type, focus and reduced motion, removing two hardcoded colours, and extending the CSS comparison test to components (`ui-spec-tokens-and-type`)
-2. The site bar and issue bar on archive, digest and raw; the two entries added to archive rows; footer navigation removed (`ui-site-bar-and-issue-bar`)
-3. Settings rebuilt to §6 (`settings-page-layout`)
-4. The triage view added to raw (`raw-page-triage-view`); the deck deleted (`triage-raw-list-merge`)
-5. Each deployment has only one settings source; settings lists every runtime setting and marks missing values, with no origin pill (`settings-value-origin-per-key`, repurposed for this)
-6. The archive turned into a headline card plus year-and-month sections (`digest-index-archive-layout`)
-7. The digest body's heading levels, `.meta` and the width dead zone, with body spacing moved onto the scale in this step (`digest-issue-page-layout`)
+1. §2 tokens, §3 type, focus and reduced motion, removing two hardcoded colours, and extending the CSS comparison test to components
+2. The site bar and issue bar on archive, digest and raw; the two entries added to archive rows; footer navigation removed
+3. Settings rebuilt to §6
+4. The triage view added to raw; the deck deleted
+5. Each deployment has only one settings source; settings lists every runtime setting and marks missing values, with no origin pill
+6. The archive turned into a headline card plus year-and-month sections
+7. The digest body's heading levels, `.meta` and the width dead zone, with body spacing moved onto the scale in this step
 
 ## 9. Checklist before changing the UI
 

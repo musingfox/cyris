@@ -6,7 +6,7 @@ depends: [digest-shared-css-partial]
 
 # digest 封存首頁：頭版卡片＋年月分段清單
 
-票：`digest-index-archive-layout`（Obsidian vault `obsidian`，`pm/cyris/tasks/`）。
+票私下追蹤，不在這個 repo。
 被 `digest-shared-css-partial` 擋著——那張票先把三個範本各自內嵌的 token 與 chrome CSS
 收斂成一份 Jinja partial，這張票才動得了。frontmatter 的 `depends` 指的是那張**票**，
 不是另一個里程碑；它沒有自己的里程碑檔案。
@@ -140,19 +140,8 @@ digest 封存首頁（`src/cyris/adapters/output/templates/index.html.j2`）從�
 
 ## 證據
 
-四個版面候選不是敘述，是跑過的東西。證據在分支
-`spiral/prototype-digest-index-layout`（commit `ec7e2cc`，沒有人會合併它）：
-
-- 被選中的：`git show spiral/prototype-digest-index-layout:spiral-prototype/b-hero-list/index.html`
-  （另有 `degraded.html`、`verdict.md`）
-- 保留為翻案選項的網格：同分支 `spiral-prototype/c-month-grid/verdict.md`
-- 另外兩份的裁決：同分支 `spiral-prototype/a-grouped-list-verdict.md`、
-  `spiral-prototype/d-year-rail-verdict.md`
-- 四份的 1440px 截圖：同分支 `spiral-prototype/shots/`
-- 四份共用的 65 期假資料：同分支 `spiral-prototype/data.json`
-- 完整報告（五條驗收線、各自撞到的限制）：同分支 `spiral-prototype/README.md`
-
-上面所有全頁高度與內容佔比都出自這些截圖與各自的 verdict。
+四個版面候選不是敘述，是跑過的東西。那些 prototype、截圖與各自的 verdict 沒有收進這個 repo；
+上面所有全頁高度與內容佔比都出自它們。
 
 **一個環境事實，任何人日後驗這頁的窄螢幕行為都會踩到**：這台機器的 Chromium 152 對
 `--window-size` 有 500px CSS 寬度硬地板，`--headless` 與 `--headless=new` 皆然。傳

@@ -6,7 +6,7 @@ depends: []
 
 # 影音來源：英文 podcast 與 YouTube
 
-2026-09-28 經兩層 spiral 定案。第一批只做英文 podcast 和 YouTube，台灣中文 podcast 之後再做。
+2026-09-28 經兩輪設計討論定案。第一批只做英文 podcast 和 YouTube，台灣中文 podcast 之後再做。
 
 ## 這個里程碑定下什麼
 
@@ -86,7 +86,7 @@ A 級是 B 級的基礎，也是 B 級的退路。濃縮失敗、逾時，或濃
   - `synthetic_url_count` 維持只算電子報的 `newsletter:` 網址（`src/cyris/service_layer/run_digest.py:376`）。
   - 預覽模式不存檔，所以不會觸發濃縮，不用特別處理。
 
-## 留給 /cf 決定的事
+## 留給實作時決定的事
 
 - **濃縮設定的形狀。** 一個鍵或兩個（provider 和 model）；podcast 和 YouTube 要不要分開設定，因為 YouTube 只能用 Gemini；真實 API 驗證要怎麼確認 YouTube 能力。設定要照架構文件 §5 的 D 級規則放進 `settings_fields.json`、`cyris.toml.example` 和 `cyris settings push`。
 - **上線順序。** 新的必填 D 級鍵在 D1 填好之前，每次 run 都會停下（`docs/architecture.md:551-552`），所以要先填值，才能部署會讀它的版本。
@@ -136,8 +136,3 @@ A 級是 B 級的基礎，也是 B 級的退路。濃縮失敗、逾時，或濃
 ## 不變式
 
 這個里程碑產生五條 spec，都在 `docs/spec/`，目前是 `proposed`：`podcast-episode-keyed-by-guid`、`rss-parsers-agree`、`media-condensed-once-before-scoring`、`media-condensation-falls-back-to-announcement`、`youtube-content-not-scraped`。
-
-## Suggested skills
-
-- `cf:cf`：這份文件是種子，不是契約。`/cf` 會自己做研究、規劃，並在關卡請你確認；上面「留給 /cf 決定的事」就從那裡定下。
-- `obw:pm`：cyris 的票開在 Obsidian vault 的 `pm/cyris/tasks/`，不開 GitHub issue。開工時為這個里程碑開票。

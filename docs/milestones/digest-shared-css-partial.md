@@ -6,7 +6,7 @@ depends: []
 
 # digest 三頁的 CSS 收斂成參數化的 partial
 
-票：`digest-shared-css-partial`（Obsidian vault `obsidian`，`pm/cyris/tasks/`）。
+票私下追蹤，不在這個 repo。
 沒有 blocker。它自己是 `digest-index-archive-layout` 的 blocker
 （`docs/milestones/digest-archive-index-layout.md`）。
 
