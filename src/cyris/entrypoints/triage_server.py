@@ -27,6 +27,16 @@ PLAIN_KEYS: tuple[str, ...] = tuple(
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
+def _accepts_empty(key: str) -> bool:
+    from cyris.config import validate_setting
+
+    try:
+        validate_setting(key, "")
+    except ValueError:
+        return False
+    return True
+
+
 def _values_note(keys: list[str]) -> str:
     """When the saved keys take effect: a live key reaches the pages, the rest the next run."""
     live = [SETTINGS_FIELDS[key]["label"] for key in keys if SETTINGS_FIELDS[key].get("live")]
@@ -162,6 +172,7 @@ class TriageServer:
                 "values": values,
                 "fields": SETTINGS_FIELDS,
                 "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
+                "may_be_empty": [key for key in GRADE_D_KEYS if _accepts_empty(key)],
                 "providers": providers,
                 "embedding_providers": embedding_providers,
                 "languages": list(_language_names()),

@@ -1617,6 +1617,95 @@ CHECKS: list[Check] = [
         """,
     ),
     Check(
+        id="first-boot-notify-off",
+        fixture="writable",
+        path="/settings#notifications",
+        setup=_unset(),
+        act="""
+            await providersLoaded();
+            ctx.shown = visible($("#notify-off"));
+            $("#notify-off").click();
+            await sleep(200);
+            $("#notify-off").click();
+            await waitFor(() => visible($("#notify-result")), "the notice");
+        """,
+        script="""
+            expect(ctx.shown, "Turn off is hidden while no webhook is stored");
+            expect(!$("#discord-webhook").hasAttribute("aria-invalid"), "the webhook is marked");
+            const text = $("#notifications-missing").textContent;
+            expect(!text.includes("Discord webhook"), `notice: ${text}`);
+            const state = $("#notify-state");
+            expect(visible(state), "Notifications are off. is not shown");
+        """,
+        sabotage_preload=rewrite_post("/api/settings/notify", "body.off = false;"),
+        receipt=_last_call({"notify.discord_webhook_url": ""}),
+    ),
+    Check(
+        id="first-boot-notify-completes",
+        fixture="writable",
+        path="/settings#notifications",
+        setup=_unset("notify.discord_webhook_url", "notify.email_to", "notify.email_from"),
+        act="""
+            await settingsLoaded();
+            ctx.enabled = !saveOf("notifications").disabled;
+            $("#notify-off").click();
+            await sleep(200);
+            $("#notify-off").click();
+            await waitFor(() => visible($("#notify-result")), "the notice");
+            saveOf("notifications").click();
+            await waitFor(() => saveOf("notifications").disabled
+              && !noticeOf("notifications").textContent.startsWith("Sending"), "the save");
+        """,
+        script="""
+            expect(ctx.enabled, "Save was disabled with the email pair missing");
+            expect(!visible($("#notifications-missing")), "the category notice is still shown");
+            expect(!navOf("notifications").classList.contains("missing"),
+              "Notifications is still marked");
+            const marked = $$('#notify-form [aria-invalid="true"]').map((el) => el.id);
+            expect(marked.length === 0, `marked: ${marked}`);
+        """,
+        sabotage_preload=rewrite_post("/api/settings/email", 'body.email_to = "x@example.test";'),
+        receipt=_calls(
+            [
+                {"notify.discord_webhook_url": ""},
+                {"notify.email_to": "", "notify.email_from": ""},
+            ]
+        ),
+    ),
+    Check(
+        id="first-boot-style-empty",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.style_prompt"),
+        act="""
+            await settingsLoaded();
+            ctx.enabled = !saveOf("digest").disabled;
+            ctx.dirty = navOf("digest").classList.contains("dirty");
+            saveOf("digest").click();
+            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""
+            expect(ctx.enabled, "Save was disabled with Style missing");
+            expect(!ctx.dirty, "Digest had a dirty mark before any edit");
+            expect(!visible($("#digest-missing")), "the category notice is still shown");
+            expect(!navOf("digest").classList.contains("missing"), "Digest is still marked");
+            expect(!$("#style-prompt").hasAttribute("aria-invalid"), "Style is still marked");
+        """,
+        # The answer before this fix: nothing is known to take an empty value.
+        sabotage_preload="""
+const realFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const res = await realFetch(input, init);
+  if (!String(input).endsWith("/api/settings") || (init && init.method)) return res;
+  const data = await res.json();
+  data.may_be_empty = [];
+  return new Response(JSON.stringify(data), {status: res.status, headers: res.headers});
+};
+""",
+        receipt=_calls([{"digest.style_prompt": ""}]),
+    ),
+    Check(
         id="digest-posts-new-fields",
         fixture="writable",
         path="/settings#digest",

@@ -277,7 +277,8 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
   the category lists the missing fields in one error notice, and the list gets a `--warn` dot. All three
   marks disappear together after saving.
 - Each category has exactly one primary `Save`, disabled when nothing has changed; a category with unsaved
-  changes gets an `--accent` dot in the list.
+  changes gets an `--accent` dot in the list. A missing value whose answer may be empty, such as Style or
+  Email to, keeps `Save` enabled without a dot, so a first boot can store it as it stands.
 - The prototype governs the fields' names, help text and `More` text.
 
 ### email
