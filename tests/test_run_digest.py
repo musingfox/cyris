@@ -15,7 +15,7 @@ import respx
 from fakes import FakeLLM, make_config
 
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
-from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
 from cyris.adapters.store import ArticleStore
 from cyris.bootstrap import Deps
 from cyris.config import (
@@ -646,6 +646,18 @@ def test_the_published_digest_is_keyed_by_the_writers_file_name(tmp_path: Path, 
 
     assert "/2026-04-16-evening-v2.html" in pages
     assert "/2026-04-16-evening.html" not in pages
+
+
+def test_every_published_site_carries_the_favicon(tmp_path: Path) -> None:
+    deps = SimpleNamespace(
+        html_writer=HtmlDigestWriter(tmp_path),
+        site_filenames=lambda: ["2026-04-15-evening.html", "favicon.svg"],
+        archive_counts=lambda: {},
+    )
+
+    pages = _render_site(deps, _run_content("2026-04-16", "evening", "Lead", 1), [], raw_page=False)
+
+    assert pages["/favicon.svg"] == FAVICON.read_bytes()
 
 
 def test_the_published_archive_rows_carry_the_recorded_counts(tmp_path: Path) -> None:

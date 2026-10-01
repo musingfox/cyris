@@ -11,6 +11,12 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, StoredArticle
 from cyris.service_layer.schedule import PERIOD_ORDER
 
+# The upstream project, not this deployment: a fork's pages still credit it, so no
+# setting changes it (docs/architecture.md §5, grade A).
+PROJECT_URL = "https://cyris.musingfox.com/"
+# A copy of website/assets/favicon.svg, because the image ships `src/` only.
+FAVICON = Path(__file__).parent / "favicon.svg"
+
 
 def _hostname(url: str) -> str:
     """Return a URL's hostname for a compact source-link label."""
@@ -142,6 +148,12 @@ class HtmlDigestWriter:
         )
         self.env.filters["hostname"] = _hostname
         self.env.filters["plural"] = _plural
+        self.env.globals["project_url"] = PROJECT_URL
+
+    @staticmethod
+    def site_assets() -> dict[str, bytes]:
+        """Files every deployment of the site carries beside its pages, by file name."""
+        return {FAVICON.name: FAVICON.read_bytes()}
 
     def render(self, content: DigestContent, raw_page: bool = False) -> str:
         """Transform DigestContent into complete HTML document.
@@ -207,6 +219,8 @@ class HtmlDigestWriter:
         file_path.write_text(html, encoding="utf-8")
 
         self.write_index(self.output_dir, content=content)
+        for name, data in self.site_assets().items():
+            (self.output_dir / name).write_bytes(data)
 
         return file_path
 

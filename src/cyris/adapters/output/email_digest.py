@@ -17,7 +17,13 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
 from cyris.adapters.notify import period_label
-from cyris.adapters.output.html_digest import HtmlDigestWriter, _features, _hostname, _html_lang
+from cyris.adapters.output.html_digest import (
+    PROJECT_URL,
+    HtmlDigestWriter,
+    _features,
+    _hostname,
+    _html_lang,
+)
 from cyris.domain.models import DigestContent
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -31,6 +37,7 @@ _env = Environment(
     autoescape=select_autoescape(["html", "xml"], default=True),
 )
 _env.filters["hostname"] = _hostname
+_env.globals["project_url"] = PROJECT_URL
 
 
 @functools.cache
