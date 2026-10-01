@@ -65,6 +65,7 @@ COMPONENT_SELECTORS = frozenset(
         ".choice:hover",
         ".choice input",
         ".choice.unavailable",
+        ".choice.unavailable input, .choice.unavailable .name",
         ".choice.unavailable:hover",
         ".choice .name",
         ".seg",

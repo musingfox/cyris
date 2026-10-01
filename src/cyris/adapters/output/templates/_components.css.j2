@@ -23,7 +23,8 @@
         .choice:last-child { border-bottom: 0; }
         .choice:hover { background: var(--surface); }
         .choice input { accent-color: var(--accent); }
-        .choice.unavailable { cursor: not-allowed; opacity: .5; }
+        .choice.unavailable { cursor: not-allowed; }
+        .choice.unavailable input, .choice.unavailable .name { opacity: .5; }
         .choice.unavailable:hover { background: transparent; }
         .choice .name { font-weight: 600; font-size: calc(18px * var(--type-scale)); }
         .seg { display: inline-flex; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--r-control); }

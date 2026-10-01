@@ -550,6 +550,7 @@ EXPECTED_IDS = {
     "hash-default",
     "hash-nav-click",
     "model-readiness",
+    "unavailable-state-opaque",
     "model-no-keys",
     "model-placeholder",
     "save-disabled-while-loading",

@@ -1137,3 +1137,9 @@ def test_faint_text_is_reported_and_a_faint_border_is_not() -> None:
 def test_no_text_is_coloured_faint(source: str) -> None:
     text = {"prototype": PROTOTYPE, "website": WEBSITE}.get(source)
     assert _faint_text(text.read_text() if text else _source(source)) == []
+
+
+def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
+    rules = parse_style_block(f"<style>{_render_partial('_components.css.j2')}</style>")
+    assert rules[".choice.unavailable"] == {"cursor: not-allowed"}
+    assert rules[".choice.unavailable input, .choice.unavailable .name"] == {"opacity: .5"}
