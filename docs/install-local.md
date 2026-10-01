@@ -47,8 +47,9 @@ Change these; the rest works as shipped.
 | `[general] digest_schedule` | The local hours to publish, such as `["08:00", "20:00"]`, read in that timezone |
 | `[digest] output_language` | A BCP 47 tag for headlines and summaries, such as `en`. There is no default; the example uses `zh-Hant` |
 
-Optional: `[notify] discord_webhook_url` for a Discord message per digest, and
-`[digest] style_prompt` for your own tone or focus. Keep `[store] backend = "json"` and
+`[notify] discord_webhook_url` and `[digest] style_prompt` are required keys for optional
+features: set the webhook for a Discord message per digest and the prompt for your own tone
+or focus, or keep each as `""` to leave it off. Keep `[store] backend = "json"` and
 `[html_output] enabled = true`.
 
 Then put the matching key in `.env` (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
