@@ -27,8 +27,10 @@ cp .env.example .env
 cp sources.example.yaml sources.yaml
 ```
 
-- **`cyris.toml`** holds every runtime setting. Each key in it is required: a key left
-  out stops the run and is named, because no value for one lives in code.
+- **`cyris.toml`** holds every runtime setting. Each runtime setting is required: one
+  left out stops the run and is named, because no value for one lives in code. The
+  deployment keys around them do have defaults, and one of those matters: without
+  `[html_output] enabled = true` a run succeeds and writes no digest.
 - **`.env`** holds secrets. Locally only the key for your LLM provider matters; leave
   the Cloudflare names blank.
 - **`sources.yaml`** is the source list.
@@ -146,8 +148,9 @@ pages, so the Settings link on a page opened from disk goes nowhere.
 
 ## Moving to Cloudflare later
 
-The article store, the runtime settings and the source list can all be copied into D1
-without overwriting anything there.
+The article store, the runtime settings and the source list can all be copied into D1.
+The store and the settings are added without overwriting anything there; the source
+list replaces D1's, so a source D1 holds that `sources.yaml` lacks is removed.
 
 1. Do steps 1 to 3 of [the Cloudflare guide](install-cloudflare.md): the D1 database,
    the Pages project name and the API token.
@@ -158,9 +161,9 @@ without overwriting anything there.
 
    ```sh
    uv run cyris store migrate     # the JSON store into D1; safe to re-run
-   uv run cyris store diff        # article by article; silence means they agree
+   uv run cyris store diff        # article by article; they agree when only local, only d1 and differing are all 0
    uv run cyris settings push     # every runtime setting D1 lacks, from cyris.toml
-   uv run cyris sources push      # make D1's source table match sources.yaml
+   uv run cyris sources push      # make D1's source table match sources.yaml, removals included
    ```
 
 4. Stop the local scheduler: remove the cron line, or `docker compose down`. Two
@@ -182,6 +185,8 @@ A D1 deployment reads runtime settings from D1 only, and `cyris doctor` fails wh
 - **doctor: `provider is anthropic but ANTHROPIC_API_KEY is empty`**: put the key in
   `.env`, or set `provider = "none"` and `model = ""`.
 - **`No sources in sources.yaml.`**: add at least one source.
+- **A run succeeds but `agent-vault/html/` stays empty**: set `[html_output] enabled =
+  true`; left out, it defaults to off.
 - **`Not a digest hour (…)`**: `--if-due` outside the schedule, which is normal. Use
   `--period` to run now.
 - **The evening digest replaced the morning one**: the scheduled command lacks
