@@ -276,6 +276,10 @@ $("model-form").addEventListener("submit", async (e) => {
   show(failed ? "err" : "ok", lines.join("\n"), "model-result");
 });
 
+// The app Worker answers 401 once the session cookie has expired. Reloading
+// /settings then serves the sign-in form, which returns here.
+const SESSION_EXPIRED = new Error("Your session has expired. Reload the page to sign in again.");
+
 // Rejects with what the reader needs: the server's own explanation when it
 // gives one, otherwise what happened and what to do next.
 async function post(url, body, method = "POST") {
@@ -289,6 +293,7 @@ async function post(url, body, method = "POST") {
   } catch (err) {
     throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
   }
+  if (res.status === 401) throw SESSION_EXPIRED;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
   throw new Error(data.error || `cyris answered ${res.status} without saying why. ` +
@@ -715,22 +720,22 @@ async function saveSource(ed, button) {
 
 const loadSources = () =>
   fetch("/api/sources")
-    .then((r) => r.json())
+    .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
     .then(loaded)
     .catch((e) => {
       $("add-source").disabled = true;
-      show("err", `Could not load sources: ${e}. Reload the page to try again.`,
-           "sources-notice");
+      show("err", e === SESSION_EXPIRED ? e.message
+        : `Could not load sources: ${e}. Reload the page to try again.`, "sources-notice");
     });
 
 loadSources();
 
 fetch("/api/settings")
-  .then((r) => r.json())
+  .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
   .then((d) => { state = d; render(); })
   .catch((e) => {
     // Every Save stays disabled: tracking only starts once the values are known.
-    SETTINGS_NOTICES.forEach((id) => {
-      show("err", `Could not load settings: ${e}. Reload the page to try again.`, id);
-    });
+    const text = e === SESSION_EXPIRED ? e.message
+      : `Could not load settings: ${e}. Reload the page to try again.`;
+    SETTINGS_NOTICES.forEach((id) => show("err", text, id));
   });
