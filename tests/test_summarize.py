@@ -90,6 +90,21 @@ class TestSummarizeArticles:
         assert sections[0].summary == "One summary"
         assert len(sections[0].items) == 2
 
+    async def test_a_group_without_a_summary_has_none_to_render_once(
+        self, sample_summarize_articles
+    ):
+        llm = FakeLLM(json.dumps({"sections": [{"heading": "H", "article_ids": [0]}]}))
+
+        sections = await summarize_articles(
+            sample_summarize_articles,
+            llm,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert sections[0].summary is None
+
     async def test_summarize_metadata_comes_from_local_article(self):
         """Title/source/url come from the store article, never the LLM echo —
         URL-string ids (newsletters) must not lose their links."""
