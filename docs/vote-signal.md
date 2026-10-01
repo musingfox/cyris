@@ -1,11 +1,13 @@
 # Vote-Signal Utilization Analysis: Improving Article Selection from Digest Up/Downvotes
 
 > Status: historical record, measured 2026-08-09. **§6–§8 are superseded by**
-> [`vote-signal-measurement.md`](vote-signal-measurement.md); §1–§5 remain valid. Every number
+> [`vote-signal-measurement.md`](vote-signal-measurement.md); §1–§5 record what was measured
+> then, not what the code does now. Every number
 > below was recomputed from `agent-vault/articles/*.json`, which the D1 cutover replaced with the
 > `stored_articles` table — the figures are a snapshot of that date, not a query you can re-run.
 > Code it cites is cited as it stood then: `profile.py` and the PreferenceProfile it
-> describes were deleted, and `agent-vault/learning/` with them.
+> describes were deleted, and `agent-vault/learning/` with them. The Sonnet-priced cost §4 warns
+> about is gone as well: `domain/models.py` now prices each model.
 > For what the system does today see [`architecture.md`](architecture.md).
 
 Scope: this document evaluates ways to turn the digest's up/downvote clicks into a
