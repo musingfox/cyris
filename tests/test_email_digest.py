@@ -216,6 +216,13 @@ class TestPalettes:
     def test_light_text_reads_on_its_grounds(self, ink, ground):
         assert _contrast(LIGHT_PALETTE[ink], LIGHT_PALETTE[ground]) >= 4.5
 
+    @pytest.mark.parametrize("palette", ["light", "dark"])
+    def test_no_text_takes_the_faint_colour(self, palette):
+        faint = (LIGHT_PALETTE if palette == "light" else tokens())["text-faint"]
+        style = _style(render_digest_email(_full(), DIGEST_URL, raw_page=True))
+
+        assert re.findall(rf"(?<![\w-])color:\s*{faint}", style) == []
+
     def test_the_primary_button_label_reads_on_the_light_accent(self):
         assert _contrast(LIGHT_PALETTE["bg"], LIGHT_PALETTE["accent"]) >= 4.5
 

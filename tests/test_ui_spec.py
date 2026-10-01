@@ -29,12 +29,14 @@ from css_rules import (
 )
 
 import cyris.entrypoints
+from cyris.adapters.output.email_digest import tokens
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 STYLE = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"
+WEBSITE = UI_SPEC.parents[2] / "website" / "index.html"
 
 
 def _source(name: str) -> str:
@@ -340,7 +342,7 @@ def test_the_digest_score_pill_is_the_component() -> None:
 def test_raw_states_are_the_component() -> None:
     _, _, raw = receipt_fixtures()
     rules = parse_style_block(raw)
-    assert rules[".state.rejected"] == {"color: var(--text-faint)"}
+    assert rules[".state.rejected"] == {"color: var(--text-dim)"}
     assert rules[".state.pending"] == {"color: var(--text-dim)"}
     assert "#6b4a4a" not in raw
 
@@ -809,7 +811,7 @@ def test_the_headline_card_is_the_prototype_card() -> None:
 
 
 def test_a_same_day_row_dims_its_date() -> None:
-    assert _parsed("index")[".archive-row.same-day .date"] == {"color: var(--text-faint)"}
+    assert _parsed("index")[".archive-row.same-day .date"] == {"color: var(--text-dim)"}
 
 
 def test_the_receipt_archive_carries_the_card_title() -> None:
@@ -1096,3 +1098,42 @@ def test_an_inline_copy_of_a_shared_rule_is_reported() -> None:
 
 def test_the_settings_page_keeps_only_its_own_layout_inline() -> None:
     assert _inline_rules_shared_with_the_stylesheet(_source("settings")) == []
+
+
+GROUNDS = ("bg", "bg-elev", "surface", "surface-2")
+_FAINT_TEXT = re.compile(r"(?<![\w-])color\s*:\s*var\(--text-faint\)")
+
+
+def _contrast(a: str, b: str) -> float:
+    def luminance(colour: str) -> float:
+        channels = [int(colour.lstrip("#")[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+        linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    high, low = sorted([luminance(a), luminance(b)], reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+@pytest.mark.parametrize("ground", GROUNDS)
+def test_the_dimmest_text_colour_reads_on_every_background(ground: str) -> None:
+    assert _contrast(tokens()["text-dim"], tokens()[ground]) >= 4.5
+
+
+@pytest.mark.parametrize("ground", GROUNDS)
+def test_the_faint_mark_shows_on_every_background(ground: str) -> None:
+    assert _contrast(tokens()["text-faint"], tokens()[ground]) >= 3
+
+
+def _faint_text(source: str) -> list[str]:
+    return _FAINT_TEXT.findall(source)
+
+
+def test_faint_text_is_reported_and_a_faint_border_is_not() -> None:
+    planted = ".x { color: var(--text-faint); } .y { border-color: var(--text-faint); }"
+    assert _faint_text(planted) == ["color: var(--text-faint)"]
+
+
+@pytest.mark.parametrize("source", [*GUARDED, "prototype", "website"])
+def test_no_text_is_coloured_faint(source: str) -> None:
+    text = {"prototype": PROTOTYPE, "website": WEBSITE}.get(source)
+    assert _faint_text(text.read_text() if text else _source(source)) == []

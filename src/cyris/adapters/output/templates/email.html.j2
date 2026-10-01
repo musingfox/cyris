@@ -3,7 +3,7 @@
     tokens under prefers-color-scheme. Layout rules take `t`, the same tokens. -#}
 {% macro palette(c) -%}
         body, .body { background: {{ c['bg'] }}; color: {{ c['text'] }}; }
-        .brand, .section-tag, .meta, .idx, .footer { color: {{ c['text-faint'] }}; }
+        .brand, .section-tag, .meta, .idx, .footer { color: {{ c['text-dim'] }}; }
         .mark, .rule { background: {{ c['accent'] }}; }
         .issue-title, .title, .title a, .lead-title, .lead-title a, .wire a { color: {{ c['text'] }}; }
         .issue-title em, .stats b { color: {{ c['accent'] }}; }

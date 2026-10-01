@@ -14,7 +14,7 @@
         .input:focus, .select:focus { border-color: var(--accent); outline: none; }
         textarea.input { height: auto; padding-block: var(--s-3); line-height: 1.5; resize: vertical; }
         .field { display: grid; gap: var(--s-2); }
-        details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); list-style: none; }
+        details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); list-style: none; }
         details.more summary::before { content: "+ "; }
         details.more[open] summary::before { content: "− "; }
         details.more p { margin-top: var(--s-2); }
@@ -42,10 +42,10 @@
         .state { font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; }
         .state.accepted { color: var(--accent); }
         .state.pending { color: var(--text-dim); }
-        .state.rejected { color: var(--text-faint); }
+        .state.rejected { color: var(--text-dim); }
         .notice { padding: var(--s-2) var(--s-3); border-left: 2px solid var(--accent); background: var(--accent-tint); font-size: calc(14px * var(--type-scale)); line-height: 1.5; white-space: pre-wrap; }
         .notice.err { border-left-color: var(--warn); background: var(--warn-tint); }
-        .label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); }
+        .label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim); }
         .data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; }
         .display { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale)); line-height: 1; letter-spacing: -.03em; text-wrap: balance; }
         .display em { font-style: italic; color: var(--accent); }
