@@ -109,6 +109,9 @@ class TriageServer:
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
         self._app.router.add_get("/settings", self._handle_settings_page)
+        # Production never reaches this: the app Worker sends /favicon.svg to Pages.
+        # A local `cyris triage-ui` has no Pages behind it.
+        self._app.router.add_get("/favicon.svg", self._handle_favicon)
         self._app.router.add_static("/static", STATIC_DIR)
         self._runner: web.AppRunner | None = None
 
@@ -614,6 +617,9 @@ class TriageServer:
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:
         return web.Response(text=self._settings_page, content_type="text/html")
+
+    async def _handle_favicon(self, request: web.Request) -> web.Response:
+        return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")
 
     async def start(self) -> None:
         self._runner = web.AppRunner(self._app)
