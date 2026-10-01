@@ -434,9 +434,16 @@ class Config(BaseModel):
         )
 
     def require_sources(self) -> None:
-        """Raise NoSourcesError when this deployment's one source list is empty."""
-        if self.sources:
+        """Raise NoSourcesError when this deployment's one source list has none to fetch."""
+        if any(s.fetchable for s in self.sources.values()):
             return
+        home = "D1" if self.app.store.is_d1 else "sources.yaml"
+        if self.sources:
+            names = ", ".join(sorted(self.sources))
+            raise NoSourcesError(
+                f"No fetchable sources in {home}: {names}. An RSS source needs a feed URL, "
+                "a newsletter source a sender match."
+            )
         if self.app.store.is_d1:
             raise NoSourcesError(
                 "No sources in D1. Add one on /settings, or run `cyris sources push`."
