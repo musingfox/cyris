@@ -131,7 +131,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 
 | Component | Spec |
 |---|---|
-| **site bar** | Full width, sticky, height `--bar-h`, 1px `--border` at the bottom. On the left, the brand square (12px `--accent`, pulse animation) plus `CYRIS`; on the right, links in the label role, `Archive` · `Settings`, spaced `--s-5`. The current page is `--text` with a 1px `--accent` underline. `Settings` reuses the `/api/vote` probe and is hidden when not authorized. At phone width the word `CYRIS` is hidden |
+| **site bar** | Full width, sticky, height `--bar-h`, 1px `--border` at the bottom. On the left, the brand square (12px `--accent`, pulse animation) plus `CYRIS`; on the right, links in the label role, `Archive` · `Settings`, spaced `--s-5`. The current page is `--text` with a 1px `--accent` underline. `Settings` reuses the `/api/vote` probe and is hidden when not authorized. When the probe gets the app Worker's own 401, `Sign in` takes its place and links to `/login?next=` plus this page, so signing in returns here; on pages.dev and behind a Cloudflare Access redirect there is no sign-in form to reach, and it stays hidden. At phone width the word `CYRIS` is hidden |
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em. Disabled is always opacity .4 |
@@ -168,6 +168,7 @@ Archive (/) ──► an issue ─┬─ Digest       ◄── the Discord noti
                           └─ All articles (raw) ─┬─ List (default)
                                                  └─ Triage (appears only when authorized)
 Settings (/settings): on the site bar, appears only when authorized
+Sign in (/login): on the site bar in Settings' place, when the app Worker answers signed out
 ```
 
 - Every page has the site bar at the top; digest and raw also have the issue bar. Navigation does not go

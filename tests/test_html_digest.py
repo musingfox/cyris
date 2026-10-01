@@ -1750,6 +1750,7 @@ SITE_BAR_ON_THE_ARCHIVE = "\n".join(
         '            <nav class="site-nav" aria-label="Site">',
         '                <a class="label" href="index.html" aria-current="page">Archive</a>',
         '                <a class="label settings-link" href="/settings">Settings</a>',
+        '                <a class="label signin-link" href="/login" hidden>Sign in</a>',
         "            </nav>",
         "        </div>",
         "    </header>",
@@ -1772,6 +1773,17 @@ def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):
     assert '<a class="label settings-link" href="/settings" aria-current="page">Settings</a>' in bar
     assert '<a class="label" href="index.html">Archive</a>' in bar
     assert bar.count("aria-current") == 1
+
+
+def test_the_probe_offers_sign_in_only_on_the_workers_own_refusal(tmp_path):
+    """Sign in links /login with this page as next; pages.dev and Access redirects get none."""
+    html = HtmlDigestWriter(tmp_path).render_index([])
+
+    assert '<a class="label signin-link" href="/login" hidden>Sign in</a>' in html
+    assert "if (resp.status === 401) {" in html
+    assert "if (refused.authorized !== false) return;" in html
+    assert "encodeURIComponent(location.pathname + location.search)" in html
+    assert "a.href = '/login?next=' + next;" in html
 
 
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])

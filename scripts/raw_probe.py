@@ -330,6 +330,31 @@ _CHECKS: list[Check] = [
         sabotage="""$("#raw-views").hidden = true;""",
     ),
     Check(
+        id="sign-in-signed-out",
+        fixture="signed-out",
+        path=PAGE,
+        act="""await waitFor(() => visible($(".signin-link")), "Sign in");""",
+        script=f"""
+            const href = $(".signin-link").getAttribute("href");
+            const wanted = "/login?next=" + encodeURIComponent({json.dumps(PAGE)});
+            expect(href === wanted, `Sign in links ${{href}}`);
+            expect(!visible($(".settings-link")), "Settings shows");
+        """,
+        sabotage="""$(".signin-link").setAttribute("href", "/login");""",
+    ),
+    *(
+        Check(
+            id=f"sign-in-hidden-{kind}",
+            fixture=kind,
+            path=PAGE,
+            preload=RECORD_FETCHES,
+            act="await probeAnswered();",
+            script="""expect(!visible($(".signin-link")), "Sign in shows");""",
+            sabotage="""$(".signin-link").hidden = false;""",
+        )
+        for kind in ("signed-in", "no-worker")
+    ),
+    Check(
         id="default-list",
         fixture="signed-in",
         path=PAGE,

@@ -5,12 +5,23 @@
     // - hostname == CYRIS_UI_ACCESS_HOST, unauthenticated: 401 or 302 (Access) → fail closed
     // - hostname == CYRIS_UI_ACCESS_HOST, past Access: 200 JSON {"authorized":true} → show buttons
     // - any other Worker hostname (*.workers.dev): 200 JSON only with a valid cyris_session cookie
+    // Only the Worker's own 401 JSON {"authorized":false} shows Sign in: it means /login exists here.
     (async () => {
         try {
             const resp = await fetch('/api/vote', {
                 method: 'GET',
                 redirect: 'manual',  // do not follow Access redirects
             });
+            if (resp.status === 401) {
+                const refused = await resp.json();
+                if (refused.authorized !== false) return;
+                const next = encodeURIComponent(location.pathname + location.search);
+                document.querySelectorAll('.signin-link').forEach((a) => {
+                    a.href = '/login?next=' + next;
+                    a.hidden = false;
+                });
+                return;
+            }
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.authorized !== true) return;
