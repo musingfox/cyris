@@ -336,7 +336,7 @@ by value, from `_tokens.css.j2` and the light palette below (`adapters/output/em
 - `tests/test_digest_css_partials.py` must compare both the token and the component rules, or the two
   sides will diverge again.
 
-## 8. Current gaps and landing order
+## 8. Landing history
 
 Of the gaps surveyed on 2026-09-17, steps 1 to 3 landed on 2026-09-18 and steps 4 to 7 landed on
 2026-09-19, so every step has landed. Step 1 added the §2 tokens, the §3 type, focus and reduced motion,
@@ -350,8 +350,8 @@ into a headline card plus year-and-month panels, with a day's later rows set apa
 structure, `.meta` is folded into one base rule, the two body grids share one fluid column rule, 720px is
 the only breakpoint left, and all body spacing moved onto the scale.
 
-The landing order, where each step can ship alone. Each step was its own ticket, tracked privately
-outside this repository:
+The steps in their planned order, each of which shipped alone. Each step was its own ticket, tracked
+privately outside this repository:
 
 1. §2 tokens, §3 type, focus and reduced motion, removing two hardcoded colours, and extending the CSS comparison test to components
 2. The site bar and issue bar on archive, digest and raw; the two entries added to archive rows; footer navigation removed
