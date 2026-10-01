@@ -4,9 +4,9 @@
 
 [Website](https://cyris.musingfox.com/)
 
-You pick every token that reaches your model's context window. Cyris does the same for
-your attention: it reads the feeds and newsletters you stopped opening and hands you a
-digest short enough to finish.
+Cyris reads your RSS feeds and newsletters and hands you one digest of the articles worth
+reading, short enough to finish. You pick every token that reaches your model's context
+window; Cyris does the same for your attention.
 
 On the maintainer's own deployment, 56 issues from 2026-08-28 to 2026-09-27: an average
 issue took in 91 articles, kept 13, and cost about US$0.03 in LLM usage. That digest is
