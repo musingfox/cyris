@@ -7,9 +7,8 @@ depends: [digest-shared-css-partial]
 # digest 封存首頁：頭版卡片＋年月分段清單
 
 票私下追蹤，不在這個 repo。
-被 `digest-shared-css-partial` 擋著——那張票先把三個範本各自內嵌的 token 與 chrome CSS
-收斂成一份 Jinja partial，這張票才動得了。frontmatter 的 `depends` 指的是那張**票**，
-不是另一個里程碑；它沒有自己的里程碑檔案。
+被 CSS 收斂那一步（`docs/milestones/digest-shared-css-partial.md`）擋著——它先把三個範本各自內嵌的
+token 與 chrome CSS 收斂成一份 Jinja partial，這張票才動得了。frontmatter 的 `depends` 指的就是那份里程碑。
 
 > 2026-09-18：這個版面已寫進 `docs/design/ui-language.md` §4（頭版卡片）與 §6 archive。元件、
 > 間距與斷點以規範為準，下文「收斂為單一個 640px」由規範的 720px 取代；資料來源與不截斷的約束
@@ -77,7 +76,7 @@ digest 封存首頁（`src/cyris/adapters/output/templates/index.html.j2`）從�
 以這個形式鎖住它。改版的同時補上。
 
 **範圍界線**：masthead、brand、footer、body 背景、token 集合、容器寬度與斷點的共同依據
-都屬於 `digest-shared-css-partial`。這張票只擁有清單本體與頭版卡片。票裡原本列在驗收條件下的
+都屬於 CSS 收斂那一步。這張票只擁有清單本體與頭版卡片。票裡原本列在驗收條件下的
 「`prefers-reduced-motion` 下停止 pulse」與「宣告後未使用的 token」兩項因此移到那張票——
 兩段 CSS 在三個範本各有一份複製，只改首頁不構成收尾。那張票的調查後來發現「未使用的 token」
 指錯了對象：`--accent-dim` 在 digest 用了三處，真正零使用的是 `--info`，詳見
