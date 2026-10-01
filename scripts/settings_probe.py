@@ -1411,6 +1411,38 @@ CHECKS: list[Check] = [
         sabotage="""navOf("model").classList.add("missing");""",
     ),
     Check(
+        id="missing-focus-visible",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("general.timezone"),
+        focused=True,
+        act="""
+            await providersLoaded();
+            $("#timezone").focus();
+            // The border colour transitions; read it once that has settled.
+            await sleep(400);
+            const swatch = document.createElement("i");
+            swatch.style.color = "var(--accent)";
+            document.body.append(swatch);
+            ctx.accent = getComputedStyle(swatch).color;
+            swatch.remove();
+        """,
+        script="""
+            const field = $("#timezone");
+            expect(document.activeElement === field, "the field is not focused");
+            expect(field.getAttribute("aria-invalid") === "true", "the field is not marked");
+            const border = getComputedStyle(field).borderTopColor;
+            expect(border === ctx.accent, `border: ${border}, accent: ${ctx.accent}`);
+        """,
+        # The cascade this fixed: the missing-value border declared after focus.
+        sabotage="""
+            const style = document.createElement("style");
+            style.textContent = '.input[aria-invalid="true"] { border-color: var(--warn); }';
+            document.head.append(style);
+            await sleep(400);
+        """,
+    ),
+    Check(
         id="digest-posts-new-fields",
         fixture="writable",
         path="/settings#digest",
