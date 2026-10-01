@@ -248,7 +248,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .thematic-block h3::before { content: "▸"; color: var(--accent); font-size: calc(12px * var(--type-scale)); }
 .article-item { padding: var(--s-5) 0; border-bottom: 1px solid var(--border); }
 .article-item:last-child { border-bottom: 0; }
-.article-item h4, .attention-item h4 { margin-bottom: var(--s-2); }
+.article-item h3, .article-item h4, .attention-item h4 { margin-bottom: var(--s-2); }
 .article-item .summary { margin-bottom: var(--s-3); }
 .attention-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--s-6); }
 .attention-item { padding: var(--s-4) var(--s-5); background: var(--bg-elev); border: 1px solid var(--border); transition: border-color var(--t-fast); }
@@ -518,6 +518,28 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
             <a href="#digest">↗</a>
             <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
           </div>
+        </article>
+        <article class="featured-item">
+          <h3 class="item-title lg">本地模型的工具呼叫</h3>
+          <p class="summary">兩篇都在測小模型能不能可靠地呼叫工具：一篇比較輸出格式的約束方式，一篇記錄把重試交給呼叫端之後失敗率怎麼變。</p>
+          <article class="article-item">
+            <h4 class="item-title"><a href="#digest">用 JSON schema 約束小模型的工具呼叫</a></h4>
+            <div class="meta">
+              <span class="pill score">0.83</span>
+              <span class="source-tag">Simon Willison</span>
+              <a href="#digest">↗</a>
+              <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+            </div>
+          </article>
+          <article class="article-item">
+            <h4 class="item-title"><a href="#digest">工具呼叫失敗時，誰負責重試</a></h4>
+            <div class="meta">
+              <span class="pill score">0.82</span>
+              <span class="source-tag">Simon Willison</span>
+              <a href="#digest">↗</a>
+              <span class="votes gated"><button class="btn secondary sm" title="More like this">↑</button><button class="btn secondary sm" title="Less like this">↓</button></span>
+            </div>
+          </article>
         </article>
         <article class="featured-item">
           <h3 class="item-title lg"><a href="#digest">Python 3.14 的 free-threaded build 效能實測</a></h3>

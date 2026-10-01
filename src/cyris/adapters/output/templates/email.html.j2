@@ -26,6 +26,15 @@
 {% macro meta(item) -%}
 <p class="meta">{{ item.sources | join(' · ') }}{% if item.ref_urls | length > 1 %} · {{ source_links(item) }}{% endif %}</p>
 {%- endmacro -%}
+{#- A summarize group's articles under its one summary, each with its own link. -#}
+{% macro members(story) -%}
+{% for item in story.members %}
+<div class="member">
+    <h4 class="title">{{ title_link(item) }}</h4>
+    {{ meta(item) }}
+</div>
+{% endfor %}
+{%- endmacro -%}
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -63,6 +72,7 @@
         .meta { margin: 0; line-height: 1.6; }
         .meta a, .footer a { text-decoration: underline; }
         .item { padding: {{ t['s-5'] }} 0; border-top: 1px solid; }
+        .member { margin: {{ t['s-3'] }} 0 0; }
         .wire { list-style: none; margin: 0; padding: 0; }
         .wire li { padding: {{ t['s-3'] }} 0; border-top: 1px solid; font-size: 16px; line-height: 1.5; }
         .idx { margin-right: {{ t['s-3'] }}; }
@@ -92,7 +102,7 @@
                 {% if lead_story.score %}<span class="pill">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
                 <h3 class="lead-title">{{ title_link(lead_story) }}</h3>
                 <p class="summary">{{ lead_story.summary }}</p>
-                {{ meta(lead_story) }}
+                {% if lead_story.grouped %}{{ members(lead_story) }}{% else %}{{ meta(lead_story) }}{% endif %}
             </article>
         </section>
         {% endif %}
@@ -105,7 +115,7 @@
                 {% if item.score %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                 <h3 class="title">{{ title_link(item) }}</h3>
                 <p class="summary">{{ item.summary }}</p>
-                {{ meta(item) }}
+                {% if item.grouped %}{{ members(item) }}{% else %}{{ meta(item) }}{% endif %}
             </article>
             {% endfor %}
         </section>

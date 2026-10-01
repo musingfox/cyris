@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from cyris.domain.models import DigestContent, DigestItem, StoredArticle
+from cyris.domain.models import DigestContent, DigestItem, DigestSection, StoredArticle
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 
@@ -22,7 +22,51 @@ def _plural(n: int, noun: str) -> str:
     return f"{n} {noun}{'' if n == 1 else 's'}"
 
 
-def _features(content: DigestContent) -> list[DigestItem]:
+@dataclass(frozen=True)
+class Story:
+    """One feature card: a single article, or a summarize group under its one summary.
+
+    The LLM writes a single summary for a whole group, and every item carries a copy,
+    so a group rendered item by item printed that summary once per article. A group
+    is one card instead, titled by its heading, with each article listed beneath it.
+    """
+
+    title: str
+    summary: str
+    members: tuple[DigestItem, ...]
+
+    @property
+    def grouped(self) -> bool:
+        return len(self.members) > 1
+
+    @property
+    def link(self) -> str | None:
+        return None if self.grouped else self.members[0].link
+
+    @property
+    def score(self) -> float | None:
+        return max((m.score for m in self.members if m.score is not None), default=None)
+
+    @property
+    def sources(self) -> list[str]:
+        return list(dict.fromkeys(s for m in self.members for s in m.sources))
+
+    @property
+    def urls(self) -> list[str]:
+        return [u for m in self.members for u in m.urls]
+
+    @property
+    def ref_urls(self) -> list[str]:
+        return [] if self.grouped else self.members[0].ref_urls
+
+
+def _stories(section: DigestSection) -> list[Story]:
+    if section.summary is not None and len(section.items) > 1:
+        return [Story(section.heading, section.summary, tuple(section.items))]
+    return [Story(item.title, item.summary, (item,)) for item in section.items]
+
+
+def _features(content: DigestContent) -> list[Story]:
     """The issue's full-summary stories in reading order; the first is its lead.
 
     Every summarize-tier group with a full summary: the scored ones (already sorted
@@ -31,9 +75,9 @@ def _features(content: DigestContent) -> list[DigestItem]:
     Summaries" section, and what the archive's headline card takes its title from.
     """
     return [
-        item
+        story
         for section in [*content.featured_articles, *content.thematic_summaries]
-        for item in section.items
+        for story in _stories(section)
     ]
 
 

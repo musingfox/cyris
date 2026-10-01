@@ -140,7 +140,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **field** | From top to bottom: the field name in the label role, the control, and help in the small role, spaced `--s-2`. Help longer than one sentence goes into `<details>`, with the summary text `More` |
 | **category list dots** | Two 6px dots on the right of each item in the settings category list: `--accent` means the category has unsaved changes, `--warn` means the category is missing a required value. Both can show at once, with the missing-value dot on the left |
 | **choice list** | Several options for a single choice (for example provider): `--bg-elev` background, 1px `--border` border, `--r-control`; each row has `--s-3` top and bottom and `--s-4` left and right, rows divided by a bottom line, `--surface` on hover. The right side shows the state in the label role; an unselectable row is opacity .5 |
-| **headline card** | Only for the archive's latest issue. `--surface` background, 1px `--border-strong` border, square corners, `--s-6` padding. From top to bottom: an `--accent` `Latest` label with the date (data) and the period (label); the title of the issue's first article (title role); the article count (data); the titles of the two topics with the most members (small, joined by ` · `); and two small secondary buttons, `Digest` and `All articles`. A field with no data is left out, with no placeholder text |
+| **headline card** | Only for the archive's latest issue. `--surface` background, 1px `--border-strong` border, square corners, `--s-6` padding. From top to bottom: an `--accent` `Latest` label with the date (data) and the period (label); the title of the issue's first story, which is its group heading when that story is a group (title role); the article count (data); the titles of the two topics with the most members (small, joined by ` · `); and two small secondary buttons, `Digest` and `All articles`. A field with no data is left out, with no placeholder text |
 | **panel** | `--bg-elev` background, 1px `--border` border, square corners. An optional head row: `--surface` background, a bottom line, `--s-3` top and bottom and `--s-5` left and right, the title on the left and a count or action on the right. Adjacent panels are spaced `--s-5` |
 | **list row / table row** | The class name is `.list-row` (`.row` is taken by the digest stats card). `--s-3` top and bottom, `--s-5` left and right, rows divided by a bottom line, `--surface` on hover. Table headers use the label role on `--surface`. A table sits in its own `overflow-x: auto` container |
 | **pill** | Geist Mono 14px, `2px 10px`, 1px `--border-strong` border, `--surface-2` background, `--r-tag`. The score variant has `--accent` text, an `--accent-dim` border and an `--accent-tint` background |
@@ -217,6 +217,11 @@ title is itself that section's `h2`.
   topic block and the On the Radar items. `h3` and `h4` are both the title role (§3), with the class
   `.item-title`: `h3` adds `.lg` for 22px, and `h4` uses 20px. Each row of The Wire is only a number and a
   link, with no heading element.
+- **A summarize group is one card.** When the model summarized several articles together, the lead or
+  feature card takes the group's heading as its title and prints the summary once. Each article follows as
+  an `.article-item` with its own title link and meta row, so each keeps its own score and vote: they are
+  different articles, unlike a news group's reports of one event. Those titles are `h4` in a feature and
+  `h3 .lg` in the lead, one level below the card title. A group of one article is drawn as that article.
 - **Every item has a meta row below it.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the
   label role; it holds the source and the original link in that order (a feature has a score pill in
   front), and the small vote buttons are always last. Only the lead card's meta row adds `.ruled`, which

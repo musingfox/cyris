@@ -147,6 +147,23 @@ class TestSections:
         for url in ["https://lead.test/a", "https://news.test/2", "https://wire.test/1"]:
             assert f'href="{url}"' in html
 
+    def test_a_group_prints_its_summary_once_and_links_each_article(self):
+        content = _full()
+        group = content.featured_articles[0]
+        for item in group.items:
+            item.summary = "Shared summary."
+        content.featured_articles = [group.model_copy(update={"summary": "Shared summary."})]
+
+        html = render_digest_email(content, DIGEST_URL)
+
+        assert html.count("Shared summary.") == 1
+        assert ">Lead group</h3>" in html
+        for title, url in [
+            ("Lead Story", "https://lead.test/a"),
+            ("Second Feature", "https://feature.test/b"),
+        ]:
+            assert f'<a href="{url}">{title}</a>' in html
+
 
 class TestSiteLinks:
     def test_the_issue_links_to_its_page_raw_page_archive_and_settings(self):

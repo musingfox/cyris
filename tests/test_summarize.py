@@ -69,6 +69,27 @@ class TestSummarizeArticles:
         assert sections[0].heading == "AI 監管趨勢"
         assert len(sections[0].items) == 1
 
+    async def test_a_group_carries_its_one_summary_on_the_section(self, sample_summarize_articles):
+        second = sample_summarize_articles[0].model_copy(
+            update={"id": 104, "url": "https://stratechery.com/2026/03/17/other"}
+        )
+        llm = FakeLLM(
+            json.dumps(
+                {"sections": [{"heading": "H", "summary": "One summary", "article_ids": [0, 1]}]}
+            )
+        )
+
+        sections = await summarize_articles(
+            [*sample_summarize_articles, second],
+            llm,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert sections[0].summary == "One summary"
+        assert len(sections[0].items) == 2
+
     async def test_summarize_metadata_comes_from_local_article(self):
         """Title/source/url come from the store article, never the LLM echo —
         URL-string ids (newsletters) must not lose their links."""
@@ -383,10 +404,13 @@ class TestDigestItemsCarryRefUrls:
             ref_urls=["https://r1.com/a"],
         )
 
-        item = excerpt_sections_from_articles([article])[0].items[0]
+        section = excerpt_sections_from_articles([article])[0]
+        item = section.items[0]
 
         assert item.ref_urls == ["https://r1.com/a"]
         assert item.urls == ["newsletter:abc"]
+        # Each excerpt is its own article's, so there is no group summary to render once.
+        assert section.summary is None
 
     async def test_rss_items_default_to_empty_ref_urls(self):
         from datetime import datetime

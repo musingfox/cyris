@@ -155,7 +155,7 @@ docs/                 # architecture.md (read first); install-local.md, install-
 1. `service_layer/fetching.py` pulls from all FetchSources (the RSS Worker buffer or direct polling, and the Cloudflare newsletter Worker when configured) within a time window
 2. Articles are saved to the ArticleStore for dedup and persistent lifecycle tracking
 3. `service_layer/scoring.py` scores non-news articles via the LLM for relevance ranking
-4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier generates per-article summaries (split by score threshold)
+4. `service_layer/digest_pipeline.py` processes articles: filter tier batches for headline extraction, summarize tier groups articles by topic and writes one summary per group (split by score threshold); the page and the mail render a group as one card, its summary printed once
 5. `service_layer/cluster_news.py` clusters news-tagged filter-tier articles by topic
 6. `adapters/output/html_digest.py` renders the digest page; `domain/selection.py` layers featured articles by score
 7. Alongside each digest, the writer emits a companion listing every article this run judged plus what is still pending — uncapped, so what the digest dropped stays visible; rows an earlier run in the overlapping window already judged are left off: `{date}-{period}-raw.html` grouped by source, linked from the digest's issue bar and its archive row
