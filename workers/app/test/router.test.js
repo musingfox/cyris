@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { handleRequest } from "../src/router.js";
+import { handleRequest, returnPath } from "../src/router.js";
 import routes from "./routes.json" with { type: "json" };
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz123456";
@@ -519,6 +519,103 @@ describe("LoginRefusesWeakToken", () => {
     const resp = await handleRequest(request("POST", "/login", { body: form }), env(), makeDeps());
     expect(resp.status).toBe(302);
     expect(resp.headers.get("Set-Cookie")).toBeTruthy();
+  });
+});
+
+describe("LoginReturnsToThePage", () => {
+  const signIn = async (next) => {
+    const form = new FormData();
+    form.set("token", TOKEN);
+    if (next !== undefined) form.set("next", next);
+    return handleRequest(request("POST", "/login", { body: form }), env(), makeDeps());
+  };
+  const nextField = (page) => page.match(/name="next" value="([^"]*)"/)?.[1];
+
+  it("returns to a page on this origin, query included", async () => {
+    for (const path of ["/settings", "/2026-10-01-morning-raw.html", "/settings?x=1"]) {
+      const resp = await signIn(path);
+      expect(resp.status, path).toBe(302);
+      expect(resp.headers.get("Location"), path).toBe(path);
+      expect(resp.headers.get("Set-Cookie"), path).toBeTruthy();
+    }
+  });
+
+  it("returns to the archive with no next", async () => {
+    const resp = await signIn();
+    expect(resp.headers.get("Location")).toBe("/");
+  });
+
+  it("never sends the reader off this origin", async () => {
+    const away = [
+      "https://evil.example/",
+      "//evil.example/",
+      "//evil.example/settings",
+      "/\\evil.example/",
+      "/\t/evil.example/",
+      "/.//evil.example/",
+      "/..//evil.example/",
+      "javascript:alert(1)",
+      "evil.example",
+      "",
+      "/login",
+      "/login?next=https://evil.example/",
+    ];
+    for (const next of away) {
+      const resp = await signIn(next);
+      expect(resp.status, JSON.stringify(next)).toBe(302);
+      expect(resp.headers.get("Location"), JSON.stringify(next)).toBe("/");
+    }
+  });
+
+  it("keeps an off-origin next out of the form", async () => {
+    expect(returnPath("//evil.example/", `https://${HOST}`)).toBe("/");
+    const resp = await handleRequest(
+      request("GET", "/login?next=" + encodeURIComponent("https://evil.example/")),
+      env(),
+      makeDeps(),
+    );
+    expect(nextField(await resp.text())).toBe("/");
+  });
+
+  it("GET /login carries next into the form", async () => {
+    const resp = await handleRequest(
+      request("GET", "/login?next=" + encodeURIComponent("/2026-10-01-morning.html")),
+      env(),
+      makeDeps(),
+    );
+    expect(nextField(await resp.text())).toBe("/2026-10-01-morning.html");
+  });
+
+  it("a protected page that asks for the token returns to itself", async () => {
+    const resp = await handleRequest(
+      request("GET", "/settings?tab=model", { headers: { Accept: "text/html" } }),
+      env(),
+      makeDeps(),
+    );
+    expect(resp.status).toBe(401);
+    expect(nextField(await resp.text())).toBe("/settings?tab=model");
+  });
+
+  it("a wrong token keeps next for the second try", async () => {
+    const form = new FormData();
+    form.set("token", "wrongwrongwrongwrongwrongwrongwr");
+    form.set("next", "/settings");
+    const resp = await handleRequest(request("POST", "/login", { body: form }), env(), makeDeps());
+    expect(resp.status).toBe(401);
+    expect(nextField(await resp.text())).toBe("/settings");
+  });
+
+  it("escapes next before printing it", async () => {
+    const hostile = '/x?q="><script>alert(1)</script>';
+    const resp = await handleRequest(
+      request("GET", "/login?next=" + encodeURIComponent(hostile)),
+      env(),
+      makeDeps(),
+    );
+    const page = await resp.text();
+    expect(page).not.toContain("<script");
+    expect(page.match(/<input /g)).toHaveLength(2);
+    expect(nextField(page)).not.toMatch(/[<>"]/);
   });
 });
 

@@ -36,7 +36,9 @@ One layer always, a second if you own a domain.
 1. **The `CYRIS_UI_TOKEN` secret**, checked in `src/router.js` before anything reaches
    the container. `/login` takes the token and sets an HttpOnly cookie,
    `cyris_session`, holding its SHA-256, compared in constant time. A request without
-   the cookie gets the login form (browser) or `401` (anything else). `/login` refuses
+   the cookie gets the login form (browser) or `401` (anything else). A sign-in returns
+   to the page that asked for it, the form's `next`; only a path on the same origin is
+   followed, and anything else returns to `/`. `/login` refuses
    to start a session if the secret is shorter than 32 characters. Revocation is
    rotating `CYRIS_UI_TOKEN`; every outstanding cookie dies at once.
 2. **Cloudflare Access**, optional, on a hostname you own. Access cannot protect
