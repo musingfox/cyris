@@ -5,6 +5,118 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-02
+
+The digest now reaches readers by email as well as Discord, and a run that fails
+says so on both channels. Publishing to Pages and stopping a run were reworked
+after a digest that was published but reported as failed, and a stopped run now
+keeps its record. `/settings` can be completed on a first boot, and every page
+says what it is and which language it is in. Two new runtime settings are
+required, so read *Upgrading from 0.3.0* first.
+
+### Upgrading from 0.3.0
+
+- **Two new runtime settings, `notify.email_to` and `notify.email_from`.** Like
+  every runtime setting they are required, and a run without them stops and
+  names them. On a `json` install, add `email_to = ""` and `email_from = ""` to
+  `[notify]` in `cyris.toml`; an empty `email_to` turns mail off. On a `d1`
+  deployment, save the Notifications category on `/settings` (an empty recipient
+  stores both), or run `cyris settings push`.
+- **`CLOUDFLARE_API_TOKEN` needs Workers Scripts: Read** so a run can find the
+  app Worker's custom domain for the digest link. Without it the link falls back
+  to pages.dev and the run logs why. Add Email Sending: Edit if you set an email
+  recipient.
+- **`wrangler.toml` has a `[vars] CYRIS_APP_WORKER_NAME`** that must equal the
+  Worker's `name`. A fork that renamed its Worker changes both.
+- **The deploy workflow verifies what it deployed.** It needs a `CYRIS_UI_TOKEN`
+  repository secret and a `CYRIS_DEPLOYMENT_URL` repository variable.
+- **A source list with nothing to fetch stops the run.** An RSS source needs a
+  feed URL and a newsletter needs a sender match; a deployment holding only
+  sources without them used to run and fetch nothing.
+
+The new D1 `digests` table is created on the first boot, like every other table.
+
+### Added
+
+- **The digest by email**, through Cloudflare Email Service. The mail carries the
+  whole issue in a template made for mail clients, with a plain-text part. The
+  recipient is a verified Email Routing destination address, and `/settings`
+  stores the pair only after a test message is delivered or queued.
+- **Failure alerts.** A run that raises, or fetches nothing because a source
+  failed, sends a plain alert to Discord and to email, with the error or the
+  failed sources and the time the run started. A dry run, a run stopped by
+  SIGTERM and a run that fails before it starts send none.
+- **Each issue's digest is stored in D1**, in a `digests` table: the final
+  content of the issue's last run, which a preview never overwrites. A failed
+  write is named in the run summary and never costs the run its result.
+- **Sign in from any page.** A signed-out reader on the app Worker sees Sign in
+  on the site bar, and `/login` returns to the page that asked.
+- **`cyris doctor` checks mail and the digest link**: whether mail is on, and
+  which host the digest link names, looked up the way a run looks it up.
+- **A favicon and a meta description** on every page, and a project credit in
+  every footer, the mail's included. The archive says in one sentence what Cyris is, and the credit links
+  the word Cyris to the project's site.
+- **Release and deploy checks.** The release workflow imports every `cyris`
+  module inside the built image before pushing it, and the deploy workflow fails
+  unless production's `/api/build` names the deployed commit.
+
+### Changed
+
+- **The digest link goes to the app Worker's custom domain on its own**, found
+  through the Workers domains API, so Discord readers get vote buttons.
+  `CYRIS_PROMOTE_CUSTOM_DOMAIN` is now an override.
+- **Publishing follows Cloudflare's verdict.** The site's file list records a
+  deployment once Cloudflare reports it landed, only a refused or failed
+  deployment is redeployed, and one that never lands is named in the error.
+  Publishing has a 180-second deadline and Pages requests time out at 20 seconds.
+- **The run instance sleeps after 15 minutes**, not 5, so a slow run is no longer
+  cut short; the `/settings` instance keeps 5.
+- **A multi-article summarize group renders as one card**, on the page and in the
+  mail: the group heading, the summary once, then each article with its own link,
+  score and vote.
+- **Page language.** Each page's `lang` is `en`, the digest content carries
+  `[digest] output_language`, and text the model did not write is marked as an
+  unknown language.
+- **Secondary text uses `--text-dim`** and reaches 4.5:1 contrast on every
+  background; `--text-faint` is kept for non-text marks.
+- **Newsletter links.** One email is one article: links in the body no longer
+  reach `ref_urls`, and Top story and Feature rows no longer list them as
+  sources. The canonical link is a page on the sender's own host, accepted only
+  when exactly one remains.
+- **The README is the pitch**; source tiers and the article lifecycle moved to
+  `docs/sources.md`, and the CLI list to the Cloudflare guide. The landing page
+  shows a real digest and the delivery channels.
+- **For contributors:** every test file carries one level (`unit`,
+  `integration`, `e2e`) plus tags, defined in `CLAUDE.md` and enforced by a test.
+  `scripts/check.sh` is the local and release gate, and many tests that only
+  repeated documentation wording are gone.
+
+### Fixed
+
+- A digest that Cloudflare had published is no longer reported as failed and
+  redeployed, and a landed deployment is recorded before its page is live, so
+  the next deploy no longer drops it.
+- A SIGTERM stops `cyris run` and the container's run pass with exit 143, after
+  the running step has shut down and the run's `digest_runs` row is written. A
+  failed run keeps its status when the stop lands during `promote-sync`.
+- A failed read from the RSS or newsletter Worker now counts as a failed source,
+  so the run lists it and the failure alert can fire.
+- `/settings` on a first boot can save every category, including Discord turned
+  off and an empty style or email recipient.
+- `/settings` refuses an empty publish hour beside its field, instead of storing
+  `00`, and refuses a source no fetcher reads.
+- An expired session on `/settings` says to sign in again instead of failing
+  with a script error.
+- A local `cyris triage-ui` no longer links to an archive it does not serve, and
+  serves its own favicon.
+- A focused field marked missing shows its focus ring, and an unavailable
+  provider's reason is no longer dimmed.
+- `/settings` copy no longer names one deployment's date and domains.
+- `bun run deploy` ignores a local `.env`, which would replace the
+  `wrangler login` session with a stale token.
+- A deploy of a moved `:release` tag now rolls out: the deploy workflow names the
+  resolved image digest.
+
 ## [0.3.0] — 2026-09-22
 
 cyris now runs end to end on Cloudflare: a Container behind a Worker runs the
@@ -238,7 +350,8 @@ Initial public release.
 - Docker Compose stack (Miniflux + Postgres + cyris) and macOS launchd scheduling.
 - Optional Cloudflare Workers for email-newsletter ingestion and promote/HTML publish.
 
-[Unreleased]: https://github.com/musingfox/cyris/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/musingfox/cyris/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/musingfox/cyris/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/musingfox/cyris/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/musingfox/cyris/releases/tag/v0.2.0
 [0.1.0]: https://github.com/musingfox/cyris/releases/tag/v0.1.0
