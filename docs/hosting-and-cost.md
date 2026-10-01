@@ -8,14 +8,15 @@ vendor number that does not exist is **not stated**, never estimated.
 
 ## 1. What this deployment actually uses
 
-Container rows come from 720 starts/month on `instance_type = "basic"` — 1/4 vCPU, 1 GiB memory,
-4 GB disk [4]. The Cron Trigger starts the `run` role every hour (`scheduled()` in
+Container rows come from 720 starts in a 30-day month on `instance_type = "basic"` — 1/4 vCPU,
+1 GiB memory, 4 GB disk [4]. The Cron Trigger starts the `run` role every hour (`scheduled()` in
 `workers/app/src/index.js`), so 60 starts are digest runs at ~64 s each (measured) and the other
 660 exit on `--if-due` at a median of ~28 s per tick, timed from the top of the hour to `container
 stopped`, cold start included (measured from Workers Logs, 2026-09-19 to 09-22). That makes
-60 × 64 s + 660 × 28 s = 22,320 s. The `run` role exits when the run ends, so it has no idle
-tail, and `sleepAfter` is 5 m for the `ui` role (the `run` role's 15 m is only a cap on a hung run:
-its SIGTERM now ends the pass with exit 143 once the running step's in-flight call and cleanup
+60 × 64 s + 660 × 28 s = 22,320 s. A 31-day month has 744 starts, 62 of them digest runs, which
+is 23,064 s and puts memory and vCPU at 25.6 %. The `run` role exits when the run ends, so it has
+no idle tail, and `sleepAfter` is 5 m for the `ui` role (the `run` role's 15 m is only a cap on a
+hung run: its SIGTERM now ends the pass with exit 143 once the running step's in-flight call and cleanup
 return, which until
 2026-09-24 it did not — the shell PID 1 ignored the signal).
 
@@ -35,8 +36,8 @@ LLM spend, measured from `usage_log` on 2026-09-21: the month's total is **$0.87
 but runs before 2026-09-18 logged **$0.00** because `gemini-3.8-flash` carried no price in the model
 table until then (`feat(models): price gemini-3.8-flash`). The month's average therefore understates
 the real figure. The seven priced runs, 09-18 to 09-21, cost **$0.2251**, i.e. **~$0.032 per run**, so
-two runs a day is **~$1.9/month**. Everything metered sits under 25 % of its allotment, so the bill is
-the **$5/month account minimum** [1], not usage: about **$6.9/month today** against about
+two runs a day is **~$1.9/month**. Everything metered sits under 26 % of its allotment, so the bill
+is the **$5/month account minimum** [1], not usage: about **$6.9/month today** against about
 **$1.9/month** for §4's stack, the $5 being the whole gap.
 
 ## 2. What binds the paid plan
