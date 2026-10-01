@@ -1453,7 +1453,7 @@ def test_write_raw_renders_vote_buttons(tmp_path):
 
 
 def test_no_template_reaches_for_a_credential():
-    """The `private-votes-public-archive` invariant, checked where it can still break.
+    """The private-votes invariant, checked where it can still break.
 
     It used to be checked by handing the writer a token and grepping the output
     for it. That stopped meaning anything once the writer stopped taking one —

@@ -127,7 +127,7 @@ export class CyrisContainer extends Container {
   // restart mid-run keeps the run's timer.
   sleepAfter = this.ctx.id.name === RUN_INSTANCE ? RUN_SLEEP_AFTER : "5m";
 
-  // Without a role the image runs the Mac mini's supercronic loop, which in the
+  // Without a role the image runs the local machine's supercronic loop, which in the
   // cloud would be a second scheduler racing the Workers Cron above.
   envVars = containerEnv("ui");
 
