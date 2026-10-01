@@ -17,7 +17,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
 from cyris.adapters.notify import period_label
-from cyris.adapters.output.html_digest import HtmlDigestWriter, _features, _hostname
+from cyris.adapters.output.html_digest import HtmlDigestWriter, _features, _hostname, _html_lang
 from cyris.domain.models import DigestContent
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -62,6 +62,7 @@ def render_digest_email(
     dark = {name: Markup(value) for name, value in tokens().items()}
     return _env.get_template("email.html.j2").render(
         content=content,
+        content_lang=_html_lang(content.output_language),
         period_label=period_label(content.period),
         lead_story=features[0] if features else None,
         featured_articles=features[1:],

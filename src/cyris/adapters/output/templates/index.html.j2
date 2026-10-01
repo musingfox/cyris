@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -74,9 +74,9 @@
         {% if digests %}
         <article class="front-card">
             <div class="line"><span class="label latest">Latest</span><span class="date">{{ latest.date }}</span><span class="label">{{ latest.period }}</span></div>
-            {% if card.lead is not none %}<h2>{{ card.lead }}</h2>{% endif %}
+            {% if card.lead is not none %}<h2 lang="{{ card.lang }}">{{ card.lead }}</h2>{% endif %}
             {% if card.count is not none %}<span class="data">{{ card.count | plural("article") }}</span>{% endif %}
-            {% if card.topics is not none %}<p class="small">{{ card.topics }}</p>{% endif %}
+            {% if card.topics is not none %}<p class="small" lang="{{ card.lang }}">{{ card.topics }}</p>{% endif %}
             {{ actions(latest) }}
         </article>
         {% for panel in months %}

@@ -6,7 +6,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-from css_rules import parse_style_block, receipt_fixtures
+from css_rules import parse_style_block, receipt_fixtures, text_langs
 
 from cyris.adapters.output import html_digest
 from cyris.adapters.output.html_digest import HtmlDigestWriter
@@ -165,7 +165,7 @@ def test_the_heading_outline_skips_no_level():
 
 def test_clusters_are_headed_at_h3_and_radar_items_at_h4():
     digest = receipt_fixtures()[1]
-    assert re.search(r'<div class="news-cluster">\s*<h3', digest)
+    assert re.search(r'<div class="news-cluster" lang="[^"]*">\s*<h3', digest)
     assert re.search(r'<article class="attention-item">\s*<h4', digest)
     assert "<h5" not in digest
 
@@ -522,7 +522,7 @@ def _card_for(tmp_path, content: DigestContent | None) -> str:
 
 def _lead_card(html: str) -> str:
     """A digest's lead card, from its opening tag to its close."""
-    return html[html.index('<article class="lead-story">') :].split("</article>", 1)[0]
+    return html[html.index('<article class="lead-story"') :].split("</article>", 1)[0]
 
 
 def _lead_card_of(tmp_path, **extra) -> str:
@@ -544,13 +544,13 @@ def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
         thematic_summaries=[DigestSection(heading="T", items=_items("Thematic"))],
     )
 
-    assert "<h2>Cloudflare Containers GA</h2>" in _card_for(tmp_path, content)
+    assert '<h2 lang="">Cloudflare Containers GA</h2>' in _card_for(tmp_path, content)
     assert "Cloudflare Containers GA" in _lead_card(HtmlDigestWriter(tmp_path).render(content))
 
 
 def test_the_top_story_tag_sits_directly_above_the_lead_card():
     digest = receipt_fixtures()[1]
-    between = digest.split("Top story</span></div>", 1)[1].split('<article class="lead-story">')[0]
+    between = digest.split("Top story</span></div>", 1)[1].split('<article class="lead-story"')[0]
     assert between.strip() == ""
 
 
@@ -576,7 +576,7 @@ def test_without_features_the_card_leads_with_the_first_thematic_story(tmp_path)
         thematic_summaries=[DigestSection(heading="T", items=_items("Thematic lead"))],
     )
 
-    assert "<h2>Thematic lead</h2>" in _card_for(tmp_path, content)
+    assert '<h2 lang="">Thematic lead</h2>' in _card_for(tmp_path, content)
 
 
 def test_a_run_with_no_lead_story_shows_no_card_title(tmp_path):
@@ -661,7 +661,7 @@ def test_a_group_lead_lists_its_articles_one_level_below_its_title(tmp_path):
 
 def test_a_group_lead_gives_the_card_its_heading(tmp_path):
     content = _content("2026-04-15", "evening", featured_articles=[_group()])
-    assert "<h2>Group heading</h2>" in _card_for(tmp_path, content)
+    assert '<h2 lang="">Group heading</h2>' in _card_for(tmp_path, content)
 
 
 def test_the_card_title_is_escaped(tmp_path):
@@ -671,7 +671,7 @@ def test_the_card_title_is_escaped(tmp_path):
         featured_articles=[DigestSection(heading="F", items=_items("<b>x</b>"))],
     )
 
-    assert "<h2>&lt;b&gt;x&lt;/b&gt;</h2>" in _card_for(tmp_path, content)
+    assert '<h2 lang="">&lt;b&gt;x&lt;/b&gt;</h2>' in _card_for(tmp_path, content)
 
 
 def test_without_content_the_card_has_no_title(tmp_path):
@@ -721,7 +721,7 @@ def _clusters(*clusters: tuple[str, list[int]]) -> DigestContent:
     ids=["largest-two", "members-are-urls", "ties-keep-order", "one-cluster"],
 )
 def test_the_card_names_the_two_largest_stories(tmp_path, clusters, line):
-    assert f'<p class="small">{line}</p>' in _card_for(tmp_path, _clusters(*clusters))
+    assert f'<p class="small" lang="">{line}</p>' in _card_for(tmp_path, _clusters(*clusters))
 
 
 def test_a_run_without_news_clusters_shows_no_topic_line(tmp_path):
@@ -864,7 +864,7 @@ def test_the_local_archive_leads_with_this_runs_issue(tmp_path):
     index = (tmp_path / "index.html").read_text()
     card = _card(index)
     assert _card_line("2026-04-16", "morning") in card
-    assert "<h2>Local lead</h2>" in card
+    assert '<h2 lang="">Local lead</h2>' in card
     assert '<span class="data">5 articles</span>' in card
     assert [row for row in _rows(index) if 'class="small"' in row] == []
 
@@ -878,7 +878,7 @@ def _card_of(card: html_digest.HeadlineCard) -> str:
 
 def test_a_card_field_set_to_none_is_left_off():
     card = _card_of(html_digest.HeadlineCard())
-    assert "<h2>" not in card
+    assert "<h2" not in card
     assert 'class="data"' not in card
     assert 'class="small"' not in card
 
@@ -925,7 +925,7 @@ def test_the_digest_and_its_archive_card_follow_one_file_name(tmp_path, monkeypa
     path = HtmlDigestWriter(tmp_path).write(content)
 
     assert path == tmp_path / "2026-04-16-morning-v2.html"
-    assert "<h2>Renamed lead</h2>" in _card((tmp_path / "index.html").read_text())
+    assert '<h2 lang="">Renamed lead</h2>' in _card((tmp_path / "index.html").read_text())
 
 
 def test_an_index_written_without_a_run_shows_only_the_newest_issue_on_its_card(tmp_path):
@@ -1972,3 +1972,122 @@ def test_the_archive_footer_counts_its_issues(tmp_path):
     assert "// cyris &middot; 2 issues<" in two
     assert "// cyris &middot; 1 issue<" in one
     assert "local-first" not in two
+
+
+@pytest.mark.parametrize("tag", ["en", "ja", "zh-Hant", "pt-BR", "zh-Hant-TW"])
+def test_a_bcp47_tag_is_its_own_lang(tag):
+    assert html_digest._html_lang(tag) == tag
+
+
+@pytest.mark.parametrize(
+    "value", ["Traditional Chinese", "繁體中文", "English", "Deutsch", "auto", "", None]
+)
+def test_anything_else_is_htmls_unknown_language(value):
+    assert html_digest._html_lang(value) == ""
+
+
+def _every_section(output_language: str) -> DigestContent:
+    def item(title: str) -> DigestItem:
+        return DigestItem(
+            title=title,
+            summary=f"{title} summary.",
+            sources=["Src"],
+            urls=[f"https://x.test/{title}"],
+        )
+
+    return DigestContent(
+        date="2026-04-15",
+        period="morning",
+        sources_processed=1,
+        articles_received=6,
+        articles_included=6,
+        output_language=output_language,
+        featured_articles=[DigestSection(heading="Features", items=[item("Lead"), item("Second")])],
+        news_clusters=[DigestSection(heading="Cluster heading", items=[item("Cluster")])],
+        fan_sections=[DigestSection(heading="Fan heading", items=[item("Fan")])],
+        attention_sections=[
+            DigestSection(heading="Radar heading", description="Why.", items=[item("Radar")])
+        ],
+        filtered_headlines=[item("Wire")],
+    )
+
+
+DIGEST_CONTENT_TEXT = [
+    "Lead",
+    "Lead summary.",
+    "Second",
+    "Second summary.",
+    "Cluster heading",
+    "Cluster summary.",
+    "Fan heading",
+    "Fan",
+    "Fan summary.",
+    "Radar heading",
+    "Why.",
+    "Radar",
+    "Radar summary.",
+    "Wire",
+]
+DIGEST_CHROME_TEXT = [
+    "Top story",
+    "Features",
+    "In Focus",
+    "Following",
+    "On the Radar",
+    "The Wire",
+    "Sources",
+    "Included",
+]
+
+
+def test_the_digest_chrome_is_english_and_its_content_carries_the_output_language(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render(_every_section("ja"))
+    langs = text_langs(html)
+
+    assert '<html lang="en">' in html
+    assert {text: langs[text] for text in DIGEST_CHROME_TEXT} == dict.fromkeys(
+        DIGEST_CHROME_TEXT, "en"
+    )
+    assert {text: langs[text] for text in DIGEST_CONTENT_TEXT} == dict.fromkeys(
+        DIGEST_CONTENT_TEXT, "ja"
+    )
+
+
+def test_a_plain_language_name_leaves_the_content_language_unknown(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render(_every_section("Traditional Chinese"))
+    langs = text_langs(html)
+
+    assert "Traditional Chinese" not in html
+    assert {text: langs[text] for text in DIGEST_CONTENT_TEXT} == dict.fromkeys(
+        DIGEST_CONTENT_TEXT, ""
+    )
+    assert langs["Top story"] == "en"
+
+
+def test_the_archive_card_carries_its_issues_language(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render_index(
+        ["2026-04-15-morning.html", "2026-04-14-morning.html"], content=_every_section("ko")
+    )
+    langs = text_langs(html)
+
+    assert '<html lang="en">' in html
+    assert langs["Lead"] == "ko"
+    assert langs["Cluster heading"] == "ko"
+    assert langs["Latest"] == langs["2026-04-14"] == "en"
+
+
+def test_each_raw_title_carries_its_articles_own_language(tmp_path):
+    chinese = _stored("中文標題", "Src").model_copy(update={"language": "zh"})
+    english = _stored("English title", "Src").model_copy(update={"language": "en"})
+    unknown = _stored("Unscored title", "Src")
+    html = HtmlDigestWriter(tmp_path).render_raw(
+        "2026-04-15", "morning", [chinese, english, unknown]
+    )
+    langs = text_langs(html)
+
+    assert '<html lang="en">' in html
+    assert langs["中文標題"] == "zh"
+    assert langs["English title"] == "en"
+    assert langs["Unscored title"] == ""
+    assert langs["Src"] == "en"
+    assert "title.lang = next.querySelector('a').lang;" in html

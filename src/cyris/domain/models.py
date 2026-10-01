@@ -194,6 +194,7 @@ class DigestContent(BaseModel):
     triage_pending_count: int | None = None
     dead_link_count: int | None = None
     synthetic_url_count: int | None = None
+    output_language: str = ""
 
 
 class ArticleState(StrEnum):

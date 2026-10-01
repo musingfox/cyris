@@ -99,6 +99,7 @@ class DigestPipeline:
                     sources_processed=0,
                     articles_received=0,
                     articles_included=0,
+                    output_language=self.output_language,
                 ),
                 accepted_urls=[],
                 rejected_urls=[],
@@ -257,6 +258,7 @@ class DigestPipeline:
             attention_sections=attention,
             filtered_headlines=filtered,
             fan_sections=fan_sections,
+            output_language=self.output_language,
         )
 
         content = select_digest_articles(content, max_items=self.max_digest_output)

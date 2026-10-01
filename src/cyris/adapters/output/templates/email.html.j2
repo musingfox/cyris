@@ -37,7 +37,7 @@
 {% endfor %}
 {%- endmacro -%}
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -99,7 +99,7 @@
         {% if lead_story %}
         <section class="section">
             <h2 class="section-tag"><span class="rule"></span>Top story</h2>
-            <article class="lead">
+            <article class="lead" lang="{{ content_lang }}">
                 {% if lead_story.score %}<span class="pill">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
                 <h3 class="lead-title">{{ title_link(lead_story) }}</h3>
                 <p class="summary">{{ lead_story.summary }}</p>
@@ -112,7 +112,7 @@
         <section class="section">
             <h2 class="section-tag"><span class="rule"></span>Features</h2>
             {% for item in featured_articles %}
-            <article class="item">
+            <article class="item" lang="{{ content_lang }}">
                 {% if item.score %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                 <h3 class="title">{{ title_link(item) }}</h3>
                 <p class="summary">{{ item.summary }}</p>
@@ -126,7 +126,7 @@
         <section class="section">
             <h2 class="section-tag"><span class="rule"></span>In Focus</h2>
             {% for cluster in content.news_clusters %}
-            <article class="item">
+            <article class="item" lang="{{ content_lang }}">
                 <h3 class="title">{{ cluster.heading }}</h3>
                 {% for item in cluster.items %}
                 <p class="summary">{{ item.summary }}</p>
@@ -142,7 +142,7 @@
             <h2 class="section-tag"><span class="rule"></span>Following</h2>
             {% for sec in content.fan_sections %}
             {% for item in sec.items %}
-            <article class="item">
+            <article class="item" lang="{{ content_lang }}">
                 <h3 class="title">{{ title_link(item) }}</h3>
                 {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
                 <p class="meta">{{ sec.heading }} · {{ item.sources | join(' · ') }}</p>
@@ -156,9 +156,9 @@
         <section class="section">
             <h2 class="section-tag"><span class="rule"></span>On the Radar</h2>
             {% for sec in content.attention_sections %}
-            <p class="desc">{{ sec.heading }}{% if sec.description %} — {{ sec.description }}{% endif %}</p>
+            <p class="desc" lang="{{ content_lang }}">{{ sec.heading }}{% if sec.description %} — {{ sec.description }}{% endif %}</p>
             {% for item in sec.items %}
-            <article class="item">
+            <article class="item" lang="{{ content_lang }}">
                 <h3 class="title">{{ title_link(item) }}</h3>
                 <p class="summary">{{ item.summary }}</p>
                 {{ meta(item) }}
@@ -171,7 +171,7 @@
         {% if content.filtered_headlines %}
         <section class="section">
             <h2 class="section-tag"><span class="rule"></span>The Wire</h2>
-            <ol class="wire">
+            <ol class="wire" lang="{{ content_lang }}">
                 {% for item in content.filtered_headlines %}
                 <li><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}</li>
                 {% endfor %}

@@ -626,7 +626,7 @@ def test_the_published_archive_leads_with_this_runs_issue(tmp_path: Path) -> Non
 
     card = index[index.index('<article class="front-card">') :].split("</article>", 1)[0]
     assert '<span class="date">2026-04-16</span>' in card
-    assert "<h2>Run lead</h2>" in card
+    assert '<h2 lang="">Run lead</h2>' in card
     assert '<span class="data">7 articles</span>' in card
     panels = index[index.index('<section class="panel">') :]
     assert 'href="2026-04-15-evening.html"' in panels
