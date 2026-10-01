@@ -5,7 +5,7 @@ scope:
   - "wrangler.toml"
   - ".github/workflows/*.yml"
   - "scripts/*.sh"
-verify: check:grep -q '^image = "./Dockerfile"' wrangler.toml && ! grep -qE "registry[.]cloudflare[.]com|account_id" wrangler.toml
+verify: check:uv run pytest tests/test_release_image.py tests/test_worker_route_table.py -q -k fork_neutral
 related: [release-image-built-in-ci]
 source: release-image-build-in-ci
 adr: null
