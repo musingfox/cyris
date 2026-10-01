@@ -311,6 +311,26 @@ window.fetch = (input, init) =>
 """
 
 
+def answer_get(path: str, answer: str) -> str:
+    """A preload under which the page's GET of `path` gets `answer`, a JS promise, instead."""
+    return f"""
+const realFetch = window.fetch;
+window.fetch = (input, init) =>
+  String(input).endsWith({json.dumps(path)}) && [undefined, "GET"].includes(init && init.method)
+    ? {answer}
+    : realFetch(input, init);
+"""
+
+
+# What the app Worker answers a request whose session cookie has expired, and
+# what the page must then tell the reader.
+SESSION_EXPIRED = (
+    'Promise.resolve(new Response(JSON.stringify({error: "unauthorized"}), '
+    '{status: 401, headers: {"Content-Type": "application/json"}}))'
+)
+SIGN_IN_AGAIN = "Your session has expired. Reload the page to sign in again."
+
+
 def answer_post(path: str, answer: str) -> str:
     """A preload under which the page's POST to `path` gets `answer`, a JS promise, instead."""
     return f"""
@@ -1094,6 +1114,60 @@ CHECKS: list[Check] = [
             expect(live.length === 0, `enabled: ${live}`);
         """,
         sabotage="""saveOf("digest").disabled = false;""",
+    ),
+    Check(
+        id="settings-session-expired",
+        fixture="writable",
+        path="/settings",
+        preload=answer_get("/api/settings", SESSION_EXPIRED),
+        act="""
+            await waitFor(() => $$("form.tab .actions-line .notice.err").length === 4, "4 notices");
+        """,
+        script=f"""
+            const tabs = ["model", "digest", "pipeline", "notifications"];
+            const wrong = tabs.filter((t) => !noticeOf(t).classList.contains("err")
+              || noticeOf(t).textContent !== {json.dumps(SIGN_IN_AGAIN)});
+            expect(wrong.length === 0, `wrong notices: ${{wrong}}`);
+            const live = tabs.filter((t) => !saveOf(t).disabled);
+            expect(live.length === 0, `enabled: ${{live}}`);
+        """,
+        sabotage="""noticeOf("digest").textContent = "Could not load settings: TypeError: x";""",
+    ),
+    Check(
+        id="sources-session-expired",
+        fixture="writable",
+        path="/settings#sources",
+        preload=answer_get("/api/sources", SESSION_EXPIRED),
+        act="""await waitFor(() => visible($("#sources-notice")), "the notice");""",
+        script=f"""
+            const notice = $("#sources-notice");
+            expect(notice.classList.contains("err"), "not an error");
+            expect(notice.textContent === {json.dumps(SIGN_IN_AGAIN)}, notice.textContent);
+            expect($("#add-source").disabled, "Add source is enabled");
+        """,
+        sabotage="""$("#sources-notice").textContent = "Could not load sources: TypeError: x";""",
+    ),
+    Check(
+        id="save-session-expired",
+        fixture="writable",
+        path="/settings#sources",
+        preload=answer_post("/api/sources", SESSION_EXPIRED),
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => visible($(".notice", editor())), "the notice");
+        """,
+        script=f"""
+            const notice = editorAct("save").parentElement.querySelector(".notice");
+            const text = notice.textContent;
+            expect(notice.classList.contains("err"), `not an error: ${{text}}`);
+            expect(text === {json.dumps(SIGN_IN_AGAIN)}, `notice: ${{text}}`);
+        """,
+        sabotage="""
+            editorAct("save").parentElement.querySelector(".notice").textContent = "unauthorized";
+        """,
+        receipt=_stored("Hacker News", tags=["news", "tech"]),
     ),
     Check(
         id="sources-load-failure",
