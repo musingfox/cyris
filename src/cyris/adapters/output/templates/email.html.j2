@@ -142,7 +142,7 @@
             <h2 class="section-tag"><span class="rule"></span>Following</h2>
             {% for sec in content.fan_sections %}
             {% for item in sec.items %}
-            <article class="item" lang="{{ content_lang }}">
+            <article class="item" lang="">
                 <h3 class="title">{{ title_link(item) }}</h3>
                 {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
                 <p class="meta">{{ sec.heading }} · {{ item.sources | join(' · ') }}</p>
@@ -156,9 +156,9 @@
         <section class="section">
             <h2 class="section-tag"><span class="rule"></span>On the Radar</h2>
             {% for sec in content.attention_sections %}
-            <p class="desc" lang="{{ content_lang }}">{{ sec.heading }}{% if sec.description %} — {{ sec.description }}{% endif %}</p>
+            <p class="desc" lang="">{{ sec.heading }}{% if sec.description %} — {{ sec.description }}{% endif %}</p>
             {% for item in sec.items %}
-            <article class="item" lang="{{ content_lang }}">
+            <article class="item" lang="">
                 <h3 class="title">{{ title_link(item) }}</h3>
                 <p class="summary">{{ item.summary }}</p>
                 {{ meta(item) }}

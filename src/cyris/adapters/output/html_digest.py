@@ -22,7 +22,7 @@ def _hostname(url: str) -> str:
 _LANGUAGE_TAG = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*")
 
 
-def _html_lang(value: str | None) -> str:
+def _html_lang(value: str) -> str:
     """`value` as a `lang` attribute: the tag itself, or "" (HTML's unknown) for anything else."""
     return value if value and _LANGUAGE_TAG.fullmatch(value) else ""
 
@@ -142,7 +142,6 @@ class HtmlDigestWriter:
         )
         self.env.filters["hostname"] = _hostname
         self.env.filters["plural"] = _plural
-        self.env.filters["lang"] = _html_lang
 
     def render(self, content: DigestContent, raw_page: bool = False) -> str:
         """Transform DigestContent into complete HTML document.
