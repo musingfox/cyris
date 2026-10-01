@@ -41,7 +41,8 @@ Traditional Chinese.
 | Needs | Python 3.12+ and uv | Workers Paid (US$5/month), Docker and bun; your own domain for email features |
 | Guide | [docs/install-local.md](docs/install-local.md) | [docs/install-cloudflare.md](docs/install-cloudflare.md) |
 
-Each guide runs top to bottom, so you can also hand it to a coding agent.
+Each guide runs top to bottom, so you can also hand it to a coding agent. The Cloudflare
+guide has so far been verified on one account only.
 
 ## Docs
 
