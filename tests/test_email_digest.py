@@ -174,11 +174,9 @@ class TestLanguage:
         "Second Feature",
         "A Cluster",
         "Cluster summary.",
-        "Fan Item",
-        "Watching — Why these.",
-        "Radar Item",
         "Wire One",
     ]
+    PASSED_THROUGH = ["Fan Item", "Watching — Why these.", "Radar Item", "Radar Item summary."]
     CHROME = ["Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire"]
 
     def test_the_chrome_is_english_and_the_content_carries_the_output_language(self):
@@ -189,6 +187,14 @@ class TestLanguage:
         assert '<html lang="en">' in html
         assert {text: langs[text] for text in self.CHROME} == dict.fromkeys(self.CHROME, "en")
         assert {text: langs[text] for text in self.CONTENT} == dict.fromkeys(self.CONTENT, "ja")
+
+    def test_untranslated_sections_leave_their_language_unknown(self):
+        content = _full().model_copy(update={"output_language": "ja"})
+        langs = text_langs(render_digest_email(content, DIGEST_URL))
+
+        assert {text: langs[text] for text in self.PASSED_THROUGH} == dict.fromkeys(
+            self.PASSED_THROUGH, ""
+        )
 
     def test_a_plain_language_name_leaves_the_content_language_unknown(self):
         content = _full().model_copy(update={"output_language": "Traditional Chinese"})

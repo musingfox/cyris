@@ -1,5 +1,5 @@
 {% macro promote_btn(item, story_id=None) -%}
-{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>{% endif %}
+{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}' lang="en"><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>{% endif %}
 {%- endmacro -%}
 {#- Sources of a news cluster: one link per article, so a busy topic renders five of
     them and wraps into a mess on a phone. Fold past two behind a native <details>.
@@ -25,7 +25,7 @@
 {%- endmacro -%}
 {% macro source_list(item) -%}
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
-{% if urls | length > 2 %}<details class="src-fold"><summary>{{ urls | length }} sources</summary><span class="src-list">{{ source_links(item) }}</span></details>{% else %}<span class="src-links">{{ source_links(item) }}</span>{% endif %}
+{% if urls | length > 2 %}<details class="src-fold"><summary lang="en">{{ urls | length }} sources</summary><span class="src-list">{{ source_links(item) }}</span></details>{% else %}<span class="src-links">{{ source_links(item) }}</span>{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="en">
@@ -504,7 +504,7 @@
             <section class="section">
                 <h2 class="section-tag"><span class="label">Following</span></h2>
                 {% for sec in fan_sections %}
-                <div class="thematic-block" lang="{{ content_lang }}">
+                <div class="thematic-block" lang="">
                     <h3 class="item-title lg">{{ sec.heading }}</h3>
                     {% for item in sec.items %}
                     <article class="article-item">
@@ -526,7 +526,7 @@
             <section class="section">
                 <h2 class="section-tag"><span class="label">On the Radar</span></h2>
                 {% for sec in attention_sections %}
-                <div class="thematic-block" lang="{{ content_lang }}">
+                <div class="thematic-block" lang="">
                     <h3 class="item-title lg">{{ sec.heading }}</h3>
                     {% if sec.description %}<p class="section-description">{{ sec.description }}</p>{% endif %}
                     <div class="attention-list">

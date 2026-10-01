@@ -40,10 +40,11 @@ Every change that touches a reader-facing page follows this spec: `src/cyris/ada
    literal outside the tokens is allowed only as one of the exceptions §2 lists.
 7. **The chrome is English; content names its own language.** A screen reader picks its voice from
    `lang` (WCAG 3.1.1, 3.1.2). Every page's `<html lang>` is `en`, the language of its labels. A block of
-   digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`; a
-   raw row carries the language scoring recorded for its article. A value that is not a BCP 47 tag, such
-   as a plain language name an older config still holds, renders as `lang=""`, HTML's unknown language,
-   never as a wrong tag.
+   digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`, and
+   an English control inside it (a vote group, a sources fold) carries `lang="en"`. Text passed through
+   untranslated, which is Following, On the Radar and every raw row, carries `lang=""`, HTML's unknown
+   language: no reliable tag for it exists. A value that is not a BCP 47 tag, such as a plain language
+   name an older config still holds, also renders as `lang=""`, never as a wrong tag.
 
 ## 2. Token
 

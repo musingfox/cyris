@@ -1165,7 +1165,7 @@ def test_a_crowded_cluster_folds_its_sources(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(_cluster_digest(5))
 
     assert '<details class="src-fold">' in html
-    assert "<summary>5 sources</summary>" in html
+    assert '<summary lang="en">5 sources</summary>' in html
     # Folded, not dropped — every link is still in the markup and still reachable.
     for i in range(5):
         assert f'<a href="https://n{i}.com" target="_blank" rel="noopener">S{i}</a>' in html
@@ -1980,7 +1980,7 @@ def test_a_bcp47_tag_is_its_own_lang(tag):
 
 
 @pytest.mark.parametrize(
-    "value", ["Traditional Chinese", "繁體中文", "English", "Deutsch", "auto", "", None]
+    "value", ["Traditional Chinese", "繁體中文", "English", "Deutsch", "auto", ""]
 )
 def test_anything_else_is_htmls_unknown_language(value):
     assert html_digest._html_lang(value) == ""
@@ -1995,6 +1995,12 @@ def _every_section(output_language: str) -> DigestContent:
             urls=[f"https://x.test/{title}"],
         )
 
+    cluster = DigestItem(
+        title="Cluster",
+        summary="Cluster summary.",
+        sources=["A", "B", "C"],
+        urls=["https://a.test/1", "https://b.test/1", "https://c.test/1"],
+    )
     return DigestContent(
         date="2026-04-15",
         period="morning",
@@ -2003,7 +2009,7 @@ def _every_section(output_language: str) -> DigestContent:
         articles_included=6,
         output_language=output_language,
         featured_articles=[DigestSection(heading="Features", items=[item("Lead"), item("Second")])],
-        news_clusters=[DigestSection(heading="Cluster heading", items=[item("Cluster")])],
+        news_clusters=[DigestSection(heading="Cluster heading", items=[cluster])],
         fan_sections=[DigestSection(heading="Fan heading", items=[item("Fan")])],
         attention_sections=[
             DigestSection(heading="Radar heading", description="Why.", items=[item("Radar")])
@@ -2012,13 +2018,16 @@ def _every_section(output_language: str) -> DigestContent:
     )
 
 
-DIGEST_CONTENT_TEXT = [
+WRITTEN_TEXT = [
     "Lead",
     "Lead summary.",
     "Second",
     "Second summary.",
     "Cluster heading",
     "Cluster summary.",
+    "Wire",
+]
+PASSED_THROUGH_TEXT = [
     "Fan heading",
     "Fan",
     "Fan summary.",
@@ -2026,7 +2035,6 @@ DIGEST_CONTENT_TEXT = [
     "Why.",
     "Radar",
     "Radar summary.",
-    "Wire",
 ]
 DIGEST_CHROME_TEXT = [
     "Top story",
@@ -2037,20 +2045,37 @@ DIGEST_CHROME_TEXT = [
     "The Wire",
     "Sources",
     "Included",
+    "3 sources",
 ]
 
 
-def test_the_digest_chrome_is_english_and_its_content_carries_the_output_language(tmp_path):
+def _langs_of(langs: dict[str, str | None], texts: list[str]) -> dict[str, str | None]:
+    return {text: langs[text] for text in texts}
+
+
+def test_the_digest_chrome_is_english_and_its_written_content_carries_the_output_language(
+    tmp_path,
+):
     html = HtmlDigestWriter(tmp_path).render(_every_section("ja"))
     langs = text_langs(html)
 
     assert '<html lang="en">' in html
-    assert {text: langs[text] for text in DIGEST_CHROME_TEXT} == dict.fromkeys(
-        DIGEST_CHROME_TEXT, "en"
-    )
-    assert {text: langs[text] for text in DIGEST_CONTENT_TEXT} == dict.fromkeys(
-        DIGEST_CONTENT_TEXT, "ja"
-    )
+    assert _langs_of(langs, DIGEST_CHROME_TEXT) == dict.fromkeys(DIGEST_CHROME_TEXT, "en")
+    assert _langs_of(langs, WRITTEN_TEXT) == dict.fromkeys(WRITTEN_TEXT, "ja")
+
+
+def test_untranslated_sections_leave_their_language_unknown(tmp_path):
+    langs = text_langs(HtmlDigestWriter(tmp_path).render(_every_section("ja")))
+
+    assert _langs_of(langs, PASSED_THROUGH_TEXT) == dict.fromkeys(PASSED_THROUGH_TEXT, "")
+
+
+def test_every_vote_group_says_its_titles_are_english(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render(_every_section("ja"))
+    groups = re.findall(r'<span class="vote-group"[^>]*>', html)
+
+    assert len(groups) == 6
+    assert all(' lang="en"' in group for group in groups)
 
 
 def test_a_plain_language_name_leaves_the_content_language_unknown(tmp_path):
@@ -2058,9 +2083,7 @@ def test_a_plain_language_name_leaves_the_content_language_unknown(tmp_path):
     langs = text_langs(html)
 
     assert "Traditional Chinese" not in html
-    assert {text: langs[text] for text in DIGEST_CONTENT_TEXT} == dict.fromkeys(
-        DIGEST_CONTENT_TEXT, ""
-    )
+    assert _langs_of(langs, WRITTEN_TEXT) == dict.fromkeys(WRITTEN_TEXT, "")
     assert langs["Top story"] == "en"
 
 
@@ -2076,18 +2099,13 @@ def test_the_archive_card_carries_its_issues_language(tmp_path):
     assert langs["Latest"] == langs["2026-04-14"] == "en"
 
 
-def test_each_raw_title_carries_its_articles_own_language(tmp_path):
-    chinese = _stored("中文標題", "Src").model_copy(update={"language": "zh"})
-    english = _stored("English title", "Src").model_copy(update={"language": "en"})
-    unknown = _stored("Unscored title", "Src")
-    html = HtmlDigestWriter(tmp_path).render_raw(
-        "2026-04-15", "morning", [chinese, english, unknown]
-    )
+def test_a_raw_title_has_no_reliable_language_so_it_is_unknown(tmp_path):
+    scored = _stored("中文標題", "Src").model_copy(update={"language": "zh"})
+    unscored = _stored("Unscored title", "Src")
+    html = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "morning", [scored, unscored])
     langs = text_langs(html)
 
     assert '<html lang="en">' in html
-    assert langs["中文標題"] == "zh"
-    assert langs["English title"] == "en"
-    assert langs["Unscored title"] == ""
+    assert langs["中文標題"] == langs["Unscored title"] == ""
     assert langs["Src"] == "en"
     assert "title.lang = next.querySelector('a').lang;" in html
