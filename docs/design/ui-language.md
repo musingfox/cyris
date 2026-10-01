@@ -160,7 +160,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **notice** | Save results and errors: a 2px bar on the left (`--accent` or `--warn`), the matching tint background, square corners, small role, `white-space: pre-wrap`, placed beside the button that triggered it. An error message says what happened and how to fix it |
 | **destructive confirm** | No `window.confirm`. On the first press, the danger button turns into `Confirm …` in place and takes an `--warn-tint` background; only a second press within 3 seconds acts, otherwise it reverts |
 | **section marker** | The label role, preceded by a 24px × 1px `--accent` line, spaced `--s-3` |
-| **footer** | 1px `--border` above, Geist Mono 12px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info only, never navigation. The mail (§6 *email*) is the one exception: it has no site bar, so its footer carries the `Archive` · `Settings` links |
+| **footer** | 1px `--border` above, Geist Mono 12px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info, never site navigation. Its one link is the word `Cyris`, pointing to the project's site, so a page that reaches someone who has never heard of cyris says where it came from; the link takes the footer's colour. The mail (§6 *email*) is the one exception: it has no site bar, so its footer also carries the `Archive` · `Settings` links |
 | **feature flow** | Landing-page explanation, not an app mockup. An ordered list of three illustrated steps: subscriptions, per-source processing, reading. Three equal columns with `--s-12` gaps; one column with `--s-16` gaps at 720px. SVGs are decorative (`aria-hidden`, non-focusable), 100% wide and `2 × --s-20` high, followed by `--s-6`, a 19px title and 14px small text with `--s-2` between them. Text carries the full meaning without the drawings. Line art uses `--text-dim`; `--accent` marks the resulting digest only. Static chevrons point along reading order, right on desktop and down on phones; no animation, fake controls, dates or fictional articles. The `#system` prototype shows the same illustration |
 
 ### Interaction
@@ -185,7 +185,7 @@ Sign in (/login): on the site bar in Settings' place, when the app Worker answer
 ```
 
 - Every page has the site bar at the top; digest and raw also have the issue bar. Navigation does not go
-  in the footer.
+  in the footer; the footer's project link (§4) leaves the site rather than moving within it.
 - The archive's headline card and every row have two entries, `Digest` and `All articles`.
 - There is no separate triage page. Articles are judged in raw's triage view; the deck was retired on
   2026-09-19 (§8 step 4).
@@ -193,6 +193,9 @@ Sign in (/login): on the site bar in Settings' place, when the app Worker answer
 - A back link must point to a path that exists. `/triage` is a 404 in production.
 
 ## 6. Page layouts
+
+Every page's head links the brand favicon (`favicon.svg`, published at the site root with every
+deployment) and carries a one-sentence meta description saying what the page holds.
 
 ### archive
 
@@ -203,6 +206,8 @@ article count (small, only for issues with a record), and two small secondary bu
 two buttons wrap to the next line. Past rows show no topics: a topic title is a sentence rather than a
 tag, and of the 91 issues measured on 2026-09-19 only 20 had a topic record.
 
+- The page head's small description opens with one sentence saying what Cyris is, because the archive is
+  where the landing page sends a stranger.
 - Every issue is listed, never truncated, paginated or collapsed, because Pages' recovery rebuilds from
   every issue the index lists.
 - The period is printed as its label text, with no colour coding, and the layout does not assume two
@@ -312,7 +317,7 @@ by value, from `_tokens.css.j2` and the light palette below (`adapters/output/em
   square panel; every other item is separated by a `--border` hairline.
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a
-  `--warn` notice instead.
+  `--warn` notice instead. The footer's project link (§4) is the one link off that host.
 - **Type at the baseline.** Nothing serves the mail, so `digest.type_scale` does not reach it. Web fonts
   come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack.
 
