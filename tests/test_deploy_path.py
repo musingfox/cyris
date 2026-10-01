@@ -5,6 +5,7 @@ selections are what bind the release specs, and widening them would report
 those specs as violated whenever something here changes.
 """
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -119,6 +120,13 @@ def test_the_deploy_never_uses_the_tracked_config() -> None:
 
     assert "--config wrangler.deploy.toml" in run
     assert "--env-file /dev/null" in run
+
+
+def test_the_package_deploy_script_ignores_a_local_dotenv() -> None:
+    """A `.env` beside wrangler.toml would replace the `wrangler login` session."""
+    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
+
+    assert "--env-file /dev/null" in scripts["deploy"]
 
 
 def test_the_worker_bundle_has_its_dependencies_before_the_deploy() -> None:
