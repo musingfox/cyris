@@ -437,7 +437,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 <div class="proto-strip">
   <span>PROTOTYPE · sample data ·</span>
   <a href="#system">system</a><a href="#archive">archive</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a>
-  <label><input type="checkbox" id="authorized" checked> signed in (shows Settings, votes, List/Triage)</label>
+  <label><input type="checkbox" id="authorized" checked> signed in (shows Settings, votes, List/Triage; off shows Sign in)</label>
 </div>
 
 <header class="site-bar">
@@ -446,6 +446,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
     <nav class="site-nav" aria-label="Site">
       <a class="label" href="#archive" data-nav="archive">Archive</a>
       <a class="label gated" href="#settings/model" data-nav="settings">Settings</a>
+      <a class="label signed-out" href="/login?next=%2F">Sign in</a>
     </nav>
   </div>
 </header>
@@ -1350,6 +1351,7 @@ route();
 function applyAuth() {
   const signedIn = $("#authorized").checked;
   $$(".gated").forEach((g) => g.hidden = !signedIn);
+  $$(".signed-out").forEach((g) => g.hidden = signedIn);
   if (!signedIn) setRawView("list");
 }
 $("#authorized").addEventListener("change", applyAuth);

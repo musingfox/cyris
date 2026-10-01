@@ -497,7 +497,8 @@ CHECKS: list[Check] = [
         fixture="readonly",
         path="/settings",
         script="""
-            const bottoms = $$(".site-nav a").map((a) => a.getBoundingClientRect().bottom);
+            const shown = $$(".site-nav a").filter(visible);
+            const bottoms = shown.map((a) => a.getBoundingClientRect().bottom);
             expect(bottoms.length === 2 && bottoms[0] === bottoms[1], `bottoms: ${bottoms}`);
         """,
         # The shape the bar had before: the gate on a wrapper, the link inside it.
