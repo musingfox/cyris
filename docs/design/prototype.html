@@ -20,7 +20,7 @@
   --border-strong: #2a2a40;
   --text: #ebebf2;
   --text-dim: #8a8aa0;
-  --text-faint: #56566e;
+  --text-faint: #62627a;
   --accent: #c6ff3d;
   --accent-dim: #8aa829;
   --warn: #ff5b8a;
@@ -70,7 +70,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---- roles ---- */
 .label {
   font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
-  text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim);
 }
 .data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; }
 .display {
@@ -104,7 +104,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .site-nav a:hover { color: var(--text); }
 .site-nav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
-.gated-note { color: var(--text-faint); font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); letter-spacing: .08em; }
+.gated-note { color: var(--text-dim); font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); letter-spacing: .08em; }
 
 /* ---- page ---- */
 .page { max-width: 960px; margin: 0 auto; padding: var(--s-12) var(--s-4) var(--s-20); }
@@ -176,7 +176,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .state { font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; }
 .state.accepted { color: var(--accent); }
 .state.pending { color: var(--text-dim); }
-.state.rejected { color: var(--text-faint); }
+.state.rejected { color: var(--text-dim); }
 
 .notice {
   border-left: 2px solid var(--accent); background: var(--accent-tint);
@@ -186,7 +186,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .footer {
   margin-top: var(--s-16); padding-top: var(--s-5); border-top: 1px solid var(--border);
-  font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint);
+  font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
 }
 
 /* ---- archive ---- */
@@ -194,7 +194,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .archive-row .date, .front-card .date { font-family: var(--font-mono); font-size: calc(19px * var(--type-scale)); font-weight: 500; font-variant-numeric: tabular-nums; }
 .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
 .archive-row .actions { grid-column: 4; }
-.archive-row.same-day .date { color: var(--text-faint); }
+.archive-row.same-day .date { color: var(--text-dim); }
 .latest { color: var(--accent); }
 .front-card {
   background: var(--surface); border: 1px solid var(--border-strong); padding: var(--s-6);
@@ -218,7 +218,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .digest .meta {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3);
   font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
-  text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim);
 }
 .digest .meta.ruled { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px dashed var(--border-strong); }
 .digest .meta a { color: var(--accent); text-decoration: none; }
@@ -314,7 +314,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .input[aria-invalid="true"] { border-color: var(--warn); }
 .select[aria-invalid="true"] { border-color: var(--warn); }
 textarea.input { height: auto; padding-block: var(--s-3); line-height: 1.5; resize: vertical; }
-details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); list-style: none; }
+details.more summary { cursor: pointer; font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); list-style: none; }
 details.more summary::before { content: "+ "; }
 details.more[open] summary::before { content: "− "; }
 details.more p { margin-top: var(--s-2); }
@@ -358,9 +358,9 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 .swatch .chip { height: 56px; border-bottom: 1px solid var(--border); }
 .swatch .meta { padding: var(--s-2) var(--s-3); display: grid; gap: 2px; }
 .swatch .tok { font-family: var(--font-mono); font-size: calc(13px * var(--type-scale)); color: var(--text); }
-.swatch .hex { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-faint); }
+.swatch .hex { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
 .type-row { grid-template-columns: minmax(0, 1fr) 300px; align-items: baseline; padding-block: var(--s-5); }
-.type-row .spec { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-faint); line-height: 1.6; }
+.type-row .spec { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); line-height: 1.6; }
 .scale { display: grid; gap: var(--s-2); }
 .scale div { display: grid; grid-template-columns: 72px 48px 1fr; align-items: center; gap: var(--s-3); }
 .scale i { display: block; height: 8px; background: var(--accent-dim); }
@@ -394,7 +394,7 @@ table.src tr.editor > td { background: var(--surface); padding: var(--s-5); bord
 .proto-strip {
   background: var(--surface-2); border-bottom: 1px dashed var(--border-strong);
   padding: 6px var(--s-4); display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center;
-  font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-faint);
+  font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim);
 }
 .proto-strip a { color: var(--text-dim); }
 .proto-strip label { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
@@ -1316,7 +1316,7 @@ $$("form.tab").forEach((form) => {
 const tokens = [
   ["--bg", "Page ground"], ["--bg-elev", "Panels, lists"], ["--surface", "Panel heads, hover"], ["--surface-2", "Pills, selected tab"],
   ["--border", "Hairlines"], ["--border-strong", "Controls"], ["--text", "Primary text"], ["--text-dim", "Body, secondary"],
-  ["--text-faint", "Labels, rejected"], ["--accent", "Action, selection"], ["--accent-dim", "Score borders"], ["--warn", "Destructive, error"],
+  ["--text-faint", "Non-text marks"], ["--accent", "Action, selection"], ["--accent-dim", "Score borders"], ["--warn", "Destructive, error"],
   ["--accent-tint", "Success notice (new)"], ["--warn-tint", "Error notice (new)"],
 ];
 const css = getComputedStyle(document.documentElement);

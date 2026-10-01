@@ -35,7 +35,7 @@ Every change that touches a reader-facing page follows this spec: `src/cyris/ada
    (§3).
 5. **Colour has only two meanings.** `--accent` means the primary action, the selected item or a positive
    result; `--warn` means a destructive action or an error. A neutral result (for example rejected) uses
-   `--text-faint`. Semantic colours are not used for decoration.
+   `--text-dim`. Semantic colours are not used for decoration.
 6. **No hardcoded values.** Colours, spacing, font sizes, radii and durations all come from tokens; a
    literal outside the tokens is allowed only as one of the exceptions §2 lists.
 
@@ -57,7 +57,7 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   /* text */
   --text: #ebebf2;
   --text-dim: #8a8aa0;
-  --text-faint: #56566e;
+  --text-faint: #62627a;
   /* semantic */
   --accent: #c6ff3d;
   --accent-dim: #8aa829;
@@ -90,6 +90,12 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
 - **Allowed literal exceptions:** the brand square's glow `rgba(198,255,61,.45)`, the site bar's
   translucent background `rgba(7,7,10,.88)`, the primary button's hover background `#d4ff66`, and the dots'
   `border-radius: 50%`. A new exception must be written into this bullet.
+- **Text reaches 4.5:1 on every background.** Every text colour passes 4.5:1 against `--bg`,
+  `--bg-elev`, `--surface` and `--surface-2`, so `--text-dim` is the dimmest text there is: labels,
+  footers and the rejected state all use it. `--text-faint` is not a text colour; it is for non-text
+  marks such as the triage card's hover border, and passes 3:1 against the same four. A faint text
+  that passed 4.5:1 would sit within 1.2:1 of `--text-dim`, so the two were merged for text
+  (2026-10-02). `tests/test_ui_spec.py` computes the ratios.
 - Inline SVG illustration coordinates, paths and stroke widths are drawing geometry, not UI spacing.
   Illustrations inherit token colours; their outer size and margins still use the spacing scale.
 - **All spacing is on the scale.** The digest body's former values such as 14/18/22/28/36/44/56px moved
@@ -121,7 +127,7 @@ original baseline was judged too large, and the multiplier's three steps are for
 | title | Geist 600, 18–19px, line height 1.3 | List items, source names; triage card title 26px |
 | body | Geist 400, 18px, line height 1.65, `--text-dim` | Descriptions, summaries |
 | small | Geist 400, 14px, line height 1.5, `--text-dim` | Field help, table content |
-| label | Geist Mono 500, 12px, uppercase, letter spacing 0.1em, `--text-faint` | Navigation, tabs, field names, buttons, section markers |
+| label | Geist Mono 500, 12px, uppercase, letter spacing 0.1em, `--text-dim` | Navigation, tabs, field names, buttons, section markers |
 | data | Geist Mono 400, 14px, `tabular-nums`; archive dates 19px | Dates, scores, counts, URLs |
 
 ## 4. Components
@@ -144,11 +150,11 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **panel** | `--bg-elev` background, 1px `--border` border, square corners. An optional head row: `--surface` background, a bottom line, `--s-3` top and bottom and `--s-5` left and right, the title on the left and a count or action on the right. Adjacent panels are spaced `--s-5` |
 | **list row / table row** | The class name is `.list-row` (`.row` is taken by the digest stats card). `--s-3` top and bottom, `--s-5` left and right, rows divided by a bottom line, `--surface` on hover. Table headers use the label role on `--surface`. A table sits in its own `overflow-x: auto` container |
 | **pill** | Geist Mono 14px, `2px 10px`, 1px `--border-strong` border, `--surface-2` background, `--r-tag`. The score variant has `--accent` text, an `--accent-dim` border and an `--accent-tint` background |
-| **state text** | Geist Mono 13px, uppercase, letter spacing 0.1em. accepted is `--accent`; pending is `--text-dim`; rejected is `--text-faint` |
+| **state text** | Geist Mono 13px, uppercase, letter spacing 0.1em. accepted is `--accent`; pending is `--text-dim`; rejected is `--text-dim` |
 | **notice** | Save results and errors: a 2px bar on the left (`--accent` or `--warn`), the matching tint background, square corners, small role, `white-space: pre-wrap`, placed beside the button that triggered it. An error message says what happened and how to fix it |
 | **destructive confirm** | No `window.confirm`. On the first press, the danger button turns into `Confirm …` in place and takes an `--warn-tint` background; only a second press within 3 seconds acts, otherwise it reverts |
 | **section marker** | The label role, preceded by a 24px × 1px `--accent` line, spaced `--s-3` |
-| **footer** | 1px `--border` above, Geist Mono 14px uppercase, letter spacing 0.08em, `--text-faint`. It holds generation info only, never navigation |
+| **footer** | 1px `--border` above, Geist Mono 14px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info only, never navigation |
 | **feature flow** | Landing-page explanation, not an app mockup. An ordered list of three illustrated steps: subscriptions, per-source processing, reading. Three equal columns with `--s-12` gaps; one column with `--s-16` gaps at 720px. SVGs are decorative (`aria-hidden`, non-focusable), 100% wide and `2 × --s-20` high, followed by `--s-6`, a 19px title and 14px small text with `--s-2` between them. Text carries the full meaning without the drawings. Line art uses `--text-dim`; `--accent` marks the resulting digest only. Static chevrons point along reading order, right on desktop and down on phones; no animation, fake controls, dates or fictional articles. The `#system` prototype shows the same illustration |
 
 ### Interaction
@@ -193,7 +199,7 @@ tag, and of the 91 issues measured on 2026-09-19 only 20 had a topic record.
   every issue the index lists.
 - The period is printed as its label text, with no colour coding, and the layout does not assume two
   issues a day. A day's issues follow the order in which the schedule fires; rows after the first one
-  show their date in `--text-faint`, a signal independent of the labels. On a row with no article count,
+  show their date in `--text-dim`, a signal independent of the labels. On a row with no article count,
   the two buttons still line up in the same column.
 - The data sources and trade-offs are recorded in `docs/milestones/digest-archive-index-layout.md`; for
   breakpoints, §2 of this document governs.
