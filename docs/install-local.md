@@ -129,7 +129,8 @@ uv run cyris triage-ui
 This serves `http://127.0.0.1:8766/settings`, which shows every runtime setting and the
 source list. On the `json` backend the page is read-only: `cyris.toml` and
 `sources.yaml` are the only place to change anything. It does not serve the digest
-pages, so the Settings link on a page opened from disk goes nowhere.
+pages, so the Settings link on a page opened from disk goes nowhere, and `/settings`
+here shows no Archive link.
 
 ## What a local install cannot do
 

@@ -330,6 +330,12 @@ SESSION_EXPIRED = (
 )
 SIGN_IN_AGAIN = "Your session has expired. Reload the page to sign in again."
 
+# What the app Worker's /api/vote answers a signed-in reader; this server has no such route.
+SIGNED_IN = (
+    "Promise.resolve(new Response(JSON.stringify({authorized: true}), "
+    '{headers: {"Content-Type": "application/json"}}))'
+)
+
 
 def answer_post(path: str, answer: str) -> str:
     """A preload under which the page's POST to `path` gets `answer`, a JS promise, instead."""
@@ -496,6 +502,8 @@ CHECKS: list[Check] = [
         id="site-bar-links-align",
         fixture="readonly",
         path="/settings",
+        preload=answer_get("/api/vote", SIGNED_IN),
+        act="""await waitFor(() => $$(".site-nav a").filter(visible).length === 2, "Archive");""",
         script="""
             const shown = $$(".site-nav a").filter(visible);
             const bottoms = shown.map((a) => a.getBoundingClientRect().bottom);
@@ -1169,6 +1177,35 @@ CHECKS: list[Check] = [
             editorAct("save").parentElement.querySelector(".notice").textContent = "unauthorized";
         """,
         receipt=_stored("Hacker News", tags=["news", "tech"]),
+    ),
+    Check(
+        id="settings-hides-the-archive-off-the-worker",
+        fixture="readonly",
+        path="/settings",
+        act="await settingsLoaded();",
+        script="""
+            const archive = $$(".site-nav a").find((a) => a.textContent === "Archive");
+            expect(archive && !visible(archive), "Archive shows with no archive to link");
+            expect(!$(".brand").hasAttribute("href"), `brand links ${$(".brand").href}`);
+            expect(visible($(".brand")), "the brand is gone");
+        """,
+        sabotage="""$$(".site-nav a").forEach((a) => { a.hidden = false; });""",
+    ),
+    Check(
+        id="settings-links-the-archive-on-the-worker",
+        fixture="readonly",
+        path="/settings",
+        preload=answer_get("/api/vote", SIGNED_IN),
+        act="""
+            const archive = () => $$(".site-nav a").find((a) => a.textContent === "Archive");
+            await waitFor(() => visible(archive()), "Archive");
+        """,
+        script="""
+            const href = $(".brand").getAttribute("href");
+            expect(href === "index.html", `brand links ${href}`);
+            expect(!visible($(".signin-link")), "Sign in shows");
+        """,
+        sabotage="""$(".brand").removeAttribute("href");""",
     ),
     Check(
         id="sources-load-failure",

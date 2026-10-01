@@ -1771,8 +1771,25 @@ def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):
     bar = env.from_string(wrapper).render()
 
     assert '<a class="label settings-link" href="/settings" aria-current="page">Settings</a>' in bar
-    assert '<a class="label" href="index.html">Archive</a>' in bar
     assert bar.count("aria-current") == 1
+
+
+def test_settings_links_the_archive_only_once_the_probe_says_signed_in(tmp_path):
+    """A local `cyris triage-ui` serves no archive, so /settings must not link a 404.
+
+    Behind the app Worker the /api/vote probe answers authorized and restores both.
+    """
+    env = HtmlDigestWriter(tmp_path).env
+    wrapper = '{% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}'
+
+    bar = env.from_string(wrapper).render()
+
+    assert '<a class="label gated" href="index.html" hidden>Archive</a>' in bar
+    assert '<a class="brand" data-gated-href="index.html">' in bar
+    assert ' href="index.html"><span class="brand-mark">' not in bar
+    probe = env.get_template("_probe_script.html.j2").render()
+    assert "document.querySelectorAll('.gated').forEach((g) => g.hidden = false);" in probe
+    assert "a.href = a.dataset.gatedHref" in probe
 
 
 def test_the_probe_offers_sign_in_only_on_the_workers_own_refusal(tmp_path):
