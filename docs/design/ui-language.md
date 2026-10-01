@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-09-19
+updated: 2026-10-02
 ---
 
 # cyris UI design spec
@@ -109,7 +109,7 @@ original baseline was judged too large, and the multiplier's three steps are for
 `Smaller` should not serve as the normal size.
 
 - **Every `font-size` is written as `calc(baseline * var(--type-scale))`**, with a clamp wrapped inside,
-  for example `calc(clamp(52px, 8vw, 96px) * var(--type-scale))`. The later font size setting
+  for example `calc(clamp(46px, 7vw, 84px) * var(--type-scale))`. The later font size setting
   (`docs/architecture.md` §7 #35) changes only the multiplier, never this table.
 - Control heights, column widths and spacing do not scale with the multiplier.
 - The multiplier has only three values: 0.875, 1 and 1.125. It is `digest.type_scale` in D1 `settings`,
@@ -141,7 +141,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em. Disabled is always opacity .4 |
-| **input / select** | Height 48px, `--s-4` left and right, `--bg-elev` background, 1px `--border-strong` border, `--r-control`, Geist 18px. On focus the border turns `--accent`, even on a field that failed validation; on failed validation the border turns `--warn`, with a notice below |
+| **input / select** | Height 48px, `--s-4` left and right, `--bg-elev` background, 1px `--border-strong` border, `--r-control`, Geist 16px. On focus the border turns `--accent`, even on a field that failed validation; on failed validation the border turns `--warn`, with a notice below |
 | **multi-line input** | `<textarea class="input">`, reusing the input's background, border, radius, font size, and its focus and failed-validation rules; its height comes from `rows`, with `--s-3` padding top and bottom, and it resizes vertically only |
 | **field** | From top to bottom: the field name in the label role, the control, and help in the small role, spaced `--s-2`. Help longer than one sentence goes into `<details>`, with the summary text `More` |
 | **category list dots** | Two 6px dots on the right of each item in the settings category list: `--accent` means the category has unsaved changes, `--warn` means the category is missing a required value. Both can show at once, with the missing-value dot on the left |
@@ -149,12 +149,12 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **headline card** | Only for the archive's latest issue. `--surface` background, 1px `--border-strong` border, square corners, `--s-6` padding. From top to bottom: an `--accent` `Latest` label with the date (data) and the period (label); the title of the issue's first story, which is its group heading when that story is a group (title role); the article count (data); the titles of the two topics with the most members (small, joined by ` · `); and two small secondary buttons, `Digest` and `All articles`. A field with no data is left out, with no placeholder text |
 | **panel** | `--bg-elev` background, 1px `--border` border, square corners. An optional head row: `--surface` background, a bottom line, `--s-3` top and bottom and `--s-5` left and right, the title on the left and a count or action on the right. Adjacent panels are spaced `--s-5` |
 | **list row / table row** | The class name is `.list-row` (`.row` is taken by the digest stats card). `--s-3` top and bottom, `--s-5` left and right, rows divided by a bottom line, `--surface` on hover. Table headers use the label role on `--surface`. A table sits in its own `overflow-x: auto` container |
-| **pill** | Geist Mono 14px, `2px 10px`, 1px `--border-strong` border, `--surface-2` background, `--r-tag`. The score variant has `--accent` text, an `--accent-dim` border and an `--accent-tint` background |
-| **state text** | Geist Mono 13px, uppercase, letter spacing 0.1em. accepted is `--accent`; pending is `--text-dim`; rejected is `--text-dim` |
+| **pill** | Geist Mono 12px, `2px 10px`, 1px `--border-strong` border, `--surface-2` background, `--r-tag`. The score variant has `--accent` text, an `--accent-dim` border and an `--accent-tint` background |
+| **state text** | Geist Mono 11px, uppercase, letter spacing 0.1em. accepted is `--accent`; pending is `--text-dim`; rejected is `--text-dim` |
 | **notice** | Save results and errors: a 2px bar on the left (`--accent` or `--warn`), the matching tint background, square corners, small role, `white-space: pre-wrap`, placed beside the button that triggered it. An error message says what happened and how to fix it |
 | **destructive confirm** | No `window.confirm`. On the first press, the danger button turns into `Confirm …` in place and takes an `--warn-tint` background; only a second press within 3 seconds acts, otherwise it reverts |
 | **section marker** | The label role, preceded by a 24px × 1px `--accent` line, spaced `--s-3` |
-| **footer** | 1px `--border` above, Geist Mono 14px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info only, never navigation |
+| **footer** | 1px `--border` above, Geist Mono 12px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info only, never navigation. The mail (§6 *email*) is the one exception: it has no site bar, so its footer carries the `Archive` · `Settings` links |
 | **feature flow** | Landing-page explanation, not an app mockup. An ordered list of three illustrated steps: subscriptions, per-source processing, reading. Three equal columns with `--s-12` gaps; one column with `--s-16` gaps at 720px. SVGs are decorative (`aria-hidden`, non-focusable), 100% wide and `2 × --s-20` high, followed by `--s-6`, a 19px title and 14px small text with `--s-2` between them. Text carries the full meaning without the drawings. Line art uses `--text-dim`; `--accent` marks the resulting digest only. Static chevrons point along reading order, right on desktop and down on phones; no animation, fake controls, dates or fictional articles. The `#system` prototype shows the same illustration |
 
 ### Interaction
@@ -162,7 +162,8 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 - **Focus:** every interactive element has `:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }`.
   Only inputs may remove the outline, showing focus by a border colour change instead.
 - **Transitions:** only `color`, `background-color`, `border-color` and `opacity` change, over `--t-fast`,
-  and `transition: all` is never written. The only use of transform is the triage card's drag and fly-out.
+  and `transition: all` is never written. Transform is used only for the triage card's drag and fly-out,
+  and to rotate the feature flow's static chevrons.
 - **Hover** neither moves nor scales. The pressed state only lowers opacity.
 - **Reduced motion:** `@media (prefers-reduced-motion: reduce)` cancels transitions, animations and smooth
   scroll globally.
@@ -222,7 +223,7 @@ title is itself that section's `h2`.
 - **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers and the
   lead title; `h3` is the titles of features, news groups and topic blocks; `h4` is the articles inside a
   topic block and the On the Radar items. `h3` and `h4` are both the title role (§3), with the class
-  `.item-title`: `h3` adds `.lg` for 22px, and `h4` uses 20px. Each row of The Wire is only a number and a
+  `.item-title`: `h3` adds `.lg` for 19px, and `h4` uses 18px. Each row of The Wire is only a number and a
   link, with no heading element.
 - **A summarize group is one card.** When the model summarized several articles together, the lead or
   feature card takes the group's heading as its title and prints the summary once. Each article follows as
@@ -249,7 +250,7 @@ and switching does not reload.
 
 - **list view:** one panel per source; each row is, in order, the state text, the score (data), the title
   link and the small vote buttons. At phone width the title wraps to the next line.
-- **triage view:** one card at a time, whose face is the source (label) and the title (title role, 30px).
+- **triage view:** one card at a time, whose face is the source (label) and the title (title role, 26px).
   The card is square, on `--surface`, with a 1px `--border-strong` border and no shadow; tilting towards
   up turns the border `--accent`, tilting towards down turns it `--warn`. Swiping left is down, swiping
   right is up, and a tap opens the original in a new tab. Below it, a danger `Down` and a primary `Up`
@@ -338,16 +339,17 @@ by value, from `_tokens.css.j2` and the light palette below (`adapters/output/em
 
 ## 8. Current gaps and landing order
 
-Of the gaps surveyed on 2026-09-17, steps 1 to 3 landed on 2026-09-18 and steps 4, 6 and 7 landed on
-2026-09-19. Step 1 added the §2 tokens, the §3 type, focus and reduced motion, removed two hardcoded colours,
-and added the component CSS comparison test. Step 2 put the site bar and issue bar on archive, digest and
-raw. Step 3 rebuilt settings to §6. Step 4 rebuilt raw's list to §6 and added the triage view that appears
-only after signing in, and the deck was deleted the same day. Step 6 turned the
-archive into a headline card plus year-and-month panels, with a day's later rows set apart by a dimmed
-date. Step 7 rebuilt the digest body to §6: each section's name is printed once by its tag, heading levels
-follow the structure, `.meta` is folded into one base rule, the two body grids share one fluid column rule,
-720px is the only breakpoint left, and all body spacing moved onto the scale. Step 5 below handles the
-remaining gaps.
+Of the gaps surveyed on 2026-09-17, steps 1 to 3 landed on 2026-09-18 and steps 4 to 7 landed on
+2026-09-19, so every step has landed. Step 1 added the §2 tokens, the §3 type, focus and reduced motion,
+removed two hardcoded colours, and added the component CSS comparison test. Step 2 put the site bar and
+issue bar on archive, digest and raw. Step 3 rebuilt settings to §6. Step 4 rebuilt raw's list to §6 and
+added the triage view that appears only after signing in, and the deck was deleted the same day. Step 5
+gave each deployment one settings source: settings shows no origin, lists every runtime setting and marks
+a missing one in its field, at the top of its category and with a `--warn` dot. Step 6 turned the archive
+into a headline card plus year-and-month panels, with a day's later rows set apart by a dimmed date. Step
+7 rebuilt the digest body to §6: each section's name is printed once by its tag, heading levels follow the
+structure, `.meta` is folded into one base rule, the two body grids share one fluid column rule, 720px is
+the only breakpoint left, and all body spacing moved onto the scale.
 
 The landing order, where each step can ship alone. Each step was its own ticket, tracked privately
 outside this repository:

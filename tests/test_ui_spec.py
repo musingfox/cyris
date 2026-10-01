@@ -1067,7 +1067,7 @@ def test_settings_says_one_sentence_in_view_and_folds_the_rest() -> None:
 
 
 def test_a_settings_source_name_takes_the_title_role() -> None:
-    """§3 gives source names the title role, 20–22px."""
+    """§3 gives source names the title role, 18–19px."""
     name = parse_style_block(_source("settings"))["table.src .name"]
     assert "font-size: calc(18px * var(--type-scale))" in name
 
