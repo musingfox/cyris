@@ -157,6 +157,7 @@ class TestSections:
         html = render_digest_email(content, DIGEST_URL)
 
         assert html.count("Shared summary.") == 1
+        assert "91.0" in html and "80.0" in html
         assert ">Lead group</h3>" in html
         for title, url in [
             ("Lead Story", "https://lead.test/a"),

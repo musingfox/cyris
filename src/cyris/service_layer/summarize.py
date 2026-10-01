@@ -110,7 +110,7 @@ async def summarize_articles(
                 DigestSection(
                     heading=section_data["heading"],
                     items=items,
-                    summary=section_data.get("summary", ""),
+                    summary=section_data.get("summary") or None,
                 )
             )
 
