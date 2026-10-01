@@ -25,10 +25,11 @@
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.authorized !== true) return;
-            // Authorized: show vote buttons, the Settings link, and any control marked gated
+            // Authorized: show vote buttons, the Settings link, and any control or link marked gated
             document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
             document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
             document.querySelectorAll('.gated').forEach((g) => g.hidden = false);
+            document.querySelectorAll('[data-gated-href]').forEach((a) => a.href = a.dataset.gatedHref);
         } catch {
             // Parse error, network failure, or CORS → fail closed, buttons stay hidden
         }
