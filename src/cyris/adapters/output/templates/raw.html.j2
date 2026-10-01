@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CYRIS // {{ date }} · {{ period }} · Raw</title>
+    <meta name="description" content="Every article the {{ date }} {{ period }} issue of a Cyris digest judged, grouped by source.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap">
@@ -103,7 +105,7 @@
             <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
         </div>
 
-        <div class="footer">// cyris</div>
+        <div class="footer">// <a href="{{ project_url }}">cyris</a></div>
     </div>
     {% include "_promote_script.html.j2" %}
     <script>

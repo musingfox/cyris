@@ -30,7 +30,7 @@ from css_rules import (
 
 import cyris.entrypoints
 from cyris.adapters.output.email_digest import tokens
-from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.adapters.output.html_digest import FAVICON, PROJECT_URL, HtmlDigestWriter
 from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
@@ -1197,3 +1197,31 @@ def test_a_product_example_suits_any_deployment(path: Path) -> None:
 
 def test_the_timezone_example_names_no_region() -> None:
     assert 'id="timezone" type="text" placeholder="UTC"' in _source("settings")
+
+
+REPO = UI_SPEC.parents[2]
+PAGES = ["index", "digest", "raw", "settings"]
+
+
+def _head(html: str) -> str:
+    return html[: html.index("</head>")]
+
+
+@pytest.mark.parametrize("page", PAGES)
+def test_every_page_links_the_favicon(page: str) -> None:
+    assert '<link rel="icon" href="favicon.svg" type="image/svg+xml">' in _head(_source(page))
+
+
+@pytest.mark.parametrize("page", PAGES)
+def test_every_page_describes_itself(page: str) -> None:
+    descriptions = re.findall(r'<meta name="description" content="([^"]+)">', _head(_source(page)))
+    assert len(descriptions) == 1
+    assert "Cyris" in descriptions[0]
+
+
+def test_the_published_favicon_is_the_websites() -> None:
+    assert FAVICON.read_bytes() == (REPO / "website" / "assets" / "favicon.svg").read_bytes()
+
+
+def test_the_pages_credit_the_project_the_readme_names() -> None:
+    assert PROJECT_URL in (REPO / "README.md").read_text()

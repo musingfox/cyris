@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CYRIS // Archive</title>
+    <meta name="description" content="Every issue of a Cyris digest: the articles worth reading from a set of RSS feeds and newsletters, newest first.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
@@ -68,7 +70,7 @@
         <div class="page-head">
             <span class="label">Archive</span>
             <h1 class="display">Every <em>issue</em></h1>
-            <p class="small">Newest first. Each issue has the digest and the full list of articles it judged.</p>
+            <p class="small">Cyris collects articles from RSS feeds and newsletters and selects the ones worth reading into a digest. Newest first. Each issue has the digest and the full list of articles it judged.</p>
         </div>
 
         {% if digests %}
@@ -98,7 +100,7 @@
         </div>
         {% endif %}
 
-        <div class="footer">// cyris &middot; {{ digests | length | plural("issue") }}</div>
+        <div class="footer">// <a href="{{ project_url }}">cyris</a> &middot; {{ digests | length | plural("issue") }}</div>
     </div>
     {% include "_probe_script.html.j2" %}
 </body>

@@ -59,7 +59,10 @@ def _render_site(deps: "Deps", content, collected, *, raw_page: bool) -> dict[st
         logger.error("Failed to read the archive's article counts: %s", e)
         counts = {}
     pages["/index.html"] = writer.render_index(known, content=content, counts=counts)
-    return {path: html.encode("utf-8") for path, html in pages.items()}
+    # Every deploy, not only the first: a manifest rebuilt from the archive's
+    # anchors would not name it.
+    assets = {f"/{name}": data for name, data in writer.site_assets().items()}
+    return {**{path: html.encode("utf-8") for path, html in pages.items()}, **assets}
 
 
 async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
