@@ -225,8 +225,9 @@ def test_every_body_title_carries_the_title_class_and_block_titles_the_large_one
     main = digest[digest.index("<main>") : digest.index("</main>")]
     h3s = re.findall(r"<h3\b[^>]*>", main)
     h4s = re.findall(r"<h4\b[^>]*>", main)
-    # Two featured cards, one cluster, the Following block and the radar block.
-    assert h3s == ['<h3 class="item-title lg">'] * 5
+    # Two featured cards, titled by their articles, then one cluster, the Following
+    # block and the radar block.
+    assert h3s == ['<h3 class="item-title lg" lang="">'] * 2 + ['<h3 class="item-title lg">'] * 3
     # The Following article and the radar item.
     assert h4s == ['<h4 class="item-title">'] * 2
 
@@ -621,7 +622,7 @@ def test_the_lead_score_pill_sits_above_its_title(tmp_path):
 def test_the_lead_links_its_article_once_through_its_title(tmp_path):
     card = _lead_card_of(tmp_path)
     assert card.count('href="https://a.test"') == 1
-    title = r'<h2>\s*<a href="https://a.test" target="_blank" rel="noopener">Lead</a>'
+    title = r'<h2 lang="">\s*<a href="https://a.test" target="_blank" rel="noopener">Lead</a>'
     assert re.search(title, card)
 
 
@@ -695,7 +696,9 @@ def test_a_group_after_the_lead_is_drawn_as_one_card_per_article(tmp_path):
 def test_each_article_in_a_group_keeps_its_own_link_and_vote(tmp_path):
     main = _main_of(tmp_path, _group())
     for title, url in (("Alpha", "https://a.test/1"), ("Beta", "https://b.test/2")):
-        assert re.search(rf'<h3 class="item-title lg"><a href="{url}"[^>]*>{title}</a></h3>', main)
+        assert re.search(
+            rf'<h3 class="item-title lg" lang=""><a href="{url}"[^>]*>{title}</a></h3>', main
+        )
         assert f"data-urls='[\"{url}\"]'" in main
     assert 'data-urls=\'["https://a.test/1", "https://b.test/2"]\'' not in main
 
@@ -717,7 +720,7 @@ def test_a_group_lead_lists_its_articles_one_level_below_its_title(tmp_path):
     main = _main_of(tmp_path, _group())
     assert main.count("Shared summary") == 1
     assert re.search(r"<h2>\s*Group heading\s*</h2>", main)
-    assert re.search(r'<h3 class="item-title lg"><a href="https://a.test/1"', main)
+    assert re.search(r'<h3 class="item-title lg" lang=""><a href="https://a.test/1"', main)
     assert _main_text(f"<main>{main}</main>").levels[:3] == [2, 3, 3]
 
 
