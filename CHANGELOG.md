@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Only the Top story groups articles.** It is one card under a group summary
+  when two or more articles on one topic reach `routing.score_threshold`;
+  otherwise it is the highest-scoring article. Every Features card is one article
+  under its own summary, and `digest.max_featured` caps how many there are. The
+  page, the mail and Discord show the same layout. The summarize call now writes
+  a summary per article as well, so each issue spends more output tokens.
+
 ## [0.4.0] — 2026-10-02
 
 The digest now reaches readers by email as well as Discord, and a run that fails

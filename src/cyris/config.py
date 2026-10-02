@@ -160,7 +160,7 @@ class LLMProviderConfig(BaseModel):
 class DigestConfig(BaseModel):
     max_articles_per_digest: int = Field(ge=1)
     max_articles_per_digest_output: int = Field(ge=1)
-    # How many featured sections lead the page. A reader preference, not a
+    # How many Features cards an issue shows. A reader preference, not a
     # measurement — see docs/architecture.md §5.
     max_featured: int = Field(ge=1)
     scoring_snippet_length: int = Field(ge=1)
