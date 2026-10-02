@@ -299,6 +299,17 @@ class TestLayerByScore:
 
         assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"]]
 
+    @pytest.mark.parametrize("threshold", [70, 95], ids=["in-the-group", "as-a-feature"])
+    def test_an_article_two_sections_name_is_drawn_once(self, threshold):
+        result = _layer(
+            _topic("Topic", _article("a", 90), _article("b", 85)),
+            _topic("Again", _article("a", 90)),
+            threshold=threshold,
+        )
+
+        titles = [t for s in result.featured_articles for t in _titles(s)]
+        assert sorted(titles) == ["a", "b"]
+
     def test_an_issue_with_no_summarized_article_has_no_lead(self):
         result = _layer()
 
