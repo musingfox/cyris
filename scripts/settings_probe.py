@@ -524,6 +524,14 @@ document.addEventListener("click", (event) => {
 }, true);
 """
 
+# A sabotage: focus() stops working, so nothing the page does can move focus.
+NO_FOCUS = """HTMLElement.prototype.focus = function () {};"""
+
+# A sabotage: the page hears no key, as if it listened for none.
+IGNORE_KEYS = """
+document.addEventListener("keydown", (event) => event.stopImmediatePropagation(), true);
+"""
+
 
 def _keep_only(name: str) -> Callable[[Fixture], None]:
     """A setup: the source table holds `name` alone."""
@@ -1000,6 +1008,78 @@ CHECKS: list[Check] = [
             if fixture.sources["Hacker News"].tags == ["news", "tech"]
             else f"Hacker News changed: {fixture.sources['Hacker News']}"
         ),
+    ),
+    # A row opens from the keyboard, and focus follows into the editor's first field.
+    *(
+        Check(
+            id=f"editor-opens-on-{name}",
+            fixture="writable",
+            path="/settings#sources",
+            focused=True,
+            act="""
+                await sourcesLoaded();
+                rowOf("Hacker News").focus();
+            """,
+            gestures=({"key": key},),
+            script="""
+                await waitFor(editor, "the editor");
+                expect(rowOf("Hacker News").nextElementSibling === editor(), "not under its row");
+                const now = document.activeElement;
+                const at = now && (now.id || now.tagName);
+                expect(now === $("#e-name", editor()), `focus is on ${at}`);
+            """,
+            sabotage=sabotage,
+        )
+        for name, key, sabotage in (
+            ("enter", "Enter", IGNORE_KEYS),
+            ("space", " ", NO_FOCUS),
+        )
+    ),
+    # Closing the editor from the keyboard puts focus back where it was opened from.
+    *(
+        Check(
+            id=check_id,
+            fixture="writable",
+            path="/settings#sources",
+            focused=True,
+            act=act,
+            gestures=({"key": "Enter"},),
+            script=f"""
+                await waitFor(() => !editor(), "the editor to close");
+                const now = document.activeElement;
+                const at = now && (now.dataset.name || now.id || now.tagName);
+                expect(now === {wanted}, `focus is on ${{at}}`);
+            """,
+            sabotage=NO_FOCUS,
+        )
+        for check_id, act, wanted in (
+            (
+                "editor-cancel-focuses-row",
+                """
+                await openRow("Hacker News");
+                editorAct("cancel").focus();
+                """,
+                'rowOf("Hacker News")',
+            ),
+            (
+                "editor-row-close-focuses-row",
+                """
+                await openRow("Hacker News");
+                rowOf("Hacker News").focus();
+                """,
+                'rowOf("Hacker News")',
+            ),
+            (
+                "editor-new-cancel-focuses-add",
+                """
+                await sourcesLoaded();
+                $("#add-source").click();
+                await waitFor(editor, "the editor");
+                editorAct("cancel").focus();
+                """,
+                '$("#add-source")',
+            ),
+        )
     ),
     Check(
         id="editor-dirty",

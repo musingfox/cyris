@@ -589,6 +589,8 @@ const EMPTY = {
 
 const NO_SOURCE_TABLE = "No writable source table here — edit sources.yaml instead.";
 
+const rowOf = (name) => document.querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
+
 const sourcesNav = () => document.querySelector('.settings-nav a[data-tab="sources"]');
 
 function renderSources() {
@@ -617,8 +619,7 @@ function openEditor(name) {
   const s = adding
     ? {name: "", type: "rss", tier: "filter", tags: []}
     : sources.find((x) => x.name === name);
-  const anchor = adding ? null
-    : document.querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
+  const anchor = adding ? null : rowOf(name);
   if (!adding && !(s && anchor)) {
     openName = null;
     return null;
@@ -675,6 +676,7 @@ function openEditor(name) {
   q('[data-act="cancel"]').addEventListener("click", () => {
     openName = null;
     renderSources();
+    (adding ? $("add-source") : rowOf(name)).focus();
   });
   save.addEventListener("click", () => saveSource(ed, save));
   // The spec's destructive confirm: the first press arms the button in place,
@@ -701,7 +703,7 @@ function openEditor(name) {
       show("ok", `${s.name} retired. ${data.note}`, "sources-notice");
     }
   });
-  if (adding) q("#e-name").focus();
+  q("#e-name").focus();
   return ed;
 }
 
@@ -733,8 +735,10 @@ document.querySelectorAll("[data-filter]").forEach((button) => {
 $("src-body").addEventListener("click", (e) => {
   const row = e.target.closest("tr.src-row");
   if (!row) return;
-  openName = openName === row.dataset.name ? null : row.dataset.name;
+  const name = row.dataset.name;
+  openName = openName === name ? null : name;
   renderSources();
+  if (openName === null) rowOf(name).focus();
 });
 
 $("add-source").addEventListener("click", () => {
@@ -743,7 +747,11 @@ $("add-source").addEventListener("click", () => {
 });
 
 $("src-body").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && e.target.matches("tr.src-row")) e.target.click();
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches("tr.src-row")) {
+    // Space would otherwise scroll the page.
+    e.preventDefault();
+    e.target.click();
+  }
 });
 
 // Resolves to the response on success, or null once the failure is shown
