@@ -164,8 +164,10 @@
     // The deck button that held focus when its vote began, so a run of Enter presses
     // keeps voting card after card.
     let deckFocus = null;
+    // With no card left the buttons are hidden, so focus goes to the Triage switch instead.
     const refocusDeck = () => {
-        if (deckFocus) returnFocus(deckFocus);
+        const actions = document.getElementById('t-actions');
+        if (deckFocus) returnFocus(actions.hidden ? document.querySelector('[data-raw-view="triage"]') : deckFocus);
         deckFocus = null;
     };
 
