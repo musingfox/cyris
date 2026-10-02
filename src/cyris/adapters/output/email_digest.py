@@ -47,6 +47,15 @@ def tokens() -> dict[str, str]:
     return dict(re.findall(r"--([\w-]+):\s*([^;]+);", source))
 
 
+def raw_page_url(content: DigestContent, digest_url: str, raw_page: bool) -> str:
+    """The issue's raw page on the digest link's own host, or "" when there is none."""
+    if not (digest_url and raw_page):
+        return ""
+    parts = urlsplit(digest_url)
+    raw_name = HtmlDigestWriter.raw_filename(content.date, content.period)
+    return f"{parts.scheme}://{parts.netloc}/{raw_name.removesuffix('.html')}"
+
+
 def render_digest_email(
     content: DigestContent,
     digest_url: str = "",
@@ -59,10 +68,7 @@ def render_digest_email(
     if digest_url:
         parts = urlsplit(digest_url)
         site = f"{parts.scheme}://{parts.netloc}"
-    raw_url = ""
-    if site and raw_page:
-        raw_name = HtmlDigestWriter.raw_filename(content.date, content.period)
-        raw_url = f"{site}/{raw_name.removesuffix('.html')}"
+    raw_url = raw_page_url(content, digest_url, raw_page)
 
     features = _features(content)
     # Our own tokens, not feed text: escaping would turn a font stack's quotes into

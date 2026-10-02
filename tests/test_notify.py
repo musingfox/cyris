@@ -15,7 +15,13 @@ from cyris.adapters.notify import (
     send_discord,
     send_discord_alert,
 )
-from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
+from cyris.domain.models import (
+    NO_LLM_MODEL,
+    DigestContent,
+    DigestItem,
+    DigestSection,
+    UsageStats,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -351,6 +357,23 @@ class TestDiscordPayload:
             articles_received=1,
             articles_included=1,
             usage=UsageStats(model="gemini-3-flash", input_tokens=0),
+        )
+
+        payload = build_discord_payload(content, degraded=True)
+
+        assert payload["content"] == (
+            "⚠️ Degraded digest: LLM gemini-3-flash was configured but this run used 0 input "
+            "tokens, so scores and summaries are excerpts."
+        )
+
+    def test_a_degraded_run_with_no_client_names_no_model(self):
+        content = DigestContent(
+            date="2026-04-10",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(model=NO_LLM_MODEL, input_tokens=0),
         )
 
         payload = build_discord_payload(content, degraded=True)
