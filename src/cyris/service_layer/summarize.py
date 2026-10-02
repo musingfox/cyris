@@ -87,6 +87,9 @@ async def summarize_articles(
             raw_ids = section_data.get("article_ids") or [
                 ref.get("id") for ref in section_data.get("articles", [])
             ]
+            own_summaries = section_data.get("summaries")
+            if not isinstance(own_summaries, dict):
+                own_summaries = {}
             items = []
             for raw_id in raw_ids:
                 try:
@@ -99,10 +102,20 @@ async def summarize_articles(
                     )
                     continue
                 article = group_articles[index]
+                own = own_summaries.get(str(raw_id))
+                if not isinstance(own, str) or not own.strip():
+                    logger.warning(
+                        "Summarize wrote no summary for article id %r in tag '%s'; excerpt",
+                        raw_id,
+                        tag,
+                    )
+                    if usage is not None:
+                        usage.fell_back_to_excerpts = True
+                    own = excerpt(article.content)
                 items.append(
                     DigestItem(
                         title=article.title,
-                        summary=section_data.get("summary", ""),
+                        summary=own,
                         sources=[article.source_name],
                         urls=[article.url],
                         score=article_scores.get(article.url) if article_scores else None,
