@@ -1,6 +1,7 @@
 """Tests for DigestPipeline."""
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -492,3 +493,89 @@ class TestSplitSummarizeTierByScore:
 
         assert len(high) == 1
         assert len(low) == 0
+
+
+def _scored_topic() -> tuple[list[Article], dict[str, float], FakeLLM]:
+    """Three summarize-tier articles on one tag, and a model that writes both summary kinds."""
+    articles = [
+        Article(
+            id=n,
+            title=f"Essay {n}",
+            url=f"https://essays.example/{n}",
+            content=f"Essay {n} body.",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Stratechery",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech"],
+        )
+        for n in range(3)
+    ]
+    scores = {"https://essays.example/0": 90, "https://essays.example/1": 80}
+    scores["https://essays.example/2"] = 60
+    llm = FakeLLM(
+        json.dumps(
+            {
+                "sections": [
+                    {
+                        "heading": "Topic heading",
+                        "summary": "The group summary.",
+                        "summaries": {str(n): f"Essay {n} on its own." for n in range(3)},
+                        "article_ids": [0, 1, 2],
+                    }
+                ]
+            }
+        )
+    )
+    return articles, scores, llm
+
+
+async def _page(sample_sources, tmp_path, **settings) -> str:
+    articles, scores, llm = _scored_topic()
+    pipeline = DigestPipeline(llm, **pipeline_settings(score_threshold=0, **settings))
+    result = await pipeline.process(
+        articles,
+        sample_sources,
+        timezone=TEST_SETTINGS["general.timezone"],
+        article_scores=scores,
+    )
+    html = HtmlDigestWriter(tmp_path).render(result.content)
+    return html[html.index("<main>") : html.index("</main>")]
+
+
+class TestTheLayeringSettingsReachThePage:
+    async def test_the_featured_score_decides_whether_the_top_story_is_a_group(
+        self, sample_sources, tmp_path
+    ):
+        grouped = await _page(sample_sources, tmp_path, featured_threshold=70)
+        single = await _page(sample_sources, tmp_path, featured_threshold=85)
+
+        assert grouped.count("The group summary.") == 1
+        assert "Topic heading" in grouped
+        assert grouped.count('class="featured-item"') == 1
+        assert "Essay 2 on its own." in grouped
+
+        assert "The group summary." not in single
+        assert "Topic heading" not in single
+        assert single.count('class="featured-item"') == 2
+        for n in range(3):
+            assert f"Essay {n} on its own." in single
+
+    async def test_max_featured_decides_how_many_features_the_page_shows(
+        self, sample_sources, tmp_path
+    ):
+        one = await _page(sample_sources, tmp_path, featured_threshold=95, max_featured=1)
+        two = await _page(sample_sources, tmp_path, featured_threshold=95, max_featured=2)
+
+        assert one.count('class="featured-item"') == 1
+        assert "Essay 2" not in one
+        assert two.count('class="featured-item"') == 2
+        assert "Essay 2 on its own." in two
+
+    async def test_the_cap_runs_after_layering_and_keeps_the_group_whole(
+        self, sample_sources, tmp_path
+    ):
+        page = await _page(sample_sources, tmp_path, featured_threshold=70, max_digest_output=1)
+
+        assert "The group summary." not in page
+        assert "Essay 0 on its own." in page
+        assert "Essay 1" not in page and "Essay 2" not in page

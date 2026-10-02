@@ -46,6 +46,8 @@ def pipeline_settings(**overrides: Any) -> dict[str, Any]:
         "summarize_snippet_length": TEST_SETTINGS["digest.summarize_snippet_length"],
         "filter_snippet_length": TEST_SETTINGS["digest.filter_snippet_length"],
         "score_threshold": TEST_SETTINGS["routing.summarize_score_threshold"],
+        "featured_threshold": TEST_SETTINGS["routing.score_threshold"],
+        "max_featured": TEST_SETTINGS["digest.max_featured"],
         "output_language": TEST_SETTINGS["digest.output_language"],
         "style_prompt": TEST_SETTINGS["digest.style_prompt"],
         **overrides,
