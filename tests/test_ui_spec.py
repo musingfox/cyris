@@ -817,21 +817,20 @@ def test_the_pill_padding_passes_only_with_its_exemption() -> None:
     assert spacing_literals(".pill{padding:2px 10px}", PILL_PADDING) == []
 
 
-def test_the_digest_passes_its_masthead_and_footer_scale_spacing() -> None:
+def test_the_digest_passes_its_masthead_scale_spacing() -> None:
     sites = include_sites(HtmlDigestWriter("unused-by-these-tests").env, "digest.html.j2")
     assert sites["_masthead.css.j2"] == {
         "masthead_padding": "var(--s-8) 0 var(--s-6)",
         "masthead_margin": "var(--s-12)",
         "subtitle_margin": "var(--s-5)",
     }
-    assert sites["_footer.css.j2"] == {
-        "layout": "block",
-        "justify": False,
-        "align_center": False,
-        "margin_top": "var(--s-20)",
-        "padding_top": "var(--s-8)",
-        "gap": None,
-    }
+
+
+@pytest.mark.parametrize("page", ["index", "digest", "raw"])
+def test_every_footer_is_the_prototype_footer(page: str) -> None:
+    sites = include_sites(HtmlDigestWriter("unused-by-these-tests").env, f"{page}.html.j2")
+    assert sites["_footer.css.j2"] == {}
+    assert _parsed(page)[".footer"] == parse_style_block(PROTOTYPE.read_text())[".footer"]
 
 
 def test_the_lead_story_is_the_prototype_lead_card() -> None:

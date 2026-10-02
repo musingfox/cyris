@@ -376,8 +376,7 @@
         .headline-item .text a:hover { color: var(--accent); }
 
         /* === FOOTER === */
-        {% with layout="block", justify=false, align_center=false, margin_top="var(--s-20)",
-                  padding_top="var(--s-8)", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
+        {% include "_footer.css.j2" %}
 
         /* === GENERIC LINK === */
         /* :where() keeps these at a bare `a`'s specificity, so every link rule
