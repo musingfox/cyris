@@ -107,6 +107,41 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
 - **All spacing is on the scale.** The digest body's former values such as 14/18/22/28/36/44/56px moved
   onto the scale in step 7; there are no exceptions after it.
 
+### Light palette
+
+The app's pages are dark only. Two surfaces also have a light mode, and both take this one palette:
+the landing page (`website/index.html`, under `:root[data-theme="light"]`) when its reader switches
+theme, and the mail (§6 *email*, `adapters/output/email_palette.json`) by default. It replaces the
+colour tokens above by name; every other token is shared.
+
+- **The same contrast rule holds.** `--text`, `--text-dim`, `--accent` and `--warn` pass 4.5:1 against
+  the four backgrounds, and `--text-faint` passes 3:1 as a mark.
+- **The accent is darker in light.** `#c6ff3d` cannot carry text on a light ground, so the light
+  `--accent` is a dark lime. As text it also passes 4.5:1 on `--accent-tint` laid over `--bg` and
+  `--surface`, where the score pill sits, and the primary button's `--bg` label passes 4.5:1 on it.
+- The landing page's palette became the only one on 2026-10-02. The mail's former palette put its
+  accent under 4.5:1 on `--surface-2` and on the pill's tint. `tests/test_email_digest.py` computes the
+  ratios and holds the palette file to this table; `tests/test_ui_spec.py` holds the landing page's copy
+  to the palette file.
+
+| Token | Light |
+|---|---|
+| `--bg` | `#f5f5ed` |
+| `--bg-elev` | `#fffff7` |
+| `--surface` | `#eaece3` |
+| `--surface-2` | `#e1e5d8` |
+| `--border` | `#d4d7c9` |
+| `--border-strong` | `#b9c1ab` |
+| `--text` | `#22271c` |
+| `--text-dim` | `#606753` |
+| `--text-faint` | `#737b68` |
+| `--accent` | `#436600` |
+| `--accent-dim` | `#5f7c20` |
+| `--warn` | `#b52d59` |
+| `--accent-tint` | `rgba(67, 102, 0, 0.08)` |
+| `--warn-tint` | `rgba(181, 45, 89, 0.1)` |
+| `--grid` | `rgba(67, 102, 0, 0.06)` |
+
 ## 3. Type
 
 The table below is the baseline, for `--type-scale: 1`. It was set on 2026-09-17 and lowered one step
@@ -336,15 +371,12 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 
 The mail a run sends is its own document, not the digest page: mail clients run no script, and Gmail
 drops CSS custom properties and `prefers-color-scheme`. `templates/email.html.j2` renders the §2 tokens in
-by value, from `_tokens.css.j2` and the light palette below (`adapters/output/email_palette.json`).
+by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/email_palette.json`).
 
 - **Light is the default and dark follows the reader.** The light palette applies first; under
   `@media (prefers-color-scheme: dark)` the §2 colours replace it, and the head declares
   `color-scheme: light dark` so Apple Mail does not re-tint either. Gmail ignores the media query and
   inverts the light message itself, which stays legible; an inverted dark one would not.
-- **The accent is darker in light.** `#c6ff3d` cannot carry text on white, so the light `--accent` is a
-  dark lime that passes 4.5:1 as text on `--bg` and `--surface`, and under the primary button's `--bg`
-  label. `tests/test_email_digest.py` computes those ratios.
 - **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections keep the page's labels and
   order: Top story, Features, In Focus, Following, On the Radar, The Wire. The lead is the headline card's
   square panel; every other item is separated by a `--border` hairline.
@@ -356,23 +388,6 @@ by value, from `_tokens.css.j2` and the light palette below (`adapters/output/em
   page was published.
 - **Type at the baseline.** Nothing serves the mail, so `digest.type_scale` does not reach it. Web fonts
   come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack.
-
-| Token | Light |
-|---|---|
-| `--bg` | `#ffffff` |
-| `--bg-elev` | `#fafafc` |
-| `--surface` | `#f4f4f7` |
-| `--surface-2` | `#ececf1` |
-| `--border` | `#e4e4eb` |
-| `--border-strong` | `#cdcdd8` |
-| `--text` | `#0d0d14` |
-| `--text-dim` | `#4a4a5c` |
-| `--text-faint` | `#6b6b7e` |
-| `--accent` | `#4a7a00` |
-| `--accent-dim` | `#9dbf5c` |
-| `--warn` | `#c2185b` |
-| `--accent-tint` | `rgba(74, 122, 0, 0.08)` |
-| `--warn-tint` | `rgba(194, 24, 91, 0.08)` |
 
 ## 7. Where styles live
 

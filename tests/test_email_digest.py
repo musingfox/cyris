@@ -26,6 +26,7 @@ pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[1]
 DIGEST_URL = "https://digest.example.org/2026-09-27-morning"
+GROUNDS = ["bg", "bg-elev", "surface", "surface-2"]
 SPACING_SCALE = {"4px", "8px", "12px", "16px", "20px", "24px", "32px", "48px", "64px", "80px"}
 
 
@@ -302,7 +303,7 @@ class TestPalettes:
     def test_light_names_every_colour_the_page_tokens_name(self):
         colours = {k for k, v in tokens().items() if v.startswith(("#", "rgba("))}
 
-        assert set(LIGHT_PALETTE) == colours - {"grid"}
+        assert set(LIGHT_PALETTE) == colours
 
     def test_the_light_palette_is_the_one_the_spec_lists(self):
         spec = (REPO / "docs/design/ui-language.md").read_text(encoding="utf-8")
@@ -311,10 +312,21 @@ class TestPalettes:
         assert listed == LIGHT_PALETTE
         assert json.loads(PALETTE_FILE.read_text(encoding="utf-8"))["light"] == LIGHT_PALETTE
 
-    @pytest.mark.parametrize("ground", ["bg", "surface"])
-    @pytest.mark.parametrize("ink", ["text", "text-dim", "text-faint", "accent", "warn"])
+    @pytest.mark.parametrize("ground", GROUNDS)
+    @pytest.mark.parametrize("ink", ["text", "text-dim", "accent", "warn"])
     def test_light_text_reads_on_its_grounds(self, ink, ground):
         assert _contrast(LIGHT_PALETTE[ink], LIGHT_PALETTE[ground]) >= 4.5
+
+    @pytest.mark.parametrize("ground", GROUNDS)
+    def test_the_light_faint_mark_shows_on_its_grounds(self, ground):
+        assert _contrast(LIGHT_PALETTE["text-faint"], LIGHT_PALETTE[ground]) >= 3
+
+    # A feature's pill sits on the page, the lead's on its card.
+    @pytest.mark.parametrize("ground", ["bg", "surface"])
+    def test_the_score_pill_reads_on_its_tint(self, ground):
+        tint = _over(LIGHT_PALETTE["accent-tint"], LIGHT_PALETTE[ground])
+
+        assert _contrast(LIGHT_PALETTE["accent"], tint) >= 4.5
 
     @pytest.mark.parametrize("palette", ["light", "dark"])
     def test_no_text_takes_the_faint_colour(self, palette):
@@ -352,3 +364,11 @@ def _luminance(colour: str) -> float:
 def _contrast(a: str, b: str) -> float:
     high, low = sorted([_luminance(a), _luminance(b)], reverse=True)
     return (high + 0.05) / (low + 0.05)
+
+
+def _over(tint: str, ground: str) -> str:
+    """An ``rgba()`` tint laid over an opaque hex ground, as the hex a reader sees."""
+    *rgb, alpha = (float(v) for v in re.findall(r"[\d.]+", tint))
+    base = [int(ground.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
+    blended = (round(c * alpha + b * (1 - alpha)) for c, b in zip(rgb, base, strict=True))
+    return "#" + "".join(f"{c:02x}" for c in blended)
