@@ -18,7 +18,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from contextlib import contextmanager, suppress
+from contextlib import closing, contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -135,7 +135,7 @@ class Run:
 
 
 def _rows(path: Path, sql: str, params: tuple = ()) -> list[dict]:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.row_factory = sqlite3.Row
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 

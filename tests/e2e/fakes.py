@@ -363,7 +363,8 @@ class Fakes:
         limit = min(limit or RSS_DEFAULT_LIMIT, RSS_MAX_LIMIT)
         rows = [r for r in self.script["rss_rows"] if after <= r["published_at"] < before]
         rows.sort(key=lambda r: r["published_at"], reverse=True)
-        return _json(200, rows[:limit])
+        # The Worker binds the limit into SQL, and SQLite reads a negative one as none.
+        return _json(200, rows if limit < 0 else rows[:limit])
 
     def newsletters(self, request, entry):
         return _json(200, [_worker_item(Path(p)) for p in self.script["newsletters"]])
