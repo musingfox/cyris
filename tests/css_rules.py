@@ -467,6 +467,19 @@ def box_shadows(css_source: str) -> list[str]:
     ]
 
 
+_ACCENT_GRADIENT = re.compile(r"gradient\([^;]*var\(--accent")
+
+
+def gradient_glows(css_source: str) -> list[str]:
+    """Name every radial gradient, and every gradient painted from an accent token."""
+    return [
+        f"{key} | {declaration}"
+        for key, declarations in _rules(css_source).items()
+        for declaration in declarations
+        if "radial-gradient(" in declaration or _ACCENT_GRADIENT.search(declaration)
+    ]
+
+
 _SPACING = re.compile(
     r"(?:margin|padding|scroll-margin|scroll-padding)(?:-[\w-]+)?|(?:row-|column-)?gap"
 )

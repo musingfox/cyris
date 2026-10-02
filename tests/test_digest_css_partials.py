@@ -154,13 +154,13 @@ def test_the_omission_check_sees_a_dropped_parameter_and_not_a_guarded_one(
     env: Environment,
 ) -> None:
     parameters = include_sites(env, PAGE_TEMPLATES["digest"])["_page.css.j2"]
-    assert "line_height" in parameters and "glow" in parameters
+    assert "line_height" in parameters and "font_features" in parameters
     strict = env.overlay(undefined=DebugUndefined)
 
     without_required = {k: v for k, v in parameters.items() if k != "line_height"}
     assert "{{ line_height }}" in strict.get_template("_page.css.j2").render(**without_required)
 
-    without_guarded = {k: v for k, v in parameters.items() if k != "glow"}
+    without_guarded = {k: v for k, v in parameters.items() if k != "font_features"}
     assert "{{" not in strict.get_template("_page.css.j2").render(**without_guarded)
 
 
@@ -174,8 +174,7 @@ def test_vote_buttons_are_styled_on_the_pages_that_carry_them(pages: dict[str, s
 @pytest.mark.parametrize("page", sorted(PAGE_TEMPLATES))
 def test_body_background_shorthand_precedes_its_longhand(pages: dict[str, str], page: str) -> None:
     # `background` resets `background-image`. Emitted the other way round, the
-    # radial glow and the 32px grid disappear and a set-based rule comparison
-    # cannot see it.
+    # 32px grid disappears and a set-based rule comparison cannot see it.
     properties = [
         declaration.split(":", 1)[0].strip()
         for declaration in parse_style_block(pages[page])["body"]
