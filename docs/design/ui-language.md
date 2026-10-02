@@ -287,11 +287,21 @@ title is itself that section's `h2`.
   topic block and the On the Radar items. `h3` and `h4` are both the title role (§3), with the class
   `.item-title`: `h3` adds `.lg` for 19px, and `h4` uses 18px. Each row of The Wire is only a number and a
   link, with no heading element.
-- **A summarize group is one card.** When the model summarized several articles together, the lead or
-  feature card takes the group's heading as its title and prints the summary once. Each article follows as
-  an `.article-item` with its own title link and meta row, so each keeps its own score and vote: they are
-  different articles, unlike a news group's reports of one event. Those titles are `h4` in a feature and
-  `h3 .lg` in the lead, one level below the card title. A group of one article is drawn as that article.
+- **Only the Top story may be a group.** When two or more articles on one topic score at least
+  `routing.score_threshold`, the lead card takes the group's heading as its title and prints the group's
+  summary once. Each of those articles follows as an `.article-item` whose title is `h3 .lg`, one level
+  below the card title, with its own title link and meta row, so each keeps its own score and vote: they
+  are different articles, unlike a news group's reports of one event. A member scoring below the
+  threshold leaves the group and becomes a Features card. With no such group, the lead is the
+  highest-scoring single article.
+- **A Features card is one article.** It prints that article's own summary, never a group's; an article
+  the model wrote no summary for shows its excerpt, and the issue counts as degraded. Cards follow score,
+  highest first, and `digest.max_featured` is how many there are at most; an article past it is left out
+  of the issue, as one past the issue's article limit is, and stays on `All articles`. A card's summary is
+  two or three sentences; the Top story's group summary is three to five.
+- **The issue's article limit keeps a group whole.** The limit is applied after the Top story and Features are laid
+  out: it takes the Top story first, whole, then Features by score. A group that does not fit is replaced
+  in its slot by its best article.
 - **Every item has a meta row below it.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the
   label role; it holds the source and the original link in that order (a feature has a score pill in
   front), and the small vote buttons are always last. Only the lead card's meta row adds `.ruled`, which
@@ -344,8 +354,8 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 | hash | Category | Contents |
 |---|---|---|
 | `#model` | Model | LLM provider (a choice list, showing on the right whether the key is ready, with a last option `None — plain excerpts` meaning no LLM is called and only original excerpts are shown), model, a real call to verify before saving; embedding provider and model, the vote similarity switch, the number of votes compared against |
-| `#digest` | Digest | The two publishing periods, the time zone, the number of featured blocks, the article limit per issue, the output language, the style prompt (multi-line input), the font size (a select: Smaller 0.875 / Default 1 / Larger 1.125; shows `Not set` when unset) |
-| `#pipeline` | Pipeline | The hours to look back, the article limit per pass, the two score thresholds for featured and summary, how many characters each of the three steps reads |
+| `#digest` | Digest | The two publishing periods, the time zone, the number of Features cards, the article limit per issue, the output language, the style prompt (multi-line input), the font size (a select: Smaller 0.875 / Default 1 / Larger 1.125; shows `Not set` when unset) |
+| `#pipeline` | Pipeline | The hours to look back, the article limit per pass, the two score thresholds, one for grouping the Top story and one for summarizing, how many characters each of the three steps reads |
 | `#notifications` | Notifications | Discord webhook, with a stored value shown masked; a danger `Turn off` uses the destructive confirm, and after it the field is cleared and `Notifications are off.` is shown; then Email to and Email from, shown in full, where an empty Email to means no mail and Save sends a test message before storing the pair |
 | `#sources` | Sources | A type filter (All / RSS / Newsletter) and `Add source`; table columns are name, type, tier, feed or sender, and tags; clicking a row, or pressing Enter or Space on it, expands it for editing in place, with focus on the Name field, and `Cancel` puts focus back on the row, or on `Add source` for a new one; a save or retire that fails puts focus back on its button, and a retire that lands puts it on `Add source`; the form shows only the fields that type needs; `Retire` uses the destructive confirm, but refuses to retire the last source |
 
