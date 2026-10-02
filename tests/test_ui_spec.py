@@ -1167,6 +1167,18 @@ def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
     assert _website_tokens(':root[data-theme="light"]') == light
 
 
+def test_the_websites_theme_colour_follows_each_palettes_background() -> None:
+    page = WEBSITE.read_text()
+    (initial,) = re.findall(r'<meta name="theme-color" content="([^"]+)">', page)
+    (light, dark) = re.search(r"metaTheme\.content = light \? '([^']+)' : '([^']+)'", page).groups()
+
+    assert {"initial": initial, "light": light, "dark": dark} == {
+        "initial": tokens()["bg"],
+        "light": LIGHT_PALETTE["bg"],
+        "dark": tokens()["bg"],
+    }
+
+
 def test_the_website_writes_no_colour_outside_its_palettes_and_the_spec_exceptions() -> None:
     light = re.compile(r':root\[data-theme="light"\]\s*\{[^}]*\}')
     outside = light.sub("", WEBSITE.read_text(), count=1)
