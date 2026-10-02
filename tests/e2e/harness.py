@@ -176,7 +176,7 @@ def _free_port() -> int:
 
 
 @contextmanager
-def _proxy(run_dir: Path, script: Path):
+def _proxy(run_dir: Path, script: Path, *, connection_strategy: str = "lazy"):
     """mitmdump with the fakes loaded, isolated through uvx; yields (proxy URL, CA file)."""
     uvx = shutil.which("uvx")
     assert uvx, "the end-to-end suite runs mitmproxy through uvx, which is not on PATH"
@@ -192,7 +192,7 @@ def _proxy(run_dir: Path, script: Path):
                 "--listen-port", str(port),
                 "--set", f"confdir={confdir}",
                 # Lazy: never open an upstream connection before the addon has answered.
-                "--set", "connection_strategy=lazy",
+                "--set", f"connection_strategy={connection_strategy}",
                 "--set", f"e2e_script={script}",
             ],
             stdout=log,
@@ -220,10 +220,8 @@ def _proxy(run_dir: Path, script: Path):
                 proc.wait()
 
 
-def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning") -> Run:
-    """Seed the fake D1, start the fakes, run `cyris run` once, and collect the record."""
-    _seed_d1(run_dir / "d1.sqlite", scenario)
-    config = _write_deployment(run_dir)
+def _write_script(run_dir: Path, scenario: Scenario) -> Path:
+    """The file the fakes read: where to record, what to serve, what to drop."""
     script = run_dir / "script.json"
     script.write_text(
         json.dumps(
@@ -247,6 +245,29 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
         encoding="utf-8",
     )
     (run_dir / "requests.jsonl").touch()
+    return script
+
+
+@contextmanager
+def fakes(run_dir: Path, scenario: Scenario, *, connection_strategy: str = "lazy"):
+    """The fakes serving `scenario` behind a running proxy; yields (proxy URL, CA file)."""
+    with _proxy(
+        run_dir, _write_script(run_dir, scenario), connection_strategy=connection_strategy
+    ) as proxy:
+        yield proxy
+
+
+def read_records(run_dir: Path) -> list[dict]:
+    return [
+        json.loads(line)
+        for line in (run_dir / "requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning") -> Run:
+    """Seed the fake D1, start the fakes, run `cyris run` once, and collect the record."""
+    _seed_d1(run_dir / "d1.sqlite", scenario)
+    config = _write_deployment(run_dir)
     home = run_dir / "home"
     tmp = run_dir / "tmp"
     home.mkdir()
@@ -254,7 +275,7 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
     venv_bin = Path(sys.executable).parent
 
     started_at = datetime.now(UTC)
-    with _proxy(run_dir, script) as (proxy_url, ca_file):
+    with fakes(run_dir, scenario) as (proxy_url, ca_file):
         env = {
             "PATH": os.pathsep.join([str(venv_bin), "/usr/bin", "/bin"]),
             "HOME": str(home),
@@ -278,10 +299,7 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
             timeout=RUN_SECONDS,
         )  # fmt: skip
 
-    records = [
-        json.loads(line)
-        for line in (run_dir / "requests.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    records = read_records(run_dir)
     return Run(
         dir=run_dir,
         returncode=result.returncode,

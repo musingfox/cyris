@@ -18,11 +18,15 @@ from blake3 import blake3
 
 
 def unclaimed(records: list[dict]) -> list[dict]:
-    return [r for r in records if r["route"] is None]
+    """Requests no fake claimed, and those a fake failed on: neither was answered."""
+    return [r for r in records if r["route"] is None or "error" in r]
 
 
 def assert_no_unclaimed(records: list[dict]) -> None:
-    stray = [f"{r['method']} {r['host']}{r['path']}" for r in unclaimed(records)]
+    stray = [
+        f"{r.get('method')} {r.get('host')}{r.get('path')} {r.get('error', '')}".strip()
+        for r in unclaimed(records)
+    ]
     assert not stray, f"requests no fake claims: {stray}"
 
 
