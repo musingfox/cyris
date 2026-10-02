@@ -66,7 +66,7 @@
   },
   "digest.max_featured": {
     "tab": "digest",
-    "label": "Featured sections",
+    "label": "Features cards",
     "controls": [
       "max-featured"
     ],
@@ -123,7 +123,7 @@
   },
   "routing.score_threshold": {
     "tab": "pipeline",
-    "label": "Featured score",
+    "label": "Top story score",
     "controls": [
       "featured-threshold"
     ],
