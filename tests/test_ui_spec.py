@@ -31,7 +31,7 @@ from css_rules import (
 )
 
 import cyris.entrypoints
-from cyris.adapters.output.email_digest import tokens
+from cyris.adapters.output.email_digest import LIGHT_PALETTE, tokens
 from cyris.adapters.output.html_digest import FAVICON, PROJECT_URL, HtmlDigestWriter
 from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
@@ -1207,6 +1207,23 @@ def test_faint_text_is_reported_and_a_faint_border_is_not() -> None:
 def test_no_text_is_coloured_faint(source: str) -> None:
     text = {"prototype": PROTOTYPE, "website": WEBSITE}.get(source)
     assert _faint_text(text.read_text() if text else _source(source)) == []
+
+
+def _website_tokens(selector: str) -> dict[str, str]:
+    """The custom properties a website rule sets, by name without ``--``, values canonical."""
+    rules = parse_style_block(WEBSITE.read_text())[selector]
+    pairs = (d.split(":", 1) for d in rules if d.startswith("--"))
+    return {name.strip()[2:]: canonical_colour(value) for name, value in pairs}
+
+
+def test_the_websites_dark_tokens_are_the_page_tokens() -> None:
+    assert _website_tokens(":root") == {k: canonical_colour(v) for k, v in tokens().items()}
+
+
+def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
+    light = {k: canonical_colour(v) for k, v in LIGHT_PALETTE.items()}
+
+    assert _website_tokens(':root[data-theme="light"]') == light
 
 
 def test_the_websites_light_primary_label_reads_on_hover() -> None:
