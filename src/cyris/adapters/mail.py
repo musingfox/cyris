@@ -66,6 +66,10 @@ def _line(item: DigestItem | Story) -> str:
     return f"- {item.title} — {item.link}" if item.link else f"- {item.title}"
 
 
+def _wire_lines(item: DigestItem) -> list[str]:
+    return [_line(item), f"  {item.summary}"] if item.summary else [_line(item)]
+
+
 def _story_lines(story: Story) -> list[str]:
     if not story.grouped:
         return [_line(story)]
@@ -111,7 +115,7 @@ def build_digest_mail(
         ("In Focus", [f"- {cluster.heading}" for cluster in content.news_clusters]),
         ("Following", [_line(i) for sec in content.fan_sections for i in sec.items]),
         ("On the Radar", [_line(i) for sec in content.attention_sections for i in sec.items]),
-        ("The Wire", [_line(item) for item in content.filtered_headlines]),
+        ("The Wire", [line for item in content.filtered_headlines for line in _wire_lines(item)]),
     ]
     for label, entries in sections:
         if entries:

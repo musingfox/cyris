@@ -385,6 +385,14 @@
 
         .headline-item .text a:hover { color: var(--accent); }
 
+        .headline-item .summary {
+            font-size: calc(14px * var(--type-scale));
+            color: var(--text-dim);
+            line-height: 1.5;
+            margin-top: var(--s-1);
+            max-width: var(--measure);
+        }
+
         /* === FOOTER === */
         {% include "_footer.css.j2" %}
 
@@ -570,7 +578,7 @@
                     {% for item in filtered_headlines %}
                     <div class="headline-item">
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
-                        <span class="text">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</span>
+                        <div class="text">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</div>
                         {% if item.ref_urls | length > 1 %}{{ source_list(item) }}{% endif %}
                         {{ promote_btn(item) }}
                     </div>
