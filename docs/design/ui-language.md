@@ -303,6 +303,9 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 - The page width is 1240px. Above 720px, the left side is a 220px category list (label role, with a 2px
   `--accent` left line when selected); below it, the list becomes a horizontally scrollable tab bar at the
   top.
+- The sources table scrolls sideways in its own container (§4), but an open source editor is as wide as
+  the container's visible part and stays in view however far the rows are scrolled, so every field and
+  button in it is reachable at phone width without scrolling.
 - Each deployment has only one settings source, so the page does not show where a value comes from. Each
   category opens with a heading and a one-sentence small description.
 - When a required value is missing, its field is left empty and marked as failed validation, the top of

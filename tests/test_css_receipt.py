@@ -626,7 +626,9 @@ EXPECTED_IDS = {
     "fits-largest-400",
     "fits-largest-1440",
     "fits-375-choice-states",
+    "fits-375-source-editor",
     "fits-largest-375-choice-states",
+    "fits-largest-375-source-editor",
 }
 
 
