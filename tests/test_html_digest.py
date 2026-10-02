@@ -330,7 +330,7 @@ def test_render_index_empty(tmp_path):
     assert ">Digest</a>" not in html
     assert not re.search(r'href="\d{4}-', html)
     assert "No digests yet" in html
-    assert "<code>cyris run</code>" in html
+    assert '<code class="data">cyris run</code>' in html
     assert "cyris digest" not in html
 
 
@@ -459,7 +459,7 @@ def test_an_empty_archive_has_no_panel(tmp_path):
     html = HtmlDigestWriter(tmp_path).render_index([])
 
     assert "No digests yet" in html
-    assert "<code>cyris run</code>" in html
+    assert '<code class="data">cyris run</code>' in html
     assert 'class="panel"' not in html
     assert f"{CREDIT} &middot; 0 issues<" in html
 

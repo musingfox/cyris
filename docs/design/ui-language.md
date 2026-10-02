@@ -172,7 +172,7 @@ original baseline was judged too large, and the multiplier's three steps are for
 | body | Geist 400, 18px, line height 1.65, `--text-dim` | Descriptions, summaries |
 | small | Geist 400, 14px, line height 1.5, `--text-dim` | Field help, table content |
 | label | Geist Mono 500, 12px, uppercase, letter spacing 0.1em, `--text-dim` | Navigation, tabs, field names, buttons, section markers |
-| data | Geist Mono 400, 14px, `tabular-nums`; archive dates 19px | Dates, scores, counts, URLs |
+| data | Geist Mono 400, 14px, `tabular-nums`; archive dates 19px | Dates, scores, counts, URLs, commands |
 
 ## 4. Components
 
@@ -253,6 +253,9 @@ tag, and of the 91 issues measured on 2026-09-19 only 20 had a topic record.
 
 - The page head's small description opens with one sentence saying what Cyris is, because the archive is
   where the landing page sends a stranger.
+- An archive with no issue shows one sentence in the small role where the headline card would be, its
+  command in the data role. Like the digest's empty sentence it is not a notice, and it has no box, no
+  accent and no spacing of its own (§1).
 - Every issue is listed, never truncated, paginated or collapsed, because Pages' recovery rebuilds from
   every issue the index lists.
 - The period is printed as its label text, with no colour coding, and the layout does not assume two
