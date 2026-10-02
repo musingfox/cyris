@@ -1259,6 +1259,7 @@ function openEditor(name) {
       return;
     }
     sources = sources.filter((x) => x.name !== name); openName = null; renderSources();
+    $("#add-source").focus();
   };
   $('[data-act="cancel"]', ed).onclick = () => {
     openName = null;

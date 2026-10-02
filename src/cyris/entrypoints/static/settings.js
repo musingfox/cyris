@@ -697,11 +697,14 @@ function openEditor(name) {
     disarm();
     const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
                                    retire, "Retiring…");
-    if (data) {
-      openName = null;
-      await loadSources();
-      show("ok", `${s.name} retired. ${data.note}`, "sources-notice");
+    if (!data) {
+      returnFocus(retire);
+      return;
     }
+    openName = null;
+    await loadSources();
+    show("ok", `${s.name} retired. ${data.note}`, "sources-notice");
+    returnFocus($("add-source"));
   });
   q("#e-name").focus();
   return ed;
@@ -754,6 +757,12 @@ $("src-body").addEventListener("keydown", (e) => {
   }
 });
 
+// Disabling the focused button, or locking the editor around it, drops focus to
+// the body; give it back, unless the reader has moved on meanwhile.
+function returnFocus(control) {
+  if (!document.activeElement || document.activeElement === document.body) control.focus();
+}
+
 // Resolves to the response on success, or null once the failure is shown
 // beside the pressed button.
 async function writeSource(url, method, body, button, doing) {
@@ -793,6 +802,7 @@ async function saveSource(ed, button) {
   }, button, "Saving…");
   if (!data) {
     ed.inert = false;
+    returnFocus(button);
     return;
   }
   // A source saved out of the active filter would lose its row, and the result
