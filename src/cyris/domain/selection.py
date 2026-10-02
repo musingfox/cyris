@@ -232,3 +232,8 @@ def _iter_digest_items(content: DigestContent) -> list[DigestItem]:
 def count_dead_links(content: DigestContent) -> int:
     """Count digest items with no clickable http(s) URL in urls or ref_urls."""
     return sum(1 for item in _iter_digest_items(content) if item.link is None)
+
+
+def digest_urls(content: DigestContent) -> set[str]:
+    """Every article URL the digest shows, in any section."""
+    return {url for item in _iter_digest_items(content) for url in item.urls}

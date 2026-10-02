@@ -9,7 +9,9 @@ Each source declares a tier, in `sources.yaml` on a local install or on `/settin
 | `summarize` | Scored, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions | Stratechery, Benedict Evans |
 | `fan` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
 
-An article moves `pending → accepted / rejected / awaiting_triage`. A 👍/👎 on the
+An article moves `pending → accepted / rejected / awaiting_triage`. A run accepts only
+what its issue shows; an article the per-issue cap cut stays pending, and the next run
+in the window considers it again. A 👍/👎 on the
 digest or the raw page, and `cyris articles accept|reject`, all stamp `triaged_at`, and
 that stamp is what vote similarity later treats as a human decision.
 
