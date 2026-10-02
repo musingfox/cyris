@@ -251,6 +251,13 @@ title is itself that section's `h2`.
   grid lines are drawn on each card's right and bottom edges, so when the last row is not full, the empty
   cells are the page background, not a solid block of border colour.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
+- **An issue says when it is empty or degraded.** An issue that includes no article opens its body with
+  one sentence in the small role: the filter kept none of the articles the run received, and
+  `All articles` (linked when the raw page exists) lists each one with its verdict. It is not a notice,
+  because an empty issue is neither a success nor an error (§1). A degraded issue, one whose configured
+  LLM could not be used, opens its body with a `--warn` notice saying the items are plain excerpts,
+  unscored and unsummarised, and that the provider's key on Settings is what to check. An issue made with
+  provider `none` is plain excerpts by choice and shows no notice.
 
 ### raw
 
@@ -318,6 +325,9 @@ by value, from `_tokens.css.j2` and the light palette below (`adapters/output/em
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a
   `--warn` notice instead. The footer's project link (§4) is the one link off that host.
+- **Empty and degraded as on the page.** The empty sentence and the degraded notice (§6 *digest*) come
+  after the buttons, the empty sentence in the small role with its `All articles` link only when the raw
+  page was published.
 - **Type at the baseline.** Nothing serves the mail, so `digest.type_scale` does not reach it. Web fonts
   come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack.
 
