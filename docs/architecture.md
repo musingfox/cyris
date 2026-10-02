@@ -312,7 +312,7 @@ Each source carries a **tier**, which decides how much attention it gets:
 | Tier | Treatment |
 |---|---|
 | `filter` | Batched headline extraction, aggressively discarded (<10% pass). News-tagged articles are additionally clustered by topic. |
-| `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. |
+| `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
 | `fan` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
@@ -320,6 +320,13 @@ sitting close to a downvoted article — it runs over *every* candidate, not jus
 the scorer skips news and the first downvote was news-tagged. It is the only personalization in the
 pipeline: prompt-level preference learning was removed on 2026-08-27 because it had never produced a
 profile.
+
+The summarize call writes a summary for each group and one for each article. `layer_by_score`
+then lays them out inside `DigestPipeline`, before the issue's article cap: the Top story is a
+group only when two or more of its articles reach `[routing] score_threshold`, and every other
+article is one Features card under its own summary, highest score first, at most
+`[digest] max_featured` of them. An article past either limit is left out of the issue and stays
+pending. The cap takes the Top story whole, or its best article in its slot, before anything else.
 
 Two analytics facts are persisted beside the digest, both fail-soft — a write failure is logged
 and the run continues. Topic tags emitted by scoring and by news clustering land normalized in D1
@@ -436,7 +443,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai` or `"none"`. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
-| Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many sections lead the page is not a number this codebase can measure, and `featured_threshold` beside it was already D |
+| Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many Features cards an issue shows is not a number this codebase can measure, and `featured_threshold` beside it was already D |
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
 | Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 — §7 #17 |
 | Embedding threshold | **A** | `cyris.toml`, else the provider's own calibration | unchanged — a measured property of the model, not a preference |

@@ -40,7 +40,7 @@ def _plural(n: int, noun: str) -> str:
 
 @dataclass(frozen=True)
 class Story:
-    """One feature card: a single article, or a summarize group under its one summary.
+    """One story card: a single article, or the Top story's group under its one summary.
 
     The LLM writes a single summary for a whole group, and every item carries a copy,
     so a group rendered item by item printed that summary once per article. A group

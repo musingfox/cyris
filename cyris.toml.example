@@ -35,7 +35,7 @@ model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider 
 [digest]
 max_articles_per_digest = 400           # a run scores and digests the window's newest N, across all sources
 max_articles_per_digest_output = 15     # cap shown in the digest note
-max_featured = 5                        # sections leading the page; /settings can change it
+max_featured = 5                        # Features cards per issue; /settings can change it
 scoring_snippet_length = 1000           # characters of each article the scorer reads
 summarize_snippet_length = 1000         # characters read when summarizing
 filter_snippet_length = 500             # characters read when extracting headlines
@@ -60,7 +60,7 @@ database_id = ""                        # or CYRIS_STORE_DATABASE_ID
 # API token via env: CLOUDFLARE_API_TOKEN (needs D1 read+write, same token as Pages)
 
 [routing]
-score_threshold = 70                    # featured-article cutoff (0-100)
+score_threshold = 70                    # two articles on one topic at or above it share the Top story (0-100)
 summarize_score_threshold = 70
 
 [html_output]
