@@ -765,7 +765,16 @@ def test_the_driver_emulates_media_before_it_loads_the_page():
 # of the checks that hold it.
 EXPECTED_RAW_IDS = {
     "list-vote-marks-done",
-    "list-vote-failure-marks-error",
+    "list-vote-failure-says-why",
+    "list-vote-failure-signed-out-says-sign-in",
+    "list-vote-failure-unconfigured-names-the-url",
+    "list-vote-failure-times-out",
+    "list-vote-retry-clears-notice",
+    "list-vote-inflight-disables-group",
+    "list-vote-up-shows-state",
+    "list-vote-down-shows-state",
+    "list-stored-vote-shows-state",
+    "list-vote-keeps-focus",
     "row-title-wraps-400",
     "fits-400-list",
     "gate-signed-out",
@@ -787,6 +796,8 @@ EXPECTED_RAW_IDS = {
     "vote-post-carries-no-credential",
     "double-press-one-vote",
     "vote-failure-stays",
+    "deck-signed-out-says-sign-in",
+    "deck-enter-votes-each-card",
     "vote-retry-clears-notice",
     "switch-away-during-vote",
     "inflight-disabled",
@@ -837,6 +848,9 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
         ("signed-out", 401, False),
         ("no-worker", 404, None),
         ("slow-vote", 200, True),
+        ("vote-signed-out", 200, True),
+        ("vote-unconfigured", 200, True),
+        ("vote-hangs", 200, True),
     ],
 )
 async def test_the_raw_probe_fixture_answers_the_vote_probe_per_kind(kind, status, authorized):
@@ -862,6 +876,20 @@ async def test_the_raw_probe_fixture_can_refuse_every_vote_or_only_the_first():
     once = raw_probe.build_fixture("fails-once")
     answers = await _raw_answers(once, [("POST", "/api/vote"), ("POST", "/api/vote")])
     assert [status for status, _ in answers] == [502, 200]
+
+
+@pytest.mark.parametrize(
+    ("kind", "status", "body"),
+    [
+        ("vote-signed-out", 401, {"authorized": False, "error": "unauthorized"}),
+        ("vote-unconfigured", 503, {"error": "promote worker not configured"}),
+    ],
+)
+async def test_the_raw_probe_fixture_refuses_a_vote_as_the_app_worker_would(kind, status, body):
+    fixture = raw_probe.build_fixture(kind)
+    [(answered, text)] = await _raw_answers(fixture, [("POST", "/api/vote")])
+    assert (answered, json.loads(text)) == (status, body)
+    assert fixture.posts == [PENDING_TWO_UP]
 
 
 async def test_the_raw_probe_fixture_serves_the_rendered_raw_page():
@@ -903,7 +931,7 @@ EXPECTED_DIGEST_IDS = {
         )
         for width in (360, 1440)
     ),
-    "vote-failure-marks-error",
+    "vote-failure-says-why",
     *(f"grids-agree-{width}" for width in (360, 721, 880, 1000, 1100, 1160, 1440)),
     *(f"fits-{width}" for width in (360, 880, 1000, 1440)),
     *(f"head-fits-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),

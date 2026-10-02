@@ -385,8 +385,9 @@ _CHECKS: list[Check] = [
         for item, urls in first_vote_urls().items()
         for width in (360, 1440)
     ),
+    # A refused vote says why on the line below the row its buttons sit in, and is not kept.
     Check(
-        id="vote-failure-marks-error",
+        id="vote-failure-says-why",
         fixture="vote-fails",
         path=PAGE,
         act=f"""
@@ -396,12 +397,23 @@ _CHECKS: list[Check] = [
         gestures=({"press": _up(".news-cluster"), "pointer": "mouse"}, {"release": True}),
         script=f"""
             const up = $({json.dumps(_up(".news-cluster"))});
-            await waitFor(() => up.classList.contains("error"), "the vote marked failed");
+            const row = up.closest(".vote-group").parentElement;
+            const notice = await waitFor(() => {{
+              const next = row.nextElementSibling;
+              return next && next.classList.contains("vote-error") && next;
+            }}, "the failure notice");
+            expect(visible(notice), "the failure notice is hidden");
+            expect(notice.getAttribute("role") === "alert", "the notice is not announced");
+            expect(notice.textContent.includes("HTTP 502"), `notice: ${{notice.textContent}}`);
+            expect(up.classList.contains("error"), "up is not marked failed");
             expect(!up.classList.contains("done"), "up is marked done");
+            expect(up.getAttribute("aria-pressed") === "false", "up is pressed");
             const stored = localStorage.getItem("cyris-votes");
             expect(!stored || stored === "{{}}", `stored: ${{stored}}`);
         """,
-        sabotage=strip_mark_sabotage("error"),
+        sabotage="""new MutationObserver(() => {
+            $$(".vote-error").forEach((n) => n.remove());
+        }).observe(document.body, {subtree: true, childList: true});""",
         receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
 ]
