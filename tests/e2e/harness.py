@@ -27,9 +27,10 @@ from typing import Any
 from fakes import TEST_SETTINGS, SqliteD1
 
 from cyris.adapters.store.d1 import SCHEMA_PATH
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.settings import D1Settings
 from cyris.adapters.store.source_store import D1SourceStore
-from cyris.domain.models import SourceConfig
+from cyris.domain.models import SourceConfig, StoredArticle
 
 MITMPROXY = "mitmproxy==12.2.3"
 FAKES = Path(__file__).with_name("fakes.py")
@@ -93,6 +94,8 @@ class Scenario:
     drop: list[str] = field(default_factory=list)
     # How many reads of a new Pages deployment answer "active" before "success".
     pages_pending_reads: int = 0
+    # Rows an earlier run left in the store, written as they are.
+    stored: list[StoredArticle] = field(default_factory=list)
 
 
 @dataclass
@@ -105,6 +108,9 @@ class Run:
     routes: list[str]
     started_at: datetime
     finished_at: datetime
+    # The tables cyris only reads, as the seed left them before the run.
+    seeded: dict[str, list[dict]]
+    scenario: Scenario
 
     @property
     def d1_path(self) -> Path:
@@ -112,9 +118,7 @@ class Run:
 
     def rows(self, sql: str, params: tuple = ()) -> list[dict]:
         """Read the fake D1 after the run, on a connection of its own."""
-        with sqlite3.connect(self.d1_path) as conn:
-            conn.row_factory = sqlite3.Row
-            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        return _rows(self.d1_path, sql, params)
 
     def diagnostics(self) -> str:
         """What a failed assertion should print: cyris's stderr and the proxy's log."""
@@ -123,6 +127,15 @@ class Run:
             f"\n--- cyris exit {self.returncode}, stderr (tail) ---\n{self.stderr[-6000:]}"
             f"\n--- proxy log (tail) ---\n{proxy_log[-3000:]}"
         )
+
+
+def _rows(path: Path, sql: str, params: tuple = ()) -> list[dict]:
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+READ_ONLY_TABLES = ("settings", "sources")
 
 
 class _FileD1(SqliteD1):
@@ -153,6 +166,7 @@ def _seed_d1(path: Path, scenario: Scenario) -> None:
         d1.query(SCHEMA_PATH.read_text(encoding="utf-8"))
         D1Settings(d1).set(scenario.settings)
         D1SourceStore(d1).replace_all({s.name: s for s in scenario.sources})
+        D1ArticleStore(d1).import_articles(scenario.stored)
     finally:
         d1.close()
 
@@ -297,6 +311,7 @@ def read_records(run_dir: Path) -> list[dict]:
 def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning") -> Run:
     """Seed the fake D1, start the fakes, run `cyris run` once, and collect the record."""
     _seed_d1(run_dir / "d1.sqlite", scenario)
+    seeded = {t: _rows(run_dir / "d1.sqlite", f"SELECT * FROM {t}") for t in READ_ONLY_TABLES}
     config = _write_deployment(run_dir)
     home = run_dir / "home"
     tmp = run_dir / "tmp"
@@ -338,5 +353,7 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
         records=records,
         routes=json.loads((run_dir / "routes.json").read_text(encoding="utf-8")),
         started_at=started_at,
+        seeded=seeded,
+        scenario=scenario,
         finished_at=datetime.now(UTC),
     )
