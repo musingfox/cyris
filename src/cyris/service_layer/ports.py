@@ -113,9 +113,11 @@ class FetchSource(Protocol):
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        limit: int = 200,
     ) -> list[Article]:
-        """Fetch articles within a time window.
+        """Fetch articles within a time window, all of them.
+
+        The run cap is not a source's to apply: `run_digest` keeps the window's
+        newest N after the store, and a source cutting first loses articles unstored.
 
         Raise when the source cannot be read at all: `fetch_all_articles` then lists
         it in `failed_sources`, where the failed-fetch alert looks. Returning [] makes

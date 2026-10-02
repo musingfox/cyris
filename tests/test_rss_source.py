@@ -76,8 +76,8 @@ async def test_entries_outside_the_window_are_dropped():
 
 
 @pytest.mark.asyncio
-async def test_limit_applies_across_feeds_not_per_feed():
-    """Per-feed limiting would let 51 feeds x limit articles reach the LLM."""
+async def test_every_windowed_entry_of_every_feed_is_returned():
+    """The run cap is applied once, after the store, so this adapter cuts nothing."""
     http = _http_returning(
         _feed(_item("a1", "https://a.test/1", "Tue, 18 Mar 2026 10:00:00 GMT")),
         _feed(_item("b1", "https://b.test/1", "Tue, 18 Mar 2026 11:00:00 GMT")),
@@ -90,11 +90,9 @@ async def test_limit_applies_across_feeds_not_per_feed():
             "A": SourceConfig(name="A", url="https://a.test/feed"),
             "B": SourceConfig(name="B", url="https://b.test/feed"),
         },
-        limit=1,
     )
 
-    assert len(articles) == 1
-    assert articles[0].url == "https://b.test/1"  # newest wins
+    assert sorted(a.url for a in articles) == ["https://a.test/1", "https://b.test/1"]
 
 
 @pytest.mark.asyncio

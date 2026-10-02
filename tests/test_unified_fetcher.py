@@ -165,7 +165,11 @@ async def test_a_redelivered_sibling_is_not_kept_twice():
 
 @pytest.mark.asyncio
 async def test_passes_parameters_to_sources(rss_articles):
-    """Test that fetch_all_articles passes all parameters to sources."""
+    """The window and source configs reach every source; the run cap does not.
+
+    The cap keeps the newest N of what the store holds for the window, so a source
+    that cut at it first would drop articles before they were ever stored.
+    """
     mock_source = AsyncMock()
     mock_source.fetch_articles.return_value = rss_articles
 
@@ -176,15 +180,12 @@ async def test_passes_parameters_to_sources(rss_articles):
         after=datetime(2026, 3, 17),
         before=datetime(2026, 3, 19),
         sources=test_sources,
-        limit=50,
     )
 
-    # Verify all parameters were passed through
     mock_source.fetch_articles.assert_called_once_with(
         after=datetime(2026, 3, 17),
         before=datetime(2026, 3, 19),
         sources=test_sources,
-        limit=50,
     )
 
 

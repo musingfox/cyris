@@ -56,7 +56,6 @@ class RssSource:
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        limit: int = 200,
     ) -> list[Article]:
         """Fetch every configured feed concurrently and window-filter the entries."""
         feeds = [s for s in sources.values() if s.url and s.type == "rss"]
@@ -78,11 +77,8 @@ class RssSource:
                 continue
             articles.extend(result)
 
-        # `limit` is a whole-run cap, not a per-feed one: limiting inside each feed
-        # would let the total balloon, so truncate the merged newest-first list.
-        articles.sort(key=lambda a: a.published_at, reverse=True)
         logger.info("Fetched %d entries from %d feeds", len(articles), len(feeds))
-        return articles[:limit]
+        return articles
 
     async def _fetch_feed(
         self,

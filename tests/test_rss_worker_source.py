@@ -1,6 +1,8 @@
 """Tests for CloudflareRssSource — reads the RSS Worker's D1 buffer."""
 
+import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import pytest
@@ -12,6 +14,7 @@ from cyris.domain.models import SourceConfig, Tier
 pytestmark = pytest.mark.unit
 
 WORKER = "https://cyris-rss.test"
+WORKER_JS = Path(__file__).parent.parent / "workers" / "rss" / "src" / "index.js"
 AFTER = datetime(2026, 3, 17, tzinfo=UTC)
 BEFORE = datetime(2026, 3, 19, tzinfo=UTC)
 
@@ -44,20 +47,40 @@ async def test_rows_map_to_articles_with_tier_from_config():
     assert articles[0].published_at.tzinfo is not None
 
 
+def _worker_row_ceiling() -> str:
+    """The most rows `GET /articles` returns, read from the Worker's clamp."""
+    (ceiling,) = re.findall(
+        r'searchParams\.get\("limit"\)\) \|\| \d+, (\d+)\)', WORKER_JS.read_text()
+    )
+    return ceiling
+
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_window_is_passed_to_the_worker():
     route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[]))
 
-    await CloudflareRssSource(WORKER, "tok").fetch_articles(
-        after=AFTER, before=BEFORE, sources={}, limit=42
-    )
+    await CloudflareRssSource(WORKER, "tok").fetch_articles(after=AFTER, before=BEFORE, sources={})
 
     request = route.calls.last.request
     assert request.url.params["after"] == AFTER.isoformat()
     assert request.url.params["before"] == BEFORE.isoformat()
-    assert request.url.params["limit"] == "42"
     assert request.headers["Authorization"] == "Bearer tok"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_the_read_asks_for_the_workers_ceiling_not_the_run_cap():
+    """The run cap is applied after the store; a read cut at it loses rows unstored.
+
+    The Worker's own default is lower than its ceiling, so the ceiling is asked for
+    by name rather than left to the default.
+    """
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[]))
+
+    await CloudflareRssSource(WORKER, "tok").fetch_articles(after=AFTER, before=BEFORE, sources={})
+
+    assert route.calls.last.request.url.params["limit"] == _worker_row_ceiling()
 
 
 @respx.mock
