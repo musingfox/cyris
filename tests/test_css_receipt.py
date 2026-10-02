@@ -543,6 +543,11 @@ def test_the_probe_set_watches_no_footer_link():
 # settings page adds the ids of the checks that hold it.
 EXPECTED_IDS = {
     "site-bar-current",
+    "editor-opens-on-enter",
+    "editor-opens-on-space",
+    "editor-cancel-focuses-row",
+    "editor-row-close-focuses-row",
+    "editor-new-cancel-focuses-add",
     "site-bar-links-align",
     "no-credential-in-dom",
     "hash-direct",

@@ -1260,18 +1260,28 @@ function openEditor(name) {
     }
     sources = sources.filter((x) => x.name !== name); openName = null; renderSources();
   };
-  $('[data-act="cancel"]', ed).onclick = () => { openName = null; renderSources(); };
+  $('[data-act="cancel"]', ed).onclick = () => {
+    openName = null;
+    renderSources();
+    (name ? $(`tr.src-row[data-name="${CSS.escape(name)}"]`) : $("#add-source")).focus();
+  };
   $('[data-act="save"]', ed).onclick = () => { openName = null; renderSources(); };
   $("#e-name", ed).focus();
 }
 $("#src-body").addEventListener("click", (e) => {
   const tr = e.target.closest("tr.src-row");
   if (!tr) return;
-  openName = openName === tr.dataset.name ? null : tr.dataset.name;
+  const name = tr.dataset.name;
+  openName = openName === name ? null : name;
   renderSources();
+  if (openName === null) $(`tr.src-row[data-name="${CSS.escape(name)}"]`).focus();
 });
 $("#src-body").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && e.target.matches("tr.src-row")) e.target.click();
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches("tr.src-row")) {
+    // Space would otherwise scroll the page.
+    e.preventDefault();
+    e.target.click();
+  }
 });
 $$("[data-filter]").forEach((b) => b.onclick = () => {
   filter = b.dataset.filter; openName = null;
