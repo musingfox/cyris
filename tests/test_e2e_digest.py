@@ -12,8 +12,9 @@ model rewrote. `TestSelfChecks` proves the checks can fail.
 """
 
 import copy
+import hashlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -34,7 +35,8 @@ from e2e.receipts import (
 )
 
 from cyris.bootstrap import default_model
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import ArticleState, SourceConfig, StoredArticle, Tier, UsageStats
+from cyris.domain.triage import RejectReason
 
 pytestmark = pytest.mark.e2e
 
@@ -91,16 +93,37 @@ ARTICLES = {
         _article("f2", BLOG, "Blog filler the filter drops", "Nothing worth a line."),
     ]
 }
+AUTHORS = {"a1": "E2E Author"}
 LETTER_EML = Path(__file__).parent / "e2e" / "letter.eml"
 LETTER_TITLE = "Issue 12: what the fakes received"
 # The one sender-owned post link in the letter's HTML, with its utm_ parameters stripped.
 LETTER_URL = "https://letters.e2e.test/p/issue-12"
-LETTER_ITEM_ID = f"nl:{LETTER_EML.stem}"
+# A letter with no link at all: stored under its synthetic URL, the homepage its reader link.
+UNLINKED_EML = Path(__file__).parent / "e2e" / "letter-unlinked.eml"
+UNLINKED_TITLE = "Issue 13: no link this week"
+LETTER_ITEM_IDS = [f"nl:{eml.stem}" for eml in (LETTER_EML, UNLINKED_EML)]
+LETTER_TEXT = {
+    "l1": "This week's letter is about end-to-end receipts: count every request, read every body.",
+    "l2": "This issue has no web version, so the reader is pointed at the letters' homepage.",
+}
+LETTER_DATES = {"l1": "2026-09-30T07:00:00.000000+00:00", "l2": "2026-10-01T07:00:00.000000+00:00"}
 
-TITLE = {key: a["title"] for key, a in ARTICLES.items()} | {"l1": LETTER_TITLE}
-URL = {key: a["url"] for key, a in ARTICLES.items()} | {"l1": LETTER_URL}
 
-SCORES = {"a1": 92, "a2": 88, "b1": 75, "b2": 70, "l1": 72, "f1": 60, "f2": 40}
+def _letter_id(subject: str) -> str:
+    """newsletter.py's article id: sha256 of the source name and the subject."""
+    return hashlib.sha256(f"{LETTERS.name}{subject}".encode()).hexdigest()
+
+
+UNLINKED_URL = f"newsletter:{_letter_id(UNLINKED_TITLE)}"
+
+TITLE = {key: a["title"] for key, a in ARTICLES.items()} | {
+    "l1": LETTER_TITLE,
+    "l2": UNLINKED_TITLE,
+}
+URL = {key: a["url"] for key, a in ARTICLES.items()} | {"l1": LETTER_URL, "l2": UNLINKED_URL}
+
+# l2 scores under the summarize threshold, so it is listed On the Radar unsummarised.
+SCORES = {"a1": 92, "a2": 88, "b1": 75, "b2": 70, "l1": 72, "l2": 45, "f1": 60, "f2": 40}
 TOP_GROUP = {"heading": "Receipts over exit codes", "summary": "Both say: read the receipt."}
 CLUSTER = {
     "titles": [TITLE["n1"], TITLE["n2"]],
@@ -142,13 +165,38 @@ SETTINGS = harness.settings(
         "routing.score_threshold": 80,
         "routing.summarize_score_threshold": 50,
         "digest.max_featured": 5,
-        # 2 Top story + 3 Features + 1 cluster + 1 Wire row: n3, the filter's second
-        # pick, is the one article the cap cuts.
-        "digest.max_articles_per_digest_output": 7,
+        # 2 Top story + 3 Features + 1 cluster + 1 On the Radar + 1 Wire row: n3, the
+        # filter's second pick, is the one article the cap cuts.
+        "digest.max_articles_per_digest_output": 8,
     }
 )
-SHOWN = {"a1", "a2", "b1", "b2", "l1", "n1", "n2", "f1"}
+SHOWN = {"a1", "a2", "b1", "b2", "l1", "l2", "n1", "n2", "f1"}
 FEATURES = ("b1", "l1", "b2")
+SOURCE_OF = {key: a["source"] for key, a in ARTICLES.items()} | {
+    "l1": LETTERS.name,
+    "l2": LETTERS.name,
+}
+SOURCES = {s.name: s for s in (DEEP, WIRE, BLOG, LETTERS)}
+
+
+def _voted(now: datetime) -> StoredArticle:
+    """An article an earlier run accepted three days ago, which the reader has voted down."""
+    then = now - timedelta(days=3)
+    return StoredArticle(
+        url="https://deep.e2e.test/posts/v1",
+        original_id="e2e-v1",
+        title="An issue from three days ago",
+        content="The reader voted this one down since.",
+        published_at=then,
+        source_name=DEEP.name,
+        source_tier=Tier.SUMMARIZE,
+        source_tags=["ai"],
+        state=ArticleState.ACCEPTED,
+        first_seen_at=then,
+        digest_date=then.strftime("%Y-%m-%d"),
+        score=81.0,
+        language="en",
+    )
 
 
 def _rss_rows(now: datetime) -> list[dict]:
@@ -158,7 +206,7 @@ def _rss_rows(now: datetime) -> list[dict]:
             "title": a["title"],
             "url": a["url"],
             "content": a["content"],
-            "author": None,
+            "author": AUTHORS.get(a["key"]),
             # As the Worker stores it: JavaScript's toISOString().
             "published_at": (now - timedelta(minutes=10 + i))
             .isoformat(timespec="milliseconds")
@@ -170,12 +218,16 @@ def _rss_rows(now: datetime) -> list[dict]:
 
 
 def _scenario(**overrides) -> harness.Scenario:
+    now = datetime.now(UTC)
+    voted = _voted(now)
     return harness.Scenario(
         settings=SETTINGS,
         sources=[DEEP, WIRE, BLOG, LETTERS],
-        rss_rows=_rss_rows(datetime.now(UTC)),
-        newsletters=[LETTER_EML],
+        rss_rows=_rss_rows(now),
+        newsletters=[LETTER_EML, UNLINKED_EML],
         llm=LLM,
+        stored=[voted],
+        promotions=[{"url": voted.url, "vote": "down", "digest_date": voted.digest_date}],
         **overrides,
     )
 
@@ -190,6 +242,7 @@ class Receipts:
     def __init__(self, run: harness.Run) -> None:
         self.records = run.records
         self.routes = run.routes
+        self.run = run
         self.site = pages_site(run.records)
         (page_path,) = [p for p in self.site if p.endswith("-morning.html")]
         self.slug = page_path.removeprefix("/").removesuffix(".html")
@@ -197,15 +250,8 @@ class Receipts:
         dates = {_local_date(run.started_at), _local_date(run.finished_at)}
         assert self.date in dates, f"digest dated {self.date}, run spanned {dates}"
         self.digest_url = f"https://{harness.WORKER_DOMAINS[0]}/{self.slug}"
-        self.articles = {
-            r["url"]: r
-            for r in run.rows(
-                "SELECT url, original_id, state, digest_date, rejection_reason FROM stored_articles"
-            )
-        }
-        self.runs = run.rows(
-            "SELECT status, period, dry_run, build_sha, degraded, summary FROM digest_runs"
-        )
+        self.articles = {r["url"]: r for r in run.rows("SELECT * FROM stored_articles")}
+        self.runs = run.rows("SELECT * FROM digest_runs")
 
     def page(self) -> Node:
         return parse_html(self.site[f"/{self.slug}.html"])
@@ -237,7 +283,7 @@ def receipts(run) -> Receipts:
 
 
 EXPECTED_ROUTES = {
-    "d1_query": 28,
+    "d1_query": None,  # len(EXPECTED_D1)
     "pages_deployments_list": 1,
     "pages_upload_token": 1,
     "pages_check_missing": 1,
@@ -255,39 +301,50 @@ EXPECTED_ROUTES = {
     "newsletter_list": 1,
     "newsletter_ack": 1,
     "promote_list": 1,
-    "promote_ack": 0,
+    "promote_ack": 1,
 }
 
-# Derived from the code paths of one first publish, before the suite ever ran:
-# load_effective_config, then run_digest, then publish_site and the run record.
-EXPECTED_D1 = {
-    "schema": 1,
-    "SELECT settings": 1,
-    "SELECT sources": 1,
-    # The newsletter dedup read, then three window loads: two pending, one collected.
-    "SELECT stored_articles": 4,
-    # Ten articles at 17 columns, five rows under D1's 100 bound parameters.
-    "INSERT OR IGNORE INTO stored_articles": 2,
-    "UPDATE stored_articles SET score": 1,
-    "INSERT OR IGNORE INTO tags": 1,
-    "INSERT OR REPLACE INTO article_tags": 1,
-    "INSERT OR REPLACE INTO stories": 1,
-    "INSERT OR IGNORE INTO story_members": 1,
-    "DELETE FROM story_members": 1,
-    "DELETE FROM stories": 1,
-    "INSERT INTO usage_log": 1,
-    # One per verdict: accepted, then rejected.
-    "UPDATE stored_articles SET state": 2,
-    "INSERT OR REPLACE INTO digests": 1,
-    # The archive's file list for the index page, then the manifest the deploy extends.
-    "SELECT pages_manifest": 2,
-    "SELECT usage_log": 1,
-    "SELECT pages_deploy_receipt": 1,
-    "INSERT OR IGNORE INTO pages_deploy_receipt": 1,
-    "DELETE FROM pages_manifest": 1,
-    "INSERT INTO pages_manifest": 1,
-    "INSERT INTO digest_runs": 1,
-}
+# Derived from the code paths of one first publish, in the order they run:
+# load_effective_config, the vote sync, then run_digest, publish_site and the run record.
+EXPECTED_D1 = [
+    "schema",
+    "SELECT settings",
+    "SELECT sources",
+    # The vote: find the voted article, reject it, stamp it as a human verdict.
+    "SELECT stored_articles",
+    "UPDATE stored_articles SET state",
+    "UPDATE stored_articles SET triaged_at",
+    # The save: the newsletter dedup read, then 11 articles at 17 columns, five rows a
+    # statement under D1's 100 bound parameters.
+    "SELECT stored_articles",
+    *["INSERT OR IGNORE INTO stored_articles"] * 3,
+    "SELECT stored_articles",
+    "UPDATE stored_articles SET score",
+    "SELECT stored_articles",
+    "INSERT OR IGNORE INTO tags",
+    "INSERT OR REPLACE INTO article_tags",
+    "INSERT OR REPLACE INTO stories",
+    "INSERT OR IGNORE INTO story_members",
+    "DELETE FROM story_members",
+    "DELETE FROM stories",
+    "INSERT INTO usage_log",
+    # One per verdict: accepted, then rejected; then the window's collected articles.
+    "UPDATE stored_articles SET state",
+    "UPDATE stored_articles SET state",
+    "SELECT stored_articles",
+    "INSERT OR REPLACE INTO digests",
+    # The archive's file list and counts for the index page, then the manifest the
+    # deploy extends, the first-publish receipt, and the manifest of what landed.
+    "SELECT pages_manifest",
+    "SELECT usage_log",
+    "SELECT pages_manifest",
+    "SELECT pages_deploy_receipt",
+    "INSERT OR IGNORE INTO pages_deploy_receipt",
+    "DELETE FROM pages_manifest",
+    "INSERT INTO pages_manifest",
+    "INSERT INTO digest_runs",
+]
+EXPECTED_ROUTES["d1_query"] = len(EXPECTED_D1)
 
 
 def test_the_run_exits_ok_and_reaches_only_the_fakes(run) -> None:
@@ -299,9 +356,151 @@ def test_every_route_receives_exactly_its_requests(receipts) -> None:
     assert_route_counts(receipts.records, receipts.routes, EXPECTED_ROUTES)
 
 
-def test_d1_receives_exactly_these_statements(receipts) -> None:
-    kinds = [statement_kind(s["sql"]) for s in d1_statements(receipts.records)]
-    assert {k: kinds.count(k) for k in kinds} == EXPECTED_D1
+def test_d1_receives_exactly_these_statements_in_this_order(receipts) -> None:
+    assert [statement_kind(s["sql"]) for s in d1_statements(receipts.records)] == EXPECTED_D1
+
+
+def _within_run(r: "Receipts", iso: str) -> bool:
+    return r.run.started_at <= datetime.fromisoformat(iso) <= r.run.finished_at
+
+
+def _expected_row(r: "Receipts", key: str) -> dict:
+    """The stored_articles row cyris should leave for one article, first_seen_at aside."""
+    if key.startswith("l"):
+        title = TITLE[key]
+        original_id, content, author = _letter_id(title), LETTER_TEXT[key], None
+        published = LETTER_DATES[key]
+        ref_urls = [LETTERS.homepage] if key == "l2" else []
+    else:
+        row = next(x for x in r.run.scenario.rss_rows if x["guid"] == f"e2e-{key}")
+        original_id, title, content, author = row["guid"], row["title"], row["content"], None
+        author = AUTHORS.get(key)
+        published = datetime.fromisoformat(row["published_at"]).isoformat(timespec="microseconds")
+        ref_urls = []
+    source = SOURCES[SOURCE_OF[key]]
+    state = "accepted" if key in SHOWN else "rejected" if key == "f2" else "pending"
+    return {
+        "url": URL[key],
+        "original_id": original_id,
+        "title": title,
+        "content": content,
+        "author": author,
+        "published_at": published,
+        "source_name": source.name,
+        "source_tier": str(source.tier),
+        "source_tags": json.dumps(source.tags),
+        "ref_urls": json.dumps(ref_urls),
+        "state": state,
+        "digest_date": r.date if state != "pending" else None,
+        "rejection_reason": "filtered" if key == "f2" else None,
+        "score": float(SCORES[key]) if key in SCORES else None,
+        "language": "en" if key in SCORES else None,
+        "triaged_at": None,
+    }
+
+
+def test_every_article_row_holds_what_cyris_was_given_and_decided(receipts) -> None:
+    rows = copy.deepcopy(receipts.articles)
+    voted = rows.pop(receipts.run.scenario.stored[0].url)
+    first_seen = {row.pop("first_seen_at") for row in rows.values()}
+    assert len(first_seen) == 1 and _within_run(receipts, first_seen.pop())
+    assert rows == {URL[k]: _expected_row(receipts, k) for k in URL}
+
+    # The vote: rejected, as not interested, and stamped as the reader's own verdict.
+    seed = receipts.run.scenario.stored[0]
+    assert _within_run(receipts, voted.pop("triaged_at"))
+    assert voted == {
+        "url": seed.url,
+        "original_id": seed.original_id,
+        "title": seed.title,
+        "content": seed.content,
+        "author": None,
+        "published_at": seed.published_at.isoformat(timespec="microseconds"),
+        "source_name": seed.source_name,
+        "source_tier": "summarize",
+        "source_tags": '["ai"]',
+        "ref_urls": "[]",
+        "state": "rejected",
+        "first_seen_at": seed.first_seen_at.isoformat(timespec="microseconds"),
+        "digest_date": date.today().isoformat(),
+        "rejection_reason": str(RejectReason.NOT_INTERESTED),
+        "score": seed.score,
+        "language": seed.language,
+    }
+    ack = only(receipts.records, "promote_ack")
+    assert json_body(ack) == {"urls": [seed.url]}
+
+
+def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
+    run = receipts.run
+    usage = UsageStats(model=MODEL)
+    for _ in range(EXPECTED_ROUTES["gemini_generate"]):
+        usage.add(1000, 200)
+    (logged,) = run.rows("SELECT * FROM usage_log")
+    assert _within_run(receipts, logged.pop("logged_at"))
+    assert logged == {
+        "digest_date": receipts.date,
+        "period": "morning",
+        "articles_received": 11,
+        "articles_included": 8,
+        "model": MODEL,
+        "api_calls": 5,
+        "input_tokens": 5000,
+        "output_tokens": 1000,
+        "cost_usd": round(usage.estimated_cost, 6),
+    }
+
+    (recorded,) = copy.deepcopy(receipts.runs)
+    summary = json.loads(recorded.pop("summary"))
+    assert _within_run(receipts, recorded.pop("finished_at"))
+    assert recorded.pop("wall_seconds") == summary["wall_seconds"] > 0
+    assert recorded == {
+        "id": 1,
+        "status": "ok",
+        "period": "morning",
+        "dry_run": 0,
+        "fetched": 11,
+        "failed_sources": "[]",
+        "build_sha": harness.GIT_SHA,
+        "degraded": 1,
+    }
+    assert {k: summary[k] for k in ("status", "fetched", "received", "included", "degraded")} == {
+        "status": "ok",
+        "fetched": 11,
+        "received": 11,
+        "included": 8,
+        "degraded": True,
+    }
+    assert summary["digest_url"] == receipts.digest_url
+    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 5)
+
+    (issue,) = run.rows("SELECT * FROM digests")
+    content = json.loads(issue["content"])
+    assert (issue["date"], issue["period"], issue["raw_page"]) == (receipts.date, "morning", 1)
+    assert (content["articles_received"], content["articles_included"]) == (11, 8)
+
+    members = sorted([URL["n1"], URL["n2"]])
+    story_id = (
+        f"{receipts.date}-morning-" + hashlib.sha1("\n".join(members).encode()).hexdigest()[:8]
+    )
+    assert [
+        (s["id"], s["digest_date"], s["period"], s["heading"])
+        for s in run.rows("SELECT * FROM stories")
+    ] == [(story_id, receipts.date, "morning", CLUSTER["heading"])]
+    assert run.rows("SELECT * FROM story_members ORDER BY article_url") == [
+        {"story_id": story_id, "article_url": url} for url in members
+    ]
+    assert [t["name"] for t in run.rows("SELECT name FROM tags")] == CLUSTER["tags"]
+    assert sorted((t["article_url"], t["tag"]) for t in run.rows("SELECT * FROM article_tags")) == [
+        (url, "outage") for url in members
+    ]
+    receipt = run.rows("SELECT project FROM pages_deploy_receipt")
+    assert receipt == [{"project": harness.PAGES_PROJECT}]
+
+
+def test_the_settings_and_sources_are_read_and_never_written(receipts) -> None:
+    for table, rows in receipts.run.seeded.items():
+        assert receipts.run.rows(f"SELECT * FROM {table}") == rows, table
 
 
 SECRETS = {
@@ -373,11 +572,6 @@ def test_the_rss_buffer_is_read_for_the_configured_window(receipts) -> None:
     assert query["limit"] == "2000"
 
 
-def test_no_vote_is_pulled_so_none_is_acked(receipts) -> None:
-    pull = only(receipts.records, "promote_list")
-    assert (pull["method"], pull["query"]) == ("GET", [])
-
-
 def _llm_calls(records: list[dict]) -> list[tuple[str, list[str]]]:
     return [
         (r["llm"]["kind"], [title for _, _, title in r["llm"]["articles"]])
@@ -391,7 +585,7 @@ def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) ->
     assert kinds == ["scoring", "cluster", "filter", "summarize", "summarize"]
     given = [frozenset(titles) for _, titles in _llm_calls(receipts.records)]
     assert given[:3] == [
-        {TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "f1", "f2")},
+        {TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "l2", "f1", "f2")},
         {TITLE[k] for k in ("n1", "n2", "n3")},
         {TITLE[k] for k in ("f1", "f2", "n3")},
     ]
@@ -516,7 +710,7 @@ def check_cap_leaves_cut_pending(r: Receipts) -> None:
         s["params"]
         for s in d1_statements(r.records)
         if statement_kind(s["sql"]) == "UPDATE stored_articles SET state"
-    ]
+    ][-2:]  # the first one is the vote's
     assert [(p[0], p[1], p[2], set(p[3:])) for p in updates] == [
         ("accepted", r.date, None, {URL[k] for k in SHOWN}),
         ("rejected", r.date, "filtered", {URL["f2"]}),
@@ -524,7 +718,8 @@ def check_cap_leaves_cut_pending(r: Receipts) -> None:
     page = r.page()
     shown_links = set(page.hrefs())
     assert URL["n3"] not in shown_links
-    assert {URL[k] for k in SHOWN} <= shown_links
+    # l2's only link is the homepage; its synthetic URL is not one.
+    assert {URL[k] for k in SHOWN - {"l2"}} <= shown_links
 
 
 def test_an_article_the_cap_cut_stays_pending_while_every_shown_one_is_accepted(receipts) -> None:
@@ -538,12 +733,15 @@ def check_newsletter_reaches_the_digest(r: Receipts) -> None:
     pull = only(r.records, "newsletter_list")
     ack = only(r.records, "newsletter_ack")
     assert pull["seq"] < ack["seq"]
-    assert json_body(ack) == {"ids": [LETTER_ITEM_ID]}
+    assert json_body(ack) == {"ids": LETTER_ITEM_IDS}
     assert LETTER_URL in r.articles, "the letter was stored without its canonical link"
     assert r.articles[LETTER_URL]["state"] == "accepted"
     card = next(c for c in r.page().find_all("article", "featured-item") if LETTER_URL in c.hrefs())
     assert card.one("h3").text() == LETTER_TITLE
     assert LETTERS.name in card.text()
+    # The unlinked letter is listed On the Radar, its reader link the letters' homepage.
+    radar = r.page().one("article", "attention-item")
+    assert (radar.one("h4").text(), radar.hrefs()) == (UNLINKED_TITLE, [LETTERS.homepage])
 
 
 def test_a_queued_newsletter_reaches_the_digest_through_the_email_parser(receipts) -> None:
@@ -571,17 +769,18 @@ def test_ids_the_model_rewrote_still_match_by_position(receipts) -> None:
 
 
 def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
-    # Top story, Features, In Focus, The Wire, then the stats: Following and On the
-    # Radar have nothing in them this issue.
-    top, features, focus, wire, stats = receipts.discord()["embeds"]
+    # Top story, Features, In Focus, On the Radar, The Wire, then the stats: Following
+    # has nothing in it this issue.
+    top, features, focus, radar, wire, stats = receipts.discord()["embeds"]
+    assert UNLINKED_TITLE in radar["description"]
     for key in FEATURES:
         assert f"[{TITLE[key]}]({URL[key]})" in features["description"], key
     assert CLUSTER["heading"] in focus["description"]
     assert f"[{TITLE['f1']}]({URL['f1']})" in wire["description"]
     assert TITLE["n3"] not in wire["description"]
     assert f"({receipts.digest_url})" in stats["description"]
-    # 4 sources, 10 articles received, 7 kept.
-    for count in ("**4**", "**10**", "**7**"):
+    # 4 sources, 11 articles received, 8 items kept: the cluster is one item.
+    for count in ("**4**", "**11**", "**8**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
     mail = receipts.mail()
@@ -591,13 +790,6 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     assert receipts.digest_url in parse_html(mail["html"]).hrefs()
     for key in SHOWN - {"n1", "n2"}:
         assert TITLE[key] in mail["text"], key
-    (row,) = receipts.runs
-    assert (row["status"], row["period"], row["dry_run"], row["build_sha"]) == (
-        "ok",
-        "morning",
-        0,
-        harness.GIT_SHA,
-    )
 
 
 # ---- self-tests: the checks above can fail ----------------------------------
