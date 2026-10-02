@@ -33,6 +33,11 @@ from cyris.adapters.store.source_store import D1SourceStore
 from cyris.domain.models import SourceConfig, StoredArticle
 
 MITMPROXY = "mitmproxy==12.2.3"
+# Its dependencies, each pinned: uvx resolves them fresh on a cold cache otherwise, so a
+# new release of any one could change the proxy under the suite. Regenerate with
+#   echo mitmproxy==12.2.3 | uv pip compile - --universal --python-version 3.12 \
+#     --no-header --no-annotate -o tests/e2e/mitmproxy-constraints.txt
+MITMPROXY_CONSTRAINTS = Path(__file__).with_name("mitmproxy-constraints.txt")
 FAKES = Path(__file__).with_name("fakes.py")
 # The first `uvx` run installs mitmproxy; a warm cache starts it in about a second.
 PROXY_START_SECONDS = 180
@@ -227,7 +232,7 @@ def _proxy(run_dir: Path, script: Path, *, connection_strategy: str = "lazy"):
     with (run_dir / "proxy.log").open("w") as log:
         proc = subprocess.Popen(
             [
-                uvx, "--from", MITMPROXY, "mitmdump",
+                uvx, "--from", MITMPROXY, "--constraints", str(MITMPROXY_CONSTRAINTS), "mitmdump",
                 "-s", str(FAKES),
                 "--listen-host", "127.0.0.1",
                 "--listen-port", str(port),
