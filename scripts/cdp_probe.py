@@ -37,6 +37,7 @@ from cyris.config import DigestConfig
 CHECK_TIMEOUT_S = 30
 POINTERS = ("mouse", "touch")
 MOUSE_BUTTONS = ("left", "middle", "right")
+KEYS = ("Enter", " ", "Tab")
 HEIGHT = 900
 MINIMUM_NODE = 22
 
@@ -96,7 +97,8 @@ class Check:
     `{"move": dx}`, `{"release": True}` or `{"hover": selector}`; a move or a
     release belongs to the press before it. A mouse press may name its
     `"button"` (`MOUSE_BUTTONS`, default left), and a move may add a vertical
-    `"dy"`.
+    `"dy"`. `{"key": name}` presses and releases one of `KEYS` on whatever has
+    focus.
     """
 
     id: str
@@ -134,6 +136,8 @@ class Check:
                 pass
             elif keys == {"release"} and pressed:
                 pressed = False
+            elif keys == {"key"} and step["key"] in KEYS:
+                pass
             elif keys != {"hover"}:
                 raise ValueError(f"{self.id}: gesture step {step} is unknown or has no press")
 
@@ -299,6 +303,17 @@ const mouse = (type, x, y, held, button = 'left') => call('Input.dispatchMouseEv
   { type, x, y, button: held || type !== 'mouseMoved' ? button : 'none',
     buttons: held ? BUTTONS[button] : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
 const touchEvent = (type, touchPoints) => call('Input.dispatchTouchEvent', { type, touchPoints });
+// Keyed by KEYS. Without `text` Chromium sends no keypress, and a focused button
+// is activated by the keypress, not the keydown.
+const KEY_EVENTS = {
+  'Enter': { code: 'Enter', windowsVirtualKeyCode: 13, text: '\\r' },
+  ' ': { code: 'Space', windowsVirtualKeyCode: 32, text: ' ' },
+  'Tab': { code: 'Tab', windowsVirtualKeyCode: 9 },
+};
+const press = async (key) => {
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key, ...KEY_EVENTS[key] });
+  await call('Input.dispatchKeyEvent', { type: 'keyUp', key, ...KEY_EVENTS[key], text: undefined });
+};
 // Keyed by the POINTERS a Check accepts.
 const input = {
   mouse: {
@@ -318,7 +333,9 @@ const input = {
 const perform = async (gestures) => {
   let at = null, pointer = input.mouse, button = 'left';
   for (const step of gestures) {
-    if ('hover' in step) {
+    if ('key' in step) {
+      await press(step.key);
+    } else if ('hover' in step) {
       const { x, y } = await centre(step.hover);
       await mouse('mouseMoved', x, y, false);
     } else if ('press' in step) {
