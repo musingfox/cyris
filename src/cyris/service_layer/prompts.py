@@ -193,11 +193,12 @@ If no articles are related, return {"clusters": [], "unclustered_ids": [all ids]
 """
 
 
-def build_news_cluster_prompt(articles: list[Article]) -> str:
+def build_news_cluster_prompt(articles: list[Article], *, snippet_length: int) -> str:
     """Build user prompt for news clustering.
 
     Args:
         articles: News articles to cluster.
+        snippet_length: Maximum length of content snippet to include.
 
     Returns:
         Formatted prompt string with article summaries.
@@ -205,7 +206,7 @@ def build_news_cluster_prompt(articles: list[Article]) -> str:
     lines = []
     for a in articles:
         lines.append(f"[{a.id}] ({a.source_name}) {a.title}")
-        snippet = a.content[:500].replace("\n", " ").strip()
+        snippet = a.content[:snippet_length].replace("\n", " ").strip()
         if snippet:
             lines.append(f"    {snippet}")
         lines.append("")
