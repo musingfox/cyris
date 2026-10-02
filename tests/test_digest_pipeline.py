@@ -244,6 +244,95 @@ class TestDigestPipeline:
         assert result.rejected_urls == []
 
 
+def _article(article_id: int, tier: Tier, source_name: str) -> Article:
+    return Article(
+        id=article_id,
+        title=f"Article {article_id}",
+        url=f"https://example.com/{article_id}",
+        content="Body.",
+        published_at=datetime(2026, 4, 10, tzinfo=UTC),
+        source_name=source_name,
+        source_tier=tier,
+    )
+
+
+def _item(article: Article) -> DigestItem:
+    return DigestItem(
+        title=article.title,
+        summary="Summary.",
+        sources=[article.source_name],
+        urls=[article.url],
+    )
+
+
+class TestVerdictsFollowTheCappedDigest:
+    """Accepted means shown in this issue; what the issue left out stays pending."""
+
+    async def _process(self, articles, sample_sources, *, headlines, sections, cap):
+        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings(max_digest_output=cap))
+        with (
+            patch(
+                "cyris.service_layer.digest_pipeline.filter_articles",
+                new_callable=AsyncMock,
+                return_value=headlines,
+            ),
+            patch(
+                "cyris.service_layer.digest_pipeline.summarize_articles",
+                new_callable=AsyncMock,
+                return_value=sections,
+            ),
+        ):
+            return await pipeline.process(
+                articles, sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+            )
+
+    async def test_a_headline_the_cap_cut_is_neither_accepted_nor_rejected(self, sample_sources):
+        shown, cut, discarded = (_article(i, Tier.FILTER, "TechCrunch") for i in (1, 2, 3))
+
+        result = await self._process(
+            [shown, cut, discarded],
+            sample_sources,
+            headlines=[_item(shown), _item(cut)],
+            sections=[],
+            cap=1,
+        )
+
+        assert result.accepted_urls == [shown.url]
+        assert result.rejected_urls == [discarded.url]
+
+    async def test_a_summary_item_the_cap_cut_is_neither_accepted_nor_rejected(
+        self, sample_sources
+    ):
+        shown, cut = (_article(i, Tier.SUMMARIZE, "Stratechery") for i in (1, 2))
+
+        result = await self._process(
+            [shown, cut],
+            sample_sources,
+            headlines=[],
+            sections=[DigestSection(heading="Theme", items=[_item(shown), _item(cut)])],
+            cap=1,
+        )
+
+        assert result.accepted_urls == [shown.url]
+        assert result.rejected_urls == []
+
+    async def test_a_summarize_article_no_section_names_is_neither_accepted_nor_rejected(
+        self, sample_sources
+    ):
+        named, left_out = (_article(i, Tier.SUMMARIZE, "Stratechery") for i in (1, 2))
+
+        result = await self._process(
+            [named, left_out],
+            sample_sources,
+            headlines=[],
+            sections=[DigestSection(heading="Theme", items=[_item(named)])],
+            cap=15,
+        )
+
+        assert result.accepted_urls == [named.url]
+        assert result.rejected_urls == []
+
+
 class TestSplitSummarizeTierByScore:
     def test_all_above_threshold(self):
         articles = [

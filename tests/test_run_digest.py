@@ -527,6 +527,68 @@ async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None
     assert "Judged Last Run" not in raw
 
 
+async def test_an_article_the_cap_cut_stays_pending_and_listed_as_pending(
+    tmp_path: Path,
+) -> None:
+    shown, cut = (
+        Article(
+            id=i,
+            title=title,
+            url=f"https://example.com/{i}",
+            content="Body.",
+            published_at=datetime.now(UTC) - timedelta(hours=1),
+            source_name="TechSource",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech"],
+        )
+        for i, title in ((1, "Shown In The Issue"), (2, "Cut By The Cap"))
+    )
+    llm = FakeLLM(
+        [
+            json.dumps(
+                {
+                    "scores": [
+                        {"id": 1, "score": 85, "language": "en"},
+                        {"id": 2, "score": 85, "language": "en"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Theme",
+                            "summary": "Summary.",
+                            "articles": [
+                                {"id": "0", "title": shown.title, "source": "TechSource"},
+                                {"id": "1", "title": cut.title, "source": "TechSource"},
+                            ],
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource([shown, cut]))
+    deps = replace(
+        deps,
+        cfg=make_config(
+            agent_vault=deps.cfg.app.agent_vault, digest={"max_articles_per_digest_output": 1}
+        ),
+    )
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    states = {a.url: a.state for a in deps.store.get_by_urls([shown.url, cut.url])}
+    assert states == {shown.url: ArticleState.ACCEPTED, cut.url: ArticleState.PENDING}
+    raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
+    row = re.search(
+        r'<span class="state (\w+)">\w+</span>(?:(?!raw-row).)*Cut By The Cap', raw, re.S
+    )
+    assert row is not None and row.group(1) == "pending"
+
+
 async def test_the_local_archive_links_this_runs_raw_page(tmp_path: Path) -> None:
     report = await run_digest(_fresh_and_earlier_deps(tmp_path), RunOptions())
 
