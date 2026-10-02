@@ -2099,8 +2099,38 @@ window.fetch = async (input, init) => {
             const field = $("#timezone");
             expect(!field.classList.contains("invalid"), "the field is still marked");
             expect(!visible(field.nextElementSibling), "the field's notice is still shown");
+            expect(!field.hasAttribute("aria-invalid"), "the field is still announced invalid");
+            expect(!field.hasAttribute("aria-describedby"), "the field still points at a notice");
         """,
         sabotage="""$("#timezone").classList.add("invalid");""",
+    ),
+    Check(
+        id="refusal-is-announced",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_BAD_TIMEZONE,
+        script=f"""
+            const field = $("#timezone"), below = field.nextElementSibling;
+            expect(field.getAttribute("aria-invalid") === "true", "the field is not announced");
+            const described = document.getElementById(field.getAttribute("aria-describedby"));
+            expect(described === below, "the field is not described by its notice");
+            expect(described.textContent === {json.dumps(TIMEZONE_REFUSED)}, described.textContent);
+        """,
+        sabotage="""$("#timezone").removeAttribute("aria-describedby");""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="refusal-keeps-a-missing-mark",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("general.timezone"),
+        act=SAVE_BAD_TIMEZONE + """setValue($("#timezone"), "Europe/Berl");""",
+        script="""
+            const field = $("#timezone");
+            expect(!field.classList.contains("invalid"), "the refusal is still marked");
+            expect(field.getAttribute("aria-invalid") === "true", "the missing mark went with it");
+        """,
+        sabotage="""$("#timezone").removeAttribute("aria-invalid");""",
     ),
     Check(
         id="model-refusal-marks-the-model",

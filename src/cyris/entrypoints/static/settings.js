@@ -95,11 +95,13 @@ document.querySelectorAll("[placeholder]").forEach((el) => {
   el.dataset.placeholder = el.placeholder;
 });
 
+// Whether `el` is a control of a setting this deployment's home lacks.
+const isMissing = (el) => Object.entries(FIELDS)
+  .some(([key, field]) => field.controls.includes(el.id) && state.missing.includes(key));
+
 function applyPlaceholder(el) {
   if (!("placeholder" in el)) return;
-  el.placeholder = el.getAttribute("aria-invalid") === "true"
-    ? "Not set"
-    : el.dataset.placeholder || "";
+  el.placeholder = isMissing(el) ? "Not set" : el.dataset.placeholder || "";
 }
 
 // A missing key's field, its category's notice and its dot stay until a save
@@ -112,7 +114,7 @@ function markMissing() {
     field.controls.forEach((id) => {
       const el = $(id);
       if (unset) el.setAttribute("aria-invalid", "true");
-      else el.removeAttribute("aria-invalid");
+      else if (!el.classList.contains("invalid")) el.removeAttribute("aria-invalid");
       applyPlaceholder(el);
     });
     byTab[field.tab] = byTab[field.tab] || [];
@@ -245,25 +247,39 @@ function fieldNotice(control) {
   return notice;
 }
 
-// A refusal the server pins to one field is marked there too, until it is edited.
+// A refusal pinned to one field is marked there too, until it is edited; a
+// screen reader hears it as the field's description.
 function refuse(controls, text) {
-  controls.forEach((el) => el.classList.add("invalid"));
-  show("err", text, fieldNotice(controls[0]));
+  const notice = fieldNotice(controls[0]);
+  notice.id ||= `${controls[0].id}-error`;
+  controls.forEach((el) => {
+    el.classList.add("invalid");
+    el.setAttribute("aria-invalid", "true");
+    el.setAttribute("aria-describedby", notice.id);
+  });
+  show("err", text, notice);
 }
 
 function refuseSetting(err) {
   if (FIELDS[err.field]) refuse(FIELDS[err.field].controls.map($), err.message);
 }
 
+// A setting still missing keeps the aria-invalid its missing mark gives it.
+function clearRefusal(el) {
+  el.classList.remove("invalid");
+  el.removeAttribute("aria-describedby");
+  if (!isMissing(el)) el.removeAttribute("aria-invalid");
+}
+
 function unrefuse(scope) {
-  scope.querySelectorAll(".invalid").forEach((el) => el.classList.remove("invalid"));
+  scope.querySelectorAll(".invalid").forEach(clearRefusal);
   scope.querySelectorAll("[data-field-error]").forEach((notice) => { notice.hidden = true; });
 }
 
 function unrefuseEdited(control) {
   const marked = control.closest(".invalid");
   if (!marked) return;
-  marked.classList.remove("invalid");
+  clearRefusal(marked);
   const anchor = marked.closest(".field-row") || marked;
   if (!anchor.querySelector(".invalid")) fieldNotice(marked).hidden = true;
 }
@@ -400,14 +416,10 @@ const HOURS = [$("morning"), $("evening")];
 // Returns the reason shown beside the hours, or null when both are filled.
 function emptyHours() {
   const empty = HOURS.filter((input) => input.value === "");
-  HOURS.forEach((input) => input.classList.toggle("invalid", empty.includes(input)));
-  if (!empty.length) {
-    $("hours-error").hidden = true;
-    return null;
-  }
+  if (!empty.length) return null;
   const names = empty.map((input) => input.labels[0].textContent).join(" and ");
   const reason = `${names} ${empty.length > 1 ? "need" : "needs"} a whole hour from 0 to 23.`;
-  show("err", reason, "hours-error");
+  refuse(empty, reason);
   return reason;
 }
 
@@ -648,7 +660,7 @@ function openEditor(name) {
   });
   const editorEdited = () => {
     if (sourcesWritable) ed.querySelectorAll(".notice").forEach((n) => { n.hidden = true; });
-    ed.querySelectorAll(".invalid").forEach((el) => el.classList.remove("invalid"));
+    ed.querySelectorAll(".invalid").forEach(clearRefusal);
     refreshEditor();
   };
   ed.addEventListener("input", editorEdited);
