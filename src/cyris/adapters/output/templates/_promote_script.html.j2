@@ -24,7 +24,9 @@
     // What a vote turns the raw list's state text into, as the next promote-sync will.
     const VOTED_STATE = { up: 'accepted', down: 'rejected' };
 
-    function paint(group, vote) {
+    // A remembered vote changes only a row still rendered pending: every run applies the
+    // votes cast before it, so a verdict the page was rendered with may be newer than the vote.
+    function paint(group, vote, live) {
         // Votes stored before the deep-read button was dropped have no button to paint; up is the same polarity.
         const shown = group.querySelector('[data-vote="' + vote + '"]') ? vote : 'up';
         for (const b of group.querySelectorAll('.promote-btn')) {
@@ -33,7 +35,7 @@
             b.classList.remove('error');
         }
         const state = group.closest('.list-row')?.querySelector('.state');
-        if (state) {
+        if (state && (live || state.classList.contains('pending'))) {
             state.className = 'state ' + VOTED_STATE[shown];
             state.textContent = VOTED_STATE[shown];
         }
@@ -84,7 +86,7 @@
         votes[voteKey(group)] = vote;
         // The server already took the vote; a full quota must not show it as failed.
         try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
-        paint(group, vote);
+        paint(group, vote, true);
         return null;
     }
 

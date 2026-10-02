@@ -482,6 +482,21 @@ _CHECKS: list[Check] = [
         """,
         sabotage="""stateOf("Pending Two").textContent = "pending";""",
     ),
+    # A rendered verdict may be newer than the vote this browser remembers.
+    Check(
+        id="list-stored-vote-keeps-rendered-verdict",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("rejected-five"),
+        act="await signedIn();",
+        script="""
+            const state = stateOf("Rejected Five");
+            expect(state.textContent === "rejected", `state text: ${state.textContent}`);
+            expect(state.classList.contains("rejected"), `state class: ${state.className}`);
+            expect(marked("Rejected Five", "up", "done"), "the remembered vote is not marked");
+        """,
+        sabotage="""stateOf("Rejected Five").textContent = "accepted";""",
+    ),
     Check(
         id="list-vote-keeps-focus",
         fixture="slow-vote",
