@@ -165,8 +165,8 @@ original baseline was judged too large, and the multiplier's three steps are for
 
 | Role | Spec | Used for |
 |---|---|---|
-| display | Instrument Serif 400, clamp(46px, 7vw, 84px), line height 1, letter spacing −0.03em, `em` in italic `--accent` | Page titles (archive, raw, settings) |
-| issue title | Instrument Serif 400, clamp(56px, 8.75vw, 119px), line height .92, letter spacing −0.04em | The digest masthead title |
+| display | Instrument Serif 400, clamp(46px, 7vw, 84px), line height 1, letter spacing −0.03em, `em` in italic `--accent` | Page titles (archive, raw, settings); the landing page's section headings (`h2`) |
+| issue title | Instrument Serif 400, clamp(56px, 8.75vw, 119px), line height .92, letter spacing −0.04em | The digest masthead title; the landing page's hero `h1`, so it stays larger than the section headings below it. Under `lang="zh-Hant"` its maximum is 102px, which keeps the 6/7 the earlier zh-Hant cap took (72px of 84px) and stays above display's 84px |
 | heading | Geist 600, 24px, line height 1.3, letter spacing −0.015em | Panel titles, settings category titles |
 | title | Geist 600, 18–19px, line height 1.3 | List items, source names; triage card title 26px |
 | body | Geist 400, 18px, line height 1.65, `--text-dim` | Descriptions, summaries |

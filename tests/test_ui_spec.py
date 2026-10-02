@@ -1308,6 +1308,39 @@ def test_the_websites_secondary_button_is_the_apps() -> None:
     assert hovers == [hover]
 
 
+_SIZE = re.compile(
+    r"calc\((?:clamp\((\d+)px, *([\d.]+)vw, *(\d+)px\)|(\d+)px) \* var\(--type-scale\)\)"
+)
+ZH = 'html[lang="zh-Hant"] '
+
+
+def _font_px(declarations: set[str] | list[str], viewport: int) -> float:
+    """The font size a rule sets at `viewport` px wide, from `font-size` or the `font` shorthand."""
+    (match,) = [m for d in declarations if d.startswith("font") and (m := _SIZE.search(d))]
+    low, vw, high, fixed = match.groups()
+    if fixed:
+        return float(fixed)
+    return min(max(float(low), float(vw) * viewport / 100), float(high))
+
+
+@pytest.mark.parametrize("lang", ["en", "zh-Hant"])
+def test_the_landing_h1_is_larger_than_every_h2(lang: str) -> None:
+    rules = parse_style_block(WEBSITE.read_text())
+
+    def size(key: str, viewport: int) -> float:
+        override = rules.get(ZH + key) if lang == "zh-Hant" else None
+        return _font_px(override or rules[key], viewport)
+
+    for viewport in (320, 360, 390, 720, 960, 1200, 1440, 1920):
+        h1 = size(".hero h1", viewport)
+        for h2 in (".section-heading", ".how-heading h2"):
+            assert h1 > size(h2, viewport), f"{lang} at {viewport}px: h1 {h1} vs {h2}"
+    assert size(".hero h1", 1920) == (119 if lang == "en" else 102)
+    hero = rules[".hero h1"]
+    assert "letter-spacing: -.04em" in hero
+    assert [d for d in hero if d.startswith("font:") and ")/.92 " in d]
+
+
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
     rules = parse_style_block(f"<style>{_render_partial('_components.css.j2')}</style>")
     assert rules[".choice.unavailable"] == {"cursor: not-allowed"}
