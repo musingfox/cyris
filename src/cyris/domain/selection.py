@@ -85,12 +85,15 @@ def layer_by_score(
             groups.append(section.model_copy(update={"items": members}))
     lead = max(groups, key=lambda g: max(_by_score(i) for i in g.items), default=None)
 
-    grouped = {id(i) for i in lead.items} if lead else set()
-    singles = sorted(
-        (i for s in content.thematic_summaries for i in s.items if id(i) not in grouped),
-        key=_by_score,
-        reverse=True,
-    )
+    # Keyed by URL, not identity: the model can name one article in two sections, and
+    # one article is one card.
+    seen = {tuple(i.urls) for i in lead.items} if lead else set()
+    unique = []
+    for item in (i for s in content.thematic_summaries for i in s.items):
+        if tuple(item.urls) not in seen:
+            seen.add(tuple(item.urls))
+            unique.append(item)
+    singles = sorted(unique, key=_by_score, reverse=True)
     if lead is None and singles:
         lead = _single(singles.pop(0))
     featured = [lead, *(_single(i) for i in singles[:max_featured])] if lead else []
