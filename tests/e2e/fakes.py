@@ -10,16 +10,21 @@ The APIs mirrored here, by route name:
 
 - `d1_query`: Cloudflare D1's REST query endpoint, over a sqlite file the test owns.
   It refuses what D1 refuses and sqlite would not: more than 100 bound parameters,
-  and a compound SELECT of five or more terms (see tests/fakes.py).
+  and a compound SELECT of more than five terms (see tests/fakes.py).
 - `pages_*`: Cloudflare Pages direct upload, the steps `adapters/output/pages_deploy.py`
-  takes, for a project that exists and has no deployment yet. `pages_site` serves
-  what the last deployment uploaded, so the publish receipt reads the real page.
+  takes, for a project that exists and has no deployment yet. A new deployment can be
+  scripted to answer "active" until it is re-read. `pages_site` serves what the last
+  deployment uploaded, with the type and encoding the upload declared, and the front
+  page for a missing path, as Pages does for a site with no 404.html.
 - `workers_domains`, `email_send`: the Workers custom-domain list and Email Sending.
-- `discord_webhook`: a Discord webhook post.
+- `discord_webhook`: a Discord webhook post, held to Discord's embed limits.
 - `gemini_generate`: Gemini's generateContent. It answers by the prompt kind it
   finds in the system prompt, from rules the test scripts (see `_llm_answer`).
 - `rss_articles`, `newsletter_*`, `promote_*`: the three Workers cyris pulls from,
-  on the hosts the test configured.
+  on the hosts the test configured, as `workers/*/src/index.js` answers.
+
+Every route refuses a missing or wrong credential, as its service does: the script
+names the one header and value each route requires, and Discord's webhook path.
 
 Each request is appended to the run's record as one JSON line: method, host, path,
 query, headers, body, and the route that answered it. A request no route claims
@@ -30,6 +35,7 @@ import base64
 import json
 import re
 import sqlite3
+from datetime import UTC
 from email import message_from_bytes, policy
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -41,9 +47,26 @@ CF_ACCOUNT = r"/client/v4/accounts/[^/]+"
 PAGES_PROJECT = CF_ACCOUNT + r"/pages/projects/[^/]+"
 GEMINI = "generativelanguage.googleapis.com"
 
-# D1's own limits (adapters/store/d1.py, tests/fakes.py).
+# D1's own limits (adapters/store/d1.py, tests/fakes.py): five compound SELECT
+# terms pass and a sixth is refused, measured against the live database.
 D1_MAX_BOUND_PARAMS = 100
-D1_COMPOUND_SELECT_LIMIT = 5
+D1_COMPOUND_SELECT_TERMS = 5
+_UNION_ALL = re.compile(r"\bUNION\s+ALL\b", re.IGNORECASE)
+
+# docs.discord.com/developers/resources/message, "Embed Limits"; 10 embeds a message.
+DISCORD_MAX_EMBEDS = 10
+DISCORD_EMBED_TEXT_TOTAL = 6000
+DISCORD_EMBED_FIELD_MAX = {"title": 256, "description": 4096}
+DISCORD_CONTENT_MAX = 2000
+
+# workers/rss/src/index.js: a request's limit, defaulting to 500, capped at 2000.
+RSS_DEFAULT_LIMIT = 500
+RSS_MAX_LIMIT = 2000
+# workers/newsletter/src/index.js VALUE_HEADERS: the headers it keeps a value for.
+NEWSLETTER_VALUE_HEADERS = {
+    "archived-at", "list-id", "list-post", "list-archive", "list-help", "x-mc-user",
+    "x-campaignid", "x-campaign", "feedback-id", "content-type", "x-mailer",
+}  # fmt: skip
 
 # The JSON key each system prompt asks the model to answer under is what tells the
 # four prompt kinds apart (service_layer/prompts.py), not the prose around it.
@@ -75,8 +98,9 @@ class Fakes:
         self.db = None
         self.record_path = None
         self.seq = 0
-        self.assets = {}  # Pages asset hash -> bytes
+        self.assets = {}  # Pages asset hash -> (bytes, content type)
         self.deployed = {}  # path -> hash, from the last deployment
+        self.pending_reads = 0
         self.routes = self._routes()
 
     def load(self, loader):
@@ -89,6 +113,7 @@ class Fakes:
         self.record_path = Path(self.script["record"])
         self.db = sqlite3.connect(self.script["d1_sqlite"], check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.pending_reads = self.script.get("pages_pending_reads", 0)
 
     def running(self):
         names = [name for name, *_ in self.routes]
@@ -143,9 +168,9 @@ class Fakes:
             ),
             ("rss_articles", "GET", "rss_host", r"/articles", self.rss_articles),
             ("newsletter_list", "GET", "newsletter_host", r"/newsletters", self.newsletters),
-            ("newsletter_ack", "POST", "newsletter_host", r"/ack", self.worker_ack),
+            ("newsletter_ack", "POST", "newsletter_host", r"/ack", self.newsletter_ack),
             ("promote_list", "GET", "promote_host", r"/promotions", self.promotions),
-            ("promote_ack", "POST", "promote_host", r"/ack", self.worker_ack),
+            ("promote_ack", "POST", "promote_host", r"/ack", self.promote_ack),
         ]
 
     def _claim(self, request):
@@ -168,6 +193,12 @@ class Fakes:
         # a real host, whatever the request hook did.
         data.server.error = "e2e: upstream connections are forbidden"
 
+    def _authorized(self, route, request):
+        if route == "discord_webhook":
+            return request.path == self.script["discord_path"]
+        header, value = self.script["credentials"].get(route, (None, None))
+        return header is None or request.headers.get(header) == value
+
     def request(self, flow: http.HTTPFlow) -> None:
         entry = {"seq": self.seq, "route": None}
         self.seq += 1
@@ -188,7 +219,9 @@ class Fakes:
                 entry["form"] = {
                     k.decode(): v.decode() for k, v in request.multipart_form.items(multi=True)
                 }
-            if handler is not None:
+            if handler is not None and not self._authorized(route, request):
+                status, body, content_type = _refusal(route)
+            elif handler is not None:
                 status, body, content_type = handler(request, entry)
         except Exception as e:  # noqa: BLE001 - a fake's bug must reach the record
             entry["error"] = f"{type(e).__name__}: {e}"
@@ -209,8 +242,11 @@ class Fakes:
         sql, params = payload["sql"], payload.get("params") or []
         if len(params) > D1_MAX_BOUND_PARAMS:
             return _cf_error(400, "too many SQL variables: SQLITE_ERROR")
-        if sql.upper().count(" UNION ALL ") >= D1_COMPOUND_SELECT_LIMIT:
+        if len(_UNION_ALL.findall(sql)) >= D1_COMPOUND_SELECT_TERMS:
             return _cf_error(400, "too many terms in compound SELECT: SQLITE_ERROR")
+        # Not cursor.rowcount: sqlite reports -1 for `WITH ... UPDATE`, where D1
+        # reports the rows it changed.
+        before = self.db.total_changes
         try:
             try:
                 cursor = self.db.execute(sql, params)
@@ -226,7 +262,7 @@ class Fakes:
             self.db.commit()
         except sqlite3.Error as e:
             return _cf_error(400, f"{e}: SQLITE_ERROR")
-        meta = {"changes": max(cursor.rowcount, 0)}
+        meta = {"changes": self.db.total_changes - before}
         return _cf([{"results": rows, "success": True, "meta": meta}])
 
     # ---- Pages -------------------------------------------------------------
@@ -243,18 +279,24 @@ class Fakes:
 
     def upload(self, request, entry):
         for asset in json.loads(request.get_text()):
-            self.assets[asset["key"]] = base64.b64decode(asset["value"])
+            value = asset["value"]
+            contents = base64.b64decode(value) if asset.get("base64") else value.encode()
+            content_type = (asset.get("metadata") or {}).get("contentType")
+            self.assets[asset["key"]] = (contents, content_type or "application/octet-stream")
         return _cf({"successful_key_count": len(self.assets)})
 
     def upsert(self, request, entry):
         return _cf(True)
 
     def _deployment_record(self):
+        """The deployment as one read sees it: "active" for the scripted reads, then done."""
         project = self.script["pages_project"]
+        status = "active" if self.pending_reads > 0 else "success"
+        self.pending_reads = max(self.pending_reads - 1, 0)
         return {
             "id": "e2e-deployment",
             "url": f"https://e2e-deployment.{project}.pages.dev",
-            "latest_stage": {"name": "deploy", "status": "success"},
+            "latest_stage": {"name": "deploy", "status": status},
         }
 
     def deploy(self, request, entry):
@@ -268,12 +310,14 @@ class Fakes:
         return _cf({})
 
     def site(self, request, entry):
-        """Serve the deployed bytes, by clean URL as Pages does."""
+        """Serve the deployed bytes, by clean URL as Pages does, or the front page."""
         path = entry["path"]
-        for candidate in (path, f"{path}.html", f"{path.rstrip('/')}/index.html"):
+        candidates = (path, f"{path}.html", f"{path.rstrip('/')}/index.html", "/index.html")
+        for candidate in candidates:
             digest = self.deployed.get(candidate)
             if digest in self.assets:
-                return 200, self.assets[digest], "text/html; charset=utf-8"
+                contents, content_type = self.assets[digest]
+                return 200, contents, content_type
         return 404, b"not found", "text/plain"
 
     # ---- other Cloudflare APIs and Discord ---------------------------------
@@ -287,17 +331,51 @@ class Fakes:
         return _cf({"delivered": [recipient], "permanent_bounces": [], "queued": []})
 
     def discord(self, request, entry):
+        payload = json.loads(request.get_text())
+        embeds = payload.get("embeds") or []
+        too_long = [
+            name
+            for embed in embeds
+            for name, limit in DISCORD_EMBED_FIELD_MAX.items()
+            if len(embed.get(name) or "") > limit
+        ]
+        total = sum(_embed_text(embed) for embed in embeds)
+        if (
+            len(embeds) > DISCORD_MAX_EMBEDS
+            or too_long
+            or total > DISCORD_EMBED_TEXT_TOTAL
+            or len(payload.get("content") or "") > DISCORD_CONTENT_MAX
+        ):
+            return _json(400, {"message": "Invalid Form Body", "code": 50035})
         return 204, b"", None
 
     # ---- Workers -----------------------------------------------------------
 
     def rss_articles(self, request, entry):
-        return _json(200, self.script["rss_rows"])
+        """The Worker's window read: string bounds in SQL, newest first, a capped limit."""
+        after, before = request.query.get("after"), request.query.get("before")
+        if not after or not before:
+            return _json(400, {"error": "after and before required"})
+        try:
+            limit = int(request.query.get("limit") or 0)
+        except ValueError:
+            limit = 0
+        limit = min(limit or RSS_DEFAULT_LIMIT, RSS_MAX_LIMIT)
+        rows = [r for r in self.script["rss_rows"] if after <= r["published_at"] < before]
+        rows.sort(key=lambda r: r["published_at"], reverse=True)
+        return _json(200, rows[:limit])
 
     def newsletters(self, request, entry):
         return _json(200, [_worker_item(Path(p)) for p in self.script["newsletters"]])
 
-    def worker_ack(self, request, entry):
+    def newsletter_ack(self, request, entry):
+        if not isinstance(_json_object(request).get("ids"), list):
+            return _json(400, {"error": "missing ids"})
+        return _json(200, {"ok": True})
+
+    def promote_ack(self, request, entry):
+        if not isinstance(_json_object(request).get("urls"), list):
+            return _json(400, {"error": "missing urls"})
         return _json(200, {"ok": True})
 
     def promotions(self, request, entry):
@@ -339,6 +417,42 @@ class Fakes:
                 "usageMetadata": {"promptTokenCount": 1000, "candidatesTokenCount": 200},
             },
         )
+
+
+def _refusal(route):
+    """What each service answers a missing or wrong credential with."""
+    if route == "gemini_generate":
+        error = {"code": 400, "status": "INVALID_ARGUMENT", "message": "API key not valid."}
+        return _json(400, {"error": error})
+    if route == "discord_webhook":
+        return _json(401, {"message": "Invalid Webhook Token", "code": 50027})
+    if route.startswith(("rss_", "newsletter_", "promote_")):
+        return _json(401, {"error": "unauthorized"})
+    return _cf_error(401, "Authentication error")
+
+
+def _json_object(request):
+    try:
+        body = json.loads(request.get_text())
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _embed_text(embed):
+    """The characters Discord counts toward the 6000 an embed's message may hold."""
+    fields = embed.get("fields") or []
+    return sum(
+        len(text or "")
+        for text in (
+            embed.get("title"),
+            embed.get("description"),
+            (embed.get("footer") or {}).get("text"),
+            (embed.get("author") or {}).get("name"),
+            *(f.get("name") for f in fields),
+            *(f.get("value") for f in fields),
+        )
+    )
 
 
 def _prompt_articles(prompt, *, sourced):
@@ -434,8 +548,17 @@ def _worker_item(eml):
         "subject": str(message["Subject"]),
         "html": html_part.get_content() if html_part else "",
         "text": text_part.get_content() if text_part else "",
-        "date": parsedate_to_datetime(message["Date"]).isoformat(),
-        "headers": {},
+        # JavaScript's toISOString(), as the Worker writes it.
+        "date": parsedate_to_datetime(message["Date"])
+        .astimezone(UTC)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z"),
+        "headers": [
+            {"key": key.lower(), "value": str(value)}
+            if key.lower() in NEWSLETTER_VALUE_HEADERS
+            else {"key": key.lower()}
+            for key, value in message.items()
+        ],
         "raw_size": len(eml.read_bytes()),
     }
 

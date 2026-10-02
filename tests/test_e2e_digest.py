@@ -159,7 +159,10 @@ def _rss_rows(now: datetime) -> list[dict]:
             "url": a["url"],
             "content": a["content"],
             "author": None,
-            "published_at": (now - timedelta(minutes=10 + i)).isoformat(),
+            # As the Worker stores it: JavaScript's toISOString().
+            "published_at": (now - timedelta(minutes=10 + i))
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"),
             "source_name": a["source"],
         }
         for i, a in enumerate(ARTICLES.values())
@@ -218,7 +221,9 @@ class Receipts:
 
 @pytest.fixture(scope="module")
 def run(tmp_path_factory) -> harness.Run:
-    return harness.run_deployment(tmp_path_factory.mktemp("e2e-digest"), _scenario())
+    # Pages answers the new deployment as still active once, so publishing re-reads it.
+    scenario = _scenario(pages_pending_reads=1)
+    return harness.run_deployment(tmp_path_factory.mktemp("e2e-digest"), scenario)
 
 
 @pytest.fixture(scope="module")
@@ -239,7 +244,7 @@ EXPECTED_ROUTES = {
     "pages_upload": 1,
     "pages_upsert_hashes": 1,
     "pages_deployment_create": 1,
-    "pages_deployment_get": 0,
+    "pages_deployment_get": 1,
     "pages_project_create": 0,
     "pages_site": 1,
     "workers_domains": 1,
@@ -299,31 +304,35 @@ def test_d1_receives_exactly_these_statements(receipts) -> None:
     assert {k: kinds.count(k) for k in kinds} == EXPECTED_D1
 
 
-def test_every_request_carries_the_credential_its_service_requires(receipts) -> None:
-    cf = f"Bearer {harness.CF_TOKEN}"
-    jwt = f"Bearer {harness.PAGES_UPLOAD_JWT}"
-    worker = f"Bearer {harness.WORKER_TOKEN}"
-    expected = {
-        "d1_query": ("authorization", cf),
-        "pages_deployments_list": ("authorization", cf),
-        "pages_upload_token": ("authorization", cf),
-        "pages_check_missing": ("authorization", jwt),
-        "pages_upload": ("authorization", jwt),
-        "pages_upsert_hashes": ("authorization", jwt),
-        "pages_deployment_create": ("authorization", cf),
-        "workers_domains": ("authorization", cf),
-        "email_send": ("authorization", cf),
-        "gemini_generate": ("x-goog-api-key", harness.GEMINI_KEY),
-        "rss_articles": ("authorization", worker),
-        "newsletter_list": ("authorization", worker),
-        "newsletter_ack": ("authorization", worker),
-        "promote_list": ("authorization", f"Bearer {harness.PROMOTE_TOKEN}"),
-    }
+SECRETS = {
+    harness.CF_TOKEN,
+    harness.PAGES_UPLOAD_JWT,
+    harness.WORKER_TOKEN,
+    harness.PROMOTE_TOKEN,
+    harness.GEMINI_KEY,
+    harness.DISCORD_WEBHOOK.rsplit("/", 1)[1],
+}
+CREDENTIAL_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "x-goog-api-key",
+    "x-api-key",
+    "cookie",
+}
+
+
+def test_every_request_carries_its_own_credential_and_no_other(receipts) -> None:
+    """The one header each service requires; no other service's secret anywhere in it."""
     for record in receipts.records:
-        if record["route"] in ("discord_webhook", "pages_site"):
-            continue  # Discord's credential is the path; the site is public.
-        header, value = expected[record["route"]]
-        assert record["headers"].get(header) == value, record["route"]
+        route = record["route"]
+        expected = dict([harness.CREDENTIALS[route]]) if route in harness.CREDENTIALS else {}
+        sent = {h: v for h, v in record["headers"].items() if h in CREDENTIAL_HEADERS}
+        assert sent == expected, route
+        own = {value.removeprefix("Bearer ") for value in expected.values()}
+        if route == "discord_webhook":
+            own.add(harness.DISCORD_WEBHOOK.rsplit("/", 1)[1])
+        carried = json.dumps([record["headers"], record["query"], record["body"], record["path"]])
+        assert {secret for secret in SECRETS if secret in carried} == own, route
     discord = only(receipts.records, "discord_webhook")
     assert "https://discord.com" + discord["path"] == harness.DISCORD_WEBHOOK
 

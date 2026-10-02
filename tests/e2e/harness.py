@@ -55,6 +55,31 @@ HOSTS = {
 }
 WORKER_DOMAINS = ["digest.e2e.test"]
 DISCORD_WEBHOOK = "https://discord.com/api/webhooks/e2e-hook/e2e-hook-token"
+_CF_AUTH = ("authorization", f"Bearer {CF_TOKEN}")
+_JWT_AUTH = ("authorization", f"Bearer {PAGES_UPLOAD_JWT}")
+_WORKER_AUTH = ("authorization", f"Bearer {WORKER_TOKEN}")
+_PROMOTE_AUTH = ("authorization", f"Bearer {PROMOTE_TOKEN}")
+# The one credential header each route's service requires, and its value. Discord's
+# credential is the webhook path and the deployed site is public, so neither has one.
+CREDENTIALS = {
+    "d1_query": _CF_AUTH,
+    "pages_deployments_list": _CF_AUTH,
+    "pages_upload_token": _CF_AUTH,
+    "pages_check_missing": _JWT_AUTH,
+    "pages_upload": _JWT_AUTH,
+    "pages_upsert_hashes": _JWT_AUTH,
+    "pages_deployment_create": _CF_AUTH,
+    "pages_deployment_get": _CF_AUTH,
+    "pages_project_create": _CF_AUTH,
+    "workers_domains": _CF_AUTH,
+    "email_send": _CF_AUTH,
+    "gemini_generate": ("x-goog-api-key", GEMINI_KEY),
+    "rss_articles": _WORKER_AUTH,
+    "newsletter_list": _WORKER_AUTH,
+    "newsletter_ack": _WORKER_AUTH,
+    "promote_list": _PROMOTE_AUTH,
+    "promote_ack": _PROMOTE_AUTH,
+}
 
 
 @dataclass
@@ -66,6 +91,8 @@ class Scenario:
     llm: dict[str, Any]
     promotions: list[dict] = field(default_factory=list)
     drop: list[str] = field(default_factory=list)
+    # How many reads of a new Pages deployment answer "active" before "success".
+    pages_pending_reads: int = 0
 
 
 @dataclass
@@ -239,6 +266,9 @@ def _write_script(run_dir: Path, scenario: Scenario) -> Path:
                 "promotions": scenario.promotions,
                 "llm": scenario.llm,
                 "drop": scenario.drop,
+                "credentials": CREDENTIALS,
+                "discord_path": DISCORD_WEBHOOK.removeprefix("https://discord.com"),
+                "pages_pending_reads": scenario.pages_pending_reads,
             },
             ensure_ascii=False,
         ),
