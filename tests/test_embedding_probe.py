@@ -68,6 +68,7 @@ async def test_a_refusal_carries_the_providers_words_and_not_the_key(requests) -
     assert check.detail.startswith("typo-model refused: 400 ")
     assert "model not found" in check.detail
     assert "sentinel-key-123" not in check.detail
+    assert "embedding model name" in check.fix
 
 
 async def test_a_missing_token_fails_without_a_request(requests, monkeypatch) -> None:
@@ -77,6 +78,9 @@ async def test_a_missing_token_fails_without_a_request(requests, monkeypatch) ->
 
     assert check.status == "fail"
     assert check.detail == "CLOUDFLARE_EMBEDDING_API_TOKEN is not set"
+    assert check.fix == (
+        "Set CLOUDFLARE_EMBEDDING_API_TOKEN on this deployment, or save with vote similarity off."
+    )
     assert requests == []
 
 
@@ -100,9 +104,9 @@ async def test_a_rate_limited_embedder_fails_within_the_probe_bound(requests, mo
     check = await asyncio.wait_for(probe_embedder("gemini", ""), timeout=5)
 
     assert check.status == "fail"
-    assert check.detail.startswith("gemini-embedding-001 did not answer within 0.2 s")
-    assert "rate-limiting" in check.detail
-    assert "save with vote similarity off" in check.detail
+    assert check.detail == "gemini-embedding-001 did not answer within 0.2 s"
+    assert "rate-limiting" in check.fix
+    assert "save with vote similarity off" in check.fix
     assert "sentinel-key-123" not in check.detail
 
 

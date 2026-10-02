@@ -1,5 +1,6 @@
 """`cyris doctor` — the checks, and what each verdict tells the reader to do."""
 
+import asyncio
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1029,6 +1030,52 @@ async def test_the_llm_probe_skips_provider_none() -> None:
     assert check.status == "skip"
     assert check.detail == "none — no model to call"
     assert "ANTHROPIC_API_KEY" not in check.detail
+
+
+async def test_a_slow_llm_fails_within_the_probe_bound(monkeypatch) -> None:
+    """The clients wait 120 s per attempt and retry twice; a Save must not wait that out."""
+
+    class SlowLLM:
+        model = "slow-model"
+
+        async def complete(self, prompt, *, max_tokens):
+            await asyncio.sleep(60)
+
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: SlowLLM())
+    monkeypatch.setattr("cyris.diagnostics.doctor.LLM_PROBE_TIMEOUT_SECONDS", 0.1)
+    cfg = LLMProviderConfig(provider="anthropic", model="", api_key="key")
+
+    check = await asyncio.wait_for(doctor.probe_llm(cfg), timeout=5)
+
+    assert check.status == "fail"
+    assert check.detail == "slow-model did not answer within 0.1 s"
+    assert "Wait a minute and save again" in check.fix
+
+
+async def test_a_refused_llm_says_what_to_check_next(monkeypatch) -> None:
+    class RefusingLLM:
+        model = "typo-model"
+
+        async def complete(self, prompt, *, max_tokens):
+            raise RuntimeError("404 model not found")
+
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: RefusingLLM())
+    cfg = LLMProviderConfig(provider="anthropic", model="typo-model", api_key="key")
+
+    check = await doctor.probe_llm(cfg)
+
+    assert check.detail == "typo-model refused: 404 model not found"
+    assert "model name" in check.fix and "ANTHROPIC_API_KEY" in check.fix
+
+
+async def test_an_llm_with_no_key_says_which_variable_to_set(monkeypatch) -> None:
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: None)
+    cfg = LLMProviderConfig(provider="openai", model="", api_key="")
+
+    check = await doctor.probe_llm(cfg)
+
+    assert check.status == "fail"
+    assert check.fix == "Set OPENAI_API_KEY on this deployment, then save again."
 
 
 def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> None:
