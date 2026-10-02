@@ -257,6 +257,26 @@ class TestLanguage:
             self.PASSED_THROUGH, ""
         )
 
+    @staticmethod
+    def _preheader_langs(content: DigestContent) -> dict[str, str | None]:
+        html = render_digest_email(content, DIGEST_URL)
+        preheader = re.search(r'<div class="preheader">.*?</div>', html, re.S).group()
+        return text_langs(f'<div lang="en">{preheader}</div>')
+
+    def test_the_preheader_leaves_a_single_leads_own_title_unknown(self):
+        content = _full().model_copy(update={"output_language": "ja"})
+
+        assert self._preheader_langs(content) == {"Lead Story": "", "· Kept 15 of 300": "en"}
+
+    def test_the_preheader_keeps_a_written_heading_in_the_output_language(self):
+        grouped = _full().model_copy(update={"output_language": "ja"})
+        group = grouped.featured_articles[0]
+        grouped.featured_articles = [group.model_copy(update={"summary": "Shared summary."})]
+        no_lead = _full().model_copy(update={"output_language": "ja", "featured_articles": []})
+
+        assert self._preheader_langs(grouped)["Lead group"] == "ja"
+        assert self._preheader_langs(no_lead)["A Cluster"] == "ja"
+
     def test_a_plain_language_name_leaves_the_content_language_unknown(self):
         content = _full().model_copy(update={"output_language": "Traditional Chinese"})
         html = render_digest_email(content, DIGEST_URL)
