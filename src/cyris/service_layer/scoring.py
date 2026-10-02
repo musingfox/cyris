@@ -135,6 +135,7 @@ async def score_in_batches(
             logger.exception(
                 "Scoring batch %d/%d failed; continuing", i // BATCH_SIZE + 1, total_batches
             )
+            total_usage.fell_back_to_excerpts = True
 
     if persist_tags is not None and collected_tags:
         try:

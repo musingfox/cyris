@@ -490,7 +490,7 @@ class TestBatchGuard:
 
         scored: dict[str, tuple[float, str]] = {}
         tagged: dict[str, list[str]] = {}
-        await score_in_batches(
+        usage = await score_in_batches(
             articles,
             llm,
             snippet_length=1000,
@@ -501,6 +501,7 @@ class TestBatchGuard:
         first = {f"http://e.com/{n}" for n in range(BATCH_SIZE)}
         assert set(scored) == first
         assert set(tagged) == first
+        assert usage.fell_back_to_excerpts
 
 
 # --- Scorable selection tests ---

@@ -298,6 +298,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             total_usage.merge(usage)
         except Exception:
             logger.warning("Scoring failed; continuing without scores", exc_info=True)
+            total_usage.fell_back_to_excerpts = True
     elif scorable:
         logger.info("No LLM configured; skipping scoring for %d articles", len(scorable))
 

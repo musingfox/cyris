@@ -89,8 +89,8 @@ def build_digest_mail(
     if degraded:
         lines += [
             "",
-            "Some or all of this issue is plain excerpts: the configured LLM could not be used "
-            "for every step this run. Check the provider and its key on Settings.",
+            "Some or all of this issue is unscored or plain excerpts: the configured LLM could "
+            "not be used for every step this run. Check the provider and its key on Settings.",
         ]
     lines += [
         "",

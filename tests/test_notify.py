@@ -363,7 +363,7 @@ class TestDiscordPayload:
 
         assert payload["content"] == (
             "⚠️ Degraded digest: LLM gemini-3-flash could not be used for every step this run, "
-            "so some or all of it is plain excerpts."
+            "so some or all of it is unscored or plain excerpts."
         )
 
     def test_a_degraded_run_with_no_client_names_no_model(self):
@@ -380,7 +380,7 @@ class TestDiscordPayload:
 
         assert payload["content"] == (
             "⚠️ Degraded digest: the configured LLM could not be used this run, "
-            "so some or all of it is plain excerpts."
+            "so some or all of it is unscored or plain excerpts."
         )
 
     def test_healthy_usage_omits_content_line(self):

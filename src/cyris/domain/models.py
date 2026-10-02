@@ -122,8 +122,9 @@ class UsageStats(BaseModel):
     # Cloudflare's own billing unit, summed from the responses that reported one.
     # None means no call reported neurons, which is every provider but Workers AI.
     neurons: float | None = None
-    # A filter or summarize step put plain excerpts where the LLM's answer belongs,
-    # because no client was built or its call failed. Provider none sets it too.
+    # A step went on without the LLM's answer, because no client was built or its
+    # call failed: filter or summarize put plain excerpts in its place, or scoring
+    # left articles unscored. Provider none sets it too.
     fell_back_to_excerpts: bool = False
 
     @property

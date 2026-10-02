@@ -1353,18 +1353,29 @@ def _quiet_window_article() -> Article:
     return article
 
 
+class _ScoringFails(FakeLLM):
+    """Raises on the first call, which is scoring's, and answers every later one."""
+
+    async def complete(self, prompt: str, **kwargs):
+        if not self.calls:
+            self.calls.append({"prompt": prompt, **kwargs})
+            raise RuntimeError("quota")
+        return await super().complete(prompt, **kwargs)
+
+
 @pytest.mark.parametrize(
-    ("llm", "provider", "article", "degraded"),
+    ("llm", "provider", "article", "degraded", "spent"),
     [
-        (None, "gemini", _notify_article, True),
-        (FakeLLM(error=RuntimeError("quota")), "gemini", _notify_article, True),
-        (FakeLLM(), "gemini", _quiet_window_article, False),
-        (None, "none", _notify_article, False),
+        (None, "gemini", _notify_article, True, False),
+        (FakeLLM(error=RuntimeError("quota")), "gemini", _notify_article, True, False),
+        (_ScoringFails(), "gemini", _notify_article, True, True),
+        (FakeLLM(), "gemini", _quiet_window_article, False, False),
+        (None, "none", _notify_article, False, False),
     ],
-    ids=["missing-key", "call-failed", "quiet-window", "provider-none"],
+    ids=["missing-key", "call-failed", "scoring-failed", "quiet-window", "provider-none"],
 )
 async def test_every_channel_agrees_on_whether_a_run_fell_back(
-    tmp_path: Path, llm, provider: str, article, degraded: bool
+    tmp_path: Path, llm, provider: str, article, degraded: bool, spent: bool
 ) -> None:
     """A quiet window spends no tokens with a healthy client; only a fallback degrades a run."""
     discord: list = []
@@ -1380,7 +1391,7 @@ async def test_every_channel_agrees_on_whether_a_run_fell_back(
 
     report = await run_digest(deps, RunOptions())
 
-    assert recorded[0]["llm"]["input_tokens"] == 0
+    assert (recorded[0]["llm"]["input_tokens"] > 0) is spent
     assert recorded[0]["degraded"] is degraded
     assert discord == [degraded]
     assert mailed == [degraded]
