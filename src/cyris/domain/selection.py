@@ -48,65 +48,73 @@ def split_summarize_tier_by_score(
     return (high_score, low_score)
 
 
+def _by_score(item: DigestItem) -> tuple[bool, float]:
+    """Sort key, highest first under reverse=True; an unscored article trails every scored one."""
+    return (item.score is not None, item.score or 0.0)
+
+
+def _single(item: DigestItem) -> DigestSection:
+    """A one-article section: drawn as that article, with its own summary."""
+    return DigestSection(heading=item.title, items=[item])
+
+
 def layer_by_score(
     content: DigestContent, *, featured_threshold: float, max_featured: int
 ) -> DigestContent:
-    """Extract high-scoring sections from thematic_summaries to featured_articles.
+    """Lay the summarize tier out as the Top story and Features.
 
-    Scans thematic_summaries sections and moves sections with at least one item
-    scoring >= featured_threshold to the featured_articles list. Featured sections
-    are sorted by max item score (descending) and capped at max_featured.
+    `featured_articles[0]` is the Top story. It is a group, with its group summary,
+    when two or more articles of one summarized group score at least
+    `featured_threshold`; of several such groups, the one holding the best article
+    leads, and only its qualifying members stay in it. With no such group it is the
+    highest-scoring article. Every other article becomes a one-article section, highest
+    score first, and at most `max_featured` of them are kept: the rest leave the issue.
+    `thematic_summaries` ends empty.
 
-    Args:
-        content: Digest content to layer.
-        featured_threshold: Minimum score to qualify for featured.
-        max_featured: Maximum number of featured sections.
-
-    Returns:
-        Modified DigestContent with featured sections extracted.
+    A section with no group summary never groups: that is the degraded shape, whose
+    items each carry their own excerpt.
     """
-    featured = []
-    remaining_summaries = []
-
-    # Scan each section and compute max score
+    groups = []
     for section in content.thematic_summaries:
-        max_score = 0.0
-        has_score = False
+        if section.summary is None:
+            continue
+        members = [
+            i for i in section.items if i.score is not None and i.score >= featured_threshold
+        ]
+        if len(members) >= 2:
+            groups.append(section.model_copy(update={"items": members}))
+    lead = max(groups, key=lambda g: max(_by_score(i) for i in g.items), default=None)
 
-        for item in section.items:
-            if item.score is not None:
-                has_score = True
-                if item.score > max_score:
-                    max_score = item.score
-
-        # Check if section qualifies as featured
-        if has_score and max_score >= featured_threshold:
-            featured.append((section, max_score))
-        else:
-            remaining_summaries.append(section)
-
-    # Sort featured by max score descending and cap
-    featured.sort(key=lambda x: x[1], reverse=True)
-    featured_sections = [s for s, _ in featured[:max_featured]]
-
-    # If we capped, put the overflow back in remaining summaries
-    if len(featured) > max_featured:
-        overflow = [s for s, _ in featured[max_featured:]]
-        remaining_summaries = overflow + remaining_summaries
+    grouped = {id(i) for i in lead.items} if lead else set()
+    singles = sorted(
+        (i for s in content.thematic_summaries for i in s.items if id(i) not in grouped),
+        key=_by_score,
+        reverse=True,
+    )
+    if lead is None and singles:
+        lead = _single(singles.pop(0))
+    featured = [lead, *(_single(i) for i in singles[:max_featured])] if lead else []
 
     logger.info(
-        "Layered %d featured sections (threshold=%.1f), %d remaining in thematic",
-        len(featured_sections),
+        "Layered a %d-article Top story and %d Features (threshold=%.1f); %d past max_featured",
+        len(lead.items) if lead else 0,
+        max(0, len(featured) - 1),
         featured_threshold,
-        len(remaining_summaries),
+        max(0, len(singles) - max_featured),
     )
 
-    return content.model_copy(
-        update={
-            "featured_articles": featured_sections,
-            "thematic_summaries": remaining_summaries,
-        }
-    )
+    return content.model_copy(update={"featured_articles": featured, "thematic_summaries": []})
+
+
+def _cap_featured(featured: list[DigestSection], max_items: int) -> list[DigestSection]:
+    """The Top story whole, or its best article in its slot, then Features by score."""
+    if not featured or max_items <= 0:
+        return []
+    lead, *features = featured
+    if len(lead.items) > max_items:
+        lead = _single(max(lead.items, key=_by_score))
+    features = sorted(features, key=lambda s: max(_by_score(i) for i in s.items), reverse=True)
+    return [lead, *_truncate_sections(features, max_items - len(lead.items))]
 
 
 def _count_section_items(sections: list[DigestSection]) -> int:
@@ -133,8 +141,10 @@ def _truncate_sections(sections: list[DigestSection], max_items: int) -> list[Di
 def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestContent:
     """Apply priority fill to limit total digest articles.
 
-    Priority order: thematic_summaries → news_clusters → attention_sections → filtered_headlines.
-    Each category fills completely before the next gets remaining slots.
+    Priority order: featured_articles → thematic_summaries → news_clusters →
+    attention_sections → filtered_headlines. Each category fills completely before
+    the next gets remaining slots. Featured articles are laid out first
+    (`layer_by_score`), so the cap never splits the Top story's group.
     Summaries lead: the knowledge channel (summarize tier, inherently small) must
     never be crowded out of the digest by a heavy news day.
 
@@ -145,7 +155,8 @@ def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestC
     Returns:
         New DigestContent with limited items.
     """
-    remaining = max_items
+    selected_featured = _cap_featured(content.featured_articles, max_items)
+    remaining = max_items - _count_section_items(selected_featured)
 
     # Priority 1: thematic summaries
     summary_count = _count_section_items(content.thematic_summaries)
@@ -186,7 +197,8 @@ def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestC
         remaining -= len(selected_headlines)
 
     total_selected = (
-        _count_section_items(selected_clusters)
+        _count_section_items(selected_featured)
+        + _count_section_items(selected_clusters)
         + _count_section_items(selected_summaries)
         + _count_section_items(selected_attention)
         + len(selected_headlines)
@@ -205,6 +217,7 @@ def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestC
 
     return content.model_copy(
         update={
+            "featured_articles": selected_featured,
             "news_clusters": selected_clusters,
             "thematic_summaries": selected_summaries,
             "attention_sections": selected_attention,
