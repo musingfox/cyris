@@ -41,10 +41,10 @@ One layer always, a second if you own a domain.
    followed, and anything else returns to `/`. `/login` refuses
    to start a session if the secret is shorter than 32 characters. Revocation is
    rotating `CYRIS_UI_TOKEN`; every outstanding cookie dies at once.
-2. **Cloudflare Access**, optional, on a hostname you own. Access cannot protect
-   `workers.dev`. With `CYRIS_UI_ACCESS_HOST` set to that hostname, `/api/vote` on it
-   trusts Access instead of the cookie, so a reader who already passed Access does not
-   log in again. On every other hostname the cookie is required. The setup order
+2. **Cloudflare Access**, optional, on a hostname you own. It stays off `workers.dev`,
+   where scripts sign in with the cookie alone. With `CYRIS_UI_ACCESS_HOST` set to
+   that hostname, `/api/vote` on it trusts Access instead of the cookie, so a reader
+   who already passed Access does not log in again. On every other hostname the cookie is required. The setup order
    matters; it is in the
    [install guide](../../docs/install-cloudflare.md#optional-cloudflare-access-on-your-own-domain).
 
@@ -54,5 +54,5 @@ validate the Access JWT itself.
 Protected paths are `/settings`, `/login`, `/run`, `/api/*` and `/static/*`. Behind
 Access they 302 to `cloudflareaccess.com` rather than 401, so a script against an
 Access hostname needs an Access service token. `cyris doctor --deployment` and the
-deploy workflow's `verify` step log in and read `/api/build`, so both take the
-`workers.dev` URL.
+deploy workflow's `verify` step log in and read `/api/build` with no Access service
+token, so both take the `workers.dev` URL.

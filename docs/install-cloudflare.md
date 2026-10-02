@@ -256,9 +256,13 @@ source: on `/settings` → Sources, or with `cyris sources push`. On a D1 deploy
 ## Optional: Cloudflare Access on your own domain
 
 A `*.workers.dev` deploy is complete with the token cookie as its only lock. If you own
-a domain on Cloudflare, Access can be a second layer. Access cannot protect a
-`workers.dev` hostname, and attaching a domain means routing lives in two places:
-`wrangler.toml` for `workers_dev`, the dashboard for the domain. Follow this order:
+a domain on Cloudflare, Access can be a second layer on that domain. Keep it off the
+`workers.dev` hostname, where scripts sign in with the cookie alone (see below). That
+rules out
+[Worker-level Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/),
+which covers every hostname of the Worker, `workers.dev` included; step 2 protects one
+hostname instead. Attaching a domain means routing lives in two places: `wrangler.toml`
+for `workers_dev`, the dashboard for the domain. Follow this order:
 
 1. Attach the custom domain from the dashboard (Workers & Pages → `cyris-app` →
    Settings → Domains & Routes). The zone must already be active.
@@ -272,8 +276,9 @@ a domain on Cloudflare, Access can be a second layer. Access cannot protect a
    proves Access is blocking leaves votes open to anyone.
 
 The Discord digest link picks up this hostname on its own (section 5). Scripts against an Access hostname get a 302 rather than a 401 and need an
-Access service token. Use the `workers.dev` URL for them: your own scripts, `curl` in
-step 7, `cyris doctor --deployment` and the deploy workflow's `CYRIS_DEPLOYMENT_URL`.
+Access service token. Use the `workers.dev` URL, which stays outside Access, for them:
+your own scripts, `curl` in step 7, `cyris doctor --deployment` and the deploy
+workflow's `CYRIS_DEPLOYMENT_URL`.
 
 ## Running the CLI against the deployment
 
