@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from cyris.domain.models import NO_LLM_MODEL, ArticleState, UsageStats, is_degraded_run
+from cyris.domain.models import (
+    NO_LLM_MODEL,
+    ArticleState,
+    StoredArticle,
+    UsageStats,
+    is_degraded_run,
+)
 from cyris.domain.selection import count_dead_links, layer_by_score
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -38,6 +44,16 @@ class RunReport:
     rendered: str | None = None  # dry-run render of the digest
     html_path: Path | None = None
     failed_sources: list[str] = field(default_factory=list)
+
+
+def _newest(articles: list[StoredArticle], n: int) -> list[StoredArticle]:
+    """The `n` most recently published of `articles`, in their original order.
+
+    Published, not first seen: every article one run saves shares a first-seen
+    time. The order is kept so the cap changes which articles run, never how.
+    """
+    keep = {a.url for a in sorted(articles, key=lambda a: a.published_at, reverse=True)[:n]}
+    return [a for a in articles if a.url in keep]
 
 
 def _render_site(
@@ -265,11 +281,10 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
 
     # Score unscored PENDING non-news articles
     state_filter = None if options.force else ArticleState.PENDING
-    pending_articles = store.load_by_time_range(
-        start=window_start,
-        end=load_end,
-        state_filter=state_filter,
-    )[: cfg.app.digest.max_articles_per_digest]
+    pending_articles = _newest(
+        store.load_by_time_range(start=window_start, end=load_end, state_filter=state_filter),
+        cfg.app.digest.max_articles_per_digest,
+    )
 
     scorable = select_scorable(pending_articles, force=options.force)
 
@@ -303,11 +318,10 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         logger.info("No LLM configured; skipping scoring for %d articles", len(scorable))
 
     # Reload pending articles after scoring
-    pending_articles = store.load_by_time_range(
-        start=window_start,
-        end=load_end,
-        state_filter=state_filter,
-    )[: cfg.app.digest.max_articles_per_digest]
+    pending_articles = _newest(
+        store.load_by_time_range(start=window_start, end=load_end, state_filter=state_filter),
+        cfg.app.digest.max_articles_per_digest,
+    )
 
     # Vote similarity runs over every candidate, not just the scored ones: the
     # scorer skips news, and the class that drew the first downvote is news-tagged.

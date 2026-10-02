@@ -141,6 +141,56 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
     assert stored[0].score == 85.0
 
 
+def _published(name: str, source_name: str, hours_ago: float) -> Article:
+    return Article(
+        id=name,
+        title=name,
+        url=f"https://example.com/{name}",
+        content=f"{name} body",
+        published_at=datetime.now(UTC) - timedelta(hours=hours_ago),
+        source_name=source_name,
+        source_tier=Tier.FAN,
+    )
+
+
+async def test_a_run_processes_the_windows_newest_articles_across_sources(
+    tmp_path: Path,
+) -> None:
+    """The cap keeps the newest N by publish time, wherever each article came from.
+
+    The store hands the window back oldest first-seen first, and every article
+    one run saves shares a first-seen time, so neither order says which is newest.
+    """
+    earlier_pending = _published("latest", "Alpha", hours_ago=0.2)
+    fetched = [
+        _published("oldest", "Alpha", hours_ago=5),
+        _published("middle", "Beta", hours_ago=3),
+        _published("newer", "Beta", hours_ago=1),
+    ]
+    deps, _ = make_deps(tmp_path, llm=None, source=FakeSource(fetched))
+    deps = replace(
+        deps,
+        cfg=make_config(
+            agent_vault=deps.cfg.app.agent_vault, digest={"max_articles_per_digest": 2}
+        ),
+    )
+    deps.store.save([earlier_pending], now=datetime.now(UTC) - timedelta(hours=3))
+
+    report = await run_digest(deps, RunOptions(period="morning"))
+
+    assert report.status == "ok"
+    states = {
+        a.title: a.state
+        for a in deps.store.get_by_urls([a.url for a in [earlier_pending, *fetched]])
+    }
+    assert states == {
+        "latest": ArticleState.ACCEPTED,
+        "newer": ArticleState.ACCEPTED,
+        "middle": ArticleState.PENDING,
+        "oldest": ArticleState.PENDING,
+    }
+
+
 async def test_run_digest_no_articles(tmp_path: Path) -> None:
     source = FakeSource([])
     deps, notifications = make_deps(tmp_path, FakeLLM(), source)
