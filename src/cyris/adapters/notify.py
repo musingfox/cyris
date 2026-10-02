@@ -5,7 +5,7 @@ import re
 
 import httpx
 
-from cyris.domain.models import DigestContent, DigestSection
+from cyris.domain.models import NO_LLM_MODEL, DigestContent, DigestSection
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +233,12 @@ def build_discord_payload(
     configured provider, and a missing key leaves no trace of it in the usage.
     """
     payload = {"embeds": build_discord_embeds(content, digest_url, publish_failed)}
-    if degraded:
+    if degraded and content.usage.model != NO_LLM_MODEL:
+        payload["content"] = (
+            f"⚠️ Degraded digest: LLM {content.usage.model} was configured but this run used 0 "
+            "input tokens, so scores and summaries are excerpts."
+        )
+    elif degraded:
         payload["content"] = (
             "⚠️ Degraded digest: the configured LLM could not be used this run, "
             "so scores and summaries are excerpts."

@@ -13,7 +13,7 @@ import httpx
 
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import period_label, redact_webhook_tokens
-from cyris.adapters.output.email_digest import render_digest_email
+from cyris.adapters.output.email_digest import raw_page_url, render_digest_email
 from cyris.adapters.output.html_digest import Story, _features
 from cyris.domain.models import DigestContent, DigestItem
 
@@ -73,7 +73,11 @@ def _story_lines(story: Story) -> list[str]:
 
 
 def build_digest_mail(
-    content: DigestContent, digest_url: str = "", publish_failed: bool = False
+    content: DigestContent,
+    digest_url: str = "",
+    publish_failed: bool = False,
+    raw_page: bool = False,
+    degraded: bool = False,
 ) -> tuple[str, str]:
     """The subject and plain-text body: the issue's sections, as the HTML part orders them."""
     title = f"{period_label(content.period)} digest {content.date}"
@@ -82,11 +86,24 @@ def build_digest_mail(
         lines.append(f"Read online: {digest_url}")
     elif publish_failed:
         lines.append("Publishing the online edition failed, so this issue has no link.")
+    if degraded:
+        lines += [
+            "",
+            "This issue is plain excerpts, unscored and unsummarised: the configured LLM could "
+            "not be used this run. Check the provider's key on Settings.",
+        ]
     lines += [
         "",
         f"Kept {content.articles_included} of {content.articles_received} articles "
         f"from {content.sources_processed} sources.",
     ]
+    if not content.articles_included:
+        raw_url = raw_page_url(content, digest_url, raw_page)
+        lines.append(
+            "Nothing is in this issue: the filter kept none of the "
+            f"{content.articles_received} articles this run received."
+            + (f" All articles lists each one with its verdict: {raw_url}" if raw_url else "")
+        )
     features = _features(content)
     sections = [
         ("Top story", [line for story in features[:1] for line in _story_lines(story)]),
@@ -121,7 +138,7 @@ async def send_digest_mail(
     """
     if not recipient:
         return
-    subject, text = build_digest_mail(content, digest_url, publish_failed)
+    subject, text = build_digest_mail(content, digest_url, publish_failed, raw_page, degraded)
     html = render_digest_email(content, digest_url, raw_page, publish_failed, degraded)
     try:
         status = await send_mail(account_id, token, sender, recipient, subject, text, html)

@@ -227,6 +227,66 @@ class TestDigestMail:
         assert "forbidden" in caplog.text
 
 
+class TestDigestMailText:
+    EMPTY = "Nothing is in this issue: the filter kept none of the 300 articles this run received."
+    DEGRADED = "This issue is plain excerpts, unscored and unsummarised"
+
+    @staticmethod
+    def _empty() -> DigestContent:
+        return _content().model_copy(update={"articles_included": 0})
+
+    def test_an_empty_issue_says_why_and_links_all_articles(self):
+        _, text = build_digest_mail(
+            self._empty(), "https://digest.example.org/2026-09-27-morning", raw_page=True
+        )
+
+        assert (
+            f"{self.EMPTY} All articles lists each one with its verdict: "
+            "https://digest.example.org/2026-09-27-morning-raw"
+        ) in text
+
+    @pytest.mark.parametrize(
+        ("digest_url", "raw_page"),
+        [("https://digest.example.org/2026-09-27-morning", False), ("", True)],
+        ids=["no-raw", "no-site"],
+    )
+    def test_an_empty_issue_without_a_raw_page_links_nothing(self, digest_url, raw_page):
+        _, text = build_digest_mail(self._empty(), digest_url, raw_page=raw_page)
+
+        assert self.EMPTY in text
+        assert "-raw" not in text
+
+    def test_an_issue_with_articles_has_no_empty_sentence(self):
+        _, text = build_digest_mail(_content(), raw_page=True)
+
+        assert "the filter kept none" not in text
+
+    @pytest.mark.parametrize("degraded", [True, False])
+    def test_only_a_degraded_issue_carries_the_degraded_line(self, degraded):
+        _, text = build_digest_mail(_content(), degraded=degraded)
+
+        assert (self.DEGRADED in text) is degraded
+
+    @pytest.mark.parametrize("degraded", [True, False])
+    @respx.mock
+    async def test_the_sent_text_part_carries_the_verdict(self, degraded):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(200, json=_result(delivered=["me@example.org"]))
+        )
+
+        await send_digest_mail(
+            "me@example.org",
+            "digest@example.org",
+            _content(),
+            degraded=degraded,
+            account_id=ACCOUNT,
+            token="tok",
+        )
+
+        sent = json.loads(route.calls.last.request.content)
+        assert (self.DEGRADED in sent["text"]) is degraded
+
+
 class TestAlertMail:
     @respx.mock
     async def test_posts_plain_text_without_html(self):
