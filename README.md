@@ -13,7 +13,7 @@ issue took in 91 articles, kept 13, and cost about US$0.03 in LLM usage. That di
 public at [cyris-digest.pages.dev](https://cyris-digest.pages.dev/), written in
 Traditional Chinese.
 
-![A digest built from 13 public tech feeds: 64 articles received, 12 included, led by a top story](website/assets/digest.webp)
+![A digest: 8 sources, 64 articles received, 12 included, led by a top story](website/assets/digest.webp)
 
 ## What you get
 

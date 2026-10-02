@@ -173,7 +173,7 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
         </div>
         <p class="hero-note" data-zh="免費、開源，不需要 AI 金鑰就能開始。真實摘要以繁體中文撰寫。">Free and open source. No AI key needed to start. The live digest is written in Traditional Chinese.</p>
         <p class="proof" data-zh="維護者自己的部署，2026 年 8 月 28 日至 9 月 27 日共 56 期：平均每期收進 &lt;strong&gt;91 篇&lt;/strong&gt;文章，留下 &lt;strong&gt;13 篇&lt;/strong&gt;，AI 費用約 &lt;strong&gt;US$0.03&lt;/strong&gt;。">The maintainer’s own deployment, 56 issues from Aug 28 to Sep 27, 2026: an average issue took in <strong>91 articles</strong>, kept <strong>13</strong>, and cost about <strong>US$0.03</strong> in AI.</p>
-        <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest built from 13 public tech feeds: 64 articles received, 12 included, led by a top story">
+        <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest: 8 sources, 64 articles received, 12 included, led by a top story">
     </div>
 </header>
 <section id="how" aria-labelledby="how-title">
@@ -256,7 +256,7 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
             <article class="run-card cloud">
                 <h3 data-zh="Cloudflare 自動發布">Publish on Cloudflare</h3>
                 <p data-zh="設定發布時間，讓 Cyris 定時產生摘要，再到網站閱讀與管理。">Set publishing hours so Cyris can generate digests on schedule. Read them and manage your settings on the web.</p>
-                <ul><li data-zh="需要 Cloudflare Workers 付費方案（每月 US$5）">Requires Cloudflare Workers Paid (US$5/month)</li><li data-zh="資料存於 D1，摘要發布至 Pages">Data in D1; digests on Pages</li><li data-zh="收發郵件另需自己的網域與 Email Routing">Email ingestion and delivery need your domain and Email Routing</li></ul>
+                <ul><li data-zh="需要 Cloudflare Workers 付費方案（每月 US$5）、Docker 與 bun">Requires Cloudflare Workers Paid (US$5/month), Docker and bun</li><li data-zh="資料存於 D1，摘要發布至 Pages">Data in D1; digests on Pages</li><li data-zh="收發郵件另需自己的網域與 Email Routing">Email ingestion and delivery need your domain and Email Routing</li><li data-zh="安裝指南目前只在一個帳號上驗證過">The guide has so far been verified on one account only</li></ul>
                 <a class="btn" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" data-zh="雲端部署步驟 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup <span aria-hidden="true">↗</span></a>
             </article>
         </div>
@@ -281,7 +281,7 @@ uv run cyris run</code></pre>
     </div>
 </section>
 </main>
-<footer class="wrap"><span data-zh="Cyris · 開放原始碼，可自行託管。">Cyris · Open source, self-hosted.</span></footer>
+<footer class="wrap"><span data-zh="Cyris · 開放原始碼，可自行託管。">Cyris · Open source, self-hosted.</span><a href="https://github.com/musingfox/cyris/releases/latest" data-zh="最新版本 <span aria-hidden=&quot;true&quot;>↗</span>">Latest release <span aria-hidden="true">↗</span></a></footer>
 <script>
 (() => {
     const root = document.documentElement;
