@@ -590,8 +590,8 @@ _CHECKS += [
     )
     for width in (TAP_WIDTH, 1440)
 ]
-# The longest Wire summary wraps inside its row on a phone, at every type size, and the
-# page does not scroll sideways.
+# The longest Wire summary wraps inside its row on a phone, its URL included, at every
+# type size, and the page does not scroll sideways.
 WIRE_FITS = Check(
     id=f"wire-fits-{TAP_WIDTH}",
     fixture="signed-in",
@@ -613,7 +613,7 @@ WIRE_FITS = Check(
         const problem = overflow("{TAP_WIDTH}");
         expect(!problem, problem);
     """,
-    sabotage=restyle(".headline-item .summary { white-space: nowrap !important; }"),
+    sabotage=restyle(".headline-item .summary { overflow-wrap: normal !important; }"),
 )
 _CHECKS += [
     WIRE_FITS,
