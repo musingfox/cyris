@@ -61,7 +61,7 @@ with the feed count. Cron Triggers themselves are free — 5 per account [2]; CP
 | Pages static serving | "free and unlimited" on both plans; 20,000 files/site, 25 MiB/file [11][12] | ~100 small pages |
 | Pages direct upload | **no deployment-count cap is stated** on the limits, direct-upload or deployment-create pages [12][13]; only 500 git *builds*/month, which direct upload does not use | 60 deploys/month |
 | Email Routing | free, **including the Workers email handler**; outbound Email Sending is Paid-only [15] | the newsletter path |
-| Workers AI | 10,000 neurons/day, the same allocation on Free and Paid [14] | embeddings are off |
+| Workers AI | 10,000 neurons/day, the same allocation on Free and Paid [14] | unused by embeddings: vote similarity embeds with `gemini-embedding-001` |
 | KV writes | 1,000 writes, 1,000 deletes, 1,000 list requests per day, against 100,000 reads [10] | one write per vote |
 | D1 in production | the FAQ offers only "the ability to **prototype and experiment** with D1 for free" [9] — neither permitted nor forbidden | a gap in the docs, not a verdict |
 
