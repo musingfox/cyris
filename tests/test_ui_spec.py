@@ -1296,6 +1296,18 @@ def test_a_source_tier_is_a_plain_pill(source: Path) -> None:
     assert tier_spans == ['"pill"']
 
 
+def test_the_websites_secondary_button_is_the_apps() -> None:
+    html = WEBSITE.read_text()
+    website = parse_style_block(html)
+    prototype = parse_style_block(PROTOTYPE.read_text())
+    hover = ".btn.secondary:where(:not(:disabled)):hover"
+    for key in (".btn.secondary", hover):
+        assert website[key] == prototype[key]
+    assert set(re.findall(r'<a class="(btn\b[^"]*)"', html)) == {"btn primary", "btn secondary"}
+    hovers = [key for key in website if ".btn" in key and ":hover" in key and "primary" not in key]
+    assert hovers == [hover]
+
+
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
     rules = parse_style_block(f"<style>{_render_partial('_components.css.j2')}</style>")
     assert rules[".choice.unavailable"] == {"cursor: not-allowed"}
