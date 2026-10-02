@@ -15,6 +15,7 @@ from cyris.domain.models import (
 )
 from cyris.domain.selection import (
     digest_urls,
+    layer_by_score,
     select_digest_articles,
     split_summarize_tier_by_score,
 )
@@ -57,6 +58,8 @@ class DigestPipeline:
         summarize_snippet_length: int,
         filter_snippet_length: int,
         score_threshold: int,
+        featured_threshold: int,
+        max_featured: int,
         output_language: str,
         style_prompt: str,
     ) -> None:
@@ -65,6 +68,8 @@ class DigestPipeline:
         self.summarize_snippet_length = summarize_snippet_length
         self.filter_snippet_length = filter_snippet_length
         self.score_threshold = score_threshold
+        self.featured_threshold = featured_threshold
+        self.max_featured = max_featured
         self.output_language = output_language
         self.style_prompt = style_prompt
 
@@ -256,6 +261,10 @@ class DigestPipeline:
             output_language=self.output_language,
         )
 
+        # Laid out before the cap, so the cap takes by score and sees the Top story's group.
+        content = layer_by_score(
+            content, featured_threshold=self.featured_threshold, max_featured=self.max_featured
+        )
         content = select_digest_articles(content, max_items=self.max_digest_output)
         # Accepted means shown in this issue. What the cap cut, or the summarizer
         # left out of every section, stays pending for the next run in the window.
