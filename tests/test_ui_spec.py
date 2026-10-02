@@ -833,6 +833,30 @@ def test_every_footer_is_the_prototype_footer(page: str) -> None:
     assert _parsed(page)[".footer"] == parse_style_block(PROTOTYPE.read_text())[".footer"]
 
 
+# Every block of digest prose: the empty or degraded note, a section's description, and
+# each item's summary or snippet.
+DIGEST_PROSE = (
+    ".issue-note",
+    ".section-description",
+    ".lead-story .summary",
+    ".featured-item .summary",
+    ".news-cluster .summary",
+    ".article-item .summary",
+    ".attention-item .snippet",
+)
+
+
+@pytest.mark.parametrize("key", DIGEST_PROSE)
+def test_digest_prose_stops_at_the_measure(key: str) -> None:
+    assert _declared(_parsed("digest")[key], "max-width") == ["var(--measure)"]
+
+
+def test_the_prototype_prose_stops_at_the_measure() -> None:
+    prototype = parse_style_block(PROTOTYPE.read_text())
+    assert "max-width: var(--measure)" in prototype[".summary, .snippet"]
+    assert [key for key, rules in prototype.items() if "max-width: 70ch" in rules] == []
+
+
 def test_the_lead_story_is_the_prototype_lead_card() -> None:
     digest = _parsed("digest")
     assert [key for key in digest if ".lead-story::before" in key] == []

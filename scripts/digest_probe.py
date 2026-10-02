@@ -57,6 +57,15 @@ ITEM_SELECTORS = (
     ".headline-item",
 )
 
+# The prose blocks the fixture draws as wide as the container, where an uncapped one
+# would run the full page width.
+PROSE_SELECTORS = (
+    ".lead-story .summary",
+    ".news-cluster .summary",
+    ".article-item .summary",
+    ".section-description",
+)
+
 # The widths the ticket accepts the page at.
 WIDTHS = (360, 880, 1000, 1440)
 
@@ -330,6 +339,27 @@ _CHECKS: list[Check] = [
             """,
         )
         for width in (360, 721, 880, 1000, 1100, 1160, 1440)
+    ),
+    # At the widest width, prose that spans the container still stops at --measure.
+    Check(
+        id="prose-measure-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        act="await signedIn();",
+        script=f"""
+            const measure = parseFloat(
+                getComputedStyle(document.documentElement).getPropertyValue("--measure"));
+            for (const selector of {json.dumps(PROSE_SELECTORS)}) {{
+                const blocks = $$(selector);
+                expect(blocks.length, `no ${{selector}} on the page`);
+                const wide = blocks.map((b) => b.getBoundingClientRect().width)
+                    .filter((w) => w > measure + 0.5);
+                expect(!wide.length, `${{selector}} is ${{wide}}px wide, past ${{measure}}px`);
+            }}
+        """,
+        sabotage=f"""$$({json.dumps(", ".join(PROSE_SELECTORS))})
+            .forEach((b) => {{ b.style.maxWidth = "none"; }});""",
     ),
     # The page never scrolls sideways, even in the fallback font the probe renders.
     *(
