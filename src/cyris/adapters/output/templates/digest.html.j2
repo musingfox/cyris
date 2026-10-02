@@ -17,7 +17,7 @@
     <div class="meta">
         {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
         <span class="source-tag">{{ item.sources | join(' · ') }}</span>
-        {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
+        {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
         {{ promote_btn(item) }}
     </div>
 </article>
@@ -195,6 +195,11 @@
             letter-spacing: .1em;
             color: var(--text-dim);
         }
+
+        /* The original link is a 44px box, its glyph centred: a centred tap area
+           would reach over the source names and votes beside it (spec section 4). */
+        .orig { display: inline-flex; justify-content: center; min-width: 44px; position: relative; }
+        .orig::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
 
         .meta.ruled {
             margin-top: var(--s-6);
@@ -487,7 +492,7 @@
                         <div class="meta">
                             {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
-                            {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
                         {% endif %}
@@ -529,7 +534,7 @@
                         {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
                         <div class="meta">
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %}
-                            {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
                     </article>
