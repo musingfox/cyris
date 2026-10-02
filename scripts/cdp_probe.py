@@ -95,13 +95,25 @@ NO_SITE_BAR_AREAS = restyle(".brand::after, .site-nav a::after { content: none !
 # (`typeScaleStyle` in workers/app/src/type_scale.js), byte for byte.
 LARGEST_TYPE_SCALE = max(get_args(DigestConfig.model_fields["type_scale"].annotation))
 LARGEST_TYPE_SCALE_STYLE = f"<style>html:root{{--type-scale:{LARGEST_TYPE_SCALE}}}</style>"
+# The smallest, where glyphs are narrowest and a hit area reaches furthest past them.
+SMALLEST_TYPE_SCALE = min(get_args(DigestConfig.model_fields["type_scale"].annotation))
+SMALLEST_TYPE_SCALE_STYLE = f"<style>html:root{{--type-scale:{SMALLEST_TYPE_SCALE}}}</style>"
+
+
+def _at_type_scale(page: str, style: str) -> str:
+    if "</head>" not in page:
+        raise ValueError("the page has no </head> to put the type size before")
+    return page.replace("</head>", style + "</head>", 1)
 
 
 def at_largest_type_scale(page: str) -> str:
     """`page` as the app Worker serves it at the largest type size."""
-    if "</head>" not in page:
-        raise ValueError("the page has no </head> to put the type size before")
-    return page.replace("</head>", LARGEST_TYPE_SCALE_STYLE + "</head>", 1)
+    return _at_type_scale(page, LARGEST_TYPE_SCALE_STYLE)
+
+
+def at_smallest_type_scale(page: str) -> str:
+    """`page` as the app Worker serves it at the smallest type size."""
+    return _at_type_scale(page, SMALLEST_TYPE_SCALE_STYLE)
 
 
 @dataclass(frozen=True)
@@ -182,6 +194,16 @@ def largest_twin(check: Check, check_id: str, fixture: str) -> Check:
     )
 
 
+def smallest_twin(check: Check, check_id: str, fixture: str) -> Check:
+    """`check` again as `check_id`, on a `fixture` serving the page at the smallest type size.
+
+    Like `largest_twin`, it asserts that size took effect first; its sabotage is its twin's.
+    """
+    return replace(
+        check, id=check_id, fixture=fixture, script="expectSmallestScale();\n" + check.script
+    )
+
+
 def registry_problems(checks: Iterable[Check], kinds: Iterable[str]) -> list[str]:
     """Name every check the self-test could not trust: repeated, unsabotaged, or unserved.
 
@@ -236,6 +258,8 @@ const typeScale = () =>
   getComputedStyle(document.documentElement).getPropertyValue("--type-scale").trim();
 // A largest-size fixture that failed to inject would otherwise pass as scale 1.
 const expectLargestScale = () => expect(typeScale() === {json.dumps(str(LARGEST_TYPE_SCALE))},
+  `--type-scale is ${{typeScale()}}`);
+const expectSmallestScale = () => expect(typeScale() === {json.dumps(str(SMALLEST_TYPE_SCALE))},
   `--type-scale is ${{typeScale()}}`);
 // The UI spec's tap area: a target takes taps over at least TAP x TAP, and a tap on
 // any point of its drawn box reaches it, so no neighbour's hit area covers it.

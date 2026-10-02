@@ -853,6 +853,8 @@ EXPECTED_RAW_IDS = {
     "tap-votes-375",
     "tap-votes-apart-375",
     "tap-site-bar-375",
+    "tap-smallest-votes-375",
+    "tap-smallest-votes-apart-375",
 }
 
 PENDING_TWO_UP = {
@@ -881,6 +883,7 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
     [
         ("signed-in", 200, True),
         ("signed-in-largest", 200, True),
+        ("signed-in-smallest", 200, True),
         ("signed-out", 401, False),
         ("no-worker", 404, None),
         ("slow-vote", 200, True),
@@ -987,6 +990,10 @@ EXPECTED_DIGEST_IDS = {
             "site-bar",
             "archive",
         )
+    ),
+    *(
+        f"tap-smallest-{name}-375"
+        for name in ("votes", "votes-apart", "original", "original-clear")
     ),
 }
 
