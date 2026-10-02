@@ -1750,6 +1750,13 @@ def test_a_failed_triage_vote_is_explained_under_its_buttons(tmp_path):
     assert raw.index('id="t-actions"') < raw.index(VOTE_FAILED) < raw.index('id="t-hint"')
 
 
+def test_an_unconfigured_vote_is_told_by_the_app_workers_own_503(tmp_path):
+    router = Path(__file__).resolve().parents[1] / "workers" / "app" / "src" / "router.js"
+    [error] = re.findall(r'json\(\{ error: "([^"]+)" \}, 503\)', router.read_text())
+
+    assert f"body.error === '{error}'" in _issue_pages(tmp_path)["raw"]
+
+
 def test_the_raw_page_fetches_only_to_vote_and_to_probe(tmp_path):
     assert _issue_pages(tmp_path)["raw"].count("fetch(") == 2
 
