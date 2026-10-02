@@ -15,7 +15,7 @@ import copy
 import hashlib
 import json
 import mimetypes
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -413,6 +413,9 @@ def test_every_article_row_holds_what_cyris_was_given_and_decided(receipts) -> N
     # The vote: rejected, as not interested, and stamped as the reader's own verdict.
     seed = receipts.run.scenario.stored[0]
     assert _within_run(receipts, voted.pop("triaged_at"))
+    voted_on = voted["digest_date"]
+    run = receipts.run
+    assert voted_on in {run.started_at.date().isoformat(), run.finished_at.date().isoformat()}
     assert voted == {
         "url": seed.url,
         "original_id": seed.original_id,
@@ -426,7 +429,8 @@ def test_every_article_row_holds_what_cyris_was_given_and_decided(receipts) -> N
         "ref_urls": "[]",
         "state": "rejected",
         "first_seen_at": seed.first_seen_at.isoformat(timespec="microseconds"),
-        "digest_date": date.today().isoformat(),
+        # update_article_state dates a vote by the process clock, which the harness runs in UTC.
+        "digest_date": voted_on,
         "rejection_reason": str(RejectReason.NOT_INTERESTED),
         "score": seed.score,
         "language": seed.language,

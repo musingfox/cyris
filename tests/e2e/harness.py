@@ -334,6 +334,8 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
             "HTTP_PROXY": proxy_url,
             "SSL_CERT_FILE": str(ca_file),
             "CYRIS_GIT_SHA": GIT_SHA,
+            # The container runs in UTC; without it the run takes the host's local zone.
+            "TZ": "UTC",
         }
         result = subprocess.run(
             [
