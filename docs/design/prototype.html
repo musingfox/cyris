@@ -148,11 +148,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .btn.sm { height: 34px; padding: 0 var(--s-2); letter-spacing: .06em; }
 .btn.primary { background: var(--accent); color: var(--bg); }
-.btn.primary:hover { background: #d4ff66; }
+.btn.primary:where(:not(:disabled)):hover { background: #d4ff66; }
 .btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
-.btn.secondary:hover { color: var(--text); }
+.btn.secondary:where(:not(:disabled)):hover { color: var(--text); }
 .btn.danger { background: transparent; border-color: var(--warn); color: var(--warn); }
-.btn.danger:hover, .btn.danger.armed { background: var(--warn-tint); }
+.btn.danger:where(:not(:disabled)):hover, .btn.danger.armed { background: var(--warn-tint); }
+.btn:where(:not(:disabled)):active { opacity: .7; }
 .btn:disabled { opacity: .4; cursor: default; }
 
 /* ---- panels, rows, pills, states ---- */
