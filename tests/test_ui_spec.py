@@ -1262,6 +1262,16 @@ def test_the_websites_light_primary_label_reads_on_hover() -> None:
     assert _contrast(resolve(label), resolve(ground)) >= 4.5
 
 
+SETTINGS_JS = STYLE.with_name("settings.js")
+
+
+@pytest.mark.parametrize("source", [SETTINGS_JS, PROTOTYPE], ids=["settings.js", "prototype"])
+def test_a_source_tier_is_a_plain_pill(source: Path) -> None:
+    tier_span = r"<span class=(.*?)>\$\{(?:esc\()?s\.tier\)?\}</span>"
+    tier_spans = re.findall(tier_span, source.read_text())
+    assert tier_spans == ['"pill"']
+
+
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
     rules = parse_style_block(f"<style>{_render_partial('_components.css.j2')}</style>")
     assert rules[".choice.unavailable"] == {"cursor: not-allowed"}

@@ -1217,7 +1217,7 @@ function renderSources() {
     <tr class="src-row ${openName === s.name ? "open" : ""}" data-name="${esc(s.name)}" tabindex="0">
       <td class="name">${esc(s.name)}</td>
       <td><span class="label">${s.type}</span></td>
-      <td><span class="pill ${s.tier === "summarize" ? "score" : ""}">${s.tier}</span></td>
+      <td><span class="pill">${s.tier}</span></td>
       <td class="target">${esc(s.url || s.email_match || "—")}</td>
       <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
     </tr>`).join("") || `<tr><td class="small" colspan="5">No sources yet. The next run stops until one is added.</td></tr>`;

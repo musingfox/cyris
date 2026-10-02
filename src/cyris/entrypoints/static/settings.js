@@ -600,7 +600,7 @@ function renderSources() {
       <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
         <td class="name">${esc(s.name)}</td>
         <td><span class="label">${esc(s.type)}</span></td>
-        <td><span class="pill${s.tier === "summarize" ? " score" : ""}">${esc(s.tier)}</span></td>
+        <td><span class="pill">${esc(s.tier)}</span></td>
         <td class="target">${esc(s.url || s.email_match || "—")}</td>
         <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
       </tr>`).join("")
