@@ -512,7 +512,7 @@ tr.editor[inert] .form { opacity: .4; }
         <h2>本地模型的工具呼叫</h2>
         <p class="summary">兩篇都在測小模型能不能可靠地呼叫工具：一篇比較輸出格式的約束方式，一篇記錄把重試交給呼叫端之後失敗率怎麼變。兩者的結論一致：格式約束解決了大半的解析錯誤，剩下的失敗多半來自模型選錯工具，重試救不回來。</p>
         <article class="article-item">
-          <h3 class="item-title lg"><a href="#digest">用 JSON schema 約束小模型的工具呼叫</a></h3>
+          <h3 class="item-title lg" lang=""><a href="#digest">用 JSON schema 約束小模型的工具呼叫</a></h3>
           <div class="meta">
             <span class="pill score">0.83</span>
             <span class="source-tag">Simon Willison</span>
@@ -521,7 +521,7 @@ tr.editor[inert] .form { opacity: .4; }
           </div>
         </article>
         <article class="article-item">
-          <h3 class="item-title lg"><a href="#digest">工具呼叫失敗時，誰負責重試</a></h3>
+          <h3 class="item-title lg" lang=""><a href="#digest">工具呼叫失敗時，誰負責重試</a></h3>
           <div class="meta">
             <span class="pill score">0.82</span>
             <span class="source-tag">Simon Willison</span>
@@ -536,7 +536,7 @@ tr.editor[inert] .form { opacity: .4; }
       <h2 class="section-tag"><span class="label">Features</span></h2>
       <div class="featured-grid" lang="zh-Hant">
         <article class="featured-item">
-          <h3 class="item-title lg"><a href="#digest">SQLite 的 WAL2 模式合進主線</a></h3>
+          <h3 class="item-title lg" lang=""><a href="#digest">SQLite 的 WAL2 模式合進主線</a></h3>
           <p class="summary">兩個 WAL 檔輪替寫入，checkpoint 不再擋住寫入者。長時間跑寫入的服務終於不用自己排程 checkpoint。</p>
           <div class="meta">
             <span class="pill score">0.88</span>
@@ -546,7 +546,7 @@ tr.editor[inert] .form { opacity: .4; }
           </div>
         </article>
         <article class="featured-item">
-          <h3 class="item-title lg"><a href="#digest">用 embedding 找重複新聞，門檻怎麼定</a></h3>
+          <h3 class="item-title lg" lang=""><a href="#digest">用 embedding 找重複新聞，門檻怎麼定</a></h3>
           <p class="summary">作者拿三個月的標記資料比較 cosine 門檻，發現不同模型的分數分布差很多，同一個數字不能跨 provider 共用。</p>
           <div class="meta">
             <span class="pill score">0.85</span>
@@ -556,7 +556,7 @@ tr.editor[inert] .form { opacity: .4; }
           </div>
         </article>
         <article class="featured-item">
-          <h3 class="item-title lg"><a href="#digest">Cloudflare Containers 進入 GA，冷啟動降到兩秒內</a></h3>
+          <h3 class="item-title lg" lang=""><a href="#digest">Cloudflare Containers 進入 GA，冷啟動降到兩秒內</a></h3>
           <p class="summary">容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。按秒計費加上 Worker 前門，「每小時醒來一次」的部署不再需要常駐主機。</p>
           <div class="meta">
             <span class="pill score">0.94</span>
@@ -566,7 +566,7 @@ tr.editor[inert] .form { opacity: .4; }
           </div>
         </article>
         <article class="featured-item">
-          <h3 class="item-title lg"><a href="#digest">Python 3.14 的 free-threaded build 效能實測</a></h3>
+          <h3 class="item-title lg" lang=""><a href="#digest">Python 3.14 的 free-threaded build 效能實測</a></h3>
           <p class="summary">單執行緒慢了約一成，四核以上的 CPU 密集工作開始回本。C 擴充套件的相容性仍是主要障礙。</p>
           <div class="meta">
             <span class="pill score">0.81</span>
@@ -1074,7 +1074,7 @@ const months = Map.groupBy(older, (i) => i.date.slice(0, 7));
 $("#archive-list").innerHTML = `
   <article class="front-card">
     <div class="line"><span class="label latest">Latest</span><span class="date">${latest.date}</span><span class="label">${latest.period}</span></div>
-    ${latest.lead ? `<h2 lang="zh-Hant">${esc(latest.lead)}</h2>` : ""}
+    ${latest.lead ? `<h2 lang="">${esc(latest.lead)}</h2>` : ""}
     ${latest.count ? `<span class="data">${latest.count} articles</span>` : ""}
     ${latest.topics.length ? `<p class="small" lang="zh-Hant">${latest.topics.map(esc).join(" · ")}</p>` : ""}
     ${issueActions}

@@ -40,7 +40,12 @@ Every change that touches a reader-facing page follows this spec: `src/cyris/ada
 7. **The chrome is English; content names its own language.** A screen reader picks its voice from
    `lang` (WCAG 3.1.1, 3.1.2). Every page's `<html lang>` is `en`, the language of its labels. A block of
    digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`, and
-   an English control inside it (a vote group, a sources fold) carries `lang="en"`. Text passed through
+   an English control inside it (a vote group, a sources fold) carries `lang="en"`. An article's own
+   title inside such a block, which is a Top story or Features card title and each title under a
+   grouped Top story, is the source's text and carries `lang=""`; a group's heading, the summaries and
+   the Wire's titles, which the filter writes in the output language, keep its tag. The archive
+   headline card's title follows its lead, so a group's heading keeps the tag and a single article's
+   title carries `lang=""`. Text passed through
    untranslated, which is Following, On the Radar and every raw row, carries `lang=""`, HTML's unknown
    language: no reliable tag for it exists. So does a Top story, Features card or Wire row that holds the
    article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
