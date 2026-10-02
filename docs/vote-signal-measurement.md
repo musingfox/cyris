@@ -4,7 +4,8 @@
 > live store. Thresholds were pre-registered before any vector was computed.
 > **This supersedes the option ranking in [`vote-signal.md`](vote-signal.md) §6–§8.**
 > That document's §1–§5 (label reality, the news/scorer mismatch, cluster attribution,
-> the PreferenceProfile ruling, the cost baseline) remain valid.
+> the PreferenceProfile ruling, the cost baseline) record what was measured then, not
+> what the code does now.
 
 ## Why this ran
 
