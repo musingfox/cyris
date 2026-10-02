@@ -43,7 +43,10 @@ def echoed_position(raw_id: object, count: int) -> int | None:
         return None
     if isinstance(raw_id, str):
         digits = raw_id.strip()
-        raw_id = int(digits) if digits.isascii() and digits.isdigit() else None
+        # Length first: int() refuses a digit string past Python's conversion limit,
+        # and no index of ``count`` articles is longer than ``count`` written out.
+        fits = len(digits.lstrip("0")) <= len(str(count))
+        raw_id = int(digits) if digits.isascii() and digits.isdigit() and fits else None
     if isinstance(raw_id, int) and 0 <= raw_id < count:
         return raw_id
     return None
