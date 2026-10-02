@@ -5,14 +5,109 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-02
+
+The digest is laid out again: only the Top story groups articles, every Features
+card is one article with its own summary, and each Wire row shows its one-sentence
+summary. A capped run now digests the window's newest articles and leaves the ones
+it cuts pending, and news clusters no longer vanish when a model rewrites an
+article id. An empty or degraded issue says so on the page and in the mail, and
+`/settings` and the vote buttons explain what they are doing. No setting, table,
+secret or Worker changes, but two settings now decide different things and each
+issue spends more output tokens, so read *Upgrading from 0.4.0* first.
+
+### Upgrading from 0.4.0
+
+- **`routing.score_threshold` and `digest.max_featured` keep their keys but
+  decide different things.** `routing.score_threshold` is now the score two or
+  more articles on one topic need to share the Top story, and
+  `digest.max_featured` caps the Features cards, one article each. `/settings`
+  labels them Top story score and Features cards. Check the values you tuned
+  for the old meaning.
+- **Each issue spends more output tokens.** The summarize call asks for a 2-3
+  sentence summary of every article beside its group's summary; an article the
+  model leaves without one shows its excerpt, and the run is marked degraded.
+- **A run reads up to 2000 rows from the RSS Worker.** It used to ask for
+  `digest.max_articles_per_digest` rows; now every valid, URL-unique row in the
+  window up to the Worker's own 2000-row ceiling is stored and listed on the raw
+  page, and the run cap applies after the store. The deployed Worker already
+  accepts 2000, so it needs no redeploy.
+
+No runtime setting, D1 table, secret, variable or `wrangler.toml` entry was added
+or renamed.
+
+### Added
+
+- **Each Wire row shows its one-sentence summary**, on the page and in the mail.
+- **An empty issue explains itself** and links All articles, and **a degraded
+  issue carries a warning** on the page and in the mail as well as on Discord.
+- **Vote feedback.** A vote that fails says why, a vote with no answer times out,
+  and focus stays on the button. Once the triage deck's last card is voted, focus
+  moves to the Triage switch.
+- **`/settings` shows its state.** Each category says it is loading until its
+  settings arrive, a refused value is marked on its own field by its label and
+  announced to screen readers, every save says it is in progress, and a
+  deployment with no source gets the warn dot on Sources.
+- **Keyboard flows.** The triage card opens its article with Enter, source rows
+  open with Enter or Space, and focus returns to the row, its button or Add
+  source after a save, a retire or a cancel.
+- **A warning when the RSS Worker read fills its 2000-row ceiling**, since the
+  window's older rows then stay in the buffer.
+- **`cyris doctor`'s LLM probe gives up after 30 seconds**, so Save on
+  `/settings` no longer waits minutes on a slow provider, and every LLM and
+  embedder probe failure names its next step.
+
 ### Changed
 
 - **Only the Top story groups articles.** It is one card under a group summary
   when two or more articles on one topic reach `routing.score_threshold`;
   otherwise it is the highest-scoring article. Every Features card is one article
   under its own summary, and `digest.max_featured` caps how many there are. The
-  page, the mail and Discord show the same layout. The summarize call now writes
-  a summary per article as well, so each issue spends more output tokens.
+  page, the mail and Discord show the same layout. The issue's cap now takes
+  articles by score after this layout and keeps a grouped Top story whole.
+- **`digest.max_articles_per_digest` keeps the window's newest articles** by
+  publish time, across all sources, instead of the oldest. The fetchers no longer
+  cut at it, so every fetched article is stored before the cap applies.
+- **A run is degraded only when plain excerpts or unscored articles stood in for
+  the LLM.** A healthy LLM with nothing to do is no longer flagged, a missing key
+  is, and the page, the mail, Discord and `digest_runs` share one verdict.
+- **News clustering reads `digest.filter_snippet_length`** characters of each
+  article, as the filter step does, instead of a fixed 500.
+- **An article's own title and an excerpt fallback carry `lang=""`**, on the
+  page, in the mail and in the mail's preheader, since they are the source's text
+  rather than the output language.
+- **The UI follows the spec more closely.** The digest's page glow and masthead
+  accent line are gone, the mail and the landing page share one light palette, a
+  pressed button drops to .7 opacity and a disabled one ignores hover, small
+  targets have 44 by 44 tap areas, every app page asks for dark native controls,
+  digest prose stops at the measure width, and every footer has the same spacing.
+- **Every source tier shows as a plain pill** on `/settings`, and an empty
+  archive is one small sentence.
+
+### Fixed
+
+- News clusters are matched by position, so a model that rewrites an article id
+  no longer drops every cluster without a warning. On 2026-09-17 this left an
+  issue with no news. The filter step matches by position too, warns when the
+  model names an article the prompt did not list, and a malformed id can no
+  longer stop the digest.
+- An article the per-issue cap cut, or one the summarizer named in no section,
+  stays pending instead of being marked accepted and never seen again.
+- An article two sections name is drawn as one card.
+- Discord posts the Top story and Features the page draws.
+- A failed scoring step marks the run as fallen back, so a run whose scoring was
+  its only LLM step no longer goes out with no warning.
+- Discord names the failed model again, and the mail's plain-text part carries
+  the degraded line and the empty-issue sentence.
+- A 503 passed through from the promote Worker shows its HTTP code instead of
+  naming a promote Worker URL that is already set.
+- A remembered vote no longer overrides a verdict the raw page was rendered with.
+- On a phone, a choice's long state wraps instead of being cut off, an open
+  source editor stays inside the visible table, and the settings tab bar shows
+  that more tabs lie past its edge.
+- The landing page: the light primary button stays readable on hover, the
+  screenshot's alt text is translated, the hero title sits above the section
+  headings, and the copy matches the screenshot and the install guide.
 
 ## [0.4.0] — 2026-10-02
 
@@ -359,7 +454,8 @@ Initial public release.
 - Docker Compose stack (Miniflux + Postgres + cyris) and macOS launchd scheduling.
 - Optional Cloudflare Workers for email-newsletter ingestion and promote/HTML publish.
 
-[Unreleased]: https://github.com/musingfox/cyris/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/musingfox/cyris/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/musingfox/cyris/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/musingfox/cyris/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/musingfox/cyris/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/musingfox/cyris/releases/tag/v0.2.0
