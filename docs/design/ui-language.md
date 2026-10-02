@@ -151,7 +151,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **multi-line input** | `<textarea class="input">`, reusing the input's background, border, radius, font size, and its focus and failed-validation rules; its height comes from `rows`, with `--s-3` padding top and bottom, and it resizes vertically only |
 | **field** | From top to bottom: the field name in the label role, the control, and help in the small role, spaced `--s-2`. Help longer than one sentence goes into `<details>`, with the summary text `More` |
 | **category list dots** | Two 6px dots on the right of each item in the settings category list: `--accent` means the category has unsaved changes, `--warn` means the category is missing a required value. Both can show at once, with the missing-value dot on the left |
-| **choice list** | Several options for a single choice (for example provider): `--bg-elev` background, 1px `--border` border, `--r-control`; each row has `--s-3` top and bottom and `--s-4` left and right, rows divided by a bottom line, `--surface` on hover. The right side shows the state in the label role; an unselectable row sets its radio and name to opacity .5, never the state text that says why |
+| **choice list** | Several options for a single choice (for example provider): `--bg-elev` background, 1px `--border` border, `--r-control`; each row has `--s-3` top and bottom and `--s-4` left and right, rows divided by a bottom line, `--surface` on hover. The right side shows the state in the label role; an unselectable row sets its radio and name to opacity .5, never the state text that says why. On failed validation the border turns `--warn`, with a notice below, as an input's does |
 | **headline card** | Only for the archive's latest issue. `--surface` background, 1px `--border-strong` border, square corners, `--s-6` padding. From top to bottom: an `--accent` `Latest` label with the date (data) and the period (label); the title of the issue's first story, which is its group heading when that story is a group (title role); the article count (data); the titles of the two topics with the most members (small, joined by ` · `); and two small secondary buttons, `Digest` and `All articles`. A field with no data is left out, with no placeholder text |
 | **panel** | `--bg-elev` background, 1px `--border` border, square corners. An optional head row: `--surface` background, a bottom line, `--s-3` top and bottom and `--s-5` left and right, the title on the left and a count or action on the right. Adjacent panels are spaced `--s-5` |
 | **list row / table row** | The class name is `.list-row` (`.row` is taken by the digest stats card). `--s-3` top and bottom, `--s-5` left and right, rows divided by a bottom line, `--surface` on hover. Table headers use the label role on `--surface`. A table sits in its own `overflow-x: auto` container |
@@ -304,6 +304,12 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 - Each category has exactly one primary `Save`, disabled when nothing has changed; a category with unsaved
   changes gets an `--accent` dot in the list. A missing value whose answer may be empty, such as Style or
   Email to, keeps `Save` enabled without a dot, so a first boot can store it as it stands.
+- A save the server refuses for one field marks that field as failed validation, with the reason in a
+  notice below it, named by the field's label; the notice beside `Save` says it too. Editing the field
+  clears its mark.
+- While a save is out, its `Save` stays disabled and the notice beside it says what is happening, such as
+  `Saving…` or `Checking with the provider…`, until the result replaces it. A source editor is locked
+  while its save is out, and its fields show the disabled opacity.
 - The prototype governs the fields' names, help text and `More` text.
 
 ### email

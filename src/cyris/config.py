@@ -365,7 +365,7 @@ def validate_setting(key: str, value: Any) -> Any:
     if key not in GRADE_D_KEYS:
         raise ValueError(f"not a settings key: {key}")
     if value is None:
-        raise ValueError(f"{key} is required")
+        raise ValueError("a value is required")
     try:
         return _setting_adapter(key).validate_python(value)
     except ValidationError as e:

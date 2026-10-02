@@ -71,8 +71,8 @@ function edited(form) {
 }
 
 document.querySelectorAll("form.tab").forEach((form) => {
-  form.addEventListener("input", () => edited(form));
-  form.addEventListener("change", () => edited(form));
+  form.addEventListener("input", (e) => { unrefuseEdited(e.target); edited(form); });
+  form.addEventListener("change", (e) => { unrefuseEdited(e.target); edited(form); });
 });
 
 // Each runtime setting's field, from the server's registry: the category it sits
@@ -223,11 +223,49 @@ function updateEmbeddingHint() {
   applyPlaceholder($("embedding-model-input"));
 }
 
+// A "busy" notice says what a save is doing while it is out; its result replaces it.
 function show(kind, text, target) {
   const el = typeof target === "string" ? $(target) : target;
   el.className = kind === "err" ? "notice err" : "notice";
+  if (kind === "busy") el.setAttribute("aria-busy", "true");
+  else el.removeAttribute("aria-busy");
   el.textContent = text;
   el.hidden = false;
+}
+
+// The notice below a field, shared by the controls of one row.
+function fieldNotice(control) {
+  const anchor = control.closest(".field-row") || control;
+  let notice = anchor.nextElementSibling;
+  if (!notice || !notice.hasAttribute("data-field-error")) {
+    notice = document.createElement("div");
+    notice.setAttribute("data-field-error", "");
+    anchor.after(notice);
+  }
+  return notice;
+}
+
+// A refusal the server pins to one field is marked there too, until it is edited.
+function refuse(controls, text) {
+  controls.forEach((el) => el.classList.add("invalid"));
+  show("err", text, fieldNotice(controls[0]));
+}
+
+function refuseSetting(err) {
+  if (FIELDS[err.field]) refuse(FIELDS[err.field].controls.map($), err.message);
+}
+
+function unrefuse(scope) {
+  scope.querySelectorAll(".invalid").forEach((el) => el.classList.remove("invalid"));
+  scope.querySelectorAll("[data-field-error]").forEach((notice) => { notice.hidden = true; });
+}
+
+function unrefuseEdited(control) {
+  const marked = control.closest(".invalid");
+  if (!marked) return;
+  marked.classList.remove("invalid");
+  const anchor = marked.closest(".field-row") || marked;
+  if (!anchor.querySelector(".invalid")) fieldNotice(marked).hidden = true;
 }
 
 // One Save, two routes: the LLM part is checked against its provider, the vote
@@ -242,9 +280,10 @@ $("model-form").addEventListener("submit", async (e) => {
   let failed = false;
   saving.add(form);
   refresh(form);
+  unrefuse(form);
   if (partChanged(form, LLM_PART)) {
     const p = chosen();
-    show("ok", "Checking with the provider…", "model-result");
+    show("busy", "Checking with the provider…", "model-result");
     try {
       if (!p) throw new Error("Pick a provider first.");
       const data = await post("/api/settings", {provider: p.name, model: sent["model-input"].trim()});
@@ -255,6 +294,7 @@ $("model-form").addEventListener("submit", async (e) => {
       lines.push(`${data.detail}\n${data.note}`);
     } catch (err) {
       failed = true;
+      refuseSetting(err);
       lines.push(err.message);
     }
   }
@@ -267,7 +307,7 @@ $("model-form").addEventListener("submit", async (e) => {
       model: sent["embedding-model-input"].trim(),
       max_seeds: seeds === "" ? null : Number(seeds),
     };
-    if (body.enabled) show("ok", "Checking the embedder…", "model-result");
+    show("busy", body.enabled ? "Checking the embedder…" : "Saving…", "model-result");
     try {
       const data = await post("/api/settings/vote-similarity", body);
       Object.assign(state.values, data.values);
@@ -277,6 +317,7 @@ $("model-form").addEventListener("submit", async (e) => {
       lines.push(`${data.detail}\n${data.note}`);
     } catch (err) {
       failed = true;
+      refuseSetting(err);
       lines.push(err.message);
     }
   }
@@ -305,8 +346,11 @@ async function post(url, body, method = "POST") {
   if (res.status === 401) throw SESSION_EXPIRED;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
-  throw new Error(data.error || `cyris answered ${res.status} without saying why. ` +
+  const err = new Error(data.error || `cyris answered ${res.status} without saying why. ` +
     "Try again; if it keeps failing, check the server log.");
+  // The setting or source field the refusal is about, for the page to mark.
+  err.field = data.field;
+  throw err;
 }
 
 const plainValue = (input) => {
@@ -344,8 +388,9 @@ async function savePlain(form, stored) {
     const parts = ids.map((id) => `${FIELDS[PLAIN[id]].label}: ${shownValue(data.values[PLAIN[id]])}`);
     return {ok: true, line: `${parts.join(", ")}. ${data.note}`};
   } catch (err) {
+    refuseSetting(err);
     const labels = ids.map((id) => FIELDS[PLAIN[id]].label);
-    return {ok: false, line: `${labels.join(", ")} not saved: ${err.message || err}`};
+    return {ok: false, line: `${labels.join(", ")} not saved. ${err.message || err}`};
   }
 }
 
@@ -366,11 +411,6 @@ function emptyHours() {
   return reason;
 }
 
-HOURS.forEach((input) => input.addEventListener("input", () => {
-  input.classList.remove("invalid");
-  if (!HOURS.some((hour) => hour.classList.contains("invalid"))) $("hours-error").hidden = true;
-}));
-
 // One Save, two endpoints: only a changed part is sent, the hours first, and
 // both are tried. A part that saved becomes clean; one that failed stays dirty.
 $("digest-form").addEventListener("submit", async (e) => {
@@ -382,6 +422,8 @@ $("digest-form").addEventListener("submit", async (e) => {
   let failed = false;
   saving.add(form);
   refresh(form);
+  unrefuse(form);
+  show("busy", "Saving…", "digest-result");
   const hoursChanged = morning !== stored.morning || evening !== stored.evening;
   const empty = hoursChanged && emptyHours();
   if (empty) {
@@ -396,6 +438,7 @@ $("digest-form").addEventListener("submit", async (e) => {
       markSet(keysSavedBy("schedule"));
     } catch (err) {
       failed = true;
+      refuseSetting(err);
       lines.push(`Digest hours not saved: ${err.message || err}`);
     }
   }
@@ -415,6 +458,8 @@ $("pipeline-form").addEventListener("submit", async (e) => {
   const stored = {...clean.get(form)};
   saving.add(form);
   refresh(form);
+  unrefuse(form);
+  show("busy", "Saving…", "pipeline-result");
   const plain = await savePlain(form, stored);
   saving.delete(form);
   markClean(form, stored);
@@ -435,8 +480,10 @@ $("notify-form").addEventListener("submit", async (e) => {
   let failed = false;
   saving.add(form);
   refresh(form);
+  unrefuse(form);
   if (changed(DISCORD_PART)) {
     const url = sent["discord-webhook"];
+    show("busy", "Checking with Discord…", "notify-result");
     try {
       const data = await post("/api/settings/notify", {discord_webhook_url: url});
       state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
@@ -448,11 +495,12 @@ $("notify-form").addEventListener("submit", async (e) => {
       lines.push(`${data.detail} ${data.note}`);
     } catch (err) {
       failed = true;
+      refuseSetting(err);
       lines.push(err.message);
     }
   }
   if (changed(EMAIL_PART) || unsavedIn(form).length) {
-    show("ok", "Sending a test message…", "notify-result");
+    show("busy", "Sending a test message…", "notify-result");
     try {
       const data = await post("/api/settings/email",
         {email_to: sent["email-to"], email_from: sent["email-from"]});
@@ -463,6 +511,7 @@ $("notify-form").addEventListener("submit", async (e) => {
       lines.push(data.detail ? `${data.detail} ${data.note}` : data.note);
     } catch (err) {
       failed = true;
+      refuseSetting(err);
       lines.push(err.message);
     }
   }
@@ -497,6 +546,7 @@ $("notify-off").addEventListener("click", async () => {
   }
   disarmNotifyOff();
   button.disabled = true;
+  show("busy", "Turning off…", "notify-result");
   try {
     const data = await post("/api/settings/notify", {off: true});
     state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
@@ -598,6 +648,7 @@ function openEditor(name) {
   });
   const editorEdited = () => {
     if (sourcesWritable) ed.querySelectorAll(".notice").forEach((n) => { n.hidden = true; });
+    ed.querySelectorAll(".invalid").forEach((el) => el.classList.remove("invalid"));
     refreshEditor();
   };
   ed.addEventListener("input", editorEdited);
@@ -631,7 +682,7 @@ function openEditor(name) {
     }
     disarm();
     const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
-                                   retire);
+                                   retire, "Retiring…");
     if (data) {
       openName = null;
       await loadSources();
@@ -683,13 +734,16 @@ $("src-body").addEventListener("keydown", (e) => {
 
 // Resolves to the response on success, or null once the failure is shown
 // beside the pressed button.
-async function writeSource(url, method, body, button) {
+async function writeSource(url, method, body, button, doing) {
   const notice = button.parentElement.querySelector(".notice");
   button.disabled = true;
+  show("busy", doing, notice);
   try {
     return await post(url, body, method);
   } catch (err) {
     show("err", err.message, notice);
+    const control = err.field && button.closest("tr.editor").querySelector(`[name="${err.field}"]`);
+    if (control) refuse([control], err.message);
   }
   button.disabled = false;
   return null;
@@ -714,7 +768,7 @@ async function saveSource(ed, button) {
     email_match: shown("#e-email"),
     homepage: shown("#e-home"),
     tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
-  }, button);
+  }, button, "Saving…");
   if (!data) {
     ed.inert = false;
     return;

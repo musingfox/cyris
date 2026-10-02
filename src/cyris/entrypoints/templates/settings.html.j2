@@ -42,6 +42,7 @@
     table.src tr.src-row:hover, table.src tr.src-row.open { background: var(--surface); }
     table.src .name { white-space: nowrap; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
     table.src tr.editor > td { background: var(--surface); padding: var(--s-5); border-bottom: 1px solid var(--border-strong); }
+    tr.editor[inert] .form { opacity: .4; }
     tr.editor .form { max-width: none; }
     .editor-title { margin-bottom: var(--s-4); }
     .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
@@ -131,7 +132,7 @@
                 <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
                 <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
               </div>
-              <div class="notice err" id="hours-error" hidden></div>
+              <div class="notice err" id="hours-error" data-field-error hidden></div>
               <details class="more"><summary>More</summary><p class="small">Whole hours in the timezone below. The tick is hourly, so half hours are refused rather than rounded down.</p></details>
             </div>
             <div class="field">
@@ -285,20 +286,20 @@
       <h3 class="label editor-title"></h3>
       <div class="form">
         <div class="field-row">
-          <div class="field"><label class="label" for="e-name">Name</label><input class="input" id="e-name" type="text" autocomplete="off"></div>
+          <div class="field"><label class="label" for="e-name">Name</label><input class="input" id="e-name" name="name" type="text" autocomplete="off"></div>
           <div class="field"><span class="label">Type</span>
             <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
           </div>
           <div class="field"><label class="label" for="e-tier">Tier</label>
-            <select class="select" id="e-tier"><option>filter</option><option>summarize</option><option>fan</option></select>
+            <select class="select" id="e-tier" name="tier"><option>filter</option><option>summarize</option><option>fan</option></select>
           </div>
         </div>
-        <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text" autocomplete="off"></div>
-        <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" type="text" placeholder="from:hi@example.com" autocomplete="off">
+        <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" name="url" type="text" autocomplete="off"></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" name="email_match" type="text" placeholder="from:hi@example.com" autocomplete="off">
           <p class="small">Maps a sender to this source.</p>
           <details class="more"><summary>More</summary><p class="small">Email routing itself stays in the Cloudflare dashboard.</p></details></div>
-        <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text" autocomplete="off"></div>
-        <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" type="text" placeholder="comma separated" autocomplete="off"></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" name="homepage" type="text" autocomplete="off"></div>
+        <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" name="tags" type="text" placeholder="comma separated" autocomplete="off"></div>
       </div>
       <div class="editor-foot">
         <div class="actions-line">
