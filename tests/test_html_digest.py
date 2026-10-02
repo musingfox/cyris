@@ -2123,15 +2123,14 @@ def _every_section(output_language: str) -> DigestContent:
 
 
 WRITTEN_TEXT = [
-    "Lead",
     "Lead summary.",
-    "Second",
     "Second summary.",
     "Cluster heading",
     "Cluster summary.",
     "Wire",
     "Wire summary.",
 ]
+TITLE_TEXT = ["Lead", "Second"]
 PASSED_THROUGH_TEXT = [
     "Fan heading",
     "Fan",
@@ -2169,6 +2168,30 @@ def test_the_digest_chrome_is_english_and_its_written_content_carries_the_output
     assert _langs_of(langs, WRITTEN_TEXT) == dict.fromkeys(WRITTEN_TEXT, "ja")
 
 
+def test_an_articles_own_title_leaves_its_language_unknown_beside_its_summary(tmp_path):
+    langs = text_langs(HtmlDigestWriter(tmp_path).render(_every_section("ja")))
+
+    assert _langs_of(langs, TITLE_TEXT) == dict.fromkeys(TITLE_TEXT, "")
+
+
+def _grouped_lead(output_language: str) -> DigestContent:
+    """`_every_section` with its Lead and Second sharing the Top story under one summary."""
+    content = _every_section(output_language)
+    group = content.featured_articles[0]
+    content.featured_articles = [
+        group.model_copy(update={"heading": "Group heading", "summary": "Group summary."})
+    ]
+    return content
+
+
+def test_a_grouped_top_story_keeps_its_heading_and_leaves_its_titles_unknown(tmp_path):
+    langs = text_langs(HtmlDigestWriter(tmp_path).render(_grouped_lead("ja")))
+
+    written = ["Group heading", "Group summary."]
+    assert _langs_of(langs, written) == dict.fromkeys(written, "ja")
+    assert _langs_of(langs, TITLE_TEXT) == dict.fromkeys(TITLE_TEXT, "")
+
+
 def test_untranslated_sections_leave_their_language_unknown(tmp_path):
     langs = text_langs(HtmlDigestWriter(tmp_path).render(_every_section("ja")))
 
@@ -2190,7 +2213,7 @@ def test_an_excerpt_fallback_leaves_its_language_unknown_beside_written_text(tmp
     langs = text_langs(HtmlDigestWriter(tmp_path).render(content))
 
     fallback = ["Second", "Second summary.", "Wire", "Wire summary."]
-    written = ["Lead", "Lead summary.", "Cluster heading", "Cluster summary."]
+    written = ["Lead summary.", "Cluster heading", "Cluster summary."]
     assert _langs_of(langs, fallback) == dict.fromkeys(fallback, "")
     assert _langs_of(langs, written) == dict.fromkeys(written, "ja")
 
@@ -2202,7 +2225,8 @@ def test_a_top_story_from_an_excerpt_fallback_leaves_its_language_unknown(tmp_pa
     assert _langs_of(langs, ["Lead", "Lead summary."]) == dict.fromkeys(
         ["Lead", "Lead summary."], ""
     )
-    assert _langs_of(langs, ["Second", "Wire"]) == dict.fromkeys(["Second", "Wire"], "ja")
+    written = ["Second summary.", "Wire"]
+    assert _langs_of(langs, written) == dict.fromkeys(written, "ja")
 
 
 def test_every_vote_group_says_its_titles_are_english(tmp_path):
@@ -2222,16 +2246,27 @@ def test_a_plain_language_name_leaves_the_content_language_unknown(tmp_path):
     assert langs["Top story"] == "en"
 
 
-def test_the_archive_card_carries_its_issues_language(tmp_path):
+def _archive_langs(tmp_path, content: DigestContent) -> tuple[str, dict[str, str | None]]:
     html = HtmlDigestWriter(tmp_path).render_index(
-        ["2026-04-15-morning.html", "2026-04-14-morning.html"], content=_every_section("ko")
+        ["2026-04-15-morning.html", "2026-04-14-morning.html"], content=content
     )
-    langs = text_langs(html)
+    return html, text_langs(html)
+
+
+def test_the_archive_card_carries_its_issues_language(tmp_path):
+    html, langs = _archive_langs(tmp_path, _every_section("ko"))
 
     assert '<html lang="en">' in html
-    assert langs["Lead"] == "ko"
     assert langs["Cluster heading"] == "ko"
     assert langs["Latest"] == langs["2026-04-14"] == "en"
+
+
+def test_the_archive_card_title_takes_its_leads_language(tmp_path):
+    _, single = _archive_langs(tmp_path, _every_section("ko"))
+    _, grouped = _archive_langs(tmp_path, _grouped_lead("ko"))
+
+    assert single["Lead"] == ""
+    assert grouped["Group heading"] == "ko"
 
 
 def test_a_raw_title_has_no_reliable_language_so_it_is_unknown(tmp_path):
