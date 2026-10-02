@@ -277,8 +277,9 @@ and switching does not reload.
 - **triage view:** one card at a time, whose face is the source (label) and the title (title role, 26px).
   The card is square, on `--surface`, with a 1px `--border-strong` border and no shadow; tilting towards
   up turns the border `--accent`, tilting towards down turns it `--warn`. Swiping left is down, swiping
-  right is up, and a tap opens the original in a new tab. Below it, a danger `Down` and a primary `Up`
-  button sit side by side, both 56px high, for desktops without touch; above it, a label shows
+  right is up, and a tap opens the original in a new tab. The card takes keyboard focus as a link, and
+  Enter on it opens the original the same way. Below it, a danger `Down` and a primary `Up` button sit
+  side by side, both 56px high, for desktops without touch; above it, a label shows
   `N remaining`. Cards take only articles whose state is still pending and that have not been voted on
   yet; to overturn an article the pipeline has already judged, vote in the list view. With no cards left,
   only `0 remaining` remains.
