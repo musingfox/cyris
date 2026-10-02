@@ -532,7 +532,7 @@ def _scored_topic() -> tuple[list[Article], dict[str, float], FakeLLM]:
 
 async def _page(sample_sources, tmp_path, **settings) -> str:
     articles, scores, llm = _scored_topic()
-    pipeline = DigestPipeline(llm, **pipeline_settings(score_threshold=0, **settings))
+    pipeline = DigestPipeline(llm, **pipeline_settings(summarize_score_threshold=0, **settings))
     result = await pipeline.process(
         articles,
         sample_sources,
@@ -594,7 +594,7 @@ async def test_an_article_layering_or_the_cap_leaves_out_stays_pending(
     sample_sources, settings, shown
 ):
     articles, scores, llm = _scored_topic()
-    pipeline = DigestPipeline(llm, **pipeline_settings(score_threshold=0, **settings))
+    pipeline = DigestPipeline(llm, **pipeline_settings(summarize_score_threshold=0, **settings))
 
     result = await pipeline.process(
         articles,

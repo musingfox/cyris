@@ -200,7 +200,7 @@ def compare_llms(
             max_digest_output=cfg.app.digest.max_articles_per_digest_output,
             summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
             filter_snippet_length=cfg.app.digest.filter_snippet_length,
-            score_threshold=cfg.app.routing.summarize_score_threshold,
+            summarize_score_threshold=cfg.app.routing.summarize_score_threshold,
             featured_threshold=cfg.app.routing.score_threshold,
             max_featured=cfg.app.digest.max_featured,
             output_language=cfg.app.digest.output_language,

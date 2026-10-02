@@ -57,7 +57,7 @@ class DigestPipeline:
         max_digest_output: int,
         summarize_snippet_length: int,
         filter_snippet_length: int,
-        score_threshold: int,
+        summarize_score_threshold: int,
         featured_threshold: int,
         max_featured: int,
         output_language: str,
@@ -67,7 +67,7 @@ class DigestPipeline:
         self.max_digest_output = max_digest_output
         self.summarize_snippet_length = summarize_snippet_length
         self.filter_snippet_length = filter_snippet_length
-        self.score_threshold = score_threshold
+        self.summarize_score_threshold = summarize_score_threshold
         self.featured_threshold = featured_threshold
         self.max_featured = max_featured
         self.output_language = output_language
@@ -171,7 +171,7 @@ class DigestPipeline:
 
         # Split summarize tier by score threshold
         high_score_articles, low_score_articles = split_summarize_tier_by_score(
-            summarize_tier, article_scores, self.score_threshold
+            summarize_tier, article_scores, self.summarize_score_threshold
         )
 
         logger.info(
