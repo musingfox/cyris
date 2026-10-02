@@ -311,7 +311,7 @@ Each source carries a **tier**, which decides how much attention it gets:
 
 | Tier | Treatment |
 |---|---|
-| `filter` | Batched headline extraction, aggressively discarded (<10% pass). News-tagged articles are additionally clustered by topic. |
+| `filter` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
 | `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
 | `fan` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
 
@@ -413,7 +413,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 
 | Setting | Grade | Today | Target |
 |---|---|---|---|
-| Tier thresholds, batch sizes | A | code | unchanged |
+| Batch sizes | A | `BATCH_SIZE` in `service_layer/scoring.py` and on each embedder in `adapters/embedding.py` | unchanged |
 | RSS Worker read ceiling | A | `WORKER_ROW_CEILING` in `adapters/fetch/rss_worker_source.py`, mirroring the clamp on `GET /articles` in `workers/rss/src/index.js` | done 2026-10-02 — a memory bound, not the run cap: every row carries full feed content. It is sent by value because the Worker's default without one is lower; `tests/test_rss_worker_source.py` holds the two equal |
 | Pages publish timing: the 180s budget and 120s run reserve, the stage and alias poll counts and intervals, the 20s per-request timeout and a deploy attempt's worst case | A | `adapters/output/publish.py`, `adapters/output/pages_deploy.py` | unchanged — reasons in the comments beside each constant; `tests/test_publish.py` pins the budget against `RUN_SLEEP_AFTER` in `workers/app/src/index.js`, and what the budget does not cover is in *Publishing without a subprocess* (§7) |
 | `/settings` verification time limits: the LLM probe's 30s, the embedding probe's 15s, the Discord probe's 10s | A | `LLM_PROBE_TIMEOUT_SECONDS`, `EMBEDDING_PROBE_TIMEOUT_SECONDS`, `DISCORD_PROBE_TIMEOUT_SECONDS` in `diagnostics/doctor.py` | done 2026-10-02 — a Save is a person waiting, so each bound sits far below the minutes a run allows the same client; reasons in the comments beside the first two. A probe past its bound fails with what to do next, and nothing is stored |

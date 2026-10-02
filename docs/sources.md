@@ -5,7 +5,7 @@ Each source declares a tier, in `sources.yaml` on a local install or on `/settin
 
 | Tier | Processing | Example |
 |------|-----------|---------|
-| `filter` | Discard most; surface only significant headlines (<10% pass). News-tagged articles are clustered by topic | TechCrunch, 聯合新聞網 |
+| `filter` | Discard most; surface only significant headlines. News-tagged articles are clustered by topic | TechCrunch, 聯合新聞網 |
 | `summarize` | Scored, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions | Stratechery, Benedict Evans |
 | `fan` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
 
