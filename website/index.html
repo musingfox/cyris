@@ -173,7 +173,7 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
         </div>
         <p class="hero-note" data-zh="免費、開源，不需要 AI 金鑰就能開始。真實摘要以繁體中文撰寫。">Free and open source. No AI key needed to start. The live digest is written in Traditional Chinese.</p>
         <p class="proof" data-zh="維護者自己的部署，2026 年 8 月 28 日至 9 月 27 日共 56 期：平均每期收進 &lt;strong&gt;91 篇&lt;/strong&gt;文章，留下 &lt;strong&gt;13 篇&lt;/strong&gt;，AI 費用約 &lt;strong&gt;US$0.03&lt;/strong&gt;。">The maintainer’s own deployment, 56 issues from Aug 28 to Sep 27, 2026: an average issue took in <strong>91 articles</strong>, kept <strong>13</strong>, and cost about <strong>US$0.03</strong> in AI.</p>
-        <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest: 8 sources, 64 articles received, 12 included, led by a top story">
+        <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest: 8 sources, 64 articles received, 12 included, led by a top story" data-zh-alt="一期 Cyris 摘要：8 個來源，收進 64 篇文章，留下 12 篇，以頭條文章開場">
     </div>
 </header>
 <section id="how" aria-labelledby="how-title">
@@ -294,6 +294,9 @@ uv run cyris run</code></pre>
     const labelled = [...document.querySelectorAll('[data-zh-label]')].map((element) => ({
         element, en: element.getAttribute('aria-label') || '', zh: element.getAttribute('data-zh-label') || ''
     }));
+    const described = [...document.querySelectorAll('[data-zh-alt]')].map((element) => ({
+        element, en: element.getAttribute('alt') || '', zh: element.getAttribute('data-zh-alt') || ''
+    }));
     const copy = {
         en: {
             title: 'Cyris: A reading list with an end.',
@@ -339,6 +342,7 @@ uv run cyris run</code></pre>
         root.lang = language;
         translatable.forEach(({ element, en, zh }) => { element.innerHTML = language === 'zh-Hant' ? zh : en; });
         labelled.forEach(({ element, en, zh }) => { element.setAttribute('aria-label', language === 'zh-Hant' ? zh : en); });
+        described.forEach(({ element, en, zh }) => { element.setAttribute('alt', language === 'zh-Hant' ? zh : en); });
         document.title = copy[language].title;
         setMeta('meta[name="description"]', copy[language].description, 'content');
         setMeta('meta[property="og:title"]', copy[language].ogTitle, 'content');
