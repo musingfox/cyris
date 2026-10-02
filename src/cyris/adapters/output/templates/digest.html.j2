@@ -473,7 +473,7 @@
             {% if lead_story %}
             <section class="section">
                 <div class="section-tag"><span class="label">Top story</span></div>
-                <article class="lead-story" lang="{{ content_lang }}">
+                <article class="lead-story" lang="{{ '' if lead_story.passed_through else content_lang }}">
                     {% if lead_story.score %}<span class="pill score">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
                     <h2>
                         {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
@@ -494,7 +494,7 @@
                 <h2 class="section-tag"><span class="label">Features</span></h2>
                 <div class="featured-grid" lang="{{ content_lang }}">
                     {% for item in featured_articles %}
-                    <article class="featured-item">
+                    <article class="featured-item"{% if item.passed_through %} lang=""{% endif %}>
                         <h3 class="item-title lg">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
                         <p class="summary">{{ item.summary }}</p>
                         <div class="meta">
@@ -577,7 +577,7 @@
                 <h2 class="section-tag"><span class="label">The Wire</span></h2>
                 <div class="headlines-compact" lang="{{ content_lang }}">
                     {% for item in filtered_headlines %}
-                    <div class="headline-item">
+                    <div class="headline-item"{% if item.passed_through %} lang=""{% endif %}>
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
                         <div class="text">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</div>
                         {% if item.ref_urls | length > 1 %}{{ source_list(item) }}{% endif %}

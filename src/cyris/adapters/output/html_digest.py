@@ -60,6 +60,10 @@ class Story:
         return None if self.grouped else self.members[0].link
 
     @property
+    def passed_through(self) -> bool:
+        return not self.grouped and self.members[0].passed_through
+
+    @property
     def score(self) -> float | None:
         return max((m.score for m in self.members if m.score is not None), default=None)
 
