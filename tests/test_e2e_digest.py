@@ -224,16 +224,16 @@ def _rss_rows(now: datetime) -> list[dict]:
 def _scenario(**overrides) -> harness.Scenario:
     now = datetime.now(UTC)
     voted = _voted(now)
-    return harness.Scenario(
-        settings=SETTINGS,
-        sources=[DEEP, WIRE, BLOG, LETTERS],
-        rss_rows=_rss_rows(now),
-        newsletters=[LETTER_EML, UNLINKED_EML],
-        llm=LLM,
-        stored=[voted],
-        promotions=[{"url": voted.url, "vote": "down", "digest_date": voted.digest_date}],
-        **overrides,
-    )
+    fields = {
+        "settings": SETTINGS,
+        "sources": [DEEP, WIRE, BLOG, LETTERS],
+        "rss_rows": _rss_rows(now),
+        "newsletters": [LETTER_EML, UNLINKED_EML],
+        "llm": LLM,
+        "stored": [voted],
+        "promotions": [{"url": voted.url, "vote": "down", "digest_date": voted.digest_date}],
+    }
+    return harness.Scenario(**(fields | overrides))
 
 
 def _local_date(at: datetime) -> str:
@@ -847,6 +847,16 @@ class TestSelfChecks:
         ], dropped.diagnostics()
         with pytest.raises(AssertionError, match="requests no fake claims"):
             assert_no_unclaimed(dropped.records)
+
+    def test_a_run_whose_model_splits_the_top_story_fails_that_check(self, tmp_path) -> None:
+        """Behaviour, not a receipt edited in memory: the model scores a2 under 80."""
+        llm = copy.deepcopy(LLM)
+        llm["scores"][TITLE["a2"]] = 70
+        split = harness.run_deployment(tmp_path, _scenario(llm=llm))
+        assert split.returncode == 0, split.diagnostics()
+        assert_no_unclaimed(split.records)
+        with pytest.raises(AssertionError):
+            check_grouped_top_story(Receipts(split))
 
     def test_a_doubled_request_fails_the_count_check(self, receipts) -> None:
         records = copy.deepcopy(receipts.records)
