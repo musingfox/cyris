@@ -55,11 +55,18 @@ KINDS = (
     "vote-fails",
     "fails-once",
     "slow-vote",
+    "vote-signed-out",
+    "vote-unconfigured",
+    "vote-hangs",
 )
 
 # How long `slow-vote` holds each vote: long enough for a check to act, and for
 # CDP input to land, while the vote is still in flight.
 SLOW_VOTE_S = 1.0
+
+# How long `vote-hangs` holds each vote: far past the page's timeout as
+# `SHORT_VOTE_TIMEOUT` sets it, short enough not to hold up the fixture's teardown.
+HANG_VOTE_S = 2.0
 
 # (source, title, state, score, slug): two sources of three, so the deck deals
 # Pending Two, Pending Three, Pending Four, then the title written as markup.
@@ -108,7 +115,10 @@ def build_fixture(kind: str) -> VoteFixture:
     too on the page served at the largest type size; `signed-out` refuses the
     probe; `no-worker` has no route at all, as on bare pages.dev; `vote-fails`
     signs in but refuses every vote; `fails-once` refuses only the first vote;
-    `slow-vote` takes every vote, each only after `SLOW_VOTE_S`.
+    `slow-vote` takes every vote, each only after `SLOW_VOTE_S`. The rest sign in
+    and refuse every vote as the app Worker would: `vote-signed-out` with its own
+    401 for a lapsed session, `vote-unconfigured` with its 503 for a missing
+    promote Worker URL; `vote-hangs` answers only after `HANG_VOTE_S`.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
@@ -131,6 +141,12 @@ def build_fixture(kind: str) -> VoteFixture:
         fixture.post_headers.append(dict(request.headers))
         if kind == "slow-vote":
             await asyncio.sleep(SLOW_VOTE_S)
+        if kind == "vote-hangs":
+            await asyncio.sleep(HANG_VOTE_S)
+        if kind == "vote-signed-out":
+            return web.json_response({"authorized": False, "error": "unauthorized"}, status=401)
+        if kind == "vote-unconfigured":
+            return web.json_response({"error": "promote worker not configured"}, status=503)
         refused = kind == "vote-fails" or (kind == "fails-once" and len(fixture.posts) == 1)
         if refused:
             return web.json_response({"ok": False}, status=502)
@@ -153,6 +169,26 @@ window.fetch = async (input, init) => {
   try { return await realFetch(input, init); } finally { entry.settled = true; }
 };
 }"""
+
+# Installed before the page loads: every vote request gives up after 300ms, so a
+# check need not wait out the page's real timeout.
+SHORT_VOTE_TIMEOUT = """{
+const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+AbortSignal.timeout = () => realTimeout(300);
+}"""
+
+# Installed before the page loads: a page that set no timeout on its vote requests.
+DROP_VOTE_SIGNAL = """{
+const realFetch = window.fetch;
+window.fetch = (input, init) => {
+  if (!init || !init.signal) return realFetch(input, init);
+  const {signal, ...rest} = init;
+  return realFetch(input, rest);
+};
+}"""
+
+# A sabotage: focus() stops working, so nothing the page does can give focus back.
+NO_FOCUS = """HTMLElement.prototype.focus = function () {};"""
 
 # Installed before the page loads: a new tab is recorded rather than opened.
 RECORD_OPEN = """
@@ -219,8 +255,22 @@ const dropRule = (selector, media = "") => {
 };
 const deck = () => ["#t-remaining", "#t-source", "#t-title"].map((id) => $(id).textContent);
 const signedIn = () => waitFor(() => visible(voteButton("Pending Two", "up")), "the vote buttons");
+// The failure notice the list shows for a row, which sits right after it.
+const rowNotice = (title) => {
+  const next = rowOf(title).nextElementSibling;
+  return next && next.classList.contains("vote-error") ? next : null;
+};
+const stateOf = (title) => $(".state", rowOf(title));
 """
 )
+
+
+# A sabotage: the page takes every vote failure notice out as soon as it is put in.
+STRIP_NOTICES = """{
+const strip = () => $$(".vote-error").forEach((n) => n.remove());
+strip();
+new MutationObserver(strip).observe(document.body, {subtree: true, childList: true});
+}"""
 
 
 def vote_body(slug: str, vote: str) -> dict:
@@ -263,23 +313,143 @@ _CHECKS: list[Check] = [
         sabotage="""$$(".promote-btn").forEach((b) => b.classList.remove("done"));""",
         receipt=_posted(vote_body("pending-two", "up")),
     ),
+    # A refused list vote says why on the line below its row, and nothing is kept.
+    *(
+        Check(
+            id=f"list-vote-failure-{name}",
+            fixture=fixture,
+            path=PAGE,
+            preload=SHORT_VOTE_TIMEOUT if fixture == "vote-hangs" else "",
+            act="""
+                await signedIn();
+                voteButton("Pending Two", "up").click();
+                await waitFor(() => rowNotice("Pending Two"), "the failure notice");
+            """,
+            script=f"""
+                const notice = rowNotice("Pending Two");
+                expect(visible(notice), "the failure notice is hidden");
+                expect(notice.getAttribute("role") === "alert", "the notice is not announced");
+                const text = notice.textContent;
+                expect(text.includes({json.dumps(reason)}), `notice: ${{text}}`);
+                const up = voteButton("Pending Two", "up");
+                expect(up.classList.contains("error"), "up is not marked failed");
+                expect(!up.classList.contains("done"), "up is marked done");
+                expect(up.getAttribute("aria-pressed") === "false", "up is pressed");
+                expect(stateOf("Pending Two").textContent === "pending", "the state changed");
+                const stored = JSON.stringify(storedVotes());
+                expect(!stored.includes("pending-two"), `stored: ${{stored}}`);
+            """,
+            sabotage="" if fixture == "vote-hangs" else STRIP_NOTICES,
+            sabotage_preload=DROP_VOTE_SIGNAL if fixture == "vote-hangs" else "",
+            receipt=_posted(vote_body("pending-two", "up")),
+        )
+        for name, fixture, reason in (
+            ("says-why", "vote-fails", "HTTP 502"),
+            ("signed-out-says-sign-in", "vote-signed-out", "sign in again"),
+            ("unconfigured-names-the-url", "vote-unconfigured", "CYRIS_PROMOTE_WORKER_URL"),
+            ("times-out", "vote-hangs", "did not reach the server"),
+        )
+    ),
     Check(
-        id="list-vote-failure-marks-error",
-        fixture="vote-fails",
+        id="list-vote-retry-clears-notice",
+        fixture="fails-once",
         path=PAGE,
         act="""
             await signedIn();
             voteButton("Pending Two", "up").click();
-            await waitFor(() => marked("Pending Two", "up", "error"), "the vote marked failed");
+            await waitFor(() => rowNotice("Pending Two"), "the failure notice");
+            await waitFor(() => !voteButton("Pending Two", "up").disabled, "the buttons back");
+            voteButton("Pending Two", "up").click();
+            await waitFor(() => marked("Pending Two", "up", "done"), "the vote marked done");
         """,
+        script="""expect(!rowNotice("Pending Two"), "the failure notice stays");""",
+        sabotage="""
+            const notice = document.createElement("p");
+            notice.className = "vote-error";
+            rowOf("Pending Two").after(notice);
+        """,
+    ),
+    Check(
+        id="list-vote-inflight-disables-group",
+        fixture="slow-vote",
+        path=PAGE,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").click();
+        """,
+        script=f"""
+            const on = $$(".promote-btn", rowOf("Pending Two")).filter((b) => !b.disabled);
+            expect(on.length === 0, `enabled in flight: ${{on.map((b) => b.dataset.vote)}}`);
+            voteButton("Pending Two", "down").click();
+            await waitFor(() => marked("Pending Two", "up", "done"), "the vote marked done");
+            await sleep({int(SLOW_VOTE_S * 1000)});
+        """,
+        sabotage="""$$(".promote-btn", rowOf("Pending Two")).forEach((b) => {
+            b.disabled = false;
+        });""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    # The pressed state and the state text follow the vote, both ways.
+    *(
+        Check(
+            id=f"list-vote-{vote}-shows-state",
+            fixture="signed-in",
+            path=PAGE,
+            act=f"""
+                await signedIn();
+                voteButton("Pending Two", "{vote}").click();
+                await waitFor(() => marked("Pending Two", "{vote}", "done"), "the vote");
+            """,
+            script=f"""
+                const state = stateOf("Pending Two");
+                expect(state.textContent === "{state}", `state text: ${{state.textContent}}`);
+                expect(state.classList.contains("{state}"), `state class: ${{state.className}}`);
+                const pressedOf = (v) => voteButton("Pending Two", v).getAttribute("aria-pressed");
+                expect(pressedOf("{vote}") === "true", `{vote}: ${{pressedOf("{vote}")}}`);
+                expect(pressedOf("{other}") === "false", `{other}: ${{pressedOf("{other}")}}`);
+            """,
+            sabotage=f"""
+                const state = stateOf("Pending Two");
+                state.className = "state pending";
+                state.textContent = "pending";
+                voteButton("Pending Two", "{vote}").setAttribute("aria-pressed", "false");
+            """,
+            receipt=_posted(vote_body("pending-two", vote)),
+        )
+        for vote, other, state in (("up", "down", "accepted"), ("down", "up", "rejected"))
+    ),
+    Check(
+        id="list-stored-vote-shows-state",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("pending-two"),
+        act="await signedIn();",
+        script="""
+            const text = stateOf("Pending Two").textContent;
+            expect(text === "accepted", `state text: ${text}`);
+            const pressed = voteButton("Pending Two", "up").getAttribute("aria-pressed");
+            expect(pressed === "true", `up pressed: ${pressed}`);
+        """,
+        sabotage="""stateOf("Pending Two").textContent = "pending";""",
+    ),
+    Check(
+        id="list-vote-keeps-focus",
+        fixture="slow-vote",
+        path=PAGE,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").focus();
+        """,
+        sabotage=NO_FOCUS,
         script="""
             const up = voteButton("Pending Two", "up");
-            expect(up.classList.contains("error"), "up is not marked failed");
-            expect(!up.classList.contains("done"), "up is marked done");
-            const stored = JSON.stringify(storedVotes());
-            expect(!stored.includes("pending-two"), `stored: ${stored}`);
+            expect(document.activeElement === up, "up never took focus");
+            up.click();
+            await waitFor(() => marked("Pending Two", "up", "done"), "the vote marked done");
+            const now = document.activeElement;
+            expect(now === up, `focus is on ${now && now.tagName}`);
         """,
-        sabotage="""$$(".promote-btn").forEach((b) => b.classList.remove("error"));""",
+        receipt=_posted(vote_body("pending-two", "up")),
     ),
     Check(
         id="row-title-wraps-400",
@@ -600,6 +770,8 @@ _CHECKS: list[Check] = [
             const shown = deck();
             expect(same(shown, ["4 remaining", "Source A", "Pending Two"]), `deck: ${shown}`);
             expect(visible($("#t-error")), "the failure notice is hidden");
+            const text = $("#t-error").textContent;
+            expect(text.includes("HTTP 502"), `notice: ${text}`);
             const notice = $("#t-error").getBoundingClientRect();
             const actions = $("#t-actions").getBoundingClientRect();
             expect(notice.top >= actions.bottom, "the notice is not under the buttons");
@@ -608,6 +780,42 @@ _CHECKS: list[Check] = [
             expect(done === 0, "the list shows a vote");
         """,
         sabotage="""$("#t-error").hidden = true;""",
+    ),
+    Check(
+        id="deck-signed-out-says-sign-in",
+        fixture="vote-signed-out",
+        path=PAGE,
+        act="""
+            await pressDeck("up");
+            await waitFor(() => visible($("#t-error")), "the failure notice");
+        """,
+        script="""
+            const text = $("#t-error").textContent;
+            expect(text.includes("sign in again"), `notice: ${text}`);
+        """,
+        sabotage="""$("#t-error").textContent = "";""",
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    # A keyboard reader presses Enter on Up card after card, so focus must stay on Up.
+    Check(
+        id="deck-enter-votes-each-card",
+        fixture="signed-in",
+        path=PAGE,
+        act="""
+            await showView("triage");
+            $("#t-up").focus();
+        """,
+        sabotage=NO_FOCUS,
+        script="""
+            expect(document.activeElement === $("#t-up"), "Up never took focus");
+            document.activeElement.click();
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+            const now = document.activeElement;
+            expect(now === $("#t-up"), `focus is on ${now && (now.id || now.tagName)}`);
+            now.click();
+            await waitFor(() => deck()[0] === "2 remaining", "the card after it");
+        """,
+        receipt=_posted(vote_body("pending-two", "up"), vote_body("pending-three", "up")),
     ),
     Check(
         id="vote-retry-clears-notice",
