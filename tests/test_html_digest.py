@@ -2175,6 +2175,36 @@ def test_untranslated_sections_leave_their_language_unknown(tmp_path):
     assert _langs_of(langs, PASSED_THROUGH_TEXT) == dict.fromkeys(PASSED_THROUGH_TEXT, "")
 
 
+def _with_passed_through(content: DigestContent, *titles: str) -> DigestContent:
+    """`content` with the items titled `titles` marked as an excerpt fallback."""
+    for item in (
+        *(i for s in content.featured_articles for i in s.items),
+        *content.filtered_headlines,
+    ):
+        item.passed_through = item.title in titles
+    return content
+
+
+def test_an_excerpt_fallback_leaves_its_language_unknown_beside_written_text(tmp_path):
+    content = _with_passed_through(_every_section("ja"), "Second", "Wire")
+    langs = text_langs(HtmlDigestWriter(tmp_path).render(content))
+
+    fallback = ["Second", "Second summary.", "Wire", "Wire summary."]
+    written = ["Lead", "Lead summary.", "Cluster heading", "Cluster summary."]
+    assert _langs_of(langs, fallback) == dict.fromkeys(fallback, "")
+    assert _langs_of(langs, written) == dict.fromkeys(written, "ja")
+
+
+def test_a_top_story_from_an_excerpt_fallback_leaves_its_language_unknown(tmp_path):
+    content = _with_passed_through(_every_section("ja"), "Lead")
+    langs = text_langs(HtmlDigestWriter(tmp_path).render(content))
+
+    assert _langs_of(langs, ["Lead", "Lead summary."]) == dict.fromkeys(
+        ["Lead", "Lead summary."], ""
+    )
+    assert _langs_of(langs, ["Second", "Wire"]) == dict.fromkeys(["Second", "Wire"], "ja")
+
+
 def test_every_vote_group_says_its_titles_are_english(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(_every_section("ja"))
     groups = re.findall(r'<span class="vote-group"[^>]*>', html)

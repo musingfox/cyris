@@ -38,6 +38,36 @@ class TestFilterArticles:
 
         assert usage.fell_back_to_excerpts is fell_back
 
+    @pytest.mark.parametrize(
+        ("llm", "passed_through"),
+        [
+            (None, True),
+            (FakeLLM(error=RuntimeError("quota")), True),
+            (
+                FakeLLM(
+                    json.dumps(
+                        {"selected": [{"id": 0, "title": "T", "summary": "S", "source": "X"}]}
+                    )
+                ),
+                False,
+            ),
+        ],
+        ids=["no-client", "call-failed", "answered"],
+    )
+    async def test_only_a_fallback_item_says_its_text_is_the_articles_own(
+        self, sample_filter_articles, llm, passed_through
+    ):
+        items = await filter_articles(
+            sample_filter_articles,
+            llm,
+            filter_snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert items
+        assert {item.passed_through for item in items} == {passed_through}
+
     async def test_filter_returns_noteworthy_items(self, sample_filter_articles):
         llm = FakeLLM(
             json.dumps(

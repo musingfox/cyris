@@ -150,6 +150,7 @@ class TestSummarizeArticles:
             "First on its own",
             "Second on its own",
         ]
+        assert [item.passed_through for item in sections[0].items] == [False, False]
         assert usage.fell_back_to_excerpts is False
         assert '"summaries"' in llm.calls[0]["system"]
 
@@ -188,6 +189,7 @@ class TestSummarizeArticles:
         )
 
         assert sections[0].items[0].summary == excerpt(article.content)
+        assert sections[0].items[0].passed_through is True
         assert sections[0].summary == "Group summary"
         assert usage.fell_back_to_excerpts is True
 
