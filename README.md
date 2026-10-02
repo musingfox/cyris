@@ -13,7 +13,7 @@ issue took in 91 articles, kept 13, and cost about US$0.03 in LLM usage. That di
 public at [cyris-digest.pages.dev](https://cyris-digest.pages.dev/), written in
 Traditional Chinese.
 
-![A digest: 8 sources, 64 articles received, 12 included, led by a top story](website/assets/digest.webp)
+![A digest: 8 sources, 92 articles received, 15 included, led by a top story on Cloudflare's infrastructure](website/assets/digest.webp)
 
 ## What you get
 
@@ -29,7 +29,7 @@ Traditional Chinese.
 - **Any LLM, or none**: Anthropic, Gemini, OpenAI, Cloudflare Workers AI, or plain
   excerpts with no API key.
 
-![The All articles page of the same run: every article it judged, accepted or rejected, grouped by source](website/assets/all-articles.webp)
+![The All articles page of the same run: all 92 articles it judged, accepted or rejected, grouped by source](website/assets/all-articles.webp)
 
 ## Get started
 
