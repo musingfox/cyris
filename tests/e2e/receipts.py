@@ -82,7 +82,9 @@ def pages_site(records: list[dict]) -> dict[str, bytes]:
     deployment = only(records, "pages_deployment_create")
     manifest = json.loads(deployment["form"]["manifest"])
     uploaded = {
-        asset["key"]: base64.b64decode(asset["value"])
+        asset["key"]: (
+            base64.b64decode(asset["value"]) if asset.get("base64") else asset["value"].encode()
+        )
         for record in by_route(records, "pages_upload")
         for asset in json_body(record)
     }
