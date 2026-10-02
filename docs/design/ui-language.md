@@ -285,8 +285,13 @@ title is itself that section's `h2`.
 - **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers and the
   lead title; `h3` is the titles of features, news groups and topic blocks; `h4` is the articles inside a
   topic block and the On the Radar items. `h3` and `h4` are both the title role (§3), with the class
-  `.item-title`: `h3` adds `.lg` for 19px, and `h4` uses 18px. Each row of The Wire is only a number and a
-  link, with no heading element.
+  `.item-title`: `h3` adds `.lg` for 19px, and `h4` uses 18px. A row of The Wire has no heading element.
+- **A Wire row is its title and the filter's one sentence.** Each row is a number, the title link and,
+  below the title, the one-sentence summary the filter wrote for that article, in the small role (§3)
+  under a title in `--text`; the source fold and the votes follow, the votes last. A row with no summary
+  is only the number and the title link. When the filter ran without an LLM, by choice under provider
+  `none` or because the configured one could not be used, the sentence is the article's plain excerpt,
+  as a Features card the model wrote no summary for shows its excerpt.
 - **Only the Top story may be a group.** When two or more articles on one topic score at least
   `routing.score_threshold`, the lead card takes the group's heading as its title and prints the group's
   summary once. Each of those articles follows as an `.article-item` whose title is `h3 .lg`, one level
@@ -403,6 +408,9 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
 - **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections keep the page's labels and
   order: Top story, Features, In Focus, Following, On the Radar, The Wire. The lead is the headline card's
   square panel; every other item is separated by a `--border` hairline.
+- **A Wire row keeps its sentence.** Its summary follows its title as on the page, in the small role in
+  the HTML part and on its own indented line in the plain-text part; a row with no summary is its title
+  alone.
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a
   `--warn` notice instead. The footer's project link (§4) is the one link off that host.
