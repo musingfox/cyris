@@ -91,7 +91,9 @@ nav { position: sticky; top: 0; z-index: 20; height: var(--bar-h); background: r
 .btn { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s-2); text-decoration: none; font: 500 calc(12px * var(--type-scale))/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn.primary:hover { background: #d4ff66; }
-.btn:not(.primary):hover, .language-toggle:hover, .theme-toggle:hover, .icon-link:hover { color: var(--text); border-color: var(--accent); }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:where(:not(:disabled)):hover { color: var(--text); }
+.language-toggle:hover, .theme-toggle:hover, .icon-link:hover { color: var(--text); border-color: var(--accent); }
 .btn:active, .language-toggle:active, .theme-toggle:active, .icon-link:active { opacity: .7; }
 .how-heading { max-width: var(--measure); margin-bottom: var(--s-6); }
 .how-heading h2 { margin: var(--s-3) 0; font: 600 calc(24px * var(--type-scale))/1.3 var(--font-sans); }
@@ -170,7 +172,7 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
         <p class="hero-description" data-zh="Cyris 讀完你訂閱的 RSS 與電子報，交給你一份只留下值得讀的文章、讀得完的摘要。你會精挑每一段送進模型 context window 的內容；Cyris 用同樣的方式替你的注意力把關。">Cyris reads your RSS feeds and newsletters and hands you one digest of the articles worth reading, short enough to finish. You pick every token that reaches your model’s context window; Cyris does the same for your attention.</p>
         <div class="ctas">
             <a class="btn primary" href="#start" data-zh="產生你的第一份摘要">Get your first digest</a>
-            <a class="btn" href="https://cyris-digest.pages.dev/" hreflang="zh-Hant" data-zh="看一期真實摘要 <span aria-hidden=&quot;true&quot;>↗</span>">See a live digest <span aria-hidden="true">↗</span></a>
+            <a class="btn secondary" href="https://cyris-digest.pages.dev/" hreflang="zh-Hant" data-zh="看一期真實摘要 <span aria-hidden=&quot;true&quot;>↗</span>">See a live digest <span aria-hidden="true">↗</span></a>
         </div>
         <p class="hero-note" data-zh="免費、開源，不需要 AI 金鑰就能開始。真實摘要以繁體中文撰寫。">Free and open source. No AI key needed to start. The live digest is written in Traditional Chinese.</p>
         <p class="proof" data-zh="維護者自己的部署，2026 年 8 月 28 日至 9 月 27 日共 56 期：平均每期收進 &lt;strong&gt;91 篇&lt;/strong&gt;文章，留下 &lt;strong&gt;13 篇&lt;/strong&gt;，AI 費用約 &lt;strong&gt;US$0.03&lt;/strong&gt;。">The maintainer’s own deployment, 56 issues from Aug 28 to Sep 27, 2026: an average issue took in <strong>91 articles</strong>, kept <strong>13</strong>, and cost about <strong>US$0.03</strong> in AI.</p>
@@ -252,13 +254,13 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
                 <h3 data-zh="本機執行">On your computer</h3>
                 <p data-zh="在電腦上執行指令，產生 HTML 摘要後用瀏覽器開啟。">Run a command to generate an HTML digest, then open it in your browser.</p>
                 <ul><li data-zh="需要 Python 3.12+ 與 uv">Requires Python 3.12+ and uv</li><li data-zh="手動執行，資料存在本機">Run on demand; keep data on disk</li><li data-zh="郵件匯入與網頁投票另需 Cloudflare Workers">Email ingestion and web voting need Cloudflare Workers</li></ul>
-                <a class="btn" href="#local-setup" data-zh="本機安裝步驟 <span aria-hidden=&quot;true&quot;>↓</span>">Local setup <span aria-hidden="true">↓</span></a>
+                <a class="btn secondary" href="#local-setup" data-zh="本機安裝步驟 <span aria-hidden=&quot;true&quot;>↓</span>">Local setup <span aria-hidden="true">↓</span></a>
             </article>
             <article class="run-card cloud">
                 <h3 data-zh="Cloudflare 自動發布">Publish on Cloudflare</h3>
                 <p data-zh="設定發布時間，讓 Cyris 定時產生摘要，再到網站閱讀與管理。">Set publishing hours so Cyris can generate digests on schedule. Read them and manage your settings on the web.</p>
                 <ul><li data-zh="需要 Cloudflare Workers 付費方案（每月 US$5）、Docker 與 bun">Requires Cloudflare Workers Paid (US$5/month), Docker and bun</li><li data-zh="資料存於 D1，摘要發布至 Pages">Data in D1; digests on Pages</li><li data-zh="收發郵件另需自己的網域與 Email Routing">Email ingestion and delivery need your domain and Email Routing</li><li data-zh="安裝指南目前只在一個帳號上驗證過">The guide has so far been verified on one account only</li></ul>
-                <a class="btn" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" data-zh="雲端部署步驟 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup <span aria-hidden="true">↗</span></a>
+                <a class="btn secondary" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" data-zh="雲端部署步驟 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup <span aria-hidden="true">↗</span></a>
             </article>
         </div>
         <details class="setup" id="local-setup" open>
