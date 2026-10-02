@@ -55,6 +55,12 @@ class CloudflareRssSource:
             )
         resp.raise_for_status()
         rows = resp.json()
+        if len(rows) >= WORKER_ROW_CEILING:
+            logger.warning(
+                "RSS worker read hit its %d-row ceiling: older rows in this window "
+                "were left in the buffer and not stored",
+                WORKER_ROW_CEILING,
+            )
 
         articles = []
         for row in rows:
