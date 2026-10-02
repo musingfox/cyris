@@ -45,11 +45,11 @@
 
         html { scroll-behavior: smooth; }
 
-        {% with container_width="1240px", container_relative=true, glow="80% 60%", line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
+        {% with container_width="1240px", container_relative=true, line_height="1.65", font_features=true %}{% include "_page.css.j2" %}{% endwith %}
 
         /* === MASTHEAD === */
         {% with masthead_padding="var(--s-8) 0 var(--s-6)", masthead_margin="var(--s-12)",
-                  masthead_rule=true, subtitle_margin="var(--s-5)"  %}{% include "_masthead.css.j2" %}{% endwith %}
+                  subtitle_margin="var(--s-5)"  %}{% include "_masthead.css.j2" %}{% endwith %}
 
         .headline-block {
             margin-top: var(--s-8);

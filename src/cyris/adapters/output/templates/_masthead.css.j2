@@ -2,20 +2,7 @@
             padding: {{ masthead_padding }};
             margin-bottom: {{ masthead_margin }};
             border-bottom: 1px solid var(--border);
-{%- if masthead_rule %}
-            position: relative;
-{%- endif %}
         }
-{% if masthead_rule %}
-        .masthead::after {
-            content: "";
-            position: absolute;
-            left: 0; right: 0; bottom: -1px;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent);
-            opacity: 0.45;
-        }
-{% endif %}
         .subtitle {
             margin-top: {{ subtitle_margin }};
             font-family: var(--font-mono);

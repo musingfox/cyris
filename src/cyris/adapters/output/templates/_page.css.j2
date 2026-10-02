@@ -1,16 +1,12 @@
         body {
             font-family: var(--font-sans);
             {# `background` is a shorthand and resets background-image, so it has to
-               come first: emit it after the longhands and the glow and the 32px grid
-               both vanish. #}
+               come first: emitted after the longhands, it erases the 32px grid. #}
             background: var(--bg);
             background-image:
-{%- if glow %}
-                radial-gradient(ellipse {{ glow }} at 50% -10%, var(--accent-tint), transparent 70%),
-{%- endif %}
                 linear-gradient(var(--grid) 1px, transparent 1px),
                 linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-            background-size: {% if glow %}100% 100%, {% endif %}32px 32px, 32px 32px;
+            background-size: 32px 32px, 32px 32px;
             color: var(--text);
             font-size: calc(14px * var(--type-scale));
             line-height: {{ line_height }};

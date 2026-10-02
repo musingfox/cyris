@@ -16,6 +16,7 @@ from css_rules import (
     canonical_colour,
     colour_literals,
     font_stack_literals,
+    gradient_glows,
     include_sites,
     off_spec_transitions,
     off_token_radii,
@@ -495,21 +496,6 @@ def _declared(rules: set[str] | list[str], prop: str) -> list[str]:
     return [d.split(":", 1)[1].strip() for d in rules if d.split(":", 1)[0] == prop]
 
 
-def test_the_page_glow_is_the_accent_tint() -> None:
-    (image,) = _declared(parse_style_block(receipt_fixtures()[1])["body"], "background-image")
-    tint = "radial-gradient(ellipse 80% 60% at 50% -10%, var(--accent-tint), transparent 70%)"
-    assert tint in image
-    assert "rgba(" not in image
-
-
-def test_the_archive_has_no_page_glow_like_raw() -> None:
-    """Spec section 1.2: the only glow is the brand mark."""
-    index, _, raw = receipt_fixtures()
-    images = _declared(parse_style_block(index)["body"], "background-image")
-    assert images == _declared(parse_style_block(raw)["body"], "background-image")
-    assert [image for image in images if "radial-gradient(" in image] == []
-
-
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
 def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
     rules = parse_style_block(receipt_fixtures()[page])
@@ -521,7 +507,8 @@ def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])
 def test_only_the_brand_mark_glows(page: str) -> None:
     """Spec section 1.2: the only glow is the brand mark."""
-    assert box_shadows(_source(page)) == []
+    source = _source(page)
+    assert box_shadows(source) + gradient_glows(source) == []
 
 
 @pytest.mark.parametrize(
@@ -535,6 +522,19 @@ def test_only_the_brand_mark_glows(page: str) -> None:
 )
 def test_a_shadow_outside_the_brand_mark_is_reported(css: str, reported: int) -> None:
     assert len(box_shadows(css)) == reported
+
+
+@pytest.mark.parametrize(
+    ("css", "reported"),
+    [
+        ("body{background-image:radial-gradient(ellipse at 50% 0, var(--accent-tint), red)}", 1),
+        (".x::after{background:linear-gradient(90deg, transparent, var(--accent) 50%)}", 1),
+        ("body{background-image:linear-gradient(var(--grid) 1px, transparent 1px)}", 0),
+        (".x{background:linear-gradient(180deg, var(--surface), var(--bg-elev))}", 0),
+    ],
+)
+def test_a_glowing_gradient_is_reported(css: str, reported: int) -> None:
+    assert len(gradient_glows(css)) == reported
 
 
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
@@ -762,7 +762,6 @@ def test_the_digest_passes_its_masthead_and_footer_scale_spacing() -> None:
     assert sites["_masthead.css.j2"] == {
         "masthead_padding": "var(--s-8) 0 var(--s-6)",
         "masthead_margin": "var(--s-12)",
-        "masthead_rule": True,
         "subtitle_margin": "var(--s-5)",
     }
     assert sites["_footer.css.j2"] == {
