@@ -14,6 +14,7 @@ model rewrote. `TestSelfChecks` proves the checks can fail.
 import copy
 import hashlib
 import json
+import mimetypes
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -37,6 +38,7 @@ from e2e.receipts import (
 from cyris.bootstrap import default_model
 from cyris.domain.models import ArticleState, SourceConfig, StoredArticle, Tier, UsageStats
 from cyris.domain.triage import RejectReason
+from cyris.service_layer.prompts import language_wording
 
 pytestmark = pytest.mark.e2e
 
@@ -161,6 +163,8 @@ SETTINGS = harness.settings(
         "notify.discord_webhook_url": harness.DISCORD_WEBHOOK,
         "notify.email_to": "reader@e2e.test",
         "notify.email_from": "digest@e2e.test",
+        "digest.output_language": "zh-Hant",
+        "digest.style_prompt": "E2E style: name the receipt.",
         # a1 and a2 clear 80 and form the Top story; b1, b2 and l1 are Features.
         "routing.score_threshold": 80,
         "routing.summarize_score_threshold": 50,
@@ -567,8 +571,9 @@ def test_the_rss_buffer_is_read_for_the_configured_window(receipts) -> None:
     read = only(receipts.records, "rss_articles")
     query = dict(read["query"])
     assert set(query) == {"after", "before", "limit"}
-    window = datetime.fromisoformat(query["before"]) - datetime.fromisoformat(query["after"])
-    assert window == timedelta(hours=WINDOW_HOURS)
+    before = datetime.fromisoformat(query["before"])
+    assert receipts.run.started_at <= before <= receipts.run.finished_at
+    assert before - datetime.fromisoformat(query["after"]) == timedelta(hours=WINDOW_HOURS)
     assert query["limit"] == "2000"
 
 
@@ -583,32 +588,38 @@ def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) ->
     calls = by_route(receipts.records, "gemini_generate")
     kinds = [c["llm"]["kind"] for c in calls]
     assert kinds == ["scoring", "cluster", "filter", "summarize", "summarize"]
-    given = [frozenset(titles) for _, titles in _llm_calls(receipts.records)]
+    # Sorted, not sets: an article listed twice must show. The order within a prompt
+    # is the store's, which no setting decides.
+    given = [sorted(titles) for _, titles in _llm_calls(receipts.records)]
     assert given[:3] == [
-        {TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "l2", "f1", "f2")},
-        {TITLE[k] for k in ("n1", "n2", "n3")},
-        {TITLE[k] for k in ("f1", "f2", "n3")},
+        sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "l2", "f1", "f2")),
+        sorted(TITLE[k] for k in ("n1", "n2", "n3")),
+        sorted(TITLE[k] for k in ("f1", "f2", "n3")),
     ]
     # One call per topic group, in the order the store returns the window.
-    assert set(given[3:]) == {
-        frozenset(TITLE[k] for k in ("a1", "a2", "b1", "b2")),
-        frozenset({TITLE["l1"]}),
-    }
+    assert sorted(given[3:]) == sorted(
+        [sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2")), [TITLE["l1"]]]
+    )
     for call in calls:
         ids = [article_id for article_id, _, _ in call["llm"]["articles"]]
         body = json_body(call)
         assert body["generationConfig"]["responseMimeType"] == "application/json"
         if call["llm"]["kind"] == "scoring":
             # Scoring names each article by its stored id, not by position.
-            id_by_title = {title: article_id for article_id, _, title in call["llm"]["articles"]}
-            assert id_by_title == {
-                TITLE[k]: receipts.articles[URL[k]]["original_id"] for k in SCORES
-            }
-            assert id_by_title[TITLE["a1"]] == "e2e-a1"
+            pairs = sorted((title, article_id) for article_id, _, title in call["llm"]["articles"])
+            assert pairs == sorted(
+                (TITLE[k], receipts.articles[URL[k]]["original_id"]) for k in SCORES
+            )
+            assert ("Agents learn to read receipts", "e2e-a1") in pairs
             assert "temperature" not in body["generationConfig"]
         else:
             assert ids == [str(i) for i in range(len(ids))]
             assert body["generationConfig"]["temperature"] == 1.0
+            # The two values cyris writes into every written prompt's instructions.
+            system = body["system_instruction"]["parts"][0]["text"]
+            assert language_wording(SETTINGS["digest.output_language"]) in system
+            assert "<output_language>" not in system
+            assert system.endswith(SETTINGS["digest.style_prompt"])
 
 
 def test_pages_receives_every_file_of_the_site_once(receipts) -> None:
@@ -626,6 +637,12 @@ def test_pages_receives_every_file_of_the_site_once(receipts) -> None:
     assert sorted(json_body(check)["hashes"]) == sorted(manifest.values())
     upload = only(receipts.records, "pages_upload")
     assert sorted(a["key"] for a in json_body(upload)) == sorted(manifest.values())
+    path_of = {digest: path for path, digest in manifest.items()}
+    for asset in json_body(upload):
+        path = path_of[asset["key"]]
+        assert asset["base64"] is True, path
+        assert asset["metadata"] == {"contentType": mimetypes.guess_type(path)[0]}, path
+    assert {mimetypes.guess_type(p)[0] for p in manifest} == {"text/html", "image/svg+xml"}
     upsert = only(receipts.records, "pages_upsert_hashes")
     assert sorted(json_body(upsert)["hashes"]) == sorted(manifest.values())
     # The manifest D1 keeps for the next deploy is the one this deploy named.
@@ -636,6 +653,23 @@ def test_pages_receives_every_file_of_the_site_once(receipts) -> None:
     ]
     params = insert["params"]
     assert {params[i]: params[i + 1] for i in range(0, len(params), 3)} == manifest
+
+
+def test_the_raw_page_lists_the_window_and_the_index_links_both_pages(receipts) -> None:
+    raw = parse_html(receipts.site[f"/{receipts.slug}-raw.html"])
+    assert {h for h in raw.hrefs() if h in set(URL.values())} == set(URL.values())
+    index = parse_html(receipts.site["/index.html"]).hrefs()
+    assert {f"{receipts.slug}.html", f"{receipts.slug}-raw.html"} <= set(index)
+
+
+def test_the_run_writes_nothing_beside_its_config(receipts) -> None:
+    """D1 and Pages are the run's only stores: no agent-vault/, no html/."""
+    harness_files = {
+        ".env", "cyris.toml", "d1.sqlite", "home", "mitmproxy", "proxy.log", "proxy.ready",
+        "requests.jsonl", "routes.json", "script.json", "tmp",
+    }  # fmt: skip
+    assert {p.name for p in receipts.run.dir.iterdir()} == harness_files
+    assert not any((receipts.run.dir / "home").iterdir())
 
 
 # ---- scripted case 1: two high scorers on one topic are one Top story --------
@@ -783,9 +817,16 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     for count in ("**4**", "**11**", "**8**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
+    assert stats["title"].split()[0] == "Morning"
+    # Each section keeps its own colour, as the reader knows them in the channel.
+    assert [e["color"] for e in (top, features, focus, radar, wire, stats)] == [
+        0xF1C40F, 0x5865F2, 0xFEE75C, 0x9B59B6, 0x95A5A6, 0x57F287,
+    ]  # fmt: skip
+    assert all(e["title"] for e in (top, features, focus, radar, wire, stats))
     mail = receipts.mail()
     assert (mail["to"], mail["from"]) == ("reader@e2e.test", "digest@e2e.test")
-    assert receipts.date in mail["subject"]
+    words = mail["subject"].split()
+    assert (words[0], words[-1]) == ("Morning", receipts.date)
     assert receipts.digest_url in mail["text"]
     assert receipts.digest_url in parse_html(mail["html"]).hrefs()
     for key in SHOWN - {"n1", "n2"}:
