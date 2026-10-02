@@ -777,6 +777,7 @@ EXPECTED_RAW_IDS = {
     "list-vote-up-shows-state",
     "list-vote-down-shows-state",
     "list-stored-vote-shows-state",
+    "list-stored-vote-keeps-rendered-verdict",
     "list-vote-keeps-focus",
     "row-title-wraps-400",
     "fits-400-list",

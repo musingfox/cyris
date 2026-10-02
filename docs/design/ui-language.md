@@ -283,7 +283,8 @@ and switching does not reload.
   yet; to overturn an article the pipeline has already judged, vote in the list view. With no cards left,
   only `0 remaining` remains.
 - A voted article shows its state in both views: the list's state text turns `accepted` for up and
-  `rejected` for down. Votes go through the existing promote Worker, with no new backend.
+  `rejected` for down. On a later visit, a vote this browser remembers changes only a row rendered
+  `pending`, because each run applies the votes cast before it. Votes go through the existing promote Worker, with no new backend.
 - The drag and fly-out are the only transform motion on the site, and are cancelled under reduced motion.
 
 ### settings
