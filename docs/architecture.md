@@ -304,7 +304,8 @@ The run cap, `[digest] max_articles_per_digest`, is applied once, at the pending
 `run_digest`: a run scores and digests the window's newest N pending articles by publish time,
 across all sources. No source applies it, because one that cut first would drop articles before
 the store saw them. The RSS Worker read has a bound of its own, the Worker's row ceiling, because
-every row carries the feed's full content and the Worker holds the whole result in memory.
+every row carries the feed's full content and the Worker holds the whole result in memory. A
+read that fills the ceiling logs a warning, since the window's older rows then stay unstored.
 
 Each source carries a **tier**, which decides how much attention it gets:
 

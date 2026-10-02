@@ -121,3 +121,32 @@ async def test_malformed_row_is_skipped_not_fatal():
     )
 
     assert [a.url for a in articles] == ["https://a.test/1"]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_a_read_that_fills_the_ceiling_is_logged(monkeypatch, caplog):
+    """A full read means older rows were left in the buffer, never stored."""
+    monkeypatch.setattr("cyris.adapters.fetch.rss_worker_source.WORKER_ROW_CEILING", 2)
+    second = {**ROW, "url": "https://a.test/2", "guid": "tag:a.test,2"}
+    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW, second]))
+
+    with caplog.at_level("WARNING", logger="cyris.adapters.fetch.rss_worker_source"):
+        await CloudflareRssSource(WORKER, "tok").fetch_articles(
+            after=AFTER, before=BEFORE, sources={}
+        )
+
+    assert any("ceiling" in r.getMessage() for r in caplog.records), caplog.records
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_a_read_below_the_ceiling_logs_no_warning(caplog):
+    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
+
+    with caplog.at_level("WARNING", logger="cyris.adapters.fetch.rss_worker_source"):
+        await CloudflareRssSource(WORKER, "tok").fetch_articles(
+            after=AFTER, before=BEFORE, sources={}
+        )
+
+    assert not caplog.records
