@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 
 class TestDiscordEmbeds:
     def test_embeds_order_mirrors_digest(self):
-        """Embeds follow Obsidian digest section order."""
+        """Embeds follow the page's section order (ui-language.md §6), then the stats."""
         content = DigestContent(
             date="2026-04-10",
             period="morning",
@@ -57,6 +57,19 @@ class TestDiscordEmbeds:
                             summary="多家科技公司宣布裁員",
                             sources=["Reuters", "Bloomberg"],
                             urls=["https://reuters.com/1"],
+                        )
+                    ],
+                )
+            ],
+            fan_sections=[
+                DigestSection(
+                    heading="IEO",
+                    items=[
+                        DigestItem(
+                            title="IEO weekly",
+                            summary="This week's issue",
+                            sources=["IEO"],
+                            urls=["https://ieo.example/1"],
                         )
                     ],
                 )
@@ -104,6 +117,7 @@ class TestDiscordEmbeds:
             "⭐ Top story",
             "📋 Features",
             "📰 News",
+            "📣 Following",
             "👀 Worth a look",
             "📌 Other headlines (1)",
             "Morning 2026-04-10",
