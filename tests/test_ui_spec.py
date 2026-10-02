@@ -383,6 +383,18 @@ def test_a_pressed_button_only_lowers_its_opacity(source: str) -> None:
     assert pressed == {f".btn{ENABLED}:active": {"opacity: .7"}}
 
 
+def test_every_website_button_lowers_its_opacity_when_pressed() -> None:
+    # Nothing on the landing page is ever disabled, so its pressed rule needs no guard.
+    pressed = {
+        key: d for key, d in parse_style_block(WEBSITE.read_text()).items() if ":active" in key
+    }
+    assert pressed == {
+        ".btn:active, .language-toggle:active, .theme-toggle:active, .icon-link:active": {
+            "opacity: .7"
+        }
+    }
+
+
 def test_the_digest_keeps_its_stats_rows_to_the_stats_card() -> None:
     # The stats card writes <div class="row">, so a shared `.row` would restyle it.
     rules = parse_style_block(receipt_fixtures()[1])
