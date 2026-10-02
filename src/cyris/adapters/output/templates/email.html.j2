@@ -86,7 +86,7 @@
     </style>
 </head>
 <body class="body">
-    <div class="preheader">{{ lead_story.title if lead_story else content.news_clusters[0].heading if content.news_clusters else '' }} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
+    <div class="preheader">{% if lead_story %}<span lang="{{ content_lang if lead_story.grouped else '' }}">{{ lead_story.title }}</span>{% elif content.news_clusters %}<span lang="{{ content_lang }}">{{ content.news_clusters[0].heading }}</span>{% endif %} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
     <div class="wrap">
         <p class="brand"><span class="mark"></span>Cyris · {{ period_label }} · {{ content.date }}</p>
         <h1 class="issue-title">Signal<em>/</em>Noise</h1>
