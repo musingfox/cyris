@@ -81,7 +81,8 @@ class TestDigestPipeline:
         assert result.content.sources_processed == 3
         assert result.content.articles_included == 2  # 1 filtered + 1 summarized
         assert len(result.content.filtered_headlines) == 1
-        assert len(result.content.thematic_summaries) == 1
+        assert result.content.thematic_summaries == []
+        assert [len(s.items) for s in result.content.featured_articles] == [1]
         # Check URL classification
         assert "https://techcrunch.com/2026/03/16/apple-vision-pro-2" in result.accepted_urls
         assert "https://stratechery.com/2026/03/16/weekly-trends" in result.accepted_urls
@@ -579,3 +580,28 @@ class TestTheLayeringSettingsReachThePage:
         assert "The group summary." not in page
         assert "Essay 0 on its own." in page
         assert "Essay 1" not in page and "Essay 2" not in page
+
+
+@pytest.mark.parametrize(
+    ("settings", "shown"),
+    [
+        ({"featured_threshold": 95, "max_featured": 1}, {0, 1}),
+        ({"featured_threshold": 70, "max_digest_output": 1}, {0}),
+    ],
+    ids=["past-max-featured", "group-replaced-by-its-best"],
+)
+async def test_an_article_layering_or_the_cap_leaves_out_stays_pending(
+    sample_sources, settings, shown
+):
+    articles, scores, llm = _scored_topic()
+    pipeline = DigestPipeline(llm, **pipeline_settings(score_threshold=0, **settings))
+
+    result = await pipeline.process(
+        articles,
+        sample_sources,
+        timezone=TEST_SETTINGS["general.timezone"],
+        article_scores=scores,
+    )
+
+    assert set(result.accepted_urls) == {f"https://essays.example/{n}" for n in shown}
+    assert result.rejected_urls == []
