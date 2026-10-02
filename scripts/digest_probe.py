@@ -53,6 +53,9 @@ PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 ARCHIVE = "/index.html"
 
 KINDS = ("signed-in", "signed-in-largest", "signed-in-smallest", "vote-fails")
+# The same three type sizes, each serving the page whose Top story is a group.
+GROUPED_KINDS = {kind: f"grouped-lead{kind.removeprefix('signed-in')}" for kind in KINDS[:3]}
+KINDS += tuple(GROUPED_KINDS.values())
 
 # Every element a vote group sits in, one per promote_btn call site.
 ITEM_SELECTORS = (
@@ -94,13 +97,28 @@ def _item(slug: str, title: str, sources: list[str], **extra) -> DigestItem:
     return DigestItem(title=title, summary=summary, sources=sources, urls=urls, **extra)
 
 
-def content() -> DigestContent:
-    """A digest with every item kind, a folded cluster and a folded headline."""
+def content(grouped_lead: bool = False) -> DigestContent:
+    """A digest with every item kind, a folded cluster and a folded headline.
+
+    `grouped_lead` makes the Top story a group of two articles under one summary, each
+    drawn with its own ↗ and votes, the shape production leads with when two articles
+    on one topic reach the featured score.
+    """
     features = [_item("lead", "The lead story of the issue", ["Lead Source"], score=8.5)]
     features += [
         _item(f"feature-{n}", f"Feature story {n}", [f"Source {n}"], score=8.0 - n / 10)
         for n in range(1, 6)
     ]
+    featured = [DigestSection(heading="Top", items=features)]
+    if grouped_lead:
+        members = [
+            _item(f"lead-{n}", f"Grouped lead article {n}", [f"Lead Source {n}"], score=8.6 - n)
+            for n in (1, 2)
+        ]
+        featured = [
+            DigestSection(heading="A grouped lead", summary="One summary.", items=members),
+            *(DigestSection(heading=i.title, items=[i]) for i in features[1:]),
+        ]
     return DigestContent(
         date=DATE,
         period=PERIOD,
@@ -108,7 +126,7 @@ def content() -> DigestContent:
         articles_received=40,
         articles_included=20,
         usage=UsageStats(input_tokens=1000, output_tokens=500, api_calls=3, model="probe"),
-        featured_articles=[DigestSection(heading="Top", items=features)],
+        featured_articles=featured,
         # The busy cluster comes first: a click on the first cluster votes on three URLs.
         news_clusters=[
             DigestSection(
@@ -150,9 +168,9 @@ def content() -> DigestContent:
     )
 
 
-def render_page() -> str:
+def render_page(grouped_lead: bool = False) -> str:
     with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render(content())
+        return HtmlDigestWriter(Path(unused)).render(content(grouped_lead))
 
 
 def render_archive() -> str:
@@ -170,13 +188,15 @@ def build_fixture(kind: str) -> VoteFixture:
     Every kind answers the probe signed in; `signed-in` takes every vote,
     `signed-in-largest` and `signed-in-smallest` do too on the page served at
     the largest and the smallest type size, and `vote-fails` refuses every vote.
+    Each `grouped-lead` kind is its `signed-in` twin on the page whose Top story is a group.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
-    page, archive = render_page(), render_archive()
-    if kind == "signed-in-largest":
+    grouped = kind.startswith("grouped-lead")
+    page, archive = render_page(grouped), render_archive()
+    if kind.endswith("-largest"):
         page = at_largest_type_scale(page)
-    if kind == "signed-in-smallest":
+    if kind.endswith("-smallest"):
         page = at_smallest_type_scale(page)
     app = web.Application()
     fixture = VoteFixture(app)
@@ -555,6 +575,30 @@ _CHECKS += [
     for check in _CHECKS
     if check.id in {f"fits-{width}" for width in WIDTHS}
     or check.id == f"head-fits-{TIGHTEST_HEAD_WIDTH}"
+]
+
+# The checks a grouped Top story could break: its members' ↗ and votes in tap areas, and
+# its extra rows in the page width. Each twin first asserts the group is on the page, so
+# a fixture that lost it cannot pass as the single lead; its sabotage is its twin's.
+GROUPED_TWINS = (
+    *(f"fits-{width}" for width in WIDTHS),
+    *(f"fits-largest-{width}" for width in WIDTHS),
+    *(f"tap-{name}-{TAP_WIDTH}" for name in ("votes", "votes-apart", "original", "original-clear")),
+    f"tap-site-bar-{TAP_WIDTH}",
+    *(f"tap-smallest-{name}-{TAP_WIDTH}" for name in SMALLEST_TAP_TWINS),
+)
+EXPECT_GROUPED_LEAD = """expect($$(".lead-story .article-item .vote-group").length >= 2,
+    "the Top story is not a group of two articles");
+"""
+_CHECKS += [
+    dataclasses.replace(
+        check,
+        id=f"grouped-lead-{check.id}",
+        fixture=GROUPED_KINDS[check.fixture],
+        script=EXPECT_GROUPED_LEAD + check.script,
+    )
+    for check in _CHECKS
+    if check.id in GROUPED_TWINS
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]
