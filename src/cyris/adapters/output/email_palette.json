@@ -11,6 +11,7 @@
     "text-faint": "#737b68",
     "accent": "#436600",
     "accent-dim": "#5f7c20",
+    "accent-hover": "#365400",
     "warn": "#b52d59",
     "accent-tint": "rgba(67, 102, 0, 0.08)",
     "warn-tint": "rgba(181, 45, 89, 0.1)",

@@ -303,7 +303,7 @@ class TestPalettes:
     def test_light_names_every_colour_the_page_tokens_name(self):
         colours = {k for k, v in tokens().items() if v.startswith(("#", "rgba("))}
 
-        assert set(LIGHT_PALETTE) == colours
+        assert set(LIGHT_PALETTE) - {"accent-hover"} == colours
 
     def test_the_light_palette_is_the_one_the_spec_lists(self):
         spec = (REPO / "docs/design/ui-language.md").read_text(encoding="utf-8")

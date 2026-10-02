@@ -119,6 +119,8 @@ colour tokens above by name; every other token is shared.
 - **The accent is darker in light.** `#c6ff3d` cannot carry text on a light ground, so the light
   `--accent` is a dark lime. As text it also passes 4.5:1 on `--accent-tint` laid over `--bg` and
   `--surface`, where the score pill sits, and the primary button's `--bg` label passes 4.5:1 on it.
+- **`--accent-hover` is light only.** It is the primary button's hover background, darker than
+  `--accent` so the `--bg` label still passes 4.5:1. The dark hover stays the `#d4ff66` exception above.
 - The landing page's palette became the only one on 2026-10-02. The mail's former palette put its
   accent under 4.5:1 on `--surface-2` and on the pill's tint. `tests/test_email_digest.py` computes the
   ratios and holds the palette file to this table; `tests/test_ui_spec.py` holds the landing page's copy
@@ -137,6 +139,7 @@ colour tokens above by name; every other token is shared.
 | `--text-faint` | `#737b68` |
 | `--accent` | `#436600` |
 | `--accent-dim` | `#5f7c20` |
+| `--accent-hover` | `#365400` |
 | `--warn` | `#b52d59` |
 | `--accent-tint` | `rgba(67, 102, 0, 0.08)` |
 | `--warn-tint` | `rgba(181, 45, 89, 0.1)` |

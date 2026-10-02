@@ -42,11 +42,11 @@
     --bg: #f5f5ed; --bg-elev: #fffff7; --surface: #eaece3; --surface-2: #e1e5d8;
     --border: #d4d7c9; --border-strong: #b9c1ab;
     --text: #22271c; --text-dim: #606753; --text-faint: #737b68;
-    --accent: #436600; --accent-dim: #5f7c20; --accent-tint: rgba(67,102,0,.08);
+    --accent: #436600; --accent-dim: #5f7c20; --accent-hover: #365400; --accent-tint: rgba(67,102,0,.08);
     --warn: #b52d59; --warn-tint: rgba(181,45,89,.1); --grid: rgba(67,102,0,.06);
 }
 :root[data-theme="light"] nav { background: var(--bg); }
-:root[data-theme="light"] .btn.primary:hover { background: #365400; }
+:root[data-theme="light"] .btn.primary:hover { background: var(--accent-hover); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: var(--bar-h); }
 body { margin: 0; background: var(--bg); color: var(--text); font: calc(18px * var(--type-scale))/1.65 var(--font-sans); }

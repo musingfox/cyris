@@ -1226,6 +1226,13 @@ def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
     assert _website_tokens(':root[data-theme="light"]') == light
 
 
+def test_the_website_writes_no_colour_outside_its_palettes_and_the_spec_exceptions() -> None:
+    light = re.compile(r':root\[data-theme="light"\]\s*\{[^}]*\}')
+    outside = light.sub("", WEBSITE.read_text(), count=1)
+
+    assert set(colour_literals(outside)) <= spec_colour_exceptions(UI_SPEC.read_text())
+
+
 def test_the_websites_light_primary_label_reads_on_hover() -> None:
     rules = parse_style_block(WEBSITE.read_text())
     light = {
