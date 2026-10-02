@@ -89,8 +89,8 @@ def build_digest_mail(
     if degraded:
         lines += [
             "",
-            "This issue is plain excerpts, unscored and unsummarised: the configured LLM could "
-            "not be used this run. Check the provider's key on Settings.",
+            "Some or all of this issue is plain excerpts: the configured LLM could not be used "
+            "for every step this run. Check the provider and its key on Settings.",
         ]
     lines += [
         "",
@@ -100,8 +100,8 @@ def build_digest_mail(
     if not content.articles_included:
         raw_url = raw_page_url(content, digest_url, raw_page)
         lines.append(
-            "Nothing is in this issue: the filter kept none of the "
-            f"{content.articles_received} articles this run received."
+            "Nothing is in this issue: this run judged the "
+            f"{content.articles_received} articles it received and kept none."
             + (f" All articles lists each one with its verdict: {raw_url}" if raw_url else "")
         )
     features = _features(content)

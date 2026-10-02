@@ -254,8 +254,8 @@ def _issue(articles_included: int = 0) -> DigestContent:
     )
 
 
-EMPTY_SENTENCE = "the filter kept none of the 7 articles this run received"
-DEGRADED_NOTICE = '<p class="notice">This issue is plain excerpts'
+EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
+DEGRADED_NOTICE = '<p class="notice">Some or all of this issue is plain excerpts'
 
 
 class TestEmptyAndDegraded:
@@ -281,7 +281,7 @@ class TestEmptyAndDegraded:
     def test_an_issue_with_articles_has_no_empty_sentence(self):
         html = render_digest_email(_full(), DIGEST_URL, raw_page=True)
 
-        assert "the filter kept none" not in html
+        assert "kept none" not in html
 
     @pytest.mark.parametrize("degraded", [True, False])
     def test_only_a_degraded_issue_carries_the_warn_notice(self, degraded):

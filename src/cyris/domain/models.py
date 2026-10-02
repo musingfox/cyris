@@ -122,6 +122,9 @@ class UsageStats(BaseModel):
     # Cloudflare's own billing unit, summed from the responses that reported one.
     # None means no call reported neurons, which is every provider but Workers AI.
     neurons: float | None = None
+    # A filter or summarize step put plain excerpts where the LLM's answer belongs,
+    # because no client was built or its call failed. Provider none sets it too.
+    fell_back_to_excerpts: bool = False
 
     @property
     def total_tokens(self) -> int:
@@ -164,19 +167,18 @@ class UsageStats(BaseModel):
         self.api_calls += other.api_calls
         if other.neurons is not None:
             self.neurons = (self.neurons or 0.0) + other.neurons
+        self.fell_back_to_excerpts |= other.fell_back_to_excerpts
 
 
 def is_degraded_run(usage: UsageStats, *, chooses_no_llm: bool) -> bool:
-    """Whether a run that wanted an LLM consumed no input tokens.
+    """Whether a run that wanted an LLM put plain excerpts in its place.
 
     The provider is the caller's to say: a key that is missing builds no client, so
-    that run's usage names `NO_LLM_MODEL` exactly as provider none's does, and only
-    the configuration tells the two apart. `api_calls` is ignored: a call that
-    raised still counts as a call, so the 2026-09 excerpt-only runs reported calls
-    with zero tokens. A configured LLM that had nothing to do this run is also
-    flagged; that false positive is accepted.
+    that run's usage looks exactly like provider none's, and only the configuration
+    tells the two apart. Zero input tokens is not the test: a configured LLM with
+    nothing to do this run, a fan-only window say, spends none and is healthy.
     """
-    return not chooses_no_llm and usage.input_tokens == 0
+    return not chooses_no_llm and usage.fell_back_to_excerpts
 
 
 class DigestContent(BaseModel):

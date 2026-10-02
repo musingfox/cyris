@@ -252,12 +252,12 @@ title is itself that section's `h2`.
   cells are the page background, not a solid block of border colour.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
 - **An issue says when it is empty or degraded.** An issue that includes no article opens its body with
-  one sentence in the small role: the filter kept none of the articles the run received, and
+  one sentence in the small role: the run judged the articles it received and kept none, and
   `All articles` (linked when the raw page exists) lists each one with its verdict. It is not a notice,
-  because an empty issue is neither a success nor an error (§1). A degraded issue, one whose configured
-  LLM could not be used, opens its body with a `--warn` notice saying the items are plain excerpts,
-  unscored and unsummarised, and that the provider's key on Settings is what to check. An issue made with
-  provider `none` is plain excerpts by choice and shows no notice.
+  because an empty issue is neither a success nor an error (§1). A degraded issue, one where plain
+  excerpts stood in for a configured LLM that could not be used, opens its body with a `--warn` notice
+  saying some or all of it is plain excerpts and that the provider and its key on Settings are what to
+  check. An issue made with provider `none` is plain excerpts by choice and shows no notice.
 
 ### raw
 

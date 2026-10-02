@@ -113,8 +113,8 @@ def test_render_empty_sections(tmp_path):
 
 SECTION_LABELS = ("Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire")
 
-EMPTY_SENTENCE = "the filter kept none of the 7 articles this run received"
-DEGRADED_NOTICE = '<p class="notice err issue-note">This issue is plain excerpts'
+EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
+DEGRADED_NOTICE = '<p class="notice err issue-note">Some or all of this issue is plain excerpts'
 
 
 def _body(html: str) -> str:
@@ -149,7 +149,7 @@ def test_an_empty_issue_without_a_raw_page_links_nothing(tmp_path):
 def test_an_issue_with_articles_has_no_empty_sentence(tmp_path):
     body = _body(HtmlDigestWriter(tmp_path).render(_issue(articles_included=3), raw_page=True))
 
-    assert "the filter kept none" not in body
+    assert "kept none" not in body
 
 
 @pytest.mark.parametrize("degraded", [True, False])

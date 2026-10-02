@@ -235,13 +235,13 @@ def build_discord_payload(
     payload = {"embeds": build_discord_embeds(content, digest_url, publish_failed)}
     if degraded and content.usage.model != NO_LLM_MODEL:
         payload["content"] = (
-            f"⚠️ Degraded digest: LLM {content.usage.model} was configured but this run used 0 "
-            "input tokens, so scores and summaries are excerpts."
+            f"⚠️ Degraded digest: LLM {content.usage.model} could not be used for every step "
+            "this run, so some or all of it is plain excerpts."
         )
     elif degraded:
         payload["content"] = (
             "⚠️ Degraded digest: the configured LLM could not be used this run, "
-            "so scores and summaries are excerpts."
+            "so some or all of it is plain excerpts."
         )
     return payload
 

@@ -44,6 +44,8 @@ async def filter_articles(
     # Degraded mode: no LLM → keep the articles as plain excerpts
     if llm is None:
         logger.warning("No LLM configured; filter tier falls back to excerpt headlines")
+        if usage is not None:
+            usage.fell_back_to_excerpts = True
         return headlines_from_articles(articles_to_process, article_scores)
 
     logger.info("Filtering %d articles through the LLM", len(articles_to_process))
@@ -57,6 +59,8 @@ async def filter_articles(
         )
     except Exception:
         logger.warning("Filter LLM call failed; falling back to excerpt headlines", exc_info=True)
+        if usage is not None:
+            usage.fell_back_to_excerpts = True
         return headlines_from_articles(articles_to_process, article_scores)
 
     article_map = {a.id: a for a in articles_to_process}
