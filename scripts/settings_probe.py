@@ -41,6 +41,7 @@ from cdp_probe import (
     chromium,
     largest_twin,
     require_node,
+    restyle,
     run_all,
     serve,
 )
@@ -2930,6 +2931,44 @@ document.addEventListener("click", (event) => {
             eats.textContent = ".settings-nav::before { pointer-events: auto; }";
             document.head.append(eats);
         """,
+    ),
+]
+# Every tap target takes taps over 44 x 44 on a phone, and none covers another: a
+# `More` stays off the control above it, which the Publish hours inputs sit right on.
+MORE_AND_CONTROLS = "details.more summary, .input, .select"
+CHECKS += [
+    Check(
+        id="tap-tabs-375",
+        fixture="writable",
+        path="/settings",
+        width=375,
+        act="await settingsLoaded();",
+        script="""expectTapTargets(".settings-nav a");""",
+        sabotage=restyle(".settings-nav a { min-height: 0 !important; }"),
+    ),
+    *(
+        Check(
+            id=check_id,
+            fixture="writable",
+            path="/settings",
+            width=375,
+            act="await settingsLoaded();",
+            script=f"""
+                let mores = 0;
+                const problems = await eachCategory(() => {{
+                  mores += $$("details.more summary").filter(visible).length;
+                  return $$({json.dumps(MORE_AND_CONTROLS)})
+                    .filter(visible).map(tapProblem).filter(Boolean);
+                }});
+                expect(mores, "no More shows");
+                expect(!problems.length, problems.join("; "));
+            """,
+            sabotage=restyle(f"details.more summary::after {{ {rule} }}"),
+        )
+        for check_id, rule in (
+            ("tap-more-375", "content: none !important;"),
+            ("tap-more-apart-375", "inset: min(0px, calc((100% - 44px) / 2)) 0 !important;"),
+        )
     ),
 ]
 # The page fits at the largest type size too.
