@@ -655,3 +655,21 @@ class TestSelfChecks:
         break_receipt(broken)
         with pytest.raises(AssertionError):
             check(broken)
+
+
+# ---- the harness ----------------------------------------------------------------
+
+
+def test_a_proxy_that_dies_at_startup_fails_with_its_own_log(tmp_path, monkeypatch) -> None:
+    """The proxy's log is the startup error, not a kill of a process already gone."""
+    uvx = tmp_path / "uvx"
+    uvx.write_text("#!/bin/sh\necho 'mitmdump died at startup'\nexit 3\n")
+    uvx.chmod(0o755)
+    monkeypatch.setattr(harness.shutil, "which", lambda _name: str(uvx))
+    script = tmp_path / "script.json"
+    script.write_text(json.dumps({"ready": str(tmp_path / "proxy.ready")}))
+    with (
+        pytest.raises(AssertionError, match="mitmdump died at startup"),
+        harness._proxy(tmp_path, script),
+    ):
+        pass
