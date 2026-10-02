@@ -1,23 +1,10 @@
         .footer {
-            margin-top: {{ margin_top }};
-            padding-top: {{ padding_top }};
+            margin-top: var(--s-16);
+            padding-top: var(--s-5);
             border-top: 1px solid var(--border);
-{%- if layout == "flex" %}
-            display: flex;
-            flex-wrap: wrap;
-{%- if justify %}
-            justify-content: space-between;
-{%- endif %}
-{%- if align_center %}
-            align-items: center;
-{%- endif %}
-{%- if gap %}
-            gap: {{ gap }};
-{%- endif %}
-{%- endif %}
             font-family: var(--font-mono);
             font-size: calc(12px * var(--type-scale));
-            letter-spacing: 0.08em;
+            letter-spacing: .08em;
             color: var(--text-dim);
             text-transform: uppercase;
         }

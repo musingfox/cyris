@@ -61,8 +61,7 @@
             .card { transform: none !important; }
         }
 
-        {% with layout="block", justify=false, align_center=false, margin_top="48px",
-                  padding_top="20px", gap=none  %}{% include "_footer.css.j2" %}{% endwith %}
+        {% include "_footer.css.j2" %}
 
         @media (max-width: 720px) {
             .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
