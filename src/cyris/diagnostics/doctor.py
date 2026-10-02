@@ -167,6 +167,10 @@ def _check_llm(cfg: Config) -> Check:
 # OpenAIClient always asks for `json_object`, which OpenAI refuses unless the
 # messages mention JSON.
 LLM_PROBE_PROMPT = 'Reply with JSON: {"ok": true}'
+# The clients allow 120-180 s per attempt and retry twice, which a run can afford
+# and a Save cannot. A probe answers within seconds; this bound still leaves room
+# for one retry after a 429.
+LLM_PROBE_TIMEOUT_SECONDS = 30
 
 
 async def probe_llm(llm_cfg) -> Check:
@@ -196,20 +200,35 @@ async def probe_llm(llm_cfg) -> Check:
                 if llm_cfg.provider == "workers_ai"
                 else ""
             ),
+            f"Set {llm_cfg.api_key_env_var} on this deployment, then save again.",
         )
+    refused = (
+        "Check the model name, or leave it empty to use the provider's default, "
+        f"and that {llm_cfg.api_key_env_var} is a working key. Then save again."
+    )
     try:
         # 16 was not enough: a reasoning model can spend the entire budget
         # thinking and return an empty candidate, which reads as a broken model.
-        await llm.complete(LLM_PROBE_PROMPT, max_tokens=128)
+        await asyncio.wait_for(
+            llm.complete(LLM_PROBE_PROMPT, max_tokens=128), LLM_PROBE_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        return Check(
+            "llm probe",
+            "fail",
+            f"{llm.model} did not answer within {LLM_PROBE_TIMEOUT_SECONDS:g} s",
+            "The provider may be slow or rate-limiting this key. Wait a minute and save again.",
+        )
     except GeminiAPIError as e:
         detail = e.message.replace(LLM_PROBE_PROMPT, "[probe text redacted]")
         return Check(
             "llm probe",
             "fail",
             f"{llm.model} refused: code={e.code}, status={e.status}, message={detail}",
+            refused,
         )
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
-        return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}")
+        return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}", refused)
     return Check("llm probe", "ok", f"{llm_cfg.provider} · {llm.model} answered")
 
 
@@ -249,18 +268,27 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
     env = EMBEDDING_ENV[provider]
     unset = [name for name in env if not os.environ.get(name)]
     if unset:
-        return Check("embedding probe", "fail", f"{unset[0]} is not set")
+        return Check(
+            "embedding probe",
+            "fail",
+            f"{unset[0]} is not set",
+            f"Set {unset[0]} on this deployment, or save with vote similarity off.",
+        )
     key = os.environ[env[0]]
     embedder = make_embedder(provider, model)
+    fix = (
+        "Check the embedding model name, or leave it empty to use the provider's default. "
+        "Then save again, or save with vote similarity off."
+    )
     try:
         [vector] = await asyncio.wait_for(
             embedder.embed([EMBEDDING_PROBE_TEXT]), EMBEDDING_PROBE_TIMEOUT_SECONDS
         )
     except TimeoutError:
-        detail = (
-            f"{model} did not answer within {EMBEDDING_PROBE_TIMEOUT_SECONDS:g} s — the "
-            "provider may be rate-limiting this key. Wait a minute and save again, or "
-            "save with vote similarity off."
+        detail = f"{model} did not answer within {EMBEDDING_PROBE_TIMEOUT_SECONDS:g} s"
+        fix = (
+            "The provider may be rate-limiting this key. Wait a minute and save again, "
+            "or save with vote similarity off."
         )
     except httpx.HTTPStatusError as e:
         # The body first: the status line alone says nothing about which model.
@@ -271,7 +299,7 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
         return Check(
             "embedding probe", "ok", f"{provider} · {model} answered ({len(vector)} dimensions)"
         )
-    return Check("embedding probe", "fail", detail.replace(key, "[redacted]"))
+    return Check("embedding probe", "fail", detail.replace(key, "[redacted]"), fix)
 
 
 DISCORD_PROBE_TIMEOUT_SECONDS = 10
