@@ -4,7 +4,7 @@ status: accepted
 scope:
   - "tests/e2e/**"
   - "tests/test_e2e_*.py"
-verify: check:uv run pytest tests/test_e2e_digest.py::TestSelfChecks -q
+verify: check:uv run pytest tests/test_e2e_digest.py::TestSelfChecks tests/test_e2e_fakes.py -q
 related: [outbound-http-honours-environment, e2e-asserts-what-the-fakes-received]
 source: e2e-fake-edges
 adr: null
@@ -31,5 +31,7 @@ real Discord, spends real LLM credit or writes to the production D1. An adapter 
 swallows errors lets a missing fake pass the same way. Either way the run ends ok and
 the suite is green.
 
-`verify` runs the suite's self-tests. One of them runs with the Discord fake dropped, and
-the suite must report the unclaimed request rather than pass.
+`verify` runs the suite's self-tests and the proxy's own tests. One run drops the
+Discord fake and must report the unclaimed request rather than pass; the proxy tests
+send a request the addon cannot parse, and one under a connection strategy that would
+dial out, and a local listener must receive neither.
