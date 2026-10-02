@@ -17,7 +17,7 @@ from cyris.domain.models import (
     UsageStats,
     is_degraded_run,
 )
-from cyris.domain.selection import count_dead_links, layer_by_score
+from cyris.domain.selection import count_dead_links
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
@@ -361,6 +361,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
         filter_snippet_length=cfg.app.digest.filter_snippet_length,
         score_threshold=cfg.app.routing.summarize_score_threshold,
+        featured_threshold=cfg.app.routing.score_threshold,
+        max_featured=cfg.app.digest.max_featured,
         output_language=cfg.app.digest.output_language,
         style_prompt=cfg.app.digest.style_prompt,
     )
@@ -384,13 +386,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             deps.story_store.save(content.date, content.period, result.story_records)
         except Exception as e:
             logger.warning("Failed to persist story membership: %s", e)
-
-    # Layer by score to extract featured articles
-    content = layer_by_score(
-        content,
-        featured_threshold=cfg.app.routing.score_threshold,
-        max_featured=cfg.app.digest.max_featured,
-    )
 
     content.synthetic_url_count = sum(1 for a in digest_articles if a.url.startswith("newsletter:"))
     if content.synthetic_url_count:
