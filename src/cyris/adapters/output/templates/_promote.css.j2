@@ -5,4 +5,9 @@
         .promote-btn.error { color: var(--warn); border-color: var(--warn); background: var(--warn-tint); }
         .promote-btn.done:hover { color: var(--accent); }
         .promote-btn.error:hover { color: var(--warn); }
-        .vote-group { display: none; gap: var(--s-1); vertical-align: middle; }
+        /* The pair splits its gap at the midpoint and each takes the rest of its 44px
+           outward, so the boundary does not move with the fallback glyph's width; the
+           margin keeps that outward part off whatever comes before the group. */
+        .vote-group { display: none; gap: var(--s-1); margin-left: var(--s-2); vertical-align: middle; }
+        .vote-group > .promote-btn:first-child::after { left: auto; right: calc(-1px - var(--s-1) / 2); width: 44px; }
+        .vote-group > .promote-btn:last-child::after { left: calc(-1px - var(--s-1) / 2); right: auto; width: 44px; }
