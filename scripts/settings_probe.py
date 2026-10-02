@@ -2687,6 +2687,36 @@ document.addEventListener("click", (event) => {
             });
         """,
     ),
+    Check(
+        id="fits-375-source-editor",
+        fixture="writable",
+        path="/settings#sources",
+        width=375,
+        act="""await openRow("Hacker News");""",
+        script="""
+            const wrap = $(".table-wrap");
+            const outside = (where) => {
+              const box = wrap.getBoundingClientRect();
+              const right = Math.min(box.right, viewport());
+              return $$("input, select, button, summary", editor()).filter(visible)
+                .filter((el) => {
+                  const r = el.getBoundingClientRect();
+                  return r.left < Math.max(box.left, 0) || r.right > right + 0.5;
+                })
+                .map((el) => `${where}: ${el.id || el.dataset.act || el.dataset.type}`);
+            };
+            const problems = outside("rows unscrolled");
+            wrap.scrollLeft = wrap.scrollWidth;
+            await waitFor(() => wrap.scrollLeft > 0, "the rows to scroll");
+            problems.push(...outside("rows scrolled to the end"));
+            expect(problems.length === 0, problems.join("; "));
+        """,
+        sabotage="""
+            const body = $(".editor-body");
+            body.style.position = "static";
+            body.style.width = "auto";
+        """,
+    ),
 ]
 # The page fits at the largest type size too.
 CHECKS += [
