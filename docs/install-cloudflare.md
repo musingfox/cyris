@@ -272,8 +272,8 @@ a domain on Cloudflare, Access can be a second layer. Access cannot protect a
    proves Access is blocking leaves votes open to anyone.
 
 The Discord digest link picks up this hostname on its own (section 5). Scripts against an Access hostname get a 302 rather than a 401 and need an
-Access service token; nothing in cyris calls its own UI, so this matters only for your
-own scripts, `curl` in step 7 included. Use the `workers.dev` URL for those.
+Access service token. Use the `workers.dev` URL for them: your own scripts, `curl` in
+step 7, `cyris doctor --deployment` and the deploy workflow's `CYRIS_DEPLOYMENT_URL`.
 
 ## Running the CLI against the deployment
 

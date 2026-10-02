@@ -115,8 +115,8 @@ rebuilds the manifest from it, and every archived page links `href="index.html"`
 **UI theme customization.** The three sanctioned colour literals are hand-derived from
 tokens (`--accent` at 45 %, `--bg` at 88 %, a lightened `--accent`), so overriding `--accent` leaves
 the brand glow, site-bar background and primary-button hover behind — and the colour-literal test
-passes anyway, those strings being its allow-list. The Google Fonts URL is literal in four
-templates, so a font-token override changes no webfont.
+passes anyway, those strings being its allow-list. The Google Fonts URL is literal in every
+page template, so a font-token override changes no webfont.
 
 **Structural UI customization.** Section identity is a pydantic field name in four layers at once —
 `domain/models.py` → `service_layer/digest_pipeline.py` → `domain/selection.py` →

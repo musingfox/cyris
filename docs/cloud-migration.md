@@ -313,7 +313,7 @@ Dropped rather than migrated: `output/digest.py` (Obsidian markdown),
   profile it read held no session cookie at all. It also leaked a browser detail into
   `ports.py`'s `FetchSource` signature, against this plan's promise not to touch
   `service_layer/`. Paid sources now route through a subscriber RSS feed or newsletter
-  email, or are not ingested — see the README's *Paywalled Sources*.
+  email, or are not ingested — see *Paywalled sources* in [`sources.md`](sources.md).
 - **The intermittent publish failure.** Reproduced 2026-08-09 08:01, and the receipt check
   caught what an exit code never would. It is **not** a no-op: wrangler printed its banner,
   got to `Uploading... (15/16)`, and then exited 0 mid-upload without its completion line.

@@ -55,8 +55,10 @@ Workers share. It stays server-side: votes go through the app's same-origin
 The vote buttons appear for any reader logged in on the app's hostname, whether or
 not this Worker is wired. Without `CYRIS_PROMOTE_WORKER_URL` a click is refused with
 503, and with the URL but no `CYRIS_PROMOTE_TOKEN` the promote Worker answers 401.
-Readers following Discord links reach the app's hostname only when
-`CYRIS_PROMOTE_CUSTOM_DOMAIN` names it; on `pages.dev` there are no buttons.
+Readers following Discord links reach the app's hostname when a custom domain is
+attached to `cyris-app`, which each run looks up, or when `CYRIS_PROMOTE_CUSTOM_DOMAIN`
+names a hostname, which a domainless deploy needs for its `workers.dev` one; on
+`pages.dev` there are no buttons.
 
 The Deploy to Cloudflare button provisions its own KV namespace; set `PROMOTE_TOKEN`
 and the two app secrets afterwards as above.
