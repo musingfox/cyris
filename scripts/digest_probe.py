@@ -350,6 +350,7 @@ _CHECKS: list[Check] = [
         script=f"""
             const measure = parseFloat(
                 getComputedStyle(document.documentElement).getPropertyValue("--measure"));
+            expect(Number.isFinite(measure) && measure > 0, `invalid --measure: ${{measure}}`);
             for (const selector of {json.dumps(PROSE_SELECTORS)}) {{
                 const blocks = $$(selector);
                 expect(blocks.length, `no ${{selector}} on the page`);
