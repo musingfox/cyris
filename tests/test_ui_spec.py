@@ -1146,6 +1146,22 @@ def test_no_text_is_coloured_faint(source: str) -> None:
     assert _faint_text(text.read_text() if text else _source(source)) == []
 
 
+def test_the_websites_light_primary_label_reads_on_hover() -> None:
+    rules = parse_style_block(WEBSITE.read_text())
+    light = {
+        name.strip(): value.strip()
+        for name, value in (d.split(":", 1) for d in rules[':root[data-theme="light"]'])
+    }
+
+    def resolve(value: str) -> str:
+        var = re.fullmatch(r"var\((--[\w-]+)\)", value)
+        return light[var.group(1)] if var else value
+
+    (label,) = _declared(rules[".btn.primary"], "color")
+    (ground,) = _declared(rules[':root[data-theme="light"] .btn.primary:hover'], "background")
+    assert _contrast(resolve(label), resolve(ground)) >= 4.5
+
+
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
     rules = parse_style_block(f"<style>{_render_partial('_components.css.j2')}</style>")
     assert rules[".choice.unavailable"] == {"cursor: not-allowed"}
