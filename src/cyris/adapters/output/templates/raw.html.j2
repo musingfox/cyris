@@ -91,7 +91,7 @@
                 <span class="state {{ a.state }}">{{ a.state }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener" lang="">{{ a.title }}</a>
-                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this">↓</button></span>
+                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
             </div>
             {% endfor %}
         </section>
@@ -101,7 +101,7 @@
             <span class="label" id="t-remaining"></span>
             <article class="card" id="t-card"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
             <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">Down</button><button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>
-            <p class="notice err" id="t-error" role="alert" hidden>The vote did not go through, so this card stays. Check your connection, then try again.</p>
+            <p class="notice err" id="t-error" role="alert" hidden></p>
             <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
         </div>
 
@@ -161,21 +161,32 @@
     // One card, one vote: set before the first await, so a second press or a drag
     // while the vote is in flight finds the deck taken.
     let busy = false;
+    // The deck button that held focus when its vote began, so a run of Enter presses
+    // keeps voting card after card.
+    let deckFocus = null;
+    const refocusDeck = () => {
+        if (deckFocus) returnFocus(deckFocus);
+        deckFocus = null;
+    };
 
     // Vote first, then fly: the card leaves only once its vote has landed.
     async function voteCard(dir) {
         const [row] = pool();
         if (busy || !row) return;
         busy = true;
+        deckFocus = deckButtons.find((b) => b === document.activeElement) || null;
         enableDeck(false);
         voteError.hidden = true;
-        if (await castVote(row.querySelector('.vote-group'), dir)) return fly(dir);
-        // The vote did not land, so the card stays where it is and says so.
+        const failure = await castVote(row.querySelector('.vote-group'), dir);
+        if (!failure) return fly(dir);
+        // The vote did not land, so the card stays where it is and says why.
         card.style.transform = '';
         lean(null);
         busy = false;
         enableDeck(true);
+        voteError.textContent = failure;
         voteError.hidden = false;
+        refocusDeck();
     }
     function fly(dir) {
         card.dataset.flying = dir;
@@ -199,6 +210,7 @@
         busy = false;
         enableDeck(true);
         renderDeck();
+        refocusDeck();
     }
     card.addEventListener('transitionend', (e) => {
         if (e.propertyName === 'transform' && card.dataset.flying) settle();

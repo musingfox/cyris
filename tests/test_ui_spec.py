@@ -299,6 +299,10 @@ def test_vote_buttons_are_small_secondary_buttons(page: int) -> None:
     buttons = re.findall(r"<button\b[^>]*data-vote=[^>]*>", html)
     assert buttons
     assert all('class="btn sm secondary promote-btn"' in button for button in buttons)
+    named = {'data-vote="up"': "More like this", 'data-vote="down"': "Less like this"}
+    for button in buttons:
+        [label] = [label for vote, label in named.items() if vote in button]
+        assert f'aria-label="{label}" aria-pressed="false"' in button
     copied = {".promote-btn", ".promote-btn:hover", ".promote-btn:disabled"}
     assert sorted(copied & set(parse_style_block(html))) == []
 
