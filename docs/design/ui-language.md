@@ -42,7 +42,10 @@ Every change that touches a reader-facing page follows this spec: `src/cyris/ada
    digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`, and
    an English control inside it (a vote group, a sources fold) carries `lang="en"`. Text passed through
    untranslated, which is Following, On the Radar and every raw row, carries `lang=""`, HTML's unknown
-   language: no reliable tag for it exists. A value that is not a BCP 47 tag, such as a plain language
+   language: no reliable tag for it exists. So does a Top story, Features card or Wire row that holds the
+   article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
+   it; the step that writes that fallback marks the item, so the page and the mail tag those items by
+   what wrote them, not by their section. A value that is not a BCP 47 tag, such as a plain language
    name an older config still holds, also renders as `lang=""`, never as a wrong tag.
 
 ## 2. Token
@@ -292,7 +295,8 @@ title is itself that section's `h2`.
   `overflow-wrap: anywhere`: an unbroken run such as a URL breaks inside it rather than widen a row
   whose title column is narrow on a phone. A row with no summary is only the number and the title link. When the filter ran without an LLM, by choice under provider
   `none` or because the configured one could not be used, the sentence is the article's plain excerpt,
-  as a Features card the model wrote no summary for shows its excerpt.
+  as a Features card the model wrote no summary for shows its excerpt, and the row carries `lang=""`
+  (§1).
 - **Only the Top story may be a group.** When two or more articles on one topic score at least
   `routing.score_threshold`, the lead card takes the group's heading as its title and prints the group's
   summary once. Each of those articles follows as an `.article-item` whose title is `h3 .lg`, one level
