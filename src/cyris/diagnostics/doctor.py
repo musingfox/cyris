@@ -597,9 +597,10 @@ def _check_digest_link(cfg: Config) -> Check:
     return Check(name, "ok", f"{hosts[0]}, the app Worker's custom domain")
 
 
-# Access cannot cover *.workers.dev, which is exactly why it is the hostname to
-# ask: on the custom domain the request meets an Access login this command has no
-# way to pass, and the failure reads as a dead deployment.
+# Access stays off *.workers.dev, because scripts sign in there with the cookie
+# alone, which is exactly why it is the hostname to ask: on the custom domain the
+# request meets an Access login this command has no way to pass, and the failure
+# reads as a dead deployment.
 _WORKERS_DEV_HINT = (
     "Use the deployment's workers.dev hostname — a custom domain sits behind "
     "Cloudflare Access, which this command cannot log in to."

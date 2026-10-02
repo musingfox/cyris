@@ -712,7 +712,7 @@ pending.
 
 **Auth is one layer always, two if you own a domain** (`workers/app/`). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. That layer deploys with the Worker, so a `*.workers.dev` fork is not an open write surface. Preview URLs stay disabled: a second public hostname is a second door.
 
-Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: automating the hostname and the policy would tie the repo to one account. Access cannot sit in front of `workers.dev` at any price (it takes a domain from an active zone, or a Cloudflare-for-SaaS custom hostname). Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required.
+Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: automating the hostname and the policy would tie the repo to one account. Access stays off `workers.dev`, because scripts sign in there with the cookie alone. Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required.
 
 `wrangler.toml` ships with `workers_dev = true` and no `routes`, so a clone deploys unmodified. Custom domains are attached from the dashboard or API, which means the file is then not the sole source of truth for routing.
 
@@ -829,7 +829,7 @@ Pages row below is the first one moved that way:
 |---|---|
 | Create the D1 database, paste the UUID as `CYRIS_STORE_DATABASE_ID` | The container reaches D1 over REST, not through a binding. Adding a `[[d1_databases]]` binding would make the deploy create a database whose id nothing can read at runtime — a provisioning trick that still ends in a paste |
 | ~~Create the Pages project~~ (still name it: `CYRIS_PROMOTE_PAGES_PROJECT`, `DIGEST_ORIGIN`) | Deploy buttons support Workers only — but the button is not the only thing that can provision. Since 2026-09-06 the first publish creates the project itself over the same REST API it deploys with (`pages_deploy.create_project`, reached when the empty-manifest probe answers 404) |
-| Attach a domain, then Cloudflare Access | Neither is in the provisioning list, and Access cannot cover `workers.dev` |
+| Attach a domain, then Cloudflare Access | Neither is in the provisioning list, and Access stays off `workers.dev`, because scripts sign in there with the cookie alone |
 
 None of these breaks the acceptance condition, which is *no code edits* — an id pasted
 into a secret field is not a code edit.
