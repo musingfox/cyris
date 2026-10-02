@@ -164,6 +164,13 @@ def test_the_rss_buffer_reads_its_window_as_the_worker_does(service) -> None:
         RSS_URL, params={"after": "2026-10-01", "before": "2026-10-03"}, headers=WORKER_AUTH
     )
     assert [row["url"] for row in whole.json()] == ["https://e2e.test/2", "https://e2e.test/1"]
+    # SQLite reads a negative LIMIT as no limit at all.
+    unbounded = service.get(
+        RSS_URL,
+        params={"after": "2026-10-01", "before": "2026-10-04", "limit": "-1"},
+        headers=WORKER_AUTH,
+    )
+    assert len(unbounded.json()) == 3
 
 
 def test_the_workers_refuse_a_wrong_token(service) -> None:
