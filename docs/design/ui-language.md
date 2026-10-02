@@ -288,8 +288,9 @@ title is itself that section's `h2`.
   `.item-title`: `h3` adds `.lg` for 19px, and `h4` uses 18px. A row of The Wire has no heading element.
 - **A Wire row is its title and the filter's one sentence.** Each row is a number, the title link and,
   below the title, the one-sentence summary the filter wrote for that article, in the small role (§3)
-  under a title in `--text`; the source fold and the votes follow, the votes last. A row with no summary
-  is only the number and the title link. When the filter ran without an LLM, by choice under provider
+  under a title in `--text`; the source fold and the votes follow, the votes last. The summary takes
+  `overflow-wrap: anywhere`: an unbroken run such as a URL breaks inside it rather than widen a row
+  whose title column is narrow on a phone. A row with no summary is only the number and the title link. When the filter ran without an LLM, by choice under provider
   `none` or because the configured one could not be used, the sentence is the article's plain excerpt,
   as a Features card the model wrote no summary for shows its excerpt.
 - **Only the Top story may be a group.** When two or more articles on one topic score at least
@@ -409,8 +410,8 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   order: Top story, Features, In Focus, Following, On the Radar, The Wire. The lead is the headline card's
   square panel; every other item is separated by a `--border` hairline.
 - **A Wire row keeps its sentence.** Its summary follows its title as on the page, in the small role in
-  the HTML part and on its own indented line in the plain-text part; a row with no summary is its title
-  alone.
+  the HTML part, breaking an unbroken run as the page does, and on its own indented line in the
+  plain-text part; a row with no summary is its title alone.
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a
   `--warn` notice instead. The footer's project link (§4) is the one link off that host.
