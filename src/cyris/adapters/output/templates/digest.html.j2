@@ -8,12 +8,12 @@
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
 {%- for url in urls %}{% set label = url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url %}{% if url.startswith('http') %}<a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
 {%- endmacro -%}
-{#- A summarize group's articles under its one summary. Each keeps its own link, score and
+{#- The Top story's group, under its one summary. Each article keeps its own link, score and
     vote: unlike a news cluster's reports of one event, these are different articles. -#}
-{% macro story_members(story, level=4) -%}
+{% macro story_members(story) -%}
 {% for item in story.members %}
 <article class="article-item">
-    <h{{ level }} class="item-title{{ ' lg' if level == 3 }}">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h{{ level }}>
+    <h3 class="item-title lg">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
     <div class="meta">
         {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
         <span class="source-tag">{{ item.sources | join(' · ') }}</span>
@@ -470,7 +470,7 @@
                         {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
                     </h2>
                     <p class="summary">{{ lead_story.summary }}</p>
-                    {% if lead_story.grouped %}{{ story_members(lead_story, 3) }}{% else %}
+                    {% if lead_story.grouped %}{{ story_members(lead_story) }}{% else %}
                     <div class="meta ruled">
                         <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>
                         {{ promote_btn(lead_story) }}
@@ -488,14 +488,12 @@
                     <article class="featured-item">
                         <h3 class="item-title lg">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
                         <p class="summary">{{ item.summary }}</p>
-                        {% if item.grouped %}{{ story_members(item) }}{% else %}
                         <div class="meta">
                             {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
                             {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
-                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>

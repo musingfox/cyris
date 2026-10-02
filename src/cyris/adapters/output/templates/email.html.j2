@@ -122,7 +122,7 @@
                 {% if item.score %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                 <h3 class="title">{{ title_link(item) }}</h3>
                 <p class="summary">{{ item.summary }}</p>
-                {% if item.grouped %}{{ members(item) }}{% else %}{{ meta(item) }}{% endif %}
+                {{ meta(item) }}
             </article>
             {% endfor %}
         </section>
