@@ -58,6 +58,7 @@ KINDS = (
     "vote-signed-out",
     "vote-unconfigured",
     "vote-hangs",
+    "promote-503",
 )
 
 # How long `slow-vote` holds each vote: long enough for a check to act, and for
@@ -118,7 +119,8 @@ def build_fixture(kind: str) -> VoteFixture:
     `slow-vote` takes every vote, each only after `SLOW_VOTE_S`. The rest sign in
     and refuse every vote as the app Worker would: `vote-signed-out` with its own
     401 for a lapsed session, `vote-unconfigured` with its 503 for a missing
-    promote Worker URL; `vote-hangs` answers only after `HANG_VOTE_S`.
+    promote Worker URL; `promote-503` with a 503 the promote Worker sent, which
+    the app Worker passes through; `vote-hangs` answers only after `HANG_VOTE_S`.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
@@ -147,6 +149,8 @@ def build_fixture(kind: str) -> VoteFixture:
             return web.json_response({"authorized": False, "error": "unauthorized"}, status=401)
         if kind == "vote-unconfigured":
             return web.json_response({"error": "promote worker not configured"}, status=503)
+        if kind == "promote-503":
+            return web.json_response({"error": "unavailable"}, status=503)
         refused = kind == "vote-fails" or (kind == "fails-once" and len(fixture.posts) == 1)
         if refused:
             return web.json_response({"ok": False}, status=502)
@@ -358,6 +362,7 @@ _CHECKS: list[Check] = [
             ("says-why", "vote-fails", "HTTP 502"),
             ("signed-out-says-sign-in", "vote-signed-out", "sign in again"),
             ("unconfigured-names-the-url", "vote-unconfigured", "CYRIS_PROMOTE_WORKER_URL"),
+            ("passed-through-503-gives-status", "promote-503", "HTTP 503"),
             ("times-out", "vote-hangs", "No answer from the server"),
         )
     ),

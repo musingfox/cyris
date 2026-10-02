@@ -56,7 +56,11 @@
             const body = await resp.json().catch(() => ({}));
             if (body.authorized === false) return VOTE_FAILED.signedOut;
         }
-        if (resp.status === 503) return VOTE_FAILED.notConfigured;
+        // The app Worker passes the promote Worker's own status through, a 503 included.
+        if (resp.status === 503) {
+            const body = await resp.json().catch(() => ({}));
+            if (body.error === 'promote worker not configured') return VOTE_FAILED.notConfigured;
+        }
         return VOTE_FAILED.refused(resp.status);
     }
 

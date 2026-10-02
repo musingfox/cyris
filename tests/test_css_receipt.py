@@ -768,6 +768,7 @@ EXPECTED_RAW_IDS = {
     "list-vote-failure-says-why",
     "list-vote-failure-signed-out-says-sign-in",
     "list-vote-failure-unconfigured-names-the-url",
+    "list-vote-failure-passed-through-503-gives-status",
     "list-vote-failure-times-out",
     "list-vote-lands-without-abort-signal-timeout",
     "list-vote-times-out-without-abort-signal-timeout",
@@ -854,6 +855,7 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
         ("vote-signed-out", 200, True),
         ("vote-unconfigured", 200, True),
         ("vote-hangs", 200, True),
+        ("promote-503", 200, True),
     ],
 )
 async def test_the_raw_probe_fixture_answers_the_vote_probe_per_kind(kind, status, authorized):
@@ -886,6 +888,7 @@ async def test_the_raw_probe_fixture_can_refuse_every_vote_or_only_the_first():
     [
         ("vote-signed-out", 401, {"authorized": False, "error": "unauthorized"}),
         ("vote-unconfigured", 503, {"error": "promote worker not configured"}),
+        ("promote-503", 503, {"error": "unavailable"}),
     ],
 )
 async def test_the_raw_probe_fixture_refuses_a_vote_as_the_app_worker_would(kind, status, body):
