@@ -2717,6 +2717,64 @@ document.addEventListener("click", (event) => {
             body.style.width = "auto";
         """,
     ),
+    Check(
+        id="fits-375-tab-hint",
+        fixture="writable",
+        path="/settings",
+        width=375,
+        act="await settingsLoaded();",
+        script="""
+            const nav = $(".settings-nav");
+            expect(nav.scrollWidth > nav.clientWidth, "the tab bar does not overflow here");
+            // A pseudo-element has no box to read, and the hint takes no taps, so
+            // for this measure only both pseudo-elements are made hit-testable: a
+            // hit at the bar's right edge then lands on the nav while the hint is there.
+            const hittable = document.createElement("style");
+            hittable.textContent =
+              ".settings-nav::before, .settings-nav::after { pointer-events: auto !important; }";
+            document.head.append(hittable);
+            try {
+              const bar = nav.getBoundingClientRect();
+              nav.scrollLeft = 0;
+              const edge = document.elementFromPoint(bar.right - 4, bar.top + bar.height / 2);
+              expect(edge === nav, `no hint at the start: ${edge?.dataset?.tab}`);
+              nav.scrollLeft = nav.scrollWidth;
+              await waitFor(() => nav.scrollLeft > 0, "the tab bar to scroll");
+              const sources = navOf("sources"), r = sources.getBoundingClientRect();
+              const hit = document.elementFromPoint(r.right - 1, r.top + r.height / 2);
+              expect(r.right <= bar.right && sources.contains(hit),
+                `Sources is covered at the end: ${hit?.className}`);
+            } finally {
+              hittable.remove();
+            }
+        """,
+        sabotage="""
+            const off = document.createElement("style");
+            off.textContent = ".settings-nav::before { content: none; }";
+            document.head.append(off);
+        """,
+    ),
+    Check(
+        id="fits-375-tab-hint-taps-through",
+        fixture="writable",
+        path="/settings",
+        width=375,
+        act="await settingsLoaded();",
+        script="""
+            const nav = $(".settings-nav"), bar = nav.getBoundingClientRect();
+            nav.scrollLeft = 0;
+            const tab = document.elementFromPoint(bar.right - 4, bar.top + bar.height / 2)
+              ?.closest(".settings-nav a");
+            expect(tab, "a tap at the bar's edge reaches no tab");
+            tab.click();
+            await waitFor(() => same(panels(), [tab.dataset.tab]), tab.dataset.tab);
+        """,
+        sabotage="""
+            const eats = document.createElement("style");
+            eats.textContent = ".settings-nav::before { pointer-events: auto; }";
+            document.head.append(eats);
+        """,
+    ),
 ]
 # The page fits at the largest type size too.
 CHECKS += [

@@ -54,6 +54,8 @@
       .settings-nav { position: static; display: flex; overflow-x: auto; overflow-y: hidden; border-left: 0; border-bottom: 1px solid var(--border); }
       .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; gap: var(--s-2); }
       .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
+      .settings-nav::before { content: "›" / ""; order: 1; position: sticky; right: 0; pointer-events: none; flex: 0 0 var(--s-8); display: flex; align-items: center; justify-content: flex-end; padding-right: var(--s-2); background: linear-gradient(to right, transparent, var(--bg) var(--s-4)); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
+      .settings-nav::after { content: ""; order: 2; position: relative; flex: 0 0 var(--s-8); margin-left: calc(-1 * var(--s-8)); background: var(--bg); }
     }
   </style>
 </head>

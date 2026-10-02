@@ -302,7 +302,10 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 
 - The page width is 1240px. Above 720px, the left side is a 220px category list (label role, with a 2px
   `--accent` left line when selected); below it, the list becomes a horizontally scrollable tab bar at the
-  top.
+  top. While a tab lies past the bar's right edge, a `›` in the label role stays pinned to that edge over
+  a fade to `--bg`, so the tabs out of view and their dots are known to be there; it takes no taps, so
+  one at the edge reaches the tab beneath it. Once the bar is scrolled to its end, or fits, the `›` is
+  gone.
 - The sources table scrolls sideways in its own container (§4), but an open source editor is as wide as
   the container's visible part and stays in view however far the rows are scrolled, so every field and
   button in it is reachable at phone width without scrolling.
