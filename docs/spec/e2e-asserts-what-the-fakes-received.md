@@ -4,7 +4,7 @@ status: accepted
 scope:
   - "tests/e2e/**"
   - "tests/test_e2e_*.py"
-verify: null
+verify: check:uv run pytest tests/test_e2e_digest.py::TestSelfChecks -q
 related: [outbound-http-honours-environment, e2e-egress-fails-closed, tests-pin-every-outgoing-request]
 source: e2e-fake-edges
 adr: null
@@ -32,6 +32,5 @@ call three times, sent one Discord post twice, or never called the mail service,
 each step logs its failure and carries on. An "at least once" assertion passes every one
 of those runs.
 
-This entry is prose because the suite does not exist yet. Once it lands, `verify` should
-run a self-test that breaks one receipt and doubles one request, and the suite must fail
-both times.
+`verify` runs the suite's self-tests. One doubles a request, the others each break one
+scripted case's receipt, and every one of them must fail the check the suite relies on.
