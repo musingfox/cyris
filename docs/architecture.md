@@ -300,6 +300,12 @@ already held by an issue of the same source with a different subject — a sende
 subject is a re-delivery and is skipped. The extractor's `Article.url` may repeat across issues; the
 stored URL cannot.
 
+The run cap, `[digest] max_articles_per_digest`, is applied once, at the pending load in
+`run_digest`: a run scores and digests the window's newest N pending articles by publish time,
+across all sources. No source applies it, because one that cut first would drop articles before
+the store saw them. The RSS Worker read has a bound of its own, the Worker's row ceiling, because
+every row carries the feed's full content and the Worker holds the whole result in memory.
+
 Each source carries a **tier**, which decides how much attention it gets:
 
 | Tier | Treatment |
@@ -400,6 +406,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Setting | Grade | Today | Target |
 |---|---|---|---|
 | Tier thresholds, batch sizes | A | code | unchanged |
+| RSS Worker read ceiling | A | `WORKER_ROW_CEILING` in `adapters/fetch/rss_worker_source.py`, mirroring the clamp on `GET /articles` in `workers/rss/src/index.js` | done 2026-10-02 — a memory bound, not the run cap: every row carries full feed content. It is sent by value because the Worker's default without one is lower; `tests/test_rss_worker_source.py` holds the two equal |
 | Pages publish timing: the 180s budget and 120s run reserve, the stage and alias poll counts and intervals, the 20s per-request timeout and a deploy attempt's worst case | A | `adapters/output/publish.py`, `adapters/output/pages_deploy.py` | unchanged — reasons in the comments beside each constant; `tests/test_publish.py` pins the budget against `RUN_SLEEP_AFTER` in `workers/app/src/index.js`, and what the budget does not cover is in *Publishing without a subprocess* (§7) |
 | `/settings` verification time limits: the LLM probe's 30s, the embedding probe's 15s, the Discord probe's 10s | A | `LLM_PROBE_TIMEOUT_SECONDS`, `EMBEDDING_PROBE_TIMEOUT_SECONDS`, `DISCORD_PROBE_TIMEOUT_SECONDS` in `diagnostics/doctor.py` | done 2026-10-02 — a Save is a person waiting, so each bound sits far below the minutes a run allows the same client; reasons in the comments beside the first two. A probe past its bound fails with what to do next, and nothing is stored |
 | Vote request timeout on the digest and raw pages | A | `VOTE_TIMEOUT_MS` in `adapters/output/templates/_promote_script.html.j2` | done 2026-10-02 — reason in the comment beside it; a vote that outlasts it is shown to the reader as not landed |

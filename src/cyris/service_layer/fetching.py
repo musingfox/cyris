@@ -14,7 +14,6 @@ async def fetch_all_articles(
     after: datetime,
     before: datetime,
     sources: dict[str, SourceConfig],
-    limit: int = 200,
 ) -> tuple[list[Article], list[str]]:
     """Fetch articles from multiple sources, deduplicate by URL.
 
@@ -23,7 +22,9 @@ async def fetch_all_articles(
         after: Start of time window (inclusive).
         before: End of time window (exclusive).
         sources: Source configs keyed by name.
-        limit: Max articles per source. Defaults to 200.
+
+    No cap is applied here: `run_digest` keeps the window's newest
+    `max_articles_per_digest` once everything is stored.
 
     Two newsletter issues with different ids that share a URL are both kept: a
     sender's repeated nav link must not swallow an issue before the store, which
@@ -42,7 +43,6 @@ async def fetch_all_articles(
                 after=after,
                 before=before,
                 sources=sources,
-                limit=limit,
             )
             # Deduplicate by URL (last source wins)
             for article in articles:

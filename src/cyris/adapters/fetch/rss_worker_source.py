@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 30
 
+# The Worker's own ceiling on `GET /articles` (`workers/rss/src/index.js`). A read
+# needs a bound because each row carries the feed's full content and the Worker
+# holds the whole result in memory; it is not the run cap, which `run_digest`
+# applies after the store so no row is lost unstored. Sent by value because the
+# Worker's default without one is lower.
+WORKER_ROW_CEILING = 2000
+
 
 class CloudflareRssSource:
     """Read feed entries buffered in the Cloudflare RSS Worker's D1."""
@@ -31,13 +38,12 @@ class CloudflareRssSource:
         after: datetime,
         before: datetime,
         sources: dict[str, SourceConfig],
-        limit: int = 200,
     ) -> list[Article]:
         """Read the window from D1 and map rows onto Articles."""
         params = {
             "after": after.isoformat(),
             "before": before.isoformat(),
-            "limit": limit,
+            "limit": WORKER_ROW_CEILING,
         }
         # A failed read raises rather than returning []: `fetch_all_articles` skips the
         # source and lists it in `failed_sources`, which the failed-fetch alert reads.

@@ -250,7 +250,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         after=window_start,
         before=now,
         sources=cfg.sources,
-        limit=cfg.app.digest.max_articles_per_digest,
     )
 
     summary["fetched"] = len(articles)
