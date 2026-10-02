@@ -996,6 +996,19 @@ EXPECTED_DIGEST_IDS = {
         for name in ("votes", "votes-apart", "original", "original-clear")
     ),
 }
+# The Top story as a group: its members' ↗ and votes, and the page width around them.
+EXPECTED_DIGEST_IDS |= {
+    *(f"grouped-lead-fits-{width}" for width in (360, 880, 1000, 1440)),
+    *(f"grouped-lead-fits-largest-{width}" for width in (360, 880, 1000, 1440)),
+    *(
+        f"grouped-lead-tap-{name}-375"
+        for name in ("votes", "votes-apart", "original", "original-clear", "site-bar")
+    ),
+    *(
+        f"grouped-lead-tap-smallest-{name}-375"
+        for name in ("votes", "votes-apart", "original", "original-clear")
+    ),
+}
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
 
@@ -1035,6 +1048,15 @@ def test_the_digest_probe_page_shows_a_vote_group_in_every_item_kind():
     assert items <= _placed_in(digest_probe.render_page(), "vote-group")
     # KINDS names the fixtures; the page-side list of item selectors is another name.
     assert "KINDS" not in digest_probe.DIGEST_PRELUDE
+
+
+def test_the_digest_probe_grouped_page_leads_with_two_articles_each_with_its_link():
+    page = digest_probe.render_page(grouped_lead=True)
+    lead = page[page.index('class="lead-story"') : page.index("Features</span>")]
+    assert lead.count('class="article-item"') == 2
+    assert lead.count('class="orig"') == 2
+    single = digest_probe.render_page()
+    assert 'class="article-item"' not in single[: single.index("Features</span>")]
 
 
 def test_the_digest_probe_page_folds_a_cluster_and_a_headline():
