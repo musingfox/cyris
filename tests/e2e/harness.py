@@ -18,7 +18,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -208,11 +208,15 @@ def _proxy(run_dir: Path, script: Path):
                 time.sleep(0.1)
             yield f"http://127.0.0.1:{port}", confdir / "mitmproxy-ca-cert.pem"
         finally:
-            os.killpg(proc.pid, signal.SIGTERM)
+            # A group already gone, as when mitmdump died at startup, raises here and
+            # would replace the assertion carrying its log.
+            with suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
             try:
                 proc.wait(10)
             except subprocess.TimeoutExpired:
-                os.killpg(proc.pid, signal.SIGKILL)
+                with suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait()
 
 
