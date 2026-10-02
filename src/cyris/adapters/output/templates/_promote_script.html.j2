@@ -5,13 +5,30 @@
     // Corrupt storage, or a browser blocking it, must not take the click handler down with it.
     let votes = {};
     try { votes = JSON.parse(localStorage.getItem(VOTES_KEY) || '{}'); } catch { votes = {}; }
+    // A vote is one hop through the app Worker to the promote Worker, which answers in well
+    // under a second; past this the reader is told it did not land instead of waiting on.
+    const VOTE_TIMEOUT_MS = 10000;
+    const VOTE_FAILED = {
+        signedOut: 'Your session has ended, so the vote was not taken. Reload the page and sign in again.',
+        notConfigured: 'Voting is not set up here: the app Worker has no CYRIS_PROMOTE_WORKER_URL. Set it, then vote again.',
+        refused: (status) => `The vote did not go through (HTTP ${status}). Try again; if it keeps failing, check the promote Worker.`,
+        unreached: 'The vote did not reach the server. Check your connection, then try again.',
+    };
+    // What a vote turns the raw list's state text into, as the next promote-sync will.
+    const VOTED_STATE = { up: 'accepted', down: 'rejected' };
 
     function paint(group, vote) {
         // Votes stored before the deep-read button was dropped have no button to paint; up is the same polarity.
         const shown = group.querySelector('[data-vote="' + vote + '"]') ? vote : 'up';
         for (const b of group.querySelectorAll('.promote-btn')) {
             b.classList.toggle('done', b.dataset.vote === shown);
+            b.setAttribute('aria-pressed', String(b.dataset.vote === shown));
             b.classList.remove('error');
+        }
+        const state = group.closest('.list-row')?.querySelector('.state');
+        if (state) {
+            state.className = 'state ' + VOTED_STATE[shown];
+            state.textContent = VOTED_STATE[shown];
         }
     }
     // A news cluster is one vote-group over every article in it, so urls is a list.
@@ -25,37 +42,81 @@
         if (vote) paint(group, vote);
     }
 
-    // The one vote path: true only when every url took the vote, and only then is it
-    // remembered and painted. It never rejects, so a caller can decide what failure shows.
+    // Only the app Worker's own 401 means the reader's sign-in lapsed; a 401 passed
+    // through from the promote Worker is a refused token, which signing in cannot fix.
+    async function failureOf(resp) {
+        if (resp.status === 401) {
+            const body = await resp.json().catch(() => ({}));
+            if (body.authorized === false) return VOTE_FAILED.signedOut;
+        }
+        if (resp.status === 503) return VOTE_FAILED.notConfigured;
+        return VOTE_FAILED.refused(resp.status);
+    }
+
+    // The one vote path: null only when every url took the vote, and only then is it
+    // remembered and painted; otherwise the reason, for the caller to show. It never rejects.
     async function castVote(group, vote) {
+        clearFailure(group);
         const urls = groupUrls(group);
         try {
             const results = await Promise.all(urls.map((u) => fetch('/api/vote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
+                signal: AbortSignal.timeout(VOTE_TIMEOUT_MS),
             })));
-            if (results.some((r) => !r.ok)) return false;
+            const refused = results.find((r) => !r.ok);
+            if (refused) return await failureOf(refused);
         } catch {
-            return false;
+            return VOTE_FAILED.unreached;
         }
         votes[voteKey(group)] = vote;
         // The server already took the vote; a full quota must not show it as failed.
         try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
         paint(group, vote);
-        return true;
+        return null;
+    }
+
+    // Disabling the focused button drops focus to the body; give it back, unless the
+    // reader has moved on to something else meanwhile.
+    function returnFocus(btn) {
+        if (!document.activeElement || document.activeElement === document.body) btn.focus();
+    }
+
+    // The notice sits after the row that holds the group, so the buttons stay last in it.
+    function showFailure(group, reason) {
+        const row = group.parentElement;
+        let notice = row.nextElementSibling;
+        if (!notice || !notice.classList.contains('vote-error')) {
+            notice = document.createElement('p');
+            notice.className = 'notice err vote-error';
+            notice.setAttribute('role', 'alert');
+            notice.lang = 'en';
+            row.after(notice);
+        }
+        notice.textContent = reason;
+    }
+    function clearFailure(group) {
+        const next = group.parentElement.nextElementSibling;
+        if (next && next.classList.contains('vote-error')) next.remove();
     }
 
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.promote-btn');
         if (!btn) return;
-        btn.disabled = true;
+        const group = btn.closest('.vote-group');
+        const buttons = [...group.querySelectorAll('.promote-btn')];
+        const focused = document.activeElement === btn;
+        buttons.forEach((b) => { b.disabled = true; });
         try {
-            if (!await castVote(btn.closest('.vote-group'), btn.dataset.vote)) {
+            const failure = await castVote(group, btn.dataset.vote);
+            if (failure) {
                 btn.classList.add('error');
+                showFailure(group, failure);
             }
         } finally {
-            btn.disabled = false;
+            buttons.forEach((b) => { b.disabled = false; });
+            if (focused) returnFocus(btn);
         }
     });
     </script>

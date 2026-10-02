@@ -1232,7 +1232,10 @@ def test_vote_buttons_use_arrows_not_emoji(tmp_path):
     writer = HtmlDigestWriter(tmp_path)
     html = writer.render(_cluster_digest(2))
 
-    button = '<button class="btn sm secondary promote-btn" data-vote="{}" title="{}">{}</button>'
+    button = (
+        '<button class="btn sm secondary promote-btn" data-vote="{0}" title="{1}"'
+        ' aria-label="{1}" aria-pressed="false">{2}</button>'
+    )
     assert button.format("up", "More like this", "↑") in html
     assert button.format("down", "Less like this", "↓") in html
     assert "👍" not in html
@@ -1737,10 +1740,7 @@ def test_the_triage_view_holds_one_card_and_its_two_buttons(tmp_path):
     assert re.findall(r"<button\b[^>]*data-vote", triage) == []
 
 
-VOTE_FAILED = (
-    '<p class="notice err" id="t-error" role="alert" hidden>The vote did not go through,'
-    " so this card stays. Check your connection, then try again.</p>"
-)
+VOTE_FAILED = '<p class="notice err" id="t-error" role="alert" hidden></p>'
 
 
 def test_a_failed_triage_vote_is_explained_under_its_buttons(tmp_path):
