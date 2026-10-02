@@ -352,6 +352,11 @@ class TestPalettes:
 
 
 class TestLayout:
+    def test_a_wire_summary_breaks_an_unbroken_token(self):
+        style = _style(render_digest_email(_full(), DIGEST_URL))
+
+        assert re.search(r"\.wire \.summary \{[^}]*overflow-wrap: anywhere;", style)
+
     def test_every_spacing_length_is_on_the_scale(self):
         style = _style(render_digest_email(_full(), DIGEST_URL, raw_page=True))
         # The pill's padding is the one value the spec sets outside the scale (§4).

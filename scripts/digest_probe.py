@@ -88,9 +88,11 @@ HEAD_WIDTHS = (721, 740, 760, 800, 880, 1000, 1440)
 TIGHTEST_HEAD_WIDTH = 721
 
 
+# It ends in a URL, the one token no space breaks, as an excerpt or a summary can.
 LONG_WIRE_SUMMARY = (
     "The regulator approved the merger of the two largest regional carriers on condition"
-    " that they sell eleven airport slots and keep fares on four routes capped for three years."
+    " that they sell eleven airport slots and keep fares on four routes capped, per"
+    " https://regulator.example.test/decisions/2026/regional-carriers-merger-approval-conditions"
 )
 
 

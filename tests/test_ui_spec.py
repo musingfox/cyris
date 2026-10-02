@@ -661,6 +661,15 @@ def test_a_wire_summary_is_small_dim_prose_that_stops_at_the_measure() -> None:
     assert {"color: var(--text-dim)", "line-height: 1.5", "max-width: var(--measure)"} <= rules
 
 
+def test_a_wire_summary_breaks_an_unbroken_token_on_the_page_and_in_the_prototype() -> None:
+    prototype = parse_style_block(PROTOTYPE.read_text())
+    for rules in (
+        _parsed("digest")[".headline-item .summary"],
+        prototype[".headline-item .summary"],
+    ):
+        assert "overflow-wrap: anywhere" in rules
+
+
 def test_the_issue_title_takes_the_issue_title_role() -> None:
     assert (
         "font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale))"
