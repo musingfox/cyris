@@ -303,9 +303,10 @@ async def test_filter_survives_a_model_that_rewrites_string_ids():
     assert [item.urls for item in items] == [[a.url] for a in articles]
 
 
-async def test_filter_resolves_a_position_echoed_as_a_string():
+@pytest.mark.parametrize("raw_id", ["1", pytest.param("0" * 4301 + "1", id="'0'*4301+'1'")])
+async def test_filter_resolves_a_position_echoed_as_a_string(raw_id):
     articles = _cna_articles()
-    llm = FakeLLM(json.dumps({"selected": [{"id": "1", "title": "t", "source": "S"}]}))
+    llm = FakeLLM(json.dumps({"selected": [{"id": raw_id, "title": "t", "source": "S"}]}))
 
     items = await filter_articles(
         articles, llm, filter_snippet_length=500, output_language="zh-Hant", style_prompt=""
