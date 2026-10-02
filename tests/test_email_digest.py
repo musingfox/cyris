@@ -188,15 +188,14 @@ class TestSections:
 
 class TestLanguage:
     CONTENT = [
-        "Lead Story",
         "Lead Story summary.",
-        "Second Feature",
         "A Cluster",
         "Cluster summary.",
         "Wire One",
         "Wire One summary.",
     ]
     PASSED_THROUGH = ["Fan Item", "Watching — Why these.", "Radar Item", "Radar Item summary."]
+    TITLES = ["Lead Story", "Second Feature"]
     CHROME = ["Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire"]
 
     def test_the_chrome_is_english_and_the_content_carries_the_output_language(self):
@@ -207,6 +206,22 @@ class TestLanguage:
         assert '<html lang="en">' in html
         assert {text: langs[text] for text in self.CHROME} == dict.fromkeys(self.CHROME, "en")
         assert {text: langs[text] for text in self.CONTENT} == dict.fromkeys(self.CONTENT, "ja")
+
+    def test_an_articles_own_title_leaves_its_language_unknown_beside_its_summary(self):
+        content = _full().model_copy(update={"output_language": "ja"})
+        langs = text_langs(render_digest_email(content, DIGEST_URL))
+
+        assert {text: langs[text] for text in self.TITLES} == dict.fromkeys(self.TITLES, "")
+
+    def test_a_grouped_top_story_keeps_its_heading_and_leaves_its_titles_unknown(self):
+        content = _full().model_copy(update={"output_language": "ja"})
+        group = content.featured_articles[0]
+        content.featured_articles = [group.model_copy(update={"summary": "Shared summary."})]
+        langs = text_langs(render_digest_email(content, DIGEST_URL))
+
+        written = ["Lead group", "Shared summary."]
+        assert {text: langs[text] for text in written} == dict.fromkeys(written, "ja")
+        assert {text: langs[text] for text in self.TITLES} == dict.fromkeys(self.TITLES, "")
 
     @staticmethod
     def _passed_through(*titles: str) -> DigestContent:
@@ -220,7 +235,7 @@ class TestLanguage:
         langs = text_langs(render_digest_email(content, DIGEST_URL))
 
         fallback = ["Second Feature", "Second Feature summary.", "Wire One", "Wire One summary."]
-        written = ["Lead Story", "Lead Story summary.", "A Cluster", "Cluster summary."]
+        written = ["Lead Story summary.", "A Cluster", "Cluster summary."]
         assert {text: langs[text] for text in fallback} == dict.fromkeys(fallback, "")
         assert {text: langs[text] for text in written} == dict.fromkeys(written, "ja")
 
@@ -229,8 +244,8 @@ class TestLanguage:
 
         lead = ["Lead Story", "Lead Story summary."]
         assert {text: langs[text] for text in lead} == dict.fromkeys(lead, "")
-        assert {text: langs[text] for text in ["Second Feature", "Wire One"]} == {
-            "Second Feature": "ja",
+        assert {text: langs[text] for text in ["Second Feature summary.", "Wire One"]} == {
+            "Second Feature summary.": "ja",
             "Wire One": "ja",
         }
 
