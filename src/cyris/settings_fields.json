@@ -155,7 +155,7 @@
   },
   "digest.filter_snippet_length": {
     "tab": "pipeline",
-    "label": "Characters read (Headlines)",
+    "label": "Characters read (News clustering and headlines)",
     "controls": [
       "filter-snippet"
     ],
