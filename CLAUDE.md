@@ -82,7 +82,7 @@ src/cyris/
 │   ├── run_digest.py        # Use case: full pipeline run (fetch→store→score→digest→output)
 │   ├── digest_pipeline.py   # DigestPipeline: tier-based digest processing
 │   ├── scoring.py           # AI article scoring (score_in_batches shared loop)
-│   ├── filtering.py         # Filter tier: batch headline extraction (<10% pass)
+│   ├── filtering.py         # Filter tier: batch headline extraction
 │   ├── summarize.py         # Summarize tier: per-group thematic summaries
 │   ├── cluster_news.py      # News clustering for news-tagged filter-tier articles
 │   ├── fetching.py          # fetch_all_articles across FetchSources with dedup

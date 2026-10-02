@@ -26,8 +26,8 @@ async def filter_articles(
 ) -> list[DigestItem]:
     """Send filter-tier articles to Claude for headline extraction.
 
-    All articles are sent in a single batch for cross-comparison.
-    Expected pass rate: < 10%.
+    All articles are sent in a single batch for cross-comparison. No pass rate is
+    enforced: `FILTER_SYSTEM` asks for merit, not a percentage target.
 
     Args:
         articles: Filter-tier articles to process.
