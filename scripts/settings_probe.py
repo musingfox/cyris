@@ -848,6 +848,20 @@ CHECKS: list[Check] = [
         sabotage="""$("tr.src-row td").innerHTML = "<b>x</b>";""",
     ),
     Check(
+        id="sources-tier-plain-pill",
+        fixture="writable",
+        path="/settings#sources",
+        act="await sourcesLoaded();",
+        script="""
+            const pills = $$("table.src .pill");
+            const tiers = pills.map((pill) => pill.textContent);
+            expect(tiers.includes("summarize"), `tiers: ${tiers}`);
+            const variants = pills.filter((pill) => pill.className !== "pill");
+            expect(!variants.length, `a tier took a variant: ${variants.map((p) => p.className)}`);
+        """,
+        sabotage="""$("table.src .pill").classList.add("score");""",
+    ),
+    Check(
         id="sources-filter",
         fixture="writable",
         path="/settings#sources",
