@@ -300,7 +300,11 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
   category opens with a heading and a one-sentence small description.
 - When a required value is missing, its field is left empty and marked as failed validation, the top of
   the category lists the missing fields in one error notice, and the list gets a `--warn` dot. All three
-  marks disappear together after saving.
+  marks disappear together after saving. A deployment with no source stops its next run too, so Sources
+  gets the `--warn` dot while its table says why, until a source is saved.
+- Until the stored values arrive, each category's description is followed by `Loading settings…` in the
+  small role, and the Sources table holds one `Loading sources…` row. Each goes when its answer arrives,
+  or the error notice that replaces it.
 - Each category has exactly one primary `Save`, disabled when nothing has changed; a category with unsaved
   changes gets an `--accent` dot in the list. A missing value whose answer may be empty, such as Style or
   Email to, keeps `Save` enabled without a dot, so a first boot can store it as it stands.
@@ -310,6 +314,8 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 - While a save is out, its `Save` stays disabled and the notice beside it says what is happening, such as
   `Saving…` or `Checking with the provider…`, until the result replaces it. A source editor is locked
   while its save is out, and its fields show the disabled opacity.
+- Every notice that reports a save, a retire or a load is a polite live region (`role="status"`), so a
+  screen reader reads its result out.
 - The prototype governs the fields' names, help text and `More` text.
 
 ### email
