@@ -7,6 +7,7 @@ import pytest
 from fakes import FakeLLM
 
 from cyris.domain.models import Tier, UsageStats
+from cyris.service_layer.degrade import excerpt
 from cyris.service_layer.summarize import _group_by_tags, summarize_articles
 
 pytestmark = pytest.mark.unit
@@ -112,6 +113,83 @@ class TestSummarizeArticles:
 
         assert sections[0].summary == "One summary"
         assert len(sections[0].items) == 2
+
+    async def test_each_article_takes_its_own_summary_beside_the_groups(
+        self, sample_summarize_articles
+    ):
+        second = sample_summarize_articles[0].model_copy(
+            update={"id": 104, "url": "https://stratechery.com/2026/03/17/other"}
+        )
+        usage = UsageStats(model="m")
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "H",
+                            "summary": "Group summary",
+                            "summaries": {"0": "First on its own", "1": "Second on its own"},
+                            "article_ids": [0, 1],
+                        }
+                    ]
+                }
+            )
+        )
+
+        sections = await summarize_articles(
+            [*sample_summarize_articles, second],
+            llm,
+            usage=usage,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert sections[0].summary == "Group summary"
+        assert [item.summary for item in sections[0].items] == [
+            "First on its own",
+            "Second on its own",
+        ]
+        assert usage.fell_back_to_excerpts is False
+        assert '"summaries"' in llm.calls[0]["system"]
+
+    @pytest.mark.parametrize(
+        "summaries",
+        [{}, {"0": ""}, {"0": 7}, "not an object"],
+        ids=["absent", "blank", "not-text", "malformed"],
+    )
+    async def test_a_missing_article_summary_falls_back_to_its_excerpt(
+        self, sample_summarize_articles, summaries
+    ):
+        article = sample_summarize_articles[0]
+        usage = UsageStats(model="m")
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "H",
+                            "summary": "Group summary",
+                            "summaries": summaries,
+                            "article_ids": [0],
+                        }
+                    ]
+                }
+            )
+        )
+
+        sections = await summarize_articles(
+            [article],
+            llm,
+            usage=usage,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert sections[0].items[0].summary == excerpt(article.content)
+        assert sections[0].summary == "Group summary"
+        assert usage.fell_back_to_excerpts is True
 
     async def test_a_group_without_a_summary_has_none_to_render_once(
         self, sample_summarize_articles

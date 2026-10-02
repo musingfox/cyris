@@ -101,9 +101,9 @@ class TestDiscordEmbeds:
         titles = [e["title"] for e in embeds]
 
         assert titles == [
-            "⭐ Featured",
+            "⭐ Top story",
+            "📋 Features",
             "📰 News",
-            "📋 Themes",
             "👀 Worth a look",
             "📌 Other headlines (1)",
             "Morning 2026-04-10",
@@ -133,7 +133,7 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        featured = next(e for e in embeds if e["title"] == "⭐ Featured")
+        featured = next(e for e in embeds if e["title"] == "⭐ Top story")
 
         assert featured["color"] == 0xF1C40F
         assert "[API 橫切關注點](https://bytebytego.com/article)" in featured["description"]
@@ -703,3 +703,79 @@ class TestDiscordAlertRedaction:
         assert "404" in caplog.text
         assert _MASKED in caplog.text
         assert "s3cr3t-token" not in caplog.text
+
+
+def _article(title: str, score: float) -> DigestItem:
+    return DigestItem(
+        title=title,
+        summary=f"{title} on its own",
+        sources=[f"{title} source"],
+        urls=[f"https://example.com/{title}"],
+        score=score,
+    )
+
+
+def _laid_out_issue() -> DigestContent:
+    """What layering hands every surface: a grouped Top story, then one-article Features."""
+    return DigestContent(
+        date="2026-04-10",
+        period="morning",
+        sources_processed=2,
+        articles_received=3,
+        articles_included=3,
+        featured_articles=[
+            DigestSection(
+                heading="Lead topic",
+                summary="Group summary",
+                items=[_article("Alpha", 90), _article("Beta", 80)],
+            ),
+            DigestSection(heading="Gamma", items=[_article("Gamma", 70)]),
+        ],
+    )
+
+
+def _between(text: str, start: str, end: str) -> str:
+    return text[text.index(start) : text.index(end, text.index(start))]
+
+
+class TestEverySurfaceShowsTheSameLayout:
+    """Page, mail (HTML and text) and Discord: one group summary on top, one card per feature."""
+
+    def test_discord(self):
+        embeds = {e["title"]: e["description"] for e in build_discord_embeds(_laid_out_issue())}
+
+        top = embeds["⭐ Top story"]
+        assert top.count("Group summary") == 1
+        assert "Lead topic" in top
+        assert "https://example.com/Alpha" in top and "https://example.com/Beta" in top
+        assert "Alpha on its own" not in top and "Gamma" not in top
+        assert "[Gamma](https://example.com/Gamma)" in embeds["📋 Features"]
+        assert "Gamma on its own" in embeds["📋 Features"]
+        assert "Group summary" not in embeds["📋 Features"]
+
+    def test_page(self, tmp_path):
+        from cyris.adapters.output.html_digest import HtmlDigestWriter
+
+        html = HtmlDigestWriter(tmp_path).render(_laid_out_issue())
+        top = _between(html, "Top story", "Features</span>")
+        features = _between(html, "Features</span>", "</main>")
+        assert top.count("Group summary") == 1 and "Alpha" in top and "Beta" in top
+        assert "Gamma on its own" in features and "Group summary" not in features
+
+    def test_mail_html(self):
+        from cyris.adapters.output.email_digest import render_digest_email
+
+        html = render_digest_email(_laid_out_issue(), "https://digest.example/2026-04-10")
+        top = _between(html, "Top story</h2>", "Features</h2>")
+        features = _between(html, "Features</h2>", "</body>")
+        assert top.count("Group summary") == 1 and "Alpha" in top and "Beta" in top
+        assert "Gamma on its own" in features and "Group summary" not in features
+
+    def test_mail_text(self):
+        from cyris.adapters.mail import build_digest_mail
+
+        _, text = build_digest_mail(_laid_out_issue())
+        top = _between(text, "\nTop story\n", "\nFeatures\n")
+        features = text[text.index("\nFeatures\n") :]
+        assert "Lead topic" in top and "Alpha" in top and "Beta" in top
+        assert "Gamma" in features and "Alpha" not in features

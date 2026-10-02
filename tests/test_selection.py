@@ -178,228 +178,183 @@ class TestSelectDigestArticles:
         assert result.articles_received == 50
 
 
+def _article(title: str, score: float | None) -> DigestItem:
+    """One summarized article, carrying its own summary as the summarize step now writes it."""
+    return DigestItem(
+        title=title,
+        summary=f"{title} on its own",
+        sources=[f"{title} source"],
+        urls=[f"https://example.com/{title}"],
+        score=score,
+    )
+
+
+def _topic(
+    heading: str, *articles: DigestItem, summary: str | None = "Group summary"
+) -> DigestSection:
+    """A summarize-tier group; summary=None is the degraded shape, which has no group summary."""
+    return DigestSection(heading=heading, summary=summary, items=list(articles))
+
+
+def _layer(*sections: DigestSection, threshold: float = 70, max_featured: int = 5) -> DigestContent:
+    content = _base_content(thematic_summaries=list(sections))
+    return layer_by_score(content, featured_threshold=threshold, max_featured=max_featured)
+
+
+def _titles(section: DigestSection) -> list[str]:
+    return [item.title for item in section.items]
+
+
 class TestLayerByScore:
-    def test_basic_layering(self):
-        """Test basic score layering with sections above threshold."""
-        sections = [
-            DigestSection(
-                heading="High Score Article",
-                items=[
-                    DigestItem(
-                        title="Article 1",
-                        summary="Summary",
-                        sources=["Source A"],
-                        urls=["http://example.com/1"],
-                        score=90.0,
-                    )
-                ],
-            ),
-            DigestSection(
-                heading="Medium Score Article",
-                items=[
-                    DigestItem(
-                        title="Article 2",
-                        summary="Summary",
-                        sources=["Source B"],
-                        urls=["http://example.com/2"],
-                        score=75.0,
-                    )
-                ],
-            ),
-            DigestSection(
-                heading="Low Score Article",
-                items=[
-                    DigestItem(
-                        title="Article 3",
-                        summary="Summary",
-                        sources=["Source C"],
-                        urls=["http://example.com/3"],
-                        score=60.0,
-                    )
-                ],
-            ),
-        ]
+    """The Top story is the only group; every Features card is one article."""
 
-        content = _base_content(thematic_summaries=sections, articles_included=3)
+    def test_two_articles_on_one_topic_at_the_threshold_lead_as_one_group(self):
+        result = _layer(_topic("Topic", _article("a", 80), _article("b", 70)))
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=3)
+        lead = result.featured_articles[0]
+        assert lead.heading == "Topic"
+        assert lead.summary == "Group summary"
+        assert _titles(lead) == ["a", "b"]
+        assert result.featured_articles[1:] == []
+        assert result.thematic_summaries == []
 
-        assert len(result.featured_articles) == 2
-        assert len(result.thematic_summaries) == 1
-        assert result.featured_articles[0].heading == "High Score Article"
-        assert result.featured_articles[1].heading == "Medium Score Article"
-        assert result.thematic_summaries[0].heading == "Low Score Article"
+    def test_one_article_above_the_threshold_is_no_group(self):
+        result = _layer(_topic("Topic", _article("a", 80), _article("b", 69)))
 
-    def test_max_featured_cap(self):
-        """Test that max_featured caps the number of featured sections."""
-        sections = [
-            DigestSection(
-                heading=f"Article {i}",
-                items=[
-                    DigestItem(
-                        title=f"Title {i}",
-                        summary="Summary",
-                        sources=["Source"],
-                        urls=[f"http://example.com/{i}"],
-                        score=90.0 - i,  # Descending scores: 90, 89, 88, ...
-                    )
-                ],
-            )
-            for i in range(10)
-        ]
+        assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"]]
+        assert all(s.summary is None for s in result.featured_articles)
 
-        content = _base_content(thematic_summaries=sections, articles_included=10)
+    def test_a_member_below_the_threshold_leaves_the_group_as_its_own_card(self):
+        result = _layer(_topic("Topic", _article("low", 50), _article("a", 90), _article("b", 75)))
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=3)
+        lead, *features = result.featured_articles
+        assert _titles(lead) == ["a", "b"]
+        assert [_titles(s) for s in features] == [["low"]]
+        assert features[0].items[0].summary == "low on its own"
 
-        assert len(result.featured_articles) == 3
-        assert len(result.thematic_summaries) == 7
-        # Check featured are top 3 by score
-        assert result.featured_articles[0].heading == "Article 0"
-        assert result.featured_articles[1].heading == "Article 1"
-        assert result.featured_articles[2].heading == "Article 2"
+    def test_a_group_leads_even_when_a_single_article_scores_higher(self):
+        result = _layer(
+            _topic("Solo", _article("solo", 99)),
+            _topic("Topic", _article("a", 80), _article("b", 75)),
+        )
 
-    def test_no_qualifying_sections(self):
-        """Test when all sections are below threshold."""
-        sections = [
-            DigestSection(
-                heading="Low Score Article",
-                items=[
-                    DigestItem(
-                        title="Article",
-                        summary="Summary",
-                        sources=["Source"],
-                        urls=["http://example.com"],
-                        score=60.0,
-                    )
-                ],
-            )
-        ]
+        assert _titles(result.featured_articles[0]) == ["a", "b"]
+        assert [_titles(s) for s in result.featured_articles[1:]] == [["solo"]]
 
-        content = _base_content(thematic_summaries=sections, articles_included=1)
+    def test_without_a_group_the_lead_is_the_highest_scoring_article(self):
+        result = _layer(
+            _topic("One", _article("mid", 75)),
+            _topic("Two", _article("top", 95), _article("low", 40)),
+        )
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=5)
+        assert [_titles(s) for s in result.featured_articles] == [["top"], ["mid"], ["low"]]
 
-        assert len(result.featured_articles) == 0
-        assert len(result.thematic_summaries) == 1
+    def test_of_two_qualifying_groups_the_one_with_the_best_article_leads(self):
+        result = _layer(
+            _topic("Second", _article("s1", 85), _article("s2", 84)),
+            _topic("First", _article("f1", 90), _article("f2", 71)),
+        )
 
-    def test_multi_item_section_max_score(self):
-        """Test score calculation for sections with multiple items."""
-        sections = [
-            DigestSection(
-                heading="Multi-item Section",
-                items=[
-                    DigestItem(
-                        title="Item 1",
-                        summary="Summary",
-                        sources=["A"],
-                        urls=["http://a"],
-                        score=60.0,
-                    ),
-                    DigestItem(
-                        title="Item 2",
-                        summary="Summary",
-                        sources=["B"],
-                        urls=["http://b"],
-                        score=85.0,
-                    ),
-                    DigestItem(
-                        title="Item 3",
-                        summary="Summary",
-                        sources=["C"],
-                        urls=["http://c"],
-                        score=70.0,
-                    ),
-                ],
-            )
-        ]
+        lead, *features = result.featured_articles
+        assert lead.heading == "First"
+        assert [_titles(s) for s in features] == [["s1"], ["s2"]]
 
-        content = _base_content(thematic_summaries=sections, articles_included=3)
+    def test_every_feature_is_one_article_with_its_own_summary(self):
+        result = _layer(
+            _topic("Topic", _article("a", 90), _article("b", 85)),
+            _topic("Other", _article("c", 80), _article("d", 75)),
+            threshold=95,
+        )
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=5)
+        assert len(result.featured_articles) == 4
+        for section in result.featured_articles:
+            assert len(section.items) == 1
+            assert section.summary is None
+            assert section.items[0].summary == f"{section.items[0].title} on its own"
 
-        # Max score is 85, which is >= 70, so it should be featured
-        assert len(result.featured_articles) == 1
-        assert len(result.thematic_summaries) == 0
+    def test_features_follow_score_and_unscored_articles_trail(self):
+        result = _layer(
+            _topic("Topic", _article("none", None), _article("b", 60), _article("a", 90)),
+            threshold=95,
+        )
 
-    def test_mixed_scores_and_none(self):
-        """Test sections with mixed scores and None values."""
-        sections = [
-            DigestSection(
-                heading="Section with None",
-                items=[
-                    DigestItem(
-                        title="No score",
-                        summary="Summary",
-                        sources=["A"],
-                        urls=["http://a"],
-                        score=None,
-                    )
-                ],
-            ),
-            DigestSection(
-                heading="Section with high score",
-                items=[
-                    DigestItem(
-                        title="High score",
-                        summary="Summary",
-                        sources=["B"],
-                        urls=["http://b"],
-                        score=80.0,
-                    )
-                ],
-            ),
-        ]
+        assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"], ["none"]]
 
-        content = _base_content(thematic_summaries=sections, articles_included=2)
+    def test_max_featured_caps_the_cards_and_leaves_the_rest_out(self):
+        result = _layer(
+            *(_topic(f"T{n}", _article(f"a{n}", 90 - n)) for n in range(5)),
+            max_featured=2,
+        )
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=5)
+        assert [_titles(s) for s in result.featured_articles] == [["a0"], ["a1"], ["a2"]]
+        assert result.thematic_summaries == []
 
-        assert len(result.featured_articles) == 1
-        assert result.featured_articles[0].heading == "Section with high score"
-        assert len(result.thematic_summaries) == 1
-        assert result.thematic_summaries[0].heading == "Section with None"
+    def test_unscored_articles_never_count_toward_a_group(self):
+        result = _layer(_topic("Topic", _article("a", 90), _article("b", None)))
 
-    def test_sorting_by_max_score(self):
-        """Test that featured sections are sorted by max score descending."""
-        sections = [
-            DigestSection(
-                heading="Score 75",
-                items=[
-                    DigestItem(title="T", summary="S", sources=["A"], urls=["http://1"], score=75.0)
-                ],
-            ),
-            DigestSection(
-                heading="Score 90",
-                items=[
-                    DigestItem(title="T", summary="S", sources=["B"], urls=["http://2"], score=90.0)
-                ],
-            ),
-            DigestSection(
-                heading="Score 85",
-                items=[
-                    DigestItem(title="T", summary="S", sources=["C"], urls=["http://3"], score=85.0)
-                ],
-            ),
-        ]
+        assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"]]
 
-        content = _base_content(thematic_summaries=sections, articles_included=3)
+    def test_a_degraded_section_never_groups(self):
+        result = _layer(_topic("Topic", _article("a", 90), _article("b", 85), summary=None))
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=3)
+        assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"]]
 
-        assert len(result.featured_articles) == 3
-        assert result.featured_articles[0].heading == "Score 90"
-        assert result.featured_articles[1].heading == "Score 85"
-        assert result.featured_articles[2].heading == "Score 75"
+    def test_an_issue_with_no_summarized_article_has_no_lead(self):
+        result = _layer()
 
-    def test_empty_thematic_summaries(self):
-        """Test layering with no thematic summaries."""
-        content = _base_content(thematic_summaries=[], articles_included=0)
+        assert result.featured_articles == []
+        assert result.thematic_summaries == []
 
-        result = layer_by_score(content, featured_threshold=70, max_featured=5)
 
-        assert len(result.featured_articles) == 0
-        assert len(result.thematic_summaries) == 0
+class TestTheCapKeepsTheLeadWhole:
+    def _capped(self, *sections: DigestSection, max_items: int, **kwargs) -> DigestContent:
+        content = _layer(*sections, **kwargs).model_copy(
+            update={"news_clusters": _make_sections([2], "news")}
+        )
+        return select_digest_articles(content, max_items=max_items)
+
+    def test_a_group_that_fits_goes_in_whole(self):
+        result = self._capped(
+            _topic("Topic", _article("a", 90), _article("b", 80)),
+            _topic("Solo", _article("solo", 99)),
+            max_items=3,
+        )
+
+        assert [_titles(s) for s in result.featured_articles] == [["a", "b"], ["solo"]]
+        assert result.news_clusters == []
+        assert result.articles_included == 3
+
+    def test_a_group_that_does_not_fit_is_replaced_by_its_best_article(self):
+        result = self._capped(
+            _topic("Topic", _article("a", 90), _article("b", 85), _article("c", 80)),
+            _topic("Solo", _article("solo", 70)),
+            max_items=2,
+        )
+
+        lead, *features = result.featured_articles
+        assert _titles(lead) == ["a"]
+        assert lead.summary is None
+        assert lead.items[0].summary == "a on its own"
+        assert [_titles(s) for s in features] == [["solo"]]
+        assert result.articles_included == 2
+
+    def test_the_cap_takes_features_by_score(self):
+        content = _base_content(
+            featured_articles=[
+                DigestSection(heading=t, items=[_article(t, s)])
+                for t, s in (("lead", 99), ("low", 60), ("high", 90), ("mid", 75))
+            ]
+        )
+
+        result = select_digest_articles(content, max_items=3)
+
+        assert [_titles(s) for s in result.featured_articles] == [["lead"], ["high"], ["mid"]]
+
+    def test_the_lead_and_features_come_before_news(self):
+        result = self._capped(_topic("Topic", _article("a", 90), _article("b", 80)), max_items=3)
+
+        assert [_titles(s) for s in result.featured_articles] == [["a", "b"]]
+        assert sum(len(s.items) for s in result.news_clusters) == 1
 
 
 class TestSelectDigestArticlesWithAttention:

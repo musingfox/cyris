@@ -191,6 +191,68 @@ async def test_a_run_processes_the_windows_newest_articles_across_sources(
     }
 
 
+@pytest.mark.parametrize(
+    ("overrides", "grouped", "features"),
+    [
+        ({}, True, 0),
+        ({"routing": {"score_threshold": 95}}, False, 2),
+        ({"routing": {"score_threshold": 95}, "digest": {"max_featured": 1}}, False, 1),
+    ],
+    ids=["grouped", "no-group", "one-feature"],
+)
+async def test_the_run_lays_out_the_page_from_the_configured_settings(
+    tmp_path: Path, overrides: dict, grouped: bool, features: int
+) -> None:
+    """`routing.score_threshold` and `digest.max_featured` reach the published page."""
+    articles = [
+        Article(
+            id=n,
+            title=f"Essay {n}",
+            url=f"https://example.com/essay-{n}",
+            content=f"Essay {n} body.",
+            published_at=datetime.now(UTC) - timedelta(hours=1),
+            source_name="TechSource",
+            source_tier=Tier.SUMMARIZE,
+            source_tags=["tech"],
+        )
+        for n in (1, 2, 3)
+    ]
+    llm = FakeLLM(
+        [
+            json.dumps(
+                {
+                    "scores": [
+                        {"id": 1, "score": 90, "language": "en"},
+                        {"id": 2, "score": 85, "language": "en"},
+                        {"id": 3, "score": 80, "language": "en"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Essay topic",
+                            "summary": "The group summary.",
+                            "summaries": {str(n): f"Essay {n + 1} alone." for n in range(3)},
+                            "article_ids": [0, 1, 2],
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
+    cfg = make_config(agent_vault=deps.cfg.app.agent_vault, **overrides)
+    deps = replace(deps, cfg=cfg)
+
+    report = await run_digest(deps, RunOptions(period="morning"))
+
+    page = report.html_path.read_text()
+    assert ("The group summary." in page) is grouped
+    assert page.count('class="featured-item"') == features
+
+
 async def test_run_digest_no_articles(tmp_path: Path) -> None:
     source = FakeSource([])
     deps, notifications = make_deps(tmp_path, FakeLLM(), source)

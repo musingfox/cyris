@@ -680,16 +680,22 @@ def _feature_main(tmp_path, section: DigestSection) -> str:
     return _main_of(tmp_path, DigestSection(heading="L", items=_items("Lead")), section)
 
 
-def test_a_group_feature_prints_its_summary_once_under_its_heading(tmp_path):
-    main = _feature_main(tmp_path, _group())
-    assert main.count("Shared summary") == 1
-    assert '<h3 class="item-title lg">Group heading</h3>' in main
+def test_a_group_after_the_lead_is_drawn_as_one_card_per_article(tmp_path):
+    section = _group()
+    section.items = [
+        item.model_copy(update={"summary": f"{item.title} on its own"}) for item in section.items
+    ]
+    main = _feature_main(tmp_path, section)
+    assert "Shared summary" not in main
+    assert "Group heading" not in main
+    assert main.count('class="featured-item"') == 2
+    assert "Alpha on its own" in main and "Beta on its own" in main
 
 
 def test_each_article_in_a_group_keeps_its_own_link_and_vote(tmp_path):
-    main = _feature_main(tmp_path, _group())
+    main = _main_of(tmp_path, _group())
     for title, url in (("Alpha", "https://a.test/1"), ("Beta", "https://b.test/2")):
-        assert re.search(rf'<h4 class="item-title"><a href="{url}"[^>]*>{title}</a></h4>', main)
+        assert re.search(rf'<h3 class="item-title lg"><a href="{url}"[^>]*>{title}</a></h3>', main)
         assert f"data-urls='[\"{url}\"]'" in main
     assert 'data-urls=\'["https://a.test/1", "https://b.test/2"]\'' not in main
 
