@@ -31,7 +31,7 @@
 {% for item in story.members %}
 <div class="member">
     {% if item.score %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-    <h4 class="title">{{ title_link(item) }}</h4>
+    <h4 class="title" lang="">{{ title_link(item) }}</h4>
     {{ meta(item) }}
 </div>
 {% endfor %}
@@ -108,7 +108,7 @@
             <h2 class="section-tag"><span class="rule"></span>Top story</h2>
             <article class="lead" lang="{{ '' if lead_story.passed_through else content_lang }}">
                 {% if lead_story.score %}<span class="pill">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
-                <h3 class="lead-title">{{ title_link(lead_story) }}</h3>
+                <h3 class="lead-title"{% if not lead_story.grouped %} lang=""{% endif %}>{{ title_link(lead_story) }}</h3>
                 <p class="summary">{{ lead_story.summary }}</p>
                 {% if lead_story.grouped %}{{ members(lead_story) }}{% else %}{{ meta(lead_story) }}{% endif %}
             </article>
@@ -121,7 +121,7 @@
             {% for item in featured_articles %}
             <article class="item" lang="{{ '' if item.passed_through else content_lang }}">
                 {% if item.score %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-                <h3 class="title">{{ title_link(item) }}</h3>
+                <h3 class="title" lang="">{{ title_link(item) }}</h3>
                 <p class="summary">{{ item.summary }}</p>
                 {{ meta(item) }}
             </article>

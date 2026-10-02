@@ -13,7 +13,7 @@
 {% macro story_members(story) -%}
 {% for item in story.members %}
 <article class="article-item">
-    <h3 class="item-title lg">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
+    <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
     <div class="meta">
         {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
         <span class="source-tag">{{ item.sources | join(' · ') }}</span>
@@ -475,7 +475,7 @@
                 <div class="section-tag"><span class="label">Top story</span></div>
                 <article class="lead-story" lang="{{ '' if lead_story.passed_through else content_lang }}">
                     {% if lead_story.score %}<span class="pill score">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
-                    <h2>
+                    <h2{% if not lead_story.grouped %} lang=""{% endif %}>
                         {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
                     </h2>
                     <p class="summary">{{ lead_story.summary }}</p>
@@ -495,7 +495,7 @@
                 <div class="featured-grid" lang="{{ content_lang }}">
                     {% for item in featured_articles %}
                     <article class="featured-item"{% if item.passed_through %} lang=""{% endif %}>
-                        <h3 class="item-title lg">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
+                        <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
                         <p class="summary">{{ item.summary }}</p>
                         <div class="meta">
                             {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}

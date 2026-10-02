@@ -106,12 +106,15 @@ class HeadlineCard:
     """What the archive's headline card says beyond its issue's date and period.
 
     None is absent, as in the history rows; a count of 0 is a count and shows.
+    The lead and the topics each carry their own `lang`: a single lead is an
+    article's own title, while a group's heading and the topics are model-written.
     """
 
     lead: str | None = None
     count: int | None = None
     topics: str | None = None
-    lang: str = ""
+    lead_lang: str = ""
+    topics_lang: str = ""
 
 
 class HtmlDigestWriter:
@@ -302,11 +305,13 @@ class HtmlDigestWriter:
                     content.news_clusters,
                     key=lambda section: -sum(len(item.urls) for item in section.items),
                 )
+                content_lang = _html_lang(content.output_language)
                 card = HeadlineCard(
                     lead=(features[0].title or None) if features else None,
                     count=content.articles_included,
                     topics=" · ".join(section.heading for section in largest[:2]) or None,
-                    lang=_html_lang(content.output_language),
+                    lead_lang=content_lang if features and features[0].grouped else "",
+                    topics_lang=content_lang,
                 )
 
         months: dict[str, list[dict]] = {}
