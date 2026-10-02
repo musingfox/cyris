@@ -25,6 +25,7 @@ from css_rules import (
     rem_values,
     spacing_literals,
     spec_colour_exceptions,
+    split_selector_list,
     style_attributes,
     unscaled_font_sizes,
 )
@@ -280,7 +281,7 @@ def test_a_failed_vote_is_marked_in_warn(page: str) -> None:
 @pytest.mark.parametrize("page", ["digest", "raw"])
 @pytest.mark.parametrize("state", ["done", "error"])
 def test_hover_keeps_a_voted_buttons_state_colour(page: str, state: str) -> None:
-    # .btn.secondary:hover outranks .promote-btn.done by specificity alone, so the
+    # The secondary button's hover outranks .promote-btn.done by specificity alone, so the
     # state has to name :hover itself or hovering repaints a cast vote as unvoted.
     html = dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[page]
     rules = parse_style_block(html)
@@ -333,6 +334,53 @@ def test_each_component_matches_the_prototype(key: str) -> None:
 def test_a_rule_outside_the_component_list_is_reported_as_extra() -> None:
     planted = _render_partial("_components.css.j2") + "\n.row { padding: 0; }"
     assert _component_key_problems(planted) == ["extra .row"]
+
+
+BUTTON_SOURCES = ["_components.css.j2", "style.css", "prototype"]
+
+# :where keeps the guard's specificity at zero. A plain :not(:disabled) would lift
+# the secondary hover above .promote-btn.done:hover and repaint a cast vote.
+ENABLED = ":where(:not(:disabled))"
+
+
+def _button_rules(source: str) -> dict[str, set[str] | list[str]]:
+    if source == "prototype":
+        return parse_style_block(PROTOTYPE.read_text())
+    css = _render_partial(source) if source.endswith(".j2") else STYLE.read_text()
+    return parse_style_block(f"<style>{css}</style>")
+
+
+def _unguarded_button_hovers(rules: dict[str, set[str] | list[str]]) -> list[str]:
+    return sorted(
+        selector
+        for key in rules
+        for selector in split_selector_list(key)
+        if selector.startswith(".btn") and ":hover" in selector and ENABLED not in selector
+    )
+
+
+@pytest.mark.parametrize("source", BUTTON_SOURCES)
+def test_a_disabled_button_does_not_change_on_hover(source: str) -> None:
+    rules = _button_rules(source)
+    assert [key for key in rules if key.startswith(".btn") and ":hover" in key]
+    assert _unguarded_button_hovers(rules) == []
+
+
+def test_an_unguarded_button_hover_is_reported() -> None:
+    rules = parse_style_block(
+        "<style>.btn.primary:hover{a:1} .btn.danger:where(:not(:disabled)):hover,"
+        " .btn.danger:not(:disabled):hover{b:2}</style>"
+    )
+    assert _unguarded_button_hovers(rules) == [
+        ".btn.danger:not(:disabled):hover",
+        ".btn.primary:hover",
+    ]
+
+
+@pytest.mark.parametrize("source", BUTTON_SOURCES)
+def test_a_pressed_button_only_lowers_its_opacity(source: str) -> None:
+    pressed = {key: d for key, d in _button_rules(source).items() if ":active" in key}
+    assert pressed == {f".btn{ENABLED}:active": {"opacity: .7"}}
 
 
 def test_the_digest_keeps_its_stats_rows_to_the_stats_card() -> None:
