@@ -38,6 +38,9 @@ uv run pytest -m unit
 # Run unit tests, leaving out guard files
 uv run pytest -m "unit and not guard"
 
+# Run the end-to-end suite: `cyris run` against mitmproxy fakes, which uvx installs on first use
+uv run pytest -m e2e
+
 # Run a single test file
 uv run pytest tests/test_config.py
 
@@ -208,8 +211,8 @@ under `tests/`; `tests/test_level_markers.py` rejects a file whose marks break t
 
 ### Where each check runs
 
-- **Local.** Nothing runs on its own: `.githooks/` is not wired by any setting in the repo. `scripts/check.sh` is the gate you run by hand. It installs both JS packages, runs ruff over `src/`, `tests/` and `scripts/`, then runs pytest, which also drives both Worker JS suites.
-- **Pull request and push to `main`.** `ci.yml` runs ruff over `src/` and `tests/` only, then pytest with the Worker JS suites. Under `CI` a missing JS toolchain fails the suite instead of skipping it. `main` has no branch protection, so CI reports after a commit has landed.
+- **Local.** Nothing runs on its own: `.githooks/` is not wired by any setting in the repo. `scripts/check.sh` is the gate you run by hand. It installs both JS packages, runs ruff over `src/`, `tests/` and `scripts/`, then runs pytest, which also drives both Worker JS suites and the end-to-end suite. That suite needs `uvx` on PATH to run mitmproxy.
+- **Pull request and push to `main`.** `ci.yml` runs ruff over `src/` and `tests/` only, then pytest with the Worker JS suites and the end-to-end suite. `setup-uv` is what puts `uvx` on the runner. Under `CI` a missing JS toolchain fails the suite instead of skipping it. `main` has no branch protection, so CI reports after a commit has landed.
 - **Release.** `release-image.yml` runs `scripts/check.sh` on the dispatched sha. It then builds the image and smoke-tests it before pushing: the baked `CYRIS_GIT_SHA`, `cyris --help`, and an import of every `cyris.*` module, which catches a runtime dependency that only the dev group installs.
 - **Deploy.** `deploy.yml` runs no tests, because it deploys an image the release already checked. After `wrangler deploy`, its `verify` step fails the job unless production's `/api/build` names the commit baked into the deployed digest. The `rss`, `promote` and `newsletter` Workers deploy by hand, with no gate.
 - **Runtime.** Each run writes one `run_summary` log line and one D1 `digest_runs` row. Discord, and email when a recipient is set, get the digest notification only when a run gets as far as a digest, including one whose publish failed. A run that raises inside `run_digest`, or fetches nothing while a source failed, sends the same channels a failure alert after the run is recorded; it carries the error or the failed sources and the time the run started. A dry run, a SIGTERM-cancelled run and a run that fails before it starts send no alert.

@@ -1,0 +1,290 @@
+"""Run `cyris run` against the fakes in `tests/e2e/fakes.py`, and read what they received.
+
+The run is a subprocess whose environment is built from nothing: the venv's
+`cyris` on PATH, HOME and TMPDIR inside the run's directory, the proxy, and
+`SSL_CERT_FILE` naming the proxy's own CA alone. Its `cyris.toml` and `.env`
+sit together in that directory with fake credentials, because cyris reads the
+`.env` beside its config (docs/spec/e2e-egress-fails-closed.md).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import signal
+import socket
+import sqlite3
+import subprocess
+import sys
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from fakes import TEST_SETTINGS, SqliteD1
+
+from cyris.adapters.store.d1 import SCHEMA_PATH
+from cyris.adapters.store.settings import D1Settings
+from cyris.adapters.store.source_store import D1SourceStore
+from cyris.domain.models import SourceConfig
+
+MITMPROXY = "mitmproxy==12.2.3"
+FAKES = Path(__file__).with_name("fakes.py")
+# The first `uvx` run installs mitmproxy; a warm cache starts it in about a second.
+PROXY_START_SECONDS = 180
+RUN_SECONDS = 180
+
+ACCOUNT_ID = "e2e-account"
+DATABASE_ID = "e2e-database"
+CF_TOKEN = "e2e-cf-token"
+GEMINI_KEY = "e2e-gemini-key"
+WORKER_TOKEN = "e2e-worker-token"
+PROMOTE_TOKEN = "e2e-promote-token"
+PAGES_PROJECT = "cyris-e2e"
+PAGES_UPLOAD_JWT = "e2e-upload-jwt"
+APP_WORKER = "cyris-e2e-app"
+GIT_SHA = "e2e-build-sha"
+HOSTS = {
+    "pages_host": f"{PAGES_PROJECT}.pages.dev",
+    "rss_host": "rss.e2e.test",
+    "newsletter_host": "newsletter.e2e.test",
+    "promote_host": "promote.e2e.test",
+}
+WORKER_DOMAINS = ["digest.e2e.test"]
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/e2e-hook/e2e-hook-token"
+
+
+@dataclass
+class Scenario:
+    settings: dict[str, Any]
+    sources: list[SourceConfig]
+    rss_rows: list[dict]
+    newsletters: list[Path]
+    llm: dict[str, Any]
+    promotions: list[dict] = field(default_factory=list)
+    drop: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Run:
+    dir: Path
+    returncode: int
+    stdout: str
+    stderr: str
+    records: list[dict]
+    routes: list[str]
+    started_at: datetime
+    finished_at: datetime
+
+    @property
+    def d1_path(self) -> Path:
+        return self.dir / "d1.sqlite"
+
+    def rows(self, sql: str, params: tuple = ()) -> list[dict]:
+        """Read the fake D1 after the run, on a connection of its own."""
+        with sqlite3.connect(self.d1_path) as conn:
+            conn.row_factory = sqlite3.Row
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    def diagnostics(self) -> str:
+        """What a failed assertion should print: cyris's stderr and the proxy's log."""
+        proxy_log = (self.dir / "proxy.log").read_text(encoding="utf-8", errors="replace")
+        return (
+            f"\n--- cyris exit {self.returncode}, stderr (tail) ---\n{self.stderr[-6000:]}"
+            f"\n--- proxy log (tail) ---\n{proxy_log[-3000:]}"
+        )
+
+
+class _FileD1(SqliteD1):
+    """SqliteD1's query semantics over the file the fake D1 serves."""
+
+    def __init__(self, path: Path) -> None:
+        self._conn = sqlite3.connect(path)
+        self._conn.row_factory = sqlite3.Row
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def settings(**overrides: Any) -> dict[str, Any]:
+    """Every grade-D setting, from TEST_SETTINGS with `overrides` by `table.field`."""
+    unknown = sorted(set(overrides) - set(TEST_SETTINGS))
+    assert not unknown, f"not a grade-D key: {unknown}"
+    return {**TEST_SETTINGS, **overrides}
+
+
+def _seed_d1(path: Path, scenario: Scenario) -> None:
+    """The schema cyris itself sends on boot, then the settings and sources it will read.
+
+    Closed before the proxy opens the same file, so nothing is left uncommitted.
+    """
+    d1 = _FileD1(path)
+    try:
+        d1.query(SCHEMA_PATH.read_text(encoding="utf-8"))
+        D1Settings(d1).set(scenario.settings)
+        D1SourceStore(d1).replace_all({s.name: s for s in scenario.sources})
+    finally:
+        d1.close()
+
+
+def _write_deployment(run_dir: Path) -> Path:
+    """cyris.toml and its .env, with fake credentials only. Returns the config path."""
+    config = run_dir / "cyris.toml"
+    config.write_text(
+        f"""
+[store]
+backend = "d1"
+database_id = "{DATABASE_ID}"
+
+[html_output]
+enabled = true
+output_dir = "html"
+
+[promote]
+publish_enabled = true
+pages_project = "{PAGES_PROJECT}"
+worker_url = "https://{HOSTS["promote_host"]}"
+
+[newsletter]
+worker_url = "https://{HOSTS["newsletter_host"]}"
+
+[rss]
+worker_url = "https://{HOSTS["rss_host"]}"
+""",
+        encoding="utf-8",
+    )
+    (run_dir / ".env").write_text(
+        f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT_ID}\n"
+        f"CLOUDFLARE_API_TOKEN={CF_TOKEN}\n"
+        f"GEMINI_API_KEY={GEMINI_KEY}\n"
+        f"CYRIS_WORKER_TOKEN={WORKER_TOKEN}\n"
+        f"CYRIS_PROMOTE_TOKEN={PROMOTE_TOKEN}\n"
+        # From wrangler.toml's [vars] in production; here the .env carries it.
+        f"CYRIS_APP_WORKER_NAME={APP_WORKER}\n",
+        encoding="utf-8",
+    )
+    return config
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@contextmanager
+def _proxy(run_dir: Path, script: Path):
+    """mitmdump with the fakes loaded, isolated through uvx; yields (proxy URL, CA file)."""
+    uvx = shutil.which("uvx")
+    assert uvx, "the end-to-end suite runs mitmproxy through uvx, which is not on PATH"
+    port = _free_port()
+    confdir = run_dir / "mitmproxy"
+    ready = Path(json.loads(script.read_text())["ready"])
+    with (run_dir / "proxy.log").open("w") as log:
+        proc = subprocess.Popen(
+            [
+                uvx, "--from", MITMPROXY, "mitmdump",
+                "-s", str(FAKES),
+                "--listen-host", "127.0.0.1",
+                "--listen-port", str(port),
+                "--set", f"confdir={confdir}",
+                # Lazy: never open an upstream connection before the addon has answered.
+                "--set", "connection_strategy=lazy",
+                "--set", f"e2e_script={script}",
+            ],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            # Its own group, so stopping it also stops what uvx execs into.
+            start_new_session=True,
+        )  # fmt: skip
+        try:
+            deadline = time.monotonic() + PROXY_START_SECONDS
+            while not ready.exists():
+                assert proc.poll() is None, (run_dir / "proxy.log").read_text()
+                assert time.monotonic() < deadline, "mitmdump did not start in time"
+                time.sleep(0.1)
+            yield f"http://127.0.0.1:{port}", confdir / "mitmproxy-ca-cert.pem"
+        finally:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+
+
+def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning") -> Run:
+    """Seed the fake D1, start the fakes, run `cyris run` once, and collect the record."""
+    _seed_d1(run_dir / "d1.sqlite", scenario)
+    config = _write_deployment(run_dir)
+    script = run_dir / "script.json"
+    script.write_text(
+        json.dumps(
+            {
+                "record": str(run_dir / "requests.jsonl"),
+                "routes_out": str(run_dir / "routes.json"),
+                "ready": str(run_dir / "proxy.ready"),
+                "d1_sqlite": str(run_dir / "d1.sqlite"),
+                "hosts": HOSTS,
+                "pages_project": PAGES_PROJECT,
+                "pages_upload_jwt": PAGES_UPLOAD_JWT,
+                "worker_domains": WORKER_DOMAINS,
+                "rss_rows": scenario.rss_rows,
+                "newsletters": [str(p) for p in scenario.newsletters],
+                "promotions": scenario.promotions,
+                "llm": scenario.llm,
+                "drop": scenario.drop,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "requests.jsonl").touch()
+    home = run_dir / "home"
+    tmp = run_dir / "tmp"
+    home.mkdir()
+    tmp.mkdir()
+    venv_bin = Path(sys.executable).parent
+
+    started_at = datetime.now(UTC)
+    with _proxy(run_dir, script) as (proxy_url, ca_file):
+        env = {
+            "PATH": os.pathsep.join([str(venv_bin), "/usr/bin", "/bin"]),
+            "HOME": str(home),
+            "TMPDIR": str(tmp),
+            "HTTPS_PROXY": proxy_url,
+            "HTTP_PROXY": proxy_url,
+            "SSL_CERT_FILE": str(ca_file),
+            "CYRIS_GIT_SHA": GIT_SHA,
+        }
+        result = subprocess.run(
+            [
+                str(venv_bin / "cyris"), "run",
+                "--period", period,
+                "--config", str(config),
+                "--sources", str(run_dir / "sources.yaml"),
+            ],
+            cwd=run_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=RUN_SECONDS,
+        )  # fmt: skip
+
+    records = [
+        json.loads(line)
+        for line in (run_dir / "requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    return Run(
+        dir=run_dir,
+        returncode=result.returncode,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        records=records,
+        routes=json.loads((run_dir / "routes.json").read_text(encoding="utf-8")),
+        started_at=started_at,
+        finished_at=datetime.now(UTC),
+    )

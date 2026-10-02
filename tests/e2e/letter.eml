@@ -1,0 +1,22 @@
+From: Letters Editor <editor@letters.e2e.test>
+To: inbox@e2e.test
+Subject: Issue 12: what the fakes received
+Date: Wed, 30 Sep 2026 07:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="e2e-boundary"
+
+--e2e-boundary
+Content-Type: text/plain; charset="utf-8"
+
+This week's letter is about end-to-end receipts: count every request, read every body.
+
+--e2e-boundary
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<p><a href="https://letters.e2e.test/p/issue-12?utm_source=newsletter&amp;utm_medium=email">Read on the web</a></p>
+<p>This week's letter is about end-to-end receipts: count every request, read every body.</p>
+<p><a href="https://letters.e2e.test/">Letters</a> | <a href="https://letters.e2e.test/unsubscribe?e=e2e-reader">Unsubscribe</a></p>
+</body></html>
+
+--e2e-boundary--
