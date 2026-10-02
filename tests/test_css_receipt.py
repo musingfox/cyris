@@ -800,6 +800,7 @@ EXPECTED_RAW_IDS = {
     "vote-failure-stays",
     "deck-signed-out-says-sign-in",
     "deck-enter-votes-each-card",
+    "deck-last-vote-focuses-the-switch",
     "vote-retry-clears-notice",
     "switch-away-during-vote",
     "inflight-disabled",

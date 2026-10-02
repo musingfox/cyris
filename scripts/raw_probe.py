@@ -862,6 +862,27 @@ _CHECKS: list[Check] = [
         """,
         receipt=_posted(vote_body("pending-two", "up"), vote_body("pending-three", "up")),
     ),
+    # The last card's vote hides the deck's buttons, so focus lands on the Triage switch.
+    Check(
+        id="deck-last-vote-focuses-the-switch",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("pending-two", "pending-three", "pending-four"),
+        act="""
+            await showView("triage");
+            $("#t-up").focus();
+        """,
+        sabotage=NO_FOCUS,
+        script="""
+            expect(document.activeElement === $("#t-up"), "Up never took focus");
+            $("#t-up").click();
+            await waitFor(() => deck()[0] === "0 remaining", "the empty deck");
+            const now = document.activeElement;
+            const wanted = $('[data-raw-view="triage"]');
+            expect(now === wanted, `focus is on ${now && (now.id || now.tagName)}`);
+        """,
+        receipt=_posted(vote_body("six", "up")),
+    ),
     Check(
         id="vote-retry-clears-notice",
         fixture="fails-once",

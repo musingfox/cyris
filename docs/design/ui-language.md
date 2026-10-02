@@ -176,7 +176,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 - **Votes:** each small ↑ / ↓ vote button is named `More like this` / `Less like this` and carries
   `aria-pressed`, true on the vote this browser cast. While a vote is in flight both buttons of its group
   are disabled, and the request gives up after a fixed timeout; once it settles, focus goes back to the
-  button that was pressed. A vote that does not land puts an error notice right below the row holding its
+  button that was pressed, or to the `Triage` switch when the deck has no card left. A vote that does not land puts an error notice right below the row holding its
   buttons, saying why, and a lapsed sign-in says to sign in again; the next vote on that group clears it.
   The triage deck's notice gives the same reason.
 
