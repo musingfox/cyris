@@ -157,6 +157,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn:where(:not(:disabled)):active { opacity: .7; }
 .btn:disabled { opacity: .4; cursor: default; }
 
+/* ---- tap area: a target drawn under 44px keeps its size; the transparent ::after takes the taps around it ---- */
+.btn.sm, .brand, .site-nav a, details.more summary { position: relative; }
+.btn.sm::after, .brand::after, .site-nav a::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
+details.more summary::after { content: ""; position: absolute; inset: calc(-1 * var(--s-1)) 0 min(0px, calc(100% + var(--s-1) - 44px)); }
+
 /* ---- panels, rows, pills, states ---- */
 .panel { background: var(--bg-elev); border: 1px solid var(--border); }
 .panel + .panel { margin-top: var(--s-5); }
@@ -226,6 +231,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .digest .meta.ruled { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px dashed var(--border-strong); }
 .digest .meta a { color: var(--accent); text-decoration: none; }
+.orig { display: inline-flex; justify-content: center; min-width: 44px; position: relative; }
+.orig::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
 .source-tag { color: var(--text-dim); }
 .summary, .snippet { font-size: calc(18px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); max-width: var(--measure); }
 .lead { border: 1px solid var(--border); background: linear-gradient(180deg, var(--surface), var(--bg-elev)); padding: var(--s-8) var(--s-12); position: relative; }
@@ -281,7 +288,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .raw-row a { text-decoration: none; border-bottom: 1px solid transparent; transition: color var(--t-fast), border-color var(--t-fast); }
 .raw-row a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .raw-row .score { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-dim); text-align: right; }
-.votes { display: inline-flex; gap: var(--s-1); }
+.votes { display: inline-flex; gap: var(--s-1); margin-left: var(--s-2); }
+/* The pair splits its gap at the midpoint; each takes the rest of its 44px outward. */
+.votes > .btn.sm:first-child::after { left: auto; right: calc(-1px - var(--s-1) / 2); width: 44px; }
+.votes > .btn.sm:last-child::after { left: calc(-1px - var(--s-1) / 2); right: auto; width: 44px; }
 .page-head .seg { justify-self: start; }
 
 /* ---- settings ---- */
@@ -289,7 +299,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .settings-nav { position: sticky; top: calc(var(--bar-h) + var(--s-6)); display: grid; border-left: 1px solid var(--border); }
 .settings-nav a {
   display: flex; align-items: center; justify-content: space-between;
-  padding: var(--s-2) var(--s-4); margin-left: -1px; text-decoration: none;
+  min-height: 44px; padding: var(--s-2) var(--s-4); margin-left: -1px; text-decoration: none;
   border-left: 2px solid transparent;
   transition: color var(--t-fast), border-color var(--t-fast);
 }
@@ -424,7 +434,7 @@ tr.editor[inert] .form { opacity: .4; }
   .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
   .site-nav .label { letter-spacing: .08em; }
   .settings-nav { position: static; display: flex; overflow-x: auto; overflow-y: hidden; border-left: 0; border-bottom: 1px solid var(--border); }
-  .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; gap: var(--s-2); }
+  .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; min-height: calc(44px + 1px); white-space: nowrap; gap: var(--s-2); }
   .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
   .settings-nav::before { content: "›" / ""; order: 1; position: sticky; right: 0; pointer-events: none; flex: 0 0 var(--s-8); display: flex; align-items: center; justify-content: flex-end; padding-right: var(--s-2); background: linear-gradient(to right, transparent, var(--bg) var(--s-4)); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
   .settings-nav::after { content: ""; order: 2; position: relative; flex: 0 0 var(--s-8); margin-left: calc(-1 * var(--s-8)); background: var(--bg); }
@@ -516,7 +526,7 @@ tr.editor[inert] .form { opacity: .4; }
           <div class="meta">
             <span class="pill score">0.88</span>
             <span class="source-tag">sqlite.org</span>
-            <a href="#digest">↗</a>
+            <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
           </div>
         </article>
@@ -526,7 +536,7 @@ tr.editor[inert] .form { opacity: .4; }
           <div class="meta">
             <span class="pill score">0.85</span>
             <span class="source-tag">Simon Willison</span>
-            <a href="#digest">↗</a>
+            <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
           </div>
         </article>
@@ -538,7 +548,7 @@ tr.editor[inert] .form { opacity: .4; }
             <div class="meta">
               <span class="pill score">0.83</span>
               <span class="source-tag">Simon Willison</span>
-              <a href="#digest">↗</a>
+              <a class="orig" href="#digest">↗</a>
               <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
             </div>
           </article>
@@ -547,7 +557,7 @@ tr.editor[inert] .form { opacity: .4; }
             <div class="meta">
               <span class="pill score">0.82</span>
               <span class="source-tag">Simon Willison</span>
-              <a href="#digest">↗</a>
+              <a class="orig" href="#digest">↗</a>
               <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
             </div>
           </article>
@@ -558,7 +568,7 @@ tr.editor[inert] .form { opacity: .4; }
           <div class="meta">
             <span class="pill score">0.81</span>
             <span class="source-tag">LWN.net</span>
-            <a href="#digest">↗</a>
+            <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
           </div>
         </article>
@@ -586,7 +596,7 @@ tr.editor[inert] .form { opacity: .4; }
           <p class="summary">時鐘漂移、刪除墓碑的膨脹，以及權限變更無法事後撤回。作者各給了一個已上線的解法。</p>
           <div class="meta">
             <span class="source-tag">Ink &amp; Switch</span>
-            <a href="#digest">↗</a>
+            <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
           </div>
         </article>
