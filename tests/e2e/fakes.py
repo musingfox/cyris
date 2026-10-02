@@ -2,8 +2,9 @@
 
 mitmdump loads this file (`tests/e2e/harness.py` starts it through `uvx`), so it runs
 on mitmproxy's own Python and imports nothing from cyris or the test venv. The
-proxy is started with `connection_strategy=lazy` and every request is answered in
-the `request` hook, so no request is ever forwarded to a real host.
+proxy is started with `connection_strategy=lazy`, every request is answered in the
+`request` hook, and `server_connect` refuses any upstream connection, so no request
+is ever forwarded to a real host.
 
 The APIs mirrored here, by route name:
 
@@ -22,7 +23,7 @@ The APIs mirrored here, by route name:
 
 Each request is appended to the run's record as one JSON line: method, host, path,
 query, headers, body, and the route that answered it. A request no route claims
-gets a 502 and the route `null`.
+gets a 502 and the route `null`; one the addon fails on gets a 500 and an `error`.
 """
 
 import base64
@@ -161,37 +162,45 @@ class Fakes:
                 return name, handler
         return None, None
 
+    def server_connect(self, data):
+        # mitmproxy swallows an addon's exception and forwards a flow left without a
+        # response; refusing every upstream connection here keeps that from reaching
+        # a real host, whatever the request hook did.
+        data.server.error = "e2e: upstream connections are forbidden"
+
     def request(self, flow: http.HTTPFlow) -> None:
-        request = flow.request
-        route, handler = self._claim(request)
-        entry = {
-            "seq": self.seq,
-            "route": route,
-            "method": request.method,
-            "host": request.pretty_host,
-            "path": request.path.split("?", 1)[0],
-            "query": [[k, v] for k, v in request.query.items(multi=True)],
-            "headers": {k.lower(): v for k, v in request.headers.items()},
-            "body": request.get_text(strict=False) or "",
-        }
+        entry = {"seq": self.seq, "route": None}
         self.seq += 1
-        if request.headers.get("content-type", "").startswith("multipart/form-data"):
-            entry["form"] = {
-                k.decode(): v.decode() for k, v in request.multipart_form.items(multi=True)
-            }
-        if handler is None:
-            status, body, content_type = _cf_error(502, "e2e: no fake claims this request")
-        else:
-            try:
+        status, body, content_type = _cf_error(502, "e2e: no fake claims this request")
+        try:
+            request = flow.request
+            entry.update(
+                method=request.method,
+                host=request.pretty_host,
+                path=request.path.split("?", 1)[0],
+                query=[[k, v] for k, v in request.query.items(multi=True)],
+                headers={k.lower(): v for k, v in request.headers.items()},
+                body=request.get_text(strict=False) or "",
+            )
+            route, handler = self._claim(request)
+            entry["route"] = route
+            if request.headers.get("content-type", "").startswith("multipart/form-data"):
+                entry["form"] = {
+                    k.decode(): v.decode() for k, v in request.multipart_form.items(multi=True)
+                }
+            if handler is not None:
                 status, body, content_type = handler(request, entry)
-            except Exception as e:  # noqa: BLE001 - a fake's bug must reach the record
-                entry["error"] = f"{type(e).__name__}: {e}"
-                status, body, content_type = _cf_error(500, entry["error"])
-        entry["status"] = status
-        with self.record_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        headers = {"Content-Type": content_type} if content_type else {}
-        flow.response = http.Response.make(status, body, headers)
+        except Exception as e:  # noqa: BLE001 - a fake's bug must reach the record
+            entry["error"] = f"{type(e).__name__}: {e}"
+            status, body, content_type = _cf_error(500, entry["error"])
+        finally:
+            entry["status"] = status
+            # The response first: a record that cannot be written must not leave the
+            # flow to be forwarded.
+            headers = {"Content-Type": content_type} if content_type else {}
+            flow.response = http.Response.make(status, body, headers)
+            with self.record_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     # ---- D1 ----------------------------------------------------------------
 
