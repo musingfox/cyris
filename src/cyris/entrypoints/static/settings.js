@@ -710,6 +710,8 @@ function loaded(d) {
   sourcesWritable = d.writable;
   $("add-source").disabled = !d.writable;
   if (!d.writable) show("err", NO_SOURCE_TABLE, "sources-notice");
+  // No source stops the next run, as a missing setting does.
+  sourcesNav().classList.toggle("missing", !sources.length);
   renderSources();
 }
 
@@ -800,6 +802,7 @@ const loadSources = () =>
     .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
     .then(loaded)
     .catch((e) => {
+      $("src-body").querySelector("[data-loading]")?.remove();
       $("add-source").disabled = true;
       show("err", e === SESSION_EXPIRED ? e.message
         : `Could not load sources: ${e}. Reload the page to try again.`, "sources-notice");
@@ -815,4 +818,5 @@ fetch("/api/settings")
     const text = e === SESSION_EXPIRED ? e.message
       : `Could not load settings: ${e}. Reload the page to try again.`;
     SETTINGS_NOTICES.forEach((id) => show("err", text, id));
-  });
+  })
+  .finally(() => document.querySelectorAll("form.tab [data-loading]").forEach((el) => el.remove()));

@@ -836,7 +836,7 @@ tr.editor[inert] .form { opacity: .4; }
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
-              <div class="notice" hidden>Verified with gemini. Applies from the next run.</div>
+              <div class="notice" role="status" hidden>Verified with gemini. Applies from the next run.</div>
             </div>
           </div>
         </form>
@@ -893,7 +893,7 @@ tr.editor[inert] .form { opacity: .4; }
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
-              <div class="notice" hidden>Publish hours 08:00 and 20:00. Applies from the next tick.</div>
+              <div class="notice" role="status" hidden>Publish hours 08:00 and 20:00. Applies from the next tick.</div>
             </div>
           </div>
         </form>
@@ -939,7 +939,7 @@ tr.editor[inert] .form { opacity: .4; }
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
-              <div class="notice" hidden>Saved. Effective next run.</div>
+              <div class="notice" role="status" hidden>Saved. Effective next run.</div>
             </div>
           </div>
         </form>
@@ -960,9 +960,9 @@ tr.editor[inert] .form { opacity: .4; }
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
-              <div class="notice err" hidden>Discord answered 404: this webhook does not exist. Copy it again from the channel's Integrations page.</div>
+              <div class="notice err" role="status" hidden>Discord answered 404: this webhook does not exist. Copy it again from the channel's Integrations page.</div>
               <button class="btn danger" type="button" id="notify-off">Turn off</button>
-              <div class="notice" id="notify-result" hidden>Notifications are off. The next run finishes without a message.</div>
+              <div class="notice" role="status" id="notify-result" hidden>Notifications are off. The next run finishes without a message.</div>
             </div>
           </div>
         </form>
@@ -1015,7 +1015,7 @@ tr.editor[inert] .form { opacity: .4; }
     </div>
     <div class="editor-foot">
       <div class="actions-line"><button class="btn primary" type="button" data-act="save">Save source</button><button class="btn secondary" type="button" data-act="cancel">Cancel</button></div>
-      <div class="actions-line"><div class="notice err" data-act="retire-result" hidden></div><button class="btn danger" type="button" data-act="retire">Retire</button></div>
+      <div class="actions-line"><div class="notice err" data-act="retire-result" role="status" hidden></div><button class="btn danger" type="button" data-act="retire">Retire</button></div>
     </div>
   </td></tr>
 </template>

@@ -322,6 +322,10 @@ window.fetch = (input, init) =>
 """
 
 
+# Installed before the page loads: the sources request never answers.
+HOLD_SOURCES = answer_get("/api/sources", "new Promise(() => {})")
+
+
 # What the app Worker answers a request whose session cookie has expired, and
 # what the page must then tell the reader.
 SESSION_EXPIRED = (
@@ -743,6 +747,36 @@ CHECKS: list[Check] = [
         sabotage="""saveOf("digest").disabled = false;""",
     ),
     Check(
+        id="settings-loading-shown",
+        fixture="writable",
+        path="/settings",
+        preload=HOLD_SETTINGS,
+        act="await sleep(300);",
+        script="""
+            const shown = $$("form.tab [data-loading]").filter(visible).map((el) => el.textContent);
+            expect(same(shown, ["Loading settings…"]), `shown: ${shown}`);
+            const silent = $$("form.tab").filter((form) => !$("[data-loading]", form))
+              .map((form) => form.dataset.tab);
+            expect(silent.length === 0, `no loading line: ${silent}`);
+        """,
+        sabotage="""$$("form.tab [data-loading]").forEach((el) => el.remove());""",
+    ),
+    Check(
+        id="settings-loading-clears",
+        fixture="writable",
+        path="/settings",
+        act="await settingsLoaded();",
+        script="""
+            const left = $$("form.tab [data-loading]").map((el) => el.closest("form").dataset.tab);
+            expect(left.length === 0, `still loading: ${left}`);
+        """,
+        sabotage="""
+            const line = document.createElement("p");
+            line.setAttribute("data-loading", "");
+            $("#model-form .tab-head").append(line);
+        """,
+    ),
+    Check(
         id="dirty-enables-save",
         fixture="writable",
         path="/settings#digest",
@@ -846,7 +880,7 @@ CHECKS: list[Check] = [
         path="/settings#sources",
         setup=lambda fixture: fixture.sources.clear(),
         act="""
-            await waitFor(() => $$("#src-body tr").length, "the sources list");
+            await sourcesListed();
         """,
         script="""
             const rows = $$("#src-body tr").map((row) => row.textContent.trim());
@@ -854,6 +888,79 @@ CHECKS: list[Check] = [
             expect(same(rows, [copy]), `rows: ${rows}`);
         """,
         sabotage="""$("#src-body td").textContent = "No sources configured.";""",
+    ),
+    Check(
+        id="sources-loading-shown",
+        fixture="writable",
+        path="/settings#sources",
+        preload=HOLD_SOURCES,
+        act="await sleep(300);",
+        script="""
+            const rows = $$("#src-body tr").filter(visible).map((row) => row.textContent.trim());
+            expect(same(rows, ["Loading sources…"]), `rows: ${rows}`);
+        """,
+        sabotage="""$("#src-body").replaceChildren();""",
+    ),
+    Check(
+        id="sources-empty-warn-dot",
+        fixture="writable",
+        path="/settings#sources",
+        setup=lambda fixture: fixture.sources.clear(),
+        act="await sourcesListed();",
+        script="""
+            expect(navOf("sources").classList.contains("missing"), "Sources has no missing mark");
+            const dot = getComputedStyle($(".missing-dot", navOf("sources"))).visibility;
+            expect(dot === "visible", `the dot is ${dot}`);
+        """,
+        sabotage="""navOf("sources").classList.remove("missing");""",
+    ),
+    Check(
+        id="sources-warn-dot-clears-on-save",
+        fixture="writable",
+        path="/settings#sources",
+        setup=lambda fixture: fixture.sources.clear(),
+        act="""
+            await sourcesListed();
+            ctx.marked = navOf("sources").classList.contains("missing");
+            $("#add-source").click();
+            await waitFor(editor, "the editor");
+            setValue($("#e-name", editor()), "First Feed");
+            setValue($("#e-url", editor()), "https://example.test/first.xml");
+            editorAct("save").click();
+            await waitFor(() => rowOf("First Feed"), "the saved row");
+        """,
+        script="""
+            expect(ctx.marked, "Sources was not marked before the save");
+            expect(!navOf("sources").classList.contains("missing"), "Sources is still marked");
+        """,
+        sabotage="""navOf("sources").classList.add("missing");""",
+        receipt=_stored("First Feed", url="https://example.test/first.xml"),
+    ),
+    Check(
+        id="sources-warn-dot-absent-with-sources",
+        fixture="writable",
+        path="/settings#sources",
+        act="await sourcesLoaded();",
+        script="""
+            expect(!navOf("sources").classList.contains("missing"), "Sources is marked");
+        """,
+        sabotage="""navOf("sources").classList.add("missing");""",
+    ),
+    Check(
+        id="result-notices-are-live",
+        fixture="writable",
+        path="/settings#sources",
+        act="""await openRow("Hacker News");""",
+        script="""
+            const ids = ["model-result", "digest-result", "pipeline-result", "notify-result",
+              "sources-notice"];
+            const notices = [...ids.map((id) => $(`#${id}`)), ...$$(".notice", editor())];
+            const silent = notices.filter((n) => n.getAttribute("role") !== "status")
+              .map((n) => n.id || "an editor notice");
+            expect(notices.length === ids.length + 2, `notices: ${notices.length}`);
+            expect(silent.length === 0, `not live: ${silent}`);
+        """,
+        sabotage="""$("#digest-result").removeAttribute("role");""",
     ),
     Check(
         id="editor-opens-under-row",
@@ -1282,6 +1389,7 @@ CHECKS: list[Check] = [
             expect(wrong.length === 0, `wrong notices: ${wrong}`);
             const live = tabs.filter((t) => !saveOf(t).disabled);
             expect(live.length === 0, `enabled: ${live}`);
+            expect(!$("form.tab [data-loading]"), "a loading line is still shown");
         """,
         sabotage="""saveOf("digest").disabled = false;""",
     ),
@@ -1380,6 +1488,7 @@ CHECKS: list[Check] = [
             expect(notice.textContent.startsWith("Could not load sources:"), notice.textContent);
             expect($("#add-source").disabled, "Add source is enabled");
             expect($$("tr.src-row").length === 0, "rows were listed");
+            expect(!$("#src-body [data-loading]"), "the loading row is still shown");
         """,
         sabotage="""$("#add-source").disabled = false;""",
     ),
@@ -2575,6 +2684,9 @@ const navOf = (tab) => $(`.settings-nav a[data-tab="${tab}"]`);
 const settingsLoaded = () => waitFor(() => $("#max-featured").value, "settings");
 const rowNames = () => $$("tr.src-row").map((row) => $("td", row).textContent);
 const sourcesLoaded = () => waitFor(() => $$("tr.src-row").length, "source rows");
+// The list answered, empty or not.
+const sourcesListed = () =>
+  waitFor(() => $$("#src-body tr").length && !$("#src-body [data-loading]"), "the sources list");
 const rowOf = (name) => $(`tr.src-row[data-name="${CSS.escape(name)}"]`);
 const editor = () => $("tr.editor");
 const editorAct = (act) => $(`[data-act="${act}"]`, editor());
