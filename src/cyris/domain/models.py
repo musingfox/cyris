@@ -69,6 +69,9 @@ class DigestItem(BaseModel):
     urls: list[str]
     score: float | None = None
     ref_urls: list[str] = Field(default_factory=list)
+    # True when title and summary are the article's own text, set by the excerpt fallback
+    # that wrote them: it is untranslated, so the page cannot tag it with the output language.
+    passed_through: bool = False
 
     @property
     def link(self) -> str | None:
