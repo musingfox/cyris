@@ -31,7 +31,7 @@ class TestBuildNewsClusterPrompt:
             source_tags=["news"],
         )
 
-        prompt = build_news_cluster_prompt([article])
+        prompt = build_news_cluster_prompt([article], snippet_length=500)
 
         assert "[101] (Reuters) Breaking News" in prompt
         # Check truncation at 500 chars

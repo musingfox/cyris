@@ -41,6 +41,7 @@ async def cluster_news(
     usage: UsageStats | None = None,
     article_scores: dict[str, float] | None = None,
     *,
+    snippet_length: int,
     output_language: str,
     style_prompt: str,
 ) -> tuple[list[DigestSection], list[Article]]:
@@ -50,6 +51,7 @@ async def cluster_news(
         articles: News articles to cluster.
         llm: LLM client.
         usage: Optional UsageStats to accumulate API usage.
+        snippet_length: Maximum length of content snippet to include in prompt.
 
     Returns:
         Tuple of (news_clusters, unclustered_articles).
@@ -62,7 +64,7 @@ async def cluster_news(
         return [], articles  # no clustering without an LLM; leave all unclustered
 
     try:
-        user_prompt = build_news_cluster_prompt(articles)
+        user_prompt = build_news_cluster_prompt(articles, snippet_length=snippet_length)
 
         result = await complete_json(
             llm,

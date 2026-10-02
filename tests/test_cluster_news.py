@@ -135,6 +135,7 @@ class TestClusterNews:
             sample_news_articles,
             llm,
             usage=usage,
+            snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
         )
@@ -182,7 +183,7 @@ class TestClusterNews:
         )
 
         clusters, unclustered = await cluster_news(
-            articles, llm, output_language="zh-Hant", style_prompt=""
+            articles, llm, snippet_length=500, output_language="zh-Hant", style_prompt=""
         )
 
         item = clusters[0].items[0]
@@ -224,7 +225,9 @@ class TestClusterNews:
             '"unclustered_ids": []}'
         )
 
-        clusters, _ = await cluster_news(articles, llm, output_language="zh-Hant", style_prompt="")
+        clusters, _ = await cluster_news(
+            articles, llm, snippet_length=500, output_language="zh-Hant", style_prompt=""
+        )
 
         item = clusters[0].items[0]
         assert item.ref_urls == ["https://ref.example/x"]
@@ -260,7 +263,9 @@ class TestClusterNews:
             '"unclustered_ids": []}'
         )
 
-        clusters, _ = await cluster_news(articles, llm, output_language="zh-Hant", style_prompt="")
+        clusters, _ = await cluster_news(
+            articles, llm, snippet_length=500, output_language="zh-Hant", style_prompt=""
+        )
 
         item = clusters[0].items[0]
         assert item.ref_urls == [
@@ -299,7 +304,7 @@ class TestClusterNews:
         )
 
         clusters, unclustered = await cluster_news(
-            articles, llm, output_language="zh-Hant", style_prompt=""
+            articles, llm, snippet_length=500, output_language="zh-Hant", style_prompt=""
         )
 
         item = clusters[0].items[0]
@@ -312,7 +317,11 @@ class TestClusterNews:
         llm = FakeLLM('{"clusters": [], "unclustered_ids": [101, 102, 103]}')
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert len(clusters) == 0
@@ -322,7 +331,11 @@ class TestClusterNews:
         llm = FakeLLM('{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 102]}]}')
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert clusters[0].heading == "H"
@@ -338,7 +351,11 @@ class TestClusterNews:
         )
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert [c.heading for c in clusters] == ["A", "B"]
@@ -354,7 +371,11 @@ class TestClusterNews:
         )
 
         clusters, _ = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert [c.heading for c in clusters] == ["A", "B"]
@@ -369,7 +390,11 @@ class TestClusterNews:
         )
 
         clusters, _ = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert [c.heading for c in clusters] == ["A", "B"]
@@ -389,7 +414,11 @@ class TestClusterNews:
         )
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert len(clusters) == 1
@@ -403,7 +432,11 @@ class TestClusterNews:
         llm = FakeLLM('{"clusters": [], "unclustered_ids": []}')
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert clusters == []
@@ -416,7 +449,11 @@ class TestClusterNews:
         )
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert len(clusters[0].items[0].sources) == 1  # 999 contributed nothing
@@ -424,7 +461,7 @@ class TestClusterNews:
 
     async def test_cluster_news_empty_input(self):
         clusters, unclustered = await cluster_news(
-            [], FakeLLM(), output_language="zh-Hant", style_prompt=""
+            [], FakeLLM(), snippet_length=500, output_language="zh-Hant", style_prompt=""
         )
 
         assert clusters == []
@@ -434,9 +471,41 @@ class TestClusterNews:
         llm = FakeLLM(error=Exception("API Error"))
 
         clusters, unclustered = await cluster_news(
-            sample_news_articles, llm, output_language="zh-Hant", style_prompt=""
+            sample_news_articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
         )
 
         assert len(clusters) == 0
         assert len(unclustered) == 3
         assert unclustered == sample_news_articles
+
+
+def _cna_articles() -> list[Article]:
+    return [
+        Article(
+            id=f"CNA/2026-09-17/2026091702{n}",
+            title=f"Article {n}",
+            url=f"https://www.cna.com.tw/news/{n}",
+            content="Content",
+            published_at=datetime(2026, 9, 17, 10, 0, tzinfo=UTC),
+            source_name="中央社即時新聞 財經新聞",
+            source_tier=Tier.FILTER,
+            source_tags=["news"],
+        )
+        for n in ("55", "47")
+    ]
+
+
+async def test_the_snippet_follows_the_given_length():
+    article = _cna_articles()[0].model_copy(update={"content": "A" * 600})
+    llm = FakeLLM('{"clusters": []}')
+
+    await cluster_news(
+        [article], llm, snippet_length=120, output_language="zh-Hant", style_prompt=""
+    )
+
+    assert "A" * 120 in llm.calls[0]["prompt"]
+    assert "A" * 121 not in llm.calls[0]["prompt"]

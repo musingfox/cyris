@@ -149,6 +149,9 @@ class DigestPipeline:
                 self._llm,
                 usage=usage,
                 article_scores=article_scores,
+                # The cluster step is the filter tier's first pass: what it leaves
+                # unclustered goes on to the filter below, read at the same length.
+                snippet_length=self.filter_snippet_length,
                 output_language=self.output_language,
                 style_prompt=self.style_prompt,
             )
