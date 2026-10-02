@@ -76,6 +76,7 @@
         .member { margin: {{ t['s-3'] }} 0 0; }
         .wire { list-style: none; margin: 0; padding: 0; }
         .wire li { padding: {{ t['s-3'] }} 0; border-top: 1px solid; font-size: 16px; line-height: 1.5; }
+        .wire .summary { font-size: 14px; line-height: 1.5; margin: {{ t['s-1'] }} 0 0; }
         .idx { margin-right: {{ t['s-3'] }}; }
         .footer { margin: {{ t['s-12'] }} 0 0; padding: {{ t['s-5'] }} 0 0; border-top: 1px solid; font-family: {{ t['font-mono'] }}; font-size: 12px; line-height: 1.8; }
 {{ palette(light) }}
@@ -179,7 +180,7 @@
             <h2 class="section-tag"><span class="rule"></span>The Wire</h2>
             <ol class="wire" lang="{{ content_lang }}">
                 {% for item in content.filtered_headlines %}
-                <li><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}</li>
+                <li><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</li>
                 {% endfor %}
             </ol>
         </section>
