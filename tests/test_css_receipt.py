@@ -769,6 +769,8 @@ EXPECTED_RAW_IDS = {
     "list-vote-failure-signed-out-says-sign-in",
     "list-vote-failure-unconfigured-names-the-url",
     "list-vote-failure-times-out",
+    "list-vote-lands-without-abort-signal-timeout",
+    "list-vote-times-out-without-abort-signal-timeout",
     "list-vote-retry-clears-notice",
     "list-vote-inflight-disables-group",
     "list-vote-up-shows-state",
