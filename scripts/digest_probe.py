@@ -33,12 +33,14 @@ from cdp_probe import (
     Check,
     VoteFixture,
     at_largest_type_scale,
+    at_smallest_type_scale,
     base_prelude,
     chromium,
     largest_twin,
     require_node,
     restyle,
     run_all,
+    smallest_twin,
 )
 from css_computed import find_browser
 
@@ -50,7 +52,7 @@ PERIOD = "morning"
 PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 ARCHIVE = "/index.html"
 
-KINDS = ("signed-in", "signed-in-largest", "vote-fails")
+KINDS = ("signed-in", "signed-in-largest", "signed-in-smallest", "vote-fails")
 
 # Every element a vote group sits in, one per promote_btn call site.
 ITEM_SELECTORS = (
@@ -166,14 +168,16 @@ def build_fixture(kind: str) -> VoteFixture:
     """Serve the digest page with the `/api/vote` answers of one deployment `kind`.
 
     Every kind answers the probe signed in; `signed-in` takes every vote,
-    `signed-in-largest` does too on the page served at the largest type size,
-    and `vote-fails` refuses every vote.
+    `signed-in-largest` and `signed-in-smallest` do too on the page served at
+    the largest and the smallest type size, and `vote-fails` refuses every vote.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
     page, archive = render_page(), render_archive()
     if kind == "signed-in-largest":
         page = at_largest_type_scale(page)
+    if kind == "signed-in-smallest":
+        page = at_smallest_type_scale(page)
     app = web.Application()
     fixture = VoteFixture(app)
 
@@ -520,6 +524,14 @@ _CHECKS += [
         ("site-bar", PAGE, ".brand, .site-nav a", NO_SITE_BAR_AREAS),
         ("archive", ARCHIVE, ".btn.sm", NO_BUTTON_AREAS),
     )
+]
+# The arrows and the ↗ are narrowest at the smallest type size, so their areas reach
+# furthest past them there: the margins that keep neighbours apart are tightest.
+SMALLEST_TAP_TWINS = ("votes", "votes-apart", "original", "original-clear")
+_CHECKS += [
+    smallest_twin(check, check.id.replace("tap-", "tap-smallest-"), "signed-in-smallest")
+    for check in _CHECKS
+    if check.id in {f"tap-{name}-{TAP_WIDTH}" for name in SMALLEST_TAP_TWINS}
 ]
 # A sabotage: the masthead stops clipping the title the fallback font sets too wide.
 UNCLIPPED_MASTHEAD = """$(".headline-block").style.overflowX = "visible";"""

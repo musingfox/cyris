@@ -12,7 +12,12 @@ from cyris.entrypoints.triage_server import render_settings_page
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from cdp_probe import LARGEST_TYPE_SCALE, LARGEST_TYPE_SCALE_STYLE  # noqa: E402
+from cdp_probe import (  # noqa: E402
+    LARGEST_TYPE_SCALE,
+    LARGEST_TYPE_SCALE_STYLE,
+    SMALLEST_TYPE_SCALE,
+    SMALLEST_TYPE_SCALE_STYLE,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -77,6 +82,9 @@ def _worker_style(source: str, scale: float) -> str:
 def test_the_probes_inject_what_the_worker_serves() -> None:
     worker = _worker_style(WORKER_SOURCE.read_text(), LARGEST_TYPE_SCALE)
     assert worker == LARGEST_TYPE_SCALE_STYLE
+    assert _worker_style(WORKER_SOURCE.read_text(), SMALLEST_TYPE_SCALE) == (
+        SMALLEST_TYPE_SCALE_STYLE
+    )
 
 
 def test_a_worker_with_a_style_of_its_own_is_caught() -> None:

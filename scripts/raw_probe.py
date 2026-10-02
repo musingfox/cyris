@@ -35,11 +35,13 @@ from cdp_probe import (
     Check,
     VoteFixture,
     at_largest_type_scale,
+    at_smallest_type_scale,
     base_prelude,
     chromium,
     largest_twin,
     require_node,
     run_all,
+    smallest_twin,
 )
 from css_computed import find_browser
 
@@ -53,6 +55,7 @@ PAGE = f"/{DATE}-{PERIOD}-raw.html"
 KINDS = (
     "signed-in",
     "signed-in-largest",
+    "signed-in-smallest",
     "signed-out",
     "no-worker",
     "vote-fails",
@@ -115,8 +118,9 @@ def render_page() -> str:
 def build_fixture(kind: str) -> VoteFixture:
     """Serve the raw page with the `/api/vote` answers of one deployment `kind`.
 
-    `signed-in` answers the probe and takes votes, and `signed-in-largest` does
-    too on the page served at the largest type size; `signed-out` refuses the
+    `signed-in` answers the probe and takes votes, and `signed-in-largest` and
+    `signed-in-smallest` do too on the page served at the largest and the
+    smallest type size; `signed-out` refuses the
     probe; `no-worker` has no route at all, as on bare pages.dev; `vote-fails`
     signs in but refuses every vote; `fails-once` refuses only the first vote;
     `slow-vote` takes every vote, each only after `SLOW_VOTE_S`. The rest sign in
@@ -130,6 +134,8 @@ def build_fixture(kind: str) -> VoteFixture:
     page = render_page()
     if kind == "signed-in-largest":
         page = at_largest_type_scale(page)
+    if kind == "signed-in-smallest":
+        page = at_smallest_type_scale(page)
     app = web.Application()
     fixture = VoteFixture(app)
 
@@ -1130,6 +1136,13 @@ _CHECKS += [
         ("votes-apart", ".promote-btn", CENTRED_VOTE_AREAS),
         ("site-bar", ".brand, .site-nav a", NO_SITE_BAR_AREAS),
     )
+]
+# The arrows are narrowest at the smallest type size, so their areas reach furthest
+# past them there: the margin before the group is tightest.
+_CHECKS += [
+    smallest_twin(check, check.id.replace("tap-", "tap-smallest-"), "signed-in-smallest")
+    for check in _CHECKS
+    if check.id in ("tap-votes-375", "tap-votes-apart-375")
 ]
 # The page never scrolls sideways at the largest type size either.
 _CHECKS += [
