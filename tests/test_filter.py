@@ -314,7 +314,9 @@ async def test_filter_resolves_a_position_echoed_as_a_string():
     assert items[0].urls == [articles[1].url]
 
 
-@pytest.mark.parametrize("raw_id", [True, "²", "1.0", 2, -1], ids=repr)
+@pytest.mark.parametrize(
+    "raw_id", [True, "²", "1.0", 2, -1, pytest.param("9" * 4301, id="'9'*4301")], ids=repr
+)
 async def test_an_id_naming_no_position_links_nothing(raw_id, caplog):
     llm = FakeLLM(json.dumps({"selected": [{"id": raw_id, "title": "t", "source": "S"}]}))
 
