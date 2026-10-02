@@ -1,6 +1,7 @@
 """`cyris doctor` — the checks, and what each verdict tells the reader to do."""
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -511,6 +512,13 @@ class TestDeploymentProvenance:
     its own image — because Cloudflare documents no way to read the image a
     Worker version references (docs/spec/revert-carries-the-image.md).
     """
+
+    @pytest.fixture(autouse=True)
+    def _no_inherited_git_env(self, monkeypatch) -> None:
+        # `git rebase -x` exports GIT_DIR to the command it runs; inherited here, it
+        # points these throwaway repos at the real one (it once set core.bare there).
+        for key in [k for k in os.environ if k.startswith("GIT_")]:
+            monkeypatch.delenv(key)
 
     @staticmethod
     def _repo(tmp_path: Path, commits: int) -> list[str]:
