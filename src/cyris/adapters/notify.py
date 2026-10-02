@@ -120,7 +120,8 @@ def build_discord_embeds(
 
     Returns a list of embed dicts ready for the Discord webhook payload.
     Discord limits: 4096 chars per embed description, max 10 embeds per message.
-    Embed order mirrors the HTML digest's section order.
+    Section embeds follow the page's section order (docs/design/ui-language.md §6):
+    Top story, Features, In Focus, Following, On the Radar, The Wire. The stats come last.
     """
     label = period_label(content.period)
     embeds: list[dict] = []
