@@ -625,6 +625,8 @@ EXPECTED_IDS = {
     "type-scale-kept-on-refusal",
     "fits-largest-400",
     "fits-largest-1440",
+    "fits-375-choice-states",
+    "fits-largest-375-choice-states",
 }
 
 

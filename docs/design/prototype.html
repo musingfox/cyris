@@ -326,7 +326,7 @@ details.more p { margin-top: var(--s-2); }
 .choices { display: grid; border: 1px solid var(--border); border-radius: var(--r-control); overflow: hidden; background: var(--bg-elev); }
 .choices.invalid { border-color: var(--warn); }
 .choice {
-  display: grid; grid-template-columns: auto 1fr auto; gap: var(--s-3); align-items: center;
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-1) var(--s-3); align-items: center;
   padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); cursor: pointer;
   transition: background-color var(--t-fast);
 }
@@ -336,7 +336,7 @@ details.more p { margin-top: var(--s-2); }
 .choice.unavailable { cursor: not-allowed; }
 .choice.unavailable input, .choice.unavailable .name { opacity: .5; }
 .choice.unavailable:hover { background: transparent; }
-.choice .name { font-weight: 600; font-size: calc(18px * var(--type-scale)); }
+.choice .name { flex: 1 1 auto; font-weight: 600; font-size: calc(18px * var(--type-scale)); }
 
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-4); }
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); background: var(--bg-elev); }

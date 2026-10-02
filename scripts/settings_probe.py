@@ -2657,12 +2657,42 @@ document.addEventListener("click", (event) => {
         """,
         sabotage="""$(".settings-nav").style.display = "none";""",
     ),
+    # Clipping inside `.choices` or `.table-wrap` never widens the document, so
+    # the fits checks above cannot see it; these measure the boxes themselves.
+    Check(
+        id="fits-375-choice-states",
+        fixture="writable",
+        path="/settings#model",
+        width=375,
+        act="""
+            await providersLoaded();
+            await waitFor(() => $$("input[name=embedding-provider]").length, "embedders");
+        """,
+        script="""
+            const states = $$(".choice > .label");
+            expect(states.some((s) => s.textContent === "CLOUDFLARE_EMBEDDING_API_TOKEN missing"),
+              "the long state is not in the fixture");
+            const cut = states.filter((state) => {
+              const r = state.getBoundingClientRect();
+              const box = state.closest(".choices").getBoundingClientRect();
+              return state.scrollWidth > state.clientWidth
+                || r.left < box.left || r.right > box.right + 0.5;
+            }).map((state) => state.textContent);
+            expect(cut.length === 0, `cut off: ${cut.join("; ")}`);
+        """,
+        sabotage="""
+            $$(".choice").forEach((row) => {
+              row.style.display = "grid";
+              row.style.gridTemplateColumns = "auto 1fr auto";
+            });
+        """,
+    ),
 ]
 # The page fits at the largest type size too.
 CHECKS += [
     largest_twin(check, check.id.replace("fits-", "fits-largest-"), "writable-largest")
     for check in CHECKS
-    if check.id in ("fits-400", "fits-1440")
+    if check.id.startswith("fits-")
 ]
 
 # Only these two may scroll sideways; anything else past the viewport is overflow.
