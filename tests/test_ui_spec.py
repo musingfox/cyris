@@ -635,7 +635,6 @@ TYPE_ROLES = [
     (34, "digest", ".headline-item", "14px"),
     (35, "digest", ".headline-item .idx", "14px"),
     (36, "index", ".archive-row .date, .front-card .date", "19px"),
-    (39, "index", ".empty-message", "14px"),
     (40, "raw", ".source-name", "18px"),
     (42, "raw", ".state", "11px"),
     (43, "raw", ".score", "14px"),
@@ -791,8 +790,9 @@ def test_the_digest_breaks_only_at_the_spec_breakpoint() -> None:
 PILL_PADDING = frozenset({(".pill", "padding: 2px 10px")})
 
 
-def test_every_digest_spacing_is_on_the_scale() -> None:
-    assert spacing_literals(_source("digest"), PILL_PADDING) == []
+@pytest.mark.parametrize("page", ["digest", "index"])
+def test_every_digest_and_archive_spacing_is_on_the_scale(page: str) -> None:
+    assert spacing_literals(_source(page), PILL_PADDING) == []
 
 
 @pytest.mark.parametrize(
@@ -887,8 +887,10 @@ def test_the_receipt_archive_carries_the_card_title() -> None:
     assert '<h2 lang="">Featured Story</h2>' in _source("index")
 
 
-def test_the_empty_archive_message_takes_the_small_role() -> None:
-    assert "font-size: calc(14px * var(--type-scale))" in _parsed("index")[".empty-message"]
+def test_the_empty_archive_is_one_small_sentence_with_no_accent() -> None:
+    html = HtmlDigestWriter("unused-by-these-tests").render_index([])
+    assert '<p class="small">No digests yet. Run <code class="data">cyris run</code>' in html
+    assert [key for key in parse_style_block(html) if "empty" in key or "code" in key] == []
 
 
 def test_the_raw_state_column_fits_the_larger_state_label() -> None:
