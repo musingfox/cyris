@@ -1,5 +1,7 @@
 """Tests for news clustering."""
 
+import json
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -121,10 +123,10 @@ class TestClusterNews:
                     {
                         "heading": "科技業裁員潮",
                         "summary": "多家科技公司宣布裁員，影響員工。業界面臨壓力。",
-                        "article_ids": [101, 102]
+                        "article_ids": [0, 1]
                     }
                 ],
-                "unclustered_ids": [103]
+                "unclustered_ids": [2]
             }""",
             input_tokens=100,
             output_tokens=50,
@@ -178,7 +180,7 @@ class TestClusterNews:
             ),
         ]
         llm = FakeLLM(
-            '{"clusters": [{"heading": "Mixed", "summary": "s", "article_ids": [201, 202]}], '
+            '{"clusters": [{"heading": "Mixed", "summary": "s", "article_ids": [0, 1]}], '
             '"unclustered_ids": []}'
         )
 
@@ -221,7 +223,7 @@ class TestClusterNews:
             ),
         ]
         llm = FakeLLM(
-            '{"clusters": [{"heading": "Syn", "summary": "s", "article_ids": [207, 208]}], '
+            '{"clusters": [{"heading": "Syn", "summary": "s", "article_ids": [0, 1]}], '
             '"unclustered_ids": []}'
         )
 
@@ -259,7 +261,7 @@ class TestClusterNews:
             ),
         ]
         llm = FakeLLM(
-            '{"clusters": [{"heading": "Dup", "summary": "s", "article_ids": [205, 206]}], '
+            '{"clusters": [{"heading": "Dup", "summary": "s", "article_ids": [0, 1]}], '
             '"unclustered_ids": []}'
         )
 
@@ -299,7 +301,7 @@ class TestClusterNews:
             ),
         ]
         llm = FakeLLM(
-            '{"clusters": [{"heading": "Plain", "summary": "s", "article_ids": [203, 204]}], '
+            '{"clusters": [{"heading": "Plain", "summary": "s", "article_ids": [0, 1]}], '
             '"unclustered_ids": []}'
         )
 
@@ -314,7 +316,7 @@ class TestClusterNews:
         assert unclustered == []
 
     async def test_cluster_news_no_clusters(self, sample_news_articles):
-        llm = FakeLLM('{"clusters": [], "unclustered_ids": [101, 102, 103]}')
+        llm = FakeLLM('{"clusters": [], "unclustered_ids": [0, 1, 2]}')
 
         clusters, unclustered = await cluster_news(
             sample_news_articles,
@@ -328,7 +330,7 @@ class TestClusterNews:
         assert len(unclustered) == 3
 
     async def test_cluster_without_tags_keeps_empty_tags(self, sample_news_articles):
-        llm = FakeLLM('{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 102]}]}')
+        llm = FakeLLM('{"clusters": [{"heading": "H", "summary": "S", "article_ids": [0, 1]}]}')
 
         clusters, unclustered = await cluster_news(
             sample_news_articles,
@@ -346,8 +348,8 @@ class TestClusterNews:
         """One malformed tags value must never degrade the whole window to unclustered."""
         llm = FakeLLM(
             '{"clusters": ['
-            '{"heading": "A", "summary": "S", "article_ids": [101], "tags": null}, '
-            '{"heading": "B", "summary": "S", "article_ids": [102], "tags": ["AI Policy"]}]}'
+            '{"heading": "A", "summary": "S", "article_ids": [0], "tags": null}, '
+            '{"heading": "B", "summary": "S", "article_ids": [1], "tags": ["AI Policy"]}]}'
         )
 
         clusters, unclustered = await cluster_news(
@@ -366,8 +368,8 @@ class TestClusterNews:
     async def test_string_tags_value_becomes_a_single_tag(self, sample_news_articles):
         llm = FakeLLM(
             '{"clusters": ['
-            '{"heading": "A", "summary": "S", "article_ids": [101], "tags": "AI"}, '
-            '{"heading": "B", "summary": "S", "article_ids": [102], "tags": ["ML"]}]}'
+            '{"heading": "A", "summary": "S", "article_ids": [0], "tags": "AI"}, '
+            '{"heading": "B", "summary": "S", "article_ids": [1], "tags": ["ML"]}]}'
         )
 
         clusters, _ = await cluster_news(
@@ -385,8 +387,8 @@ class TestClusterNews:
     async def test_non_string_tag_elements_are_dropped_not_fatal(self, sample_news_articles):
         llm = FakeLLM(
             '{"clusters": ['
-            '{"heading": "A", "summary": "S", "article_ids": [101], "tags": ["AI", 42]}, '
-            '{"heading": "B", "summary": "S", "article_ids": [102], "tags": ["ML"]}]}'
+            '{"heading": "A", "summary": "S", "article_ids": [0], "tags": ["AI", 42]}, '
+            '{"heading": "B", "summary": "S", "article_ids": [1], "tags": ["ML"]}]}'
         )
 
         clusters, _ = await cluster_news(
@@ -409,7 +411,7 @@ class TestClusterNews:
         4 — trusting it dropped 139 articles out of the run with no error.
         """
         llm = FakeLLM(
-            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101]}],'
+            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [0]}],'
             ' "unclustered_ids": []}'
         )
 
@@ -444,7 +446,7 @@ class TestClusterNews:
 
     async def test_an_id_the_model_invented_does_not_disturb_the_rest(self, sample_news_articles):
         llm = FakeLLM(
-            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [101, 999]}],'
+            '{"clusters": [{"heading": "H", "summary": "S", "article_ids": [0, 999]}],'
             ' "unclustered_ids": []}'
         )
 
@@ -483,6 +485,27 @@ class TestClusterNews:
         assert unclustered == sample_news_articles
 
 
+class _NumericTailLLM(FakeLLM):
+    """Answers like @cf/openai/gpt-oss-120b did on 2026-09-17: it clusters every
+    article it was shown, but writes each id as the integer tail of the one in the
+    prompt ('CNA/2026-09-17/202609170255' comes back as 255)."""
+
+    async def complete(self, prompt, **kwargs):
+        ids = re.findall(r"^\[(.+?)\]", prompt, flags=re.MULTILINE)
+        tails = [int(re.search(r"(\d{1,4})$", i).group(1)) for i in ids]
+        self._responses = [
+            json.dumps(
+                {
+                    "clusters": [
+                        {"heading": "h", "summary": "s", "article_ids": tails, "tags": ["t"]}
+                    ],
+                    "unclustered_ids": [],
+                }
+            )
+        ]
+        return await super().complete(prompt, **kwargs)
+
+
 def _cna_articles() -> list[Article]:
     return [
         Article(
@@ -497,6 +520,30 @@ def _cna_articles() -> list[Article]:
         )
         for n in ("55", "47")
     ]
+
+
+async def test_cluster_survives_a_model_that_rewrites_string_ids():
+    articles = _cna_articles()
+
+    clusters, unclustered = await cluster_news(
+        articles, _NumericTailLLM(), snippet_length=500, output_language="zh-Hant", style_prompt=""
+    )
+
+    assert len(clusters) == 1
+    assert clusters[0].items[0].urls == [a.url for a in articles]
+    assert unclustered == []
+
+
+async def test_a_position_echoed_as_a_string_still_resolves():
+    articles = _cna_articles()
+    llm = FakeLLM('{"clusters": [{"heading": "H", "summary": "S", "article_ids": ["0", "1"]}]}')
+
+    clusters, unclustered = await cluster_news(
+        articles, llm, snippet_length=500, output_language="zh-Hant", style_prompt=""
+    )
+
+    assert clusters[0].items[0].urls == [a.url for a in articles]
+    assert unclustered == []
 
 
 async def test_the_snippet_follows_the_given_length():

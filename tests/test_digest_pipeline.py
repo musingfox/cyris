@@ -168,8 +168,8 @@ class TestDigestPipeline:
         pipeline = DigestPipeline(
             FakeLLM(
                 '{"clusters": ['
-                '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
-                '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
+                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
             ),
             **pipeline_settings(max_digest_output=1),
         )
@@ -210,8 +210,8 @@ class TestDigestPipeline:
         pipeline = DigestPipeline(
             FakeLLM(
                 '{"clusters": ['
-                '{"heading": "A", "summary": "S", "article_ids": [1, 2], "tags": []}, '
-                '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
+                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
             ),
             **pipeline_settings(),
         )

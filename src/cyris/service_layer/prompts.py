@@ -113,8 +113,9 @@ def build_filter_prompt(articles: list[Article], *, snippet_length: int) -> str:
         snippet_length: Maximum length of content snippet to include.
     """
     lines = []
-    for a in articles:
-        lines.append(f"[{a.id}] ({a.source_name}) {a.title}")
+    # Positional ids, as in build_summarize_prompt: see the reason there.
+    for i, a in enumerate(articles):
+        lines.append(f"[{i}] ({a.source_name}) {a.title}")
         snippet = a.content[:snippet_length].replace("\n", " ").strip()
         if snippet:
             lines.append(f"    {snippet}")
@@ -204,8 +205,11 @@ def build_news_cluster_prompt(articles: list[Article], *, snippet_length: int) -
         Formatted prompt string with article summaries.
     """
     lines = []
-    for a in articles:
-        lines.append(f"[{a.id}] ({a.source_name}) {a.title}")
+    # Positional ids, as in build_summarize_prompt. Echoing the article's own id
+    # failed on 2026-09-17: gpt-oss-120b returned 'CNA/2026-09-17/202609170255'
+    # as 255, so no member matched and every cluster was dropped.
+    for i, a in enumerate(articles):
+        lines.append(f"[{i}] ({a.source_name}) {a.title}")
         snippet = a.content[:snippet_length].replace("\n", " ").strip()
         if snippet:
             lines.append(f"    {snippet}")

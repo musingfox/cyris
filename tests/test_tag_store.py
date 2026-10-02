@@ -28,7 +28,7 @@ async def test_cluster_tags_persist_for_every_member_normalized() -> None:
     pipeline = DigestPipeline(
         FakeLLM(
             '{"clusters": [{"heading": "H", "summary": "S", '
-            '"article_ids": [1, 2], "tags": ["AI Policy", "ai policy"]}]}'
+            '"article_ids": [0, 1], "tags": ["AI Policy", "ai policy"]}]}'
         ),
         **pipeline_settings(),
     )

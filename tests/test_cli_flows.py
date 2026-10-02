@@ -142,7 +142,7 @@ class TestRunPipelineE2E:
                             {
                                 "heading": "Breaking News Cluster",
                                 "summary": "Two related breaking news stories",
-                                "article_ids": ["101", "102"],
+                                "article_ids": ["0", "1"],
                             }
                         ],
                         "unclustered_ids": [],

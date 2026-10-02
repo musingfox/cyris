@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -43,7 +44,7 @@ class TestFilterArticles:
                 {
                     "selected": [
                         {
-                            "id": 101,
+                            "id": 0,
                             "title": "Apple Vision Pro 第二代發表",
                             "summary": "價格降至 $2499",
                             "source": "TechCrunch",
@@ -73,7 +74,7 @@ class TestFilterArticles:
                 {
                     "selected": [
                         {"title": "only-title"},
-                        {"id": 101, "title": "ok", "source": "S"},
+                        {"id": 0, "title": "ok", "source": "S"},
                     ]
                 }
             )
@@ -98,8 +99,8 @@ class TestFilterArticles:
             json.dumps(
                 {
                     "selected": [
-                        {"id": 101, "source": "S"},
-                        {"id": 101, "title": "missing-source"},
+                        {"id": 0, "source": "S"},
+                        {"id": 0, "title": "missing-source"},
                     ]
                 }
             )
@@ -125,7 +126,7 @@ class TestFilterArticles:
                 {
                     "selected": [
                         "just-a-headline-string",
-                        {"id": 101, "title": "ok", "source": "S"},
+                        {"id": 0, "title": "ok", "source": "S"},
                     ]
                 }
             )
@@ -150,10 +151,10 @@ class TestFilterArticles:
             json.dumps(
                 {
                     "selected": [
-                        {"id": [101], "title": "x", "source": "S"},
-                        {"id": 101, "title": 7, "source": "S"},
-                        {"id": 101, "title": "x", "source": None},
-                        {"id": 101, "title": "ok", "source": "S"},
+                        {"id": [0], "title": "x", "source": "S"},
+                        {"id": 0, "title": 7, "source": "S"},
+                        {"id": 0, "title": "x", "source": None},
+                        {"id": 0, "title": "ok", "source": "S"},
                     ]
                 }
             )
@@ -217,7 +218,7 @@ class TestFilterArticles:
             ref_urls=["https://r1.com/a", "https://r2.com/b"],
         )
         llm = FakeLLM(
-            json.dumps({"selected": [{"id": 101, "title": "Newsletter", "source": "Newsletter"}]})
+            json.dumps({"selected": [{"id": 0, "title": "Newsletter", "source": "Newsletter"}]})
         )
 
         item = (
@@ -243,7 +244,7 @@ class TestFilterArticles:
             source_name="RSS",
             source_tier=Tier.FILTER,
         )
-        llm = FakeLLM(json.dumps({"selected": [{"id": 102, "title": "RSS", "source": "RSS"}]}))
+        llm = FakeLLM(json.dumps({"selected": [{"id": 0, "title": "RSS", "source": "RSS"}]}))
 
         item = (
             await filter_articles(
@@ -257,3 +258,68 @@ class TestFilterArticles:
 
         assert item.ref_urls == []
         assert item.urls == ["https://ex.com/2"]
+
+
+class _NumericTailLLM(FakeLLM):
+    """Selects every article it was shown, but writes each id as the integer tail
+    of the one in the prompt, the way @cf/openai/gpt-oss-120b rewrote
+    'CNA/2026-09-17/202609170255' as 255 when clustering on 2026-09-17."""
+
+    async def complete(self, prompt, **kwargs):
+        ids = re.findall(r"^\[(.+?)\]", prompt, flags=re.MULTILINE)
+        tails = [int(re.search(r"(\d{1,4})$", i).group(1)) for i in ids]
+        self._responses = [
+            json.dumps({"selected": [{"id": t, "title": f"t{t}", "source": "S"} for t in tails]})
+        ]
+        return await super().complete(prompt, **kwargs)
+
+
+def _cna_articles() -> list[Article]:
+    return [
+        Article(
+            id=f"CNA/2026-09-17/2026091702{n}",
+            title=f"Article {n}",
+            url=f"https://www.cna.com.tw/news/{n}",
+            content="Content",
+            published_at=datetime(2026, 9, 17, 10, 0, tzinfo=UTC),
+            source_name="中央社即時新聞 財經新聞",
+            source_tier=Tier.FILTER,
+        )
+        for n in ("55", "47")
+    ]
+
+
+async def test_filter_survives_a_model_that_rewrites_string_ids():
+    articles = _cna_articles()
+
+    items = await filter_articles(
+        articles,
+        _NumericTailLLM(),
+        filter_snippet_length=500,
+        output_language="zh-Hant",
+        style_prompt="",
+    )
+
+    assert [item.urls for item in items] == [[a.url] for a in articles]
+
+
+async def test_filter_resolves_a_position_echoed_as_a_string():
+    articles = _cna_articles()
+    llm = FakeLLM(json.dumps({"selected": [{"id": "1", "title": "t", "source": "S"}]}))
+
+    items = await filter_articles(
+        articles, llm, filter_snippet_length=500, output_language="zh-Hant", style_prompt=""
+    )
+
+    assert items[0].urls == [articles[1].url]
+
+
+@pytest.mark.parametrize("raw_id", [True, "²", "1.0", 2, -1], ids=repr)
+async def test_an_id_naming_no_position_links_nothing(raw_id):
+    llm = FakeLLM(json.dumps({"selected": [{"id": raw_id, "title": "t", "source": "S"}]}))
+
+    items = await filter_articles(
+        _cna_articles(), llm, filter_snippet_length=500, output_language="zh-Hant", style_prompt=""
+    )
+
+    assert items[0].urls == []

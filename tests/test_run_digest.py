@@ -505,7 +505,7 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
     # emptied filter pool never reaches the LLM.
     llm = FakeLLM(
         json.dumps(
-            {"clusters": [{"heading": "H", "summary": "S", "article_ids": [1, 2], "tags": []}]}
+            {"clusters": [{"heading": "H", "summary": "S", "article_ids": [0, 1], "tags": []}]}
         )
     )
     deps, _ = make_deps(tmp_path, llm, FakeSource(articles))

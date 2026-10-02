@@ -4,6 +4,7 @@ import logging
 
 from cyris.domain.models import Article, DigestItem, UsageStats
 from cyris.service_layer.degrade import headlines_from_articles
+from cyris.service_layer.parse import echoed_position
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     build_filter_prompt,
@@ -63,8 +64,6 @@ async def filter_articles(
             usage.fell_back_to_excerpts = True
         return headlines_from_articles(articles_to_process, article_scores)
 
-    article_map = {a.id: a for a in articles_to_process}
-
     items = []
     for entry in data.get("selected", []):
         required_fields = {"id", "title", "source"}
@@ -88,8 +87,8 @@ async def filter_articles(
                 entry,
             )
             continue
-        article_id = entry["id"]
-        source_article = article_map.get(article_id)
+        position = echoed_position(entry["id"], len(articles_to_process))
+        source_article = articles_to_process[position] if position is not None else None
         article_url = source_article.url if source_article else ""
         score = article_scores.get(article_url) if article_scores and article_url else None
         items.append(

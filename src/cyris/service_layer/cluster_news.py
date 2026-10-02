@@ -4,6 +4,7 @@ import logging
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.domain.tags import NEWS_TAG, normalize_tags
+from cyris.service_layer.parse import echoed_position
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
     build_news_cluster_prompt,
@@ -83,9 +84,7 @@ async def cluster_news(
         # llama-4-scout named 4 and dropped 139, and a bad gemini-3.6-flash run
         # dropped all 143. Subtraction cannot lose an article, so what a weak
         # model costs is a worse digest rather than a shorter one.
-        clustered_ids: set = set()
-
-        article_map = {a.id: a for a in articles}
+        clustered_positions: set[int] = set()
 
         digest_sections = []
         for cluster in clusters:
@@ -107,13 +106,14 @@ async def cluster_news(
             urls = []
             scores = []
 
-            for aid in article_ids:
-                if aid in article_map:
-                    a = article_map[aid]
+            for raw_id in article_ids:
+                position = echoed_position(raw_id, len(articles))
+                if position is not None:
+                    a = articles[position]
                     members.append(a)
                     sources.append(a.source_name)
                     urls.append(a.url)
-                    clustered_ids.add(aid)
+                    clustered_positions.add(position)
                     if article_scores and a.url in article_scores:
                         scores.append(article_scores[a.url])
 
@@ -155,7 +155,7 @@ async def cluster_news(
                 )
 
         # Everything the clusters did not actually take, in the original order.
-        unclustered_articles = [a for a in articles if a.id not in clustered_ids]
+        unclustered_articles = [a for i, a in enumerate(articles) if i not in clustered_positions]
 
         logger.info(
             "News clustering: %d clusters created, %d articles unclustered",

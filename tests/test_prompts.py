@@ -33,7 +33,7 @@ class TestBuildNewsClusterPrompt:
 
         prompt = build_news_cluster_prompt([article], snippet_length=500)
 
-        assert "[101] (Reuters) Breaking News" in prompt
+        assert "[0] (Reuters) Breaking News" in prompt
         # Check truncation at 500 chars
         lines = prompt.split("\n")
         content_line = [line for line in lines if line.strip().startswith("A")][0]
