@@ -343,7 +343,7 @@ class TestDiscordEmbeds:
 
 
 class TestDiscordPayload:
-    def test_degraded_usage_adds_factual_content_line(self):
+    def test_a_degraded_run_adds_factual_content_line(self):
         content = DigestContent(
             date="2026-04-10",
             period="morning",
@@ -353,11 +353,11 @@ class TestDiscordPayload:
             usage=UsageStats(model="gemini-3-flash", input_tokens=0),
         )
 
-        payload = build_discord_payload(content)
+        payload = build_discord_payload(content, degraded=True)
 
         assert payload["content"] == (
-            "⚠️ Degraded digest: LLM gemini-3-flash was configured but this run used 0 input "
-            "tokens, so scores and summaries are excerpts."
+            "⚠️ Degraded digest: the configured LLM could not be used this run, "
+            "so scores and summaries are excerpts."
         )
 
     def test_healthy_usage_omits_content_line(self):
@@ -382,7 +382,7 @@ class TestDiscordPayload:
             usage=UsageStats(model="gemini-3-flash", input_tokens=0),
         )
 
-        payload = build_discord_payload(content)
+        payload = build_discord_payload(content, degraded=True)
 
         assert payload["embeds"] == build_discord_embeds(content)
         assert payload["embeds"][-1]["title"] == "Morning 2026-04-10"
@@ -421,7 +421,7 @@ class TestSendDiscord:
             usage=UsageStats(model="gemini-3-flash", input_tokens=0),
         )
 
-        await send_discord("https://discord.com/api/webhooks/123/token", content)
+        await send_discord("https://discord.com/api/webhooks/123/token", content, degraded=True)
 
         assert json.loads(requests[0].content)["content"].startswith("⚠️ Degraded digest")
 

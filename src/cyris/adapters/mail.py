@@ -109,6 +109,7 @@ async def send_digest_mail(
     digest_url: str = "",
     publish_failed: bool = False,
     raw_page: bool = False,
+    degraded: bool = False,
     *,
     account_id: str,
     token: str,
@@ -121,7 +122,7 @@ async def send_digest_mail(
     if not recipient:
         return
     subject, text = build_digest_mail(content, digest_url, publish_failed)
-    html = render_digest_email(content, digest_url, raw_page, publish_failed)
+    html = render_digest_email(content, digest_url, raw_page, publish_failed, degraded)
     try:
         status = await send_mail(account_id, token, sender, recipient, subject, text, html)
         logger.info("Digest mail %s to %s", status, recipient)

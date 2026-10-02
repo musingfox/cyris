@@ -185,6 +185,25 @@ class TestDigestMail:
         assert sent["html"].startswith("<!DOCTYPE html>")
         assert 'href="https://digest.example.org/x"' in sent["html"]
 
+    @pytest.mark.parametrize("degraded", [True, False])
+    @respx.mock
+    async def test_the_degraded_verdict_reaches_the_html_body(self, degraded):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(200, json=_result(delivered=["me@example.org"]))
+        )
+
+        await send_digest_mail(
+            "me@example.org",
+            "digest@example.org",
+            _content(),
+            degraded=degraded,
+            account_id=ACCOUNT,
+            token="tok",
+        )
+
+        sent = json.loads(route.calls.last.request.content)
+        assert ('<p class="notice">This issue is plain excerpts' in sent["html"]) is degraded
+
     @respx.mock
     async def test_no_recipient_sends_nothing(self):
         await send_digest_mail("", "digest@example.org", _content(), account_id=ACCOUNT, token="t")

@@ -7,7 +7,7 @@
         .mark, .rule { background: {{ c['accent'] }}; }
         .issue-title, .title, .title a, .lead-title, .lead-title a, .wire a { color: {{ c['text'] }}; }
         .issue-title em, .stats b { color: {{ c['accent'] }}; }
-        .stats, .summary, .desc, .meta a, .footer a { color: {{ c['text-dim'] }}; }
+        .stats, .summary, .desc, .desc a, .meta a, .footer a { color: {{ c['text-dim'] }}; }
         .btn.primary { background: {{ c['accent'] }}; border-color: {{ c['accent'] }}; color: {{ c['bg'] }}; }
         .btn.secondary { background: {{ c['surface-2'] }}; border-color: {{ c['border-strong'] }}; color: {{ c['text-dim'] }}; }
         .notice { border-left-color: {{ c['warn'] }}; background: {{ c['warn-tint'] }}; color: {{ c['text'] }}; }
@@ -71,7 +71,7 @@
         .summary { font-size: 18px; line-height: 1.65; margin: 0 0 {{ t['s-3'] }}; }
         .desc { font-size: 14px; line-height: 1.5; margin: 0 0 {{ t['s-3'] }}; }
         .meta { margin: 0; line-height: 1.6; }
-        .meta a, .footer a { text-decoration: underline; }
+        .desc a, .meta a, .footer a { text-decoration: underline; }
         .item { padding: {{ t['s-5'] }} 0; border-top: 1px solid; }
         .member { margin: {{ t['s-3'] }} 0 0; }
         .wire { list-style: none; margin: 0; padding: 0; }
@@ -94,6 +94,12 @@
         <p class="actions"><a class="btn primary" href="{{ digest_url }}">Read online</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">All articles</a>{% endif %}</p>
         {% elif publish_failed %}
         <p class="notice">Publishing the online edition failed, so this issue has no page to open.</p>
+        {% endif %}
+        {% if degraded %}
+        <p class="notice">This issue is plain excerpts, unscored and unsummarised: the configured LLM could not be used this run. Check the provider's key on Settings.</p>
+        {% endif %}
+        {% if not content.articles_included %}
+        <p class="desc">Nothing is in this issue: the filter kept none of the {{ content.articles_received }} articles this run received.{% if raw_url %} <a href="{{ raw_url }}">All articles</a> lists each one with its verdict.{% endif %}</p>
         {% endif %}
 
         {% if lead_story %}
