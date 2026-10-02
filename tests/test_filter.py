@@ -315,11 +315,17 @@ async def test_filter_resolves_a_position_echoed_as_a_string():
 
 
 @pytest.mark.parametrize("raw_id", [True, "²", "1.0", 2, -1], ids=repr)
-async def test_an_id_naming_no_position_links_nothing(raw_id):
+async def test_an_id_naming_no_position_links_nothing(raw_id, caplog):
     llm = FakeLLM(json.dumps({"selected": [{"id": raw_id, "title": "t", "source": "S"}]}))
 
-    items = await filter_articles(
-        _cna_articles(), llm, filter_snippet_length=500, output_language="zh-Hant", style_prompt=""
-    )
+    with caplog.at_level(logging.WARNING):
+        items = await filter_articles(
+            _cna_articles(),
+            llm,
+            filter_snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
 
     assert items[0].urls == []
+    assert len(caplog.records) == 1  # a model that rewrites ids is visible in the log

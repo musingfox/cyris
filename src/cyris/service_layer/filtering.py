@@ -89,6 +89,8 @@ async def filter_articles(
             continue
         position = echoed_position(entry["id"], len(articles_to_process))
         source_article = articles_to_process[position] if position is not None else None
+        if source_article is None:
+            logger.warning("Filter returned unknown article id %r; item has no link", entry["id"])
         article_url = source_article.url if source_article else ""
         score = article_scores.get(article_url) if article_scores and article_url else None
         items.append(
