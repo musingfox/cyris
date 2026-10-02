@@ -114,7 +114,9 @@ def test_render_empty_sections(tmp_path):
 SECTION_LABELS = ("Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire")
 
 EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
-DEGRADED_NOTICE = '<p class="notice err issue-note">Some or all of this issue is plain excerpts'
+DEGRADED_NOTICE = (
+    '<p class="notice err issue-note">Some or all of this issue is unscored or plain excerpts'
+)
 
 
 def _body(html: str) -> str:

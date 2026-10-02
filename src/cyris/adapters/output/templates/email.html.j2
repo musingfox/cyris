@@ -96,7 +96,7 @@
         <p class="notice">Publishing the online edition failed, so this issue has no page to open.</p>
         {% endif %}
         {% if degraded %}
-        <p class="notice">Some or all of this issue is plain excerpts: the configured LLM could not be used for every step this run. Check the provider and its key on Settings.</p>
+        <p class="notice">Some or all of this issue is unscored or plain excerpts: the configured LLM could not be used for every step this run. Check the provider and its key on Settings.</p>
         {% endif %}
         {% if not content.articles_included %}
         <p class="desc">Nothing is in this issue: this run judged the {{ content.articles_received }} articles it received and kept none.{% if raw_url %} <a href="{{ raw_url }}">All articles</a> lists each one with its verdict.{% endif %}</p>

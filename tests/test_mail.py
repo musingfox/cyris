@@ -203,7 +203,8 @@ class TestDigestMail:
 
         sent = json.loads(route.calls.last.request.content)
         assert (
-            '<p class="notice">Some or all of this issue is plain excerpts' in sent["html"]
+            '<p class="notice">Some or all of this issue is unscored or plain excerpts'
+            in sent["html"]
         ) is degraded
 
     @respx.mock
@@ -231,7 +232,7 @@ class TestDigestMail:
 
 class TestDigestMailText:
     EMPTY = "Nothing is in this issue: this run judged the 300 articles it received and kept none."
-    DEGRADED = "Some or all of this issue is plain excerpts"
+    DEGRADED = "Some or all of this issue is unscored or plain excerpts"
 
     @staticmethod
     def _empty() -> DigestContent:

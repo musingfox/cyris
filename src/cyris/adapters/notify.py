@@ -236,12 +236,12 @@ def build_discord_payload(
     if degraded and content.usage.model != NO_LLM_MODEL:
         payload["content"] = (
             f"⚠️ Degraded digest: LLM {content.usage.model} could not be used for every step "
-            "this run, so some or all of it is plain excerpts."
+            "this run, so some or all of it is unscored or plain excerpts."
         )
     elif degraded:
         payload["content"] = (
             "⚠️ Degraded digest: the configured LLM could not be used this run, "
-            "so some or all of it is plain excerpts."
+            "so some or all of it is unscored or plain excerpts."
         )
     return payload
 

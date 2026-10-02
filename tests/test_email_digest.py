@@ -255,7 +255,7 @@ def _issue(articles_included: int = 0) -> DigestContent:
 
 
 EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
-DEGRADED_NOTICE = '<p class="notice">Some or all of this issue is plain excerpts'
+DEGRADED_NOTICE = '<p class="notice">Some or all of this issue is unscored or plain excerpts'
 
 
 class TestEmptyAndDegraded:

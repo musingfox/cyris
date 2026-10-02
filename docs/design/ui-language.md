@@ -254,9 +254,9 @@ title is itself that section's `h2`.
 - **An issue says when it is empty or degraded.** An issue that includes no article opens its body with
   one sentence in the small role: the run judged the articles it received and kept none, and
   `All articles` (linked when the raw page exists) lists each one with its verdict. It is not a notice,
-  because an empty issue is neither a success nor an error (§1). A degraded issue, one where plain
-  excerpts stood in for a configured LLM that could not be used, opens its body with a `--warn` notice
-  saying some or all of it is plain excerpts and that the provider and its key on Settings are what to
+  because an empty issue is neither a success nor an error (§1). A degraded issue, one where a step went
+  on without a configured LLM that could not be used, opens its body with a `--warn` notice saying some
+  or all of it is unscored or plain excerpts and that the provider and its key on Settings are what to
   check. An issue made with provider `none` is plain excerpts by choice and shows no notice.
 
 ### raw
