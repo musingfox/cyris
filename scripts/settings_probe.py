@@ -1209,7 +1209,7 @@ CHECKS: list[Check] = [
         script="""
             const notice = noticeOf("digest");
             expect(!notice.classList.contains("err"), `an error: ${notice.textContent}`);
-            expect(notice.textContent.includes("Featured sections: 7."), notice.textContent);
+            expect(notice.textContent.includes("Features cards: 7."), notice.textContent);
             expect(notice.textContent.includes("Effective next run."), notice.textContent);
             expect(saveOf("digest").disabled, "the digest Save is still enabled");
         """,
@@ -1630,7 +1630,7 @@ CHECKS: list[Check] = [
             expect(notice.classList.contains("err"), `not an error: ${notice.textContent}`);
             expect(lines.length === 2 && lines[0].startsWith("Digest hours not saved: ")
               && lines[0].length > "Digest hours not saved: ".length, `lines: ${lines}`);
-            expect(lines[1].startsWith("Featured sections: 7."), `lines: ${lines}`);
+            expect(lines[1].startsWith("Features cards: 7."), `lines: ${lines}`);
             expect(!saveOf("digest").disabled, "the digest Save was disabled");
             expect($("#morning").value === "25", `morning: ${$("#morning").value}`);
             setValue($("#max-featured"), "5");
@@ -2259,7 +2259,7 @@ window.fetch = async (input, init) => {
             const notice = $("#pipeline-result"), text = notice.textContent;
             expect(visible(notice) && notice.classList.contains("err"), `not an error: ${text}`);
             expect(notice.parentElement === saveOf("pipeline").parentElement, "not beside Save");
-            expect(text === "Featured score not saved. Featured score: Input should be less "
+            expect(text === "Top story score not saved. Top story score: Input should be less "
               + "than or equal to 100", text);
             expect(navOf("pipeline").classList.contains("dirty"), "Pipeline lost its dirty mark");
         """,

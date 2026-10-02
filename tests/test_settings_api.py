@@ -380,7 +380,7 @@ class TestPlainValues:
         await client.close()
 
         assert res.status == 400
-        assert body["error"] == "Featured score: Input should be less than or equal to 100"
+        assert body["error"] == "Top story score: Input should be less than or equal to 100"
         assert body["field"] == "routing.score_threshold"
         assert settings.calls == []
 
