@@ -47,6 +47,14 @@ def test_headlines_keep_every_article_with_excerpt():
     assert all(it.summary for it in items)  # excerpt stands in for a summary
 
 
+def test_every_fallback_item_says_its_text_is_the_articles_own():
+    headlines = headlines_from_articles([_article(1), _article(2)])
+    sections = excerpt_sections_from_articles([_article(3, "tech"), _article(4, "biz")])
+
+    items = [*headlines, *(item for section in sections for item in section.items)]
+    assert [item.passed_through for item in items] == [True] * 4
+
+
 def test_excerpt_sections_group_by_tag():
     sections = excerpt_sections_from_articles([_article(1, "tech"), _article(2, "biz")])
     assert len(sections) == 2  # one section per tag

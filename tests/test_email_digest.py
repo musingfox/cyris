@@ -208,6 +208,32 @@ class TestLanguage:
         assert {text: langs[text] for text in self.CHROME} == dict.fromkeys(self.CHROME, "en")
         assert {text: langs[text] for text in self.CONTENT} == dict.fromkeys(self.CONTENT, "ja")
 
+    @staticmethod
+    def _passed_through(*titles: str) -> DigestContent:
+        content = _full().model_copy(update={"output_language": "ja"})
+        for item in (*content.featured_articles[0].items, *content.filtered_headlines):
+            item.passed_through = item.title in titles
+        return content
+
+    def test_an_excerpt_fallback_leaves_its_language_unknown_beside_written_text(self):
+        content = self._passed_through("Second Feature", "Wire One")
+        langs = text_langs(render_digest_email(content, DIGEST_URL))
+
+        fallback = ["Second Feature", "Second Feature summary.", "Wire One", "Wire One summary."]
+        written = ["Lead Story", "Lead Story summary.", "A Cluster", "Cluster summary."]
+        assert {text: langs[text] for text in fallback} == dict.fromkeys(fallback, "")
+        assert {text: langs[text] for text in written} == dict.fromkeys(written, "ja")
+
+    def test_a_top_story_from_an_excerpt_fallback_leaves_its_language_unknown(self):
+        langs = text_langs(render_digest_email(self._passed_through("Lead Story"), DIGEST_URL))
+
+        lead = ["Lead Story", "Lead Story summary."]
+        assert {text: langs[text] for text in lead} == dict.fromkeys(lead, "")
+        assert {text: langs[text] for text in ["Second Feature", "Wire One"]} == {
+            "Second Feature": "ja",
+            "Wire One": "ja",
+        }
+
     def test_untranslated_sections_leave_their_language_unknown(self):
         content = _full().model_copy(update={"output_language": "ja"})
         langs = text_langs(render_digest_email(content, DIGEST_URL))
