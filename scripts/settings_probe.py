@@ -1788,6 +1788,68 @@ CHECKS: list[Check] = [
         sabotage_preload=ANSWER_DELETE_OK,
         receipt=_still_listed("Hacker News"),
     ),
+    # A pressed button is disabled while its write is out, which drops focus; a
+    # keyboard reader gets it back where the result left them.
+    Check(
+        id="source-save-failure-focuses-save",
+        fixture="writable",
+        path="/settings#sources",
+        focused=True,
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-url", editor()), "");
+            editorAct("save").focus();
+        """,
+        gestures=({"key": "Enter"},),
+        script="""
+            const notice = editorAct("save").parentElement.querySelector(".notice");
+            await waitFor(() => settled(notice), "the refusal");
+            const now = document.activeElement;
+            const at = now && (now.dataset.act || now.id || now.tagName);
+            expect(now === editorAct("save"), `focus is on ${at}`);
+        """,
+        sabotage=NO_FOCUS,
+        receipt=_stored("Hacker News", url="https://hnrss.org/frontpage?points=200"),
+    ),
+    Check(
+        id="retire-failure-focuses-retire",
+        fixture="writable",
+        path="/settings#sources",
+        setup=_keep_only("Hacker News"),
+        focused=True,
+        act="""
+            await openRow("Hacker News");
+            editorAct("retire").focus();
+        """,
+        gestures=({"key": "Enter"}, {"key": "Enter"}),
+        script="""
+            const notice = editorAct("retire").parentElement.querySelector(".notice");
+            await waitFor(() => settled(notice), "the refusal");
+            const now = document.activeElement;
+            const at = now && (now.dataset.act || now.id || now.tagName);
+            expect(now === editorAct("retire"), `focus is on ${at}`);
+        """,
+        sabotage=NO_FOCUS,
+        receipt=_still_listed("Hacker News"),
+    ),
+    Check(
+        id="retire-focuses-add",
+        fixture="writable",
+        path="/settings#sources",
+        focused=True,
+        act="""
+            await openRow("曼報");
+            editorAct("retire").focus();
+        """,
+        gestures=({"key": "Enter"}, {"key": "Enter"}),
+        script="""
+            await waitFor(() => visible($("#sources-notice")), "the toolbar notice");
+            const now = document.activeElement;
+            expect(now === $("#add-source"), `focus is on ${now && (now.id || now.tagName)}`);
+        """,
+        sabotage=NO_FOCUS,
+        receipt=lambda fixture: "曼報 is still listed" if "曼報" in fixture.sources else None,
+    ),
     Check(
         id="missing-marked",
         fixture="writable",
