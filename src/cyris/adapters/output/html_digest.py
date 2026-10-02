@@ -83,18 +83,18 @@ def _stories(section: DigestSection) -> list[Story]:
 
 
 def _features(content: DigestContent) -> list[Story]:
-    """The issue's full-summary stories in reading order; the first is its lead.
+    """The issue's summarized stories in reading order; the first is its Top story.
 
-    Every summarize-tier group with a full summary: the scored ones (already sorted
-    by score in layer_by_score) followed by the unscored rest. Rendering them as
-    one stream is what lets the digest drop the structurally near-empty "Thematic
-    Summaries" section, and what the archive's headline card takes its title from.
+    `layer_by_score` puts the Top story first and every Features card after it as
+    one article. Only the first section may become a group: any later one is drawn
+    as its articles, each under its own summary, so a group summary never reaches a
+    Features card. The archive's headline card takes its title from the first.
     """
-    return [
-        story
-        for section in [*content.featured_articles, *content.thematic_summaries]
-        for story in _stories(section)
-    ]
+    sections = [*content.featured_articles, *content.thematic_summaries]
+    if not sections:
+        return []
+    first, *rest = sections
+    return [*_stories(first), *(Story(i.title, i.summary, (i,)) for s in rest for i in s.items)]
 
 
 @dataclass(frozen=True)
