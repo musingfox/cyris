@@ -13,7 +13,11 @@ from cyris.domain.models import (
     Tier,
     UsageStats,
 )
-from cyris.domain.selection import select_digest_articles, split_summarize_tier_by_score
+from cyris.domain.selection import (
+    digest_urls,
+    select_digest_articles,
+    split_summarize_tier_by_score,
+)
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
@@ -202,11 +206,8 @@ class DigestPipeline:
             f"~${cost:.4f}" if cost is not None else f"cost unknown for {usage.model}",
         )
 
-        # Classify URLs: accepted (in digest) vs rejected (filtered out)
-        accepted_urls = []
-        rejected_urls = []
-
-        # Filter tier: accepted are in filtered items + news clusters, rejected are the rest
+        # Rejected is the filter's verdict, taken before the cap: a headline the cap
+        # cuts was not discarded.
         filter_urls = {a.url for a in filter_tier}
         accepted_filter_urls = set()
         for item in filtered:
@@ -214,16 +215,7 @@ class DigestPipeline:
         for cluster in news_clusters:
             for item in cluster.items:
                 accepted_filter_urls.update(item.urls)
-        rejected_filter_urls = filter_urls - accepted_filter_urls
-
-        # Summarize tier: all articles are accepted (all get summarized)
-        summarize_urls = {a.url for a in summarize_tier}
-
-        # Fan tier: all accepted (passthrough, never discarded)
-        fan_urls = {a.url for a in fan_tier}
-
-        accepted_urls = list(accepted_filter_urls | summarize_urls | fan_urls)
-        rejected_urls = list(rejected_filter_urls)
+        rejected_urls = list(filter_urls - accepted_filter_urls)
 
         url_to_tags = {
             url: section.tags
@@ -265,6 +257,9 @@ class DigestPipeline:
         )
 
         content = select_digest_articles(content, max_items=self.max_digest_output)
+        # Accepted means shown in this issue. What the cap cut, or the summarizer
+        # left out of every section, stays pending for the next run in the window.
+        accepted_urls = list(digest_urls(content))
 
         return ProcessResult(
             content=content,
