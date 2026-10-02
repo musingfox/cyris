@@ -240,7 +240,9 @@ Sign in (/login): on the site bar in Settings' place, when the app Worker answer
 ## 6. Page layouts
 
 Every page's head links the brand favicon (`favicon.svg`, published at the site root with every
-deployment) and carries a one-sentence meta description saying what the page holds.
+deployment), carries a one-sentence meta description saying what the page holds, and declares
+`<meta name="color-scheme" content="dark">`: the §2 palette is dark only, and without it the browser
+draws scrollbars, select popups and other native controls light. The mail declares its own (§6 *email*).
 
 ### archive
 

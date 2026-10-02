@@ -1345,6 +1345,14 @@ def test_every_page_describes_itself(page: str) -> None:
     assert "Cyris" in descriptions[0]
 
 
+@pytest.mark.parametrize("page", [*PAGES, "prototype"])
+def test_every_page_asks_for_dark_native_controls(page: str) -> None:
+    html = PROTOTYPE.read_text() if page == "prototype" else _source(page)
+    assert re.findall(r'<meta name="color-scheme"[^>]*>', _head(html)) == [
+        '<meta name="color-scheme" content="dark">'
+    ]
+
+
 def test_the_published_favicon_is_the_websites() -> None:
     assert FAVICON.read_bytes() == (REPO / "website" / "assets" / "favicon.svg").read_bytes()
 
