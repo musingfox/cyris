@@ -174,6 +174,17 @@ class TestSections:
         ]:
             assert f'<a href="{url}">{title}</a>' in html
 
+    def test_a_wire_row_carries_its_summary_and_one_without_is_its_title_alone(self):
+        content = _full()
+        content.filtered_headlines[1].summary = ""
+
+        html = render_digest_email(content, DIGEST_URL)
+        wire = html.split('<ol class="wire"', 1)[1].split("</ol>", 1)[0]
+
+        title = '<a href="https://wire.test/1">Wire One</a>'
+        assert f'{title}<p class="summary">Wire One summary.</p></li>' in wire
+        assert '<li><span class="idx">002</span>No Link</li>' in wire
+
 
 class TestLanguage:
     CONTENT = [
@@ -183,6 +194,7 @@ class TestLanguage:
         "A Cluster",
         "Cluster summary.",
         "Wire One",
+        "Wire One summary.",
     ]
     PASSED_THROUGH = ["Fan Item", "Watching — Why these.", "Radar Item", "Radar Item summary."]
     CHROME = ["Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire"]

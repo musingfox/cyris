@@ -1010,6 +1010,15 @@ EXPECTED_DIGEST_IDS |= {
     ),
 }
 
+# The Wire's summaries: drawn below each title, and wrapping inside the row on a phone.
+EXPECTED_DIGEST_IDS |= {
+    "wire-summary-below-title-375",
+    "wire-summary-below-title-1440",
+    "wire-fits-375",
+    "wire-fits-largest-375",
+    "wire-fits-smallest-375",
+}
+
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
 
 
@@ -1057,6 +1066,14 @@ def test_the_digest_probe_grouped_page_leads_with_two_articles_each_with_its_lin
     assert lead.count('class="orig"') == 2
     single = digest_probe.render_page()
     assert 'class="article-item"' not in single[: single.index("Features</span>")]
+
+
+def test_the_digest_probe_wire_has_a_long_summary_a_short_one_and_none():
+    summaries = [item.summary for item in digest_probe.content().filtered_headlines]
+    assert [bool(summary) for summary in summaries] == digest_probe.WIRE_SUMMARIES
+    assert digest_probe.WIRE_SUMMARIES == [True, True, False]
+    assert len(summaries[0]) > 3 * len(summaries[1])
+    assert summaries[0] in digest_probe.render_page()
 
 
 def test_the_digest_probe_page_folds_a_cluster_and_a_headline():

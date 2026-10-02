@@ -74,6 +74,7 @@ PROSE_SELECTORS = (
     ".news-cluster .summary",
     ".article-item .summary",
     ".section-description",
+    ".headline-item .summary",
 )
 
 # The widths the ticket accepts the page at.
@@ -87,13 +88,19 @@ HEAD_WIDTHS = (721, 740, 760, 800, 880, 1000, 1440)
 TIGHTEST_HEAD_WIDTH = 721
 
 
+LONG_WIRE_SUMMARY = (
+    "The regulator approved the merger of the two largest regional carriers on condition"
+    " that they sell eleven airport slots and keep fares on four routes capped for three years."
+)
+
+
 def url_of(slug: str) -> str:
     return f"https://example.test/{slug}"
 
 
 def _item(slug: str, title: str, sources: list[str], **extra) -> DigestItem:
     urls = [url_of(f"{slug}-{n}") for n in range(len(sources))]
-    summary = f"{title}: a summary."
+    summary = extra.pop("summary", f"{title}: a summary.")
     return DigestItem(title=title, summary=summary, sources=sources, urls=urls, **extra)
 
 
@@ -154,15 +161,17 @@ def content(grouped_lead: bool = False) -> DigestContent:
                 items=[_item(f"radar-{n}", f"Radar item {n}", ["Blog"]) for n in range(1, 6)],
             )
         ],
+        # One Wire row with a sentence as long as the filter writes, one with a short one
+        # and a folded source list, and one the filter wrote no summary for.
         filtered_headlines=[
-            _item("wire-1", "Headline one", ["Wire"]),
+            _item("wire-1", "Headline one", ["Wire"], summary=LONG_WIRE_SUMMARY),
             _item(
                 "wire-2",
                 "Headline two",
                 ["Wire"],
                 ref_urls=[url_of(f"ref-{n}") for n in range(1, 4)],
             ),
-            _item("wire-3", "Headline three", ["Wire"]),
+            _item("wire-3", "Headline three", ["Wire"], summary=""),
         ],
         triage_pending_count=4,
     )
@@ -544,6 +553,70 @@ _CHECKS += [
         ("site-bar", PAGE, ".brand, .site-nav a", NO_SITE_BAR_AREAS),
         ("archive", ARCHIVE, ".btn.sm", NO_BUTTON_AREAS),
     )
+]
+# Each Wire row with a summary draws it on its own line below the title, and a row
+# without one draws none; `WIRE_SUMMARIES` says which rows the fixture gave one.
+WIRE_SUMMARIES = [bool(item.summary) for item in content().filtered_headlines]
+EXPECT_WIRE_SUMMARIES = f"""
+const rows = $$(".headline-item");
+const wanted = {json.dumps(WIRE_SUMMARIES)};
+expect(rows.length === wanted.length, `${{rows.length}} Wire rows, want ${{wanted.length}}`);
+"""
+_CHECKS += [
+    Check(
+        id=f"wire-summary-below-title-{width}",
+        fixture="signed-in",
+        path=PAGE,
+        width=width,
+        act="await signedIn();",
+        script=EXPECT_WIRE_SUMMARIES
+        + """
+            const problems = rows.flatMap((row, n) => {
+              const summary = $(".summary", row);
+              if (!wanted[n]) return summary ? [`row ${n + 1} draws a summary`] : [];
+              if (!visible(summary)) return [`row ${n + 1}: no summary shows`];
+              const s = summary.getBoundingClientRect();
+              const t = $(".text > a", row).getBoundingClientRect();
+              const r = row.getBoundingClientRect();
+              return s.top >= t.bottom - 0.5 && Math.abs(s.left - t.left) <= 0.5
+                && s.right <= r.right + 0.5
+                ? [] : [`row ${n + 1}: summary at ${s.left},${s.top}, title ends ${t.bottom}`];
+            });
+            expect(!problems.length, problems.join("; "));
+        """,
+        sabotage=restyle(".headline-item .summary { display: inline !important; }"),
+    )
+    for width in (TAP_WIDTH, 1440)
+]
+# The longest Wire summary wraps inside its row on a phone, at every type size, and the
+# page does not scroll sideways.
+WIRE_FITS = Check(
+    id=f"wire-fits-{TAP_WIDTH}",
+    fixture="signed-in",
+    path=PAGE,
+    width=TAP_WIDTH,
+    act="await signedIn();",
+    script=EXPECT_WIRE_SUMMARIES
+    + f"""
+        const shown = $$(".headline-item .summary").filter(visible).length;
+        const kept = wanted.filter(Boolean).length;
+        expect(shown === kept, `${{shown}} Wire summaries show, want ${{kept}}`);
+        // A vote button's hit area overflows the button by design, so only the text
+        // boxes are read for overflow; every box must stay inside the list.
+        const box = $(".headlines-compact").getBoundingClientRect();
+        const spilled = $$(".headline-item *").filter(visible).filter((el) =>
+          el.getBoundingClientRect().right > box.right + 0.5
+          || (el.matches(".text, .summary") && el.scrollWidth > el.clientWidth));
+        expect(!spilled.length, `spilled: ${{spilled.map((el) => el.className).join(" ")}}`);
+        const problem = overflow("{TAP_WIDTH}");
+        expect(!problem, problem);
+    """,
+    sabotage=restyle(".headline-item .summary { white-space: nowrap !important; }"),
+)
+_CHECKS += [
+    WIRE_FITS,
+    largest_twin(WIRE_FITS, f"wire-fits-largest-{TAP_WIDTH}", "signed-in-largest"),
+    smallest_twin(WIRE_FITS, f"wire-fits-smallest-{TAP_WIDTH}", "signed-in-smallest"),
 ]
 # The arrows and the ↗ are narrowest at the smallest type size, so their areas reach
 # furthest past them there: the margins that keep neighbours apart are tightest.

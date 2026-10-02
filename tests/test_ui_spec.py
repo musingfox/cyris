@@ -634,6 +634,7 @@ TYPE_ROLES = [
     (32, "digest", ".attention-item .snippet", "18px"),
     (34, "digest", ".headline-item", "14px"),
     (35, "digest", ".headline-item .idx", "14px"),
+    (48, "digest", ".headline-item .summary", "14px"),
     (36, "index", ".archive-row .date, .front-card .date", "19px"),
     (40, "raw", ".source-name", "18px"),
     (42, "raw", ".state", "11px"),
@@ -653,6 +654,11 @@ TYPE_CASES = [
 )
 def test_each_font_size_follows_the_role_table(row: int, page: str, key: str, base: str) -> None:
     assert f"font-size: calc({base} * var(--type-scale))" in _parsed(page)[key], f"row {row}"
+
+
+def test_a_wire_summary_is_small_dim_prose_that_stops_at_the_measure() -> None:
+    rules = set(_parsed("digest")[".headline-item .summary"])
+    assert {"color: var(--text-dim)", "line-height: 1.5", "max-width: var(--measure)"} <= rules
 
 
 def test_the_issue_title_takes_the_issue_title_role() -> None:

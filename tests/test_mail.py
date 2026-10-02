@@ -145,6 +145,25 @@ class TestDigestMail:
         assert "In Focus" in text and "Cluster Heading" in text
         assert "The Wire" in text and "Wire One — https://w.test/1" in text
 
+    def test_the_text_part_puts_a_wire_rows_summary_on_the_line_below_it(self):
+        content = _content()
+        content.filtered_headlines = [
+            DigestItem(
+                title="Wire One", summary="One sentence.", sources=["W"], urls=["https://w.test/1"]
+            ),
+            DigestItem(title="Wire Two", summary="", sources=["W"], urls=["https://w.test/2"]),
+        ]
+
+        _, text = build_digest_mail(content, "https://digest.example.org/x")
+
+        lines = text.splitlines()
+        at = lines.index("The Wire")
+        assert lines[at + 1 :] == [
+            "- Wire One — https://w.test/1",
+            "  One sentence.",
+            "- Wire Two — https://w.test/2",
+        ]
+
     def test_the_text_part_lists_a_groups_articles_under_its_heading(self):
         content = _content()
         content.featured_articles = [

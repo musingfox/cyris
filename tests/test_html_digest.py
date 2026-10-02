@@ -1146,6 +1146,39 @@ def test_all_sections_render(tmp_path):
     assert "5 awaiting triage" in html
 
 
+def _wire_rows(html: str) -> list[str]:
+    """Each Wire row's markup, up to the next row or the section's end."""
+    wire = html.split('class="headlines-compact"', 1)[1].split("</section>", 1)[0]
+    return wire.split('<div class="headline-item">')[1:]
+
+
+def test_a_wire_row_shows_its_summary_below_its_title_and_before_its_votes(tmp_path):
+    content = DigestContent(
+        date="2026-04-15",
+        period="morning",
+        sources_processed=1,
+        articles_received=2,
+        articles_included=2,
+        filtered_headlines=[
+            DigestItem(
+                title="Wire with",
+                summary="The one sentence the filter wrote.",
+                sources=["W"],
+                urls=["https://w.test/1"],
+            ),
+            DigestItem(title="Wire without", summary="", sources=["W"], urls=["https://w.test/2"]),
+        ],
+    )
+
+    with_summary, without = _wire_rows(HtmlDigestWriter(tmp_path).render(content))
+
+    title = '<a href="https://w.test/1" target="_blank" rel="noopener">Wire with</a>'
+    assert f'{title}<p class="summary">The one sentence the filter wrote.</p>' in with_summary
+    assert with_summary.index('class="summary"') < with_summary.index('class="vote-group"')
+    assert ">Wire without</a>" in without
+    assert 'class="summary"' not in without
+
+
 def test_promote_buttons_on_every_section(tmp_path):
     """Every rendered item is votable, and a cluster's vote carries all its articles."""
     item = lambda n: DigestItem(  # noqa: E731
@@ -2097,6 +2130,7 @@ WRITTEN_TEXT = [
     "Cluster heading",
     "Cluster summary.",
     "Wire",
+    "Wire summary.",
 ]
 PASSED_THROUGH_TEXT = [
     "Fan heading",
