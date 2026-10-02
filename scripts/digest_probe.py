@@ -26,6 +26,9 @@ from pathlib import Path
 
 from aiohttp import web
 from cdp_probe import (
+    CENTRED_VOTE_AREAS,
+    NO_BUTTON_AREAS,
+    NO_SITE_BAR_AREAS,
     SEND_CREDENTIAL,
     Check,
     VoteFixture,
@@ -34,6 +37,7 @@ from cdp_probe import (
     chromium,
     largest_twin,
     require_node,
+    restyle,
     run_all,
 )
 from css_computed import find_browser
@@ -44,6 +48,7 @@ from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageS
 DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
+ARCHIVE = "/index.html"
 
 KINDS = ("signed-in", "signed-in-largest", "vote-fails")
 
@@ -148,6 +153,15 @@ def render_page() -> str:
         return HtmlDigestWriter(Path(unused)).render(content())
 
 
+def render_archive() -> str:
+    """The archive of this issue and the one before it: a headline card and one row."""
+    issues = [(DATE, PERIOD), ("2026-01-01", "evening")]
+    files = (HtmlDigestWriter.digest_filename, HtmlDigestWriter.raw_filename)
+    names = [name(*issue) for issue in issues for name in files]
+    with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
+        return HtmlDigestWriter(Path(unused)).render_index(names, content=content())
+
+
 def build_fixture(kind: str) -> VoteFixture:
     """Serve the digest page with the `/api/vote` answers of one deployment `kind`.
 
@@ -157,7 +171,7 @@ def build_fixture(kind: str) -> VoteFixture:
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
-    page = render_page()
+    page, archive = render_page(), render_archive()
     if kind == "signed-in-largest":
         page = at_largest_type_scale(page)
     app = web.Application()
@@ -165,6 +179,9 @@ def build_fixture(kind: str) -> VoteFixture:
 
     async def serve_page(_: web.Request) -> web.Response:
         return web.Response(text=page, content_type="text/html")
+
+    async def serve_archive(_: web.Request) -> web.Response:
+        return web.Response(text=archive, content_type="text/html")
 
     async def probe(_: web.Request) -> web.Response:
         return web.json_response({"authorized": True})
@@ -177,6 +194,7 @@ def build_fixture(kind: str) -> VoteFixture:
         return web.json_response({"ok": True})
 
     app.router.add_get(PAGE, serve_page)
+    app.router.add_get(ARCHIVE, serve_archive)
     app.router.add_get("/api/vote", probe)
     app.router.add_post("/api/vote", vote)
     return fixture
@@ -476,6 +494,32 @@ _CHECKS += [
         sabotage="""$$(".vote-error").forEach((n) => { n.style.whiteSpace = "pre"; });""",
     )
     for width, fixture in ((360, "signed-in"), (360, "signed-in-largest"))
+]
+# Every tap target takes taps over 44 x 44 on a phone, and none covers another.
+TAP_WIDTH = 375
+_CHECKS += [
+    Check(
+        id=f"tap-{name}-{TAP_WIDTH}",
+        fixture="signed-in",
+        path=path,
+        width=TAP_WIDTH,
+        act="await signedIn();" if path == PAGE else "",
+        script=f"expectTapTargets({json.dumps(selector)});",
+        sabotage=sabotage,
+    )
+    for name, path, selector, sabotage in (
+        ("votes", PAGE, ".promote-btn", NO_BUTTON_AREAS),
+        ("votes-apart", PAGE, ".promote-btn", CENTRED_VOTE_AREAS),
+        ("original", PAGE, ".meta > a.orig", restyle(".meta > .orig { min-width: 0 !important; }")),
+        (
+            "original-clear",
+            PAGE,
+            ".meta > a.orig",
+            restyle(".vote-group { margin-left: 0 !important; }"),
+        ),
+        ("site-bar", PAGE, ".brand, .site-nav a", NO_SITE_BAR_AREAS),
+        ("archive", ARCHIVE, ".btn.sm", NO_BUTTON_AREAS),
+    )
 ]
 # A sabotage: the masthead stops clipping the title the fallback font sets too wide.
 UNCLIPPED_MASTHEAD = """$(".headline-block").style.overflowX = "visible";"""

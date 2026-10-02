@@ -641,6 +641,9 @@ EXPECTED_IDS = {
     "fits-largest-375-tab-hint",
     "fits-375-tab-hint-taps-through",
     "fits-largest-375-tab-hint-taps-through",
+    "tap-tabs-375",
+    "tap-more-375",
+    "tap-more-apart-375",
 }
 
 
@@ -847,6 +850,9 @@ EXPECTED_RAW_IDS = {
     "reduced-motion-still",
     "reduced-motion-advances",
     "reduced-motion-swipe-advances",
+    "tap-votes-375",
+    "tap-votes-apart-375",
+    "tap-site-bar-375",
 }
 
 PENDING_TWO_UP = {
@@ -971,6 +977,17 @@ EXPECTED_DIGEST_IDS = {
     *(f"head-fits-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
     "head-fits-largest-721",
     *(f"fits-largest-{width}" for width in (360, 880, 1000, 1440)),
+    *(
+        f"tap-{name}-375"
+        for name in (
+            "votes",
+            "votes-apart",
+            "original",
+            "original-clear",
+            "site-bar",
+            "archive",
+        )
+    ),
 }
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
@@ -1015,6 +1032,14 @@ def test_the_digest_probe_page_shows_a_vote_group_in_every_item_kind():
 
 def test_the_digest_probe_page_folds_a_cluster_and_a_headline():
     assert {"news-cluster", "headline-item"} <= _placed_in(digest_probe.render_page(), "src-fold")
+
+
+async def test_the_digest_probe_fixture_serves_an_archive_with_small_buttons():
+    [(status, html)] = await _raw_answers(
+        digest_probe.build_fixture("signed-in"), [("GET", digest_probe.ARCHIVE)]
+    )
+    assert status == 200
+    assert html.count('class="btn secondary sm"') == 4
 
 
 @pytest.mark.parametrize("kind", digest_probe.KINDS)

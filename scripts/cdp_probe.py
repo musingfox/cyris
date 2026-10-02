@@ -39,6 +39,8 @@ POINTERS = ("mouse", "touch")
 MOUSE_BUTTONS = ("left", "middle", "right")
 KEYS = ("Enter", " ", "Tab")
 HEIGHT = 900
+# The UI spec's tap area (§4): the least a target takes taps over, each way.
+TAP_PX = 44
 MINIMUM_NODE = 22
 
 
@@ -64,6 +66,29 @@ window.fetch = (input, init) => init && init.method === "POST"
   ? realFetch(input, {...init, headers: {...init.headers, Authorization: "x"}})
   : realFetch(input, init);
 }"""
+
+
+def restyle(css: str) -> str:
+    """A sabotage: `css` is appended to the page as its last stylesheet."""
+    return f"""{{
+const style = document.createElement("style");
+style.textContent = {json.dumps(css)};
+document.head.append(style);
+}}"""
+
+
+# A sabotage: each vote button's hit area is centred on it, as on any other small
+# button, instead of splitting the gap with its pair, so the two overlap.
+CENTRED_VOTE_AREAS = restyle(
+    ".vote-group > .promote-btn::after {"
+    f" left: min(0px, calc((100% - {TAP_PX}px) / 2)) !important;"
+    f" right: min(0px, calc((100% - {TAP_PX}px) / 2)) !important;"
+    " width: auto !important; }"
+)
+# A sabotage: the small buttons lose their hit areas and take taps over 34px alone.
+NO_BUTTON_AREAS = restyle(".btn.sm::after { content: none !important; }")
+# A sabotage: the site bar's links take taps over their drawn boxes alone.
+NO_SITE_BAR_AREAS = restyle(".brand::after, .site-nav a::after { content: none !important; }")
 
 
 # The largest type size, and the style the app Worker injects for it
@@ -212,6 +237,89 @@ const typeScale = () =>
 // A largest-size fixture that failed to inject would otherwise pass as scale 1.
 const expectLargestScale = () => expect(typeScale() === {json.dumps(str(LARGEST_TYPE_SCALE))},
   `--type-scale is ${{typeScale()}}`);
+// The UI spec's tap area: a target takes taps over at least TAP x TAP, and a tap on
+// any point of its drawn box reaches it, so no neighbour's hit area covers it.
+const TAP = {TAP_PX};
+const lands = (el, x, y) => {{
+  const hit = document.elementFromPoint(x, y);
+  return !!hit && el.contains(hit);
+}};
+const named = (el) => {{
+  if (!el) return "nothing";
+  const text = (el.getAttribute("aria-label") || el.textContent).replace(/\\s+/g, " ").trim();
+  const classes = [...el.classList].map((c) => "." + c).join("");
+  return `${{el.tagName.toLowerCase()}}${{classes}} "${{text.slice(0, 24)}}"`;
+}};
+// The first point of a box, sampled every 4px and along its far edges, that misses `el`.
+const missed = (el, left, right, top, bottom) => {{
+  for (let x = left; ; x = Math.min(x + 4, right)) {{
+    for (let y = top; ; y = Math.min(y + 4, bottom)) {{
+      if (!lands(el, x, y)) return [x, y];
+      if (y === bottom) break;
+    }}
+    if (x === right) break;
+  }}
+  return null;
+}};
+// An axis over TAP long is cut to the TAP around `centre`, inside what it reaches: a
+// target needs TAP of its own, and a wide one's rounded ends are no part of that.
+const tapSpan = (low, high, centre) => {{
+  if (high - low + 1 <= TAP) return [low, high];
+  const from = Math.min(Math.max(centre - TAP / 2, low), high + 1 - TAP);
+  return [from, from + TAP - 1];
+}};
+// `el`'s box as far as no scrolling or clipping ancestor cuts it off.
+const unclipped = (el) => {{
+  let {{left, right, top, bottom}} = el.getBoundingClientRect();
+  for (let box = el.parentElement; box; box = box.parentElement) {{
+    if (getComputedStyle(box).overflowX === "visible") continue;
+    const outer = box.getBoundingClientRect();
+    const x = outer.left + box.clientLeft, y = outer.top + box.clientTop;
+    left = Math.max(left, x);
+    right = Math.min(right, x + box.clientWidth);
+    top = Math.max(top, y);
+    bottom = Math.min(bottom, y + box.clientHeight);
+  }}
+  return {{left, right, top, bottom, width: right - left, height: bottom - top}};
+}};
+// What is wrong with `el` as a tap target, or "". The box it owns is scanned out from
+// its centre along both axes, then sampled whole, so a corner another target takes shows.
+const tapProblem = (el) => {{
+  el.scrollIntoView({{block: "center", inline: "center", behavior: "instant"}});
+  const r = unclipped(el);
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const reach = (dx, dy) => {{
+    let n = 0;
+    while (n < 4 * TAP && lands(el, cx + (n + 1) * dx, cy + (n + 1) * dy)) n++;
+    return n;
+  }};
+  const left = cx - reach(-1, 0), right = cx + reach(1, 0);
+  const top = cy - reach(0, -1), bottom = cy + reach(0, 1);
+  const wide = Math.round(right - left + 1), high = Math.round(bottom - top + 1);
+  const drawn = `${{Math.round(r.width)}}x${{Math.round(r.height)}}`;
+  const size = `${{named(el)}}: drawn ${{drawn}}, taps ${{wide}}x${{high}}`;
+  if (wide < TAP || high < TAP) {{
+    const past = wide < TAP ? [right + 1, cy] : [cx, bottom + 1];
+    return `${{size}}, then ${{named(document.elementFromPoint(...past))}} takes them`;
+  }}
+  // A rounded corner is outside the box a browser hit-tests, so the drawn box is
+  // sampled as the cross its corners leave, and 1px in: a hit test snaps a fractional
+  // point to a whole pixel, which can fall just outside an edge.
+  const round = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0,
+    r.width / 2, r.height / 2);
+  const [l, rr, t, b] = [r.left + 1, r.right - 1, r.top + 1, r.bottom - 1];
+  const lost = missed(el, ...tapSpan(left, right, cx), ...tapSpan(top, bottom, cy))
+    || missed(el, l + round, rr - round, t, b) || missed(el, l, rr, t + round, b - round);
+  if (!lost) return "";
+  return `${{size}}, but (${{lost}}) lands on ${{named(document.elementFromPoint(...lost))}}`;
+}};
+// Fails on each shown match of `selector` that is not a tap target, and when none shows.
+const expectTapTargets = (selector) => {{
+  const targets = $$(selector).filter(visible);
+  expect(targets.length, `no ${{selector}} shows`);
+  const problems = targets.map(tapProblem).filter(Boolean);
+  expect(!problems.length, problems.join("; "));
+}};
 """
 
 

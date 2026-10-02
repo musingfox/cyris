@@ -28,6 +28,9 @@ from pathlib import Path
 
 from aiohttp import web
 from cdp_probe import (
+    CENTRED_VOTE_AREAS,
+    NO_BUTTON_AREAS,
+    NO_SITE_BAR_AREAS,
     SEND_CREDENTIAL,
     Check,
     VoteFixture,
@@ -1110,6 +1113,23 @@ _CHECKS: list[Check] = [
             ),
         )
     ),
+]
+# Every tap target takes taps over 44 x 44 on a phone, and none covers another.
+_CHECKS += [
+    Check(
+        id=f"tap-{name}-375",
+        fixture="signed-in",
+        path=PAGE,
+        width=375,
+        act="await signedIn();",
+        script=f"expectTapTargets({json.dumps(selector)});",
+        sabotage=sabotage,
+    )
+    for name, selector, sabotage in (
+        ("votes", ".promote-btn", NO_BUTTON_AREAS),
+        ("votes-apart", ".promote-btn", CENTRED_VOTE_AREAS),
+        ("site-bar", ".brand, .site-nav a", NO_SITE_BAR_AREAS),
+    )
 ]
 # The page never scrolls sideways at the largest type size either.
 _CHECKS += [
