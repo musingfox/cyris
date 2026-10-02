@@ -53,4 +53,6 @@ validate the Access JWT itself.
 
 Protected paths are `/settings`, `/login`, `/run`, `/api/*` and `/static/*`. Behind
 Access they 302 to `cloudflareaccess.com` rather than 401, so a script against an
-Access hostname needs an Access service token. Nothing in cyris calls its own UI.
+Access hostname needs an Access service token. `cyris doctor --deployment` and the
+deploy workflow's `verify` step log in and read `/api/build`, so both take the
+`workers.dev` URL.

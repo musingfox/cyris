@@ -18,7 +18,7 @@ file.
 
 The release path gets its own configuration instead. A release deploy renders a
 derived config — same file with `image` replaced by
-`registry.cloudflare.com/<ACCOUNT_ID>/<IMAGE>:<TAG>` — from the account id the
+`registry.cloudflare.com/<ACCOUNT_ID>/<IMAGE>@<DIGEST>` — from the account id the
 CI environment supplies, and passes it with `wrangler deploy --config`. The
 derived file is a build artifact: generated, used, never committed.
 

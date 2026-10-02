@@ -113,4 +113,5 @@ normalisation) without needing the Workers runtime.
   HTTP 429 on the first cloud poll; concurrency was dropped from 10 to 4 and some
   still fail. Because the buffer accumulates, a 429'd feed usually lands on a later
   tick — but a persistently blocked one would silently vanish from the digest.
-  Watch `/stats` for Substack names whose article count stays at zero across ticks.
+  `/stats` counts the whole buffer, not each feed, so watch the `failures` list a
+  `POST /poll` returns for Substack feeds that keep failing.

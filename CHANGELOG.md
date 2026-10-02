@@ -327,7 +327,7 @@ All of these are breaking.
   `SourceConfig.paywall`, `adapters/cookies.py`, `extractor.py`, and the
   `trafilatura` / `browser-cookie3` dependencies are gone. Measured over August it
   captured zero paid articles, and it reached a browser detail into `ports.py`.
-  See *Paywalled Sources* in the README for what to do instead.
+  See *Paywalled sources* in `docs/sources.md` for what to do instead.
 - The TMTB source, whose feed had served one item dated 2023.
 
 ### Fixed
