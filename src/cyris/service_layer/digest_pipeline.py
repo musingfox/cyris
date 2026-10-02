@@ -117,7 +117,10 @@ class DigestPipeline:
             len(fan_tier),
         )
 
-        usage = UsageStats(model=self._llm.model if self._llm else NO_LLM_MODEL)
+        usage = UsageStats(
+            model=self._llm.model if self._llm else NO_LLM_MODEL,
+            fell_back_to_excerpts=self._llm is None,
+        )
 
         # Split filter tier into news and non-news
         news_articles, non_news_articles = filter_news(filter_tier)

@@ -6,7 +6,7 @@ from datetime import UTC
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Tier
+from cyris.domain.models import Tier, UsageStats
 from cyris.service_layer.summarize import _group_by_tags, summarize_articles
 
 pytestmark = pytest.mark.unit
@@ -42,6 +42,29 @@ class TestGroupByTags:
 
 
 class TestSummarizeArticles:
+    @pytest.mark.parametrize(
+        ("llm", "fell_back"),
+        [
+            (None, True),
+            (FakeLLM(error=RuntimeError("quota")), True),
+            (FakeLLM(json.dumps({"sections": []})), False),
+        ],
+        ids=["no-client", "call-failed", "answered"],
+    )
+    async def test_only_a_fallback_marks_the_usage(self, sample_summarize_articles, llm, fell_back):
+        usage = UsageStats(model="m")
+
+        await summarize_articles(
+            sample_summarize_articles,
+            llm,
+            usage=usage,
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert usage.fell_back_to_excerpts is fell_back
+
     async def test_summarize_returns_sections(self, sample_summarize_articles):
         llm = FakeLLM(
             json.dumps(

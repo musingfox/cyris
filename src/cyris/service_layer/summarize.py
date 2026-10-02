@@ -53,6 +53,8 @@ async def summarize_articles(
     # Degraded mode: no LLM → one plain excerpt per article, grouped by tag
     if llm is None:
         logger.warning("No LLM configured; summarize tier falls back to excerpts")
+        if usage is not None:
+            usage.fell_back_to_excerpts = True
         return excerpt_sections_from_articles(articles, article_scores)
 
     groups = _group_by_tags(articles)
@@ -74,6 +76,8 @@ async def summarize_articles(
             logger.warning(
                 "Summarize LLM call failed for tag '%s'; excerpt fallback", tag, exc_info=True
             )
+            if usage is not None:
+                usage.fell_back_to_excerpts = True
             sections.extend(excerpt_sections_from_articles(group_articles, article_scores))
             continue
 

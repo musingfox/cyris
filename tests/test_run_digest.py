@@ -877,7 +877,7 @@ async def test_notification_marks_a_quota_exhausted_configured_llm_as_degraded(
     assert degraded == [True]
 
 
-async def test_notification_marks_zero_token_llm_usage_as_degraded(tmp_path: Path) -> None:
+async def test_notification_trusts_an_llm_that_answered_with_zero_tokens(tmp_path: Path) -> None:
     degraded: list = []
     deps, _ = make_deps(
         tmp_path,
@@ -891,7 +891,7 @@ async def test_notification_marks_zero_token_llm_usage_as_degraded(tmp_path: Pat
 
     await run_digest(deps, RunOptions())
 
-    assert degraded == [True]
+    assert degraded == [False]
 
 
 async def test_notification_keeps_actual_llm_model_when_config_model_is_empty(
@@ -1243,7 +1243,7 @@ async def test_a_failed_run_row_write_is_logged_as_an_error(tmp_path: Path, capl
     )
 
 
-async def test_a_zero_token_run_records_the_degraded_verdict_discord_shows(
+async def test_a_zero_token_run_that_was_answered_records_what_discord_shows(
     tmp_path: Path,
 ) -> None:
     degraded: list = []
@@ -1260,8 +1260,8 @@ async def test_a_zero_token_run_records_the_degraded_verdict_discord_shows(
 
     await run_digest(deps, RunOptions())
 
-    assert recorded[0]["degraded"] is True
-    assert degraded == [True]
+    assert recorded[0]["degraded"] is False
+    assert degraded == [False]
 
 
 async def test_a_run_that_used_its_llm_records_not_degraded(tmp_path: Path) -> None:
@@ -1346,43 +1346,41 @@ async def test_a_provider_none_run_ignores_a_leftover_model(tmp_path: Path) -> N
     assert degraded == [False]
 
 
-async def test_a_configured_provider_that_spent_nothing_is_still_degraded(tmp_path: Path) -> None:
-    deps, _ = make_deps(
-        tmp_path, _notify_llm(input_tokens=0, model="test-model"), FakeSource([_notify_article()])
-    )
-    deps, recorded = _recording(deps)
-    deps.cfg.app.llm_provider.provider = "gemini"
-    deps.cfg.app.llm_provider.model = ""
-
-    await run_digest(deps, RunOptions())
-
-    assert recorded[0]["degraded"] is True
+def _quiet_window_article() -> Article:
+    article = _notify_article()
+    article.source_name = "FanSource"
+    article.source_tier = Tier.FAN
+    return article
 
 
 @pytest.mark.parametrize(
-    ("provider", "degraded"),
-    [("gemini", True), ("none", False)],
-    ids=["missing-key", "provider-none"],
+    ("llm", "provider", "article", "degraded"),
+    [
+        (None, "gemini", _notify_article, True),
+        (FakeLLM(error=RuntimeError("quota")), "gemini", _notify_article, True),
+        (FakeLLM(), "gemini", _quiet_window_article, False),
+        (None, "none", _notify_article, False),
+    ],
+    ids=["missing-key", "call-failed", "quiet-window", "provider-none"],
 )
-async def test_every_channel_agrees_on_a_run_with_no_llm_client(
-    tmp_path: Path, provider: str, degraded: bool
+async def test_every_channel_agrees_on_whether_a_run_fell_back(
+    tmp_path: Path, llm, provider: str, article, degraded: bool
 ) -> None:
-    """No client is built for provider none or for a missing key; only the config differs."""
+    """A quiet window spends no tokens with a healthy client; only a fallback degrades a run."""
     discord: list = []
     mailed: list = []
 
     async def mail(recipient, sender, content, **kwargs):
         mailed.append(kwargs["degraded"])
 
-    deps, _ = make_deps(
-        tmp_path, llm=None, source=FakeSource([_notify_article()]), discord_degraded=discord
-    )
+    deps, _ = make_deps(tmp_path, llm=llm, source=FakeSource([article()]), discord_degraded=discord)
     deps, recorded = _recording(replace(deps, send_email=mail))
     deps.cfg.app.llm_provider.provider = provider
     deps.cfg.app.notify.email_to = "me@example.org"
 
     report = await run_digest(deps, RunOptions())
 
+    assert recorded[0]["llm"]["input_tokens"] == 0
     assert recorded[0]["degraded"] is degraded
     assert discord == [degraded]
     assert mailed == [degraded]

@@ -7,13 +7,36 @@ from datetime import UTC, datetime
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Tier, UsageStats
 from cyris.service_layer.filtering import filter_articles
 
 pytestmark = pytest.mark.unit
 
 
 class TestFilterArticles:
+    @pytest.mark.parametrize(
+        ("llm", "fell_back"),
+        [
+            (None, True),
+            (FakeLLM(error=RuntimeError("quota")), True),
+            (FakeLLM(json.dumps({"selected": []})), False),
+        ],
+        ids=["no-client", "call-failed", "answered"],
+    )
+    async def test_only_a_fallback_marks_the_usage(self, sample_filter_articles, llm, fell_back):
+        usage = UsageStats(model="m")
+
+        await filter_articles(
+            sample_filter_articles,
+            llm,
+            usage=usage,
+            filter_snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert usage.fell_back_to_excerpts is fell_back
+
     async def test_filter_returns_noteworthy_items(self, sample_filter_articles):
         llm = FakeLLM(
             json.dumps(

@@ -202,7 +202,9 @@ class TestDigestMail:
         )
 
         sent = json.loads(route.calls.last.request.content)
-        assert ('<p class="notice">This issue is plain excerpts' in sent["html"]) is degraded
+        assert (
+            '<p class="notice">Some or all of this issue is plain excerpts' in sent["html"]
+        ) is degraded
 
     @respx.mock
     async def test_no_recipient_sends_nothing(self):
@@ -228,8 +230,8 @@ class TestDigestMail:
 
 
 class TestDigestMailText:
-    EMPTY = "Nothing is in this issue: the filter kept none of the 300 articles this run received."
-    DEGRADED = "This issue is plain excerpts, unscored and unsummarised"
+    EMPTY = "Nothing is in this issue: this run judged the 300 articles it received and kept none."
+    DEGRADED = "Some or all of this issue is plain excerpts"
 
     @staticmethod
     def _empty() -> DigestContent:
@@ -259,7 +261,7 @@ class TestDigestMailText:
     def test_an_issue_with_articles_has_no_empty_sentence(self):
         _, text = build_digest_mail(_content(), raw_page=True)
 
-        assert "the filter kept none" not in text
+        assert "kept none" not in text
 
     @pytest.mark.parametrize("degraded", [True, False])
     def test_only_a_degraded_issue_carries_the_degraded_line(self, degraded):

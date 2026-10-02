@@ -122,18 +122,33 @@ class TestUsageStats:
     @pytest.mark.parametrize(
         ("usage", "chooses_no_llm", "expected"),
         [
-            (UsageStats(model="gemini-3-flash", input_tokens=0, api_calls=0), False, True),
-            (UsageStats(model="gemini-3-flash", input_tokens=0, api_calls=1), False, True),
-            (UsageStats(model="gemini-3-flash", input_tokens=15000, api_calls=4), False, False),
-            (UsageStats(model=NO_LLM_MODEL, input_tokens=0), False, True),
-            (UsageStats(model=NO_LLM_MODEL, input_tokens=0), True, False),
+            (UsageStats(model="m", api_calls=1, fell_back_to_excerpts=True), False, True),
+            (UsageStats(model="m", input_tokens=900, fell_back_to_excerpts=True), False, True),
+            (UsageStats(model="m", input_tokens=15000, api_calls=4), False, False),
+            (UsageStats(model="m"), False, False),
+            (UsageStats(model=NO_LLM_MODEL, fell_back_to_excerpts=True), False, True),
+            (UsageStats(model=NO_LLM_MODEL, fell_back_to_excerpts=True), True, False),
         ],
-        ids=["quota", "failed-call", "healthy", "missing-key", "provider-none"],
+        ids=[
+            "quota",
+            "one-step-failed",
+            "healthy",
+            "nothing-to-do",
+            "missing-key",
+            "provider-none",
+        ],
     )
-    def test_degraded_run_wanted_an_llm_and_spent_no_input_tokens(
+    def test_degraded_run_wanted_an_llm_and_fell_back_to_excerpts(
         self, usage, chooses_no_llm, expected
     ):
         assert is_degraded_run(usage, chooses_no_llm=chooses_no_llm) is expected
+
+    def test_a_fallback_survives_a_merge(self):
+        usage = UsageStats(model="m")
+        usage.merge(UsageStats(model="m", fell_back_to_excerpts=True))
+        usage.merge(UsageStats(model="m"))
+
+        assert usage.fell_back_to_excerpts
 
     def test_no_llm_model_constant_replaces_pipeline_sentinels(self):
         assert NO_LLM_MODEL == "none"
