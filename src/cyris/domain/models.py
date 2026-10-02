@@ -86,8 +86,8 @@ class DigestSection(BaseModel):
     description: str | None = None
     items: list[DigestItem] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
-    # One summary the LLM wrote for the whole summarize-tier group, which every item
-    # also carries. Set only there: a degraded section's items each have their own.
+    # One summary the LLM wrote for the whole summarize-tier group, beside each item's
+    # own. Set only there, and printed only when the group is the Top story.
     summary: str | None = None
     # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
     # news clusters; None everywhere else and on digests rendered before stories.

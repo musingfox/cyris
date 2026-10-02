@@ -91,13 +91,16 @@ For each topic group:
 or complementary viewpoints
 4. When sources conflict, attribute specific claims to sources rather than \
 stating facts without attribution
+5. For every article id in the group, also write a 2-3 sentence summary of that \
+article alone, keyed by its id in "summaries": the reader may see it on its own
 
 Respond in JSON format:
 {
   "sections": [
     {
       "heading": "<thematic heading in <output_language>>",
-      "summary": "<3-5 sentence summary in <output_language>>",
+      "summary": "<3-5 sentence summary of the group in <output_language>>",
+      "summaries": {"<article id>": "<2-3 sentence summary of that article in <output_language>>"},
       "article_ids": [<article id>, ...]
     }
   ]
