@@ -37,6 +37,20 @@ def _accepts_empty(key: str) -> bool:
     return True
 
 
+def _refused(error: str, field: str) -> web.Response:
+    """A 400 whose `field`, a settings key or a source field, is the one the page marks."""
+    return web.json_response({"ok": False, "error": error, "field": field}, status=400)
+
+
+def _label(key: str) -> str:
+    return SETTINGS_FIELDS[key]["label"]
+
+
+def _probe_refusal(probe) -> str:
+    """What the check found, then what to do about it."""
+    return "\n".join(part for part in (probe.detail, probe.fix) if part)
+
+
 def _values_note(keys: list[str]) -> str:
     """When the saved keys take effect: a live key reaches the pages, the rest the next run."""
     live = [SETTINGS_FIELDS[key]["label"] for key in keys if SETTINGS_FIELDS[key].get("live")]
@@ -229,9 +243,7 @@ class TriageServer:
         try:
             candidate = LLMProviderConfig(provider=provider, model=model)
         except ValidationError:
-            return web.json_response(
-                {"ok": False, "error": f"unknown provider {provider!r}"}, status=400
-            )
+            return _refused(f"unknown provider {provider!r}", "llm_provider.provider")
 
         if provider == "none":
             # Nothing to call, and a leftover model must not outlive its provider.
@@ -240,7 +252,7 @@ class TriageServer:
         else:
             probe = await probe_llm(candidate)
             if probe.status != "ok":
-                return web.json_response({"ok": False, "error": probe.detail}, status=400)
+                return _refused(_probe_refusal(probe), "llm_provider.model")
             detail = probe.detail
 
         chosen = {"llm_provider.provider": provider, "llm_provider.model": model}
@@ -309,7 +321,7 @@ class TriageServer:
         try:
             times = validate_schedule([str(t).strip() for t in body.get("times") or []])
         except ValueError as e:
-            return web.json_response({"ok": False, "error": str(e)}, status=400)
+            return _refused(str(e), "general.digest_schedule")
 
         if (refused := self._store({"general.digest_schedule": times})) is not None:
             return refused
@@ -332,14 +344,16 @@ class TriageServer:
             )
         validated = {}
         for key, value in values.items():
-            if key not in PLAIN_KEYS:
+            if key not in SETTINGS_FIELDS:
                 return web.json_response(
-                    {"ok": False, "error": f"{key} is saved from its own form"}, status=400
+                    {"ok": False, "error": f"{key!r} is not a setting"}, status=400
                 )
+            if key not in PLAIN_KEYS:
+                return _refused(f"{_label(key)} is saved from its own form", key)
             try:
                 validated[key] = validate_setting(key, value)
             except ValueError as e:
-                return web.json_response({"ok": False, "error": f"{key}: {e}"}, status=400)
+                return _refused(f"{_label(key)}: {e}", key)
 
         if (refused := self._store(validated)) is not None:
             return refused
@@ -356,6 +370,7 @@ class TriageServer:
         Off stores without a call: a deployment with no embedding key must still
         be able to complete its settings.
         """
+        from cyris.bootstrap import EMBEDDING_ENV
         from cyris.config import validate_setting
 
         body = await self._settings_body(request)
@@ -366,18 +381,20 @@ class TriageServer:
         for field in ("enabled", "provider", "model", "max_seeds"):
             key = f"vote_similarity.{field}"
             if field not in body:
-                return web.json_response({"ok": False, "error": f"{field} is required"}, status=400)
+                return _refused(f"{_label(key)} is required", key)
             try:
                 values[key] = validate_setting(key, body[field])
             except ValueError as e:
-                return web.json_response({"ok": False, "error": f"{key}: {e}"}, status=400)
+                return _refused(f"{_label(key)}: {e}", key)
 
         if values["vote_similarity.enabled"]:
-            probe = await probe_embedder(
-                values["vote_similarity.provider"], values["vote_similarity.model"]
-            )
+            provider = values["vote_similarity.provider"]
+            probe = await probe_embedder(provider, values["vote_similarity.model"])
             if probe.status != "ok":
-                return web.json_response({"ok": False, "error": probe.detail}, status=400)
+                # A missing key is the provider's to fix, the way the page marks it.
+                keyed = all(os.environ.get(var) for var in EMBEDDING_ENV[provider])
+                field = "vote_similarity.model" if keyed else "vote_similarity.provider"
+                return _refused(_probe_refusal(probe), field)
             detail = probe.detail
         else:
             detail = "Not checked: vote similarity is off. Turning it on checks the embedder first."
@@ -423,19 +440,14 @@ class TriageServer:
 
         url = (body.get("discord_webhook_url") or "").strip()
         if not url:
-            return web.json_response(
-                {
-                    "ok": False,
-                    "error": (
-                        "Paste a Discord webhook URL, or press Turn off to stop notifications."
-                    ),
-                },
-                status=400,
+            return _refused(
+                "Paste a Discord webhook URL, or press Turn off to stop notifications.",
+                "notify.discord_webhook_url",
             )
 
         probe = await probe_discord(url)
         if probe.status != "ok":
-            return web.json_response({"ok": False, "error": probe.detail}, status=400)
+            return _refused(_probe_refusal(probe), "notify.discord_webhook_url")
 
         if (refused := self._store({"notify.discord_webhook_url": url})) is not None:
             return refused
@@ -476,10 +488,7 @@ class TriageServer:
             )
 
         if not sender:
-            return web.json_response(
-                {"ok": False, "error": "Enter the address the digest is sent from, too."},
-                status=400,
-            )
+            return _refused("Enter the address the digest is sent from, too.", "notify.email_from")
 
         account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
         token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
@@ -568,18 +577,26 @@ class TriageServer:
         try:
             source = SourceConfig.model_validate(body)
         except ValidationError as e:
-            return web.json_response({"ok": False, "error": str(e)}, status=400)
+            # One line, in the body's own field names: the page sends only values
+            # this model accepts, so whoever reads this wrote the request.
+            reasons = "; ".join(
+                f"{'.'.join(map(str, err['loc'])) or 'body'}: {err['msg']}" for err in e.errors()
+            )
+            return _refused(reasons, ".".join(map(str, e.errors()[0]["loc"][:1])))
         if not source.name.strip():
-            return web.json_response({"ok": False, "error": "name is required"}, status=400)
+            return _refused("A source needs a name.", "name")
         if not source.fetchable:
             needs = {
-                "rss": "An RSS source needs a Feed URL.",
-                NEWSLETTER_SOURCE_TYPE: "A newsletter source needs a Sender match.",
+                "rss": ("An RSS source needs a Feed URL.", "url"),
+                NEWSLETTER_SOURCE_TYPE: (
+                    "A newsletter source needs a Sender match.",
+                    "email_match",
+                ),
             }
-            error = needs.get(
-                source.type, f"A source's type is rss or newsletter, not {source.type!r}."
+            error, field = needs.get(
+                source.type, (f"A source's type is rss or newsletter, not {source.type!r}.", "type")
             )
-            return web.json_response({"ok": False, "error": error}, status=400)
+            return _refused(error, field)
 
         try:
             self._source_store.upsert(source)

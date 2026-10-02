@@ -8,8 +8,8 @@ import respx
 from aiohttp.test_utils import TestClient, TestServer
 from fakes import TEST_SETTINGS
 
-from cyris.config import GRADE_D_KEYS
-from cyris.entrypoints.triage_server import TriageServer
+from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS
+from cyris.entrypoints.triage_server import PLAIN_KEYS, TriageServer
 
 pytestmark = pytest.mark.integration
 
@@ -380,7 +380,8 @@ class TestPlainValues:
         await client.close()
 
         assert res.status == 400
-        assert body["error"].startswith("routing.score_threshold: ")
+        assert body["error"] == "Featured score: Input should be less than or equal to 100"
+        assert body["field"] == "routing.score_threshold"
         assert settings.calls == []
 
     async def test_a_key_with_its_own_form_is_refused(self, settings):
@@ -393,7 +394,8 @@ class TestPlainValues:
         await client.close()
 
         assert res.status == 400
-        assert body["error"] == "llm_provider.model is saved from its own form"
+        assert body["error"] == "Model is saved from its own form"
+        assert body["field"] == "llm_provider.model"
         assert settings.calls == []
 
     async def test_the_type_size_as_a_string_is_refused(self, settings):
@@ -406,7 +408,8 @@ class TestPlainValues:
         await client.close()
 
         assert res.status == 400
-        assert body["error"].startswith("digest.type_scale:")
+        assert body["error"] == "Type size: Input should be 0.875, 1 or 1.125"
+        assert body["field"] == "digest.type_scale"
         assert settings.calls == []
 
     @pytest.mark.parametrize(
@@ -568,7 +571,8 @@ class TestVoteSimilarity:
         await client.close()
 
         assert res.status == 400
-        assert body["error"].startswith("vote_similarity.provider: ")
+        assert body["error"] == "Embedding provider: Input should be 'workers_ai' or 'gemini'"
+        assert body["field"] == "vote_similarity.provider"
         assert probe.calls == []
         assert settings.calls == []
 
@@ -581,7 +585,8 @@ class TestVoteSimilarity:
         await client.close()
 
         assert res.status == 400
-        assert "max_seeds" in answer["error"]
+        assert answer["error"] == "Votes compared is required"
+        assert answer["field"] == "vote_similarity.max_seeds"
         assert settings.calls == []
 
     async def test_without_a_settings_store_the_page_refuses_to_save(self, probe):
@@ -1125,3 +1130,117 @@ class TestEmailSettingsWrite:
 
         assert res.status == 400
         assert settings.calls == []
+
+
+class TestRefusalsNameTheField:
+    """A refusal names the setting by its label and tells the page which field to mark."""
+
+    @pytest.mark.parametrize("key", PLAIN_KEYS)
+    async def test_a_plain_value_refused_is_named_by_its_label(self, settings, key):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/values", json={"values": {key: None}})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body == {
+            "ok": False,
+            "error": f"{SETTINGS_FIELDS[key]['label']}: a value is required",
+            "field": key,
+        }
+        assert settings.calls == []
+
+    async def test_a_refused_model_marks_the_model_and_says_what_to_do(self, settings, monkeypatch):
+        from cyris.diagnostics.doctor import Check
+
+        async def refuse(candidate):
+            return Check("llm probe", "fail", "typo refused: 404", "Check the model name.")
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_llm", refuse)
+        client = await _client(settings)
+
+        res = await client.post("/api/settings", json={"provider": "gemini", "model": "typo"})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "typo refused: 404\nCheck the model name."
+        assert body["field"] == "llm_provider.model"
+        assert settings.calls == []
+
+    @pytest.mark.parametrize(
+        ("keyed", "field"),
+        [(True, "vote_similarity.model"), (False, "vote_similarity.provider")],
+    )
+    async def test_a_refused_embedder_marks_what_would_fix_it(
+        self, settings, monkeypatch, keyed, field
+    ):
+        from cyris.diagnostics.doctor import Check
+
+        async def refuse(provider, model):
+            return Check("embedding probe", "fail", "refused", "Do this next.")
+
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_embedder", refuse)
+        monkeypatch.setenv("GEMINI_API_KEY", "g")
+        if not keyed:
+            monkeypatch.delenv("GEMINI_API_KEY")
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/vote-similarity",
+            json={"enabled": True, "provider": "gemini", "model": "", "max_seeds": 200},
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert (body["error"], body["field"]) == ("refused\nDo this next.", field)
+        assert settings.calls == []
+
+    async def test_a_refused_webhook_carries_the_probes_next_step(self, settings, monkeypatch):
+        from cyris.diagnostics.doctor import Check
+
+        async def refuse(url, transport=None):
+            return Check("discord probe", "fail", "not a Discord webhook URL", "Copy it again.")
+
+        monkeypatch.setattr("cyris.entrypoints.triage_server.probe_discord", refuse)
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/notify", json={"discord_webhook_url": "x"})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "not a Discord webhook URL\nCopy it again."
+        assert body["field"] == "notify.discord_webhook_url"
+
+    async def test_a_refused_schedule_marks_the_hours(self, settings):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/schedule", json={"times": ["08:30", "20:00"]})
+        body = await res.json()
+        await client.close()
+
+        assert (res.status, body["field"]) == (400, "general.digest_schedule")
+
+    async def test_a_recipient_without_a_sender_marks_the_sender(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/email", json={"email_to": "me@example.org", "email_from": ""}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert (res.status, body["field"]) == (400, "notify.email_from")
+
+    async def test_an_unknown_key_is_refused_without_a_field(self, settings):
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/values", json={"values": {"nope.x": 1}})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body == {"ok": False, "error": "'nope.x' is not a setting"}

@@ -183,31 +183,56 @@ class TestSourcesWriteSurface:
     async def test_an_invalid_tier_is_a_400_not_a_row(self, client: TestClient) -> None:
         resp = await client.post("/api/sources", json={"name": "x", "tier": "nonsense"})
         assert resp.status == 400
+        assert await resp.json() == {
+            "ok": False,
+            "error": "tier: Input should be 'filter', 'summarize' or 'fan'",
+            "field": "tier",
+        }
         assert self.sources.list_sources() == {}
 
+    async def test_a_body_that_is_not_an_object_is_one_line(self, client: TestClient) -> None:
+        resp = await client.post("/api/sources", json=["x"])
+        assert resp.status == 400
+        assert await resp.json() == {
+            "ok": False,
+            "error": "body: Input should be a valid dictionary or instance of SourceConfig",
+            "field": "",
+        }
+
+    async def test_a_blank_name_is_a_400_naming_the_field(self, client: TestClient) -> None:
+        resp = await client.post("/api/sources", json={"name": " ", "url": "https://n.test/rss"})
+        assert resp.status == 400
+        assert await resp.json() == {
+            "ok": False,
+            "error": "A source needs a name.",
+            "field": "name",
+        }
+
     @pytest.mark.parametrize(
-        ("body", "error"),
+        ("body", "error", "field"),
         [
-            ({"type": "rss"}, "An RSS source needs a Feed URL."),
-            ({"type": "rss", "url": "  "}, "An RSS source needs a Feed URL."),
-            ({"type": "newsletter"}, "A newsletter source needs a Sender match."),
+            ({"type": "rss"}, "An RSS source needs a Feed URL.", "url"),
+            ({"type": "rss", "url": "  "}, "An RSS source needs a Feed URL.", "url"),
+            ({"type": "newsletter"}, "A newsletter source needs a Sender match.", "email_match"),
             (
                 {"type": "newsletter", "url": "https://n.test/feed"},
                 "A newsletter source needs a Sender match.",
+                "email_match",
             ),
             (
                 {"type": "web", "url": "https://n.test/feed"},
                 "A source's type is rss or newsletter, not 'web'.",
+                "type",
             ),
         ],
     )
     async def test_a_source_no_fetcher_reads_is_a_400_not_a_row(
-        self, client: TestClient, body: dict, error: str
+        self, client: TestClient, body: dict, error: str, field: str
     ) -> None:
         resp = await client.post("/api/sources", json={"name": "x", **body})
 
         assert resp.status == 400
-        assert await resp.json() == {"ok": False, "error": error}
+        assert await resp.json() == {"ok": False, "error": error, "field": field}
         assert self.sources.list_sources() == {}
 
     async def test_a_newsletter_with_a_sender_match_is_stored(self, client: TestClient) -> None:

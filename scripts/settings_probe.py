@@ -288,7 +288,7 @@ SAVE_FEATURED_7 = """
 await settingsLoaded();
 setValue($("#max-featured"), "7");
 saveOf("digest").click();
-await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled, "the save");
+await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled, "the save");
 """
 
 # Pick a type size in the Digest form and save it; `value` is the option's.
@@ -296,7 +296,7 @@ SAVE_TYPE_SCALE = """
 await settingsLoaded();
 setValue($("#type-scale"), "{value}");
 saveOf("digest").click();
-await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled, "the save");
+await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled, "the save");
 """
 
 
@@ -371,6 +371,91 @@ def hold_post(path: str) -> str:
         }))""",
     )
 
+
+def hold_delete() -> str:
+    """A preload that holds the page's DELETE of a source until `__release()`."""
+    return """
+const realFetch = window.fetch;
+window.fetch = (input, init) =>
+  String(input).includes("/api/sources/") && init && init.method === "DELETE"
+    ? new Promise((resolve) => { window.__release = () => resolve(realFetch(input, init)); })
+    : realFetch(input, init);
+"""
+
+
+def refuse_post(path: str, error: str, field: str) -> str:
+    """A preload under which the page's POST to `path` is refused for `field`."""
+    body = json.dumps(json.dumps({"ok": False, "error": error, "field": field}))
+    return answer_post(
+        path,
+        f"""Promise.resolve(new Response({body},
+          {{status: 400, headers: {{"Content-Type": "application/json"}}}}))""",
+    )
+
+
+SAVE_BAD_TIMEZONE = """
+await settingsLoaded();
+setValue($("#timezone"), "Mars/Base");
+saveOf("digest").click();
+await waitFor(() => settled(noticeOf("digest")), "the refusal");
+"""
+TIMEZONE_REFUSED = "Timezone: 'Mars/Base' is not a timezone this server knows"
+
+MODEL_REFUSED = "typo refused: 404\nCheck the model name, then save again."
+EMBEDDER_REFUSED = "CLOUDFLARE_EMBEDDING_API_TOKEN is not set\nSet it, or save with it off."
+
+# The color --warn resolves to, for comparing a border against.
+WARN = """
+const warnOf = () => {
+  const swatch = document.createElement("span");
+  swatch.style.color = "var(--warn)";
+  document.body.append(swatch);
+  const color = getComputedStyle(swatch).color;
+  swatch.remove();
+  return color;
+};
+"""
+
+# Per save: where it starts, the POST it sends, the change that sends it, the
+# notice it reports in, and what that notice says while the POST is out.
+BUSY = {
+    "digest": (
+        "/settings#digest",
+        "/api/settings/values",
+        """setValue($("#max-featured"), "7");""",
+        "digest",
+        "Saving…",
+    ),
+    "pipeline": (
+        "/settings#pipeline",
+        "/api/settings/values",
+        """setValue($("#window-hours"), "12");""",
+        "pipeline",
+        "Saving…",
+    ),
+    "model-vote-off": (
+        "/settings#model",
+        "/api/settings/vote-similarity",
+        """setValue($("#vote-seeds"), "50");""",
+        "model",
+        "Saving…",
+    ),
+    "discord": (
+        "/settings#notifications",
+        "/api/settings/notify",
+        f"""setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});""",
+        "notifications",
+        "Checking with Discord…",
+    ),
+    "email": (
+        "/settings#notifications",
+        "/api/settings/email",
+        """setValue($("#email-to"), "me@example.org");
+        setValue($("#email-from"), "d@example.org");""",
+        "notifications",
+        "Sending a test message…",
+    ),
+}
 
 EDITED_WEBHOOK = "https://discord.com/api/webhooks/7/EDITEDTOKEN"
 
@@ -886,7 +971,7 @@ CHECKS: list[Check] = [
             $('[data-type="newsletter"]', editor()).click();
             setValue($("#e-email", editor()), "from:hn@example.com");
             editorAct("save").click();
-            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+            await waitFor(() => editor() && settled($(".notice", editor())), "the save");
         """,
         script="",
         sabotage_preload=rewrite_post(
@@ -908,7 +993,7 @@ CHECKS: list[Check] = [
             await openRow("Simon Willison");
             setValue($("#e-tags", editor()), " ai, , tools ");
             editorAct("save").click();
-            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+            await waitFor(() => editor() && settled($(".notice", editor())), "the save");
         """,
         script="",
         sabotage_preload=rewrite_post("/api/sources", 'body.tags = ["ai", "", "tools"];'),
@@ -937,7 +1022,7 @@ CHECKS: list[Check] = [
             await settingsLoaded();
             setValue($("#morning"), "25");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the notice");
+            await waitFor(() => settled(noticeOf("digest")), "the notice");
         """,
         script="""
             const notice = noticeOf("digest"), text = notice.textContent.trim();
@@ -961,7 +1046,7 @@ CHECKS: list[Check] = [
             await settingsLoaded();
             setValue($("#evening"), "");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the notice");
+            await waitFor(() => settled(noticeOf("digest")), "the notice");
         """,
         script="""
             const field = $("#hours-error"), text = field.textContent;
@@ -987,7 +1072,7 @@ CHECKS: list[Check] = [
             await settingsLoaded();
             setValue($("#evening"), "20");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the notice");
+            await waitFor(() => settled(noticeOf("digest")), "the notice");
         """,
         script="""
             const field = $("#hours-error"), text = field.textContent;
@@ -1050,7 +1135,7 @@ CHECKS: list[Check] = [
             await settingsLoaded();
             setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});
             saveOf("notifications").click();
-            await waitFor(() => visible($("#notify-result")), "the notice");
+            await waitFor(() => settled($("#notify-result")), "the notice");
         """,
         script=f"""
             const notice = $("#notify-result"), field = $("#discord-webhook");
@@ -1077,7 +1162,7 @@ CHECKS: list[Check] = [
             setValue($("#email-to"), "me@example.org");
             setValue($("#email-from"), "d@example.org");
             saveOf("notifications").click();
-            await waitFor(() => visible($("#notify-result"))
+            await waitFor(() => settled($("#notify-result"))
               && !$("#notify-result").textContent.startsWith("Sending"), "the notice");
         """,
         script="""
@@ -1099,7 +1184,7 @@ CHECKS: list[Check] = [
             await settingsLoaded();
             setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});
             saveOf("notifications").click();
-            await waitFor(() => visible($("#notify-result")), "the notice");
+            await waitFor(() => settled($("#notify-result")), "the notice");
         """,
         script="""
             const notice = $("#notify-result"), text = notice.textContent;
@@ -1122,7 +1207,7 @@ CHECKS: list[Check] = [
             await openRow("Hacker News");
             setValue($("#e-tags", editor()), "news");
             editorAct("save").click();
-            await waitFor(() => visible($(".notice", editor())), "the notice");
+            await waitFor(() => settled($(".notice", editor())), "the notice");
         """,
         script="""
             const notice = editorAct("save").parentElement.querySelector(".notice");
@@ -1146,7 +1231,7 @@ CHECKS: list[Check] = [
             await openRow("Hacker News");
             setValue($("#e-tags", editor()), "news");
             editorAct("save").click();
-            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+            await waitFor(() => editor() && settled($(".notice", editor())), "the save");
         """,
         script="""
             expect(rowOf("Hacker News").nextElementSibling === editor(), "not under its row");
@@ -1169,7 +1254,7 @@ CHECKS: list[Check] = [
             $('[data-type="newsletter"]', editor()).click();
             setValue($("#e-email", editor()), "from:hn@example.com");
             editorAct("save").click();
-            await waitFor(() => editor() && visible($(".notice", editor())), "the save");
+            await waitFor(() => editor() && settled($(".notice", editor())), "the save");
         """,
         script="""
             expect(rowOf("Hacker News").nextElementSibling === editor(), "not under its row");
@@ -1241,7 +1326,7 @@ CHECKS: list[Check] = [
             await openRow("Hacker News");
             setValue($("#e-tags", editor()), "news");
             editorAct("save").click();
-            await waitFor(() => visible($(".notice", editor())), "the notice");
+            await waitFor(() => settled($(".notice", editor())), "the notice");
         """,
         script=f"""
             const notice = editorAct("save").parentElement.querySelector(".notice");
@@ -1317,7 +1402,7 @@ CHECKS: list[Check] = [
             await settingsLoaded();
             setValue($("#morning"), "9");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the save");
+            await waitFor(() => settled(noticeOf("digest")), "the save");
         """,
         script="",
         sabotage_preload=also_post(
@@ -1334,7 +1419,7 @@ CHECKS: list[Check] = [
             setValue($("#morning"), "25");
             setValue($("#max-featured"), "7");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the save");
+            await waitFor(() => settled(noticeOf("digest")), "the save");
         """,
         script="""
             const notice = noticeOf("digest"), lines = notice.textContent.split("\\n");
@@ -1378,7 +1463,7 @@ CHECKS: list[Check] = [
             act=_save_edit_during(tab)
             + f"""
                 window.__release();
-                await waitFor(() => visible(noticeOf("{tab}"))
+                await waitFor(() => settled(noticeOf("{tab}"))
                   && !noticeOf("{tab}").textContent.startsWith("Checking"), "the answer");
             """,
             script=f"""
@@ -1503,7 +1588,7 @@ CHECKS: list[Check] = [
             await sleep(200);
             editorAct("retire").click();
             const notice = () => editorAct("retire").parentElement.querySelector(".notice");
-            await waitFor(() => visible(notice()) || visible($("#sources-notice")), "the retire");
+            await waitFor(() => settled(notice()) || visible($("#sources-notice")), "the retire");
         """,
         script="""
             const notice = editorAct("retire").parentElement.querySelector(".notice");
@@ -1559,7 +1644,7 @@ CHECKS: list[Check] = [
             ctx.marked = navOf("digest").classList.contains("missing");
             setValue($("#timezone"), "Europe/Berlin");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
         """,
         script="""
@@ -1641,7 +1726,7 @@ CHECKS: list[Check] = [
             $("#notify-off").click();
             await sleep(200);
             $("#notify-off").click();
-            await waitFor(() => visible($("#notify-result")), "the notice");
+            await waitFor(() => settled($("#notify-result")), "the notice");
         """,
         script="""
             expect(ctx.shown, "Turn off is hidden while no webhook is stored");
@@ -1665,7 +1750,7 @@ CHECKS: list[Check] = [
             $("#notify-off").click();
             await sleep(200);
             $("#notify-off").click();
-            await waitFor(() => visible($("#notify-result")), "the notice");
+            await waitFor(() => settled($("#notify-result")), "the notice");
             saveOf("notifications").click();
             await waitFor(() => saveOf("notifications").disabled
               && !noticeOf("notifications").textContent.startsWith("Sending"), "the save");
@@ -1696,7 +1781,7 @@ CHECKS: list[Check] = [
             ctx.enabled = !saveOf("digest").disabled;
             ctx.dirty = navOf("digest").classList.contains("dirty");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
         """,
         script="""
@@ -1728,7 +1813,7 @@ window.fetch = async (input, init) => {
             setValue($("#timezone"), "Europe/Berlin");
             setValue($("#output-language"), "en");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
         """,
         script="""
@@ -1750,7 +1835,7 @@ window.fetch = async (input, init) => {
             ctx.loaded = $("#style-prompt").value;
             setValue($("#style-prompt"), "");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")) && saveOf("digest").disabled,
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
         """,
         script="""expect(ctx.loaded === "x", `the style loaded as ${ctx.loaded}`);""",
@@ -1767,12 +1852,14 @@ window.fetch = async (input, init) => {
             await settingsLoaded();
             setValue($("#timezone"), "Mars/Base");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the notice");
+            await waitFor(() => settled(noticeOf("digest")), "the notice");
         """,
         script="""
             const notice = $("#digest-result"), text = notice.textContent;
             expect(notice.classList.contains("err"), `not an error: ${text}`);
-            expect(text.startsWith("Timezone not saved: general.timezone: "), `notice: ${text}`);
+            const wanted = "Timezone not saved. Timezone: 'Mars/Base' is not a timezone this "
+              + "server knows";
+            expect(text === wanted, `notice: ${text}`);
             expect(navOf("digest").classList.contains("dirty"), "Digest lost its dirty mark");
             expect(!saveOf("digest").disabled, "the digest Save was disabled");
         """,
@@ -1847,7 +1934,7 @@ window.fetch = async (input, init) => {
             await settingsLoaded();
             setValue($("#type-scale"), "1.125");
             saveOf("digest").click();
-            await waitFor(() => visible(noticeOf("digest")), "the notice");
+            await waitFor(() => settled(noticeOf("digest")), "the notice");
         """,
         script="""
             const scale = getComputedStyle(document.documentElement)
@@ -1877,7 +1964,7 @@ window.fetch = async (input, init) => {
             ctx.loaded = $("#max-articles").value;
             setValue($("#max-articles"), "400");
             saveOf("pipeline").click();
-            await waitFor(() => visible(noticeOf("pipeline")) && saveOf("pipeline").disabled,
+            await waitFor(() => settled(noticeOf("pipeline")) && saveOf("pipeline").disabled,
               "the save");
         """,
         script="""
@@ -1900,13 +1987,14 @@ window.fetch = async (input, init) => {
             await settingsLoaded();
             setValue($("#featured-threshold"), "150");
             saveOf("pipeline").click();
-            await waitFor(() => visible(noticeOf("pipeline")), "the notice");
+            await waitFor(() => settled(noticeOf("pipeline")), "the notice");
         """,
         script="""
             const notice = $("#pipeline-result"), text = notice.textContent;
             expect(visible(notice) && notice.classList.contains("err"), `not an error: ${text}`);
             expect(notice.parentElement === saveOf("pipeline").parentElement, "not beside Save");
-            expect(text.startsWith("Featured score not saved: routing.score_threshold: "), text);
+            expect(text === "Featured score not saved. Featured score: Input should be less "
+              + "than or equal to 100", text);
             expect(navOf("pipeline").classList.contains("dirty"), "Pipeline lost its dirty mark");
         """,
         sabotage="""$("#pipeline-result").hidden = true;""",
@@ -1921,7 +2009,7 @@ window.fetch = async (input, init) => {
             ctx.loaded = $("#vote-seeds").value;
             setValue($("#vote-seeds"), "50");
             saveOf("model").click();
-            await waitFor(() => visible(noticeOf("model")) && saveOf("model").disabled, "the save");
+            await waitFor(() => settled(noticeOf("model")) && saveOf("model").disabled, "the save");
         """,
         script="""
             expect(ctx.loaded === "200", `loaded: ${ctx.loaded}`);
@@ -1979,6 +2067,207 @@ window.fetch = async (input, init) => {
         sabotage="""$('input[name=embedding-provider][value="workers_ai"]').disabled = true;""",
     ),
     Check(
+        id="refusal-marks-the-field",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_BAD_TIMEZONE,
+        script="""
+            expect($("#timezone").classList.contains("invalid"), "the field is not marked");
+        """,
+        sabotage="""$("#timezone").classList.remove("invalid");""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="refusal-explained-below-the-field",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_BAD_TIMEZONE,
+        script=f"""
+            const below = $("#timezone").nextElementSibling;
+            expect(visible(below) && below.classList.contains("err"), "no error below the field");
+            expect(below.textContent === {json.dumps(TIMEZONE_REFUSED)}, below.textContent);
+        """,
+        sabotage="""$("#timezone").nextElementSibling.hidden = true;""",
+        receipt=_calls([]),
+    ),
+    Check(
+        id="refusal-clears-on-edit",
+        fixture="writable",
+        path="/settings#digest",
+        act=SAVE_BAD_TIMEZONE + """setValue($("#timezone"), "Europe/Berlin");""",
+        script="""
+            const field = $("#timezone");
+            expect(!field.classList.contains("invalid"), "the field is still marked");
+            expect(!visible(field.nextElementSibling), "the field's notice is still shown");
+        """,
+        sabotage="""$("#timezone").classList.add("invalid");""",
+    ),
+    Check(
+        id="model-refusal-marks-the-model",
+        fixture="writable",
+        path="/settings#model",
+        preload=refuse_post("/api/settings", MODEL_REFUSED, "llm_provider.model"),
+        act="""
+            await settingsLoaded();
+            $('input[value="anthropic"]').click();
+            saveOf("model").click();
+            await waitFor(() => settled(noticeOf("model")), "the refusal");
+        """,
+        script=f"""
+            const field = $("#model-input"), below = field.nextElementSibling;
+            const wanted = {json.dumps(MODEL_REFUSED)};
+            expect(field.classList.contains("invalid"), "the model is not marked");
+            expect(visible(below) && below.textContent === wanted, `below: ${{below.textContent}}`);
+            expect(noticeOf("model").textContent === wanted, noticeOf("model").textContent);
+        """,
+        sabotage="""$("#model-input").classList.remove("invalid");""",
+    ),
+    Check(
+        id="refusal-marks-a-choice-list",
+        fixture="writable",
+        path="/settings#model",
+        preload=refuse_post(
+            "/api/settings/vote-similarity", EMBEDDER_REFUSED, "vote_similarity.provider"
+        ),
+        act="""
+            await settingsLoaded();
+            setValue($("#vote-enabled"), "true");
+            saveOf("model").click();
+            await waitFor(() => settled(noticeOf("model")), "the refusal");
+        """,
+        script=WARN
+        + f"""
+            const choices = $("#embedding-providers"), below = choices.nextElementSibling;
+            const border = getComputedStyle(choices).borderTopColor;
+            expect(border === warnOf(), `border: ${{border}}`);
+            expect(visible(below) && below.textContent === {json.dumps(EMBEDDER_REFUSED)},
+              `below: ${{below.textContent}}`);
+        """,
+        sabotage="""$("#embedding-providers").classList.remove("invalid");""",
+    ),
+    Check(
+        id="source-refusal-marks-the-field",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-url", editor()), "");
+            editorAct("save").click();
+            await waitFor(() => settled(editorAct("save").parentElement.querySelector(".notice")),
+              "the refusal");
+        """,
+        script="""
+            const url = $("#e-url", editor()), below = url.nextElementSibling;
+            expect(url.classList.contains("invalid"), "Feed URL is not marked");
+            expect(visible(below) && below.textContent === "An RSS source needs a Feed URL.",
+              `below: ${below.textContent}`);
+        """,
+        sabotage="""$("#e-url", editor()).classList.remove("invalid");""",
+        receipt=_stored("Hacker News", url="https://hnrss.org/frontpage?points=200"),
+    ),
+    *(
+        Check(
+            id=f"busy-notice-{save}",
+            fixture="writable",
+            path=start,
+            preload=hold_post(post),
+            act=f"""
+                await settingsLoaded();
+                {change}
+                saveOf("{tab}").click();
+                await waitFor(() => window.__release, "the held save");
+            """,
+            script=f"""
+                const notice = noticeOf("{tab}");
+                expect(visible(notice) && notice.textContent === {json.dumps(busy)},
+                  `notice: ${{visible(notice) && notice.textContent}}`);
+                expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
+            """,
+            sabotage=f"""noticeOf("{tab}").removeAttribute("aria-busy");""",
+        )
+        for save, (start, post, change, tab, busy) in BUSY.items()
+    ),
+    Check(
+        id="busy-notice-turn-off",
+        fixture="writable",
+        path="/settings#notifications",
+        preload=hold_post("/api/settings/notify"),
+        act="""
+            await settingsLoaded();
+            $("#notify-off").click();
+            await sleep(200);
+            $("#notify-off").click();
+            await waitFor(() => window.__release, "the held turn off");
+        """,
+        script="""
+            const notice = $("#notify-result");
+            expect(visible(notice) && notice.textContent === "Turning off…",
+              `notice: ${visible(notice) && notice.textContent}`);
+            expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
+        """,
+        sabotage="""$("#notify-result").removeAttribute("aria-busy");""",
+    ),
+    Check(
+        id="busy-notice-source-save",
+        fixture="writable",
+        path="/settings#sources",
+        preload=hold_post("/api/sources"),
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => window.__release, "the held save");
+        """,
+        script="""
+            const notice = editorAct("save").parentElement.querySelector(".notice");
+            expect(visible(notice) && notice.textContent === "Saving…",
+              `notice: ${visible(notice) && notice.textContent}`);
+            expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
+        """,
+        sabotage="""
+            editorAct("save").parentElement.querySelector(".notice").removeAttribute("aria-busy");
+        """,
+    ),
+    Check(
+        id="editor-dims-while-saving",
+        fixture="writable",
+        path="/settings#sources",
+        preload=hold_post("/api/sources"),
+        act="""
+            await openRow("Hacker News");
+            setValue($("#e-tags", editor()), "news");
+            editorAct("save").click();
+            await waitFor(() => window.__release, "the held save");
+        """,
+        script="""
+            const opacity = getComputedStyle($(".form", editor())).opacity;
+            expect(opacity === "0.4", `the locked fields' opacity: ${opacity}`);
+        """,
+        sabotage="""editor().inert = false;""",
+    ),
+    Check(
+        id="busy-notice-retire",
+        fixture="writable",
+        path="/settings#sources",
+        preload=hold_delete(),
+        act=ARM_RETIRE
+        + """
+            await sleep(200);
+            editorAct("retire").click();
+            await waitFor(() => window.__release, "the held retire");
+        """,
+        script="""
+            const notice = editorAct("retire").parentElement.querySelector(".notice");
+            expect(visible(notice) && notice.textContent === "Retiring…",
+              `notice: ${visible(notice) && notice.textContent}`);
+            expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
+        """,
+        sabotage="""
+            editorAct("retire").parentElement.querySelector(".notice").removeAttribute("aria-busy");
+        """,
+        receipt=_still_listed("Hacker News"),
+    ),
+    Check(
         id="model-vote-refusal",
         fixture="writable",
         path="/settings#model",
@@ -1986,12 +2275,13 @@ window.fetch = async (input, init) => {
             await settingsLoaded();
             setValue($("#vote-seeds"), "0");
             saveOf("model").click();
-            await waitFor(() => visible(noticeOf("model")), "the notice");
+            await waitFor(() => settled(noticeOf("model")), "the notice");
         """,
         script="""
             const notice = $("#model-result"), text = notice.textContent;
             expect(visible(notice) && notice.classList.contains("err"), `not an error: ${text}`);
-            expect(text.includes("vote_similarity.max_seeds"), `notice: ${text}`);
+            expect(text === "Votes compared: Input should be greater than or equal to 1",
+              `notice: ${text}`);
             expect(navOf("model").classList.contains("dirty"), "Model lost its dirty mark");
             expect(!saveOf("model").disabled, "the Model Save was disabled");
         """,
@@ -2009,7 +2299,7 @@ window.fetch = async (input, init) => {
             $('input[name=provider][value="none"]').click();
             ctx.disabled = $("#model-input").disabled;
             saveOf("model").click();
-            await waitFor(() => visible(noticeOf("model")) && saveOf("model").disabled
+            await waitFor(() => settled(noticeOf("model")) && saveOf("model").disabled
               && !noticeOf("model").textContent.startsWith("Checking"), "the save");
         """,
         script="""
@@ -2106,7 +2396,7 @@ document.addEventListener("click", (event) => {
             $("#notify-off").click();
             await sleep(200);
             $("#notify-off").click();
-            await waitFor(() => visible($("#notify-result")), "the notice");
+            await waitFor(() => settled($("#notify-result")), "the notice");
         """,
         script="""
             const state = $("#notify-state"), notice = $("#notify-result");
@@ -2266,6 +2556,8 @@ const openRow = async (name) => {
 const shownFields = () =>
   $$("[data-for]", editor()).filter(visible).map((field) => $("input", field).id);
 const noticeOf = (tab) => $(".actions-line .notice", $(`form.tab[data-tab="${tab}"]`));
+// A notice showing a save's result, not what the save is still doing.
+const settled = (notice) => visible(notice) && notice.getAttribute("aria-busy") !== "true";
 const eachCategory = async (measure) => {
   const problems = [];
   for (const tab of ["model", "digest", "pipeline", "notifications", "sources"]) {

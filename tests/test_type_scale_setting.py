@@ -28,7 +28,7 @@ def test_anything_else_is_refused(value) -> None:
 
 
 def test_no_value_is_refused_as_required() -> None:
-    with pytest.raises(ValueError, match=r"^digest\.type_scale is required$"):
+    with pytest.raises(ValueError, match=r"^a value is required$"):
         validate_setting(KEY, None)
 
 
