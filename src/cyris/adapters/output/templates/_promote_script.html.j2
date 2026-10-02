@@ -12,8 +12,15 @@
         signedOut: 'Your session has ended, so the vote was not taken. Reload the page and sign in again.',
         notConfigured: 'Voting is not set up here: the app Worker has no CYRIS_PROMOTE_WORKER_URL. Set it, then vote again.',
         refused: (status) => `The vote did not go through (HTTP ${status}). Try again; if it keeps failing, check the promote Worker.`,
-        unreached: 'The vote did not reach the server. Check your connection, then try again.',
+        unanswered: 'No answer from the server, so the vote may not have been taken. Check your connection, then try again.',
     };
+    // AbortSignal.timeout is missing before Safari 16 and Chrome 103, which could vote before it.
+    function timeoutSignal(ms) {
+        if (AbortSignal.timeout) return AbortSignal.timeout(ms);
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), ms);
+        return controller.signal;
+    }
     // What a vote turns the raw list's state text into, as the next promote-sync will.
     const VOTED_STATE = { up: 'accepted', down: 'rejected' };
 
@@ -63,12 +70,12 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
-                signal: AbortSignal.timeout(VOTE_TIMEOUT_MS),
+                signal: timeoutSignal(VOTE_TIMEOUT_MS),
             })));
             const refused = results.find((r) => !r.ok);
             if (refused) return await failureOf(refused);
         } catch {
-            return VOTE_FAILED.unreached;
+            return VOTE_FAILED.unanswered;
         }
         votes[voteKey(group)] = vote;
         // The server already took the vote; a full quota must not show it as failed.

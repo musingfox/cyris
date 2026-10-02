@@ -187,6 +187,17 @@ window.fetch = (input, init) => {
 };
 }"""
 
+# Installed before the page loads: a browser older than AbortSignal.timeout, whose
+# timers of a second or more run out in 300ms, so a check need not wait them out.
+NO_ABORT_SIGNAL_TIMEOUT = """{
+delete AbortSignal.timeout;
+const realSetTimeout = window.setTimeout.bind(window);
+window.setTimeout = (fn, ms, ...args) => realSetTimeout(fn, ms >= 1000 ? 300 : ms, ...args);
+}"""
+
+# Installed before the page loads: a browser with no way to abort a request either.
+NO_ABORT_CONTROLLER = """window.AbortController = undefined;"""
+
 # A sabotage: focus() stops working, so nothing the page does can give focus back.
 NO_FOCUS = """HTMLElement.prototype.focus = function () {};"""
 
@@ -347,8 +358,42 @@ _CHECKS: list[Check] = [
             ("says-why", "vote-fails", "HTTP 502"),
             ("signed-out-says-sign-in", "vote-signed-out", "sign in again"),
             ("unconfigured-names-the-url", "vote-unconfigured", "CYRIS_PROMOTE_WORKER_URL"),
-            ("times-out", "vote-hangs", "did not reach the server"),
+            ("times-out", "vote-hangs", "No answer from the server"),
         )
+    ),
+    # A browser older than AbortSignal.timeout still votes, and still gives up.
+    Check(
+        id="list-vote-lands-without-abort-signal-timeout",
+        fixture="signed-in",
+        path=PAGE,
+        preload=NO_ABORT_SIGNAL_TIMEOUT,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").click();
+        """,
+        script="""
+            await waitFor(() => marked("Pending Two", "up", "done"), "the vote marked done");
+            expect(!rowNotice("Pending Two"), "a failure notice shows");
+        """,
+        sabotage_preload=NO_ABORT_CONTROLLER,
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    Check(
+        id="list-vote-times-out-without-abort-signal-timeout",
+        fixture="vote-hangs",
+        path=PAGE,
+        preload=NO_ABORT_SIGNAL_TIMEOUT,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").click();
+            await waitFor(() => rowNotice("Pending Two"), "the failure notice", 1500);
+        """,
+        script="""
+            const text = rowNotice("Pending Two").textContent;
+            expect(text.includes("No answer from the server"), `notice: ${text}`);
+        """,
+        sabotage_preload=DROP_VOTE_SIGNAL,
+        receipt=_posted(vote_body("pending-two", "up")),
     ),
     Check(
         id="list-vote-retry-clears-notice",
