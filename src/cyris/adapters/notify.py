@@ -5,6 +5,7 @@ import re
 
 import httpx
 
+from cyris.adapters.output.html_digest import Story, _features
 from cyris.domain.models import NO_LLM_MODEL, DigestContent, DigestSection
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,23 @@ def _render_section_embed(section: DigestSection) -> str:
     return "\n".join(lines)
 
 
+def _linked(title: str, link: str | None) -> str:
+    return f"[{title}]({link})" if link else title
+
+
+def _render_story_embed(story: Story) -> str:
+    """A Top story or Features card as the page draws it: one summary, then its articles."""
+    lines = [f"### {_linked(story.title, story.link)}"]
+    if story.summary:
+        lines.append(story.summary)
+    if story.grouped:
+        lines += [f"- {_linked(m.title, m.link)}" for m in story.members]
+    if story.sources:
+        lines.append(f"*{', '.join(story.sources)}*")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_discord_embeds(
     content: DigestContent, digest_url: str = "", publish_failed: bool = False
 ) -> list[dict]:
@@ -107,14 +125,15 @@ def build_discord_embeds(
     label = period_label(content.period)
     embeds: list[dict] = []
 
-    # --- Featured articles ---
-    if content.featured_articles:
-        lines = []
-        for section in content.featured_articles:
-            lines.append(_render_section_embed(section))
-        text = "\n".join(lines).strip()
+    # --- Top story and Features: the stories the page and the mail draw ---
+    stories = _features(content)
+    for title, color, group in (
+        ("⭐ Top story", 0xF1C40F, stories[:1]),
+        ("📋 Features", 0x5865F2, stories[1:]),
+    ):
+        text = "\n".join(_render_story_embed(story) for story in group).strip()
         if text:
-            embeds.append({"title": "⭐ Featured", "description": text[:4096], "color": 0xF1C40F})
+            embeds.append({"title": title, "description": text[:4096], "color": color})
 
     # --- News clusters ---
     if content.news_clusters:
@@ -140,15 +159,6 @@ def build_discord_embeds(
         text = "\n".join(lines).strip()
         if text:
             embeds.append({"title": "📣 Following", "description": text[:4096], "color": 0xEB459E})
-
-    # --- Thematic summaries ---
-    if content.thematic_summaries:
-        lines = []
-        for section in content.thematic_summaries:
-            lines.append(_render_section_embed(section))
-        text = "\n".join(lines).strip()
-        if text:
-            embeds.append({"title": "📋 Themes", "description": text[:4096], "color": 0x5865F2})
 
     # --- Attention sections ---
     if content.attention_sections:
