@@ -52,6 +52,7 @@ def render_digest_email(
     digest_url: str = "",
     raw_page: bool = False,
     publish_failed: bool = False,
+    degraded: bool = False,
 ) -> str:
     """The issue as one self-contained HTML document with absolute links only."""
     site = ""
@@ -77,6 +78,7 @@ def render_digest_email(
         raw_url=raw_url,
         site=site,
         publish_failed=publish_failed,
+        degraded=degraded,
         t=dark,
         light={**dark, **{name: Markup(value) for name, value in LIGHT_PALETTE.items()}},
         dark=dark,

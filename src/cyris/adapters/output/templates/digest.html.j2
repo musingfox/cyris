@@ -124,6 +124,11 @@
             background: var(--accent);
         }
 
+        .issue-note {
+            margin-bottom: var(--s-12);
+            max-width: 70ch;
+        }
+
         .section-description {
             color: var(--text-dim);
             font-size: calc(18px * var(--type-scale));
@@ -441,6 +446,12 @@
         </header>
 
         <main>
+            {% if degraded %}
+            <p class="notice err issue-note">This issue is plain excerpts, unscored and unsummarised: the configured LLM could not be used this run. Check the provider's key on Settings.</p>
+            {% endif %}
+            {% if not articles_included %}
+            <p class="small issue-note">Nothing is in this issue: the filter kept none of the {{ articles_received }} articles this run received.{% if raw_page %} <a href="{{ date }}-{{ period }}-raw.html">All articles</a> lists each one with its verdict.{% endif %}</p>
+            {% endif %}
             {% if lead_story %}
             <section class="section">
                 <div class="section-tag"><span class="label">Top story</span></div>

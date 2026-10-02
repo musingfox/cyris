@@ -31,7 +31,6 @@ from cyris.domain.models import (
     StoredArticle,
     Tier,
     UsageStats,
-    is_degraded_run,
 )
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 from cyris.utils.timezone import now_in_timezone
@@ -58,6 +57,7 @@ def make_deps(
     source: FakeSource,
     *,
     discord_contents: list | None = None,
+    discord_degraded: list | None = None,
 ) -> tuple[Deps, list]:
     html_dir = tmp_path / "html"
     agent_vault = tmp_path / "agent-vault"
@@ -67,10 +67,14 @@ def make_deps(
 
     notifications: list[str] = []
 
-    async def fake_discord(webhook_url, content, digest_url="", publish_failed=False):
+    async def fake_discord(
+        webhook_url, content, digest_url="", publish_failed=False, degraded=False
+    ):
         notifications.append("discord")
         if discord_contents is not None:
             discord_contents.append(content)
+        if discord_degraded is not None:
+            discord_degraded.append(degraded)
 
     deps = Deps(
         cfg=cfg,
@@ -221,7 +225,7 @@ async def test_publish_outcome_reaches_discord(
         def digest_filename(date: str, period: str) -> str:
             return f"{date}-{period}-v2.html"
 
-        def write(self, content, raw_page: bool = False) -> Path:
+        def write(self, content, raw_page: bool = False, degraded: bool = False) -> Path:
             path = tmp_path / self.digest_filename(content.date, content.period)
             path.write_text("<html></html>")
             return path
@@ -234,7 +238,9 @@ async def test_publish_outcome_reaches_discord(
         deps.cfg.app.promote.custom_domain = custom_domain
         sent: dict = {}
 
-        async def capture(webhook_url, content, digest_url="", publish_failed=False):
+        async def capture(
+            webhook_url, content, digest_url="", publish_failed=False, degraded=False
+        ):
             sent["digest_url"] = digest_url
             sent["publish_failed"] = publish_failed
 
@@ -581,7 +587,7 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
     )
 
     pages = _render_site(
-        deps, content, [_stored_article()] if collected else [], raw_page=collected
+        deps, content, [_stored_article()] if collected else [], raw_page=collected, degraded=False
     )
 
     index = pages["/index.html"].decode("utf-8")
@@ -593,7 +599,9 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
 
 
 def _published_index(deps, content: DigestContent) -> str:
-    return _render_site(deps, content, [], raw_page=False)["/index.html"].decode("utf-8")
+    return _render_site(deps, content, [], raw_page=False, degraded=False)["/index.html"].decode(
+        "utf-8"
+    )
 
 
 def _run_content(date: str, period: str, lead: str, included: int) -> DigestContent:
@@ -642,7 +650,9 @@ def test_the_published_digest_is_keyed_by_the_writers_file_name(tmp_path: Path, 
         archive_counts=lambda: {},
     )
 
-    pages = _render_site(deps, _run_content("2026-04-16", "evening", "Lead", 1), [], raw_page=False)
+    pages = _render_site(
+        deps, _run_content("2026-04-16", "evening", "Lead", 1), [], raw_page=False, degraded=False
+    )
 
     assert "/2026-04-16-evening-v2.html" in pages
     assert "/2026-04-16-evening.html" not in pages
@@ -655,7 +665,9 @@ def test_every_published_site_carries_the_favicon(tmp_path: Path) -> None:
         archive_counts=lambda: {},
     )
 
-    pages = _render_site(deps, _run_content("2026-04-16", "evening", "Lead", 1), [], raw_page=False)
+    pages = _render_site(
+        deps, _run_content("2026-04-16", "evening", "Lead", 1), [], raw_page=False, degraded=False
+    )
 
     assert pages["/favicon.svg"] == FAVICON.read_bytes()
 
@@ -846,71 +858,81 @@ async def test_notification_marks_a_quota_exhausted_configured_llm_as_degraded(
     tmp_path: Path,
 ) -> None:
     contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         FakeLLM(error=RuntimeError("quota"), model="test-model"),
         FakeSource([_notify_article()]),
         discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/quota"
+    deps.cfg.app.llm_provider.provider = "gemini"
     deps.cfg.app.llm_provider.model = ""
 
     await run_digest(deps, RunOptions())
 
     assert contents[0].usage.model == "test-model"
     assert contents[0].usage.input_tokens == 0
-    assert is_degraded_run(contents[0].usage)
+    assert degraded == [True]
 
 
 async def test_notification_marks_zero_token_llm_usage_as_degraded(tmp_path: Path) -> None:
-    contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         _notify_llm(input_tokens=0, model="test-model"),
         FakeSource([_notify_article()]),
-        discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/zero"
+    deps.cfg.app.llm_provider.provider = "gemini"
     deps.cfg.app.llm_provider.model = ""
 
     await run_digest(deps, RunOptions())
 
-    assert is_degraded_run(contents[0].usage)
+    assert degraded == [True]
 
 
 async def test_notification_keeps_actual_llm_model_when_config_model_is_empty(
     tmp_path: Path,
 ) -> None:
     contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         _notify_llm(model="test-model"),
         FakeSource([_notify_article()]),
         discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/used"
+    deps.cfg.app.llm_provider.provider = "gemini"
     deps.cfg.app.llm_provider.model = ""
 
     await run_digest(deps, RunOptions())
 
     assert contents[0].usage.model == "test-model"
-    assert not is_degraded_run(contents[0].usage)
+    assert degraded == [False]
 
 
 async def test_notification_marks_no_llm_as_not_degraded(tmp_path: Path) -> None:
     contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         llm=None,
         source=FakeSource([_notify_article()]),
         discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/no-llm"
+    assert deps.cfg.app.llm_provider.chooses_no_llm
 
     await run_digest(deps, RunOptions())
 
     assert contents[0].usage.model == NO_LLM_MODEL
-    assert not is_degraded_run(contents[0].usage)
+    assert degraded == [False]
 
 
 async def test_a_run_with_no_webhook_says_it_is_skipping_the_notification(
@@ -935,7 +957,7 @@ async def test_a_run_with_a_webhook_stays_quiet_and_still_notifies(
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/run-log"
     sent: dict = {}
 
-    async def capture(webhook_url, content, digest_url="", publish_failed=False):
+    async def capture(webhook_url, content, digest_url="", publish_failed=False, degraded=False):
         sent["webhook_url"] = webhook_url
 
     deps = replace(deps, send_discord=capture)
@@ -954,7 +976,13 @@ async def test_a_run_mails_the_digest_beside_discord(tmp_path: Path) -> None:
     mailed: list[dict] = []
 
     async def capture(
-        recipient, sender, content, digest_url="", publish_failed=False, raw_page=False
+        recipient,
+        sender,
+        content,
+        digest_url="",
+        publish_failed=False,
+        raw_page=False,
+        degraded=False,
     ):
         mailed.append({"recipient": recipient, "sender": sender, "digest_url": digest_url})
 
@@ -974,7 +1002,13 @@ async def test_a_dry_run_mails_like_it_notifies_discord(tmp_path: Path) -> None:
     mailed: list[bool] = []
 
     async def capture(
-        recipient, sender, content, digest_url="", publish_failed=False, raw_page=False
+        recipient,
+        sender,
+        content,
+        digest_url="",
+        publish_failed=False,
+        raw_page=False,
+        degraded=False,
     ):
         mailed.append(raw_page)
 
@@ -1212,39 +1246,41 @@ async def test_a_failed_run_row_write_is_logged_as_an_error(tmp_path: Path, capl
 async def test_a_zero_token_run_records_the_degraded_verdict_discord_shows(
     tmp_path: Path,
 ) -> None:
-    contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         _notify_llm(input_tokens=0, model="test-model"),
         FakeSource([_notify_article()]),
-        discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps, recorded = _recording(deps)
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/zero"
+    deps.cfg.app.llm_provider.provider = "gemini"
     deps.cfg.app.llm_provider.model = ""
 
     await run_digest(deps, RunOptions())
 
     assert recorded[0]["degraded"] is True
-    assert recorded[0]["degraded"] == is_degraded_run(contents[0].usage)
+    assert degraded == [True]
 
 
 async def test_a_run_that_used_its_llm_records_not_degraded(tmp_path: Path) -> None:
-    contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         _notify_llm(model="test-model"),
         FakeSource([_notify_article()]),
-        discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps, recorded = _recording(deps)
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/used"
+    deps.cfg.app.llm_provider.provider = "gemini"
     deps.cfg.app.llm_provider.model = ""
 
     await run_digest(deps, RunOptions())
 
     assert recorded[0]["degraded"] is False
-    assert recorded[0]["degraded"] == is_degraded_run(contents[0].usage)
+    assert degraded == [False]
 
 
 async def test_a_run_with_no_llm_records_not_degraded(tmp_path: Path) -> None:
@@ -1289,14 +1325,14 @@ async def test_a_provider_none_run_is_not_degraded(tmp_path: Path) -> None:
 
 async def test_a_provider_none_run_ignores_a_leftover_model(tmp_path: Path) -> None:
     """A model left behind by the provider before "none" must not name the run's usage."""
-    from cyris.adapters.notify import build_discord_payload
-
     contents: list = []
+    degraded: list = []
     deps, _ = make_deps(
         tmp_path,
         llm=None,
         source=FakeSource([_notify_article(), _second_notify_article()]),
         discord_contents=contents,
+        discord_degraded=degraded,
     )
     deps, recorded = _recording(deps)
     deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/none"
@@ -1307,7 +1343,7 @@ async def test_a_provider_none_run_ignores_a_leftover_model(tmp_path: Path) -> N
 
     assert contents[0].usage.model == NO_LLM_MODEL
     assert recorded[0]["degraded"] is False
-    assert "content" not in build_discord_payload(contents[0])
+    assert degraded == [False]
 
 
 async def test_a_configured_provider_that_spent_nothing_is_still_degraded(tmp_path: Path) -> None:
@@ -1321,6 +1357,37 @@ async def test_a_configured_provider_that_spent_nothing_is_still_degraded(tmp_pa
     await run_digest(deps, RunOptions())
 
     assert recorded[0]["degraded"] is True
+
+
+@pytest.mark.parametrize(
+    ("provider", "degraded"),
+    [("gemini", True), ("none", False)],
+    ids=["missing-key", "provider-none"],
+)
+async def test_every_channel_agrees_on_a_run_with_no_llm_client(
+    tmp_path: Path, provider: str, degraded: bool
+) -> None:
+    """No client is built for provider none or for a missing key; only the config differs."""
+    discord: list = []
+    mailed: list = []
+
+    async def mail(recipient, sender, content, **kwargs):
+        mailed.append(kwargs["degraded"])
+
+    deps, _ = make_deps(
+        tmp_path, llm=None, source=FakeSource([_notify_article()]), discord_degraded=discord
+    )
+    deps, recorded = _recording(replace(deps, send_email=mail))
+    deps.cfg.app.llm_provider.provider = provider
+    deps.cfg.app.notify.email_to = "me@example.org"
+
+    report = await run_digest(deps, RunOptions())
+
+    assert recorded[0]["degraded"] is degraded
+    assert discord == [degraded]
+    assert mailed == [degraded]
+    page = report.html_path.read_text(encoding="utf-8")
+    assert ('class="notice err issue-note"' in page) is degraded
 
 
 async def test_a_run_without_a_digest_store_writes_its_pages_as_before(

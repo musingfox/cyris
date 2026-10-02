@@ -166,14 +166,17 @@ class UsageStats(BaseModel):
             self.neurons = (self.neurons or 0.0) + other.neurons
 
 
-def is_degraded_run(usage: UsageStats) -> bool:
-    """Whether a configured LLM consumed no input tokens during a run.
+def is_degraded_run(usage: UsageStats, *, chooses_no_llm: bool) -> bool:
+    """Whether a run that wanted an LLM consumed no input tokens.
 
-    `api_calls` is ignored: a call that raised still counts as a call, so the
-    2026-09 excerpt-only runs reported calls with zero tokens. A configured LLM
-    that had nothing to do this run is also flagged; that false positive is accepted.
+    The provider is the caller's to say: a key that is missing builds no client, so
+    that run's usage names `NO_LLM_MODEL` exactly as provider none's does, and only
+    the configuration tells the two apart. `api_calls` is ignored: a call that
+    raised still counts as a call, so the 2026-09 excerpt-only runs reported calls
+    with zero tokens. A configured LLM that had nothing to do this run is also
+    flagged; that false positive is accepted.
     """
-    return usage.model not in ("", NO_LLM_MODEL) and usage.input_tokens == 0
+    return not chooses_no_llm and usage.input_tokens == 0
 
 
 class DigestContent(BaseModel):

@@ -11,6 +11,7 @@ from css_rules import parse_style_block, receipt_fixtures, text_langs
 from cyris.adapters.output import html_digest
 from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter
 from cyris.domain.models import (
+    NO_LLM_MODEL,
     ArticleState,
     DigestContent,
     DigestItem,
@@ -111,6 +112,51 @@ def test_render_empty_sections(tmp_path):
 
 
 SECTION_LABELS = ("Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire")
+
+EMPTY_SENTENCE = "the filter kept none of the 7 articles this run received"
+DEGRADED_NOTICE = '<p class="notice err issue-note">This issue is plain excerpts'
+
+
+def _body(html: str) -> str:
+    return html[html.index("<main>") : html.index("</main>")]
+
+
+def _issue(articles_included: int = 0) -> DigestContent:
+    return DigestContent(
+        date="2026-03-16",
+        period="morning",
+        sources_processed=2,
+        articles_received=7,
+        articles_included=articles_included,
+        usage=UsageStats(model=NO_LLM_MODEL),
+    )
+
+
+def test_an_empty_issue_says_why_and_links_all_articles(tmp_path):
+    body = _body(HtmlDigestWriter(tmp_path).render(_issue(), raw_page=True))
+
+    assert EMPTY_SENTENCE in body
+    assert '<a href="2026-03-16-morning-raw.html">All articles</a>' in body
+
+
+def test_an_empty_issue_without_a_raw_page_links_nothing(tmp_path):
+    body = _body(HtmlDigestWriter(tmp_path).render(_issue(), raw_page=False))
+
+    assert EMPTY_SENTENCE in body
+    assert "<a " not in body
+
+
+def test_an_issue_with_articles_has_no_empty_sentence(tmp_path):
+    body = _body(HtmlDigestWriter(tmp_path).render(_issue(articles_included=3), raw_page=True))
+
+    assert "the filter kept none" not in body
+
+
+@pytest.mark.parametrize("degraded", [True, False])
+def test_only_a_degraded_issue_opens_with_the_warn_notice(tmp_path, degraded):
+    html = HtmlDigestWriter(tmp_path).render(_issue(articles_included=3), degraded=degraded)
+
+    assert (DEGRADED_NOTICE in _body(html)) is degraded
 
 
 class _MainText(HTMLParser):

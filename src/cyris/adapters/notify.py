@@ -5,7 +5,7 @@ import re
 
 import httpx
 
-from cyris.domain.models import DigestContent, DigestSection, is_degraded_run
+from cyris.domain.models import DigestContent, DigestSection
 
 logger = logging.getLogger(__name__)
 
@@ -222,14 +222,21 @@ def build_discord_embeds(
 
 
 def build_discord_payload(
-    content: DigestContent, digest_url: str = "", publish_failed: bool = False
+    content: DigestContent,
+    digest_url: str = "",
+    publish_failed: bool = False,
+    degraded: bool = False,
 ) -> dict:
-    """Build the Discord webhook payload for a digest."""
+    """Build the Discord webhook payload for a digest.
+
+    `degraded` is `is_degraded_run`'s verdict, passed in: only the run knows the
+    configured provider, and a missing key leaves no trace of it in the usage.
+    """
     payload = {"embeds": build_discord_embeds(content, digest_url, publish_failed)}
-    if is_degraded_run(content.usage):
+    if degraded:
         payload["content"] = (
-            f"⚠️ Degraded digest: LLM {content.usage.model} was configured but this run used 0 "
-            "input tokens, so scores and summaries are excerpts."
+            "⚠️ Degraded digest: the configured LLM could not be used this run, "
+            "so scores and summaries are excerpts."
         )
     return payload
 
@@ -239,6 +246,7 @@ async def send_discord(
     content: DigestContent,
     digest_url: str = "",
     publish_failed: bool = False,
+    degraded: bool = False,
 ) -> None:
     """Send digest content to Discord via webhook.
 
@@ -250,7 +258,7 @@ async def send_discord(
     if not webhook_url:
         return
 
-    payload = build_discord_payload(content, digest_url, publish_failed)
+    payload = build_discord_payload(content, digest_url, publish_failed, degraded)
 
     try:
         async with httpx.AsyncClient() as client:

@@ -155,13 +155,15 @@ class HtmlDigestWriter:
         """Files every deployment of the site carries beside its pages, by file name."""
         return {FAVICON.name: FAVICON.read_bytes()}
 
-    def render(self, content: DigestContent, raw_page: bool = False) -> str:
+    def render(self, content: DigestContent, raw_page: bool = False, degraded: bool = False) -> str:
         """Transform DigestContent into complete HTML document.
 
         Args:
             content: Digest content to render
             raw_page: Whether this issue's raw page is emitted; only then does the
                 issue bar link to it
+            degraded: Whether the run wanted an LLM and could not use one
+                (`is_degraded_run`); the body then opens with a warn notice
 
         Returns:
             Complete HTML string with inline styles
@@ -190,16 +192,24 @@ class HtmlDigestWriter:
             attention_sections=content.attention_sections,
             filtered_headlines=content.filtered_headlines,
             raw_page=raw_page,
+            degraded=degraded,
             content_lang=_html_lang(content.output_language),
         )
 
-    def write(self, content: DigestContent, dry_run: bool = False, raw_page: bool = False) -> Path:
+    def write(
+        self,
+        content: DigestContent,
+        dry_run: bool = False,
+        raw_page: bool = False,
+        degraded: bool = False,
+    ) -> Path:
         """Persist rendered HTML to disk and regenerate index.
 
         Args:
             content: Digest content to write
             dry_run: If True, print to stdout instead of writing
             raw_page: Whether this issue's raw page was written
+            degraded: Passed through to `render`
 
         Returns:
             Path to written file (or would-be path in dry_run mode)
@@ -207,7 +217,7 @@ class HtmlDigestWriter:
         Raises:
             OSError: If output directory cannot be created
         """
-        html = self.render(content, raw_page=raw_page)
+        html = self.render(content, raw_page=raw_page, degraded=degraded)
         file_path = self.output_dir / self.digest_filename(content.date, content.period)
 
         if dry_run:

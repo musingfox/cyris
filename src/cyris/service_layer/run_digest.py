@@ -40,11 +40,13 @@ class RunReport:
     failed_sources: list[str] = field(default_factory=list)
 
 
-def _render_site(deps: "Deps", content, collected, *, raw_page: bool) -> dict[str, bytes]:
+def _render_site(
+    deps: "Deps", content, collected, *, raw_page: bool, degraded: bool
+) -> dict[str, bytes]:
     """This run's pages as bytes, keyed by the path Pages will serve them at."""
     writer = deps.html_writer
     page = "/" + writer.digest_filename(content.date, content.period)
-    pages = {page: writer.render(content, raw_page=raw_page)}
+    pages = {page: writer.render(content, raw_page=raw_page, degraded=degraded)}
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
@@ -390,7 +392,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     content.usage.merge(total_usage)
     summary["llm"] = content.usage.model_dump()
     # Only this path has usage to judge; the early returns leave the key absent.
-    summary["degraded"] = is_degraded_run(content.usage)
+    degraded = is_degraded_run(content.usage, chooses_no_llm=llm_cfg.chooses_no_llm)
+    summary["degraded"] = degraded
     summary["received"] = content.articles_received
     summary["included"] = content.articles_included
 
@@ -407,7 +410,9 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     publish_failed = False
     raw_page = False
     if options.dry_run:
-        report.rendered = deps.html_writer.render(content) if deps.html_writer else ""
+        report.rendered = (
+            deps.html_writer.render(content, degraded=degraded) if deps.html_writer else ""
+        )
     else:
         # Update article states in store — before the raw outputs, so they show
         # this run's verdicts rather than a store snapshot taken one step early.
@@ -469,14 +474,19 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 # file list comes from D1. Nothing here touches the filesystem.
                 try:
                     published = deps.publish_site(
-                        _render_site(deps, content, collected, raw_page=raw_page), slug
+                        _render_site(
+                            deps, content, collected, raw_page=raw_page, degraded=degraded
+                        ),
+                        slug,
                     )
                     report.html_path = Path(filename)  # published, not written
                 except Exception as e:
                     logger.error("Failed to publish the HTML digest: %s", e)
             else:
                 try:
-                    report.html_path = deps.html_writer.write(content, raw_page=raw_page)
+                    report.html_path = deps.html_writer.write(
+                        content, raw_page=raw_page, degraded=degraded
+                    )
                     progress(f"HTML digest written to {report.html_path}")
                 except Exception as e:
                     logger.error("Failed to write HTML digest: %s", e)
@@ -511,6 +521,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         content,
         digest_url=digest_url,
         publish_failed=publish_failed,
+        degraded=degraded,
     )
 
     if not notify.email_to:
@@ -528,6 +539,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             digest_url=digest_url,
             publish_failed=publish_failed,
             raw_page=raw_page,
+            degraded=degraded,
         )
 
     summary["status"] = "publish_failed" if publish_failed else "ok"
