@@ -934,6 +934,8 @@ EXPECTED_DIGEST_IDS = {
         for width in (360, 1440)
     ),
     "vote-failure-says-why",
+    "vote-failure-fits-360-signed-in",
+    "vote-failure-fits-360-signed-in-largest",
     *(f"grids-agree-{width}" for width in (360, 721, 880, 1000, 1100, 1160, 1440)),
     *(f"fits-{width}" for width in (360, 880, 1000, 1440)),
     *(f"head-fits-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
