@@ -103,7 +103,8 @@ async def summarize_articles(
                     continue
                 article = group_articles[index]
                 own = own_summaries.get(str(raw_id))
-                if not isinstance(own, str) or not own.strip():
+                fell_back = not isinstance(own, str) or not own.strip()
+                if fell_back:
                     logger.warning(
                         "Summarize wrote no summary for article id %r in tag '%s'; excerpt",
                         raw_id,
@@ -120,6 +121,7 @@ async def summarize_articles(
                         urls=[article.url],
                         score=article_scores.get(article.url) if article_scores else None,
                         ref_urls=article.ref_urls,
+                        passed_through=fell_back,
                     )
                 )
 
