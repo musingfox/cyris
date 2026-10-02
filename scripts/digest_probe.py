@@ -417,6 +417,35 @@ _CHECKS: list[Check] = [
         receipt=_voted(first_vote_urls()[".news-cluster"]),
     ),
 ]
+# The longest failure reason, shown under every item kind at once, stays inside the
+# box it sits in on a phone, at the largest type size too, and the page does not scroll.
+_CHECKS += [
+    Check(
+        id=f"vote-failure-fits-{width}-{fixture}",
+        fixture=fixture,
+        path=PAGE,
+        width=width,
+        act="""
+            await signedIn();
+            for (const item of ITEM_SELECTORS) {
+              showFailure($(`${item} .vote-group`), VOTE_FAILED.notConfigured);
+            }
+        """,
+        script=f"""
+            const notices = $$(".vote-error");
+            expect(notices.length === ITEM_SELECTORS.length, `${{notices.length}} notices`);
+            const right = (el) => el.getBoundingClientRect().right;
+            const spilled = notices.filter((n) => n.scrollWidth > n.clientWidth
+              || right(n) > right(n.parentElement) + 0.5);
+            const under = spilled.map((n) => n.parentElement.className);
+            expect(!spilled.length, `spilled under ${{under}}`);
+            const problem = overflow("{width}");
+            expect(!problem, problem);
+        """,
+        sabotage="""$$(".vote-error").forEach((n) => { n.style.whiteSpace = "pre"; });""",
+    )
+    for width, fixture in ((360, "signed-in"), (360, "signed-in-largest"))
+]
 # A sabotage: the masthead stops clipping the title the fallback font sets too wide.
 UNCLIPPED_MASTHEAD = """$(".headline-block").style.overflowX = "visible";"""
 
