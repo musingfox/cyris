@@ -647,7 +647,7 @@ tr.editor[inert] .form { opacity: .4; }
     <div id="raw-groups"></div>
     <div class="deck-wrap" id="raw-triage" hidden>
       <span class="label" id="t-remaining"></span>
-      <article class="card" id="t-card">
+      <article class="card" id="t-card" tabindex="0" role="link">
         <span class="label" id="t-source"></span>
         <h2 id="t-title"></h2>
       </article>
@@ -1196,6 +1196,9 @@ const endDrag = (e) => {
 };
 card.addEventListener("pointerup", endDrag);
 card.addEventListener("pointercancel", endDrag);
+card.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") window.open("#raw", "_blank", "noopener");
+});
 [["#t-up", "up"], ["#t-down", "down"]].forEach(([id, dir]) => {
   const b = $(id);
   b.onclick = () => fly(dir);

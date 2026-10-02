@@ -781,6 +781,7 @@ def test_the_driver_emulates_media_before_it_loads_the_page():
 # of the checks that hold it.
 EXPECTED_RAW_IDS = {
     "list-vote-marks-done",
+    "deck-tab-then-enter-opens-article",
     "list-vote-failure-says-why",
     "list-vote-failure-signed-out-says-sign-in",
     "list-vote-failure-unconfigured-names-the-url",

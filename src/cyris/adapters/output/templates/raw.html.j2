@@ -99,7 +99,7 @@
         </div>
         <div class="deck-wrap" id="raw-triage" hidden>
             <span class="label" id="t-remaining"></span>
-            <article class="card" id="t-card"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
+            <article class="card" id="t-card" tabindex="0" role="link"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
             <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">Down</button><button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>
             <p class="notice err" id="t-error" role="alert" hidden></p>
             <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
@@ -248,13 +248,19 @@
         if (swipe) return voteCard(swipe);
         card.style.transform = '';
         lean(null);
+        if (e.type === 'pointerup' && Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX) openCard();
+    }
+    // While a voted card flies off the pool has already dropped it, so its first row
+    // is the next card rather than the one still on screen.
+    function openCard() {
         const [row] = pool();
-        if (e.type === 'pointerup' && Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX && row) {
-            window.open(row.querySelector('a').href, '_blank', 'noopener');
-        }
+        if (!busy && row) window.open(row.querySelector('a').href, '_blank', 'noopener');
     }
     card.addEventListener('pointerup', endDrag);
     card.addEventListener('pointercancel', endDrag);
+    card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') openCard();
+    });
     for (const b of deckButtons) {
         b.addEventListener('mouseenter', () => lean(b.dataset.dir));
         b.addEventListener('mouseleave', () => card.dataset.flying || lean(null));

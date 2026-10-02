@@ -1721,8 +1721,8 @@ def test_the_raw_page_holds_both_views_before_its_footer(tmp_path):
 
 TRIAGE_MARKUP = (
     '<span class="label" id="t-remaining"></span>',
-    '<article class="card" id="t-card"><span class="label" id="t-source"></span>'
-    '<h2 id="t-title"></h2></article>',
+    '<article class="card" id="t-card" tabindex="0" role="link">'
+    '<span class="label" id="t-source"></span><h2 id="t-title"></h2></article>',
     '<div class="deck-actions" id="t-actions">'
     '<button class="btn danger" type="button" id="t-down" data-dir="down">Down</button>'
     '<button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>',

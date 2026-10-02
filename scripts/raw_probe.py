@@ -992,6 +992,28 @@ _CHECKS: list[Check] = [
         sabotage="""$("#t-card").style.pointerEvents = "none";""",
         receipt=_posted(),
     ),
+    # A keyboard reader reaches the card from the Triage switch and opens it with Enter.
+    Check(
+        id="deck-tab-then-enter-opens-article",
+        fixture="signed-in",
+        path=PAGE,
+        preload=RECORD_OPEN,
+        focused=True,
+        act="""
+            await showView("triage");
+            $('[data-raw-view="triage"]').focus();
+        """,
+        gestures=({"key": "Tab"}, {"key": "Enter"}),
+        script="""
+            const now = document.activeElement;
+            expect(now === $("#t-card"), `focus is on ${now && (now.id || now.tagName)}`);
+            const opened = window.__opened;
+            const wanted = [["https://example.test/pending-two", "_blank", "noopener"]];
+            expect(same(opened, wanted), `opened: ${JSON.stringify(opened)}`);
+        """,
+        sabotage="""$("#t-card").removeAttribute("tabindex");""",
+        receipt=_posted(),
+    ),
     Check(
         id="tap-touch-opens-article",
         fixture="signed-in",
