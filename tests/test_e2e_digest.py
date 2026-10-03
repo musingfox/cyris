@@ -204,6 +204,7 @@ def _voted(now: datetime) -> StoredArticle:
 
 
 def _rss_rows(now: datetime) -> list[dict]:
+    f2_age = timedelta(hours=WINDOW_HOURS) - ZoneInfo(TIMEZONE).utcoffset(now) / 2
     return [
         {
             "guid": f"e2e-{a['key']}",
@@ -212,7 +213,7 @@ def _rss_rows(now: datetime) -> list[dict]:
             "content": a["content"],
             "author": AUTHORS.get(a["key"]),
             # As the Worker stores it: JavaScript's toISOString().
-            "published_at": (now - timedelta(minutes=10 + i))
+            "published_at": (now - (f2_age if a["key"] == "f2" else timedelta(minutes=10 + i)))
             .isoformat(timespec="milliseconds")
             .replace("+00:00", "Z"),
             "source_name": a["source"],
@@ -579,6 +580,15 @@ def test_the_rss_buffer_is_read_for_the_configured_window(receipts) -> None:
     assert receipts.run.started_at <= before <= receipts.run.finished_at
     assert before - datetime.fromisoformat(query["after"]) == timedelta(hours=WINDOW_HOURS)
     assert query["limit"] == "2000"
+
+
+def test_an_article_from_the_oldest_hours_of_the_window_is_stored(receipts) -> None:
+    after = datetime.fromisoformat(dict(only(receipts.records, "rss_articles")["query"])["after"])
+    row = next(r for r in receipts.run.scenario.rss_rows if r["guid"] == "e2e-f2")
+    published = datetime.fromisoformat(row["published_at"])
+    offset = ZoneInfo(TIMEZONE).utcoffset(after)
+    assert after <= published < after + offset, "f2 left the slice a UTC-labelled bound would miss"
+    assert URL["f2"] in receipts.articles
 
 
 def _llm_calls(records: list[dict]) -> list[tuple[str, list[str]]]:
