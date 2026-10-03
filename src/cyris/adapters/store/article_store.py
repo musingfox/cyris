@@ -67,9 +67,10 @@ class ArticleStore:
             return SaveResult(saved_count=0, skipped_count=0)
 
         # Dedup against today plus the last 7 days. The width is one half of a
-        # pair: `RETENTION_DAYS` in workers/rss/src/index.js prunes the buffer on
-        # the same 8 days. Shortening this re-ingests what the buffer still holds;
-        # shortening that drops articles this scan expects to recognise.
+        # pair: `RETENTION_DAYS` in workers/rss/src/index.js prunes the buffer 8
+        # days after an entry entered it. Shortening this re-ingests what the
+        # buffer still holds; shortening that drops articles this scan expects
+        # to recognise.
         holders: Holders = {}
         for i in range(_DEDUP_SCAN_DAYS):
             scan_date = now.date() - timedelta(days=i)

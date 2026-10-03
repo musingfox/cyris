@@ -8,6 +8,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.guard]
 def test_dedup_window_matches_rss_worker_retention() -> None:
     """The store's dedup scan and the Worker's prune must span the same days.
 
+    The Worker counts its days from when an entry entered the buffer.
+
     Shortening the scan re-ingests what the buffer still holds; shortening the
     prune drops articles the scan expects to recognise. Neither side errors.
     """

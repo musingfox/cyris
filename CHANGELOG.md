@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An entry a feed lists late now reaches the next digest. The RSS Worker selected
+  and pruned its buffer by the date the feed gave an entry; it now uses the time
+  the entry entered the buffer, and a read that hits the row ceiling keeps the
+  newest-buffered rows.
+
+### Upgrading
+
+- Redeploy `workers/rss`. cyris works with either Worker version.
+- Call `GET /stats` once after deploying, so the new `fetched_at` index builds
+  before the next hourly read.
+- A source added after the deploy backfills its feed's recent history into the
+  next window, and entries buffered before the deploy are read by their entry
+  time, so the first digest after it may list a few extra articles.
+- Entries that entered the buffer more than a day before the deploy and that no
+  run has read stay unread; they age out within 8 days.
+- No setting, table or secret changed.
+
 ## [0.5.0] — 2026-10-02
 
 The digest is laid out again: only the Top story groups articles, every Features

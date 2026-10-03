@@ -1,6 +1,7 @@
 // Cloudflare RSS Worker: polls feeds hourly into D1 so the 24h digest window
-// sees more than the 2-4h a feed snapshot holds. cyris reads a time window via
-// GET /articles; there is no ack — this is a retention buffer, not a queue.
+// sees more than the 2-4h a feed snapshot holds. cyris reads the entries that
+// entered the buffer in a time window via GET /articles; there is no ack — this
+// is a retention buffer, not a queue.
 import { loadFeeds } from "./feeds.js";
 import { parseFeed } from "./parse.js";
 
@@ -18,6 +19,7 @@ const CORS_HEADERS = {
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, guid TEXT, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', author TEXT, published_at TEXT NOT NULL, source_name TEXT NOT NULL, fetched_at TEXT NOT NULL);`,
   `CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);`,
+  `CREATE INDEX IF NOT EXISTS idx_articles_fetched_at ON articles(fetched_at);`,
 ].join("\n");
 
 // Once per isolate. `exec()` is Cloudflare's maintenance path, not a hot one:
@@ -31,7 +33,7 @@ async function ensureSchema(env) {
   schemaApplied = true;
 }
 
-const RETENTION_DAYS = 8; // matches the ArticleStore's dedup scan window
+const RETENTION_DAYS = 8; // counted from buffer entry; matches the ArticleStore's dedup scan window
 const FETCH_TIMEOUT_MS = 20000;
 // Substack rate-limits Cloudflare's egress; 10 at once drew HTTP 429s.
 const CONCURRENCY = 4;
@@ -68,9 +70,9 @@ async function poll(env, feeds) {
     });
   }
 
-  // Blogs keep months of history in their feed. Inserting those and letting the
-  // prune below delete them again burns ~1.5k writes per tick against D1's daily
-  // quota, so drop them before they reach the database.
+  // Blogs keep months of history in their feed. The read and the prune go by buffer
+  // entry, so an old entry inserted now would reach the next digest as new: drop
+  // whatever the feed dates past the retention window before it reaches the database.
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400_000).toISOString();
   const fresh = rows.filter((r) => r.published_at >= cutoff);
 
@@ -99,9 +101,9 @@ async function poll(env, feeds) {
   }
 
   const pruned = await env.DB.prepare(
-    `DELETE FROM articles WHERE published_at < datetime('now', ?)`
+    `DELETE FROM articles WHERE fetched_at < ?`
   )
-    .bind(`-${RETENTION_DAYS} days`)
+    .bind(cutoff)
     .run();
 
   console.log(
@@ -135,7 +137,8 @@ export default {
 
     const url = new URL(request.url);
 
-    // Idempotent window read — no ack, so a crashed digest simply reads again.
+    // Idempotent window read by buffer-entry time, so an entry its feed listed late
+    // still reaches the next digest — no ack, so a crashed digest simply reads again.
     if (request.method === "GET" && url.pathname === "/articles") {
       const after = url.searchParams.get("after");
       const before = url.searchParams.get("before");
@@ -145,8 +148,8 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT url, guid, title, content, author, published_at, source_name
            FROM articles
-          WHERE published_at >= ? AND published_at < ?
-          ORDER BY published_at DESC
+          WHERE fetched_at >= ? AND fetched_at < ?
+          ORDER BY fetched_at DESC
           LIMIT ?`
       )
         .bind(after, before, limit)

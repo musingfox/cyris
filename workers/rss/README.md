@@ -12,7 +12,7 @@ Part of the Cloudflare install; the whole order is in
 
 ```
 cron 0 * * * *
-  → scheduled(): fetch every feed, 4 at a time → parse → INSERT OR IGNORE → prune >8d
+  → scheduled(): fetch every feed, 4 at a time → parse → INSERT OR IGNORE → prune 8d after entry
   → cyris run → GET /articles?after=&before= (Bearer) → CloudflareRssSource
        → Articles → ArticleStore (dedups by URL again, harmlessly)
 ```
@@ -31,13 +31,13 @@ buffer closes that gap.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET  | `/articles?after=&before=&limit=` | Read a window; `after` and `before` are UTC in `Date#toISOString()` form (`YYYY-MM-DDTHH:MM:SS.sssZ`), compared to `published_at` as strings, so an offset or a missing fraction shifts the window. Idempotent — no ack |
+| GET  | `/articles?after=&before=&limit=` | Read a window; `after` and `before` are UTC in `Date#toISOString()` form (`YYYY-MM-DDTHH:MM:SS.sssZ`), compared to each row's buffer-entry time (`fetched_at`) as strings, so an offset or a missing fraction shifts the window. Newest-buffered first. Idempotent — no ack |
 | POST | `/poll` | Trigger a poll manually (same code path as cron) |
 | GET  | `/stats` | Row count and the oldest/newest `published_at` |
 
 There is deliberately **no ack endpoint**: this is a retention buffer, not a
 queue. Deleting on read would defeat its purpose and lose a batch whenever a
-digest crashes. Rows age out after 8 days, matching the ArticleStore's dedup scan.
+digest crashes. Rows age out 8 days after they entered the buffer, matching the ArticleStore's dedup scan.
 
 ## Deploy
 
@@ -102,11 +102,13 @@ normalisation) without needing the Workers runtime.
 - URLs are stripped of `utm_*`/`fbclid`-style params before insert, mirroring
   `cyris/adapters/fetch/email_parser.py`. The URL is D1's primary key, so an
   unstripped one would store the same article twice.
-- Entries older than the retention window are dropped *before* insert. Blogs keep
-  months of history in their feeds; inserting and then pruning those burned ~1.5k
-  writes per tick against D1's daily quota.
-- `published_at` is normalised to ISO8601 UTC at write time so the window query is
-  an ordered string comparison.
+- Entries the feed dates more than 8 days back are dropped *before* insert. Blogs
+  keep months of history in their feeds, and because reads go by buffer entry,
+  inserting those would put that history in the next digest.
+- A newly added feed's entries from its last 8 days all enter the buffer on its
+  first poll, so they reach the next digest once.
+- `published_at` is normalised to ISO8601 UTC at write time so the insert filter
+  against the retention cutoff is a string comparison.
 - Email-only newsletters do **not** belong here — they arrive via
   `workers/newsletter`.
 - **Substack rate-limits Cloudflare's egress.** 8 of the 9 Substack feeds returned

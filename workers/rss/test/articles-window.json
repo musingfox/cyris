@@ -1,0 +1,63 @@
+{
+  "columns": ["author", "content", "guid", "published_at", "source_name", "title", "url"],
+  "rows": [
+    {
+      "url": "https://e2e.test/1",
+      "guid": "g1",
+      "title": "one",
+      "content": "first",
+      "author": "A",
+      "published_at": "2026-10-01T07:00:00.000Z",
+      "source_name": "Feed",
+      "fetched_at": "2026-10-01T08:00:00.000Z"
+    },
+    {
+      "url": "https://e2e.test/2",
+      "guid": "g2",
+      "title": "two",
+      "content": "second, listed late",
+      "author": "B",
+      "published_at": "2026-09-30T08:00:00.000Z",
+      "source_name": "Feed",
+      "fetched_at": "2026-10-02T08:00:00.000Z"
+    },
+    {
+      "url": "https://e2e.test/3",
+      "guid": "g3",
+      "title": "three",
+      "content": "third",
+      "author": "C",
+      "published_at": "2026-10-02T20:00:00.000Z",
+      "source_name": "Feed",
+      "fetched_at": "2026-10-03T08:00:00.000Z"
+    }
+  ],
+  "reads": [
+    {
+      "name": "window",
+      "after": "2026-10-01T00:00:00.000Z",
+      "before": "2026-10-03T00:00:00.000Z",
+      "expect": ["https://e2e.test/2", "https://e2e.test/1"]
+    },
+    {
+      "name": "bounds are inclusive below, exclusive above",
+      "after": "2026-10-02T08:00:00.000Z",
+      "before": "2026-10-03T08:00:00.000Z",
+      "expect": ["https://e2e.test/2"]
+    },
+    {
+      "name": "capped",
+      "after": "2026-10-01T00:00:00.000Z",
+      "before": "2026-10-04T00:00:00.000Z",
+      "limit": "2",
+      "expect": ["https://e2e.test/3", "https://e2e.test/2"]
+    },
+    {
+      "name": "unbounded",
+      "after": "2026-10-01T00:00:00.000Z",
+      "before": "2026-10-04T00:00:00.000Z",
+      "limit": "-1",
+      "expect": ["https://e2e.test/3", "https://e2e.test/2", "https://e2e.test/1"]
+    }
+  ]
+}

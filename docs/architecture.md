@@ -247,12 +247,15 @@ flowchart LR
 ```
 
 **RSS — a buffer, read idempotently.** `workers/rss` polls every feed on the hour, four at a time
-(ten at once drew HTTP 429s from Substack). Entries older than the 8-day retention window are
-dropped *before* the write — blogs ship months of history in their feed, and inserting then pruning
-them burned ~1.5k writes per tick against D1's daily quota. Writes are `INSERT OR IGNORE`, so
-re-seeing an entry every hour is free. `cyris` reads a time window with
-`GET /articles?after=&before=`; **there is no ack**, so a crashed digest simply reads the window
-again.
+(ten at once drew HTTP 429s from Substack). Entries their feed dates more than 8 days back are
+dropped *before* the write — blogs ship months of history in their feed, and because the read goes
+by buffer entry, that history would otherwise reach the next digest as new. Writes are
+`INSERT OR IGNORE`, so re-seeing an entry every hour is free. `cyris` reads a time window with
+`GET /articles?after=&before=`, which selects by when an entry *entered the buffer*, not by the date
+its feed gave it, so an entry a feed lists late still reaches the next run. That holds while each
+run's window reaches back past the previous run by more than one poll's duration: a poll stamps its
+rows when it starts, so a row can land after a run has already read past its stamp. `RssSource`
+stays on publish time. **There is no ack**, so a crashed digest simply reads the window again.
 
 The buffer exists because a digest-time poll only sees each feed's current snapshot — 2–4 hours for
 a busy feed, not 24. Measured: a digest-time poll missed 141 of 317 articles. `RssSource` (direct
@@ -278,7 +281,7 @@ differently, which is why the decision lives at the composition root.
 | Shape | buffer | queue |
 | Read | idempotent time window | pull + ack |
 | Crash mid-run | reread, nothing lost | loses at most the current batch |
-| Retention | 8 days, pruned by the Worker | until ACKed |
+| Retention | 8 days from buffer entry, pruned by the Worker | until ACKed |
 | Needs your own domain | no | **yes** — Email Routing cannot run on `*.workers.dev` |
 
 Each newsletter issue also needs a canonical article link. That extraction is structural, not a
@@ -302,10 +305,12 @@ stored URL cannot.
 
 The run cap, `[digest] max_articles_per_digest`, is applied once, at the pending load in
 `run_digest`: a run scores and digests the window's newest N pending articles by publish time,
-across all sources. No source applies it, because one that cut first would drop articles before
-the store saw them. The RSS Worker read has a bound of its own, the Worker's row ceiling, because
-every row carries the feed's full content and the Worker holds the whole result in memory. A
-read that fills the ceiling logs a warning, since the window's older rows then stay unstored.
+across all sources. A capped run therefore cuts the oldest-published rows first; the tripwire is
+`received + suppressed == max_articles_per_digest` in `digest_runs.summary`, a missing `suppressed`
+counting as 0. No source applies it, because one that cut first would drop articles before the
+store saw them. The RSS Worker read has a bound of its own, the Worker's row ceiling, because every
+row carries the feed's full content and the Worker holds the whole result in memory. A read that
+fills the ceiling logs a warning, since the window's earliest-buffered rows then stay unstored.
 
 Each source carries a **tier**, which decides how much attention it gets:
 
@@ -366,7 +371,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
 | Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window |
 | Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
-| RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention |
+| RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry |
 | Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one stops `cyris run` and polls no feed |
 | Runtime settings | **D1 `settings`**; `cyris.toml` for a `json` deployment | same | Grade D. One home per backend, no value in code, and a missing key stops the run — see §5 |
 | Discord webhook | **D1 `settings`** | same | written by `/settings`; `""` means notifications are off. A `json` deployment keeps it in `cyris.toml [notify]` |

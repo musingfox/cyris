@@ -57,7 +57,7 @@ function entryLink(entry) {
   return text(entry.id) || "";
 }
 
-// ISO8601 at write time keeps the after/before query an ordered string compare.
+// The ISO form keeps the insert filter against the retention cutoff a string compare.
 function entryPublished(entry) {
   for (const key of ["pubDate", "published", "updated", "dc:date"]) {
     const raw = text(entry[key]);

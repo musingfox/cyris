@@ -46,7 +46,7 @@ class CloudflareRssSource:
         """Read the window from D1 and map rows onto Articles.
 
         The bounds go out in `Date#toISOString()` form because the Worker compares them
-        to its rows' `published_at` as strings.
+        to each row's `fetched_at`, when the entry entered the buffer, as strings.
         """
         params = {
             "after": _worker_bound(after),
@@ -65,8 +65,8 @@ class CloudflareRssSource:
         rows = resp.json()
         if len(rows) >= WORKER_ROW_CEILING:
             logger.warning(
-                "RSS worker read hit its %d-row ceiling: older rows in this window "
-                "were left in the buffer and not stored",
+                "RSS worker read hit its %d-row ceiling: the earliest-buffered rows in "
+                "this window were left in the buffer and not stored",
                 WORKER_ROW_CEILING,
             )
 

@@ -146,7 +146,7 @@ async def test_malformed_row_is_skipped_not_fatal():
 @respx.mock
 @pytest.mark.asyncio
 async def test_a_read_that_fills_the_ceiling_is_logged(monkeypatch, caplog):
-    """A full read means older rows were left in the buffer, never stored."""
+    """A full read means the earliest-buffered rows were left in the buffer, never stored."""
     monkeypatch.setattr("cyris.adapters.fetch.rss_worker_source.WORKER_ROW_CEILING", 2)
     second = {**ROW, "url": "https://a.test/2", "guid": "tag:a.test,2"}
     respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW, second]))
