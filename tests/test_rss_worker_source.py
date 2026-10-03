@@ -3,6 +3,7 @@
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -55,16 +56,35 @@ def _worker_row_ceiling() -> str:
     return ceiling
 
 
+TAIPEI = ZoneInfo("Asia/Taipei")
+
+
 @respx.mock
 @pytest.mark.asyncio
-async def test_window_is_passed_to_the_worker():
+@pytest.mark.parametrize(
+    ("bound", "sent"),
+    [
+        (datetime(2026, 10, 2, 8, 0, 0, 123456, tzinfo=TAIPEI), "2026-10-02T00:00:00.123Z"),
+        (datetime(2026, 10, 2, 8, 0, 0, tzinfo=TAIPEI), "2026-10-02T00:00:00.000Z"),
+        (datetime(2026, 10, 2, 8, 0, 0, 999999, tzinfo=TAIPEI), "2026-10-02T00:00:00.999Z"),
+        (datetime(2026, 10, 2, 7, 30, 0, 500000, tzinfo=TAIPEI), "2026-10-01T23:30:00.500Z"),
+        (
+            datetime(2026, 10, 1, 20, 0, 0, tzinfo=ZoneInfo("America/New_York")),
+            "2026-10-02T00:00:00.000Z",
+        ),
+        (datetime(2026, 3, 17, tzinfo=UTC), "2026-03-17T00:00:00.000Z"),
+    ],
+)
+@pytest.mark.parametrize("name", ["after", "before"])
+async def test_window_bounds_go_out_as_utc_millis(name, bound, sent):
     route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[]))
+    bounds = {"after": AFTER, "before": BEFORE} | {name: bound}
 
-    await CloudflareRssSource(WORKER, "tok").fetch_articles(after=AFTER, before=BEFORE, sources={})
+    await CloudflareRssSource(WORKER, "tok").fetch_articles(sources={}, **bounds)
 
+    assert route.call_count == 1
     request = route.calls.last.request
-    assert request.url.params["after"] == AFTER.isoformat()
-    assert request.url.params["before"] == BEFORE.isoformat()
+    assert request.url.params[name] == sent
     assert request.headers["Authorization"] == "Bearer tok"
 
 

@@ -8,7 +8,7 @@ crashed digest simply reads the same window again.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 
@@ -26,6 +26,10 @@ TIMEOUT_SECONDS = 30
 WORKER_ROW_CEILING = 2000
 
 
+def _worker_bound(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 class CloudflareRssSource:
     """Read feed entries buffered in the Cloudflare RSS Worker's D1."""
 
@@ -39,10 +43,14 @@ class CloudflareRssSource:
         before: datetime,
         sources: dict[str, SourceConfig],
     ) -> list[Article]:
-        """Read the window from D1 and map rows onto Articles."""
+        """Read the window from D1 and map rows onto Articles.
+
+        The bounds go out in `Date#toISOString()` form because the Worker compares them
+        to its rows' `published_at` as strings.
+        """
         params = {
-            "after": after.isoformat(),
-            "before": before.isoformat(),
+            "after": _worker_bound(after),
+            "before": _worker_bound(before),
             "limit": WORKER_ROW_CEILING,
         }
         # A failed read raises rather than returning []: `fetch_all_articles` skips the

@@ -31,7 +31,7 @@ buffer closes that gap.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET  | `/articles?after=&before=&limit=` | Read a window (ISO8601). Idempotent — no ack |
+| GET  | `/articles?after=&before=&limit=` | Read a window; `after` and `before` are UTC in `Date#toISOString()` form (`YYYY-MM-DDTHH:MM:SS.sssZ`), compared to `published_at` as strings, so an offset or a missing fraction shifts the window. Idempotent — no ack |
 | POST | `/poll` | Trigger a poll manually (same code path as cron) |
 | GET  | `/stats` | Row count and the oldest/newest `published_at` |
 
