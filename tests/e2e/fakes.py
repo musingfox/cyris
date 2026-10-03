@@ -62,6 +62,8 @@ DISCORD_CONTENT_MAX = 2000
 # workers/rss/src/index.js: a request's limit, defaulting to 500, capped at 2000.
 RSS_DEFAULT_LIMIT = 500
 RSS_MAX_LIMIT = 2000
+# workers/rss/src/index.js: the SELECT list of a window read; fetched_at is never returned.
+RSS_COLUMNS = ("url", "guid", "title", "content", "author", "published_at", "source_name")
 # workers/newsletter/src/index.js VALUE_HEADERS: the headers it keeps a value for.
 NEWSLETTER_VALUE_HEADERS = {
     "archived-at", "list-id", "list-post", "list-archive", "list-help", "x-mc-user",
@@ -352,7 +354,7 @@ class Fakes:
     # ---- Workers -----------------------------------------------------------
 
     def rss_articles(self, request, entry):
-        """The Worker's window read: string bounds in SQL, newest first, a capped limit."""
+        """The Worker's window read: fetched_at bounds, newest-buffered first, a capped limit."""
         after, before = request.query.get("after"), request.query.get("before")
         if not after or not before:
             return _json(400, {"error": "after and before required"})
@@ -361,8 +363,9 @@ class Fakes:
         except ValueError:
             limit = 0
         limit = min(limit or RSS_DEFAULT_LIMIT, RSS_MAX_LIMIT)
-        rows = [r for r in self.script["rss_rows"] if after <= r["published_at"] < before]
-        rows.sort(key=lambda r: r["published_at"], reverse=True)
+        rows = [r for r in self.script["rss_rows"] if after <= r["fetched_at"] < before]
+        rows.sort(key=lambda r: r["fetched_at"], reverse=True)
+        rows = [{k: r[k] for k in RSS_COLUMNS if k in r} for r in rows]
         # The Worker binds the limit into SQL, and SQLite reads a negative one as none.
         return _json(200, rows if limit < 0 else rows[:limit])
 

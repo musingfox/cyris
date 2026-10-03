@@ -203,8 +203,17 @@ def _voted(now: datetime) -> StoredArticle:
     )
 
 
+def _iso(moment: datetime) -> str:
+    """As the Worker stores it: JavaScript's toISOString()."""
+    return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def _rss_rows(now: datetime) -> list[dict]:
     f2_age = timedelta(hours=WINDOW_HOURS) - ZoneInfo(TIMEZONE).utcoffset(now) / 2
+    fetched = {
+        a["key"]: now - (f2_age if a["key"] == "f2" else timedelta(minutes=10 + i))
+        for i, a in enumerate(ARTICLES.values())
+    }
     return [
         {
             "guid": f"e2e-{a['key']}",
@@ -212,13 +221,14 @@ def _rss_rows(now: datetime) -> list[dict]:
             "url": a["url"],
             "content": a["content"],
             "author": AUTHORS.get(a["key"]),
-            # As the Worker stores it: JavaScript's toISOString().
-            "published_at": (now - (f2_age if a["key"] == "f2" else timedelta(minutes=10 + i)))
-            .isoformat(timespec="milliseconds")
-            .replace("+00:00", "Z"),
+            # f2's feed listed it a day late: its date precedes the window it entered.
+            "published_at": _iso(
+                fetched[a["key"]] - (timedelta(hours=23) if a["key"] == "f2" else timedelta())
+            ),
+            "fetched_at": _iso(fetched[a["key"]]),
             "source_name": a["source"],
         }
-        for i, a in enumerate(ARTICLES.values())
+        for a in ARTICLES.values()
     ]
 
 
@@ -582,12 +592,15 @@ def test_the_rss_buffer_is_read_for_the_configured_window(receipts) -> None:
     assert query["limit"] == "2000"
 
 
-def test_an_article_from_the_oldest_hours_of_the_window_is_stored(receipts) -> None:
+def test_an_entry_listed_late_that_entered_the_buffer_in_the_oldest_hours_is_stored(
+    receipts,
+) -> None:
     after = datetime.fromisoformat(dict(only(receipts.records, "rss_articles")["query"])["after"])
     row = next(r for r in receipts.run.scenario.rss_rows if r["guid"] == "e2e-f2")
-    published = datetime.fromisoformat(row["published_at"])
+    fetched = datetime.fromisoformat(row["fetched_at"])
     offset = ZoneInfo(TIMEZONE).utcoffset(after)
-    assert after <= published < after + offset, "f2 left the slice a UTC-labelled bound would miss"
+    assert after <= fetched < after + offset, "f2 left the slice a UTC-labelled bound would miss"
+    assert datetime.fromisoformat(row["published_at"]) < after
     assert URL["f2"] in receipts.articles
 
 

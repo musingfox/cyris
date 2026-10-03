@@ -4,10 +4,12 @@ Each test starts the fakes behind mitmdump with no cyris run, and talks to them 
 an httpx client of its own.
 """
 
+import json
 import socket
 import ssl
 import threading
 from contextlib import suppress
+from pathlib import Path
 
 import httpx
 import pytest
@@ -99,10 +101,10 @@ CF_AUTH = {"Authorization": f"Bearer {harness.CF_TOKEN}"}
 WORKER_AUTH = {"Authorization": f"Bearer {harness.WORKER_TOKEN}"}
 PROMOTE_AUTH = {"Authorization": f"Bearer {harness.PROMOTE_TOKEN}"}
 RSS_URL = f"https://{harness.HOSTS['rss_host']}/articles"
-RSS_ROWS = [
-    {"url": f"https://e2e.test/{day}", "published_at": f"2026-10-0{day}T08:00:00.000Z"}
-    for day in (1, 2, 3)
-]
+RSS_CASES = json.loads(
+    (Path(__file__).parents[1] / "workers" / "rss" / "test" / "articles-window.json").read_text()
+)
+RSS_ROWS = RSS_CASES["rows"]
 PAGES = f"{CF}/accounts/{harness.ACCOUNT_ID}/pages/projects/{harness.PAGES_PROJECT}"
 JWT_AUTH = {"Authorization": f"Bearer {harness.PAGES_UPLOAD_JWT}"}
 SITE = f"https://{harness.HOSTS['pages_host']}"
@@ -153,24 +155,27 @@ def test_the_rss_buffer_needs_both_bounds(service) -> None:
 
 
 def test_the_rss_buffer_reads_its_window_as_the_worker_does(service) -> None:
-    """String bounds against the stored ISO strings, newest first, capped at the limit."""
-    capped = service.get(
-        RSS_URL,
-        params={"after": "2026-10-01T09:00:00", "before": "2026-10-04", "limit": "1"},
-        headers=WORKER_AUTH,
-    )
-    assert [row["url"] for row in capped.json()] == ["https://e2e.test/3"]
-    whole = service.get(
-        RSS_URL, params={"after": "2026-10-01", "before": "2026-10-03"}, headers=WORKER_AUTH
-    )
-    assert [row["url"] for row in whole.json()] == ["https://e2e.test/2", "https://e2e.test/1"]
-    # SQLite reads a negative LIMIT as no limit at all.
-    unbounded = service.get(
-        RSS_URL,
-        params={"after": "2026-10-01", "before": "2026-10-04", "limit": "-1"},
-        headers=WORKER_AUTH,
-    )
-    assert len(unbounded.json()) == 3
+    """Every case the Worker's own test runs: fetched_at bounds, newest-buffered first, the
+    Worker's columns. SQLite reads a negative LIMIT as no limit at all."""
+    for read in RSS_CASES["reads"]:
+        params = {k: v for k, v in read.items() if k in ("after", "before", "limit")}
+        answer = service.get(RSS_URL, params=params, headers=WORKER_AUTH).json()
+        assert [row["url"] for row in answer] == read["expect"], read["name"]
+        for row in answer:
+            assert sorted(row) == RSS_CASES["columns"], read["name"]
+
+
+def _published_at_answer(read: dict) -> list[str]:
+    rows = [r for r in RSS_ROWS if read["after"] <= r["published_at"] < read["before"]]
+    rows.sort(key=lambda r: r["published_at"], reverse=True)
+    limit = int(read.get("limit") or 500)
+    return [r["url"] for r in (rows if limit < 0 else rows[:limit])]
+
+
+def test_every_shared_read_tells_a_fetched_at_window_from_a_published_at_one() -> None:
+    assert len(RSS_CASES["reads"]) >= 4
+    for read in RSS_CASES["reads"]:
+        assert read["expect"] != _published_at_answer(read), read["name"]
 
 
 def test_the_workers_refuse_a_wrong_token(service) -> None:
