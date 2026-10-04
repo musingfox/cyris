@@ -552,8 +552,9 @@ class TestTheLayeringSettingsReachThePage:
 
         assert grouped.count("The group summary.") == 1
         assert "Topic heading" in grouped
-        assert grouped.count('class="featured-item"') == 1
-        assert "Essay 2 on its own." in grouped
+        assert 'class="featured-item"' not in grouped
+        assert "Essay 2" in grouped
+        assert "Essay 2 on its own." not in grouped
 
         assert "The group summary." not in single
         assert "Topic heading" not in single

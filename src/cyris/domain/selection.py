@@ -66,10 +66,10 @@ def layer_by_score(
     `featured_articles[0]` is the Top story. It is a group, with its group summary,
     when two or more articles of one summarized group score at least
     `featured_threshold`; of several such groups, the one holding the best article
-    leads, and only its qualifying members stay in it. With no such group it is the
-    highest-scoring article. Every other article becomes a one-article section, highest
-    score first, and at most `max_featured` of them are kept: the rest leave the issue.
-    `thematic_summaries` ends empty.
+    leads, and it keeps every article of its group, since the group summary covers
+    them all. With no such group it is the highest-scoring article. Every other article
+    becomes a one-article section, highest score first, and at most `max_featured` of
+    them are kept: the rest leave the issue. `thematic_summaries` ends empty.
 
     A section with no group summary never groups: that is the degraded shape, whose
     items each carry their own excerpt.
@@ -78,11 +78,11 @@ def layer_by_score(
     for section in content.thematic_summaries:
         if section.summary is None:
             continue
-        members = [
+        qualifying = [
             i for i in section.items if i.score is not None and i.score >= featured_threshold
         ]
-        if len(members) >= 2:
-            groups.append(section.model_copy(update={"items": members}))
+        if len(qualifying) >= 2:
+            groups.append(section)
     lead = max(groups, key=lambda g: max(_by_score(i) for i in g.items), default=None)
 
     # Keyed by URL, not identity: the model can name one article in two sections, and

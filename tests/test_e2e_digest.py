@@ -81,12 +81,7 @@ ARTICLES = {
     for a in [
         _article("a1", DEEP, "Agents learn to read receipts", "Receipts tell a run apart."),
         _article("a2", DEEP, "Receipts beat exit codes", "An exit code of 0 proves little."),
-        _article(
-            "b1",
-            DEEP,
-            "A card without its summary",
-            "The model wrote nothing for this one, so the reader gets its first lines.",
-        ),
+        _article("b1", DEEP, "Receipts outlast the run", "A receipt stays after the run exits."),
         _article("b2", DEEP, "Positions over ids", "Short integers echo back reliably."),
         _article("n1", WIRE, "Proxy outage hits region east", "Region east lost its proxy."),
         _article("n2", WIRE, "Region east proxy restored", "The proxy in region east is back."),
@@ -136,8 +131,8 @@ CLUSTER = {
 OWN_SUMMARIES = {
     "a1": "A1 on its own.",
     "a2": "A2 on its own.",
+    "b1": "B1 on its own.",
     "b2": "B2 on its own.",
-    "l1": "The letter on its own.",
 }
 FILTER_PICKS = {"f1": "F1 in one line.", "n3": "N3 in one line."}
 LLM = {
@@ -151,7 +146,7 @@ LLM = {
         "ai": TOP_GROUP,
         "letters": {"heading": "Letters", "summary": "One letter this week."},
     },
-    # b1 has none: the model left that Features article out of `summaries`.
+    # l1 has none: the model left that Features article out of `summaries`.
     "own_summaries": {TITLE[k]: text for k, text in OWN_SUMMARIES.items()},
 }
 SETTINGS = harness.settings(
@@ -165,17 +160,19 @@ SETTINGS = harness.settings(
         "notify.email_from": "digest@e2e.test",
         "digest.output_language": "zh-Hant",
         "digest.style_prompt": "E2E style: name the receipt.",
-        # a1 and a2 clear 80 and form the Top story; b1, b2 and l1 are Features.
+        # a1 and a2 clear 80, so their topic, b1 and b2 with them, is the Top story; l1 is
+        # the one Feature.
         "routing.score_threshold": 80,
         "routing.summarize_score_threshold": 50,
         "digest.max_featured": 5,
-        # 2 Top story + 3 Features + 1 cluster + 1 On the Radar + 1 Wire row: n3, the
+        # 4 Top story + 1 Feature + 1 cluster + 1 On the Radar + 1 Wire row: n3, the
         # filter's second pick, is the one article the cap cuts.
         "digest.max_articles_per_digest_output": 8,
     }
 )
 SHOWN = {"a1", "a2", "b1", "b2", "l1", "l2", "n1", "n2", "f1"}
-FEATURES = ("b1", "l1", "b2")
+TOP_STORY = ("a1", "a2", "b1", "b2")
+FEATURES = ("l1",)
 SOURCE_OF = {key: a["source"] for key, a in ARTICLES.items()} | {
     "l1": LETTERS.name,
     "l2": LETTERS.name,
@@ -709,17 +706,15 @@ def check_grouped_top_story(r: Receipts) -> None:
     assert heading.text() == TOP_GROUP["heading"]
     assert lead.one("p", "summary").text() == TOP_GROUP["summary"]
     members = lead.find_all("article", "article-item")
-    assert [m.one("h3").text() for m in members] == [TITLE["a1"], TITLE["a2"]]
-    assert {h for m in members for h in m.hrefs()} == {URL["a1"], URL["a2"]}
+    assert [m.one("h3").text() for m in members] == [TITLE[k] for k in TOP_STORY]
+    assert {h for m in members for h in m.hrefs()} == {URL[k] for k in TOP_STORY}
 
     top = r.discord()["embeds"][0]["description"]
     assert TOP_GROUP["heading"] in top
-    assert f"- [{TITLE['a1']}]({URL['a1']})" in top
-    assert f"- [{TITLE['a2']}]({URL['a2']})" in top
-
     mail = r.mail()
-    assert f"  - {TITLE['a1']} — {URL['a1']}" in mail["text"]
-    assert f"  - {TITLE['a2']} — {URL['a2']}" in mail["text"]
+    for key in TOP_STORY:
+        assert f"- [{TITLE[key]}]({URL[key]})" in top, key
+        assert f"  - {TITLE[key]} — {URL[key]}" in mail["text"], key
     mail_lead = parse_html(mail["html"]).one("article", "lead")
     assert mail_lead.one("h3", "lead-title").text() == TOP_GROUP["heading"]
 
@@ -734,19 +729,16 @@ def test_two_high_scorers_on_one_topic_reach_the_page_as_one_top_story(receipts)
 def check_missing_summary_degrades(r: Receipts) -> None:
     cards = {c.one("h3").hrefs()[0]: c for c in r.page().find_all("article", "featured-item")}
     assert list(cards) == [URL[k] for k in FEATURES]
-    fallback = cards[URL["b1"]]
+    fallback = cards[URL["l1"]]
     assert fallback.attrs.get("lang") == ""  # an excerpt is in the article's own language
-    assert fallback.one("p", "summary").text() == ARTICLES["b1"]["content"]
-    for key in ("l1", "b2"):
-        assert "lang" not in cards[URL[key]].attrs
-        assert cards[URL[key]].one("p", "summary").text() == OWN_SUMMARIES[key]
+    assert fallback.one("p", "summary").text() == LETTER_TEXT["l1"]
 
     assert len(r.page().find_all("p", "notice")) == 1
     assert MODEL in r.discord()["content"]
     mail = parse_html(r.mail()["html"])
     assert len(mail.find_all("p", "notice")) == 1
     mail_cards = {a.one("h3").text(): a for a in mail.find_all("article", "item")}
-    assert mail_cards[TITLE["b1"]].attrs["lang"] == ""
+    assert mail_cards[TITLE["l1"]].attrs["lang"] == ""
     (row,) = r.runs
     assert row["degraded"] == 1
     assert json.loads(row["summary"])["degraded"] is True

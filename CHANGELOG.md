@@ -11,6 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and pruned its buffer by the date the feed gave an entry; it now uses the time
   the entry entered the buffer, and a read that hits the row ceiling keeps the
   newest-buffered rows.
+- The Top story lists every article its summary covers. A grouped Top story kept
+  only the articles that reached `routing.score_threshold` while printing the
+  summary the model wrote for the whole group, so the summary could describe
+  articles shown elsewhere in the issue or left out of it. The rest of the group
+  now stays with it instead of becoming Features cards.
 
 ### Upgrading
 

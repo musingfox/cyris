@@ -304,11 +304,11 @@ title is itself that section's `h2`.
   (§1).
 - **Only the Top story may be a group.** When two or more articles on one topic score at least
   `routing.score_threshold`, the lead card takes the group's heading as its title and prints the group's
-  summary once. Each of those articles follows as an `.article-item` whose title is `h3 .lg`, one level
+  summary once. Each article of the group follows as an `.article-item` whose title is `h3 .lg`, one level
   below the card title, with its own title link and meta row, so each keeps its own score and vote: they
   are different articles, unlike a news group's reports of one event. A member scoring below the
-  threshold leaves the group and becomes a Features card. With no such group, the lead is the
-  highest-scoring single article.
+  threshold stays in the group, because the group's summary covers it. With no such group, the lead is
+  the highest-scoring single article.
 - **A Features card is one article.** It prints that article's own summary, never a group's; an article
   the model wrote no summary for shows its excerpt, and the issue counts as degraded. Cards follow score,
   highest first, and `digest.max_featured` is how many there are at most; an article past it is left out

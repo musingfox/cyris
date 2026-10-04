@@ -328,7 +328,8 @@ profile.
 
 The summarize call writes a summary for each group and one for each article. `layer_by_score`
 then lays them out inside `DigestPipeline`, before the issue's article cap: the Top story is a
-group only when two or more of its articles reach `[routing] score_threshold`, and every other
+group only when two or more of its articles reach `[routing] score_threshold`, and then it
+carries every article of that group, since the group summary covers them all. Every other
 article is one Features card under its own summary, highest score first, at most
 `[digest] max_featured` of them. An article past either limit is left out of the issue and stays
 pending. The cap takes the Top story whole, or its best article in its slot, before anything else.

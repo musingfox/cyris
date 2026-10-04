@@ -108,7 +108,7 @@ NonBlank = Annotated[str, AfterValidator(_not_blank)]
 
 
 class RoutingConfig(BaseModel):
-    score_threshold: int = Field(ge=0, le=100)  # The score a Top story group's members need
+    score_threshold: int = Field(ge=0, le=100)  # Two of a group at this score make it the Top story
     summarize_score_threshold: int = Field(ge=0, le=100)
 
 

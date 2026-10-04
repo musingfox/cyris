@@ -224,13 +224,26 @@ class TestLayerByScore:
         assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"]]
         assert all(s.summary is None for s in result.featured_articles)
 
-    def test_a_member_below_the_threshold_leaves_the_group_as_its_own_card(self):
+    def test_a_member_below_the_threshold_stays_in_the_group(self):
         result = _layer(_topic("Topic", _article("low", 50), _article("a", 90), _article("b", 75)))
 
         lead, *features = result.featured_articles
-        assert _titles(lead) == ["a", "b"]
-        assert [_titles(s) for s in features] == [["low"]]
-        assert features[0].items[0].summary == "low on its own"
+        assert _titles(lead) == ["low", "a", "b"]
+        assert lead.summary == "Group summary"
+        assert features == []
+
+    def test_the_top_story_keeps_every_article_its_summary_covers(self):
+        result = _layer(
+            _topic("Topic", _article("a", 9), _article("b", 8), _article("c", 3)),
+            _topic("Solo", _article("solo", 5)),
+            threshold=7,
+        )
+
+        lead, *features = result.featured_articles
+        assert lead.heading == "Topic"
+        assert lead.summary == "Group summary"
+        assert _titles(lead) == ["a", "b", "c"]
+        assert [_titles(s) for s in features] == [["solo"]]
 
     def test_a_group_leads_even_when_a_single_article_scores_higher(self):
         result = _layer(
