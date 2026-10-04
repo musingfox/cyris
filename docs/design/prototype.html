@@ -204,6 +204,9 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
 .archive-row .actions { grid-column: 4; }
 .archive-row.same-day .date { color: var(--text-dim); }
+.archive-row, .front-card { position: relative; }
+.btn.sm.digest-link { position: static; }
+.btn.sm.digest-link::after { inset: 0; }
 .latest { color: var(--accent); }
 .front-card {
   background: var(--surface); border: 1px solid var(--border-strong); padding: var(--s-6);
@@ -1068,7 +1071,7 @@ let sources = [
 ];
 
 /* ---- archive ---- */
-const issueActions = `<span class="actions"><a class="btn secondary sm" href="#digest">Digest</a><a class="btn secondary sm" href="#raw">All articles</a></span>`;
+const issueActions = `<span class="actions"><a class="btn secondary sm digest-link" href="#digest">Digest</a><a class="btn secondary sm" href="#raw">All articles</a></span>`;
 const [latest, ...older] = issues;
 const months = Map.groupBy(older, (i) => i.date.slice(0, 7));
 $("#archive-list").innerHTML = `

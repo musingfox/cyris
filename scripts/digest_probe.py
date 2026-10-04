@@ -556,6 +556,55 @@ _CHECKS += [
         ("archive", ARCHIVE, ".btn.sm", NO_BUTTON_AREAS),
     )
 ]
+# The archive's headline card and each row are their issue's Digest link, all but the
+# All articles button, which still opens its own page. One script, two sabotages: one
+# shrinks the Digest area back to the button, the other paints it over All articles.
+EXPECT_ARCHIVE_HITS = """
+const issues = $$(".front-card, .archive-row");
+expect(issues.length === 2, `${issues.length} cards and rows, want 2`);
+const centre = (el) => {
+  const r = el.getBoundingClientRect();
+  return [r.left + r.width / 2, r.top + r.height / 2];
+};
+const problems = [];
+for (const issue of issues) {
+  issue.scrollIntoView({block: "center", behavior: "instant"});
+  const digest = $(".digest-link", issue), raw = $(".actions a:not(.digest-link)", issue);
+  const r = issue.getBoundingClientRect();
+  const parts = [...issue.children].filter((part) => !part.matches(".actions"));
+  const wanted = [
+    ...parts.map((part) => [digest, centre(part)]),
+    [digest, [r.left + 2, r.top + 2]],
+    [digest, [r.right - 2, r.bottom - 2]],
+    [raw, centre(raw)],
+  ];
+  for (const [target, [x, y]] of wanted) {
+    if (!lands(target, x, y)) {
+      const hit = named(document.elementFromPoint(x, y));
+      problems.push(`${named(issue)} (${x}, ${y}) lands on ${hit}, want ${named(target)}`);
+    }
+  }
+}
+expect(!problems.length, problems.join("; "));
+"""
+_CHECKS += [
+    Check(
+        id=f"archive-{name}-{width}",
+        fixture="signed-in",
+        path=ARCHIVE,
+        width=width,
+        script=EXPECT_ARCHIVE_HITS,
+        sabotage=sabotage,
+    )
+    for width in (TAP_WIDTH, 1440)
+    for name, sabotage in (
+        ("card-opens-digest", restyle(".btn.sm.digest-link { position: relative !important; }")),
+        (
+            "all-articles-above-card",
+            """$$(".actions").forEach((actions) => actions.append($(".digest-link", actions)));""",
+        ),
+    )
+]
 # Each Wire row with a summary draws it on its own line below the title, and a row
 # without one draws none; `WIRE_SUMMARIES` says which rows the fixture gave one.
 WIRE_SUMMARIES = [bool(item.summary) for item in content().filtered_headlines]

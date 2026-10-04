@@ -448,7 +448,7 @@ def test_an_archive_row_holds_date_period_and_the_issues_two_views(tmp_path):
     assert (
         '<div class="list-row archive-row"><span class="date">2026-08-31</span>'
         '<span class="label">morning</span><span class="actions">'
-        '<a class="btn secondary sm" href="2026-08-31-morning.html">Digest</a>'
+        '<a class="btn secondary sm digest-link" href="2026-08-31-morning.html">Digest</a>'
         '<a class="btn secondary sm" href="2026-08-31-morning-raw.html">All articles</a>'
         "</span></div>"
     ) in html
