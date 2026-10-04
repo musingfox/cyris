@@ -64,8 +64,8 @@ Planned, not built yet:
 
 ## Contributing
 
-`scripts/check.sh` runs everything CI runs. The conventions, for people and coding
-agents alike, are in [AGENTS.md](AGENTS.md).
+To change cyris, start with [CONTRIBUTING.md](CONTRIBUTING.md): setup, the
+`scripts/check.sh` gate, commits and CI. Coding agents read [AGENTS.md](AGENTS.md).
 
 ## License
 
