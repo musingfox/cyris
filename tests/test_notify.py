@@ -436,6 +436,103 @@ class TestDiscordPayload:
         assert build_discord_payload(content) == {"embeds": build_discord_embeds(content)}
 
 
+ONLINE = "https://digest.example/2026-04-10-morning"
+
+
+def _counted(embed: dict) -> int:
+    """The characters Discord counts toward a message's 6000 (docs: message.mdx, Embed Limits)."""
+    fields = embed.get("fields", [])
+    texts = [
+        embed.get("title"),
+        embed.get("description"),
+        embed.get("footer", {}).get("text"),
+        embed.get("author", {}).get("name"),
+        *(f["name"] for f in fields),
+        *(f["value"] for f in fields),
+    ]
+    return sum(len(t or "") for t in texts)
+
+
+def _feature(n: int, summary_chars: int) -> DigestSection:
+    summary = (f"Feature {n} goes on. " * summary_chars)[:summary_chars]
+    item = DigestItem(
+        title=f"Feature {n}", summary=summary, sources=["S"], urls=[f"https://ex.com/{n}"]
+    )
+    return DigestSection(heading=f"Feature {n}", items=[item])
+
+
+def _issue(features: list[DigestSection], headlines: int) -> DigestContent:
+    return DigestContent(
+        date="2026-04-10",
+        period="morning",
+        sources_processed=3,
+        articles_received=100,
+        articles_included=len(features) + headlines,
+        featured_articles=features,
+        filtered_headlines=[
+            DigestItem(
+                title=f"Headline {n}",
+                summary="One line about it",
+                sources=["Wire"],
+                urls=[f"https://wire.example/{n}"],
+            )
+            for n in range(headlines)
+        ],
+    )
+
+
+def _overfull_issue() -> DigestContent:
+    """Features alone over 4096, and the 6000 total running out inside it."""
+    return _issue([_feature(0, 3000), *(_feature(n, 1500) for n in range(1, 4))], headlines=40)
+
+
+class TestDiscordPayloadLimits:
+    """Discord refuses a message over its embed limits whole, so the payload is held to them."""
+
+    def test_a_full_issue_fits_and_keeps_its_stats_whole(self):
+        content = _overfull_issue()
+        assert sum(_counted(e) for e in build_discord_embeds(content, ONLINE)) > 6000
+
+        embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
+
+        assert sum(_counted(e) for e in embeds) <= 6000
+        assert len(embeds) <= 10
+        assert all(len(e["title"]) <= 256 and len(e["description"]) <= 4096 for e in embeds)
+        assert embeds[-1] == build_discord_embeds(content, ONLINE)[-1]
+        assert f"[Read online]({ONLINE})" in embeds[-1]["description"]
+
+    def test_later_sections_lose_lines_first_and_whole_lines_only(self):
+        content = _overfull_issue()
+        full = build_discord_embeds(content, ONLINE)
+
+        embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
+
+        # Other headlines, after the cut, has no room left.
+        assert [e["title"] for e in embeds] == [
+            full[0]["title"],
+            full[1]["title"],
+            full[-1]["title"],
+        ]
+        top, features, stats = embeds
+        assert top == full[0]
+        *kept, marker = features["description"].split("\n")
+        assert kept == full[1]["description"].split("\n")[: len(kept)]
+        assert "more in the online edition" in marker
+        assert stats == full[-1]
+
+    def test_a_section_over_4096_alone_is_cut_and_the_ones_after_it_stay(self):
+        content = _issue([_feature(0, 100), *(_feature(n, 1200) for n in range(1, 5))], 2)
+        full = build_discord_embeds(content, ONLINE)
+
+        top, features, headlines, stats = build_discord_payload(content, ONLINE)["embeds"]
+
+        *kept, marker = features["description"].split("\n")
+        assert kept == full[1]["description"].split("\n")[: len(kept)]
+        assert "more in the online edition" in marker
+        assert len(features["description"]) <= 4096 < len(full[1]["description"])
+        assert (top, headlines, stats) == (full[0], full[2], full[3])
+
+
 class TestSendDiscord:
     async def test_posts_degraded_payload(self, monkeypatch):
         requests: list[httpx.Request] = []

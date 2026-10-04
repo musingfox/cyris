@@ -16,6 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   summary the model wrote for the whole group, so the summary could describe
   articles shown elsewhere in the issue or left out of it. The rest of the group
   now stays with it instead of becoming Features cards.
+- A long issue now reaches Discord. Discord refuses a whole message whose embeds
+  hold more than 6000 characters, so a full issue's notification was lost while
+  the run still reported ok. The message now keeps its stats and the Read online
+  link whole and cuts the last sections at a line break, each cut section ending
+  with a note that the rest is in the online edition.
 
 ### Upgrading
 

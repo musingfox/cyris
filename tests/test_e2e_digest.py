@@ -852,6 +852,33 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
         assert TITLE[key] in mail["text"], key
 
 
+# ---- a full issue: Discord takes it within its 6000-character embed total --------
+
+
+LONG = "A summary long enough that a full issue overflows one Discord message. "
+
+
+@pytest.fixture(scope="module")
+def full_issue(tmp_path_factory) -> Receipts:
+    """Long model summaries: the Top story and Features alone are over 6000 characters."""
+    llm = copy.deepcopy(LLM)
+    llm["groups"]["ai"]["summary"] = LONG * 35
+    for key in ("l1", "b2"):
+        llm["own_summaries"][TITLE[key]] = LONG * 30
+    run = harness.run_deployment(tmp_path_factory.mktemp("e2e-full-issue"), _scenario(llm=llm))
+    assert run.returncode == 0, run.diagnostics()
+    assert_no_unclaimed(run.records)
+    return Receipts(run)
+
+
+def test_a_full_issue_reaches_discord_within_its_embed_total(full_issue) -> None:
+    post = only(full_issue.records, "discord_webhook")
+    assert post["status"] == 204, post["status"]
+    embeds = json_body(post)["embeds"]
+    assert sum(len(e["title"]) + len(e["description"]) for e in embeds) <= 6000
+    assert f"[Read online]({full_issue.digest_url})" in embeds[-1]["description"]
+
+
 # ---- self-tests: the checks above can fail ----------------------------------
 
 

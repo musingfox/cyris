@@ -118,8 +118,8 @@ def build_discord_embeds(
 ) -> list[dict]:
     """Build Discord embed objects from DigestContent.
 
-    Returns a list of embed dicts ready for the Discord webhook payload.
-    Discord limits: 4096 chars per embed description, max 10 embeds per message.
+    Returns a list of embed dicts, uncapped: `build_discord_payload` holds them to
+    Discord's limits.
     Section embeds follow the page's section order (docs/design/ui-language.md §6):
     Top story, Features, In Focus, Following, On the Radar, The Wire. The stats come last.
     """
@@ -134,7 +134,7 @@ def build_discord_embeds(
     ):
         text = "\n".join(_render_story_embed(story) for story in group).strip()
         if text:
-            embeds.append({"title": title, "description": text[:4096], "color": color})
+            embeds.append({"title": title, "description": text, "color": color})
 
     # --- News clusters ---
     if content.news_clusters:
@@ -143,7 +143,7 @@ def build_discord_embeds(
             lines.append(_render_section_embed(section))
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "📰 News", "description": text[:4096], "color": 0xFEE75C})
+            embeds.append({"title": "📰 News", "description": text, "color": 0xFEE75C})
 
     # --- Fan sections (followed groups — own channel) ---
     if content.fan_sections:
@@ -159,7 +159,7 @@ def build_discord_embeds(
             lines.append("")
         text = "\n".join(lines).strip()
         if text:
-            embeds.append({"title": "📣 Following", "description": text[:4096], "color": 0xEB459E})
+            embeds.append({"title": "📣 Following", "description": text, "color": 0xEB459E})
 
     # --- Attention sections ---
     if content.attention_sections:
@@ -168,9 +168,7 @@ def build_discord_embeds(
             lines.append(_render_section_embed(section))
         text = "\n".join(lines).strip()
         if text:
-            embeds.append(
-                {"title": "👀 Worth a look", "description": text[:4096], "color": 0x9B59B6}
-            )
+            embeds.append({"title": "👀 Worth a look", "description": text, "color": 0x9B59B6})
 
     # --- Filtered headlines ---
     if content.filtered_headlines:
@@ -187,7 +185,7 @@ def build_discord_embeds(
             embeds.append(
                 {
                     "title": f"📌 Other headlines ({len(content.filtered_headlines)})",
-                    "description": text[:4096],
+                    "description": text,
                     "color": 0x95A5A6,
                 }
             )
@@ -232,6 +230,56 @@ def build_discord_embeds(
     return embeds
 
 
+# Discord's limits on one webhook message (developers/resources/message, "Embed
+# Limits"; developers/resources/webhook, "Execute Webhook"). Discord refuses a
+# message over any of them whole.
+_DISCORD_MAX_EMBEDS = 10
+_DISCORD_TITLE_MAX = 256
+_DISCORD_DESCRIPTION_MAX = 4096
+_DISCORD_EMBED_TOTAL = 6000
+_DISCORD_CONTENT_MAX = 2000
+_MORE_ONLINE = "*… more in the online edition*"
+
+
+def _cut_at_lines(text: str, room: int) -> str:
+    """`text` if it fits in `room`, else its leading whole lines and a marker, else ""."""
+    if len(text) <= room:
+        return text
+    kept: list[str] = []
+    used = len(_MORE_ONLINE)
+    for line in text.split("\n"):
+        used += len(line) + 1
+        if used > room:
+            break
+        kept.append(line)
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return "\n".join([*kept, _MORE_ONLINE]) if kept else ""
+
+
+def _fit_embeds(embeds: list[dict]) -> list[dict]:
+    """Hold a digest's embeds to Discord's limits; the stats embed, last, stays whole.
+
+    Sections keep their order and are cut from the end, at line boundaries so no
+    markdown link is split: the section the total runs out in keeps what fits,
+    and every section after it is dropped.
+    """
+    *sections, stats = embeds
+    budget = _DISCORD_EMBED_TOTAL - len(stats["title"]) - len(stats["description"])
+    fitted = []
+    for embed in sections[: _DISCORD_MAX_EMBEDS - 1]:
+        title = embed["title"][:_DISCORD_TITLE_MAX]
+        capped = _cut_at_lines(embed["description"], _DISCORD_DESCRIPTION_MAX)
+        room = budget - len(title)
+        description = capped if len(capped) <= room else _cut_at_lines(embed["description"], room)
+        if description:
+            fitted.append(embed | {"title": title, "description": description})
+            budget -= len(title) + len(description)
+        if description != capped:
+            break
+    return [*fitted, stats]
+
+
 def build_discord_payload(
     content: DigestContent,
     digest_url: str = "",
@@ -243,12 +291,12 @@ def build_discord_payload(
     `degraded` is `is_degraded_run`'s verdict, passed in: only the run knows the
     configured provider, and a missing key leaves no trace of it in the usage.
     """
-    payload = {"embeds": build_discord_embeds(content, digest_url, publish_failed)}
+    payload = {"embeds": _fit_embeds(build_discord_embeds(content, digest_url, publish_failed))}
     if degraded and content.usage.model != NO_LLM_MODEL:
         payload["content"] = (
             f"⚠️ Degraded digest: LLM {content.usage.model} could not be used for every step "
             "this run, so some or all of it is unscored or plain excerpts."
-        )
+        )[:_DISCORD_CONTENT_MAX]
     elif degraded:
         payload["content"] = (
             "⚠️ Degraded digest: the configured LLM could not be used this run, "
@@ -283,10 +331,6 @@ async def send_discord(
             logger.debug("Discord webhook sent: %d embeds", len(payload["embeds"]))
     except httpx.HTTPError:
         logger.warning("Discord webhook failed", exc_info=True)
-
-
-# Discord rejects a webhook message whose content field exceeds this.
-_DISCORD_CONTENT_MAX = 2000
 
 
 async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:
