@@ -23,6 +23,9 @@
         .archive-row .actions, .front-card .actions { display: flex; gap: var(--s-2); }
         .archive-row .actions { grid-column: 4; }
         .archive-row.same-day .date { color: var(--text-dim); }
+        .archive-row, .front-card { position: relative; }
+        .btn.sm.digest-link { position: static; }
+        .btn.sm.digest-link::after { inset: 0; }
 
         .latest { color: var(--accent); }
 
@@ -47,7 +50,7 @@
     </style>
 </head>
 <body>
-    {% macro actions(issue) %}<span class="actions"><a class="btn secondary sm" href="{{ issue.filename }}">Digest</a>{% if issue.raw_filename %}<a class="btn secondary sm" href="{{ issue.raw_filename }}">All articles</a>{% endif %}</span>{% endmacro %}
+    {% macro actions(issue) %}<span class="actions"><a class="btn secondary sm digest-link" href="{{ issue.filename }}">Digest</a>{% if issue.raw_filename %}<a class="btn secondary sm" href="{{ issue.raw_filename }}">All articles</a>{% endif %}</span>{% endmacro %}
     {% include "_site_bar.html.j2" %}
     <div class="container">
         <div class="page-head">

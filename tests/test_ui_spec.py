@@ -902,6 +902,15 @@ def test_archive_rows_are_the_prototype_rows_and_wrap_them_on_phones() -> None:
     assert widths == {"@media (max-width: 720px)"}
 
 
+@pytest.mark.parametrize("page", ["index", "prototype"])
+def test_the_digest_link_takes_taps_over_its_whole_card_or_row(page: str) -> None:
+    rules = parse_style_block(PROTOTYPE.read_text()) if page == "prototype" else _parsed(page)
+    # The card and the row are the containing block of the Digest link's hit area.
+    assert rules[".archive-row, .front-card"] == {"position: relative"}
+    assert rules[".btn.sm.digest-link"] == {"position: static"}
+    assert rules[".btn.sm.digest-link::after"] == {"inset: 0"}
+
+
 def test_the_headline_card_is_the_prototype_card() -> None:
     index = _parsed("index")
     card = index[".front-card"]

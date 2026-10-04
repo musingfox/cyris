@@ -1085,7 +1085,8 @@ async def test_the_digest_probe_fixture_serves_an_archive_with_small_buttons():
         digest_probe.build_fixture("signed-in"), [("GET", digest_probe.ARCHIVE)]
     )
     assert status == 200
-    assert html.count('class="btn secondary sm"') == 4
+    assert html.count('class="btn secondary sm') == 4
+    assert html.count('class="btn secondary sm digest-link"') == 2
 
 
 @pytest.mark.parametrize("kind", digest_probe.KINDS)
