@@ -46,6 +46,9 @@
       "CYRIS_UI_ACCESS_HOST": {
         "description": "Optional, and only after Cloudflare Access is verified blocking. The hostname Access is bound to; set it before Access exists and the vote API on that hostname answers 401 to logged-in readers."
       },
+      "CYRIS_PRIVATE_ARCHIVE": {
+        "description": "Optional. Set to `true` to put the archive behind the same login as `/settings`; a reader without a session is sent to `/login`. Leave blank for a public archive."
+      },
       "CYRIS_WORKER_TOKEN": {
         "description": "Optional. The one bearer the rss and newsletter Workers accept. Set it here and in those Workers; leave blank to poll feeds directly at digest time."
       },

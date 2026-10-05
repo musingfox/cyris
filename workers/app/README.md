@@ -18,15 +18,17 @@ One image, started in one of two roles:
 - **Any HTTP request** → `CYRIS_ROLE=ui`: `cyris triage-ui` on port 8766, asleep 5
   minutes after the last request (`onActivityExpired` → `stop()`).
 
-Every other path is the public archive: the Worker proxies it from
-`https://<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, or from `DIGEST_ORIGIN` when set.
+Every other path is the archive: the Worker proxies it from
+`https://<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, or from `DIGEST_ORIGIN` when set. It is
+public unless `CYRIS_PRIVATE_ARCHIVE` is `"true"`, which sends a reader without a session
+to `/login` first.
 Every HTML page it serves (the archive, each issue, `/settings`) gets the D1 type size
 as `<style>html:root{--type-scale:X}</style>`, read over REST at most once a minute
 per isolate; `pages.dev` direct stays at 1.
 
 The Worker forwards its secrets into the container's environment, except
-`CYRIS_UI_TOKEN`, `DIGEST_ORIGIN` and `CYRIS_UI_ACCESS_HOST`, which only the Worker
-reads (`src/index.js`). An unset or empty one is left out rather than passed as the
+`CYRIS_UI_TOKEN`, `DIGEST_ORIGIN`, `CYRIS_UI_ACCESS_HOST` and `CYRIS_PRIVATE_ARCHIVE`,
+which only the Worker reads (`src/index.js`). An unset or empty one is left out rather than passed as the
 string `undefined`.
 
 ## Auth
@@ -51,7 +53,8 @@ One layer always, a second if you own a domain.
 A fork on `*.workers.dev` is a complete install with the cookie alone. Cyris does not
 validate the Access JWT itself.
 
-Protected paths are `/settings`, `/login`, `/run`, `/api/*` and `/static/*`. Behind
+Protected paths are `/settings`, `/login`, `/run`, `/api/*` and `/static/*`; with
+`CYRIS_PRIVATE_ARCHIVE` set to `"true"`, every other path needs the cookie too. Behind
 Access they 302 to `cloudflareaccess.com` rather than 401, so a script against an
 Access hostname needs an Access service token. `cyris doctor --deployment` and the
 deploy workflow's `verify` step log in and read `/api/build` with no Access service

@@ -114,6 +114,7 @@ Optional names, by feature. Add them to the same file now or later:
 | Vote similarity | `CLOUDFLARE_EMBEDDING_API_TOKEN` (Workers AI → Read) for `bge-m3`, or `GEMINI_API_KEY` |
 | Discord links point at this Worker, where votes work | `CYRIS_PROMOTE_CUSTOM_DOMAIN`, a bare hostname: `cyris-app.<subdomain>.workers.dev` on a domainless deploy, or your own hostname |
 | The archive lives somewhere other than `<project>.pages.dev` | `DIGEST_ORIGIN` |
+| The archive behind the login, not public | `CYRIS_PRIVATE_ARCHIVE=true`; Worker-only, the container never sees it |
 | RSS buffer, newsletter and vote Workers | see [Optional Workers](#optional-workers) |
 | Cloudflare Access | `CYRIS_UI_ACCESS_HOST`, only after [step 4 of the Access setup](#optional-cloudflare-access-on-your-own-domain) |
 

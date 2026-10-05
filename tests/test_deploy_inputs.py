@@ -37,15 +37,19 @@ def _bindings() -> dict[str, str]:
     return {k: v["description"] for k, v in pkg["cloudflare"]["bindings"].items()}
 
 
+_WORKER_ONLY = (
+    "CYRIS_UI_TOKEN",
+    "CYRIS_UI_ACCESS_HOST",
+    "DIGEST_ORIGIN",
+    "CYRIS_PRIVATE_ARCHIVE",
+)
+
+
 def _worker_env() -> set[str]:
     js = (ROOT / "workers/app/src/index.js").read_text(encoding="utf-8")
     router = (ROOT / "workers/app/src/router.js").read_text(encoding="utf-8")
     forwarded = set(re.findall(r"^\s+([A-Z][A-Z0-9_]+): env\.", js, re.M))
-    worker_only = {
-        name
-        for name in ("CYRIS_UI_TOKEN", "CYRIS_UI_ACCESS_HOST", "DIGEST_ORIGIN")
-        if name in js + router
-    }
+    worker_only = {name for name in _WORKER_ONLY if name in js + router}
     return forwarded | worker_only
 
 
@@ -59,6 +63,13 @@ def _wrangler_vars() -> dict[str, str]:
 
 def test_every_variable_the_worker_reads_is_asked_for() -> None:
     assert _worker_env() - set(_bindings()) == _ENTRYPOINT_DEFAULTED | set(_wrangler_vars())
+
+
+def test_worker_only_names_stay_in_the_worker() -> None:
+    """A name the container is handed is not Worker-only; the two lists must not overlap."""
+    js = (ROOT / "workers/app/src/index.js").read_text(encoding="utf-8")
+    forwarded = set(re.findall(r"^\s+([A-Z][A-Z0-9_]+): env\.", js, re.M))
+    assert forwarded & set(_WORKER_ONLY) == set()
 
 
 def test_the_worker_name_the_container_asks_about_is_the_deployed_name() -> None:
