@@ -77,3 +77,7 @@ agent-vault/llm-compare/
 # Rendered at deploy time by scripts/derive-wrangler-config.sh; carries the
 # account id the tracked wrangler.toml must not.
 wrangler.deploy.toml
+
+# Rendered per trial by scripts/provision_trial.py (root, workers/promote/ and
+# workers/rss/); they carry an account id, a registry path and a database id.
+wrangler.trial-*.toml
