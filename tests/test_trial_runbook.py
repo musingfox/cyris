@@ -318,3 +318,36 @@ def test_a_loud_token_receipt_is_refused() -> None:
 
 def test_printing_the_token_with_printf_is_refused() -> None:
     _raises(_with("printf '%s\\n' \"$TRIAL_WORKER_TOKEN\""), "j")
+
+
+def test_the_runbook_points_at_the_install_guide() -> None:
+    assert_points_not_copies(RUNBOOK.read_text(encoding="utf-8"), GUIDE.read_text(encoding="utf-8"))
+
+
+def test_a_dead_install_guide_anchor_is_named() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+    dead = text + "\n[x](install-cloudflare.md#4-write-the-secret-file)\n"
+    with pytest.raises(AssertionError, match="4-write-the-secret-file"):
+        assert_points_not_copies(dead, GUIDE.read_text(encoding="utf-8"))
+
+
+def test_a_copied_ui_token_line_is_refused() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8") + "\n```sh\nCYRIS_UI_TOKEN=abc\n```\n"
+    with pytest.raises(AssertionError, match="CYRIS_UI_TOKEN"):
+        assert_points_not_copies(text, GUIDE.read_text(encoding="utf-8"))
+
+
+def test_slug_follows_the_github_rule() -> None:
+    assert slug("4. Write the secrets file") == "4-write-the-secrets-file"
+    assert slug("6. Log in and fill `/settings`") == "6-log-in-and-fill-settings"
+    assert slug("Optional Workers") == "optional-workers"
+
+
+def test_dropping_every_optional_workers_link_is_named() -> None:
+    text = re.sub(r"install-cloudflare\.md#optional-workers", "install-cloudflare.md", text_of())
+    with pytest.raises(AssertionError, match="optional-workers"):
+        assert_points_not_copies(text, GUIDE.read_text(encoding="utf-8"))
+
+
+def text_of() -> str:
+    return RUNBOOK.read_text(encoding="utf-8")
