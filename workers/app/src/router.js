@@ -3,6 +3,10 @@
 //
 // One layer always: CYRIS_UI_TOKEN cookie. A second layer (Cloudflare Access)
 // only when the request hostname equals CYRIS_UI_ACCESS_HOST.
+//
+// CYRIS_PRIVATE_ARCHIVE=true puts the archive behind that same cookie: an
+// anonymous reader is sent to /login and returns to the page they asked for.
+// Access never stands in for it. Anything else leaves the archive public.
 
 import { typeScaleStyle } from "./type_scale.js";
 
@@ -15,6 +19,8 @@ export const PROTECTED = (path) =>
   path === "/run" ||
   path.startsWith("/api/") ||
   path.startsWith("/static/");
+
+const privateArchive = (env) => String(env.CYRIS_PRIVATE_ARCHIVE) === "true";
 
 const VOTE_ONLY = (path) => path === "/api/vote";
 
@@ -194,6 +200,14 @@ export async function handleRequest(request, env, deps) {
 
   // The digest is a static snapshot Cloudflare already holds.
   if (!PROTECTED(url.pathname)) {
+    if (privateArchive(env) && !(await authorized(request, env))) {
+      const login = new URL("/login", url.origin);
+      login.searchParams.set("next", url.pathname + url.search);
+      return new Response(null, {
+        status: 302,
+        headers: { Location: login.pathname + login.search },
+      });
+    }
     const origin = archiveOrigin(env);
     if (!origin) {
       return new Response(

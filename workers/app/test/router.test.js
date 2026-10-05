@@ -860,3 +860,187 @@ describe("SettingsSaveForgetsTheScale", () => {
     expect(deps.typeScale.forgets).toBe(0);
   });
 });
+
+describe("PrivateArchiveRedirectsAnonymousReaders", () => {
+  const PRIVATE = { CYRIS_PRIVATE_ARCHIVE: "true" };
+  const anonymous = async (method, path, extra = PRIVATE, opts = {}) => {
+    const deps = makeDeps();
+    const resp = await handleRequest(request(method, path, opts), env(extra), deps);
+    return { resp, deps };
+  };
+  const nextField = (page) => page.match(/name="next" value="([^"]*)"/)?.[1];
+
+  it("sends the archive root to sign-in without reading the archive", async () => {
+    const { resp, deps } = await anonymous("GET", "/");
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get("Location")).toBe("/login?next=%2F");
+    expect(resp.headers.get("Set-Cookie")).toBeNull();
+    expect(deps.typeScale.reads).toBe(0);
+    expect(deps.fetchImpl.calls).toHaveLength(0);
+  });
+
+  it("returns to the page the reader asked for", async () => {
+    const { resp } = await anonymous("GET", "/2026-08-30-evening");
+
+    expect(resp.headers.get("Location")).toBe("/login?next=%2F2026-08-30-evening");
+  });
+
+  it("keeps the query on the way back", async () => {
+    const { resp } = await anonymous("GET", "/2026-08-30-evening?x=1");
+    const location = resp.headers.get("Location");
+
+    expect(location).toBe("/login?next=%2F2026-08-30-evening%3Fx%3D1");
+    const origin = "https://" + HOST;
+    const next = new URL(location, origin).searchParams.get("next");
+    expect(returnPath(next, origin)).toBe("/2026-08-30-evening?x=1");
+    const login = await handleRequest(request("GET", location), env(PRIVATE), makeDeps());
+    expect(nextField(await login.text())).toBe("/2026-08-30-evening?x=1");
+  });
+
+  it("redirects every public route", async () => {
+    for (const row of routes.filter((r) => r.kind === "public")) {
+      const { resp, deps } = await anonymous(row.method, row.path);
+
+      expect(resp.status, row.path).toBe(302);
+      const location = resp.headers.get("Location");
+      expect(new URL(location, "https://" + HOST).searchParams.get("next"), row.path).toBe(row.path);
+      expect(deps.fetchImpl.calls, row.path).toHaveLength(0);
+    }
+  });
+
+  it("redirects a cookie that is not the session", async () => {
+    const { resp } = await anonymous("GET", "/", PRIVATE, { cookie: "deadbeef" });
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("redirects the session of an empty token", async () => {
+    const { resp } = await anonymous("GET", "/", { ...PRIVATE, CYRIS_UI_TOKEN: "" }, {
+      cookie: await sha256(TOKEN),
+    });
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("does not let Access stand in for the session", async () => {
+    const { resp } = await anonymous(
+      "GET",
+      "/",
+      { ...PRIVATE, CYRIS_UI_ACCESS_HOST: ACCESS_HOST },
+      { host: ACCESS_HOST },
+    );
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("redirects HEAD and POST too", async () => {
+    for (const method of ["HEAD", "POST"]) {
+      const { resp } = await anonymous(method, "/");
+
+      expect(resp.status, method).toBe(302);
+    }
+  });
+
+  it("does not reveal a missing archive origin", async () => {
+    const { resp } = await anonymous("GET", "/", { ...PRIVATE, DIGEST_ORIGIN: "" });
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("reads a boolean true as on", async () => {
+    const { resp } = await anonymous("GET", "/", { CYRIS_PRIVATE_ARCHIVE: true });
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("leaves every other route's answer unchanged", async () => {
+    for (const row of routes.filter((r) => r.kind !== "public")) {
+      const deps = makeDeps();
+      const resp = await handleRequest(request(row.method, row.path), env(PRIVATE), deps);
+
+      expect(resp.status, `${row.method} ${row.path}`).toBe(row.unauth_status);
+      expect(deps.container.calls, row.path).toHaveLength(0);
+      expect(deps.startRun.calls, row.path).toHaveLength(0);
+    }
+  });
+});
+
+describe("PrivateArchiveServesSignedInReaders", () => {
+  const PRIVATE = { CYRIS_PRIVATE_ARCHIVE: "true" };
+
+  it("serves an archive page through the proxy", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("GET", "/2026-08-30-evening.html", { cookie: await sessionCookie() }),
+      env(PRIVATE),
+      deps,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(deps.fetchImpl.calls).toHaveLength(1);
+    expect(deps.fetchImpl.calls[0].input.url).toBe("https://p.pages.dev/2026-08-30-evening.html");
+    expect(deps.typeScale.reads).toBe(1);
+  });
+
+  it("sizes an HTML page as the public archive does", async () => {
+    const deps = makeDeps({
+      scale: 1.125,
+      fetchHeaders: { "Content-Type": "text/html", ETag: '"v1"' },
+      fetchBody: "<html><head></head><body></body></html>",
+    });
+    const resp = await handleRequest(
+      request("GET", "/", { cookie: await sessionCookie() }),
+      env(PRIVATE),
+      deps,
+    );
+
+    expect(await resp.text()).toContain("--type-scale:1.125");
+    expect(resp.headers.get("ETag")).toBeNull();
+  });
+
+  it("answers 503 when no archive origin is named", async () => {
+    const resp = await handleRequest(
+      request("GET", "/", { cookie: await sessionCookie() }),
+      env({ ...PRIVATE, DIGEST_ORIGIN: "" }),
+      makeDeps(),
+    );
+
+    expect(resp.status).toBe(503);
+  });
+
+  it("passes an upstream 404 through", async () => {
+    const resp = await handleRequest(
+      request("GET", "/", { cookie: await sessionCookie() }),
+      env(PRIVATE),
+      makeDeps({ fetchStatus: 404 }),
+    );
+
+    expect(resp.status).toBe(404);
+  });
+});
+
+describe("PublicArchiveUnchangedWhenFlagIsOff", () => {
+  it("serves the archive when the switch is the string false", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("GET", "/"),
+      env({ CYRIS_PRIVATE_ARCHIVE: "false" }),
+      deps,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(deps.fetchImpl.calls).toHaveLength(1);
+    expect(deps.fetchImpl.calls[0].input.url).toBe("https://p.pages.dev/");
+  });
+
+  it("serves the archive when the switch is empty", async () => {
+    const resp = await handleRequest(
+      request("GET", "/2026-08-30-evening.html"),
+      env({ CYRIS_PRIVATE_ARCHIVE: "" }),
+      makeDeps(),
+    );
+
+    expect(resp.status).toBe(200);
+  });
+});
