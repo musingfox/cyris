@@ -442,6 +442,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | App Worker name, for the container | A | `[vars] CYRIS_APP_WORKER_NAME` in `wrangler.toml`, forwarded by `workers/app/src/index.js` | done 2026-09-27 — the `service` the domain lookup names; `tests/test_deploy_inputs.py` holds it equal to `name` |
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (a value set in the file wins) | done |
 | UI Access hostname | B | `CYRIS_UI_ACCESS_HOST` (Worker-only; unset = cookie-only form) | done |
+| Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` sends a reader without a session to `/login`; unset = public archive) | done 2026-10-05 — default off, so production's archive stays public; a trial deployment turns it on in its generated config |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, three Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM), one Worker bearer, one vote token, the `/settings` login token (`CYRIS_UI_TOKEN`, read by the Worker only) | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. `CYRIS_UI_TOKEN` is also a GitHub Actions secret, a copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
@@ -735,7 +736,7 @@ pending.
 
 **Auth is one layer always, two if you own a domain** (`workers/app/`). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. That layer deploys with the Worker, so a `*.workers.dev` fork is not an open write surface. Preview URLs stay disabled: a second public hostname is a second door.
 
-Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: automating the hostname and the policy would tie the repo to one account. Access stays off `workers.dev`, because scripts sign in there with the cookie alone. Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required.
+Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: automating the hostname and the policy would tie the repo to one account. Access stays off `workers.dev`, because scripts sign in there with the cookie alone. Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required. The archive is public unless `CYRIS_PRIVATE_ARCHIVE` (grade B, Worker-only) is `"true"`: then a reader without the cookie is sent to `/login` before the Worker proxies a byte of Pages, and signs in to the page they asked for.
 
 `wrangler.toml` ships with `workers_dev = true` and no `routes`, so a clone deploys unmodified. Custom domains are attached from the dashboard or API, which means the file is then not the sole source of truth for routing.
 
@@ -1105,8 +1106,8 @@ home won, because there is only one.
 All three are on `<your custom domain>` since 2026-08-30, split by path rather than by hostname:
 
 ```
-/                       digest index      ─┐ public: the Worker proxies Pages,
-/2026-08-30-evening.html  one digest      ─┘ no container, no auth
+/                       digest index      ─┐ public unless CYRIS_PRIVATE_ARCHIVE is "true"
+/2026-08-30-evening.html  one digest      ─┘ (then the cookie too): the Worker proxies Pages, no container
 /triage*                                    404
 /settings · /api/* · /static/*              CYRIS_UI_TOKEN cookie; Access too if
                                             CYRIS_UI_ACCESS_HOST matches this host

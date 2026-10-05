@@ -163,3 +163,25 @@ def test_every_deploy_path_pushes_to_one_registry_repository() -> None:
     }
 
     assert len(set(names.values())) == 1, names
+
+
+def ungraded_worker_only_names(doc: str) -> list[str]:
+    """Worker-only names with no row graded B or C in the doc's "Every setting, graded" table."""
+    section = doc.split("### Every setting, graded", 1)[1].split("\n### ", 1)[0]
+    graded = []
+    for row in section.splitlines():
+        cells = [c.strip() for c in row.split("|")]
+        if len(cells) > 3 and cells[2].strip("*").startswith(("B", "C")):
+            graded.append(row)
+    return [name for name in _WORKER_ONLY if not any(name in row for row in graded)]
+
+
+def test_every_worker_only_name_is_graded() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    assert ungraded_worker_only_names(doc) == []
+
+
+def test_the_grading_guard_names_a_variable_whose_row_is_gone() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    rows = [r for r in doc.splitlines() if not r.startswith("| Private archive |")]
+    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_PRIVATE_ARCHIVE"]
