@@ -351,3 +351,10 @@ def test_dropping_every_optional_workers_link_is_named() -> None:
 
 def text_of() -> str:
     return RUNBOOK.read_text(encoding="utf-8")
+
+
+def test_architecture_points_at_the_trial_tooling() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    for path in ("scripts/provision_trial.py", "docs/trial-deployment.md"):
+        assert path in doc, f"docs/architecture.md does not mention {path}"
+        assert (ROOT / path).is_file(), f"{path} does not exist"
