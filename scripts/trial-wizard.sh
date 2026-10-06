@@ -192,7 +192,8 @@ finish() {
 
 # Provisions one trial deployment; docs/trial-deployment.md says why each stage is
 # shaped the way it is. Usage, from anywhere:
-#   bash scripts/trial-wizard.sh <slug>            every stage, resumable
+#   bash scripts/trial-wizard.sh <slug>            every stage not done yet
+#   bash scripts/trial-wizard.sh <slug> --from N   stage N and every one after it, again
 #   bash scripts/trial-wizard.sh <slug> receipts   only the closing receipts stage
 # State lives in .env.trial-<slug>-wizard at the repo root, beside the secrets files.
 
@@ -202,11 +203,18 @@ cd "$REPO"
 
 SLUG="${1:-}"
 MODE="${2:-all}"
-if [[ ! "$SLUG" =~ ^[a-z][a-z0-9]{1,19}$ || "$SLUG" == wizard ]]; then
-  echo "Usage: bash scripts/trial-wizard.sh <slug> [receipts]"
+FROM=""
+if [[ "$MODE" == --from ]]; then FROM="${3:-}"; fi
+if [[ ! "$SLUG" =~ ^[a-z][a-z0-9]{1,19}$ || "$SLUG" == wizard ]] \
+  || [[ "$MODE" != all && "$MODE" != receipts && "$MODE" != --from ]] \
+  || [[ "$MODE" == --from && ! "$FROM" =~ ^([1-9]|1[0-7])$ ]]; then
+  echo "Usage: bash scripts/trial-wizard.sh <slug> [receipts | --from N]"
   echo "slug: 2-20 lowercase letters or digits, starting with a letter, not 'wizard'."
+  echo "N: a stage from 1 to 17."
   exit 1
 fi
+LOGIN_WAIT_SECONDS="${TRIAL_WIZARD_LOGIN_WAIT:-2400}"
+LOGIN_WAIT_INTERVAL="${TRIAL_WIZARD_LOGIN_INTERVAL:-30}"
 
 STATE=".env.trial-$SLUG-wizard"
 APP_ENV=".env.trial-$SLUG"
@@ -228,6 +236,7 @@ unset CLOUDFLARE_API_TOKEN GEMINI_API_KEY
 
 # shellcheck disable=SC1090
 [[ -f "$STATE" ]] && source "$STATE"
+STAGES_DONE="${STAGES_DONE:-}"
 
 die() { printf '\n  %s✗ %s%s\n  Fix it, then re-run: bash scripts/trial-wizard.sh %s\n\n' "$RED" "$1" "$RESET" "$SLUG"; exit 1; }
 next() { printf '\n'; pause "Press Enter for the next stage"; }
@@ -278,13 +287,16 @@ login_redirect() {
   grep -qiE '^HTTP/[0-9.]+ 302' <<<"$h" && grep -qiE '^location: /login\?next=%2F' <<<"$h"
 }
 
+# The first trial's new custom domain answered 28 minutes after its deploy.
 wait_login_redirect() {
+  local start=$SECONDS waited
   until login_redirect; do
-    if confirm "https://$SLUG.$DOMAIN/ does not answer 302 → /login yet. Retry in 30 seconds?"; then
-      sleep 30
-    else
-      die "No login redirect. See install-cloudflare.md step 6 notes on a new custom domain."
-    fi
+    waited=$((SECONDS - start))
+    ((waited < LOGIN_WAIT_SECONDS)) \
+      || die "No 302 → /login after ${waited}s. See docs/install-cloudflare.md step 6 on a new custom domain."
+    printf '  waiting for https://%s.%s/ to answer 302 → /login: %dm%02ds\n' \
+      "$SLUG" "$DOMAIN" $((waited / 60)) $((waited % 60))
+    sleep "$LOGIN_WAIT_INTERVAL"
   done
   printf '  %s✓%s unauthenticated request → 302 /login?next=%%2F\n' "$GREEN" "$RESET"
 }
@@ -328,222 +340,246 @@ receipts() {
   next
 }
 
+# A resumed run skips the stages that set these, so they are rebuilt from the state.
+if [[ -n "${ACCOUNT_ID:-}" ]]; then export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"; fi
+if [[ -n "${TRIAL_SUFFIX:-}" ]]; then derive_names; fi
+
 if [[ "$MODE" == receipts ]]; then
   [[ -n "${TRIAL_SUFFIX:-}" && -n "${TRIAL_D1_ID:-}" ]] || die "No state in $STATE; run the full wizard first."
   TOTAL_STAGES=1
-  export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
-  derive_names
   receipts
   finish
   exit 0
 fi
 
-TOTAL_STAGES=18
-
-banner "cyris trial deployment: $SLUG"
-
 # ── 1 ─────────────────────────────────────────────────────────────────────
-stage "Before you start: Access policy and the wrangler login"
-say "A wildcard Access policy on the trial's domain would give the tester a second login."
-open_url "https://one.dash.cloudflare.com/"
-step "Zero Trust → Access → Applications: check no policy covers <slug>.<domain> (e.g. *.<domain>)."
-pause "Checked, no policy covers it? Press Enter"
-say "Log wrangler in as the account the trial belongs to."
-if confirm "Log wrangler in now? (No if it already is, as that account)"; then
-  bunx wrangler login --env-file /dev/null || die "Login did not finish."
-fi
-next
+stage_1() {
+  stage "Before you start: Access policy and the wrangler login"
+  say "A wildcard Access policy on the trial's domain would give the tester a second login."
+  open_url "https://one.dash.cloudflare.com/"
+  step "Zero Trust → Access → Applications: check no policy covers <slug>.<domain> (e.g. *.<domain>)."
+  pause "Checked, no policy covers it? Press Enter"
+  say "Log wrangler in as the account the trial belongs to."
+  if confirm "Log wrangler in now? (No if it already is, as that account)"; then
+    bunx wrangler login --env-file /dev/null || die "Login did not finish."
+  fi
+  next
+}
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
-stage "Inputs"
-ask_match DOMAIN "Domain on the trial account's Cloudflare (e.g. example.com):" '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$'
-ask_match ACCOUNT_ID "Trial account id (32 hex):" '^[0-9a-f]{32}$'
-ask TESTER_EMAIL "Tester's email for digests (empty = no mail):"
-ask_match OUTPUT_LANGUAGE "Tester's output language, BCP 47 (zh-Hant, en, ja, ...):" '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$'
-ask_match MAX_ARTICLES "Article cap per digest, agreed with the tester (below 400):" '^([1-9][0-9]?|[1-3][0-9][0-9])$'
-write_env DOMAIN "$DOMAIN"
-write_env ACCOUNT_ID "$ACCOUNT_ID"
-write_env TESTER_EMAIL "$TESTER_EMAIL"
-write_env OUTPUT_LANGUAGE "$OUTPUT_LANGUAGE"
-write_env MAX_ARTICLES "$MAX_ARTICLES"
-export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
-WHOAMI=$(bunx wrangler whoami --env-file /dev/null 2>&1 || true)
-grep -q "$ACCOUNT_ID" <<<"$WHOAMI" || die "The logged-in wrangler cannot see account $ACCOUNT_ID. Log in as that account (stage 1)."
-printf '  %s✓%s wrangler can reach account %s\n' "$GREEN" "$RESET" "$ACCOUNT_ID"
-if [[ -z "${IMAGE_DIGEST:-}" ]]; then
-  git fetch --tags
-  IMAGE_TAG=$(git tag -l 'image/*' --sort=-creatordate | head -1)
-  IMAGE_DIGEST=$(git tag -l --format='%(contents)' "$IMAGE_TAG" | grep -o 'sha256:[0-9a-f]\{64\}' || true)
-  [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || die "No sha256 digest in tag $IMAGE_TAG."
-  say "Newest image: $IMAGE_TAG ($IMAGE_DIGEST)"
-  note "Production's last deploy: $(gh run list --workflow deploy.yml --limit 1 --json headSha,conclusion -q '.[0] | "\(.headSha) \(.conclusion)"' 2>/dev/null || echo 'gh unavailable')"
-  note "The tag's short sha must prefix that commit."
-  confirm "Is $IMAGE_TAG the image production runs?" || die "Pick the image production runs before deploying a trial."
-  write_env IMAGE_TAG "$IMAGE_TAG"
-  write_env IMAGE_DIGEST "$IMAGE_DIGEST"
-else
-  note "Keeping $IMAGE_TAG ($IMAGE_DIGEST) from the first run."
-fi
-if [[ -z "${TRIAL_SUFFIX:-}" ]]; then
-  TRIAL_SUFFIX=$(openssl rand -hex 8)
-  write_env TRIAL_SUFFIX "$TRIAL_SUFFIX"
-else
-  note "Keeping TRIAL_SUFFIX $TRIAL_SUFFIX from the first run."
-fi
-next
+stage_2() {
+  stage "Inputs"
+  ask_match DOMAIN "Domain on the trial account's Cloudflare (e.g. example.com):" '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$'
+  ask_match ACCOUNT_ID "Trial account id (32 hex):" '^[0-9a-f]{32}$'
+  ask TESTER_EMAIL "Tester's email for digests (empty = no mail):"
+  ask_match OUTPUT_LANGUAGE "Tester's output language, BCP 47 (zh-Hant, en, ja, ...):" '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$'
+  ask_match MAX_ARTICLES "Article cap per digest, agreed with the tester (below 400):" '^([1-9][0-9]?|[1-3][0-9][0-9])$'
+  write_env DOMAIN "$DOMAIN"
+  write_env ACCOUNT_ID "$ACCOUNT_ID"
+  write_env TESTER_EMAIL "$TESTER_EMAIL"
+  write_env OUTPUT_LANGUAGE "$OUTPUT_LANGUAGE"
+  write_env MAX_ARTICLES "$MAX_ARTICLES"
+  export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+  local WHOAMI
+  WHOAMI=$(bunx wrangler whoami --env-file /dev/null 2>&1 || true)
+  grep -q "$ACCOUNT_ID" <<<"$WHOAMI" || die "The logged-in wrangler cannot see account $ACCOUNT_ID. Log in as that account (stage 1)."
+  printf '  %s✓%s wrangler can reach account %s\n' "$GREEN" "$RESET" "$ACCOUNT_ID"
+  if [[ -z "${IMAGE_DIGEST:-}" ]]; then
+    git fetch --tags
+    IMAGE_TAG=$(git tag -l 'image/*' --sort=-creatordate | head -1)
+    IMAGE_DIGEST=$(git tag -l --format='%(contents)' "$IMAGE_TAG" | grep -o 'sha256:[0-9a-f]\{64\}' || true)
+    [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || die "No sha256 digest in tag $IMAGE_TAG."
+    say "Newest image: $IMAGE_TAG ($IMAGE_DIGEST)"
+    note "Production's last deploy: $(gh run list --workflow deploy.yml --limit 1 --json headSha,conclusion -q '.[0] | "\(.headSha) \(.conclusion)"' 2>/dev/null || echo 'gh unavailable')"
+    note "The tag's short sha must prefix that commit."
+    confirm "Is $IMAGE_TAG the image production runs?" || die "Pick the image production runs before deploying a trial."
+    write_env IMAGE_TAG "$IMAGE_TAG"
+    write_env IMAGE_DIGEST "$IMAGE_DIGEST"
+  else
+    note "Keeping $IMAGE_TAG ($IMAGE_DIGEST) from the first run."
+  fi
+  if [[ -z "${TRIAL_SUFFIX:-}" ]]; then
+    TRIAL_SUFFIX=$(openssl rand -hex 8)
+    write_env TRIAL_SUFFIX "$TRIAL_SUFFIX"
+  else
+    note "Keeping TRIAL_SUFFIX $TRIAL_SUFFIX from the first run."
+  fi
+  next
+}
 
 # ── 3 ─────────────────────────────────────────────────────────────────────
-stage "Resource names"
-derive_names
-say "App Worker:     $TRIAL_APP_WORKER"
-say "Container:      $TRIAL_CONTAINER"
-say "Vote Worker/KV: $TRIAL_PROMOTE_WORKER"
-say "D1:             $TRIAL_D1_NAME"
-say "Pages project:  $TRIAL_PAGES_PROJECT"
-say "rss Worker:     $TRIAL_RSS_WORKER"
-note "provision_trial.py guarantees none equals a production name."
-next
+stage_3() {
+  stage "Resource names"
+  derive_names
+  say "App Worker:     $TRIAL_APP_WORKER"
+  say "Container:      $TRIAL_CONTAINER"
+  say "Vote Worker/KV: $TRIAL_PROMOTE_WORKER"
+  say "D1:             $TRIAL_D1_NAME"
+  say "Pages project:  $TRIAL_PAGES_PROJECT"
+  say "rss Worker:     $TRIAL_RSS_WORKER"
+  note "provision_trial.py guarantees none equals a production name."
+  next
+}
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
-stage "Create the D1 database"
-if [[ -n "${TRIAL_D1_ID:-}" ]]; then
-  note "Already created: $TRIAL_D1_ID"
-else
-  note "If wrangler offers to add a binding to a config file, answer No."
-  note "If it reports that the name exists, stop: something already uses this slug."
-  printf '  %s$%s bunx wrangler d1 create %s --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_D1_NAME"
-  confirm "Create D1 database $TRIAL_D1_NAME?" || die "Stopped before creating D1."
-  bunx wrangler d1 create "$TRIAL_D1_NAME" --env-file /dev/null || die "d1 create failed."
-  ask_match TRIAL_D1_ID "Paste the database UUID it printed:" '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-  write_env TRIAL_D1_ID "$TRIAL_D1_ID"
-fi
-wrangler_toml_untouched
-next
+stage_4() {
+  stage "Create the D1 database"
+  if [[ -n "${TRIAL_D1_ID:-}" ]]; then
+    note "Already created: $TRIAL_D1_ID"
+  else
+    note "If wrangler offers to add a binding to a config file, answer No."
+    note "If it reports that the name exists, stop: something already uses this slug."
+    printf '  %s$%s bunx wrangler d1 create %s --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_D1_NAME"
+    confirm "Create D1 database $TRIAL_D1_NAME?" || die "Stopped before creating D1."
+    bunx wrangler d1 create "$TRIAL_D1_NAME" --env-file /dev/null || die "d1 create failed."
+    ask_match TRIAL_D1_ID "Paste the database UUID it printed:" '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    write_env TRIAL_D1_ID "$TRIAL_D1_ID"
+  fi
+  wrangler_toml_untouched
+  next
+}
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
-stage "Create the KV namespace"
-if [[ -n "${TRIAL_KV_ID:-}" ]]; then
-  note "Already created: $TRIAL_KV_ID"
-else
-  note "If wrangler offers to add a binding to a config file, answer No. If the name exists, stop."
-  printf '  %s$%s bunx wrangler kv namespace create %s --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_KV_TITLE"
-  confirm "Create KV namespace $TRIAL_KV_TITLE?" || die "Stopped before creating KV."
-  bunx wrangler kv namespace create "$TRIAL_KV_TITLE" --env-file /dev/null || die "kv namespace create failed."
-  ask_match TRIAL_KV_ID "Paste the namespace id it printed (32 hex):" '^[0-9a-f]{32}$'
-  write_env TRIAL_KV_ID "$TRIAL_KV_ID"
-fi
-wrangler_toml_untouched
-next
+stage_5() {
+  stage "Create the KV namespace"
+  if [[ -n "${TRIAL_KV_ID:-}" ]]; then
+    note "Already created: $TRIAL_KV_ID"
+  else
+    note "If wrangler offers to add a binding to a config file, answer No. If the name exists, stop."
+    printf '  %s$%s bunx wrangler kv namespace create %s --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_KV_TITLE"
+    confirm "Create KV namespace $TRIAL_KV_TITLE?" || die "Stopped before creating KV."
+    bunx wrangler kv namespace create "$TRIAL_KV_TITLE" --env-file /dev/null || die "kv namespace create failed."
+    ask_match TRIAL_KV_ID "Paste the namespace id it printed (32 hex):" '^[0-9a-f]{32}$'
+    write_env TRIAL_KV_ID "$TRIAL_KV_ID"
+  fi
+  wrangler_toml_untouched
+  next
+}
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
-stage "Create the Pages project"
-if [[ "${PAGES_CREATED:-}" == yes ]]; then
-  note "Already created: $TRIAL_PAGES_PROJECT.pages.dev"
-else
-  printf '  %s$%s bunx wrangler pages project create %s --production-branch main --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_PAGES_PROJECT"
-  confirm "Create Pages project $TRIAL_PAGES_PROJECT?" || die "Stopped before creating the Pages project."
-  bunx wrangler pages project create "$TRIAL_PAGES_PROJECT" --production-branch main --env-file /dev/null || die "pages project create failed."
-  confirm "Did the output name $TRIAL_PAGES_PROJECT.pages.dev exactly?" || die "Pages gave another subdomain; do not go on."
-  write_env PAGES_CREATED yes
-fi
-wrangler_toml_untouched
-printf '  %s✓%s wrangler.toml untouched\n' "$GREEN" "$RESET"
-next
+stage_6() {
+  stage "Create the Pages project"
+  if [[ "${PAGES_CREATED:-}" == yes ]]; then
+    note "Already created: $TRIAL_PAGES_PROJECT.pages.dev"
+  else
+    printf '  %s$%s bunx wrangler pages project create %s --production-branch main --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_PAGES_PROJECT"
+    confirm "Create Pages project $TRIAL_PAGES_PROJECT?" || die "Stopped before creating the Pages project."
+    bunx wrangler pages project create "$TRIAL_PAGES_PROJECT" --production-branch main --env-file /dev/null || die "pages project create failed."
+    confirm "Did the output name $TRIAL_PAGES_PROJECT.pages.dev exactly?" || die "Pages gave another subdomain; do not go on."
+    write_env PAGES_CREATED yes
+  fi
+  wrangler_toml_untouched
+  printf '  %s✓%s wrangler.toml untouched\n' "$GREEN" "$RESET"
+  next
+}
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
-stage "The trial's API token and Gemini key"
-say "A token of the trial's own, so a leak reaches only the trial and is revoked alone."
-open_url "https://dash.cloudflare.com/profile/api-tokens"
-step "Create Token → Custom token, scoped to account $ACCOUNT_ID, with account permissions:"
-step "  D1 → Edit · Cloudflare Pages → Edit · Workers Scripts → Read"
-[[ -n "$TESTER_EMAIL" ]] && step "  Email Sending → Edit (the tester gets mail)"
-in_file "$APP_ENV" ask_secret CLOUDFLARE_API_TOKEN "Paste the token (hidden):"
-[[ -n "$CLOUDFLARE_API_TOKEN" ]] || die "Empty token."
-in_file "$APP_ENV" write_env CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN"
-unset CLOUDFLARE_API_TOKEN
-say "GEMINI_API_KEY is the only LLM key a trial gets; its own budget is the hard stop."
-open_url "https://aistudio.google.com/apikey"
-step "Create (or pick) a key whose project has a budget you accept for this trial."
-in_file "$APP_ENV" ask_secret GEMINI_API_KEY "Paste the Gemini key (hidden):"
-[[ -n "$GEMINI_API_KEY" ]] || die "Empty Gemini key."
-in_file "$APP_ENV" write_env GEMINI_API_KEY "$GEMINI_API_KEY"
-unset GEMINI_API_KEY
-next
+stage_7() {
+  stage "The trial's API token and Gemini key"
+  say "A token of the trial's own, so a leak reaches only the trial and is revoked alone."
+  open_url "https://dash.cloudflare.com/profile/api-tokens"
+  step "Create Token → Custom token, scoped to account $ACCOUNT_ID, with account permissions:"
+  step "  D1 → Edit · Cloudflare Pages → Edit · Workers Scripts → Read"
+  [[ -n "$TESTER_EMAIL" ]] && step "  Email Sending → Edit (the tester gets mail)"
+  in_file "$APP_ENV" ask_secret CLOUDFLARE_API_TOKEN "Paste the token (hidden):"
+  [[ -n "$CLOUDFLARE_API_TOKEN" ]] || die "Empty token."
+  in_file "$APP_ENV" write_env CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN"
+  unset CLOUDFLARE_API_TOKEN
+  say "GEMINI_API_KEY is the only LLM key a trial gets; its own budget is the hard stop."
+  open_url "https://aistudio.google.com/apikey"
+  step "Create (or pick) a key whose project has a budget you accept for this trial."
+  in_file "$APP_ENV" ask_secret GEMINI_API_KEY "Paste the Gemini key (hidden):"
+  [[ -n "$GEMINI_API_KEY" ]] || die "Empty Gemini key."
+  in_file "$APP_ENV" write_env GEMINI_API_KEY "$GEMINI_API_KEY"
+  unset GEMINI_API_KEY
+  next
+}
 
 # ── 8 ─────────────────────────────────────────────────────────────────────
-stage "Render the trial's configs"
-show_run render uv run python scripts/provision_trial.py render --slug "$SLUG" --domain "$DOMAIN" \
-  --account-id "$ACCOUNT_ID" --image-digest "$IMAGE_DIGEST" --kv-id "$TRIAL_KV_ID" --d1-id "$TRIAL_D1_ID" \
-  || die "render failed."
-for f in "$APP_CFG" "$PROMOTE_CFG" "$RSS_CFG"; do
-  [[ -f "$f" ]] || die "$f was not written."
-  git check-ignore -q "$f" || die "$f is not gitignored."
-done
-printf '  %s✓%s three configs written, all gitignored\n' "$GREEN" "$RESET"
-next
+stage_8() {
+  stage "Render the trial's configs"
+  show_run render uv run python scripts/provision_trial.py render --slug "$SLUG" --domain "$DOMAIN" \
+    --account-id "$ACCOUNT_ID" --image-digest "$IMAGE_DIGEST" --kv-id "$TRIAL_KV_ID" --d1-id "$TRIAL_D1_ID" \
+    || die "render failed."
+  for f in "$APP_CFG" "$PROMOTE_CFG" "$RSS_CFG"; do
+    [[ -f "$f" ]] || die "$f was not written."
+    git check-ignore -q "$f" || die "$f is not gitignored."
+  done
+  printf '  %s✓%s three configs written, all gitignored\n' "$GREEN" "$RESET"
+  next
+}
 
 # ── 9 ─────────────────────────────────────────────────────────────────────
-stage "Dry-run all three configs"
-(cd workers/rss && bun install --frozen-lockfile) || die "bun install in workers/rss failed."
-show_run dry-app bunx wrangler deploy --dry-run --config "$APP_CFG" --env-file /dev/null || die "App dry run failed."
-show_run dry-promote bunx wrangler deploy --dry-run --config "$PROMOTE_CFG" --env-file /dev/null || die "Vote Worker dry run failed."
-show_run dry-rss bunx wrangler deploy --dry-run --config "$RSS_CFG" --env-file /dev/null || die "rss Worker dry run failed."
-printf '\n  %s✓%s all three dry runs passed\n' "$GREEN" "$RESET"
-next
+stage_9() {
+  stage "Dry-run all three configs"
+  (cd workers/rss && bun install --frozen-lockfile) || die "bun install in workers/rss failed."
+  show_run dry-app bunx wrangler deploy --dry-run --config "$APP_CFG" --env-file /dev/null || die "App dry run failed."
+  show_run dry-promote bunx wrangler deploy --dry-run --config "$PROMOTE_CFG" --env-file /dev/null || die "Vote Worker dry run failed."
+  show_run dry-rss bunx wrangler deploy --dry-run --config "$RSS_CFG" --env-file /dev/null || die "rss Worker dry run failed."
+  printf '\n  %s✓%s all three dry runs passed\n' "$GREEN" "$RESET"
+  next
+}
 
 # ── 10 ────────────────────────────────────────────────────────────────────
-stage "Deploy the vote Worker"
-TRIAL_PROMOTE_TOKEN=$(fileval "$PROMOTE_ENV" PROMOTE_TOKEN)
-if [[ -z "$TRIAL_PROMOTE_TOKEN" ]]; then
-  TRIAL_PROMOTE_TOKEN=$(openssl rand -hex 32)
-  printf 'PROMOTE_TOKEN=%s\n' "$TRIAL_PROMOTE_TOKEN" > "$PROMOTE_ENV"
-  printf '  %s✓%s new vote token → %s\n' "$GREEN" "$RESET" "$PROMOTE_ENV"
-else
-  note "Keeping the vote token in $PROMOTE_ENV."
-fi
-rc=0
-gated promote "Deploy the vote Worker with $PROMOTE_CFG?" \
-  bunx wrangler deploy --config "$PROMOTE_CFG" --env-file /dev/null --secrets-file "$PROMOTE_ENV" || rc=$?
-[[ $rc -eq 0 || $rc -eq 2 ]] || die "Vote Worker deploy failed."
-if [[ $rc -eq 0 ]]; then
-  TRIAL_PROMOTE_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/promote.log" | head -1 || true)
+stage_10() {
+  stage "Deploy the vote Worker"
+  TRIAL_PROMOTE_TOKEN=$(fileval "$PROMOTE_ENV" PROMOTE_TOKEN)
+  if [[ -z "$TRIAL_PROMOTE_TOKEN" ]]; then
+    TRIAL_PROMOTE_TOKEN=$(openssl rand -hex 32)
+    printf 'PROMOTE_TOKEN=%s\n' "$TRIAL_PROMOTE_TOKEN" > "$PROMOTE_ENV"
+    printf '  %s✓%s new vote token → %s\n' "$GREEN" "$RESET" "$PROMOTE_ENV"
+  else
+    note "Keeping the vote token in $PROMOTE_ENV."
+  fi
+  local rc=0
+  gated promote "Deploy the vote Worker with $PROMOTE_CFG?" \
+    bunx wrangler deploy --config "$PROMOTE_CFG" --env-file /dev/null --secrets-file "$PROMOTE_ENV" || rc=$?
+  [[ $rc -eq 0 || $rc -eq 2 ]] || die "Vote Worker deploy failed."
+  if [[ $rc -eq 0 ]]; then
+    TRIAL_PROMOTE_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/promote.log" | head -1 || true)
+    write_env TRIAL_PROMOTE_URL "$TRIAL_PROMOTE_URL"
+  fi
+  ask_match TRIAL_PROMOTE_URL "Vote Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
   write_env TRIAL_PROMOTE_URL "$TRIAL_PROMOTE_URL"
-fi
-ask_match TRIAL_PROMOTE_URL "Vote Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
-write_env TRIAL_PROMOTE_URL "$TRIAL_PROMOTE_URL"
-next
+  next
+}
 
 # ── 11 ────────────────────────────────────────────────────────────────────
-stage "Write the app's secrets file"
-[[ -n "$(fileval "$APP_ENV" CYRIS_UI_TOKEN)" ]] || in_file "$APP_ENV" write_env CYRIS_UI_TOKEN "$(openssl rand -hex 32)"
-in_file "$APP_ENV" write_env CYRIS_STORE_DATABASE_ID "$TRIAL_D1_ID"
-in_file "$APP_ENV" write_env CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
-in_file "$APP_ENV" write_env CYRIS_PROMOTE_PAGES_PROJECT "$TRIAL_PAGES_PROJECT"
-in_file "$APP_ENV" write_env CYRIS_PROMOTE_WORKER_URL "$TRIAL_PROMOTE_URL"
-in_file "$APP_ENV" write_env CYRIS_PROMOTE_TOKEN "$TRIAL_PROMOTE_TOKEN"
-for k in CYRIS_UI_TOKEN CLOUDFLARE_API_TOKEN GEMINI_API_KEY; do
-  [[ -n "$(fileval "$APP_ENV" "$k")" ]] || die "$k is empty in $APP_ENV."
-done
-grep -qx "CYRIS_STORE_DATABASE_ID=$TRIAL_D1_ID" "$APP_ENV" || die "CYRIS_STORE_DATABASE_ID mismatch in $APP_ENV."
-grep -qx "CYRIS_PROMOTE_PAGES_PROJECT=$TRIAL_PAGES_PROJECT" "$APP_ENV" || die "CYRIS_PROMOTE_PAGES_PROJECT mismatch in $APP_ENV."
-if [[ -z "${TRIAL_RSS_URL:-}" ]] && grep -Eq '^(CYRIS_WORKER_TOKEN|CYRIS_RSS_WORKER_URL)=' "$APP_ENV"; then
-  die "$APP_ENV names the rss Worker before it exists."
-fi
-grep -Eq '^(CYRIS_PRIVATE_ARCHIVE|CYRIS_APP_WORKER_NAME)=' "$APP_ENV" && die "$APP_ENV would shadow CYRIS_PRIVATE_ARCHIVE or CYRIS_APP_WORKER_NAME."
-printf '  %s✓%s all receipts ok\n' "$GREEN" "$RESET"
-next
+stage_11() {
+  stage "Write the app's secrets file"
+  [[ -n "$(fileval "$APP_ENV" CYRIS_UI_TOKEN)" ]] || in_file "$APP_ENV" write_env CYRIS_UI_TOKEN "$(openssl rand -hex 32)"
+  in_file "$APP_ENV" write_env CYRIS_STORE_DATABASE_ID "$TRIAL_D1_ID"
+  in_file "$APP_ENV" write_env CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
+  in_file "$APP_ENV" write_env CYRIS_PROMOTE_PAGES_PROJECT "$TRIAL_PAGES_PROJECT"
+  in_file "$APP_ENV" write_env CYRIS_PROMOTE_WORKER_URL "$TRIAL_PROMOTE_URL"
+  in_file "$APP_ENV" write_env CYRIS_PROMOTE_TOKEN "$(fileval "$PROMOTE_ENV" PROMOTE_TOKEN)"
+  for k in CYRIS_UI_TOKEN CLOUDFLARE_API_TOKEN GEMINI_API_KEY CYRIS_PROMOTE_TOKEN; do
+    [[ -n "$(fileval "$APP_ENV" "$k")" ]] || die "$k is empty in $APP_ENV."
+  done
+  grep -qx "CYRIS_STORE_DATABASE_ID=$TRIAL_D1_ID" "$APP_ENV" || die "CYRIS_STORE_DATABASE_ID mismatch in $APP_ENV."
+  grep -qx "CYRIS_PROMOTE_PAGES_PROJECT=$TRIAL_PAGES_PROJECT" "$APP_ENV" || die "CYRIS_PROMOTE_PAGES_PROJECT mismatch in $APP_ENV."
+  if [[ -z "${TRIAL_RSS_URL:-}" ]] && grep -Eq '^(CYRIS_WORKER_TOKEN|CYRIS_RSS_WORKER_URL)=' "$APP_ENV"; then
+    die "$APP_ENV names the rss Worker before it exists."
+  fi
+  grep -Eq '^(CYRIS_PRIVATE_ARCHIVE|CYRIS_APP_WORKER_NAME)=' "$APP_ENV" && die "$APP_ENV would shadow CYRIS_PRIVATE_ARCHIVE or CYRIS_APP_WORKER_NAME."
+  printf '  %s✓%s all receipts ok\n' "$GREEN" "$RESET"
+  next
+}
 
 # ── 12 ────────────────────────────────────────────────────────────────────
-stage "Deploy the app"
-deploy_app app
-note "The first request starts the container; a new custom domain can take minutes."
-wait_login_redirect
-next
+stage_12() {
+  stage "Deploy the app"
+  deploy_app app
+  note "The first request starts the container; a new custom domain can take minutes."
+  wait_login_redirect
+  next
+}
 
 # ── 13 ────────────────────────────────────────────────────────────────────
-stage "First boot: settings and the tester's sources"
-if [[ ! -f "$SOURCES_FILE" ]]; then
-  cat > "$SOURCES_FILE" <<'YAML'
+stage_13() {
+  stage "First boot: settings and the tester's sources"
+  if [[ ! -f "$SOURCES_FILE" ]]; then
+    cat > "$SOURCES_FILE" <<'YAML'
 defaults:
   tier: filter
   language: auto
@@ -553,125 +589,176 @@ sources:
     tier: summarize
     tags: [tech, business-strategy]
 YAML
-fi
-say "Replace the example with the tester's feeds: RSS only, never type: newsletter."
-say "Tiers are explained in docs/sources.md. Keep to the source limit you agreed."
-say "File: $REPO/$SOURCES_FILE"
-if confirm "Open it in ${EDITOR:-vi} now?"; then ${EDITOR:-vi} "$SOURCES_FILE"; fi
-pause "Saved the tester's feeds? Press Enter"
-grep -qE 'type:[[:space:]]*"?newsletter' "$SOURCES_FILE" && die "$SOURCES_FILE has a newsletter source; a trial has no newsletter Worker."
-SOURCE_COUNT=$(uv run python -c 'import sys, yaml; print(len(yaml.safe_load(open(sys.argv[1]))["sources"]))' "$SOURCES_FILE") \
-  || die "$SOURCES_FILE is not valid YAML with a sources list."
-write_env SOURCE_COUNT "$SOURCE_COUNT"
-say "$SOURCE_COUNT source(s)."
-TRIAL_DIR=$(mktemp -d)
-grep -E '^(CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_STORE_DATABASE_ID|CYRIS_PROMOTE_PAGES_PROJECT)=' "$APP_ENV" > "$TRIAL_DIR/.env"
-sed -e '/^\[llm_provider\]/,/^\[digest\]/s/^provider = .*/provider = "gemini"/' \
-    -e '/^\[llm_provider\]/,/^\[digest\]/s/^model = .*/model = "gemini-2.5-flash"/' \
-    -e "s/^max_articles_per_digest = .*/max_articles_per_digest = $MAX_ARTICLES/" \
-    -e "s/^output_language = .*/output_language = \"$OUTPUT_LANGUAGE\"/" \
-    cyris.toml.example > "$TRIAL_DIR/settings.toml"
-grep -qx "output_language = \"$OUTPUT_LANGUAGE\"" "$TRIAL_DIR/settings.toml" || die "output_language did not land in settings.toml."
-cp "$SOURCES_FILE" "$TRIAL_DIR/sources.yaml"
-printf '  %s$%s cyris settings push --config %s/settings.toml --sources %s/sources.yaml\n' "$DIM" "$RESET" "$TRIAL_DIR" "$TRIAL_DIR"
-confirm "Push the settings into the trial's D1?" || die "Stopped before settings push."
-env -i HOME="$HOME" PATH="$PATH" uv run cyris settings push --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml" \
-  | tee "$TRIAL_DIR/settings-push.log" || die "settings push failed."
-head -1 "$TRIAL_DIR/settings-push.log" | grep -qx "D1 database $TRIAL_D1_ID" \
-  || die "settings push wrote to a database other than $TRIAL_D1_ID. Stop and check."
-printf '  %s✓%s settings push went to %s\n' "$GREEN" "$RESET" "$TRIAL_D1_ID"
-env -i HOME="$HOME" PATH="$PATH" uv run cyris sources push --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml" \
-  || die "sources push failed."
-rm -r "$TRIAL_DIR"
-next
+  fi
+  say "Replace the example with the tester's feeds: RSS only, never type: newsletter."
+  say "Tiers are explained in docs/sources.md. Keep to the source limit you agreed."
+  say "File: $REPO/$SOURCES_FILE"
+  if confirm "Open it in ${EDITOR:-vi} now?"; then ${EDITOR:-vi} "$SOURCES_FILE"; fi
+  pause "Saved the tester's feeds? Press Enter"
+  grep -qE 'type:[[:space:]]*"?newsletter' "$SOURCES_FILE" && die "$SOURCES_FILE has a newsletter source; a trial has no newsletter Worker."
+  SOURCE_COUNT=$(uv run python -c 'import sys, yaml; print(len(yaml.safe_load(open(sys.argv[1]))["sources"]))' "$SOURCES_FILE") \
+    || die "$SOURCES_FILE is not valid YAML with a sources list."
+  write_env SOURCE_COUNT "$SOURCE_COUNT"
+  say "$SOURCE_COUNT source(s)."
+  local TRIAL_DIR
+  TRIAL_DIR=$(mktemp -d)
+  grep -E '^(CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_STORE_DATABASE_ID|CYRIS_PROMOTE_PAGES_PROJECT)=' "$APP_ENV" > "$TRIAL_DIR/.env"
+  sed -e '/^\[llm_provider\]/,/^\[digest\]/s/^provider = .*/provider = "gemini"/' \
+      -e '/^\[llm_provider\]/,/^\[digest\]/s/^model = .*/model = "gemini-2.5-flash"/' \
+      -e "s/^max_articles_per_digest = .*/max_articles_per_digest = $MAX_ARTICLES/" \
+      -e "s/^output_language = .*/output_language = \"$OUTPUT_LANGUAGE\"/" \
+      cyris.toml.example > "$TRIAL_DIR/settings.toml"
+  grep -qx "output_language = \"$OUTPUT_LANGUAGE\"" "$TRIAL_DIR/settings.toml" || die "output_language did not land in settings.toml."
+  cp "$SOURCES_FILE" "$TRIAL_DIR/sources.yaml"
+  printf '  %s$%s cyris settings push --config %s/settings.toml --sources %s/sources.yaml\n' "$DIM" "$RESET" "$TRIAL_DIR" "$TRIAL_DIR"
+  confirm "Push the settings into the trial's D1?" || die "Stopped before settings push."
+  env -i HOME="$HOME" PATH="$PATH" uv run cyris settings push --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml" \
+    | tee "$TRIAL_DIR/settings-push.log" || die "settings push failed."
+  head -1 "$TRIAL_DIR/settings-push.log" | grep -qx "D1 database $TRIAL_D1_ID" \
+    || die "settings push wrote to a database other than $TRIAL_D1_ID. Stop and check."
+  printf '  %s✓%s settings push went to %s\n' "$GREEN" "$RESET" "$TRIAL_D1_ID"
+  env -i HOME="$HOME" PATH="$PATH" uv run cyris sources push --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml" \
+    || die "sources push failed."
+  rm -r "$TRIAL_DIR"
+  next
+}
 
 # ── 14 ────────────────────────────────────────────────────────────────────
-stage "The rss Worker"
-TRIAL_WORKER_TOKEN=$(fileval "$RSS_ENV" RSS_TOKEN)
-if [[ -z "$TRIAL_WORKER_TOKEN" ]]; then
-  TRIAL_WORKER_TOKEN=$(openssl rand -hex 32)
-  printf 'RSS_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$RSS_ENV"
-fi
-grep -qx "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV" || die "$RSS_ENV does not hold the token."
-rc=0
-gated rss "Deploy the rss Worker with $RSS_CFG?" \
-  bunx wrangler deploy --config "$RSS_CFG" --env-file /dev/null --secrets-file "$RSS_ENV" || rc=$?
-[[ $rc -eq 0 || $rc -eq 2 ]] || die "rss Worker deploy failed."
-if [[ $rc -eq 0 ]]; then
-  TRIAL_RSS_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/rss.log" | head -1 || true)
+stage_14() {
+  stage "The rss Worker"
+  TRIAL_WORKER_TOKEN=$(fileval "$RSS_ENV" RSS_TOKEN)
+  if [[ -z "$TRIAL_WORKER_TOKEN" ]]; then
+    TRIAL_WORKER_TOKEN=$(openssl rand -hex 32)
+    printf 'RSS_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$RSS_ENV"
+  fi
+  grep -qx "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV" || die "$RSS_ENV does not hold the token."
+  local rc=0 code poll feeds
+  gated rss "Deploy the rss Worker with $RSS_CFG?" \
+    bunx wrangler deploy --config "$RSS_CFG" --env-file /dev/null --secrets-file "$RSS_ENV" || rc=$?
+  [[ $rc -eq 0 || $rc -eq 2 ]] || die "rss Worker deploy failed."
+  if [[ $rc -eq 0 ]]; then
+    TRIAL_RSS_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/rss.log" | head -1 || true)
+    write_env TRIAL_RSS_URL "$TRIAL_RSS_URL"
+  fi
+  ask_match TRIAL_RSS_URL "rss Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
   write_env TRIAL_RSS_URL "$TRIAL_RSS_URL"
-fi
-ask_match TRIAL_RSS_URL "rss Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
-write_env TRIAL_RSS_URL "$TRIAL_RSS_URL"
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$TRIAL_RSS_URL/stats" || true)
-[[ "$code" == 401 ]] || die "$TRIAL_RSS_URL/stats without the bearer answered $code, not 401."
-printf '  %s✓%s /stats without the bearer → 401\n' "$GREEN" "$RESET"
-poll=$(curl -s -X POST --max-time 120 -H "Authorization: Bearer $TRIAL_WORKER_TOKEN" "$TRIAL_RSS_URL/poll" || true)
-say "/poll: $poll"
-feeds=$(grep -oE '"feeds":[0-9]+' <<<"$poll" | cut -d: -f2 || true)
-[[ "$feeds" == 0 ]] && die "/poll reports feeds 0: the first boot pushed no RSS source. Go back to stage 13."
-[[ "$feeds" == "$SOURCE_COUNT" ]] || die "/poll reports feeds '$feeds', sources push had $SOURCE_COUNT."
-printf '  %s✓%s /poll feeds = %s\n' "$GREEN" "$RESET" "$feeds"
-in_file "$APP_ENV" write_env CYRIS_WORKER_TOKEN "$TRIAL_WORKER_TOKEN"
-in_file "$APP_ENV" write_env CYRIS_RSS_WORKER_URL "$TRIAL_RSS_URL"
-grep -qx "CYRIS_WORKER_TOKEN=$TRIAL_WORKER_TOKEN" "$APP_ENV" || die "CYRIS_WORKER_TOKEN did not land."
-grep -qx "CYRIS_RSS_WORKER_URL=$TRIAL_RSS_URL" "$APP_ENV" || die "CYRIS_RSS_WORKER_URL did not land."
-say "Redeploy so the app reads them."
-deploy_app app-rss
-wait_login_redirect
-next
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$TRIAL_RSS_URL/stats" || true)
+  [[ "$code" == 401 ]] || die "$TRIAL_RSS_URL/stats without the bearer answered $code, not 401."
+  printf '  %s✓%s /stats without the bearer → 401\n' "$GREEN" "$RESET"
+  poll=$(curl -s -X POST --max-time 120 -H "Authorization: Bearer $TRIAL_WORKER_TOKEN" "$TRIAL_RSS_URL/poll" || true)
+  say "/poll: $poll"
+  feeds=$(grep -oE '"feeds":[0-9]+' <<<"$poll" | cut -d: -f2 || true)
+  [[ "$feeds" == 0 ]] && die "/poll reports feeds 0: the first boot pushed no RSS source. Go back to stage 13."
+  [[ "$feeds" == "$SOURCE_COUNT" ]] || die "/poll reports feeds '$feeds', sources push had $SOURCE_COUNT."
+  printf '  %s✓%s /poll feeds = %s\n' "$GREEN" "$RESET" "$feeds"
+  in_file "$APP_ENV" write_env CYRIS_WORKER_TOKEN "$TRIAL_WORKER_TOKEN"
+  in_file "$APP_ENV" write_env CYRIS_RSS_WORKER_URL "$TRIAL_RSS_URL"
+  grep -qx "CYRIS_WORKER_TOKEN=$TRIAL_WORKER_TOKEN" "$APP_ENV" || die "CYRIS_WORKER_TOKEN did not land."
+  grep -qx "CYRIS_RSS_WORKER_URL=$TRIAL_RSS_URL" "$APP_ENV" || die "CYRIS_RSS_WORKER_URL did not land."
+  say "Redeploy so the app reads them."
+  deploy_app app-rss
+  wait_login_redirect
+  next
+}
 
 # ── 15 ────────────────────────────────────────────────────────────────────
-stage "Let the tester receive mail"
-if [[ -z "$TESTER_EMAIL" ]]; then
-  note "No tester email; skipping."
-else
-  open_url "https://dash.cloudflare.com/$ACCOUNT_ID"
-  step "Email Service → Email Routing → Destination Addresses → add $TESTER_EMAIL."
-  step "Ask the tester to open the verification mail before they save Notifications on /settings."
-  note "Save on /settings stores the pair only if the test message is delivered."
-  pause "Destination added? Press Enter"
-fi
-next
+stage_15() {
+  stage "Let the tester receive mail"
+  if [[ -z "$TESTER_EMAIL" ]]; then
+    note "No tester email; skipping."
+  else
+    open_url "https://dash.cloudflare.com/$ACCOUNT_ID"
+    step "Email Service → Email Routing → Destination Addresses → add $TESTER_EMAIL."
+    step "Ask the tester to open the verification mail before they save Notifications on /settings."
+    note "Save on /settings stores the pair only if the test message is delivered."
+    pause "Destination added? Press Enter"
+  fi
+  next
+}
 
 # ── 16 ────────────────────────────────────────────────────────────────────
-stage "Hand over"
-say "Login: https://$SLUG.$DOMAIN/login"
-if command -v pbcopy >/dev/null 2>&1; then
-  fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | pbcopy
-  printf '  %s✓%s CYRIS_UI_TOKEN copied to the clipboard\n' "$GREEN" "$RESET"
-else
-  say "CYRIS_UI_TOKEN is in $APP_ENV."
-fi
-step "Put it in a password manager item shared with the tester; never chat or email."
-step "The tester finishes /settings: Discord webhook, mail sender/recipient, anything else."
-pause "Shared? Press Enter"
-if command -v pbcopy >/dev/null 2>&1 && confirm "Clear the clipboard?"; then printf '' | pbcopy; fi
-warn "Keep $APP_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
-next
+stage_16() {
+  stage "Hand over"
+  say "Login: https://$SLUG.$DOMAIN/login"
+  if command -v pbcopy >/dev/null 2>&1; then
+    fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | pbcopy
+    printf '  %s✓%s CYRIS_UI_TOKEN copied to the clipboard\n' "$GREEN" "$RESET"
+  else
+    say "CYRIS_UI_TOKEN is in $APP_ENV."
+  fi
+  step "Put it in a password manager item shared with the tester; never chat or email."
+  step "The tester finishes /settings: Discord webhook, mail sender/recipient, anything else."
+  pause "Shared? Press Enter"
+  if command -v pbcopy >/dev/null 2>&1 && confirm "Clear the clipboard?"; then printf '' | pbcopy; fi
+  warn "Keep $APP_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
+  next
+}
 
 # ── 17 ────────────────────────────────────────────────────────────────────
-stage "Start the first digest"
-ask_match PERIOD "Period, morning or evening:" '^(morning|evening)$'
-SESSION=$(fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | shasum -a 256 | cut -d' ' -f1)
-if confirm "POST https://$SLUG.$DOMAIN/run?period=$PERIOD now?"; then
-  reply=$(curl -s -X POST --max-time 180 -b "cyris_session=$SESSION" "https://$SLUG.$DOMAIN/run?period=$PERIOD" || true)
-  say "Reply: $reply"
-  if grep -q '"started"' <<<"$reply"; then
-    printf '  %s✓%s run started; it takes minutes\n' "$GREEN" "$RESET"
-  else
-    warn "No 'started' reply. A cold container may still have started the run: tail the log before posting again."
+stage_17() {
+  stage "Start the first digest"
+  ask_match PERIOD "Period, morning or evening:" '^(morning|evening)$'
+  local SESSION reply
+  SESSION=$(fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | shasum -a 256 | cut -d' ' -f1)
+  if confirm "POST https://$SLUG.$DOMAIN/run?period=$PERIOD now?"; then
+    reply=$(curl -s -X POST --max-time 180 -b "cyris_session=$SESSION" "https://$SLUG.$DOMAIN/run?period=$PERIOD" || true)
+    say "Reply: $reply"
+    if grep -q '"started"' <<<"$reply"; then
+      printf '  %s✓%s run started; it takes minutes\n' "$GREEN" "$RESET"
+    else
+      warn "No 'started' reply. A cold container may still have started the run: tail the log before posting again."
+    fi
   fi
-fi
-say "Watch it end with a run_summary line (Ctrl-C to stop tailing):"
-note "bunx wrangler tail --config $APP_CFG --env-file /dev/null"
-if confirm "Tail the app's log now?"; then
-  bunx wrangler tail --config "$APP_CFG" --env-file /dev/null || true
-fi
-next
+  say "Watch it end with a run_summary line (Ctrl-C to stop tailing):"
+  note "bunx wrangler tail --config $APP_CFG --env-file /dev/null"
+  if confirm "Tail the app's log now?"; then
+    bunx wrangler tail --config "$APP_CFG" --env-file /dev/null || true
+  fi
+  next
+}
 
-# ── 18 ────────────────────────────────────────────────────────────────────
-receipts
+# ── 18 is receipts(), above. ─────────────────────────────────────────────
+
+is_done() { [[ ",${STAGES_DONE:-}," == *",$1,"* ]]; }
+
+# Progress is not a library value: write_env would list it in finish()'s summary.
+save_progress() {
+  local tmp; tmp=$(mktemp)
+  grep -v '^STAGES_DONE=' "$STATE" > "$tmp" || true
+  printf 'STAGES_DONE=%s\n' "$STAGES_DONE" >> "$tmp"
+  mv "$tmp" "$STATE"
+}
+
+mark_done() {
+  STAGES_DONE=$(printf '%s\n' ${STAGES_DONE//,/ } "$1" | sort -n | uniq | paste -sd, -)
+  save_progress
+}
+
+STAGE_FNS=(stage_1 stage_2 stage_3 stage_4 stage_5 stage_6 stage_7 stage_8 stage_9 \
+  stage_10 stage_11 stage_12 stage_13 stage_14 stage_15 stage_16 stage_17 receipts)
+TOTAL_STAGES=${#STAGE_FNS[@]}
+
+if [[ -n "$FROM" ]]; then
+  STAGES_DONE=$(printf '%s\n' ${STAGES_DONE//,/ } | awk -v from="$FROM" '$1 < from' | paste -sd, -)
+  touch "$STATE"
+  save_progress
+fi
+
+banner "cyris trial deployment: $SLUG"
+
+if [[ -n "${STAGES_DONE:-}" ]]; then
+  say "Stages ${STAGES_DONE//,/, } were done earlier and are skipped."
+  note "To redo one and everything after it: bash scripts/trial-wizard.sh $SLUG --from N"
+  pause "Press Enter to go on"
+fi
+
+for ((n = 1; n <= TOTAL_STAGES; n++)); do
+  if is_done "$n"; then continue; fi
+  _STAGE_INDEX=$((n - 1))
+  "${STAGE_FNS[$((n - 1))]}"
+  # receipts reads only, so it runs again on every pass.
+  if ((n < TOTAL_STAGES)); then mark_done "$n"; fi
+done
 
 finish
 rm -r "$LOG_DIR"

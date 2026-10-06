@@ -22,8 +22,9 @@ becomes part of every resource name and of the tester's login address, so it is 
 person's name; `trial1`, `trial2` work. The wizard prints each command that creates or
 deploys something and runs it only after you answer `y`. Read-only commands run directly.
 
-Run it again with the same slug to continue after a stop. `<slug> receipts` runs only the
-closing checks; use it after the next scheduled publish hour to see the first scheduled
+Run it again with the same slug to continue after a stop: the stages already done are
+skipped, and `<slug> --from N` redoes stage N and every one after it. `<slug> receipts`
+runs only the closing checks; use it after the next scheduled publish hour to see the first scheduled
 run, and once a week to read what the trial spent.
 
 ## Which account
