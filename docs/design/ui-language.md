@@ -93,6 +93,7 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   --t-fast: 150ms ease-out;
   --bar-h: 60px;
   --measure: 640px;
+  --measure-wide: 760px;
 }
 ```
 
@@ -328,9 +329,12 @@ title is itself that section's `h2`.
   grid lines are drawn on each card's right and bottom edges, so when the last row is not full, the empty
   cells are the page background, not a solid block of border colour.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
-- **Prose stops at `--measure`.** Every summary, snippet, section description and the empty or degraded
-  note is at most `--measure` wide, so a line stays readable when the container is 1240px; a card
-  narrower than that is unaffected. Headings and meta rows take the full width.
+- **Prose stops at `--measure-wide`.** Every summary, snippet, section description and the empty or degraded
+  note is at most `--measure-wide` wide, so a line stays readable when the container is 1240px; a card
+  narrower than that is unaffected. Headings and meta rows take the full width. It is wider than
+  `--measure` because at 640px a full-width card's summary ended halfway across and read as a broken
+  line; 760px is about 42 Chinese characters at 18px. `--measure` stays the mail's and `/settings`'
+  width.
 - **An issue says when it is empty or degraded.** An issue that includes no article opens its body with
   one sentence in the small role: the run judged the articles it received and kept none, and
   `All articles` (linked when the raw page exists) lists each one with its verdict. It is not a notice,

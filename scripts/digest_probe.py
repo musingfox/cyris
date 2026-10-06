@@ -393,7 +393,7 @@ _CHECKS: list[Check] = [
         )
         for width in (360, 721, 880, 1000, 1100, 1160, 1440)
     ),
-    # At the widest width, prose that spans the container still stops at --measure.
+    # At the widest width, prose that spans the container still stops at --measure-wide.
     Check(
         id="prose-measure-1440",
         fixture="signed-in",
@@ -402,8 +402,8 @@ _CHECKS: list[Check] = [
         act="await signedIn();",
         script=f"""
             const measure = parseFloat(
-                getComputedStyle(document.documentElement).getPropertyValue("--measure"));
-            expect(Number.isFinite(measure) && measure > 0, `invalid --measure: ${{measure}}`);
+                getComputedStyle(document.documentElement).getPropertyValue("--measure-wide"));
+            expect(Number.isFinite(measure) && measure > 0, `invalid --measure-wide: ${{measure}}`);
             for (const selector of {json.dumps(PROSE_SELECTORS)}) {{
                 const blocks = $$(selector);
                 expect(blocks.length, `no ${{selector}} on the page`);

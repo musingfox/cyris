@@ -658,7 +658,7 @@ def test_each_font_size_follows_the_role_table(row: int, page: str, key: str, ba
 
 def test_a_wire_summary_is_small_dim_prose_that_stops_at_the_measure() -> None:
     rules = set(_parsed("digest")[".headline-item .summary"])
-    assert {"color: var(--text-dim)", "line-height: 1.5", "max-width: var(--measure)"} <= rules
+    assert {"color: var(--text-dim)", "line-height: 1.5", "max-width: var(--measure-wide)"} <= rules
 
 
 def test_a_wire_summary_breaks_an_unbroken_token_on_the_page_and_in_the_prototype() -> None:
@@ -863,12 +863,12 @@ DIGEST_PROSE = (
 
 @pytest.mark.parametrize("key", DIGEST_PROSE)
 def test_digest_prose_stops_at_the_measure(key: str) -> None:
-    assert _declared(_parsed("digest")[key], "max-width") == ["var(--measure)"]
+    assert _declared(_parsed("digest")[key], "max-width") == ["var(--measure-wide)"]
 
 
 def test_the_prototype_prose_stops_at_the_measure() -> None:
     prototype = parse_style_block(PROTOTYPE.read_text())
-    assert "max-width: var(--measure)" in prototype[".summary, .snippet"]
+    assert "max-width: var(--measure-wide)" in prototype[".summary, .snippet"]
     assert [key for key, rules in prototype.items() if "max-width: 70ch" in rules] == []
 
 

@@ -78,9 +78,9 @@ def spec_tokens() -> list[str]:
 
 
 def test_the_spec_token_fence_is_the_full_token_set(spec_tokens: list[str]) -> None:
-    assert len(spec_tokens) == 34
+    assert len(spec_tokens) == 35
     assert spec_tokens[0] == "--bg: #07070a"
-    assert spec_tokens[-1] == "--measure: 640px"
+    assert spec_tokens[-1] == "--measure-wide: 760px"
     assert "--type-scale: 1" in spec_tokens
 
 
