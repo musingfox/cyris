@@ -145,7 +145,9 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 website/              # The landing page: its own Pages project, deployed with `bun run deploy:website`
                       #   (not the digest's project, and not `bun run deploy`)
 scripts/              # check.sh (the local and release gate), derive-wrangler-config.sh (the deploy workflow's
-                      #   config), provision_trial.py (one trial's app, promote and rss wrangler configs),
+                      #   config), trial-wizard.sh (provisions one trial deployment, stage by stage),
+                      #   provision_trial.py (one trial's app, promote and rss wrangler configs),
+                      #   trial_api.py (the wizard's Cloudflare API checks: token permissions, the first run),
                       #   backfill_pages_manifest.py, and the CDP page probes (*_probe.py)
 docs/                 # architecture.md (read first); install-local.md, install-cloudflare.md and
                       #   operations.md (install and run a deployment); trial-deployment.md (one tester's
