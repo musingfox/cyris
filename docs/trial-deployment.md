@@ -1,9 +1,10 @@
 # Running a trial deployment
 
-A trial is one tester's own cyris on your Cloudflare account: its own app Worker,
+A trial is one tester's own cyris on a Cloudflare account you hold: its own app Worker,
 container application, D1 database, KV namespace, Pages project, vote Worker and rss
-Worker, behind a login at `<slug>.<domain>`, with the archive private. It is the manual,
-non-button half of the clean-account run.
+Worker, behind a login at `<slug>.<domain>`, with the archive private. On an account of
+its own, it is also the manual, non-button half of the clean-account run
+(`docs/architecture.md` §7, M6).
 
 `scripts/trial-wizard.sh` provisions one, stage by stage. This page says why the stages
 are shaped the way they are; the commands themselves live only in the script.
@@ -25,6 +26,21 @@ Run it again with the same slug to continue after a stop. `<slug> receipts` runs
 closing checks; use it after the next scheduled publish hour to see the first scheduled
 run, and once a week to read what the trial spent.
 
+## Which account
+
+Either works; the first trial (2026-10-06) runs on production's.
+
+- **An account of its own** keeps everything apart, at the price of a second Workers
+  Paid plan, since a container needs one.
+- **Production's account** needs no second plan. Check three things before you start:
+  - No Zero Trust Access policy covers `<slug>.<domain>`, a wildcard such as
+    `*.<domain>` included. The wizard opens the page and waits for you in stage 1.
+  - No resource name the wizard prints in stage 3 equals a production name.
+    `scripts/provision_trial.py` derives them so, and this is the receipt.
+  - The trial token carries only the permissions listed below. Cloudflare grants them
+    account-wide, so on this account a leaked trial token reaches production's D1 and
+    Pages project too.
+
 ## Why it is shaped this way
 
 - **Every wrangler deploy names a `wrangler.trial-<slug>.toml`.** The trial runs from the
@@ -43,9 +59,9 @@ run, and once a week to read what the trial spent.
 - **The image is production's.** The wizard takes the newest `image/*` tag the release
   workflow writes (see [operations.md](operations.md)) and asks you to confirm it is the
   one production runs, so the trial tests the code the tester will keep getting.
-- **The trial has its own API token.** It needs the permissions of
-  [install step 3](install-cloudflare.md#3-create-an-api-token), so a leaked trial token
-  reaches only what the trial reaches and is revoked alone.
+- **The trial has its own API token**, with the permissions of
+  [install step 3](install-cloudflare.md#3-create-an-api-token) and no more, so it can be
+  revoked alone. Only on an account of its own does a leak reach nothing but the trial.
 - **The secrets file holds what
   [install step 4](install-cloudflare.md#4-write-the-secrets-file) lists, with two
   exceptions.** `GEMINI_API_KEY` is the only LLM key a trial gets. `CYRIS_PRIVATE_ARCHIVE`
