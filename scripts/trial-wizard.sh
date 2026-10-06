@@ -306,6 +306,18 @@ deploy_app() {
   gated "$1" "Deploy the trial app Worker with $APP_CFG?" \
     bunx wrangler deploy --config "$APP_CFG" --env-file /dev/null --secrets-file "$APP_ENV" || rc=$?
   [[ $rc -eq 0 || $rc -eq 2 ]] || die "App deploy failed."
+  return "$rc"
+}
+
+# A declined deploy changes nothing, so one look stands in for the long wait.
+deploy_app_and_wait() {
+  if deploy_app "$1"; then
+    wait_login_redirect
+  elif login_redirect; then
+    printf '  %s✓%s unauthenticated request → 302 /login?next=%%2F\n' "$GREEN" "$RESET"
+  else
+    warn "https://$SLUG.$DOMAIN/ does not answer 302 → /login, and nothing was deployed now."
+  fi
 }
 
 receipts() {
@@ -577,9 +589,8 @@ stage_11() {
 # ── 12 ────────────────────────────────────────────────────────────────────
 stage_12() {
   stage "Deploy the app"
-  deploy_app app
   note "The first request starts the container; a new custom domain can take minutes."
-  wait_login_redirect
+  deploy_app_and_wait app
   next
 }
 
@@ -664,8 +675,7 @@ stage_14() {
   grep -qx "CYRIS_WORKER_TOKEN=$TRIAL_WORKER_TOKEN" "$APP_ENV" || die "CYRIS_WORKER_TOKEN did not land."
   grep -qx "CYRIS_RSS_WORKER_URL=$TRIAL_RSS_URL" "$APP_ENV" || die "CYRIS_RSS_WORKER_URL did not land."
   say "Redeploy so the app reads them."
-  deploy_app app-rss
-  wait_login_redirect
+  deploy_app_and_wait app-rss
   next
 }
 

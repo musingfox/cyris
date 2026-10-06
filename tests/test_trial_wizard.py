@@ -211,7 +211,7 @@ def test_a_bad_mode_prints_the_usage(rig, args: tuple[str, ...]) -> None:
 
 
 def test_the_login_wait_needs_no_keypress_and_shows_the_time(rig) -> None:
-    run = rig(_stages(11), FAKE_LOGIN_FAIL_FIRST="2").run()
+    run = rig(_stages(11), FAKE_LOGIN_FAIL_FIRST="2").run(stdin=START + "y\n")
     waiting = "waiting for https://t1.example.com/ to answer 302 → /login: 0m0"
     assert run.out.count(waiting) == 2
     assert "✓ unauthenticated request → 302 /login?next=%2F" in run.out
@@ -220,7 +220,7 @@ def test_the_login_wait_needs_no_keypress_and_shows_the_time(rig) -> None:
 
 def test_the_login_wait_stops_at_its_limit(rig) -> None:
     r = rig(_stages(11), FAKE_LOGIN_NEVER="1", TRIAL_WIZARD_LOGIN_WAIT="0")
-    run = r.run()
+    run = r.run(stdin=START + "y\n")
     assert run.code == 1
     assert "No 302 → /login after 0s." in run.out
     assert "docs/install-cloudflare.md step 6" in run.out
@@ -295,3 +295,11 @@ def test_declining_the_post_starts_nothing(rig) -> None:
     run = rig(_stages(16)).run(stdin=START + "evening\nn\n")
     assert "/run?period=" not in run.calls
     assert "wait-run" not in run.calls
+
+
+def test_a_declined_deploy_looks_once_instead_of_waiting(rig) -> None:
+    run = rig(_stages(11), FAKE_LOGIN_NEVER="1").run()
+    assert "waiting for" not in run.out
+    assert "does not answer 302 → /login, and nothing was deployed now." in run.out
+    assert run.calls.count(" -D - ") == 1
+    assert "▸ Stage 13/18" in run.out
