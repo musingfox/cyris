@@ -269,3 +269,29 @@ def test_mail_permission_is_checked_only_for_a_tester_with_email(rig, email, fla
     check = next(ln for ln in run.calls.splitlines() if "check-token" in ln)
     assert ("--email" in check) is flag
     assert "--pages-project cyris-app-t1-0123456789abcdef --app-worker cyris-app-t1" in check
+
+
+def test_the_first_digest_waits_for_its_digest_runs_row(rig) -> None:
+    run = rig(_stages(16)).run(stdin=START + "evening\ny\n")
+    calls = run.calls.splitlines()
+    order = [
+        next(i for i, c in enumerate(calls) if marker in c)
+        for marker in ("trial_api.py latest-run", "/run?period=evening", "trial_api.py wait-run")
+    ]
+    assert order == sorted(order)
+    wait = calls[order[2]]
+    assert "--after 4" in wait and "--app-worker cyris-app-t1" in wait
+    assert "run 5: status ok" in run.out
+    assert " tail " not in run.calls
+
+
+def test_a_wait_that_times_out_warns_and_goes_on(rig) -> None:
+    run = rig(_stages(16), FAKE_WAIT_RC="2").run(stdin=START + "evening\ny\n")
+    assert "a second post starts a second run" in run.out
+    assert "▸ Stage 18/18 · Receipts" in run.out
+
+
+def test_declining_the_post_starts_nothing(rig) -> None:
+    run = rig(_stages(16)).run(stdin=START + "evening\nn\n")
+    assert "/run?period=" not in run.calls
+    assert "wait-run" not in run.calls

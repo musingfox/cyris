@@ -706,22 +706,31 @@ stage_16() {
 stage_17() {
   stage "Start the first digest"
   ask_match PERIOD "Period, morning or evening:" '^(morning|evening)$'
-  local SESSION reply
+  local SESSION reply before rc=0
+  # The run's own row is the receipt. The Worker's live tail never carries the
+  # container's stdout, so the run_summary line never appears there.
+  before=$(fileval "$APP_ENV" CLOUDFLARE_API_TOKEN | uv run python scripts/trial_api.py latest-run \
+    --account-id "$ACCOUNT_ID" --d1-id "$TRIAL_D1_ID") || die "Could not read digest_runs in $TRIAL_D1_NAME."
   SESSION=$(fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | shasum -a 256 | cut -d' ' -f1)
-  if confirm "POST https://$SLUG.$DOMAIN/run?period=$PERIOD now?"; then
-    reply=$(curl -s -X POST --max-time 180 -b "cyris_session=$SESSION" "https://$SLUG.$DOMAIN/run?period=$PERIOD" || true)
-    say "Reply: $reply"
-    if grep -q '"started"' <<<"$reply"; then
-      printf '  %s✓%s run started; it takes minutes\n' "$GREEN" "$RESET"
-    else
-      warn "No 'started' reply. A cold container may still have started the run: tail the log before posting again."
-    fi
+  if ! confirm "POST https://$SLUG.$DOMAIN/run?period=$PERIOD now?"; then
+    note "skipped"; next; return 0
   fi
-  say "Watch it end with a run_summary line (Ctrl-C to stop tailing):"
-  note "bunx wrangler tail --config $APP_CFG --env-file /dev/null"
-  if confirm "Tail the app's log now?"; then
-    bunx wrangler tail --config "$APP_CFG" --env-file /dev/null || true
+  reply=$(curl -s -X POST --max-time 180 -b "cyris_session=$SESSION" "https://$SLUG.$DOMAIN/run?period=$PERIOD" || true)
+  say "Reply: $reply"
+  if grep -q '"started"' <<<"$reply"; then
+    printf '  %s✓%s run started; it takes minutes\n' "$GREEN" "$RESET"
+  else
+    warn "No 'started' reply. A cold container may still have started the run; the wait below finds it either way."
   fi
+  say "Waiting for a digest_runs row newer than run $before:"
+  fileval "$APP_ENV" CLOUDFLARE_API_TOKEN | uv run python scripts/trial_api.py wait-run \
+    --account-id "$ACCOUNT_ID" --d1-id "$TRIAL_D1_ID" --app-worker "$TRIAL_APP_WORKER" --after "$before" \
+    || rc=$?
+  case $rc in
+    0) ;;
+    2) warn "Do not post again before the log shows the run ended; a second post starts a second run." ;;
+    *) die "Could not read digest_runs in $TRIAL_D1_NAME." ;;
+  esac
   next
 }
 
