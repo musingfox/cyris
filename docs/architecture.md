@@ -391,8 +391,11 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
 declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
-provisions from. A trial deployment (`scripts/provision_trial.py`, `docs/trial-deployment.md`) shares nothing:
-its rss Worker binds the trial's own D1, the one its app uses, named like its app Worker.
+provisions from. A trial deployment (`scripts/trial-wizard.sh`, which renders its configs with
+`scripts/provision_trial.py`; `docs/trial-deployment.md`) shares nothing: its rss Worker binds the
+trial's own D1, the one its app uses, named like its app Worker. The wizard keeps a trial's inputs,
+ids and progress in `.env.trial-<slug>-wizard` at the repo root, beside the trial's secrets files;
+those secrets files are the only copy, since Cloudflare cannot read a secret back.
 
 ### One store, one truth
 
