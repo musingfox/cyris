@@ -19,6 +19,8 @@ SLUG = "t1"
 ACCOUNT = "a" * 32
 D1_ID = "0948e71f-2374-4e4e-8f30-44890139011b"
 TOKEN = "cf-token-NOT-FOR-OUTPUT"
+# Enter at the banner and at the resume notice, before the first stage reads anything.
+START = "\n\n"
 
 FAKE_UV = r"""#!/bin/bash
 echo "uv $*" >> "$CALLS"
@@ -72,12 +74,12 @@ output_language = "zh-Hant"
 """
 
 
-def _state(done: str) -> str:
+def _state(done: str, email: str = "") -> str:
     return "\n".join(
         [
             "DOMAIN=example.com",
             f"ACCOUNT_ID={ACCOUNT}",
-            "TESTER_EMAIL=",
+            f"TESTER_EMAIL={email}",
             "OUTPUT_LANGUAGE=en",
             "MAX_ARTICLES=50",
             "IMAGE_TAG=image/00fa8ab",
@@ -136,13 +138,13 @@ class Rig:
 
 @pytest.fixture
 def rig(tmp_path: Path):
-    def make(done: str, **env: str) -> Rig:
+    def make(done: str, email: str = "", **env: str) -> Rig:
         repo = tmp_path / "repo"
         (repo / "scripts").mkdir(parents=True)
         shutil.copy(ROOT / "scripts/trial-wizard.sh", repo / "scripts/trial-wizard.sh")
         (repo / "scripts/provision_trial.py").write_text("")
         (repo / "cyris.toml.example").write_text(EXAMPLE_CONFIG)
-        (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done))
+        (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done, email))
         (repo / f".env.trial-{SLUG}").write_text(
             f"CLOUDFLARE_API_TOKEN={TOKEN}\nGEMINI_API_KEY=g\nCYRIS_UI_TOKEN=u\n"
             f"CYRIS_STORE_DATABASE_ID={D1_ID}\n"
@@ -229,3 +231,41 @@ def test_receipts_mode_runs_only_the_receipts(rig) -> None:
     run = rig(_stages(17)).run("receipts")
     assert "▸ Stage 1/1 · Receipts" in run.out
     assert "--config workers/rss/wrangler.trial-t1.toml --env-file /dev/null" in run.calls
+
+
+def test_a_token_missing_a_permission_stops_stage_7_unsaved(rig) -> None:
+    r = rig(_stages(6), FAKE_GOOD_TOKEN="good-token")
+    run = r.run(stdin=START + "pasted-token-123\n")
+    assert run.code == 1
+    assert "✗ the token lacks Cloudflare Pages → Edit" in run.out
+    assert "Add the permissions marked ✗" in run.out
+    assert f"CLOUDFLARE_API_TOKEN={TOKEN}" in (r.repo / f".env.trial-{SLUG}").read_text()
+    assert r.done() == f"STAGES_DONE={_stages(6)}"
+
+
+def test_a_token_with_every_permission_is_saved(rig) -> None:
+    r = rig(_stages(6), FAKE_GOOD_TOKEN="good-token")
+    run = r.run(stdin=START + "good-token\ngemini-key\n")
+    assert "Add the permissions marked ✗" not in run.out
+    assert "CLOUDFLARE_API_TOKEN=good-token" in (r.repo / f".env.trial-{SLUG}").read_text()
+    assert "▸ Stage 8/18" in run.out
+
+
+@pytest.mark.parametrize("pasted", ["good-token", "pasted-token-123"])
+def test_the_token_reaches_the_check_on_stdin_and_nowhere_else(rig, pasted: str) -> None:
+    r = rig(_stages(6), FAKE_GOOD_TOKEN="good-token")
+    run = r.run(stdin=START + f"{pasted}\ngemini-key\n")
+    assert (Path(r.env["FAKE_DIR"]) / "stdin").read_text().strip() == pasted
+    assert pasted not in run.out
+    assert pasted not in run.calls
+    assert TOKEN not in run.out
+
+
+@pytest.mark.parametrize(("email", "flag"), [("", False), ("tester@example.com", True)])
+def test_mail_permission_is_checked_only_for_a_tester_with_email(rig, email, flag) -> None:
+    run = rig(_stages(6), email=email, FAKE_GOOD_TOKEN="good-token").run(
+        stdin=START + "good-token\n"
+    )
+    check = next(ln for ln in run.calls.splitlines() if "check-token" in ln)
+    assert ("--email" in check) is flag
+    assert "--pages-project cyris-app-t1-0123456789abcdef --app-worker cyris-app-t1" in check

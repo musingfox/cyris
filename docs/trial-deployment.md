@@ -63,6 +63,9 @@ Either works; the first trial (2026-10-06) runs on production's.
 - **The trial has its own API token**, with the permissions of
   [install step 3](install-cloudflare.md#3-create-an-api-token) and no more, so it can be
   revoked alone. Only on an account of its own does a leak reach nothing but the trial.
+  The wizard asks the API what the token may do before saving it: the first trial's
+  token lacked Cloudflare Pages → Edit, and its first run got as far as publishing before
+  that showed.
 - **The secrets file holds what
   [install step 4](install-cloudflare.md#4-write-the-secrets-file) lists, with two
   exceptions.** `GEMINI_API_KEY` is the only LLM key a trial gets. `CYRIS_PRIVATE_ARCHIVE`

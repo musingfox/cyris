@@ -105,7 +105,8 @@ def _first_failure(lines: list[str]) -> str | None:
             words = cmd.split()
             if words[0] in PRINTERS:
                 return f"(j) {words[0]} names a token: {ln}"
-            if words[0] == "printf" and ">" not in cmd:
+            piped = re.search(rf"{re.escape(cmd)}\s*\|\s*uv run python scripts/", ln)
+            if words[0] == "printf" and ">" not in cmd and not piped:
                 return f"(j) printf names a token without redirecting: {ln}"
             if words[0] == "grep" and not any(
                 w.startswith("-") and not w.startswith("--") and "q" in w for w in words
@@ -210,6 +211,7 @@ def test_a_secrets_file_git_would_track_is_refused() -> None:
         'echo "$TRIAL_WORKER_TOKEN"',
         'say "token: $CLOUDFLARE_API_TOKEN"',
         "printf '%s\\n' \"$TRIAL_PROMOTE_TOKEN\"",
+        "printf '%s\\n' \"$CLOUDFLARE_API_TOKEN\" | tee x.log",
         'grep -x "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV"',
     ],
 )

@@ -476,13 +476,21 @@ stage_6() {
 # ── 7 ─────────────────────────────────────────────────────────────────────
 stage_7() {
   stage "The trial's API token and Gemini key"
-  say "A token of the trial's own, so a leak reaches only the trial and is revoked alone."
+  say "A token of the trial's own, so it can be revoked alone."
   open_url "https://dash.cloudflare.com/profile/api-tokens"
   step "Create Token → Custom token, scoped to account $ACCOUNT_ID, with account permissions:"
   step "  D1 → Edit · Cloudflare Pages → Edit · Workers Scripts → Read"
   [[ -n "$TESTER_EMAIL" ]] && step "  Email Sending → Edit (the tester gets mail)"
   in_file "$APP_ENV" ask_secret CLOUDFLARE_API_TOKEN "Paste the token (hidden):"
   [[ -n "$CLOUDFLARE_API_TOKEN" ]] || die "Empty token."
+  local email_flag=""
+  if [[ -n "$TESTER_EMAIL" ]]; then email_flag=--email; fi
+  say "Asking Cloudflare what the token may do (read-only calls; nothing is sent):"
+  # shellcheck disable=SC2086
+  printf '%s\n' "$CLOUDFLARE_API_TOKEN" | uv run python scripts/trial_api.py check-token \
+    --account-id "$ACCOUNT_ID" --d1-id "$TRIAL_D1_ID" --pages-project "$TRIAL_PAGES_PROJECT" \
+    --app-worker "$TRIAL_APP_WORKER" $email_flag \
+    || die "Add the permissions marked ✗ to the token on the dashboard. Editing keeps its value, so Enter keeps it next time."
   in_file "$APP_ENV" write_env CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN"
   unset CLOUDFLARE_API_TOKEN
   say "GEMINI_API_KEY is the only LLM key a trial gets; its own budget is the hard stop."
