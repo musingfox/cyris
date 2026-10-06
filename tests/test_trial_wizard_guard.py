@@ -27,11 +27,60 @@ REQUIRED_ANCHORS = (
     "running-the-cli-against-the-deployment",
     "optional-workers",
 )
-_SUBCOMMAND = (
-    r"(deploy|d1|kv|pages|login|logout|whoami|tail|secret|versions|deployments|"
-    r"rollback|delete|r2|queues|containers|dev)"
+# Every top-level command `wrangler --help` lists (4.127.1). Matching a command rather than
+# the bare word keeps prose such as "Log wrangler in" from counting as a call.
+_SUBCOMMANDS = (
+    "agent-memory",
+    "ai",
+    "ai-search",
+    "artifacts",
+    "auth",
+    "browser",
+    "cert",
+    "complete",
+    "containers",
+    "d1",
+    "delete",
+    "deploy",
+    "deployments",
+    "dev",
+    "dispatch-namespace",
+    "docs",
+    "email",
+    "flagship",
+    "hyperdrive",
+    "init",
+    "kv",
+    "login",
+    "logout",
+    "mtls-certificate",
+    "pages",
+    "pipelines",
+    "preview",
+    "queues",
+    "r2",
+    "rollback",
+    "secret",
+    "secrets-store",
+    "setup",
+    "tail",
+    "triggers",
+    "tunnel",
+    "turnstile",
+    "types",
+    "vectorize",
+    "versions",
+    "vpc",
+    "websearch",
+    "whoami",
+    "workflows",
 )
+_SUBCOMMAND = "(" + "|".join(re.escape(s) for s in _SUBCOMMANDS) + ")"
 WRANGLER = re.compile(rf"wrangler(@\S+)?\s+{_SUBCOMMAND}(\s|$)")
+# The commands that change what a Worker serves, so each must name a trial config.
+DEPLOY = re.compile(
+    r"wrangler(@\S+)?\s+(deploy|versions\s+(deploy|upload)|triggers\s+deploy|rollback|delete)(\s|$)"
+)
 
 
 def script_lines(text: str) -> list[str]:
@@ -74,7 +123,7 @@ def _first_failure(lines: list[str]) -> str | None:
         if "--env-file /dev/null" not in c:
             return f"(a) wrangler without --env-file /dev/null: {ln}"
     for ln, c in wrangler:
-        if re.search(r"wrangler(@\S+)?\s+deploy(\s|$)", c):
+        if DEPLOY.search(c):
             config = _option(c, "--config") or ""
             if not config.rsplit("/", 1)[-1].startswith("wrangler.trial-"):
                 return f"(b) wrangler deploy without a wrangler.trial- --config: {ln}"
@@ -184,6 +233,10 @@ TRIAL_DEPLOY = 'bunx wrangler deploy --config "$APP_CFG" --env-file /dev/null'
         (f"{TRIAL_DEPLOY}; bunx wrangler deploy --env-file /dev/null", "b"),
         (f"{TRIAL_DEPLOY} && bunx wrangler d1 list", "a"),
         ("WHO=$(bunx wrangler whoami 2>&1 || true)", "a"),
+        ("bunx wrangler triggers deploy --config wrangler.toml", "a"),
+        ('bunx wrangler kv key list --namespace-id "$TRIAL_KV_ID"', "a"),
+        ("bunx wrangler versions deploy --env-file /dev/null", "b"),
+        ("bunx wrangler rollback --env-file /dev/null", "b"),
         ('gated x "Deploy?" bunx wrangler deploy --config "$APP_CFG" --env-file /dev/null', None),
     ],
 )
