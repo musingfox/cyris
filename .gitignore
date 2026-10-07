@@ -81,3 +81,6 @@ wrangler.deploy.toml
 # Rendered per trial by scripts/provision_trial.py (root, workers/promote/ and
 # workers/rss/); they carry an account id, a registry path and a database id.
 wrangler.trial-*.toml
+
+# launch film workspace (product-launch-motion skill); renders and voice files stay out of the public repo
+launch-video/
