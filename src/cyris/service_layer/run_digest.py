@@ -344,7 +344,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             pending_articles = [a for a in pending_articles if a.url not in dropped]
             progress(f"Vote similarity suppressed {len(dropped)} article(s).")
         elif not similarity.ran:
-            logger.info("Vote similarity skipped: %s", similarity.skipped_reason)
+            summary["vote_similarity_skipped"] = similarity.skipped_reason
+            # The other reasons are a quiet window; this one recurs every run until
+            # someone sets a threshold.
+            log = logger.warning if deps.embedding_threshold is None else logger.info
+            log("Vote similarity skipped: %s", similarity.skipped_reason)
 
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}
     digest_articles = [a.to_article() for a in pending_articles]
