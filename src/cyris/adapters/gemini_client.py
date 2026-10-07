@@ -94,6 +94,9 @@ class GeminiClient:
         response.raise_for_status()
 
         data = response.json()
+        if not data.get("candidates"):
+            block_reason = (data.get("promptFeedback") or {}).get("blockReason", "unknown")
+            raise RuntimeError(f"{self.model} returned no candidates (blockReason {block_reason})")
         candidate = data["candidates"][0]
         # A thinking model can spend the whole output budget before writing a
         # word, and then `content` carries no `parts` at all. Reading through it

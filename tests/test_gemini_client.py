@@ -151,3 +151,20 @@ async def test_structured_client_error_keeps_details_out_of_exception_text():
     assert google_message not in error_text
     assert prompt not in error_text
     assert system not in error_text
+
+
+async def test_a_blocked_prompt_names_the_block_reason():
+    # A blocked prompt comes back with no candidates at all, only promptFeedback.
+    async with respx.mock:
+        respx.post(GENERATE_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "promptFeedback": {"blockReason": "SAFETY"},
+                    "usageMetadata": {"promptTokenCount": 12},
+                },
+            )
+        )
+        client = GeminiClient(api_key="k", model="gemini-2.5-flash")
+        with pytest.raises(RuntimeError, match="gemini-2.5-flash.*SAFETY"):
+            await client.complete("hi")
