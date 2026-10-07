@@ -109,5 +109,6 @@ class GeminiClient:
         return LLMResponse(
             text="".join(part.get("text", "") for part in parts),
             input_tokens=usage.get("promptTokenCount", 0),
-            output_tokens=usage.get("candidatesTokenCount", 0),
+            # Thinking is billed as output but reported in its own field.
+            output_tokens=usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0),
         )

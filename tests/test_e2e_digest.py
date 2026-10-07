@@ -451,7 +451,7 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
     run = receipts.run
     usage = UsageStats(model=MODEL)
     for _ in range(EXPECTED_ROUTES["gemini_generate"]):
-        usage.add(1000, 200)
+        usage.add(1000, 200 + 300)
     (logged,) = run.rows("SELECT * FROM usage_log")
     assert _within_run(receipts, logged.pop("logged_at"))
     assert logged == {
@@ -462,7 +462,7 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "model": MODEL,
         "api_calls": 5,
         "input_tokens": 5000,
-        "output_tokens": 1000,
+        "output_tokens": 2500,
         "cost_usd": round(usage.estimated_cost, 6),
     }
 

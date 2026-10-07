@@ -418,7 +418,11 @@ class Fakes:
                         "finishReason": "STOP",
                     }
                 ],
-                "usageMetadata": {"promptTokenCount": 1000, "candidatesTokenCount": 200},
+                "usageMetadata": {
+                    "promptTokenCount": 1000,
+                    "candidatesTokenCount": 200,
+                    "thoughtsTokenCount": 300,
+                },
             },
         )
 
