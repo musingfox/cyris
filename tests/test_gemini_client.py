@@ -49,6 +49,28 @@ async def test_complete_parses_text_and_usage():
     }
 
 
+async def test_output_tokens_include_thinking():
+    # Thinking is billed as output, and usageMetadata reports it in its own field.
+    async with respx.mock:
+        respx.post(GENERATE_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "candidates": [{"content": {"parts": [{"text": "{}"}], "role": "model"}}],
+                    "usageMetadata": {
+                        "promptTokenCount": 12,
+                        "candidatesTokenCount": 67,
+                        "thoughtsTokenCount": 161,
+                    },
+                },
+            )
+        )
+        client = GeminiClient(api_key="k", model="gemini-2.5-flash")
+        result = await client.complete("hi")
+
+    assert result.output_tokens == 67 + 161
+
+
 async def test_complete_omits_optional_fields():
     async with respx.mock:
         route = respx.post(GENERATE_URL).mock(return_value=_ok_response())
