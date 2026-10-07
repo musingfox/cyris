@@ -387,7 +387,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, a raw page cannot |
-| Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`** | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
+| Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`**; the launch film in **R2 `musingfox-media`** under `cyris/` | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
 declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
@@ -931,6 +931,16 @@ that deploys the Container Worker, not this site.
 This deployment is deliberately independent of the digest Pages project and its D1
 `pages_manifest`: either publisher would replace the other's files in a shared project.
 The personal blog, apex domain, and email records remain outside this deployment.
+
+The launch film is not in the repository. It is served from the R2 bucket `musingfox-media`
+at `https://media.musingfox.com/cyris/`, a bucket shared by the maintainer's projects, one
+key prefix per project. A Pages deploy is a full snapshot of `website/`, so a video kept
+there untracked would vanish from the site the first time someone deploys from a checkout
+without it. The file name carries its version (`launch-v8.mp4`) and is served
+`immutable`; a new cut is a new key and a one-line change to `website/index.html`. Its
+poster and captions are small and stay in `website/assets/`, which also keeps the caption
+tracks same-origin. The bucket and its domain were created by hand with `wrangler r2`; no
+deploy script touches them.
 
 ### Why M3 did not use R2 either
 

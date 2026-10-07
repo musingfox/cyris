@@ -86,6 +86,7 @@ nav { position: sticky; top: 0; z-index: 20; height: var(--bar-h); background: r
 .proof { max-width: var(--measure); margin: var(--s-8) auto 0; padding-top: var(--s-4); border-top: 1px solid var(--border); color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
 .proof strong { color: var(--text); font-weight: 600; }
 .hero-shot { display: block; width: 100%; height: auto; margin-top: var(--s-12); border: 1px solid var(--border-strong); }
+.film video { display: block; width: 100%; height: auto; margin-top: var(--s-6); border: 1px solid var(--border-strong); background: #07070a; }
 .ctas { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-8); }
 .hero .ctas { justify-content: center; }
 .btn { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s-2); text-decoration: none; font: 500 calc(12px * var(--type-scale))/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
@@ -179,6 +180,17 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
         <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest: 8 sources, 92 articles received, 15 included, led by a top story on Cloudflare's infrastructure" data-zh-alt="一期 Cyris 摘要：8 個來源，收進 92 篇文章，留下 15 篇，以一則談 Cloudflare 基礎設施的頭條開場">
     </div>
 </header>
+<section class="film" id="film" aria-labelledby="film-title">
+    <div class="wrap">
+        <p class="eyebrow" data-zh="影片介紹">Watch</p>
+        <h2 class="section-heading" id="film-title" data-zh="38 秒看懂 Cyris。">Cyris in 38 seconds.</h2>
+        <video controls preload="none" playsinline width="1920" height="1080" poster="assets/launch-poster.webp" aria-label="Cyris launch film" data-zh-label="Cyris 介紹影片">
+            <source src="https://media.musingfox.com/cyris/launch-v8.mp4" type="video/mp4">
+            <track kind="captions" src="assets/launch-captions-en.vtt" srclang="en" label="English">
+            <track kind="captions" src="assets/launch-captions-zh-Hant.vtt" srclang="zh-Hant" label="繁體中文">
+        </video>
+    </div>
+</section>
 <section id="how" aria-labelledby="how-title">
     <div class="wrap">
         <div class="how-heading">
