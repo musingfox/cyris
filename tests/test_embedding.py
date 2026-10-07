@@ -166,6 +166,23 @@ def test_a_configured_threshold_still_wins():
     assert embedding_threshold(cfg) == 0.6
 
 
+def test_a_model_without_a_calibration_has_no_threshold():
+    """The cutoff is a property of the model it was measured on, not of its vendor."""
+    from fakes import make_config
+
+    from cyris.bootstrap import embedding_threshold
+
+    cfg = make_config()
+    cfg.app.vote_similarity.provider = "gemini"
+
+    cfg.app.vote_similarity.model = "gemini-embedding-001"
+    assert embedding_threshold(cfg) == 0.68
+    cfg.app.vote_similarity.model = "gemini-embedding-2"
+    assert embedding_threshold(cfg) is None
+    cfg.app.vote_similarity.threshold = 0.7
+    assert embedding_threshold(cfg) == 0.7
+
+
 def test_the_feature_off_means_no_embedder_at_all():
     from fakes import make_config
 

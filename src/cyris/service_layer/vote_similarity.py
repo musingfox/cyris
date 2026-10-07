@@ -52,7 +52,7 @@ async def judge_by_votes(
     embedder: Embedder,
     candidates: list[StoredArticle],
     *,
-    threshold: float = DEFAULT_THRESHOLD,
+    threshold: float | None = DEFAULT_THRESHOLD,
     max_seeds: int,
 ) -> VoteSimilarityReport:
     """Compare candidates against upvoted and downvoted articles.
@@ -60,6 +60,8 @@ async def judge_by_votes(
     Degrades to an empty report rather than raising: a digest must still go out
     if the embedding API is down.
     """
+    if threshold is None:
+        return VoteSimilarityReport(skipped_reason="no calibrated threshold for this model")
     if not candidates:
         return VoteSimilarityReport(skipped_reason="no candidates")
 
