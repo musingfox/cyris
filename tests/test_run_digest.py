@@ -1262,6 +1262,29 @@ async def test_a_finished_digest_is_recorded(tmp_path: Path) -> None:
     assert summary["status"] == "ok"
 
 
+class _UnusedEmbedder:
+    usage = SimpleNamespace(as_dict=lambda: {})
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise AssertionError("an uncalibrated model must not be embedded with")
+
+
+async def test_an_uncalibrated_embedding_model_records_why_it_skipped(
+    tmp_path: Path, caplog
+) -> None:
+    """Without the reason in the run row, suppression stops with no trace but a log line."""
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.vote_similarity.enabled = True
+    deps, recorded = _recording(replace(deps, embedder=_UnusedEmbedder(), embedding_threshold=None))
+
+    with caplog.at_level("WARNING", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["vote_similarity_skipped"] == "no calibrated threshold for this model"
+    assert "no calibrated threshold" in caplog.text
+
+
 def _exploding_store(deps: Deps) -> None:
     def explode(*args, **kwargs):
         raise RuntimeError("the store is gone")
