@@ -136,3 +136,17 @@ async def test_threshold_moves_the_boundary(threshold, expected):
     )
 
     assert report.suppressed_urls == expected
+
+
+async def test_no_calibrated_threshold_skips_before_embedding():
+    """Another model's cutoff would judge this one's cosines on the wrong scale."""
+    store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)])
+    embedder = FakeEmbedder()
+
+    report = await judge_by_votes(
+        store, embedder, [article("c1", "Lottery again")], threshold=None, max_seeds=200
+    )
+
+    assert not report.ran
+    assert "threshold" in report.skipped_reason
+    assert embedder.calls == 0

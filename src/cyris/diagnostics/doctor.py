@@ -167,6 +167,30 @@ def _check_llm(cfg: Config) -> Check:
 # OpenAIClient always asks for `json_object`, which OpenAI refuses unless the
 # messages mention JSON.
 LLM_PROBE_PROMPT = 'Reply with JSON: {"ok": true}'
+
+
+def _check_vote_similarity(cfg: Config) -> Check:
+    from cyris.bootstrap import embedding_defaults, embedding_threshold
+
+    vote = cfg.app.vote_similarity
+    if vote is None or any(k.startswith("vote_similarity.") for k in cfg.missing_settings):
+        return Check("vote similarity", "skip", "not set — see settings")
+    if not vote.enabled:
+        return Check("vote similarity", "skip", "off")
+    model = vote.model or embedding_defaults(vote.provider)["model"]
+    threshold = embedding_threshold(cfg)
+    if threshold is None:
+        calibrated = embedding_defaults(vote.provider)["model"]
+        return Check(
+            "vote similarity",
+            "fail",
+            f"{model} has no calibrated threshold, so every run skips vote similarity",
+            f"Set [vote_similarity] threshold in cyris.toml after measuring {model}, "
+            f"or switch the embedding model back to {calibrated}.",
+        )
+    return Check("vote similarity", "ok", f"{vote.provider} · {model} at {threshold:g}")
+
+
 # The clients allow 120-180 s per attempt and retry twice, which a run can afford
 # and a Save cannot. A probe answers within seconds; this bound still leaves room
 # for one retry after a 429.
@@ -853,6 +877,7 @@ async def run_checks(
         _check_settings(cfg),
         *_check_file_settings(cfg, config_path),
         _check_llm(cfg),
+        _check_vote_similarity(cfg),
         *_check_paths(cfg),
         _check_store(cfg),
     ]

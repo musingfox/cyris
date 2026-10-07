@@ -103,12 +103,20 @@ def build_embedder(cfg: Config) -> Any | None:
     return make_embedder(vote.provider, vote.model)
 
 
-def embedding_threshold(cfg: Config) -> float:
-    """The configured cutoff, or the provider's own calibration."""
+def embedding_threshold(cfg: Config) -> float | None:
+    """The configured cutoff, else the calibration of the model it was measured on.
+
+    None when the configured model is not that model: its cosines run on a scale
+    no one has measured, so borrowing the calibrated model's number would judge
+    them wrongly without saying so.
+    """
     vote = cfg.app.vote_similarity
     if vote.threshold is not None:
         return vote.threshold
-    return embedding_defaults(vote.provider)["threshold"]
+    calibrated = embedding_defaults(vote.provider)
+    if vote.model and vote.model != calibrated["model"]:
+        return None
+    return calibrated["threshold"]
 
 
 def build_worker_domains() -> Callable[[], list[str]] | None:
@@ -257,8 +265,8 @@ class Deps:
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
     embedder: Any | None = None  # None ⇒ vote similarity is switched off
     # Travels with `embedder`: the cutoff is a measured property of that model, so
-    # no model-agnostic default exists. None makes `down >= threshold` raise rather
-    # than quietly judge one provider's corpus by another's number.
+    # no model-agnostic default exists. None skips vote similarity rather than
+    # quietly judge one model's corpus by another's number.
     embedding_threshold: float | None = None
     # Takes the final `run_summary` dict; None under json, where no run row is kept.
     record_run: Callable[[dict], None] | None = None

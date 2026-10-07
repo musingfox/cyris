@@ -304,7 +304,7 @@ class VoteSimilarityConfig(BaseModel):
 
     enabled: bool
     provider: Literal["workers_ai", "gemini"]
-    # None means "the provider's own calibration". Grade A: the pairing is a
+    # None means "the calibrated model's own cutoff". Grade A: the pairing is a
     # measured property of the model, not a preference — bge-m3's cosines run
     # lower than Gemini's across the board, so carrying 0.68 over to it would
     # suppress nothing and the feature would silently no-op.

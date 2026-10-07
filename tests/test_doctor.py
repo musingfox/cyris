@@ -153,6 +153,29 @@ def test_a_missing_model_defers_to_the_settings_check(tmp_path: Path, monkeypatc
     assert doctor._check_llm(cfg) == doctor.Check("llm provider", "skip", "not set — see settings")
 
 
+async def test_an_uncalibrated_embedding_model_fails_vote_similarity(tmp_path: Path) -> None:
+    """Without a cutoff measured on this model, a run skips the feature every time."""
+    cfg = _config(tmp_path)
+    vote = cfg.app.vote_similarity
+    vote.enabled, vote.provider, vote.model = True, "gemini", "gemini-embedding-2"
+
+    check = _by_name(await doctor.run_checks(cfg), "vote similarity")
+
+    assert check.status == "fail"
+    assert "gemini-embedding-2" in check.detail
+    assert "threshold" in check.fix
+
+
+async def test_the_calibrated_embedding_model_passes_vote_similarity(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    vote = cfg.app.vote_similarity
+    vote.enabled, vote.provider, vote.model = True, "gemini", ""
+
+    check = _by_name(await doctor.run_checks(cfg), "vote similarity")
+
+    assert check.status == "ok"
+
+
 _LLM_KEYS = ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "CLOUDFLARE_AI_TOKEN")
 
 
