@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import cdp_probe  # noqa: E402
 import digest_probe  # noqa: E402
+import labels_probe  # noqa: E402
 import raw_probe  # noqa: E402
 import settings_probe  # noqa: E402
 from css_computed import (  # noqa: E402
@@ -1142,3 +1143,51 @@ def test_every_digest_probe_check_is_named_once_and_can_be_sabotaged():
     assert cdp_probe.registry_problems([unsabotaged], digest_probe.KINDS) == ["a: no sabotage"]
     assert cdp_probe.registry_problems(digest_probe.CHECKS, digest_probe.KINDS) == []
     assert {check.id for check in digest_probe.CHECKS} >= EXPECTED_DIGEST_IDS
+
+
+# The checks `scripts/labels_probe.py` must carry: the card is blind, each answer is
+# sent as given, and the page fits a phone.
+EXPECTED_LABELS_IDS = {
+    "card-shows-the-first-item",
+    "card-shows-no-verdict",
+    *(f"{label}-sends-its-answer-and-deals-the-next" for label in ("up", "down", "skip")),
+    "swipe-up-answers-up",
+    "swipe-down-answers-down",
+    "refused-answer-says-why",
+    "refused-answer-says-sign-in-again",
+    "fits-375",
+    "fits-largest-375",
+    "tap-answers-375",
+}
+
+
+def test_every_labels_probe_check_is_named_once_and_can_be_sabotaged():
+    assert cdp_probe.registry_problems(labels_probe.CHECKS, labels_probe.KINDS) == []
+    assert {check.id for check in labels_probe.CHECKS} >= EXPECTED_LABELS_IDS
+
+
+def test_the_labels_probe_runs_on_the_shared_core():
+    assert labels_probe.Check is cdp_probe.Check
+
+
+def test_the_labels_probe_fixture_refuses_an_unknown_kind():
+    with pytest.raises(ValueError):
+        labels_probe.build_fixture("bogus")
+
+
+async def test_the_labels_probe_serves_the_real_page_and_script_and_records_answers():
+    fixture = labels_probe.build_fixture("sample")
+    client = TestClient(TestServer(fixture.app))
+    await client.start_server()
+    try:
+        page = await (await client.get(labels_probe.PAGE)).text()
+        script = await client.get("/static/labels.js")
+        first = await (await client.get("/api/labels")).json()
+        after = await (await client.post("/api/labels", json={"url": "u", "label": "up"})).json()
+    finally:
+        await client.close()
+    assert 'id="l-card"' in page
+    assert script.status == 200
+    assert first["item"]["title"] == "Title One"
+    assert after["item"]["title"] == "Title Two"
+    assert fixture.posts == [{"url": "u", "label": "up"}]
