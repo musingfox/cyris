@@ -105,6 +105,14 @@
     "route": "plain",
     "live": true
   },
+  "digest.rank_by_preference": {
+    "tab": "digest",
+    "label": "Order by your votes",
+    "controls": [
+      "rank-by-preference"
+    ],
+    "route": "plain"
+  },
   "general.digest_window_hours": {
     "tab": "pipeline",
     "label": "Window (hours)",

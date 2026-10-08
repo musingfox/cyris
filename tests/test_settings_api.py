@@ -398,6 +398,19 @@ class TestPlainValues:
         assert body["field"] == "llm_provider.model"
         assert settings.calls == []
 
+    async def test_the_vote_order_switch_is_stored_as_a_boolean(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.rank_by_preference": True}}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["values"] == {"digest.rank_by_preference": True}
+        assert settings.calls == [{"digest.rank_by_preference": True}]
+
     async def test_the_type_size_as_a_string_is_refused(self, settings):
         client = await _client(settings)
 

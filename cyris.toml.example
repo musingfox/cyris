@@ -44,6 +44,7 @@ filter_snippet_length = 500             # characters read when clustering news a
 output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
 style_prompt = ""                       # optional: your tone/focus, injected into the prompts
 type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
+rank_by_preference = true               # order headlines and Features by your votes; needs [vote_similarity]
 
 [agent_vault]
 path = "./agent-vault"

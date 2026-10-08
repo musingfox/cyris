@@ -182,6 +182,9 @@ class DigestConfig(BaseModel):
     # Every page's --type-scale. The app Worker reads it and injects it into each
     # HTML page it serves (workers/app/src/type_scale.js holds the same steps).
     type_scale: Literal[0.875, 1, 1.125]
+    # Order the headlines and Features by vote similarity's preference before the
+    # issue cap cuts them; false keeps the model's order. See docs/architecture.md §3.2.
+    rank_by_preference: bool
 
 
 class AgentVaultConfig(BaseModel):
