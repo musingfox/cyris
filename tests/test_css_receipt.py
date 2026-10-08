@@ -598,6 +598,11 @@ EXPECTED_IDS = {
     "sources-empty-all",
     "readonly-settings",
     "readonly-sources",
+    "tracking-rows",
+    "tracking-empty-is-no-missing-mark",
+    "tracking-add",
+    "tracking-no-threshold-refused",
+    "tracking-remove",
     "fits-400",
     "fits-1440",
     "save-held-in-flight-model",
@@ -716,6 +721,7 @@ def test_every_probe_check_is_named_once_and_can_be_sabotaged():
         "writable",
         "writable-largest",
         "writable-health",
+        "writable-topics",
     }
     assert set(ids) >= EXPECTED_IDS
 

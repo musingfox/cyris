@@ -542,7 +542,7 @@ async def test_settings_never_asks_the_browser_to_confirm(triage: TestClient, pa
     assert not _uses_confirm(await _served(triage, path))
 
 
-SETTINGS_HASHES = ["#model", "#digest", "#pipeline", "#notifications", "#sources"]
+SETTINGS_HASHES = ["#model", "#digest", "#pipeline", "#notifications", "#sources", "#tracking"]
 
 
 def _hash_targets(html: str) -> set[str]:
@@ -555,7 +555,7 @@ def test_an_element_named_like_a_category_is_reported() -> None:
     assert _hash_targets('<input id="model">') == {"model"}
 
 
-async def test_the_category_list_links_the_five_hashes(triage: TestClient) -> None:
+async def test_the_category_list_links_every_category_hash(triage: TestClient) -> None:
     page = await _served(triage, "/settings")
     nav = re.search(r'<nav class="settings-nav".*?</nav>', page, re.DOTALL)
     assert nav, "no category list"

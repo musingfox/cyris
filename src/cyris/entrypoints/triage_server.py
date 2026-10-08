@@ -14,7 +14,7 @@ from cyris.adapters.output import html_digest
 from cyris.adapters.store.feed_health import FeedHealth
 from cyris.config import SETTINGS_FIELDS
 from cyris.diagnostics.doctor import probe_discord, probe_embedder
-from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,15 @@ def _health_json(health: FeedHealth | None, now: datetime) -> dict[str, Any] | N
     }
 
 
+# Each tracked-topic field's refusal, in the page's words.
+TOPIC_REFUSALS = {
+    "name": "A topic needs a name.",
+    "description": "A topic needs a description: one sentence saying what it is about.",
+    "threshold": "Threshold is a cosine above 0 and at most 1.",
+    "model": "A topic needs the embedding model its threshold was set for.",
+}
+
+
 def render_settings_page() -> str:
     """Render /settings with the digest pages' own site bar.
 
@@ -109,6 +118,8 @@ class TriageServer:
         sources: dict[str, SourceConfig] | None = None,
         source_store=None,
         feed_health=None,
+        tracked_topics: list[TrackedTopic] | None = None,
+        topic_store=None,
     ) -> None:
         self._host = host
         self._port = port
@@ -128,6 +139,10 @@ class TriageServer:
         # D1's `feed_health` beside each source's newest article; absent on a
         # `backend = "json"` deployment, which polls no Worker.
         self._feed_health = feed_health
+        # Like sources: the startup list, read-only on a `backend = "json"`
+        # deployment, whose topics live in cyris.toml; D1's table otherwise.
+        self._tracked_topics = tracked_topics or []
+        self._topic_store = topic_store
         self._settings_page = render_settings_page()
         self._app = web.Application()
         self._app.router.add_get("/api/build", self._handle_build)
@@ -142,6 +157,9 @@ class TriageServer:
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
+        self._app.router.add_get("/api/topics", self._handle_get_topics)
+        self._app.router.add_post("/api/topics", self._handle_post_topic)
+        self._app.router.add_delete("/api/topics/{name}", self._handle_delete_topic)
         self._app.router.add_get("/settings", self._handle_settings_page)
         # Production never reaches this: the app Worker sends /favicon.svg to Pages.
         # A local `cyris triage-ui` has no Pages behind it.
@@ -663,6 +681,79 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Source %s retired", name)
+        return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
+
+    def _embedding_model(self) -> str:
+        """The model a run embeds with now, which a new topic's threshold is set for."""
+        from cyris.bootstrap import embedding_model
+
+        provider = self._values.get("vote_similarity.provider")
+        if not provider:
+            return ""
+        return embedding_model(provider, self._values.get("vote_similarity.model") or "")
+
+    async def _handle_get_topics(self, request: web.Request) -> web.Response:
+        """The topics the next run tracks, and the model it will judge them with."""
+        topics = (
+            self._tracked_topics if self._topic_store is None else self._topic_store.list_topics()
+        )
+        return web.json_response(
+            {
+                "writable": self._topic_store is not None,
+                "topics": [topic.model_dump() for topic in topics],
+                "embedding_model": self._embedding_model(),
+            }
+        )
+
+    def _no_topic_table(self) -> web.Response:
+        return web.json_response(
+            {
+                "ok": False,
+                "error": "No writable topic table (store backend is not D1): "
+                "edit [[tracked_topics]] in cyris.toml instead.",
+            },
+            status=409,
+        )
+
+    async def _handle_post_topic(self, request: web.Request) -> web.Response:
+        """Add or edit one topic, over the row `name` owns. Nothing is probed: a
+        topic that cannot be embedded is skipped by the run and named in its summary."""
+        if self._topic_store is None:
+            return self._no_topic_table()
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+
+        try:
+            topic = TrackedTopic.model_validate(body)
+        except ValidationError as e:
+            first = e.errors()[0]
+            field = str(first["loc"][0]) if first["loc"] else ""
+            return _refused(TOPIC_REFUSALS.get(field, f"body: {first['msg']}"), field)
+
+        try:
+            self._topic_store.upsert(topic)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        logger.info("Tracked topic %s written to D1", topic.name)
+        return web.json_response({"ok": True, "name": topic.name, "note": "Effective next run."})
+
+    async def _handle_delete_topic(self, request: web.Request) -> web.Response:
+        if self._topic_store is None:
+            return self._no_topic_table()
+        name = request.match_info["name"]
+        try:
+            removed = self._topic_store.delete(name)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if not removed:
+            return web.json_response(
+                {"ok": False, "error": f"No topic named {name}: reload the page."}, status=404
+            )
+
+        logger.info("Tracked topic %s removed", name)
         return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:

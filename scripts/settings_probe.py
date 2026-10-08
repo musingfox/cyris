@@ -28,7 +28,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import mock
@@ -52,7 +52,7 @@ from cyris.adapters.notify import mask_discord_webhook_url
 from cyris.adapters.store.feed_health import FeedHealth
 from cyris.config import GRADE_D_KEYS, LLMProviderConfig
 from cyris.diagnostics.doctor import Check as DoctorCheck
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import SourceConfig, Tier, TrackedTopic
 from cyris.entrypoints.triage_server import TriageServer
 
 # Named rather than random so a leak test can look for exactly these strings.
@@ -108,6 +108,45 @@ class FakeSourceStore:
 
     def delete(self, name: str) -> None:
         self.sources.pop(name, None)
+
+
+class FakeTopicStore:
+    """Stands in for the D1 `tracked_topics` table; `topics` is the receipt."""
+
+    def __init__(self, topics: dict[str, TrackedTopic]) -> None:
+        self.topics = topics
+
+    def list_topics(self) -> list[TrackedTopic]:
+        return [self.topics[name] for name in sorted(self.topics)]
+
+    def upsert(self, topic: TrackedTopic) -> None:
+        self.topics[topic.name] = topic
+
+    def delete(self, name: str) -> int:
+        return 1 if self.topics.pop(name, None) else 0
+
+
+# The probe values embed with workers_ai's default model, @cf/baai/bge-m3.
+PROBE_EMBEDDING_MODEL = "@cf/baai/bge-m3"
+
+
+def _seed_topics() -> dict[str, TrackedTopic]:
+    listed = [
+        TrackedTopic(
+            name="Anthropic",
+            description="The company that makes Claude",
+            threshold=0.55,
+            model=PROBE_EMBEDDING_MODEL,
+        ),
+        # Set for a model the probe deployment does not embed with: the run skips it.
+        TrackedTopic(
+            name="Chips",
+            description="Semiconductor makers and export rules",
+            threshold=0.7,
+            model="gemini-embedding-001",
+        ),
+    ]
+    return {topic.name: topic for topic in listed}
 
 
 def _seed_sources() -> dict[str, SourceConfig]:
@@ -183,28 +222,34 @@ class Fixture:
     settings: FakeSettings | None
     sources: dict[str, SourceConfig]
     values: dict
+    topics: dict[str, TrackedTopic] = field(default_factory=dict)
 
 
 def build_fixture(kind: str) -> Fixture:
     """A `readonly` deployment (no settings store, no source table) or a `writable` one.
 
     `writable-largest` is `writable` with the page served at the largest type size;
-    `writable-health` is `writable` with one feed failing.
+    `writable-health` is `writable` with one feed failing; `writable-topics` is
+    `writable` with two tracked topics, one set for another embedding model.
+    Every other writable fixture tracks no topic, so `rowNames` reads sources alone.
     """
     common = {"values": PROBE_VALUES, "sources": _seed_sources()}
     if kind == "readonly":
         server = TriageServer(**common)
         return Fixture(server._app, None, server._sources, server._values)
-    if kind in ("writable", "writable-largest", "writable-health"):
+    if kind in ("writable", "writable-largest", "writable-health", "writable-topics"):
         settings = FakeSettings()
         store = FakeSourceStore(_seed_sources())
+        topics = FakeTopicStore(_seed_topics() if kind == "writable-topics" else {})
         # Health only where a check asks for it: its line sits in the name cell
         # that `rowNames` reads.
         health = FakeFeedHealth() if kind == "writable-health" else None
-        server = TriageServer(settings=settings, source_store=store, feed_health=health, **common)
+        server = TriageServer(
+            settings=settings, source_store=store, feed_health=health, topic_store=topics, **common
+        )
         if kind == "writable-largest":
             server._settings_page = at_largest_type_scale(server._settings_page)
-        return Fixture(server._app, settings, store.sources, server._values)
+        return Fixture(server._app, settings, store.sources, server._values, topics.topics)
     raise ValueError(f"unknown fixture {kind!r}")
 
 
@@ -289,6 +334,24 @@ def _stored(name: str, **wanted) -> Callable[[Fixture], str | None]:
         return f"{name} stored {wrong}" if wrong else None
 
     return receipt
+
+
+def _topic_stored(name: str, **wanted) -> Callable[[Fixture], str | None]:
+    """A receipt: the topic store holds `name` with exactly these field values."""
+
+    def receipt(fixture: Fixture) -> str | None:
+        topic = fixture.topics.get(name)
+        if topic is None:
+            return f"{name} is not stored"
+        wrong = {k: getattr(topic, k) for k, v in wanted.items() if getattr(topic, k) != v}
+        return f"{name} stored {wrong}" if wrong else None
+
+    return receipt
+
+
+def _topic_gone(name: str) -> Callable[[Fixture], str | None]:
+    """A receipt: the topic store no longer holds `name`."""
+    return lambda fixture: f"{name} is still stored" if name in fixture.topics else None
 
 
 def _last_call(wanted: dict) -> Callable[[Fixture], str | None]:
@@ -858,7 +921,7 @@ CHECKS: list[Check] = [
         path="/settings#sources",
         act="await sourcesLoaded();",
         script="""
-            const heads = $$("table.src th").map((th) => th.textContent);
+            const heads = $$('[data-tab="sources"] table.src th').map((th) => th.textContent);
             const wanted = ["Name", "Type", "Tier", "Feed or sender", "Tags"];
             expect(same(heads, wanted), `headers: ${heads}`);
             expect(rowNames().length === 4, `rows: ${rowNames()}`);
@@ -3011,6 +3074,111 @@ CHECKS += [
         )
     ),
 ]
+# Tracked topics: the Sources table and editor again, where no topic is a valid answer.
+CHECKS += [
+    Check(
+        id="tracking-rows",
+        fixture="writable-topics",
+        path="/settings#tracking",
+        act="await topicsListed();",
+        script="""
+            expect(same(topicNames(), ["Anthropic", "Chips"]), `rows: ${topicNames()}`);
+            const line = $(".feed-problem", topicRowOf("Chips"));
+            const text = line && line.textContent;
+            const want = "Set for gemini-embedding-001; runs embed with @cf/baai/bge-m3, "
+              + "so it is skipped";
+            expect(text === want, `line: ${text}`);
+            expect(!$(".feed-problem", topicRowOf("Anthropic")), "a matching topic shows a line");
+        """,
+        sabotage="""$(".feed-problem", topicRowOf("Chips")).remove();""",
+    ),
+    Check(
+        id="tracking-empty-is-no-missing-mark",
+        fixture="writable",
+        path="/settings#tracking",
+        act="await topicsListed();",
+        script="""
+            const rows = $$("#topic-body tr").map((row) => row.textContent.trim());
+            expect(same(rows, ["No topics yet."]), `rows: ${rows}`);
+            expect(!navOf("tracking").classList.contains("missing"), "Tracking is marked missing");
+            expect(!$("#add-topic").disabled, "Add topic is disabled");
+        """,
+        sabotage="""navOf("tracking").classList.add("missing");""",
+    ),
+    Check(
+        id="tracking-add",
+        fixture="writable",
+        path="/settings#tracking",
+        act="""
+            await topicsListed();
+            $("#add-topic").click();
+            await waitFor(editor, "the editor");
+            ctx.model = $("#t-model", editor()).value;
+            setValue($("#t-name", editor()), "Lotteries");
+            setValue($("#t-description", editor()), "Lottery draws and jackpots");
+            setValue($("#t-threshold", editor()), "0.6");
+            editorAct("save").click();
+            await waitFor(() => topicRowOf("Lotteries"), "the saved row");
+        """,
+        script="""
+            expect(ctx.model === "@cf/baai/bge-m3", `the model started as ${ctx.model}`);
+            expect(same(topicNames(), ["Lotteries"]), `rows: ${topicNames()}`);
+        """,
+        sabotage="""topicRowOf("Lotteries").remove();""",
+        receipt=_topic_stored(
+            "Lotteries",
+            description="Lottery draws and jackpots",
+            threshold=0.6,
+            model=PROBE_EMBEDDING_MODEL,
+        ),
+    ),
+    Check(
+        id="tracking-no-threshold-refused",
+        fixture="writable",
+        path="/settings#tracking",
+        act="""
+            await topicsListed();
+            $("#add-topic").click();
+            await waitFor(editor, "the editor");
+            setValue($("#t-name", editor()), "Lotteries");
+            setValue($("#t-description", editor()), "Lottery draws and jackpots");
+            editorAct("save").click();
+            await waitFor(() => $("#t-threshold", editor()).classList.contains("invalid"),
+                          "the refusal");
+        """,
+        script="""
+            const field = $("#t-threshold", editor());
+            expect(field.getAttribute("aria-invalid") === "true", "the threshold is not marked");
+            expect(!topicRowOf("Lotteries"), "a topic with no threshold was listed");
+        """,
+        sabotage="""$("#t-threshold", editor()).removeAttribute("aria-invalid");""",
+        receipt=_topic_gone("Lotteries"),
+    ),
+    Check(
+        id="tracking-remove",
+        fixture="writable-topics",
+        path="/settings#tracking",
+        act="""
+            await topicsListed();
+            topicRowOf("Chips").click();
+            await waitFor(editor, "the editor");
+            editorAct("remove").click();
+            ctx.armed = editorAct("remove").textContent;
+            editorAct("remove").click();
+            await waitFor(() => !topicRowOf("Chips"), "the row to go");
+        """,
+        script="""
+            expect(ctx.armed === "Confirm remove", `the first press read ${ctx.armed}`);
+            expect(same(topicNames(), ["Anthropic"]), `rows: ${topicNames()}`);
+        """,
+        sabotage="""
+            const row = $("#topic-body").insertRow();
+            row.className = "src-row";
+            row.insertCell().textContent = "Chips";
+        """,
+        receipt=_topic_gone("Chips"),
+    ),
+]
 # The page fits at the largest type size too.
 CHECKS += [
     largest_twin(check, check.id.replace("fits-", "fits-largest-"), "writable-largest")
@@ -3055,13 +3223,18 @@ const noticeOf = (tab) => $(".actions-line .notice", $(`form.tab[data-tab="${tab
 const settled = (notice) => visible(notice) && notice.getAttribute("aria-busy") !== "true";
 const eachCategory = async (measure) => {
   const problems = [];
-  for (const tab of ["model", "digest", "pipeline", "notifications", "sources"]) {
+  for (const tab of ["model", "digest", "pipeline", "notifications", "sources", "tracking"]) {
     location.hash = tab;
     await waitFor(() => same(panels(), [tab]), tab);
     problems.push(...measure(tab));
   }
   return problems;
 };
+const topicNames = () =>
+  $$("#topic-body tr.src-row").map((row) => $("td", row).firstChild.textContent);
+const topicsListed = () =>
+  waitFor(() => $$("#topic-body tr").length && !$("#topic-body [data-loading]"), "the topic list");
+const topicRowOf = (name) => $(`#topic-body tr.src-row[data-name="${CSS.escape(name)}"]`);
 const visiblePanel = () => $$(".tab").find(visible);
 const layout1440 = (where) => {
   const nav = $(".settings-nav").getBoundingClientRect();
