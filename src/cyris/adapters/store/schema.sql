@@ -222,3 +222,23 @@ CREATE TABLE IF NOT EXISTS vote_similarity_shadow (
   down_cosine   REAL,
   PRIMARY KEY (run_at, candidate_url)
 );
+
+-- The blind-label sample: filter candidates drawn for the reader to label with the
+-- pipeline's verdict hidden, and each answer. Its own table because a label rewrites
+-- `stored_articles.state` and stamps `triaged_at` exactly as a digest vote does, which
+-- erases the verdict that put the row in its stratum and leaves a label
+-- indistinguishable from a vote; a skip has no home there at all. So the verdict and
+-- the news split are frozen here at draw time, and `stratum_size` is how many pool
+-- rows shared the stratum, which the report weights by. `label` is NULL until answered.
+CREATE TABLE IF NOT EXISTS blind_labels (
+  url            TEXT PRIMARY KEY,
+  position       INTEGER NOT NULL,
+  news           INTEGER NOT NULL CHECK (news IN (0, 1)),
+  pipeline_state TEXT NOT NULL,
+  stratum_size   INTEGER NOT NULL,
+  seed           INTEGER NOT NULL,
+  pool_since     TEXT NOT NULL,
+  drawn_at       TEXT NOT NULL,
+  label          TEXT CHECK (label IN ('up', 'down', 'skip')),
+  labeled_at     TEXT
+);
