@@ -24,6 +24,7 @@ the whole gap.
 * Cloud Run Jobs for the pipeline and the hourly fetch, with Cloudflare's free plan for Pages, D1,
   the vote Worker and KV
 * Vercel, Netlify, Fly.io, Render, Hetzner or GitHub Actions
+* A Python Worker in place of the Container
 
 ## Decision Outcome
 
@@ -41,6 +42,9 @@ and one bill instead of four vendors.
   scheduled functions stop at 30 s, below the ~64 s run; Fly.io has no ongoing free allowance;
   Render has no free cron instance and a $1 minimum per cron service; Hetzner has no free tier;
   GitHub Actions schedules can be delayed or dropped and auto-disable after 60 days of inactivity.
+* A Python Worker would remove the Container's sleep timer entirely. It was spiked on 2026-09-24
+  and not taken: sync `httpx` timed out on fresh isolates, `aiohttp` could not connect, `blake3`
+  has no Pyodide wheel, and startup already used 934 of its 1,000 ms.
 
 ### Consequences
 
@@ -57,6 +61,9 @@ Extracted on 2026-10-08 from these sources at commit `c353d3f`:
 * `docs/hosting-and-cost.md:73-95` (§4 *The cheapest alternative stack, priced*, and the hosts
   ruled out).
 * `docs/hosting-and-cost.md:139-140` (§7, *Stay on Cloudflare Workers Paid*).
+
+The Python Worker option was added on 2026-10-08 from `docs/architecture.md:1015` (§7, *D1 calls
+have no total time budget*) at commit `2b31535`.
 
 `docs/hosting-and-cost.md` stays the measurement record: its §1 table, its free-plan ceilings and
 its numbered vendor sources, all fetched 2026-09-20, back every figure above. Its §1 notes that
