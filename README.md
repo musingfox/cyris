@@ -9,7 +9,7 @@ reading, short enough to finish. You pick every token that reaches your model's 
 window; Cyris does the same for your attention.
 
 On the maintainer's own deployment, 56 issues from 2026-08-28 to 2026-09-27: an average
-issue took in 91 articles, kept 13, and cost about US$0.03 in LLM usage. That digest is
+issue took in 92 articles and kept 13. That digest is
 public at [cyris-digest.pages.dev](https://cyris-digest.pages.dev/), written in
 Traditional Chinese.
 
