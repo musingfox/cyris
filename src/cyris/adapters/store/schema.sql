@@ -230,8 +230,10 @@ CREATE TABLE IF NOT EXISTS vote_similarity_shadow (
 -- indistinguishable from a vote; a skip has no home there at all. So the verdict and
 -- the news split are frozen here at draw time, and `stratum_size` is how many pool
 -- rows shared the stratum, which the report weights by. `label` is NULL until answered.
+-- Keyed by draw as well as URL, so a new draw goes in whole before the old one is
+-- deleted; readers take the latest `drawn_at` (adapters/store/blind_labels.py).
 CREATE TABLE IF NOT EXISTS blind_labels (
-  url            TEXT PRIMARY KEY,
+  url            TEXT NOT NULL,
   position       INTEGER NOT NULL,
   news           INTEGER NOT NULL CHECK (news IN (0, 1)),
   pipeline_state TEXT NOT NULL,
@@ -240,5 +242,6 @@ CREATE TABLE IF NOT EXISTS blind_labels (
   pool_since     TEXT NOT NULL,
   drawn_at       TEXT NOT NULL,
   label          TEXT CHECK (label IN ('up', 'down', 'skip')),
-  labeled_at     TEXT
+  labeled_at     TEXT,
+  PRIMARY KEY (drawn_at, url)
 );
