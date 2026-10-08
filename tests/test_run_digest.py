@@ -2750,3 +2750,136 @@ async def test_without_a_similarity_verdict_nothing_is_reordered(
     [summary] = recorded
     assert summary["preference_rank_applied"] is False
     assert summary["preference_rank_skipped"] == reason
+
+
+# ---- tracked topics: a section of hits, no LLM call, no title embedded twice ----------
+
+_TOPIC_MODEL = "test-embedding-model"
+_TOPIC_TEXT = "Companies putting AI to work"
+
+
+class _RecordingEmbedder(_TitleEmbedder):
+    """`_TitleEmbedder` that also knows the topic's sentence and keeps every payload."""
+
+    VECTORS = {**_TitleEmbedder.VECTORS, _TOPIC_TEXT: [1.0, 0.25, 0.0]}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.payloads: list[list[str]] = []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.payloads.append(list(texts))
+        return await super().embed(texts)
+
+    def embedded(self) -> list[str]:
+        return [text for payload in self.payloads for text in payload]
+
+
+def _tracked(name: str = "AI at work", **overrides):
+    from cyris.domain.models import TrackedTopic
+
+    fields = {"description": _TOPIC_TEXT, "threshold": 0.9, "model": _TOPIC_MODEL}
+    return TrackedTopic(name=name, **{**fields, **overrides})
+
+
+def _tracking_deps(tmp_path: Path, topics: list, *, llm=None, embedder=None):
+    contents: list = []
+    deps, _ = make_deps(
+        tmp_path,
+        llm or _notify_llm(),
+        FakeSource([_notify_article()]),
+        discord_contents=contents,
+    )
+    deps.cfg.tracked_topics = topics
+    deps, recorded = _recording(
+        replace(deps, embedder=embedder or _RecordingEmbedder(), embedding_model=_TOPIC_MODEL)
+    )
+    return deps, contents, recorded
+
+
+async def test_a_tracked_topic_lists_its_hit_in_the_issue(tmp_path: Path) -> None:
+    deps, contents, recorded = _tracking_deps(tmp_path, [_tracked()])
+
+    report = await run_digest(deps, RunOptions())
+
+    [content], [summary] = contents, recorded
+    [section] = content.tracked_topics
+    assert section.heading == "AI at work"
+    assert [item.urls for item in section.items] == [["https://example.com/notify"]]
+    assert summary["tracking"] == {"hits": {"AI at work": 1}, "skipped": {}}
+    assert summary["embedding"] == {"embedded": 0}
+    page = report.html_path.read_text()
+    assert ">Tracking<" in page and ">AI at work<" in page
+
+
+async def test_tracking_makes_no_llm_call(tmp_path: Path) -> None:
+    with_topic, without_topic = _notify_llm(), _notify_llm()
+    tracked, _, _ = _tracking_deps(tmp_path / "a", [_tracked()], llm=with_topic)
+    bare, _, _ = _tracking_deps(tmp_path / "b", [], llm=without_topic)
+
+    await run_digest(tracked, RunOptions())
+    await run_digest(bare, RunOptions())
+
+    assert len(with_topic.calls) == len(without_topic.calls) > 0
+
+
+async def test_a_topic_set_for_another_model_is_named_and_never_embedded(tmp_path: Path) -> None:
+    embedder = _RecordingEmbedder()
+    deps, contents, recorded = _tracking_deps(
+        tmp_path, [_tracked(model="another-model", threshold=0.1)], embedder=embedder
+    )
+
+    await run_digest(deps, RunOptions())
+
+    [content], [summary] = contents, recorded
+    assert content.tracked_topics == []
+    assert summary["tracking"]["hits"] == {}
+    assert "another-model" in summary["tracking"]["skipped"]["AI at work"]
+    assert embedder.payloads == []
+
+
+async def test_no_topic_embeds_nothing_and_leaves_the_page_as_it_was(tmp_path: Path) -> None:
+    embedder = _RecordingEmbedder()
+    tracked, tracked_contents, recorded = _tracking_deps(tmp_path / "a", [], embedder=embedder)
+    bare, bare_contents, _ = _tracking_deps(tmp_path / "b", [])
+    bare = replace(bare, embedder=None)
+
+    tracked_report = await run_digest(tracked, RunOptions())
+    bare_report = await run_digest(bare, RunOptions())
+
+    [summary] = recorded
+    assert embedder.payloads == []
+    assert "tracking" not in summary and "embedding" not in summary
+    assert tracked_report.html_path.read_bytes() == bare_report.html_path.read_bytes()
+    assert tracked_contents[0].model_dump() == bare_contents[0].model_dump()
+
+
+async def test_titles_vote_similarity_embedded_are_not_embedded_again(tmp_path: Path) -> None:
+    embedder = _RecordingEmbedder()
+    deps, contents, recorded = _voting_deps(tmp_path, None)
+    deps.cfg.tracked_topics = [_tracked()]
+    deps = replace(deps, embedder=embedder, embedding_model=_TOPIC_MODEL)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["vote_similarity_judged"] == 2
+    embedded = embedder.embedded()
+    for title in ("Notify Path", "Disliked again", _TOPIC_TEXT):
+        assert embedded.count(title) == 1, title
+    assert [s.heading for s in contents[0].tracked_topics] == ["AI at work"]
+
+
+async def test_a_failed_tracking_embedding_leaves_the_digest(tmp_path: Path) -> None:
+    class Broken(_RecordingEmbedder):
+        async def embed(self, texts):
+            raise RuntimeError("embedding API down")
+
+    deps, contents, recorded = _tracking_deps(tmp_path, [_tracked()], embedder=Broken())
+
+    report = await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert report.status == "ok"
+    assert contents[0].tracked_topics == []
+    assert summary["tracking"]["skipped"] == {"AI at work": "embedding failed: embedding API down"}

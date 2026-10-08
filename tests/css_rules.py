@@ -664,6 +664,12 @@ def receipt_fixtures() -> tuple[str, str, str]:
         fan_sections=[
             DigestSection(heading="Fan", items=[_item("Fan Item", "https://fan.test/item", "Fan")])
         ],
+        tracked_topics=[
+            DigestSection(
+                heading="Tracked Topic",
+                items=[_item("Tracked Hit", "https://tracked.test/hit", "Source C")],
+            )
+        ],
         triage_pending_count=5,
     )
     digest_html = writer.render(content)

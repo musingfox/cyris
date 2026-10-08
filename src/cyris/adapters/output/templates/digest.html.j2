@@ -508,6 +508,30 @@
                 </div>
             </section>
             {% endif %}
+            {#- Whitespace-trimmed both ends, so an issue with no hit renders byte for byte
+                as it did before tracking existed. The topic name and the titles are the
+                reader's and the sources' own text, so the block's language is unknown. -#}
+            {%- if tracked_topics %}
+
+            <section class="section">
+                <h2 class="section-tag"><span class="label">Tracking</span></h2>
+                {% for topic in tracked_topics %}
+                <div class="thematic-block" lang="">
+                    <h3 class="item-title lg">{{ topic.heading }}</h3>
+                    {% for item in topic.items %}
+                    <article class="article-item">
+                        <h4 class="item-title">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
+                        <div class="meta">
+                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
+                            {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
+                            {{ promote_btn(item) }}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </section>
+            {%- endif %}
 
             {% if news_clusters %}
             <section class="section">

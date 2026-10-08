@@ -101,14 +101,17 @@ def make_embedder(provider: str, model: str) -> Any:
 
 
 def build_embedder(cfg: Config) -> Any | None:
-    """The embedder for vote similarity, or None when it is switched off.
+    """The run's embedder, or None when neither vote similarity nor a tracked topic needs one.
+
+    Both read `[vote_similarity] provider` and `model`: the keys predate a second
+    consumer, and renaming them would break every fork's settings.
 
     Neither adapter caches: a full run is ~600 texts, which bge-m3 prices at
     roughly 20 of a 10,000/day neuron allowance. The 338 MB cache that used to
     sit under this was optimising a cost that no longer exists.
     """
     vote = cfg.app.vote_similarity
-    if not vote.enabled:
+    if not (vote.enabled or cfg.tracked_topics):
         return None
     return make_embedder(vote.provider, vote.model)
 
@@ -275,7 +278,11 @@ class Deps:
     site_filenames: Callable[[], list[str]] = field(default_factory=lambda: list)
     send_discord: Callable[..., Any] = send_discord
     on_progress: Callable[[str], None] = field(default=lambda _msg: None)
-    embedder: Any | None = None  # None ⇒ vote similarity is switched off
+    # None ⇒ vote similarity is switched off and no topic is tracked.
+    embedder: Any | None = None
+    # The model `embedder` embeds with, resolved: a tracked topic set for any
+    # other model is skipped.
+    embedding_model: str = ""
     # Travels with `embedder`: the cutoff is a measured property of that model, so
     # no model-agnostic default exists. None skips vote similarity rather than
     # quietly judge one model's corpus by another's number.
@@ -438,6 +445,9 @@ def build_deps(
         story_store=story_store,
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
+        embedding_model=embedding_model(
+            cfg.app.vote_similarity.provider, cfg.app.vote_similarity.model
+        ),
         embedding_threshold=embedding_threshold(cfg),
         record_run=record_run,
         record_similarity=record_similarity,

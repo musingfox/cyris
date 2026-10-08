@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-10-02
+updated: 2026-10-08
 ---
 
 # cyris UI design spec
@@ -46,7 +46,7 @@ Every change that touches a reader-facing page follows this spec: `src/cyris/ada
    the Wire's titles, which the filter writes in the output language, keep its tag. The archive
    headline card's title follows its lead, so a group's heading keeps the tag and a single article's
    title carries `lang=""`. Text passed through
-   untranslated, which is Following, On the Radar and every raw row, carries `lang=""`, HTML's unknown
+   untranslated, which is Following, On the Radar, Tracking and every raw row, carries `lang=""`, HTML's unknown
    language: no reliable tag for it exists. So does a Top story, Features card or Wire row that holds the
    article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
    it; the step that writes that fallback marks the item, so the page and the mail tag those items by
@@ -287,8 +287,8 @@ wider fallback font before the webfont loads does not run into it. Below 720px i
 `minmax(0, 1fr)` column. The masthead is always `overflow-x: clip`, so a title widened by the fallback font
 is clipped on a phone instead of scrolling the whole page sideways.
 
-The body is six sections in order: Top story, Features, In Focus, Following, On the Radar and The Wire; a
-section with no content is left out entirely. Each section is one `<section class="section">`, and its name
+The body is seven sections in order: Top story, Features, Tracking, In Focus, Following, On the Radar and
+The Wire; a section with no content is left out entirely. Each section is one `<section class="section">`, and its name
 is printed once, only by the opening section marker (§4), with no number and no repeated large section
 title. The section marker is an `h2`; Top story is the exception and uses a `div`, because the lead card's
 title is itself that section's `h2`.
@@ -320,6 +320,12 @@ title is itself that section's `h2`.
 - **The issue's article limit keeps a group whole.** The limit is applied after the Top story and Features are laid
   out: it takes the Top story first, whole, then Features by score. A group that does not fit is replaced
   in its slot by its best article.
+- **Tracking lists each tracked topic that has a hit this issue.** A topic is a block like Following's:
+  its name as the `h3`, then each hit as an `.article-item` whose `h4` is the article's own title link,
+  nearest first, with a meta row of its source, the original link and the votes, and no summary. A
+  topic with no hit is left out, and so is the whole section when none has one. Hits sit outside the
+  issue's article limit and its article count, because a hit is a view of the run's candidates, not a
+  verdict on them. It follows Features because a topic is something the reader asked to see.
 - **Every item has a meta row below it.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the
   label role; it holds the source and the original link in that order (a feature has a score pill in
   front), and the small vote buttons are always last. Only the lead card's meta row adds `.ruled`, which
@@ -422,7 +428,8 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   `color-scheme: light dark` so Apple Mail does not re-tint either. Gmail ignores the media query and
   inverts the light message itself, which stays legible; an inverted dark one would not.
 - **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections keep the page's labels and
-  order: Top story, Features, In Focus, Following, On the Radar, The Wire. The lead is the headline card's
+  order: Top story, Features, In Focus, Following, On the Radar, The Wire. Tracking is not in the mail
+  yet; the page is where it is read. The lead is the headline card's
   square panel; every other item is separated by a `--border` hairline.
 - **A Wire row keeps its sentence.** Its summary follows its title as on the page, in the small role in
   the HTML part, breaking an unbroken run as the page does, and on its own indented line in the

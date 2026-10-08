@@ -25,6 +25,9 @@ class VoteSimilarityReport:
     upvote_seeds: int = 0
     downvote_seeds: int = 0
     skipped_reason: str = ""
+    # url -> title vector for each candidate judged, so a later pass this run
+    # (topic tracking) need not embed the same titles again.
+    candidate_vectors: dict[str, list[float]] = field(default_factory=dict)
 
     @property
     def ran(self) -> bool:
@@ -116,4 +119,5 @@ async def judge_by_votes(
         suppressed_urls=suppressed,
         upvote_seeds=len(up_vectors),
         downvote_seeds=len(down_vectors),
+        candidate_vectors=by_url,
     )
