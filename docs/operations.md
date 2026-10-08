@@ -76,7 +76,9 @@ value a run would use, and where that value came from. The source is one of `cod
 its home does not hold shows `missing`. Secrets show only `set` or `unset`, and the Discord webhook
 shows with its token masked, so the output can be pasted into a support chat as it is.
 
-Run it with the `.env` that points at the deployment's D1, as for `cyris doctor`. A local run
+Run it with the `.env` that points at the deployment's D1, as for `cyris doctor`. Like every
+command that opens D1, it creates the tables first if they are missing, so its token needs D1
+edit. A local run
 cannot see the container's own environment, so `CYRIS_GIT_SHA` and the Worker secrets show what
 this machine has, not what production has.
 
