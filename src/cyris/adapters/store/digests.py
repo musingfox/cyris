@@ -46,3 +46,10 @@ class D1DigestStore:
             content=DigestContent.model_validate_json(row["content"]),
             raw_page=bool(row["raw_page"]),
         )
+
+    def issues(self) -> list[tuple[str, str]]:
+        """Every stored issue's (date, period), the most recently saved first."""
+        rows = self._db.query(
+            "SELECT date, period FROM digests ORDER BY saved_at DESC, rowid DESC"
+        ).rows
+        return [(row["date"], row["period"]) for row in rows]

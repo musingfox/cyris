@@ -66,8 +66,17 @@ def _render_site(
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
-    # The archive page lists every digest the site holds, this run's included, and
-    # leads with this run's issue: its title and count come from memory, not D1.
+    # The archive leads with this run's issue: its title and count come from memory.
+    return _with_archive(deps, pages, lead=content)
+
+
+def _with_archive(deps: "Deps", pages: dict[str, str], *, lead) -> dict[str, bytes]:
+    """`pages` plus the archive page and the site's assets, as bytes.
+
+    The archive lists every digest the site holds, `pages` included, and leads
+    with `lead`'s issue.
+    """
+    writer = deps.html_writer
     known = sorted({*deps.site_filenames(), *(p.lstrip("/") for p in pages)})
     # Counts are decoration; the list is what Pages recovery rebuilds from. A failed
     # read costs the rows their counts, never the index its issues or the publish.
@@ -76,11 +85,51 @@ def _render_site(
     except Exception as e:
         logger.error("Failed to read the archive's article counts: %s", e)
         counts = {}
-    pages["/index.html"] = writer.render_index(known, content=content, counts=counts)
+    pages = {**pages, "/index.html": writer.render_index(known, content=lead, counts=counts)}
     # Every deploy, not only the first: a manifest rebuilt from the archive's
     # anchors would not name it.
     assets = {f"/{name}": data for name, data in writer.site_assets().items()}
     return {**{path: html.encode("utf-8") for path, html in pages.items()}, **assets}
+
+
+def _republish_missing(deps: "Deps", summary: dict, *, chooses_no_llm: bool) -> None:
+    """Publish every stored issue the site does not list: one whose run failed to publish.
+
+    That run marked the issue's articles accepted, so no later run digests them
+    again; the issue survives only as its D1 `digests` row. Its raw page does
+    not — the collected articles were never stored — so the page links none.
+    """
+    if deps.digest_store is None or deps.publish_site is None or deps.html_writer is None:
+        return
+    issues = deps.digest_store.issues()
+    if not issues:
+        return
+    writer = deps.html_writer
+    live = set(deps.site_filenames())
+    missing = [key for key in issues if writer.digest_filename(*key) not in live]
+    if not missing:
+        return
+    pages: dict[str, str] = {}
+    for key in missing:
+        stored = deps.digest_store.load(*key)
+        degraded = is_degraded_run(stored.content.usage, chooses_no_llm=chooses_no_llm)
+        pages["/" + writer.digest_filename(*key)] = writer.render(
+            stored.content, raw_page=False, degraded=degraded
+        )
+    # The most recently saved issue, not the republished one, so a newer live
+    # issue keeps the archive's headline card.
+    lead = deps.digest_store.load(*issues[0]).content
+    slugs = [Path(writer.digest_filename(*key)).stem for key in missing]
+    published = False
+    try:
+        published = deps.publish_site(_with_archive(deps, pages, lead=lead), slugs[0])
+    except Exception as e:
+        logger.error("Failed to republish %s: %s", ", ".join(slugs), e)
+    if published:
+        deps.on_progress(f"Republished {', '.join(slugs)}")
+        summary["republished"] = slugs
+    else:
+        summary["republish_failed"] = slugs
 
 
 async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
@@ -234,6 +283,14 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             "unscored and unsummarised. Set its API key, or choose another provider "
             "on /settings."
         )
+
+    # Before anything that can end the run early: the run after a failed publish
+    # is often one with nothing new, and it still owes the site that issue.
+    if not options.dry_run:
+        try:
+            _republish_missing(deps, summary, chooses_no_llm=llm_cfg.chooses_no_llm)
+        except Exception as e:
+            logger.error("Failed to check for unpublished issues: %s", e)
 
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
     if deps.sync_promotions is not None:
@@ -442,8 +499,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         # window overlaps the previous run's, so rows judged there are left off —
         # they were on that run's raw page. Nothing in the window escapes every raw
         # page: a row stays pending (and listed) until some run judges it.
-        # ponytail: a run whose publish failed has judged rows but no live raw page;
-        # they are gone from the listing along with that digest.
+        # ponytail: a run whose publish failed has judged rows but no live raw page.
+        # The next run republishes the digest from D1 `digests`, but not this page.
         # None of this may raise: the Discord notification still has to go out.
         collected = []
         try:

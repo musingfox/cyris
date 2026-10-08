@@ -317,11 +317,14 @@ EXPECTED_ROUTES = {
 }
 
 # Derived from the code paths of one first publish, in the order they run:
-# load_effective_config, the vote sync, then run_digest, publish_site and the run record.
+# load_effective_config, then run_digest: the republish check, the vote sync, the digest,
+# publish_site and the run record.
 EXPECTED_D1 = [
     "schema",
     "SELECT settings",
     "SELECT sources",
+    # The stored issues the site might lack; a first run has none, so no manifest read.
+    "SELECT digests",
     # The vote: find the voted article, reject it, stamp it as a human verdict.
     "SELECT stored_articles",
     "UPDATE stored_articles SET state",

@@ -2292,3 +2292,164 @@ async def test_a_finished_run_with_no_webhook_logs_no_failure_alert(tmp_path: Pa
         await run_digest(deps, RunOptions())
 
     assert not any("Failure alert:" in r.getMessage() for r in caplog.records)
+
+
+class _Site:
+    """A Pages site whose file list grows only on a deploy that succeeds."""
+
+    def __init__(self, files: list[str] | None = None, *, up: bool = True) -> None:
+        self.files = list(files or [])
+        self.up = up
+        self.deploys: list[tuple[dict[str, bytes], str]] = []
+
+    def publish(self, pages: dict[str, bytes], slug: str) -> bool:
+        self.deploys.append((pages, slug))
+        if self.up:
+            self.files = sorted({*self.files, *(p.lstrip("/") for p in pages)})
+        return self.up
+
+    def filenames(self) -> list[str]:
+        return list(self.files)
+
+
+def _on(deps: Deps, site: _Site) -> Deps:
+    deps.cfg.app.promote.pages_project = "cyris-digest"
+    return replace(deps, publish_site=site.publish, site_filenames=site.filenames)
+
+
+async def test_the_next_run_publishes_the_issue_whose_publish_failed(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, store, db = _stored_digests(deps)
+    site = _Site(up=False)
+    deps = _on(deps, site)
+    await run_digest(deps, RunOptions())
+    [key] = db.query("SELECT date, period FROM digests").rows
+    slug = f"{key['date']}-{key['period']}"
+    assert site.files == []
+
+    site.up = True
+    site.deploys.clear()
+    # Nothing new arrives, so this run has no issue of its own to publish.
+    deps = replace(deps, fetch_sources=[FakeSource([])])
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+    [(pages, deployed_slug)] = site.deploys
+    assert deployed_slug == slug
+    stored = store.load(key["date"], key["period"])
+    writer = deps.html_writer
+    # The raw page went with the failed run's memory: the republished page does not link it.
+    assert pages[f"/{slug}.html"] == writer.render(stored.content, raw_page=False).encode()
+    assert f"{slug}.html" in pages["/index.html"].decode()
+    assert f"{slug}.html" in site.files
+    assert _run_summary(caplog)["republished"] == [slug]
+
+
+async def test_a_run_republishes_nothing_when_every_stored_issue_is_live(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, _store, _db = _stored_digests(deps)
+    site = _Site()
+    deps = _on(deps, site)
+    await run_digest(deps, RunOptions())
+    site.deploys.clear()
+    deps = replace(deps, fetch_sources=[FakeSource([])])
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    assert site.deploys == []
+    assert "republished" not in _run_summary(caplog)
+
+
+async def test_the_republished_archive_leads_with_the_newest_issue(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, store, _db = _stored_digests(deps)
+    site = _Site(["2026-04-15-evening.html"])
+    deps = _on(deps, site)
+
+    def issue(period: str, included: int) -> DigestContent:
+        return DigestContent(
+            date="2026-04-15",
+            period=period,
+            sources_processed=1,
+            articles_received=included,
+            articles_included=included,
+            usage=UsageStats(),
+        )
+
+    # The morning issue failed to publish; the evening one, saved after it, is live.
+    store.save(issue("morning", 3), raw_page=False)
+    store.save(issue("evening", 41), raw_page=False)
+
+    await run_digest(deps, RunOptions())
+
+    [(pages, slug)] = site.deploys
+    assert slug == "2026-04-15-morning"
+    index = pages["/index.html"].decode()
+    expected = deps.html_writer.render_index(
+        ["2026-04-15-evening.html", "2026-04-15-morning.html"],
+        content=issue("evening", 41),
+        counts={},
+    )
+    assert index == expected
+
+
+async def test_a_failed_republish_leaves_the_run_to_finish(tmp_path: Path, caplog) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, store, _db = _stored_digests(deps)
+    store.save(
+        DigestContent(
+            date="2026-04-15",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(),
+        ),
+        raw_page=False,
+    )
+    site = _Site()
+    deps = _on(deps, site)
+    real_publish = site.publish
+
+    def publish(pages: dict[str, bytes], slug: str) -> bool:
+        if slug == "2026-04-15-morning":
+            raise RuntimeError("Pages unavailable")
+        return real_publish(pages, slug)
+
+    deps = replace(deps, publish_site=publish)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    summary = _run_summary(caplog)
+    assert summary["status"] == "ok"
+    assert summary["republish_failed"] == ["2026-04-15-morning"]
+
+
+async def test_a_preview_republishes_nothing(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, store, _db = _stored_digests(deps)
+    store.save(
+        DigestContent(
+            date="2026-04-15",
+            period="morning",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(),
+        ),
+        raw_page=False,
+    )
+    site = _Site()
+    deps = _on(deps, site)
+
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    assert site.deploys == []
