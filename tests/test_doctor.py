@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1014,6 +1015,90 @@ class TestLastRun:
         assert names.index("last run") == names.index("deployment image") + 1
         assert _by_name(checks, "last run").status == "ok"
         assert len(calls) == 1
+
+
+class TestFeedHealth:
+    """A feed that keeps failing, or has stored nothing for a month, is named — as a warning."""
+
+    @staticmethod
+    def _db(monkeypatch, *feeds: str):
+        from fakes import SqliteD1
+
+        db = SqliteD1()
+        for name in feeds:
+            db.query(
+                "INSERT INTO sources (name, url, type) VALUES (?, ?, 'rss')",
+                [name, f"https://{name}.test/feed"],
+            )
+        db.query("INSERT INTO sources (name, type) VALUES ('Letter', 'newsletter')")
+        monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda _cfg: db)
+        return db
+
+    @staticmethod
+    def _article(db, source: str, age: timedelta) -> None:
+        seen = (datetime.now(UTC) - age).isoformat()
+        db.query(
+            "INSERT INTO stored_articles (url, published_at, source_name, source_tier, "
+            "first_seen_at) VALUES (?, ?, ?, 'filter', ?)",
+            [f"https://{source}.test/{seen}", seen, source, seen],
+        )
+
+    def test_a_json_store_has_no_feed_health(self, tmp_path: Path) -> None:
+        assert doctor._check_feed_health(_config(tmp_path)).status == "skip"
+
+    def test_feeds_that_poll_and_publish_are_ok(self, tmp_path: Path, monkeypatch) -> None:
+        db = self._db(monkeypatch, "fine")
+        self._article(db, "fine", timedelta(days=2))
+
+        check = doctor._check_feed_health(TestLastRun._d1_config(tmp_path))
+
+        assert check.status == "ok"
+        assert "1 RSS feed" in check.detail
+
+    def test_each_unhealthy_feed_is_named_with_its_reason_and_last_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        db = self._db(monkeypatch, "fine", "failing", "silent")
+        self._article(db, "fine", timedelta(days=2))
+        self._article(db, "failing", timedelta(days=2))
+        self._article(db, "silent", timedelta(days=45))
+        db.query(
+            "INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at) "
+            "VALUES ('failing', 3, 'HTTP 503', '2026-10-08T11:00:00.000Z')"
+        )
+
+        check = doctor._check_feed_health(TestLastRun._d1_config(tmp_path))
+
+        assert check.status == "warn"
+        assert "failing (3 failures in a row · HTTP 503)" in check.detail
+        assert "silent (no article in 30 days)" in check.detail
+        assert "fine" not in check.detail
+        assert "Letter" not in check.detail
+        assert check.fix
+
+    def test_a_feed_never_polled_with_no_article_warns(self, tmp_path: Path, monkeypatch) -> None:
+        self._db(monkeypatch, "3Blue1Brown")
+
+        check = doctor._check_feed_health(TestLastRun._d1_config(tmp_path))
+
+        assert check.status == "warn"
+        assert "3Blue1Brown (no article stored yet)" in check.detail
+
+    def test_an_unreadable_table_warns(self, tmp_path: Path, monkeypatch) -> None:
+        from cyris.adapters.store.d1 import D1Error
+
+        class Down:
+            def query(self, sql, params=None):
+                raise D1Error("HTTP 500")
+
+        monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda _cfg: Down())
+        check = doctor._check_feed_health(TestLastRun._d1_config(tmp_path))
+        assert check.status == "warn"
+        assert "HTTP 500" in check.detail
+
+    async def test_the_report_carries_the_check(self, tmp_path: Path) -> None:
+        checks = await doctor.run_checks(_config(tmp_path))
+        assert _by_name(checks, "feed health").status == "skip"
 
 
 async def test_egress_probe_reads_colo_and_location_from_the_trace() -> None:

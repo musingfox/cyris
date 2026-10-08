@@ -527,6 +527,41 @@ def _check_store(cfg: Config) -> Check:
     return Check(f"article store ({backend})", "ok", f"{total} articles — {summary}")
 
 
+def _check_feed_health(cfg: Config) -> Check:
+    """Name each RSS feed that keeps failing or has stopped producing articles.
+
+    Never a failure: the run still digests every other source, and a feed can be
+    quiet for reasons of its own. Until this existed a failing feed was one
+    `console.warn` an hour in Workers Logs, gone after 7 days.
+    """
+    from datetime import UTC, datetime
+
+    from cyris import bootstrap
+    from cyris.adapters.store.feed_health import D1FeedHealth
+
+    name = "feed health"
+    try:
+        client = bootstrap.build_d1_client(cfg)
+        if client is None:
+            return Check(name, "skip", "feed health lives only in D1, and this store is json")
+        feeds = D1FeedHealth(client).read()
+    except Exception as e:  # noqa: BLE001 - unreadable health is unknown, not broken
+        return Check(name, "warn", f"could not read feed_health — {e}")
+    if not feeds:
+        return Check(name, "skip", "no RSS feed in D1 sources")
+    now = datetime.now(UTC)
+    unhealthy = {n: problems for n, h in feeds.items() if (problems := h.problems(now))}
+    if not unhealthy:
+        return Check(name, "ok", f"{len(feeds)} RSS feed(s), none failing or silent")
+    listed = "; ".join(f"{n} ({', '.join(problems)})" for n, problems in unhealthy.items())
+    return Check(
+        name,
+        "warn",
+        f"{len(unhealthy)} of {len(feeds)} RSS feeds: {listed}",
+        "Open the feed URL yourself; fix it or retire the source on /settings.",
+    )
+
+
 async def _check_workers(cfg: Config) -> list[Check]:
     checks: list[Check] = []
 
@@ -880,6 +915,7 @@ async def run_checks(
         _check_vote_similarity(cfg),
         *_check_paths(cfg),
         _check_store(cfg),
+        _check_feed_health(cfg),
     ]
     checks.extend(await _check_workers(cfg))
     checks.extend(_check_publish_token(cfg))
