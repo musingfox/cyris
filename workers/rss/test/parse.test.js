@@ -67,3 +67,16 @@ test("parses Atom and picks the alternate link, not the edit link", () => {
 test("malformed feed yields no rows instead of throwing", () => {
   assert.deepEqual(parseFeed("<html>not a feed</html>", "C"), []);
 });
+
+test("decodes numeric character references in a title", () => {
+  const xml = `<rss version="2.0"><channel><item>
+    <title>Nvidia CEO Jensen Huang tells Trump &#8216;we&#8217;re not going to let [an AI slowdown] happen&#8217;</title>
+    <link>https://c.test/1</link>
+    <pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate>
+  </item></channel></rss>`;
+  const [row] = parseFeed(xml, "C");
+  assert.equal(
+    row.title,
+    "Nvidia CEO Jensen Huang tells Trump ‘we’re not going to let [an AI slowdown] happen’"
+  );
+});
