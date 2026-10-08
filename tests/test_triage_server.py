@@ -297,6 +297,76 @@ def test_the_digest_category_offers_the_language_list_and_a_style_box() -> None:
     assert '<textarea class="input" id="style-prompt" rows="4">' in page
 
 
+class TestSourcesHealth:
+    """Each RSS source carries the health `cyris doctor` judges, read from the same tables."""
+
+    @staticmethod
+    async def _get(db, feed_health) -> dict:
+        from cyris.adapters.store.source_store import D1SourceStore
+        from cyris.domain.models import SourceConfig
+
+        store = D1SourceStore(db)
+        store.upsert(SourceConfig(name="failing", url="https://failing.test/feed"))
+        store.upsert(SourceConfig(name="never", url="https://never.test/feed"))
+        store.upsert(
+            SourceConfig(name="letter", type="newsletter", email_match="from:a@letter.test")
+        )
+        server = TriageServer(source_store=store, feed_health=feed_health)
+        test_client = TestClient(TestServer(server._app))
+        await test_client.start_server()
+        try:
+            response = await test_client.get("/api/sources")
+            assert response.status == 200
+            data = await response.json()
+        finally:
+            await test_client.close()
+        return {s["name"]: s for s in data["sources"]}
+
+    async def test_each_rss_source_carries_its_health_and_its_problems(self) -> None:
+        from datetime import UTC, datetime
+
+        from cyris.adapters.store.feed_health import D1FeedHealth
+
+        db = SqliteD1()
+        seen = datetime.now(UTC).isoformat()
+        db.query(
+            "INSERT INTO stored_articles (url, published_at, source_name, source_tier, "
+            "first_seen_at) VALUES ('https://failing.test/1', ?, 'failing', 'filter', ?)",
+            [seen, seen],
+        )
+        db.query(
+            "INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at, "
+            "last_ok_at) VALUES ('failing', 3, 'HTTP 503', '2026-10-08T11:00:00.000Z', NULL)"
+        )
+
+        by_name = await self._get(db, D1FeedHealth(db))
+
+        assert by_name["failing"]["health"] == {
+            "consecutive_failures": 3,
+            "last_error": "HTTP 503",
+            "last_failed_at": "2026-10-08T11:00:00.000Z",
+            "last_ok_at": None,
+            "newest_article_at": seen,
+            "problems": ["3 failures in a row · HTTP 503"],
+        }
+        assert by_name["never"]["health"]["problems"] == ["no article stored yet"]
+        assert by_name["letter"]["health"] is None
+
+    async def test_without_a_health_reader_no_source_carries_health(self) -> None:
+        by_name = await self._get(SqliteD1(), None)
+        assert {s["health"] for s in by_name.values()} == {None}
+
+    async def test_an_unreadable_health_table_still_lists_the_sources(self) -> None:
+        class Down:
+            def read(self):
+                raise RuntimeError("D1 is down")
+
+        by_name = await self._get(SqliteD1(), Down())
+
+        assert set(by_name) == {"failing", "never", "letter"}
+        assert {s["health"] for s in by_name.values()} == {None}
+
+
 async def test_an_emptied_table_is_listed_empty_not_as_the_startup_list() -> None:
     from cyris.adapters.store.source_store import D1SourceStore
     from cyris.domain.models import SourceConfig

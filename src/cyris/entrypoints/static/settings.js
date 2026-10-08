@@ -593,12 +593,17 @@ const rowOf = (name) => document.querySelector(`tr.src-row[data-name="${CSS.esca
 
 const sourcesNav = () => document.querySelector('.settings-nav a[data-tab="sources"]');
 
+// Only what `cyris doctor` would warn about: a feed failing now and then shows nothing.
+const feedProblem = (s) => s.health?.problems?.length
+  ? `<span class="small feed-problem">${esc(s.health.problems.join(" · "))}</span>`
+  : "";
+
 function renderSources() {
   const rows = sources.filter((s) => filter === "all" || s.type === filter);
   $("src-body").innerHTML = rows.length
     ? rows.map((s) => `
       <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
-        <td class="name">${esc(s.name)}</td>
+        <td class="name">${esc(s.name)}${feedProblem(s)}</td>
         <td><span class="label">${esc(s.type)}</span></td>
         <td><span class="pill">${esc(s.tier)}</span></td>
         <td class="target">${esc(s.url || s.email_match || "—")}</td>

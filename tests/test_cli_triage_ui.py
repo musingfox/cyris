@@ -83,6 +83,7 @@ def test_the_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypat
     assert args == ()
     assert "sources_origin" not in kwargs
     assert kwargs["source_store"] is None
+    assert kwargs["feed_health"] is None
 
 
 def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], monkeypatch) -> None:
@@ -102,6 +103,7 @@ def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], m
     [(_args, kwargs)] = FakeServer.calls
     assert kwargs["values"] == {}
     assert kwargs["settings"] is not None
+    assert kwargs["feed_health"].read() == {}
 
 
 def test_help_describes_the_settings_server() -> None:
