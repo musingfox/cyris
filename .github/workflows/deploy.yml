@@ -7,24 +7,27 @@ name: Deploy the container Worker
 # hour, and a deploy rolls the container, so landing one at 07:59 is a choice
 # nobody should make by accident.
 #
+# With no input it deploys the image release-image.yml recorded for the
+# dispatched commit in the `image/<sha7>` git tag, never the registry's
+# `:release`: on 2026-10-08 the registry went on answering the previous
+# `:release` for over 50 seconds after the push that moved it, in three
+# releases of four, while the sha tag always read back right.
+#
 # Pinning is this workflow, not a re-dispatch of the build: release-image.yml
 # refuses to republish a commit, because the image is not reproducible. Going
 # back means naming an image already in the registry — pass its digest as
 # image_tag, and this deploys that exact image with no build at all.
 #
 # That reach starts at the IMAGE_NAME below. It changed on 2026-09-21, so every
-# digest this workflow recorded before then names an image in the previous
-# repository and no longer resolves — including `:release`, which is this
-# workflow's own default. Until release-image.yml has run once under the new
-# name there is nothing here to deploy, and the resolve step says so rather
-# than deploying something older.
+# digest recorded before then names an image in the previous repository and no
+# longer resolves, and the resolve step says so rather than deploying something
+# older.
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Registry tag, or sha256:… digest to pin to one exact image'
-        required: true
-        default: release
+        description: 'Empty: the image the release recorded for this commit. Or a sha256:… digest to pin one exact image'
+        required: false
 
 # Two dispatches would race each other's `wrangler deploy` and the container
 # rollout behind it. Serialise rather than cancel: cancelling mid-deploy is
@@ -70,17 +73,34 @@ jobs:
           credentials=$(npx wrangler containers registries credentials registry.cloudflare.com --pull --json)
           printf '%s' "$credentials" | jq -r .password | docker login registry.cloudflare.com \
             --username "$(printf '%s' "$credentials" | jq -r .username)" --password-stdin
-      # The digest is read before the deploy so the run records which image went
-      # live even when `image_tag` was the mutable `release` — six months later
-      # that tag says nothing about what was deployed today.
+      # A mutable tag is refused: the registry can answer a stale one, and six
+      # months later it says nothing about what was deployed today. The tag is
+      # fetched by name because checkout fetches none, and the recorded digest is
+      # taken only from a message naming this exact commit, so a sha7 collision
+      # cannot hand over another commit's image.
       - id: resolve
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$IMAGE_NAME"
-          case "${{ inputs.image_tag }}" in
-            sha256:*) ref="$image@${{ inputs.image_tag }}" ;;
-            *) ref="$image:${{ inputs.image_tag }}" ;;
+          case "$IMAGE_TAG" in
+            "")
+              tag="image/${GITHUB_SHA::7}"
+              git fetch -q --no-tags --depth=1 origin "+refs/tags/$tag:refs/tags/$tag" || true
+              recorded=$(git tag -l --format='%(contents)' "$tag" \
+                | sed -n "s/.*commit=$GITHUB_SHA digest=\(sha256:[0-9a-f]\{64\}\).*/\1/p")
+              if [ -z "$recorded" ]; then
+                echo "no $tag tag records an image for $GITHUB_SHA; run the release (Release container image) on this commit first" >&2
+                exit 1
+              fi
+              ref="$image@$recorded"
+              ;;
+            sha256:*) ref="$image@$IMAGE_TAG" ;;
+            *)
+              echo "image_tag takes a sha256:… digest or nothing, not the mutable tag '$IMAGE_TAG'" >&2
+              exit 1
+              ;;
           esac
           # -v yields an array when a reference resolves to an index.
           descriptor='if type == "array" then .[0] else . end | .Descriptor.digest // empty'

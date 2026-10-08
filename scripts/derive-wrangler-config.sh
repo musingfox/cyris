@@ -19,9 +19,8 @@ out=${4:-wrangler.deploy.toml}
 src=$(dirname "$0")/../wrangler.toml
 
 # A tag names something mutable; a digest names one image forever. Both are
-# accepted because they answer different questions — ":release" is what a
-# routine deploy asks for, "@sha256:…" is what pinning to a known-good image
-# asks for, and the reference is written the way the registry expects each.
+# accepted and written the way the registry expects each, but deploy.yml and
+# provision_trial.py pass only a digest: the registry can answer a stale tag.
 case "$tag" in
   sha256:*) reference="registry.cloudflare.com/$account_id/$image_name@$tag" ;;
   *) reference="registry.cloudflare.com/$account_id/$image_name:$tag" ;;
