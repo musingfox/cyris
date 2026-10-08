@@ -371,7 +371,7 @@ def build_deps(
     # RSS comes from the Worker's hourly D1 buffer. Without it, direct polling is
     # the fallback — correct only for feeds whose snapshot outlives the window
     # (measured: a digest-time poll missed 141 of 317 articles). See
-    # docs/cloud-migration.md#why-a-buffer-and-not-direct-polling.
+    # docs/decisions/0001-rss-arrives-through-an-hourly-buffer.md.
     if cfg.app.rss.worker_url and cfg.app.rss.token:
         from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 

@@ -6,7 +6,8 @@ but that was one downvote class with a very wide margin, and the corpus is small
 run in parallel so the comparison keeps accumulating on real traffic, including the two
 things a one-off measurement cannot show: what each actually costs and how long it takes.
 
-See docs/vote-signal-measurement.md. Swapping is a config choice, not a code change.
+See docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md. Swapping is a
+config choice, not a code change.
 
 **Neither keeps a vector cache**, and that is a deliberate removal (2026-08-27). One
 existed — whole-file JSON, 338 MB for Gemini — and it optimised a cost that stopped

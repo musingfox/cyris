@@ -9,7 +9,8 @@ Re-measured 2026-08-10 with gemini-embedding-001 over the whole 5,724-article st
 (the 2026-08-09 pass sampled one source, which put the boundary in the wrong place):
 seeded with the two real downvoted titles, cosine ranks the entire 71-article class
 above everything else — in-class minimum 0.690 against out-of-class maximum 0.673.
-DEFAULT_THRESHOLD sits in that gap. See docs/vote-signal-measurement.md.
+DEFAULT_THRESHOLD sits in that gap. See
+docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md.
 
 ponytail: pure-stdlib dot products. ~400 candidates x a handful of seeds is a few
 million multiply-adds, which Python does in about a second. Reach for numpy only

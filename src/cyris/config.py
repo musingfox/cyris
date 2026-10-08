@@ -308,7 +308,7 @@ class VoteSimilarityConfig(BaseModel):
     """Suppress candidates that sit close to what the reader downvoted.
 
     It changes what reaches the digest, and the threshold was calibrated on one
-    reader's votes. See docs/vote-signal-measurement.md.
+    reader's votes. See docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md.
     """
 
     enabled: bool
