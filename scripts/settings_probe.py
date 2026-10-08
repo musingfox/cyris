@@ -29,6 +29,7 @@ import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import mock
 
@@ -48,6 +49,7 @@ from cdp_probe import (
 from css_computed import find_browser
 
 from cyris.adapters.notify import mask_discord_webhook_url
+from cyris.adapters.store.feed_health import FeedHealth
 from cyris.config import GRADE_D_KEYS, LLMProviderConfig
 from cyris.diagnostics.doctor import Check as DoctorCheck
 from cyris.domain.models import SourceConfig, Tier
@@ -78,6 +80,17 @@ class FakeSettings:
 
     def set(self, values: dict) -> None:
         self.calls.append(dict(values))
+
+
+class FakeFeedHealth:
+    """Stands in for `D1FeedHealth`: Hacker News keeps failing, Simon Willison is fine."""
+
+    def read(self) -> dict[str, FeedHealth]:
+        recent = datetime.now(UTC).isoformat()
+        return {
+            "Hacker News": FeedHealth("Hacker News", 3, "HTTP 503", recent, None, recent),
+            "Simon Willison": FeedHealth("Simon Willison", 0, None, None, recent, recent),
+        }
 
 
 class FakeSourceStore:
@@ -173,16 +186,20 @@ class Fixture:
 def build_fixture(kind: str) -> Fixture:
     """A `readonly` deployment (no settings store, no source table) or a `writable` one.
 
-    `writable-largest` is `writable` with the page served at the largest type size.
+    `writable-largest` is `writable` with the page served at the largest type size;
+    `writable-health` is `writable` with one feed failing.
     """
     common = {"values": PROBE_VALUES, "sources": _seed_sources()}
     if kind == "readonly":
         server = TriageServer(**common)
         return Fixture(server._app, None, server._sources, server._values)
-    if kind in ("writable", "writable-largest"):
+    if kind in ("writable", "writable-largest", "writable-health"):
         settings = FakeSettings()
         store = FakeSourceStore(_seed_sources())
-        server = TriageServer(settings=settings, source_store=store, **common)
+        # Health only where a check asks for it: its line sits in the name cell
+        # that `rowNames` reads.
+        health = FakeFeedHealth() if kind == "writable-health" else None
+        server = TriageServer(settings=settings, source_store=store, feed_health=health, **common)
         if kind == "writable-largest":
             server._settings_page = at_largest_type_scale(server._settings_page)
         return Fixture(server._app, settings, store.sources, server._values)
@@ -847,6 +864,27 @@ CHECKS: list[Check] = [
             expect(!$("table.src b"), "a source name was parsed as markup");
         """,
         sabotage="""$("tr.src-row td").innerHTML = "<b>x</b>";""",
+    ),
+    Check(
+        id="sources-feed-health",
+        fixture="writable-health",
+        path="/settings#sources",
+        act="await sourcesLoaded();",
+        script="""
+            const line = $(".feed-problem", rowOf("Hacker News"));
+            const text = line && line.textContent;
+            expect(text === "3 failures in a row · HTTP 503", `line: ${text}`);
+            const probe = document.createElement("span");
+            probe.style.color = "var(--warn)";
+            document.body.append(probe);
+            const warn = getComputedStyle(probe).color;
+            probe.remove();
+            const colour = getComputedStyle(line).color;
+            expect(colour === warn, `colour: ${colour}, --warn: ${warn}`);
+            expect(!$(".feed-problem", rowOf("Simon Willison")), "a healthy feed shows a line");
+            expect(!$(".feed-problem", rowOf("曼報")), "a newsletter shows a line");
+        """,
+        sabotage="""$(".feed-problem").remove();""",
     ),
     Check(
         id="sources-tier-plain-pill",

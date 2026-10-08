@@ -566,6 +566,7 @@ EXPECTED_IDS = {
     "revert-disables-save",
     "dirty-radio",
     "sources-columns",
+    "sources-feed-health",
     "sources-filter",
     "sources-empty-filter",
     "editor-opens-under-row",
@@ -709,7 +710,12 @@ def test_every_probe_check_is_named_once_and_can_be_sabotaged():
     ids = [check.id for check in CHECKS]
     assert len(ids) == len(set(ids))
     assert [c.id for c in CHECKS if not (c.sabotage.strip() or c.sabotage_preload)] == []
-    assert {c.fixture for c in CHECKS} <= {"readonly", "writable", "writable-largest"}
+    assert {c.fixture for c in CHECKS} <= {
+        "readonly",
+        "writable",
+        "writable-largest",
+        "writable-health",
+    }
     assert set(ids) >= EXPECTED_IDS
 
 

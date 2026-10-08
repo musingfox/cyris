@@ -683,6 +683,7 @@ def triage_ui(
     """Start the settings web UI: LLM provider, digest hours, notifications, sources."""
     _setup_logging(verbose)
 
+    from cyris.adapters.store.feed_health import D1FeedHealth
     from cyris.adapters.store.source_store import D1SourceStore
     from cyris.bootstrap import build_d1_client, build_settings, load_effective_config
     from cyris.entrypoints.triage_server import TriageServer
@@ -703,6 +704,7 @@ def triage_ui(
             values=cfg.present_settings(),
             sources=cfg.sources,
             source_store=D1SourceStore(d1) if d1 else None,
+            feed_health=D1FeedHealth(d1) if d1 else None,
         )
         await server.start()
         typer.echo(f"Settings:  http://{host}:{port}/settings")

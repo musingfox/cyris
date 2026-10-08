@@ -2,6 +2,7 @@
 
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescap
 from pydantic import ValidationError
 
 from cyris.adapters.output import html_digest
+from cyris.adapters.store.feed_health import FeedHealth
 from cyris.config import SETTINGS_FIELDS
 from cyris.diagnostics.doctor import probe_discord, probe_embedder
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig
@@ -61,6 +63,20 @@ def _values_note(keys: list[str]) -> str:
     return f"{', '.join(live)}: pages show it within a minute. The rest: effective next run."
 
 
+def _health_json(health: FeedHealth | None, now: datetime) -> dict[str, Any] | None:
+    """A feed's poll record, with the problems `cyris doctor` would name; None when not polled."""
+    if health is None:
+        return None
+    return {
+        "consecutive_failures": health.consecutive_failures,
+        "last_error": health.last_error,
+        "last_failed_at": health.last_failed_at,
+        "last_ok_at": health.last_ok_at,
+        "newest_article_at": health.newest_article_at,
+        "problems": health.problems(now),
+    }
+
+
 def render_settings_page() -> str:
     """Render /settings with the digest pages' own site bar.
 
@@ -92,6 +108,7 @@ class TriageServer:
         values: dict[str, Any] | None = None,
         sources: dict[str, SourceConfig] | None = None,
         source_store=None,
+        feed_health=None,
     ) -> None:
         self._host = host
         self._port = port
@@ -108,6 +125,9 @@ class TriageServer:
         # The write surface (§7 #15). Absent on a `backend = "json"` deployment,
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
+        # D1's `feed_health` beside each source's newest article; absent on a
+        # `backend = "json"` deployment, which polls no Worker.
+        self._feed_health = feed_health
         self._settings_page = render_settings_page()
         self._app = web.Application()
         self._app.router.add_get("/api/build", self._handle_build)
@@ -538,6 +558,8 @@ class TriageServer:
         Cloudflare Email Routing is grade B and stays in the dashboard.
         """
         sources = self._effective_sources()
+        health = self._read_feed_health()
+        now = datetime.now(UTC)
         return web.json_response(
             {
                 "writable": self._source_store is not None,
@@ -550,11 +572,22 @@ class TriageServer:
                         "email_match": s.email_match,
                         "homepage": s.homepage,
                         "tags": s.tags,
+                        "health": _health_json(health.get(s.name), now),
                     }
                     for s in sources.values()
                 ],
             }
         )
+
+    def _read_feed_health(self) -> dict[str, FeedHealth]:
+        """Each polled feed's health; none when it cannot be read, so the list still loads."""
+        if self._feed_health is None:
+            return {}
+        try:
+            return self._feed_health.read()
+        except Exception:  # noqa: BLE001 - health is an annotation, never the list
+            logger.warning("Could not read feed_health", exc_info=True)
+            return {}
 
     def _effective_sources(self) -> dict[str, SourceConfig]:
         """The live table when there is one, empty included; else the startup list."""
