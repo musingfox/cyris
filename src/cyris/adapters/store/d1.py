@@ -3,7 +3,8 @@
 `ArticleRepository` is a synchronous Protocol and `run_digest` calls it without
 `await`, so this client is deliberately blocking. Making it async would push
 `async` up through every call site and into `service_layer/`, which the cloud
-migration promises not to touch. See docs/cloud-migration.md, constraint 1.
+migration promises not to touch. See
+docs/decisions/0002-article-repository-stays-synchronous.md.
 """
 
 from __future__ import annotations
