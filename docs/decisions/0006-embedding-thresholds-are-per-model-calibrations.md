@@ -149,8 +149,9 @@ outside them:
 | `bge-m3`, 1,024d | 0.971 | 68 | 0.5438 | 0.5073 | +0.0365 |
 
 `bge-m3`'s two misses inside the top 69 are the two reports the regex misses, ranked 68 and 69,
-so against the 71 it separates the class perfectly too. **0.68 was calibrated at 3,072
-dimensions.** At 1,024 and 768 dimensions the in-class minimum above falls below it, so wiring
+so against the 71 it separates the class perfectly too. At all three Gemini dimensions 0.68
+admits nothing outside the class, since every `out-max` sits below it. At 1,024 and 768 the
+`in-min` falls below 0.68 as well, so part of the class would go unsuppressed; wiring
 `GeminiEmbedder`'s `output_dimensions`, which nothing sets today, calls for a calibration first. Data handling did not
 separate the providers either: this project's Gemini key is on the paid tier (confirmed
 2026-08-10), which does not use inputs to improve Google's products, the same as Workers AI.
