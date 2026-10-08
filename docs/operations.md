@@ -146,6 +146,49 @@ failure mode**: each publish is a full snapshot of the site, and the two would r
 3. From then on, run `cyris` locally only for commands that do not publish:
    `doctor`, `articles`, `sources`, `settings push`, `store diff`.
 
+## Blind labels on the filter's candidates
+
+Every vote lands on an article a reader already saw, so nothing measures what the filter
+throws away. A blind-label round does: it draws filter candidates, kept and rejected,
+news and not, shows them on `/labels` without the pipeline's verdict, and scores the
+filter and the embedding preference against the answers. The sample and its answers are
+D1 `blind_labels` (`docs/architecture.md` §4).
+
+1. If the deployment's image predates `/labels`, ship one first, as in
+   [Two ways to ship a new image](#two-ways-to-ship-a-new-image).
+2. From a checkout whose `.env` points at the deployment's D1, as for `cyris doctor`, draw
+   the sample:
+
+   ```sh
+   uv run cyris labels draw --since 2026-09-18T10:00Z --seed 1
+   ```
+
+   `--since` is the first run whose filter you trust; this deployment's is the evening
+   run of 2026-09-18, because before it the LLM was not answering (9/8 to 9/16) or
+   rewrote article ids (9/17), and the filter dropped everything. The draw takes about
+   100 items, an equal share from each of four strata, and at least 30 the pipeline
+   rejected, and prints how many of each it took. A second draw is refused while a sample
+   is kept; `--replace` discards the kept sample and its answers.
+3. On a phone, open `https://cyris-app.<subdomain>.workers.dev/labels` and sign in with
+   `CYRIS_UI_TOKEN`; the page sits behind the same sign-in as `/settings`, on a custom
+   domain too. Swipe right or press Up for an article you want more of, left or Down for
+   one you do not, and Skip one you cannot judge. A tap on the card opens the article.
+   Up and down are written at once, exactly as a digest vote: the article's state changes
+   and it seeds vote similarity from the next run. A skip changes nothing on the article.
+4. Once the page says every item is answered, from the same checkout:
+
+   ```sh
+   uv run cyris labels report
+   ```
+
+   It prints the filter's precision and recall against the labels, by news class and
+   overall, each stratum weighted by its share of the pool, and the AUC of the embedding
+   preference (nearest upvote minus nearest downvote cosine, titles only) with a 95%
+   bootstrap interval. The preference's seeds are every human vote outside the sample, so
+   no label scores itself. It embeds each seed and each labeled title once with the
+   configured embedder and prints that spend; it writes nothing. A report run before the
+   last item reports on the items answered so far.
+
 ## Routine
 
 - **Rotating `CYRIS_UI_TOKEN`** ends every session at once; that is how a session is
