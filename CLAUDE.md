@@ -107,7 +107,8 @@ src/cyris/
 │   │                        #   newsletter_dedup.py = the save-time dedup rule both stores share;
 │   │                        #   runs.py = one `digest_runs` row per run, every path;
 │   │                        #   digests.py = each issue's final DigestContent + raw-page flag;
-│   │                        #   archive_meta.py = the archive rows' article counts, read from `usage_log`
+│   │                        #   archive_meta.py = the archive rows' article counts, read from `usage_log`;
+│   │                        #   feed_health.py = each RSS feed's last poll outcome, written by workers/rss
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
 │   │                        #   email_digest.py + templates/email.html.j2 = the digest as a mail body;
@@ -186,7 +187,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 | Command | Description |
 |---------|-------------|
 | `cyris run` | Full pipeline: fetch → store → score → digest. `--if-due` makes the hourly cron tick a no-op except on the two scheduled hours |
-| `cyris doctor` | Health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand. Its checks read only, but the command creates the D1 tables if they are missing (every entrypoint does), so it needs a token with D1 edit. `--deployment <url>` adds the one question a local report cannot answer: which image production starts, read from its own `/api/build`, and how far ahead this checkout is — plus a `last run` line: the sha, time and status of production's last non-preview run from D1 `digest_runs`, warning (never failing) when it differs from the image |
+| `cyris doctor` | Health check; exits non-zero on anything that would break a run — including a config table *this build* does not understand. Its checks read only, but the command creates the D1 tables if they are missing (every entrypoint does), so it needs a token with D1 edit. `--deployment <url>` adds the one question a local report cannot answer: which image production starts, read from its own `/api/build`, and how far ahead this checkout is — plus a `last run` line: the sha, time and status of production's last non-preview run from D1 `digest_runs`, warning (never failing) when it differs from the image. It also warns about any RSS feed that has failed 3 polls in a row or stored no article in 30 days |
 | `cyris promote-sync` | Pull digest votes from the Worker: down rejects, up accepts (no fetch/LLM) |
 | `cyris vote-sim` | Preview what vote similarity would suppress, without running the pipeline |
 | `cyris embed-compare` | Judge one window with both embedding providers; report disagreements, cost and latency |
