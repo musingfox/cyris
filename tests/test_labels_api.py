@@ -57,10 +57,10 @@ def deployment(*urls: str) -> SqliteD1:
 async def serve():
     clients: list[TestClient] = []
 
-    async def start(db: SqliteD1 | None) -> TestClient:
+    async def start(db: SqliteD1 | None, *, store=None) -> TestClient:
         server = TriageServer(
             blind_labels=D1BlindLabels(db) if db else None,
-            article_store=D1ArticleStore(db) if db else None,
+            article_store=store or (D1ArticleStore(db) if db else None),
         )
         client = TestClient(TestServer(server._app))
         await client.start_server()
@@ -231,3 +231,66 @@ class TestAnswer:
         response = await answer(client, "https://a.test/1", "up")
 
         assert response.status == 409
+
+
+class BrokenStore(D1ArticleStore):
+    """An article store whose vote write fails, as D1 does when it is unreachable."""
+
+    def accept(self, urls: list[str]) -> int:
+        raise RuntimeError("D1 is unreachable")
+
+
+class CheckingStore(D1ArticleStore):
+    """An article store that records whether the sample held the answer before the vote."""
+
+    def __init__(self, db: SqliteD1) -> None:
+        super().__init__(db)
+        self.db = db
+        self.held_first: list[bool] = []
+
+    def accept(self, urls: list[str]) -> int:
+        self.held_first += [label_of(self.db, url) == "up" for url in urls]
+        return super().accept(urls)
+
+
+class TestTheSampleDecides:
+    async def test_the_vote_is_written_only_once_the_sample_holds_the_answer(
+        self, serve
+    ) -> None:
+        url = "https://a.test/1"
+        db = deployment(url)
+        store = CheckingStore(db)
+        client = await serve(db, store=store)
+
+        response = await answer(client, url, "up")
+
+        assert response.status == 200
+        assert store.held_first == [True]
+
+    async def test_the_losing_answer_of_a_race_writes_no_vote(self, serve) -> None:
+        url = "https://a.test/1"
+        db = deployment(url)
+        client = await serve(db)
+        await answer(client, url, "up")
+        first = article(db, url)
+
+        response = await answer(client, url, "down")
+
+        assert response.status == 409
+        assert "already answered" in (await response.json())["error"]
+        assert article(db, url) == first
+        assert label_of(db, url) == "up"
+
+    async def test_a_vote_that_fails_to_write_leaves_the_item_open(self, serve) -> None:
+        url = "https://a.test/1"
+        db = deployment(url)
+        before = article(db, url)
+        client = await serve(db, store=BrokenStore(db))
+
+        response = await answer(client, url, "up")
+
+        assert response.status == 500
+        assert "D1 is unreachable" in (await response.json())["error"]
+        assert label_of(db, url) is None
+        assert article(db, url) == before
+        assert (await (await client.get("/api/labels")).json())["item"]["url"] == url

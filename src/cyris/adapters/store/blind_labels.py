@@ -159,19 +159,23 @@ class D1BlindLabels:
         r = rows[0]
         return Card(url=r["url"], title=r["title"], source=r["source_name"], content=r["content"])
 
-    def is_open(self, url: str) -> bool:
-        """Whether `url` is in the sample and still unanswered."""
-        rows = self._db.query(
-            "SELECT 1 FROM blind_labels WHERE url = ? AND label IS NULL", [url]
-        ).rows
-        return bool(rows)
-
     def record(self, url: str, label: str, at: datetime) -> bool:
         """Answer one open item; False when it is not in the sample or already answered."""
         return (
             self._db.query(
                 "UPDATE blind_labels SET label = ?, labeled_at = ? WHERE url = ? AND label IS NULL",
                 [label, _iso(at), url],
+            ).changes
+            > 0
+        )
+
+    def release(self, url: str, label: str, at: datetime) -> bool:
+        """Undo the answer `record(url, label, at)` kept, and no other; False when it is gone."""
+        return (
+            self._db.query(
+                "UPDATE blind_labels SET label = NULL, labeled_at = NULL "
+                "WHERE url = ? AND label = ? AND labeled_at = ?",
+                [url, label, _iso(at)],
             ).changes
             > 0
         )
