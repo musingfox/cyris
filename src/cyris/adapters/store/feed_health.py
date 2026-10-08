@@ -46,7 +46,9 @@ class FeedHealth:
         found = []
         if self.consecutive_failures >= UNHEALTHY_FAILURE_STREAK:
             streak = f"{self.consecutive_failures} failures in a row"
-            found.append(f"{streak} · {self.last_error}" if self.last_error else streak)
+            if self.last_error:
+                streak = f"{streak} · {' '.join(self.last_error.split())}"
+            found.append(streak)
         if self.newest_article_at is None:
             found.append("no article stored yet")
         elif now - _utc(self.newest_article_at) >= timedelta(days=QUIET_DAYS):

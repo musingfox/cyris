@@ -100,6 +100,13 @@ def test_a_streak_at_the_threshold_is_unhealthy_and_names_the_last_error() -> No
     assert health.problems(NOW) == [f"{UNHEALTHY_FAILURE_STREAK} failures in a row · HTTP 503"]
 
 
+def test_a_multi_line_error_is_named_on_one_line() -> None:
+    health = _health(UNHEALTHY_FAILURE_STREAK, 'readTagExp at 499. Context: "x;\n\t\tfor (i)"')
+    assert health.problems(NOW) == [
+        f'{UNHEALTHY_FAILURE_STREAK} failures in a row · readTagExp at 499. Context: "x; for (i)"'
+    ]
+
+
 def test_a_streak_below_the_threshold_with_a_recent_article_is_healthy() -> None:
     assert _health(UNHEALTHY_FAILURE_STREAK - 1, "HTTP 429").problems(NOW) == []
 
