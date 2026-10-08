@@ -1,7 +1,8 @@
 -- Persistent article store, the pipeline's system of record.
 --
 -- Shares the `cyris-rss` D1 database with the feed buffer (table `articles`, which
--- the Worker creates itself — workers/rss/src/index.js, `SCHEMA`). Different
+-- the Worker creates itself — workers/rss/src/index.js, `SCHEMA`; `feed_health`
+-- below is created by both). Different
 -- lifecycles, same database: the buffer is disposable and retention-pruned, this
 -- table is not. Kept together because that database is already declared as a
 -- binding in workers/rss/wrangler.toml, which is what a Deploy to Cloudflare
@@ -177,4 +178,18 @@ CREATE TABLE IF NOT EXISTS digests (
   raw_page INTEGER NOT NULL CHECK (raw_page IN (0, 1)),
   saved_at TEXT NOT NULL,
   PRIMARY KEY (date, period)
+);
+
+-- Each polled RSS feed's last outcome, written by workers/rss on every poll so a
+-- feed that keeps failing is visible after Workers Logs' 7 days. A success resets
+-- the streak and keeps the last error as history. The Worker's `SCHEMA` creates
+-- the same table, because it can poll before cyris first boots;
+-- tests/test_store_parity.py holds the two statements equal, so no comment goes
+-- inside the parentheses. Times are ISO-8601 UTC.
+CREATE TABLE IF NOT EXISTS feed_health (
+  name                 TEXT PRIMARY KEY,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  last_error           TEXT,
+  last_failed_at       TEXT,
+  last_ok_at           TEXT
 );
