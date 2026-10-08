@@ -3,7 +3,7 @@ id: tests-pin-every-outgoing-request
 status: accepted
 scope:
   - "tests/test_*.py"
-verify: check:! grep -rnE "assert_all_called=False|assert_all_mocked=False" tests
+verify: check:uv run pytest tests/test_respx_routes_pin_counts.py -q
 related: [e2e-asserts-what-the-fakes-received]
 source: e2e-fake-edges
 adr: null
@@ -12,9 +12,11 @@ adr: null
 A test that fakes an HTTP edge must pin how many requests cyris sent there and what each
 one carried.
 
-With respx, the router keeps its defaults, `assert_all_called` and `assert_all_mocked`, so
-an unused route or an unmocked request fails the test. With `httpx.MockTransport`, the
-handler appends every request to a list. Either way the test asserts the exact count per
+With respx, no test switches `assert_all_called` or `assert_all_mocked` off. The bare
+`respx.mock` router every test uses is respx's global one, built with `assert_all_called`
+already off (respx 0.23.1, `respx/api.py:8`). An unmocked request fails the test, and an
+unused route fails it through its exact count. With `httpx.MockTransport`, the handler
+appends every request to a list. Either way the test asserts the exact count per
 route, using `call_count` or the list's length, and the method, path, credential header
 and body fields of each request that bear on the behaviour under test.
 
@@ -27,6 +29,12 @@ A violation is silent. An adapter that starts retrying, double-posting or skippi
 still passes a test that checks only `route.called` or the return value, because the
 canned response looks the same each time.
 
-The `check:` binds only the defaults: no test switches respx's two assertions off. The
-exact-count half has no grep that would not raise false positives, so it is held by
-review until an audit of the 18 files that fake an edge has brought each one up to it.
+The `check:` runs `tests/test_respx_routes_pin_counts.py`. It fails when a test file
+switches either respx assertion off. It also fails when a test registers a respx route that
+is not bound to a name, or whose `call_count`, `len(route.calls)` or `not route.called`
+the same test never reads. Its self-test plants each kind of violation. Two gaps stay with
+review. The scan sees that the count is read, not that it is asserted exactly. It also
+leaves `httpx.MockTransport` fakes out: their handlers record into lists, dicts, fixtures
+and helper classes, and no scan of those shapes is free of false positives. The audit that
+brought the 19 edge-faking files up to the rule is
+`docs/spec/audits/tests-pin-every-outgoing-request-2026-10-08.md`.
