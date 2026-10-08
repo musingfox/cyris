@@ -358,8 +358,10 @@ settings or a `build_deps` that raises, sends `Digest run could not start` to th
 on a digest hour only, since every hourly tick hits the same failure; it leaves no `digest_runs`
 row. Settings that cannot name the schedule or a channel send nothing, and so do a D1 the
 container cannot read and a container that never starts: those are left to Workers Logs. A dry
-run, a run started by hand and a SIGTERM-cancelled run send no alert. Votes cast on the published digest go to the promote Worker's KV and are drained
-hourly by `cyris promote-sync`, which is what turns a click into a `triaged_at` stamp.
+run, a run started by hand and a SIGTERM-cancelled run send no alert. Votes cast on the
+published digest go to the promote Worker's KV and are drained at each digest run, by the run
+itself and by the `cyris promote-sync` after it, which is what turns a click into a
+`triaged_at` stamp.
 
 ## 4. Data residency
 
@@ -615,9 +617,17 @@ With `backend = "json"` there is no settings store: the page renders read-only a
 409. That deployment edits `cyris.toml` by hand, and `cyris.toml.example` lists every key.
 
 The schedule moved with it, and then moved again: the tick is now a Workers Cron Trigger
-(the repo-root `wrangler.toml`) rather than `docker/crontab`, unconditional and hourly, running
+(the repo-root `wrangler.toml`) rather than `docker/crontab`, hourly, running
 `cyris run --if-due`, which asks the effective `digest_schedule` whether this hour is a digest hour and derives
-`--period` from which of the two it is. Hour granularity is the contract, not a rounding: the write
+`--period` from which of the two it is. Since 2026-10-08 the Worker asks first
+(`workers/app/src/schedule.js`, reading D1 `settings` over REST on every tick) and wakes the
+container only on a digest hour: the 22 other ticks each cost a ~28-second container wake,
+about 47% of its awake time. The two answers are one function written twice, held together by
+`workers/app/test/schedule_cases.json`, which the vitest suite and `tests/test_schedule_gate.py`
+both run. When the Worker cannot read the schedule it starts the container anyway and
+`--if-due` decides: a woken container costs one idle tick, a skipped digest hour costs an
+issue. Votes therefore sync at the digest runs only, not hourly; `run_digest` syncs them
+before each issue, and the promote Worker's KV keeps them until then. Hour granularity is the contract, not a rounding: the write
 surface refuses `08:30` rather than firing at 08:00 and leaving the reader to work out why.
 
 Credentials never live in `cyris.toml`. Each config model injects its own from the environment in a

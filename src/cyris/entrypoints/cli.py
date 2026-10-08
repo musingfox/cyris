@@ -186,9 +186,11 @@ def run(
         raise typer.Exit(1) from e
 
     if if_due:
-        # The cron tick is hourly and unconditional; the schedule lives in D1 so
-        # changing it does not need a rebuild. Not due is a normal outcome, not
-        # a failure — 22 of every 24 ticks end here.
+        # The schedule lives in D1 so changing it does not need a rebuild. The app
+        # Worker's Cron Trigger asks the same question before waking the container
+        # (workers/app/src/schedule.js), so a tick ends here only when the Worker
+        # could not read the schedule, or on a `docker compose` install, whose
+        # crontab is hourly and unconditional. Not due is a normal outcome.
         due = due_period(now_in_timezone(cfg.app.general.timezone), cfg.app.general.digest_schedule)
         if due is None:
             typer.echo(f"Not a digest hour ({', '.join(cfg.app.general.digest_schedule)}).")
