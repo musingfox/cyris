@@ -1181,6 +1181,110 @@ def labels_draw(
     typer.echo("Label them at /labels on this deployment's app Worker.")
 
 
+def _ratio(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+@labels_app.command("report")
+def labels_report(
+    resamples: Annotated[int, typer.Option(help="Bootstrap resamples for the AUC's interval")] = (
+        1000
+    ),
+    bootstrap_seed: Annotated[int, typer.Option(help="Seed for the bootstrap")] = 0,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Score the filter and the embedding preference against the blind labels.
+
+    Reads D1 and embeds titles with the configured embedder; writes nothing.
+    """
+    from cyris.bootstrap import embedding_model, make_embedder
+    from cyris.diagnostics.blind_labels import (
+        STRATA,
+        auc,
+        bootstrap_auc,
+        filter_score,
+        preference_scores,
+        stratum_of,
+    )
+
+    cfg, labels = _blind_labels(config_path, sources_path)
+    try:
+        cfg.require_complete_settings()
+    except ValueError as e:
+        typer.echo(f"Configuration error: {e}")
+        raise typer.Exit(1) from e
+
+    rows = labels.labeled()
+    if not rows:
+        typer.echo("No item is labeled up or down yet: answer some on /labels first.")
+        raise typer.Exit(1)
+    answered, total = labels.progress()
+    seed, since = labels.drawn()
+    ups = sum(r.up for r in rows)
+    typer.echo(
+        f"Blind labels: {len(rows)} labeled ({ups} up, {len(rows) - ups} down), "
+        f"{answered - len(rows)} skipped, {total - answered} unanswered of {total}."
+    )
+    typer.echo(f"Drawn with seed {seed} from filter candidates first seen since {since}.\n")
+
+    typer.echo(f"  {'stratum':20} {'pool':>6} {'labeled':>8} {'up':>4} {'down':>5}")
+    for news, rejected in STRATA:
+        cell = [r for r in rows if stratum_of(r.news, r.pipeline_state) == (news, rejected)]
+        pool = str(cell[0].stratum_size) if cell else "-"
+        up = sum(r.up for r in cell)
+        name = f"{'news' if news else 'non-news'} · {'rejected' if rejected else 'kept'}"
+        typer.echo(f"  {name:20} {pool:>6} {len(cell):>8} {up:>4} {len(cell) - up:>5}")
+    kept = Counter(r.pipeline_state for r in rows if not stratum_of(r.news, r.pipeline_state)[1])
+    typer.echo(
+        f"Kept at draw: {kept['accepted']} accepted, {kept['pending']} pending "
+        "(pending: cut by a cap, suppressed, or not yet judged).\n"
+    )
+
+    typer.echo("The filter against the labels: an upvote is the positive, and the filter")
+    typer.echo("keeps what it did not reject. Each stratum is weighted by its pool share.")
+    typer.echo(f"{'':10} {'labeled':>8} {'precision':>10} {'recall':>7}")
+    for name, group in (
+        ("news", [r for r in rows if r.news]),
+        ("non-news", [r for r in rows if not r.news]),
+        ("overall", rows),
+    ):
+        score = filter_score(group)
+        typer.echo(
+            f"{name:10} {score.labeled:>8} {_ratio(score.precision):>10} {_ratio(score.recall):>7}"
+        )
+
+    vote = cfg.app.vote_similarity
+    votes = labels.human_votes()
+    embedder = make_embedder(vote.provider, vote.model)
+    scores = asyncio.run(preference_scores(embedder, {r.url: r.title for r in rows}, votes))
+    scored = [r for r in rows if r.url in scores]
+    values = [scores[r.url] for r in scored]
+    positives = [r.up for r in scored]
+    up_seeds = sum(v.up for v in votes)
+    typer.echo(
+        "\nEmbedding preference: cosine of the title to the nearest upvote minus the nearest "
+        f"downvote, {embedding_model(vote.provider, vote.model)}."
+    )
+    typer.echo(
+        f"Seeds: {up_seeds} up, {len(votes) - up_seeds} down human votes, the sample left out."
+    )
+    point = auc(values, positives)
+    interval = bootstrap_auc(values, positives, resamples=resamples, seed=bootstrap_seed)
+    if point is None or interval is None:
+        typer.echo(f"AUC n/a: the {len(scored)} scored items are not both up and down.")
+    else:
+        typer.echo(
+            f"AUC {point:.3f}, 95% CI {interval[0]:.3f} to {interval[1]:.3f} "
+            f"({resamples} bootstrap resamples), over {len(scored)} labeled items, unweighted."
+        )
+    typer.echo(f"Embedding spend: {json.dumps(embedder.usage.as_dict())}")
+
+
 store_app = typer.Typer(help="Move the article store between backends")
 app.add_typer(store_app, name="store")
 
