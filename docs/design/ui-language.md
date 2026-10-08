@@ -275,8 +275,9 @@ tag, and of the 91 issues measured on 2026-09-19 only 20 had a topic record.
   issues a day. A day's issues follow the order in which the schedule fires; rows after the first one
   show their date in `--text-dim`, a signal independent of the labels. On a row with no article count,
   the two buttons still line up in the same column.
-- The data sources and trade-offs are recorded in `docs/milestones/digest-archive-index-layout.md`; for
-  breakpoints, §2 of this document governs.
+- The headline card renders from the run's own `DigestContent`, and a row's article count from
+  `usage_log` (`adapters/store/archive_meta.py`). Why the list is never cut is in
+  `docs/architecture.md` §6, *Recovery reads the live site*.
 
 ### digest
 
