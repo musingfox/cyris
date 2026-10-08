@@ -196,7 +196,9 @@ the deployment rather than the digest. `embed-compare` and `llm-compare` are the
 beside it in `compare.py`: each builds *two* wirings on purpose, which no core module may do and no
 single `build_deps` can express. What a comparison row means is decided there; the CLI parses
 `--arm`, prints, and owns every local write — which is what keeps these commands read-only by
-construction and keeps their output out of §4's decision. It is **not** an exception to the rule above — the rule holds
+construction and keeps their output out of §4's decision. `config show` sits there too, in
+`config_show.py`: it asks `bootstrap` what a provider default or an embedding threshold resolves to,
+returns rows, and the CLI prints them. It is **not** an exception to the rule above — the rule holds
 with none. `tests/test_core_imports.py` fails if `service_layer/` or `domain/` imports
 `cyris.adapters` or `cyris.bootstrap` at runtime, and fails again if anything below `diagnostics/`
 imports it back.
@@ -445,6 +447,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote request timeout on the digest and raw pages | A | `VOTE_TIMEOUT_MS` in `adapters/output/templates/_promote_script.html.j2` | done 2026-10-02 — reason in the comment beside it; a vote that outlasts it is shown to the reader as not landed |
 | Per-provider default model, per-model embedding threshold | A | `src/cyris/provider_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
 | Runtime-setting registry: each grade-D key's `/settings` category, label, controls, save route and whether a save applies live | A | `src/cyris/settings_fields.json` | unchanged — the one key list (see *Where grade D lives*); `tests/test_settings_fields.py` holds the page to it |
+| `cyris config show` registry: the rows it lists beyond `settings_fields.json` and `B_GRADE_ENV_VARS`, and every label it prints | A | `src/cyris/diagnostics/config_show.json` | done 2026-10-08 — the image ships `src/` only, so `.env.example` cannot be read at runtime; `tests/test_deploy_inputs.py` holds the secret list to it, and each code constant is named as `module:attribute` so the value shown is the one the code runs with |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
 | Project link and favicon on the rendered pages | A | `PROJECT_URL` and `FAVICON` in `adapters/output/html_digest.py` | done 2026-10-02 — the upstream project's site, not this deployment's: a fork's pages still credit where they came from, so neither a deployment nor a reader setting changes it. The favicon is a copy of `website/assets/favicon.svg`, because the image ships `src/` only; `tests/test_ui_spec.py` holds the two copies equal, and every publish deploys it, on the manifest path and the local-directory path alike |
 | Image's build commit | A | `GIT_SHA` build arg, baked as `CYRIS_GIT_SHA` by the `Dockerfile` | unchanged — the release workflow supplies it; a local `docker build` legitimately leaves it empty |
@@ -617,6 +620,14 @@ read, so its pages stay at 1.
 table, and on a `d1` deployment fails `file settings` when `cyris.toml` still sets a grade-D key
 the deployment ignores. `cyris settings push` copies the keys D1 lacks from a `cyris.toml`, never
 overwrites a row, and prints the database id it bound to first.
+
+`cyris config show` answers what a setting is right now and why. It prints every grade's settings
+as key, effective value and source: `code`, the provider default, `cyris.toml`, D1 `settings`, the
+`.env` beside the config, or the process environment, which is how `wrangler.toml` vars and Worker
+secrets reach the container. A secret prints only whether it is set. The source is taken from what
+the load recorded (`Config.file_toml`, `Config.dotenv_names`), and the rows beyond the two key
+registries are listed in `src/cyris/diagnostics/config_show.json`. It judges nothing and exits 0
+whenever the config loads; judging is `doctor`'s job.
 
 With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
 409. That deployment edits `cyris.toml` by hand, and `cyris.toml.example` lists every key.

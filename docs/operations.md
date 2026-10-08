@@ -64,6 +64,22 @@ time and status of the last production run, read from D1 `digest_runs`. It needs
   the image it started from until it sleeps after five idle minutes, and each request
   renews that timer, so asking again and again keeps the old answer alive.
 
+## What a setting is set to, and why
+
+```sh
+uv run cyris config show
+```
+
+It prints every setting in its grade (`docs/architecture.md` §5) as three columns: the key, the
+value a run would use, and where that value came from. The source is one of `code`, `default
+(provider_defaults.json)`, `cyris.toml`, `D1 settings`, `.env` or `environment`; a grade-D key
+its home does not hold shows `missing`. Secrets show only `set` or `unset`, and the Discord webhook
+shows with its token masked, so the output can be pasted into a support chat as it is.
+
+Run it with the `.env` that points at the deployment's D1, as for `cyris doctor`. A local run
+cannot see the container's own environment, so `CYRIS_GIT_SHA` and the Worker secrets show what
+this machine has, not what production has.
+
 ## Going back
 
 `wrangler rollback` restores the Worker's code and configuration but not the container
