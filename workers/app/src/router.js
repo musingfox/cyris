@@ -15,6 +15,7 @@ const MIN_TOKEN_LENGTH = 32;
 
 export const PROTECTED = (path) =>
   path === "/settings" ||
+  path === "/labels" ||
   path === "/login" ||
   path === "/run" ||
   path.startsWith("/api/") ||

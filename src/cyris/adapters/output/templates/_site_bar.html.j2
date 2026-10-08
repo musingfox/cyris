@@ -1,8 +1,8 @@
     <header class="site-bar">
         <div class="site-bar-inner">
-            <a class="brand" {{ "data-gated-href" if current == "settings" else "href" }}="index.html"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></a>
+            <a class="brand" {{ "data-gated-href" if current in ("settings", "labels") else "href" }}="index.html"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></a>
             <nav class="site-nav" aria-label="Site">
-                <a class="label{{ " gated" if current == "settings" }}" href="index.html"{% if current == "settings" %} hidden{% endif %}{% if current is not defined or current == "archive" %} aria-current="page"{% endif %}>Archive</a>
+                <a class="label{{ " gated" if current in ("settings", "labels") }}" href="index.html"{% if current in ("settings", "labels") %} hidden{% endif %}{% if current is not defined or current == "archive" %} aria-current="page"{% endif %}>Archive</a>
                 <a class="label settings-link" href="/settings"{% if current == "settings" %} aria-current="page"{% endif %}>Settings</a>
                 <a class="label signin-link" href="/login" hidden>Sign in</a>
             </nav>

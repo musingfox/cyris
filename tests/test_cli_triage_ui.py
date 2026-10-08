@@ -1,4 +1,4 @@
-"""`cyris triage-ui` serves `/settings` and nothing else.
+"""`cyris triage-ui` serves `/settings` and `/labels`.
 
 Plain `def` tests: the command calls `asyncio.run()`, which refuses to start
 inside the loop pytest-asyncio would give an `async def` test.
@@ -65,14 +65,15 @@ def _run(config: tuple[Path, Path]):
     )
 
 
-def test_startup_names_only_the_settings_url(config: tuple[Path, Path]) -> None:
+def test_startup_names_the_settings_and_labels_urls(config: tuple[Path, Path]) -> None:
     result = _run(config)
     assert result.exit_code == 0, result.output
     assert "Settings:  http://127.0.0.1:8766/settings" in result.output
+    assert "Labels:    http://127.0.0.1:8766/labels" in result.output
     assert "Triage UI:" not in result.output
 
 
-def test_the_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypatch) -> None:
+def test_a_json_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypatch) -> None:
     def refuse(*args, **kwargs):
         raise AssertionError("ui role opened an article store")
 
@@ -84,6 +85,8 @@ def test_the_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypat
     assert "sources_origin" not in kwargs
     assert kwargs["source_store"] is None
     assert kwargs["feed_health"] is None
+    assert kwargs["article_store"] is None
+    assert kwargs["blind_labels"] is None
 
 
 def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], monkeypatch) -> None:
@@ -104,6 +107,9 @@ def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], m
     assert kwargs["values"] == {}
     assert kwargs["settings"] is not None
     assert kwargs["feed_health"].read() == {}
+    # /labels writes its answers to the articles as votes, so a D1 ui role opens both.
+    assert kwargs["blind_labels"].progress() == (0, 0)
+    assert kwargs["article_store"].count_by_state() == {}
 
 
 def test_help_describes_the_settings_server() -> None:

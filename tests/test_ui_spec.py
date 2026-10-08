@@ -33,7 +33,11 @@ from css_rules import (
 import cyris.entrypoints
 from cyris.adapters.output.email_digest import LIGHT_PALETTE, tokens
 from cyris.adapters.output.html_digest import FAVICON, PROJECT_URL, HtmlDigestWriter
-from cyris.entrypoints.triage_server import TriageServer, render_settings_page
+from cyris.entrypoints.triage_server import (
+    TriageServer,
+    render_labels_page,
+    render_settings_page,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -47,13 +51,15 @@ def _source(name: str) -> str:
         return STYLE.read_text()
     if name == "settings":
         return render_settings_page()
+    if name == "labels":
+        return render_labels_page()
     return dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[name]
 
 
-GUARDED = ["index", "digest", "raw", "style.css", "settings"]
+GUARDED = ["index", "digest", "raw", "style.css", "settings", "labels"]
 
 
-@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings", "prototype"])
+@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings", "labels", "prototype"])
 def test_every_page_says_its_chrome_is_english(page):
     html = PROTOTYPE.read_text() if page == "prototype" else _source(page)
 
@@ -191,15 +197,15 @@ async def test_settings_stops_motion_on_request(triage: TestClient) -> None:
     assert (await _served_rules(triage, "/static/style.css"))[REDUCED_MOTION] == STILL
 
 
-# Section 4 allows one transform: the raw triage card's drag and fly-out.
+# Section 4 allows one transform: the triage card's drag and fly-out, on raw and on /labels.
 RAW_CARD_MOTION = frozenset(
     {(".card", "transition: border-color var(--t-fast), transform var(--t-fast)")}
 )
 
 
-@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings"])
+@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings", "labels"])
 def test_every_transition_changes_colour_over_the_fast_token(page: str) -> None:
-    exempt = RAW_CARD_MOTION if page == "raw" else frozenset()
+    exempt = RAW_CARD_MOTION if page in ("raw", "labels") else frozenset()
     assert off_spec_transitions(_source(page), exempt) == []
 
 
@@ -1142,12 +1148,12 @@ def test_a_style_attribute_is_reported() -> None:
     assert style_attributes("<style>p { margin: 0; }</style><p>x</p>") == []
 
 
-@pytest.mark.parametrize("source", ["style.css", "settings"])
+@pytest.mark.parametrize("source", ["style.css", "settings", "labels"])
 def test_no_size_is_written_in_rem(source: str) -> None:
     assert rem_values(_source(source)) == []
 
 
-@pytest.mark.parametrize("source", ["style.css", "settings"])
+@pytest.mark.parametrize("source", ["style.css", "settings", "labels"])
 def test_every_radius_is_a_shape_token(source: str) -> None:
     assert off_token_radii(_source(source)) == []
 
@@ -1447,7 +1453,7 @@ def test_the_timezone_example_names_no_region() -> None:
 
 
 REPO = UI_SPEC.parents[2]
-PAGES = ["index", "digest", "raw", "settings"]
+PAGES = ["index", "digest", "raw", "settings", "labels"]
 
 
 def _head(html: str) -> str:
