@@ -7,10 +7,9 @@
 > Source of truth: `bootstrap.py` (who injects what), `service_layer/ports.py` (boundary
 > contracts), `adapters/store/schema.sql` (what D1 holds), `workers/*/src/index.js` (ingestion).
 >
-> **This document drives the work.** Everything still to be built is listed in
-> [§7 Outstanding work](#7-outstanding-work-and-the-record-of-what-closed), with its ticket. A
-> destination named anywhere else in this document must appear there too — if it doesn't, the list
-> is stale, not the plan.
+> This document describes the system as it is. Open work is tracked outside this repository, and
+> why each hard-to-reverse choice was made is in [`docs/decisions/`](decisions/).
+> [§7](#7-architecture-changes) records each change to the architecture, with its commit on main.
 
 ## 1. Layers
 
@@ -54,6 +53,7 @@ flowchart TB
         P1["LLMClient"]
         P2["ArticleRepository"]
         P3["FetchSource"]
+        P4["Embedder"]
     end
 
     subgraph ADP["Adapters"]
@@ -89,12 +89,14 @@ flowchart TB
     UC -->|Protocol| P3
     UC -->|Protocol| P1
     RUN -->|Protocol| P2
+    RUN -->|Protocol| P4
 
     P1 -. impl .-> LLM
     P2 -. impl .-> STORE
     P3 -. impl .-> CFRSS
     P3 -. impl .-> CFNL
     P3 -. impl .-> RSS
+    P4 -. impl .-> EMB
 
     RUN -->|direct inject| HTML
     RUN -->|direct inject| PUB
@@ -102,7 +104,6 @@ flowchart TB
     RUN -->|direct inject| USAGE
     RUN -->|direct inject| NOTI
     RUN -->|direct inject| MAIL
-    RUN -->|direct inject| EMB
     RUN -->|direct inject| TAGS
     RUN -->|direct inject| STORIES
     RUN -->|direct inject| DIGESTS
@@ -127,7 +128,7 @@ flowchart TB
     classDef fallback fill:#A8590C,stroke:#DFA45E,color:#fff;
     classDef bad fill:#98292B,stroke:#E28079,color:#fff;
     classDef cloud fill:#1F4E63,stroke:#7FB6CC,color:#fff;
-    class P1,P2,P3 port;
+    class P1,P2,P3,P4 port;
     class HTML,FS fallback;
     class RSS,FEEDS bad;
     class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,DIGESTS,EMB,MAIL cloud;
@@ -353,7 +354,13 @@ container cannot read and a container that never starts: those are left to Worke
 run, a run started by hand and a SIGTERM-cancelled run send no alert. Votes cast on the
 published digest go to the promote Worker's KV and are drained at each digest run, by the run
 itself and by the `cyris promote-sync` after it, which is what turns a click into a
-`triaged_at` stamp.
+`triaged_at` stamp. The raw page's triage view is the only triage surface; the pending backlog
+across days is reachable only through `cyris articles`.
+
+A run whose provider is not `none` but whose scoring, filter or summarize step went on without
+the LLM's answer, because no client was built or its call failed, is *degraded*
+(`is_degraded_run` in `domain/models.py`): the notification, the page and the mail open with a
+notice saying so.
 
 ## 4. Data residency
 
@@ -386,7 +393,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours |
 | Digest runs | **D1 `digest_runs`** | same | One row per `run_digest` call on every path — `no_articles`, `no_pending`, `error` included — with status, period, dry-run flag, fetch counts, the image's `CYRIS_GIT_SHA`, the degraded judgement and the whole `run_summary` as JSON. Written after the log line, inside its own guard. D1 only: a `json` run writes nothing and keeps only stdout |
 | Digest content | **D1 `digests`** | same | One row per issue, keyed `(date, period)`, last run wins: the final `DigestContent` as JSON plus `raw_page`, the flag saying whether that run's digest page linked a raw companion page — the two inputs the digest page renders from. The raw companion page itself is not reproducible from it. D1 only: a `json` run keeps no copy |
-| Vote-similarity pool | **D1 `vote_similarity_shadow`** | same | One row per candidate a run judged against the reader's votes, keyed `(run_at, candidate_url)`: the nearest upvoted and downvoted article with each cosine, and the embedding model. `run_at` is the run's `started_at`, which `digest_runs.summary` also carries, and its `vote_similarity_judged` is the run's row count. Raw data with no verdict: the suppression decision and its threshold are not stored. Written by `run_digest` right after `judge_by_votes`, inside its own guard, from the cosines that call already computed, so it costs no embedding call; a run whose similarity pass skipped, and a dry run, write nothing. Nothing reads it yet; it is the input the preference-rank and blind-label tickets were waiting for (§7). D1 only: a `json` run keeps no copy |
+| Vote-similarity pool | **D1 `vote_similarity_shadow`** | same | One row per candidate a run judged against the reader's votes, keyed `(run_at, candidate_url)`: the nearest upvoted and downvoted article with each cosine, and the embedding model. `run_at` is the run's `started_at`, which `digest_runs.summary` also carries, and its `vote_similarity_judged` is the run's row count. Raw data with no verdict: the suppression decision and its threshold are not stored. Written by `run_digest` right after `judge_by_votes`, inside its own guard, from the cosines that call already computed, so it costs no embedding call; a run whose similarity pass skipped, and a dry run, write nothing. Nothing reads it yet. D1 only: a `json` run keeps no copy |
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
@@ -427,7 +434,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Batch sizes | A | `BATCH_SIZE` in `service_layer/scoring.py` and on each embedder in `adapters/embedding.py` | unchanged |
 | RSS Worker read ceiling | A | `WORKER_ROW_CEILING` in `adapters/fetch/rss_worker_source.py`, mirroring the clamp on `GET /articles` in `workers/rss/src/index.js` | done 2026-10-02 — a memory bound, not the run cap: every row carries full feed content. It is sent by value because the Worker's default without one is lower; `tests/test_rss_worker_source.py` holds the two equal |
 | Feed health thresholds: unhealthy at 3 consecutive failed polls, or no stored article for 30 days (never included) | A | `UNHEALTHY_FAILURE_STREAK`, `QUIET_DAYS` in `adapters/store/feed_health.py` | done 2026-10-08 — one Substack 429 is routine, three hourly polls failing in a row is not; feeds publish weekly or monthly, so a shorter silence is noise. `cyris doctor` and `/settings` both judge through `FeedHealth.problems`, so neither copies a number |
-| Pages publish timing: the 180s budget and 120s run reserve, the stage and alias poll counts and intervals, the 20s per-request timeout and a deploy attempt's worst case | A | `adapters/output/publish.py`, `adapters/output/pages_deploy.py` | unchanged — reasons in the comments beside each constant; `tests/test_publish.py` pins the budget against `RUN_SLEEP_AFTER` in `workers/app/src/index.js`, and what the budget does not cover is in *Publishing without a subprocess* (§7) |
+| Pages publish timing: the 180s budget and 120s run reserve, the stage and alias poll counts and intervals, the 20s per-request timeout and a deploy attempt's worst case | A | `adapters/output/publish.py`, `adapters/output/pages_deploy.py` | unchanged — reasons in the comments beside each constant; `tests/test_publish.py` pins the budget against `RUN_SLEEP_AFTER` in `workers/app/src/index.js`, and what the budget does not cover is in *Publishing* (§6) |
 | `/settings` verification time limits: the LLM probe's 30s, the embedding probe's 15s, the Discord probe's 10s | A | `LLM_PROBE_TIMEOUT_SECONDS`, `EMBEDDING_PROBE_TIMEOUT_SECONDS`, `DISCORD_PROBE_TIMEOUT_SECONDS` in `diagnostics/doctor.py` | done 2026-10-02 — a Save is a person waiting, so each bound sits far below the minutes a run allows the same client; reasons in the comments beside the first two. A probe past its bound fails with what to do next, and nothing is stored |
 | Vote request timeout on the digest and raw pages | A | `VOTE_TIMEOUT_MS` in `adapters/output/templates/_promote_script.html.j2` | done 2026-10-02 — reason in the comment beside it; a vote that outlasts it is shown to the reader as not landed |
 | Per-provider default model, per-model embedding threshold | A | `src/cyris/provider_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
@@ -459,7 +466,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
 | Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many Features cards an issue shows is not a number this codebase can measure, and `featured_threshold` beside it was already D |
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
-| Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 — §7 #17 |
+| Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 |
 | Embedding threshold | **A** | `cyris.toml`, else the calibration in `provider_defaults.json` when the configured model is the one it was measured on | unchanged — a measured property of the model, not a preference. Any other model has none: the run skips vote similarity, says why in `run_summary` as `vote_similarity_skipped`, and `doctor` fails until `cyris.toml` sets one (2026-10-07) |
 | Discord webhook | D | **D1 `settings`**, written by `/settings`; `cyris.toml [notify]` for a `json` deployment | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the grade-C variables counted below; those are API tokens, which stay C. `""` means off: `/settings` stores it only through a confirmed Turn off, and an empty paste is refused. No environment variable supplies it |
 | Mail recipient + sender | D | **D1 `settings`** as `notify.email_to` and `.email_from`, written by `/settings` (Notifications); `cyris.toml [notify]` for a `json` deployment | done 2026-09-27, a prototype beside Discord — the channel-address rule the webhook set. The container sends through Cloudflare Email Service's REST API (`POST /accounts/{id}/email/sending/send`, Email Sending: Edit on `CLOUDFLARE_API_TOKEN`), no Worker in between. The recipient must be a verified Email Routing destination address, which is free on every plan and needs no onboarded sending domain; the sender must sit on a routing domain. `/settings` stores the pair only after a test message is delivered or queued, and an empty recipient turns mail off without a send. No environment variable supplies either |
@@ -467,7 +474,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote similarity on/off, `max_seeds` | D | **D1 `settings`**, written by `/settings` (Model) together with the embedder; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 — turning it on checks the embedder first |
 | Reader type size | D | **D1 `settings`** as `digest.type_scale`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done — how pages get it: *The reader-facing surfaces*. The mail stays at the baseline: nothing serves it, so the Worker cannot inject the size |
 | Agent vault path, HTML output dir | A | `cyris.toml` | unchanged — both address the `json` backend's fallback tree only; with D1 nothing is written there |
-| **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | partly ruled: a channel-address credential such as the Discord webhook is grade D (see its row above). API keys remain undecided. Writing a key into D1 `settings` puts a secret in a readable D-grade row; §7 #17 records the question rather than answering it |
+| **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | partly ruled: a channel-address credential such as the Discord webhook is grade D (see its row above). API keys remain undecided: writing a key into D1 `settings` puts a secret in a readable D-grade row |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
 
@@ -549,6 +556,10 @@ the load recorded (`Config.file_toml`, `Config.dotenv_names`), and the rows beyo
 registries are listed in `src/cyris/diagnostics/config_show.json`. It judges nothing and exits 0
 whenever the config loads; judging is `doctor`'s job.
 
+Sources are written the same way: `POST /api/sources` upserts one `sources` row and
+`DELETE /api/sources/{name}` retires it. `cyris sources push` replaces the table wholesale, so it
+overwrites edits made on `/settings`.
+
 With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
 409. That deployment edits `cyris.toml` by hand, and `cyris.toml.example` lists every key.
 
@@ -580,7 +591,7 @@ Cloudflare
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
 │     <your custom domain>         └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
 ├── D1: every table in src/cyris/adapters/store/schema.sql, each with its §4 row
-├── Pages: cyris-digest
+├── Pages: cyris-digest, and cyris-site (website/, outside the pipeline)
 └── Workers Logs: the container's stdout, 7 days
 ```
 
@@ -596,7 +607,13 @@ pinning is its job — `image_tag` takes a `sha256:…` digest, which is how a d
 an image already published. Going back is a reference to an image already in the
 registry, never a rebuild of the old commit — the workflow refuses to republish a commit because
 the image is not reproducible — and the platform's own rollback does not move that reference:
-`docs/spec/revert-carries-the-image.md` holds the rule, §7 #31 holds the experiment.
+`docs/spec/revert-carries-the-image.md` holds the rule, and `docs/operations.md` *Going back*
+the procedure.
+
+Which image production starts is answered by production itself: the `ui` role serves `/api/build`
+with the baked `CYRIS_GIT_SHA`, and `cyris doctor --deployment <url>` signs in with
+`CYRIS_UI_TOKEN`, reads it and counts how far local HEAD is ahead, warning rather than failing.
+It also prints the sha, time and status of the last non-preview run from D1 `digest_runs`.
 
 **The container's stdout is the only log, and it is kept for seven days.** `[observability]` in
 `wrangler.toml` is what sends it to Workers Logs (Paid plan: 20M events/month included, 7-day
@@ -626,9 +643,52 @@ from the Container returned `400 FAILED_PRECONDITION: User location is not suppo
 same key answered from the Worker, and each LLM stage fell back until every article was accepted.
 The fix is `[containers.constraints]`; this line is how a later run shows the constraint held.
 
+**Publishing is Pages direct upload over REST, and every deploy is a full snapshot.** The calls
+are in `adapters/output/pages_deploy.py`; why REST rather than `wrangler` or R2, the asset-key
+formula and the 20,000-file ceiling are in
+[ADR-0004](decisions/0004-publish-over-pages-rest-without-r2.md). A deployment must name the
+production branch, or it lands on a preview URL. The first publish creates the Pages project
+(`pages_deploy.create_project`).
+
+- **What counts as published.** `_page_is_live` decides whether a digest is published, which
+  drives the Discord link and `publish_failed`. What `pages_manifest` records follows
+  Cloudflare's own stage for the deployment instead: one at `deploy`/`success`, read from the
+  create response or re-read every 5s for 30s, is recorded before the alias is asked; one with no
+  verdict by then is recorded only if the alias serves its page. A deployment Cloudflare reports
+  `failure` or `canceled` is deployed again; one merely slow never is.
+- **The time budget.** The whole publish, retries and polls included, starts no Pages request
+  whose defined worst case could run past 180s from entry, inside the `run` instance's 15-minute
+  `sleepAfter`; `tests/test_publish.py` pins that arithmetic against `workers/app/src/index.js`.
+  Outside the bound: recovering an evicted asset from the live site (15s each), upload buckets
+  beyond the first, and every D1 call. httpx's timeout is per phase of inactivity, so the worst
+  case is an estimate, not a hard deadline.
+- **A wrong or empty manifest cannot wipe the site.** An empty `pages_manifest` against a project
+  that already has deployments and no `pages_deploy_receipt` stops the publish and names the two
+  ways out, `[store] database_id` and `scripts/backfill_pages_manifest.py`. A non-empty but wrong
+  manifest is caught by set difference: `publish_site` fetches the live archive index and
+  refuses when more than one dated page listed there is missing from the manifest. A receipt
+  skips only the Cloudflare deployments probe, never this check. Zero dated anchors on the live
+  index passes; an unreadable index fails closed. `-raw.html` pages are not in the signal, and a
+  deliberate prune of more than one issue has no in-band path.
+- **Recovery reads the live site.** The live `index.html` lists every digest, so fetching each
+  page and re-running `asset_hash` rebuilds path → hash exactly; that is what the backfill script
+  does. The archive also reads `usage_log` for its rows' article counts, and a failed read drops
+  the counts, never an issue. Losing the site itself is not self-healing: `deploy_manifest`
+  raises rather than deploying a truncated archive.
+
 Nothing runs on the local machine since 2026-08-30: `docker compose down` was the cutover, and the
-`compose` file survives only as the local development path. The deploy-button work makes the whole thing
-deployable by someone else with one button.
+`compose` file survives only as the local development path. Each of the four Workers has its own
+deploy button, the app's config sits at the repo root, and three steps stay outside the buttons
+([ADR-0012](decisions/0012-the-app-deploys-from-the-repo-root.md)). `workers/rss/` and the app
+share one D1: an RSS Worker provisioned with its own database reads an empty `sources` table,
+polls nothing and logs `sources table is empty`.
+
+**A first boot creates its own tables, and nothing evolves them.** `load_effective_config` applies
+`schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry
+points. Every statement is `CREATE ... IF NOT EXISTS`, so a new table reaches an existing
+deployment on its next boot, while an `ADD COLUMN` reaches only a fresh database. A first boot then
+stops every run, naming what is missing, until `/settings` or `cyris settings push` holds every
+runtime setting and `sources` holds a source (§5).
 
 **Two schedulers is the failure mode this cutover had to avoid.** The local machine and the Container
 run the same pipeline against the same D1 and publish to the same Pages project, where a deployment
@@ -643,6 +703,10 @@ the run's status. A SIGTERM ends the pass instead: it exits 143 and skips what h
 (below); `ui` serves `/settings`; the default is the
 supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` install. Compose
 bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate.
+The two roles run as separate instances with separate idle timers: `ui` sleeps after 5 minutes,
+and `run` gets `RUN_SLEEP_AFTER = "15m"` in `workers/app/src/index.js`, chosen from the Durable
+Object's own name so a restart mid-run keeps it. `run` exits when its pass ends, so its timer is
+only a cap on a hung run.
 
 **`stop()` is one SIGTERM, and the image has to be able to receive it.** For a day the `ui`
 instance never slept: per-instance metrics showed it holding 132 MB at **zero CPU every hour**
@@ -688,9 +752,7 @@ with a SIGKILL.
 Whether it follows at all is unverified: Cloudflare's platform-details page says a SIGKILL comes 15
 minutes after the SIGTERM, while the `ui` receipt above is an instance that kept running through a
 day of repeated `stop()` calls.
-`tests/test_entrypoint.py` runs the real script under `dash`, the image's `/bin/sh`. The
-production receipt, `onStop` logging `{ exitCode: 143 }` for a run stopped by `sleepAfter`, is
-pending.
+`tests/test_entrypoint.py` runs the real script under `dash`, the image's `/bin/sh`.
 
 **Auth is one layer always, two if you own a domain** (`workers/app/`); why each layer, and why
 there is no JWT check, is [ADR-0009](decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. Preview URLs stay disabled.
@@ -701,6 +763,41 @@ Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI
 
 Cyris does not validate `Cf-Access-Jwt-Assertion`.
 
+**The reader-facing surfaces share one hostname, split by path.** The Worker proxies
+`DIGEST_ORIGIN` for anything not on the protected list, at the cost of one Worker request; why the
+digest stays static is [ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md).
+
+```
+/                         digest index  ─┐ public unless CYRIS_PRIVATE_ARCHIVE is "true"
+/2026-08-30-evening.html  one digest    ─┘ (then the cookie too): the Worker proxies Pages
+/triage*                                   404
+/settings · /api/* · /static/*             CYRIS_UI_TOKEN cookie; Access too if
+                                           CYRIS_UI_ACCESS_HOST matches this host
+```
+
+Votes go through the Worker's same-origin `POST /api/vote`, which attaches `CYRIS_PROMOTE_TOKEN`
+server-side; no page carries the token. The vote buttons render only when a probe of
+`/api/vote` succeeds, so a `pages.dev` reader, where that path is not routed, sees none, and a
+stranger on `*.workers.dev` without the cookie cannot record a human verdict. Why the vote token
+is kept apart from the other bearers is
+[ADR-0008](decisions/0008-worker-bearers-split-by-published-versus-secret.md).
+
+Every HTML page the Worker serves, Pages' and the container's, carries the reader's type size:
+`workers/app/src/type_scale.js` reads `digest.type_scale` from D1 over REST and, at any value
+other than 1, injects it into `<head>`; at 1 pages pass through byte for byte. A save clears the
+isolate's memo, and other isolates follow within a minute. How, and why injection:
+[ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md). A page opened on
+`pages.dev` directly, and the mail, stay at 1.
+
+**The marketing website is a second Pages project, outside the pipeline.** `website/` is
+published to `cyris-site` (`website/wrangler.toml`) by hand with `bun run deploy:website`, not
+with the root `bun run deploy`, which deploys the Container Worker. It shares nothing with the
+digest project, because either publisher would replace the other's files in a shared project.
+The launch film is not in the repository: it is served from the R2 bucket `musingfox-media` under
+`cyris/`, one immutable key per cut, because a Pages deploy is a full snapshot of `website/` and
+an untracked video there would vanish on the next deploy from a checkout without it. The bucket
+and its domain were created by hand; no deploy script touches them.
+
 **Known failure mode.** Code is baked into the image; config is bind-mounted. The two can drift
 arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"` from a current
 `cyris.toml` while running an image whose code had no `[store]` handling at all, so the setting was
@@ -709,8 +806,8 @@ silently ignored for two days.
 - Changing code means `up -d --build --force-recreate`. Plain `up -d` is not enough.
 - Changing `cyris.toml` or `sources.yaml` also means `--force-recreate`: single-file bind mounts
   bind an inode, and editors replace files by rename.
-- The container is **stateless** since 2026-08-30: the only mounts left are the two `:ro` config
-  files. `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
+- A compose install mounts the two config files `:ro` and `./agent-vault`, the `json` backend's
+  home. `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
   directory it was asking about, which re-created a local-filesystem edge M0–M4 had removed.
 - **In the Container the drift runs the other way**: nothing is mounted, and the image holds no
   `cyris.toml` at all — only `sources.example.yaml`, copied to `/app/sources.yaml`, is baked in with
@@ -723,395 +820,14 @@ silently ignored for two days.
 - `cyris doctor` should report what *this build* supports, not only what the config asks for —
   otherwise it goes green inside a container that is quietly ignoring half the file.
 
-## 7. Outstanding work, and the record of what closed
+## 7. Architecture changes
 
-**An item is open while its row is not struck through, or while its paragraph says *still
-open*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
-else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them.
-The decisions themselves (why not R2, why not Vectorize, and the others) are recorded in
-[`docs/decisions/`](decisions/), because changing one means reading why it was made; why a fixed
-threshold is the wrong shape stays below, with the open item it belongs to.
+One row per landed change to §1–§6. Changes land by rebase-and-merge, which rewrites a branch's
+hashes, and a commit cannot contain its own hash. So each row is added by a separate docs commit
+on main after the change lands, citing the hash it landed as.
 
-Read the tables for what is open; read the prose for why the closed things closed that way.
-
-### 7.0 The path
-
-Each milestone ends with a receipt — an observed effect, not an exit code. The **ticket** column
-names, in a few words, the ticket that carried the row; tickets are tracked privately, outside
-this repository. A `cyris#N` is a GitHub issue, of which there are few and none new — do not open one.
-
-**M0–M4 are done** (2026-08-27 → 08-30): the cutover, the deletions, settings in D1, Pages over
-REST, cacheless embeddings. Every persistent datum is in Cloudflare and the container holds no
-state. What is left is drawn below.
-
-```
-now ─┬─ M6 deploy button
-     ├─ M-media podcasts and YouTube (planned)
-     └─ (weeks of tag data) ─ M-behaviour
-
-shipped: P1, P2, M-persist, M5
-hard edges:  M-behaviour → (closes #13)
-```
-
-| Order | What | Why here | Done when | Ticket |
-|---|---|---|---|---|
-| ~~**P1**~~ | ~~Guard each scoring batch~~ — done 2026-08-30 | `score_in_batches` wrapped no batch in a `try`, and `persist_tags` ran only after the loop, so one malformed LLM response cost the whole run both its scores and its tags — the shape of the 08-29 run whose tags all came from clustering | ✅ `test_a_failing_batch_leaves_the_others_scores_and_tags_written`: batch 2 raises, batch 1's 20 scores and 20 tag rows are still written. The tag write is guarded too, so losing it no longer unwinds the scores | `cyris#5` |
-| ~~**P2**~~ | ~~§7 #15, the `sources` write surface~~ — done 2026-08-30 | A feed was added by editing `sources.yaml` and running `cyris sources push`; in the Container that file is baked into the image, so adding a feed meant a rebuild + redeploy. Same shape M2 fixed for settings, on the half that was left behind | ✅ Against live D1: `POST /api/sources` added *Simon Willison* and re-tiered *Wired* to summarize, `DELETE /api/sources/Readwise Blog` retired it — then the RSS Worker's next poll buffered Simon Willison, and a 72 h `fetch_all_articles` returned `Simon Willison → 2 (filter)`, `Wired → 11 (summarize)`, `Readwise Blog → 0`. All three restored afterwards | sources editor on /settings |
-| ~~**M5**~~ | ~~Into the Container~~ — done 2026-08-31 | All four pieces in `workers/app/`: the Containers definition, the hourly Cron Trigger, two-layer auth, and `onActivityExpired → stop()`. `docker compose down` ran on 08-30 — see §6 on why that is not optional | ✅ **Two digests from a machine that was off.** `usage_log`: `2026-08-30 evening · 61 received · 9 included · $0.025` at 12:01:12Z and `2026-08-31 morning · 42 · 8 · $0.024` at 00:01:12Z, both ~60 s after their cron fired, with the local machine down since 08-30 08:29Z; the row above them is its last. Auth: every unauthenticated path answers `401`, and after Access went on, a request carrying a *valid* cyris cookie still redirects to the Access login — the layers are ordered. ✅ The third clause, *the bill shows the instance sleeping*, took a fix to collect. `containersMetricsAdaptiveGroups` (the dataset the first attempt had the wrong name for) showed the `ui` container holding 132 MB at zero CPU for eight straight hours while `run` behaved correctly, because `stop()`'s SIGTERM was landing on a PID 1 with no handler — §6 has the receipt and the four-line repro. With the handler in `cli.py`, the last request at 08:11:18Z was followed by `container stopped { exitCode: 0, reason: 'exit' }` at 08:16:31Z and the instance returned to `inactive` | Container move |
-| **M-behaviour** | Two-layer interest state + suppression that carries a reason and a clock | Needs weeks of `article_tags` behind it — the table only started filling on 2026-08-30. Closes #13 by replacing it, never by recalibrating the cosine. The clock's storage shape lands *with* its reader, not before: a column nothing writes is what `scored_at` and `exported_at` turned out to be | Every suppression can answer "because of what, until when"; the interest graph renders from real data | two-layer interest state |
-| **M6** | One-button deploy | Only meaningful once nothing runs locally. First boot creates its own tables since 2026-09-04 — `load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry points. What is still absent is *version evolution*: every statement is `CREATE ... IF NOT EXISTS`, so the next `ADD COLUMN` reaches an existing database with no path to apply it. Do not read "no migration mechanism is needed" as covering that — the sentence it replaces was about first creation, and the two were being conflated (the schema-evolution ticket). The button's shape was settled on 2026-09-04 — see *What the deploy button can and cannot do* below; the config moved to the repo root and the checklist is `.env.example`. First boot also stops every run, naming what is missing, until `/settings` (or `cyris settings push`) holds every runtime setting and the `sources` table holds a source: no code default stands in. What is left is the clean-account run itself: `docs/trial-deployment.md` covers its manual, non-button half, and its receipt is pending | A clean Cloudflare account: press the button, fill the secrets, get a digest — with no code edits | deploy button |
-| **M-media** | Podcasts and YouTube as sources — planned 2026-09-28, not started | The parsers lose podcast episodes today: an item with no `<link>` is dropped, and items that repeat the channel's link collapse onto one key that `INSERT OR IGNORE` keeps for the first episode only; the Worker's parser reads no YouTube description, while the Python fallback does. Depth follows the tier. The design and its costs are in `docs/milestones/multimedia-sources-podcast-youtube.md`; its invariants are the five `proposed` entries that file names under `docs/spec/` | A show whose item links repeat stores one row per episode; a `summarize`-tier episode and video reach the digest summarized from their own content; with the condensation setting empty, no model call is made | podcast and YouTube sources |
-
-**M-persist shipped** with M-ship's window: rejection reasons are a two-way split
-(`already_known` / `not_interested`), stories and story membership are D1 tables keyed by content
-hash, the tag vocabulary is live, and `articles clean` keeps human-triaged rows
-(`delete_articles` … `AND triaged_at IS NULL`). Both hitchhiker fixes landed — the clean
-guard with it, the scoring guard as P1 above.
-
-Delivered, with the receipt each one was signed off on:
-
-| M | What | Why here | Receipt | Ticket |
-|---|---|---|---|---|
-| ~~**M0**~~ | ~~Finish the D1 cutover~~ — done 2026-08-30 | — | ✅ All three: `usage_log` has a row per scheduled run (latest 2026-08-30T00:00:25Z, the morning digest), `agent-vault/usage.jsonl` stopped at 2026-08-27T00:01Z, and `agent-vault/articles/` was deleted with #11. The vault bind mount went with it on 2026-08-30 — the container now mounts only `cyris.toml` and `sources.yaml`, both `:ro`, and holds no state at all. (2026-09-22: a compose install bind-mounts `./agent-vault` again, because there it is the `json` backend's home; the Container holds no state. See §6.) | D1 cutover |
-| ~~**M1**~~ | **Delete before porting** — done 2026-08-27, in four commits | Every deleted thing is one less thing to port, one less row in §4, and one less config key to grade. Cheapest work in the plan | ✅ `cyris run --dry-run` renders the HTML digest end to end against live Cloudflare; `git grep -lw 'DigestWriter\|NewsletterArchiveSource\|EmailConfig\|ScheduleManager'` returns nothing | deletions before porting |
-| ~~**M2**~~ | **Settings into D1** — done 2026-08-27 | **Hard prerequisite for M5.** In the container `cyris.toml` is baked into the image and mounted `:ro`, so a settings page that writes the file cannot work there. The read order matters just as much: without "D1 first, file fallback", a host run and a container run see different settings — the exact shape of the 08-25→08-27 split | ✅ `POST /api/settings/schedule` → D1 row → `cyris run --if-due` answered "Not a digest hour (07:00, 19:00)" while `cyris.toml` still said 08:00/20:00, and `doctor` named D1 as the source | settings in D1 |
-| ~~**M3**~~ | Publish → **Pages REST**; the archive → **D1 `pages_manifest`**, not R2 | Parallel with M2/M4. Must land before M5: a Container has no persistent disk | ✅ A page rendered only in memory went live, and all 57 archived digests survived a deploy driven purely by the manifest. `check-missing` recognised 57/57, which is what proves the hash formula | Container move |
-| ~~**M4**~~ | Embeddings → **Workers AI `bge-m3`, no cache at all** — Vectorize deliberately not used, see below | Parallel with M2/M3. Same reason as M3 — 415 MB of local JSON cannot follow the pipeline into a Container | ⚠️ Partly. `bge-m3` runs cacheless in 17.9s over 1,112 candidates. But **the receipt as written could not be met** — see “Both thresholds are stale” below. The provider choice was reversed on 2026-09-21: production embeds with `gemini-embedding-001` again, see “Why M4 did not use Vectorize” | Container move · embedding provider re-chosen by votes |
-
-Two things this table deliberately makes explicit:
-
-- **The settings page is part of the cloud move, not a nicety.** It is a write surface that will be
-  reachable from the public internet, and today it writes a file that will be read-only. That makes
-  it M2 (its storage) and M5 (its auth) — never an afterthought.
-- **M1 comes before every port.** Eliminate, then simplify, then move. Porting something that should
-  have been deleted costs twice.
-
-### What the deploy button can and cannot do (M6, 2026-09-04)
-
-Four Workers, four buttons, the app's `wrangler.toml`, `package.json` and `vitest.config.js` at
-the repo root, and the three steps the button cannot take (the D1 database id, a domain and
-Access; the Pages project is created by the first publish since 2026-09-06, through
-`pages_deploy.create_project`): why each, in
-[ADR-0012](decisions/0012-the-app-deploys-from-the-repo-root.md). The coupling to name in any
-guide: `workers/rss/` and the app share one D1, and an RSS Worker provisioned with its own
-database reads an empty table and polls nothing; its log says `sources table is empty`.
-
-**Running wrangler from the repo root now means running it beside `.env`.** Wrangler
-loads the cwd's dotenv, and an expired `CLOUDFLARE_API_TOKEN` there overrides an OAuth
-login without falling back. Every documented invocation therefore carries
-`--env-file /dev/null`; the receipt is `wrangler whoami`, which reports an *Account API
-Token* without the flag and an *OAuth Token* with it.
-
-
-### Publishing without a subprocess (M3, 2026-08-27)
-
-`wrangler pages deploy` is gone, and with it node and wrangler from the image
-([ADR-0004](decisions/0004-publish-over-pages-rest-without-r2.md)). The replacement is the Pages
-**direct-upload** protocol spoken over REST in `adapters/output/pages_deploy.py`:
-
-```
-GET  /accounts/{a}/pages/projects/{p}/upload-token   → a short-lived JWT
-POST /pages/assets/check-missing   {hashes}          → which the account lacks
-POST /pages/assets/upload          [{key,value,…}]   → base64 payloads, ≤40 MB per request
-POST /pages/assets/upsert-hashes   {hashes}          → best-effort cache touch
-POST /accounts/{a}/pages/projects/{p}/deployments    → multipart: manifest + branch
-```
-
-Three details are load-bearing and each was verified against the live account:
-
-- **The asset key is `blake3(base64(bytes) + extension)`, hex, first 32 chars.** Hashing the bytes
-  instead of their base64 is not a tidier equivalent — Cloudflare's account-wide asset store is keyed
-  by that exact formulation, so any other one makes `check-missing` answer "all new" and the deploy
-  re-uploads the whole archive forever. The receipt that it is right: `check-missing` recognised
-  **57 of 57** files wrangler had uploaded on previous days.
-- **A deployment is a full snapshot.** A path missing from the manifest is deleted from the site, so
-  the manifest always covers every file, and an empty directory is refused rather than deployed.
-- **`branch` must be the production branch** or the deploy lands on a preview URL nobody reads.
-
-`_page_is_live` still decides whether a digest counts as published — the Discord link and
-`publish_failed` — because it is the check that caught wrangler exiting 0 having deployed nothing,
-and a transport change is no reason to trust a success report more. Since 2026-09-24 it no longer
-decides what `pages_manifest` records. That follows Cloudflare's own stage for the deployment: a
-deployment at `deploy`/`success`, read from the create response or re-read by id every 5s for 30s,
-is recorded before the alias is asked; one with no verdict by then is recorded only if the alias
-serves its page. A deployment Cloudflare reports `failure` or `canceled` is deployed again, one
-merely slow never is. The whole publish, retries and polls included, starts no Pages request whose
-defined worst case could run past 180s from entry, inside the run instance's 15-minute `sleepAfter`;
-`tests/test_publish.py` pins that arithmetic against the literal in `workers/app/src/index.js`. The
-bound covers each step's defined worst case — one attempt's five requests, one verdict read per
-poll, the alias polls — and nothing else: recovering an evicted asset from the live site (15s each)
-and upload buckets beyond the first are outside it, and so are the D1 calls (see *D1 calls have no
-total time budget* below). httpx's timeout is per phase of inactivity, not per request, so the
-worst case is an estimate rather than a hard deadline.
-
-### Marketing website (outside the pipeline)
-
-`website/index.html` and `website/assets/` are the public site at `cyris.musingfox.com`.
-The selected M2 mark is a three-blade iris with a solid central pupil; the share image's
-editable source is `assets/social.svg`, with `assets/social.png` rendered at 1200 × 630.
-
-The site has its own Pages Direct Upload project, `cyris-site`, configured by
-`website/wrangler.toml`. From the repository root, run `bun run deploy:website`; it loads
-the local `.env` credentials and publishes the directory to production branch `main`.
-This is a manual deployment, not a Git-connected project; adding native Pages Git
-integration later requires a new project. Do not use the root `bun run deploy` command:
-that deploys the Container Worker, not this site.
-
-This deployment is deliberately independent of the digest Pages project and its D1
-`pages_manifest`: either publisher would replace the other's files in a shared project.
-The personal blog, apex domain, and email records remain outside this deployment.
-
-The launch film is not in the repository. It is served from the R2 bucket `musingfox-media`
-at `https://media.musingfox.com/cyris/`, a bucket shared by the maintainer's projects, one
-key prefix per project. A Pages deploy is a full snapshot of `website/`, so a video kept
-there untracked would vanish from the site the first time someone deploys from a checkout
-without it. The file name carries its version (`launch-v8.mp4`) and is served
-`immutable`; a new cut is a new key and a one-line change to `website/index.html`. Its
-poster and captions are small and stay in `website/assets/`, which also keeps the caption
-tracks same-origin. The bucket and its domain were created by hand with `wrangler r2`; no
-deploy script touches them.
-
-### Why M3 did not use R2 either
-
-R2 was the named destination for the HTML archive, and the archive does not need one: the bytes
-live in Cloudflare's content-addressed asset store and only the list, D1 `pages_manifest`, has to
-survive between runs. Why, and what an R2 copy would still be for:
-[ADR-0004](decisions/0004-publish-over-pages-rest-without-r2.md).
-
-**The local-directory writer stays** as the no-D1 fallback: `backend = "json"` keeps writing
-`agent-vault/html/` and deploying a directory.
-
-**What this costs, stated plainly.** Three things a reviewer should be able to check:
-
-- **Durability.** Until 2026-09-24 digest HTML held LLM summaries stored nowhere else, so the
-  deployed site was the archive's only copy. Since then every run also stores its `DigestContent`
-  in D1 `digests` (§4), so deleting the Pages project no longer deletes a digest's content; the
-  raw companion pages and the issues published before that date still live only on Pages. Both
-  copies sit in one Cloudflare account; an off-account copy is tracked in §7.
-- **Recovery.** If D1 is lost, `pages_manifest` is empty and the next deploy would be a full
-  snapshot of this run's files alone — wiping every live page. That is now refused two ways.
-  An empty manifest against a Pages project that already has deployments (and no receipt)
-  stops the publish and names the two ways out (`[store] database_id`,
-  `scripts/backfill_pages_manifest.py`). A non-empty-but-wrong `pages_manifest` — a staging D1
-  holding a different 62 pages — is the same wipe by set difference, and a count check would
-  miss it: `publish_site` fetches the live archive index and refuses when more than one dated
-  pages listed there are missing from the manifest. `pages_deploy_receipt` means this D1 has
-  published this project before, not that it currently owns the live archive, so a receipt does
-  not skip the archive check (it only skips the Cloudflare deployments probe). Zero dated
-  anchors on the live index is a pass: there is nothing to lose. An unreadable live index fails
-  closed. There is no in-band path for a legitimate prune of more than one digest page;
-  `-raw.html` pages are not in the signal. The live `index.html` still lists every digest, so
-  fetching each page and re-running `asset_hash` reconstructs path → hash exactly; that is what
-  the backfill script does. The archive also reads `usage_log` for its rows' article counts, and no
-  read may shorten the list: a failed read drops the counts, never an issue, because recovery
-  rebuilds from every issue the live index lists. A first deploy that left no manifest row — refused, or with no verdict and no live page — is a different case:
-  `pages_deploy_receipt` records that this D1 already owns the project, so the next run skips
-  the deployments probe — the archive-shortfall check still runs against the live index. The
-  reverse — losing the *site* — is not self-healing: `deploy_manifest` raises rather than
-  quietly deploying a truncated archive, which is the right failure but still a failure.
-- **Ceiling.** Every deploy sends a manifest of every file and asks `check-missing` about every
-  hash. The account's upload token caps a deployment at **20,000 files** (read from the JWT's
-  `max_file_count_allowed`). At two digests a day that is four files a day — roughly thirteen years.
-  The upgrade path when it matters is to prune the archive tail, not to add a storage tier.
-
-### Why M4 did not use Vectorize
-
-Vectorize was the named destination for the embedding cache; the cache was deleted instead and
-nothing replaced it ([ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md)). The
-provider half of M4 has since been reverted as a config line: production embeds with
-`gemini-embedding-001` from 2026-09-21
-([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)).
-`WorkersAIEmbedder` stays as the example config's provider; `cyris embed-compare` stays for the
-next comparison.
-
-### A fixed threshold is the wrong shape (found while collecting M4's receipt)
-
-M4's receipt was "`cyris vote-sim` at ≈0.53 suppresses the same set it does today". It does not, and
-the reason is neither the new provider nor a number that needs re-measuring.
-
-**Votes are not in the embedding.** The model is general-purpose and knows nothing about this
-reader. A vote's only effect is to put one more *title vector* into a seed list, and
-`domain/similarity.max_similarity` takes the **maximum** cosine over that list. A maximum over a
-growing set is monotonically non-decreasing: every downvote can only raise every candidate's
-`down_similarity`, never lower it. So a **fixed absolute cutoff must over-suppress more each time
-the reader votes** — by construction, not by drift.
-
-Measured on one 168h window (1,112 candidates) at a fixed 0.53, varying only the seed cap:
-
-| `max_seeds` | seeds | suppressed |
+| Date | Commit | What changed |
 |---|---|---|
-| 2 | 2 up / 2 down | 8 |
-| 5 | 5 / 5 | 27 |
-| 10 | 10 / 10 | 35 |
-| 25 | 25 / 24 | 45 |
-| 200 | 101 / 24 | 40 |
-
-Downvote seeds drive suppression up steeply; upvote seeds claw some back through the `up < down`
-guard, which is the only thing keeping this bounded at all. Both published thresholds were
-calibrated against **7 up / 2 down** seeds. There are now **101 / 24**, so both are stale — the
-incumbent `gemini @ 0.68` is over-suppressing too, and was before M4 was written.
-
-The numbers were left at their published values. Re-tuning them to make this milestone's own receipt
-pass is exactly the check-shaped-to-fit the contract-first rule forbids, and a new constant would go
-stale the same way for the same reason. The fix is a different *shape* — a relative cutoff (rank, or
-a margin over the window's own distribution) rather than an absolute cosine. That is its own piece
-of work; see §7.
-
-**What M1 actually removed** (2026-08-27): `DigestWriter` and `article_export`, `[obsidian]`,
-`CYRIS_VAULT_PATH` and the vault bind mount, `cyris articles export`, the vault export on a triage
-accept, `NewsletterArchiveSource` and the maildir, `webhook_server` and `cyris email-server`,
-`EmailConfig` / `[email]` / `CYRIS_EMAIL_WEBHOOK_SECRET`, `schedule/launchd.py` and `cyris
-schedule`, both parity launchd jobs and `workers/rss/compare.py`, `agent-vault/events/`, and the
-parity logs. Added in the same milestone: the two `doctor` checks that would have caught the
-08-25→27 split — `build` (a config table this image cannot see is a failure) and `store wiring`
-(print the class the composition root resolved, not the name the config asked for).
-
-### Blocking the cloud move
-
-| # | What | Today | Target | Ticket |
-|---|---|---|---|---|
-| ~~4~~ | ~~Scheduling~~ | Done 2026-08-30: `[triggers] crons = ["0 * * * *"]` on `cyris-app`, the same D1 gate, the same `--if-due` code | — | Container move |
-| ~~5~~ | ~~`onActivityExpired` → `stop()`~~ — done 2026-08-31 | The hook was written on 08-30 and did nothing for a day: `stop()` is a SIGTERM and the image's PID 1 had no handler for it (§6). `cli.py` now installs one. The `run` role does not need the idle timer to stop — it exits when the pipeline pass ends, which is why it is a separate instance — but it had the same hole when the timer did fire, closed 2026-09-24 (§6, and the SIGTERM row in the next table) | ✅ Idle 5 min → `container stopped { exitCode: 0, reason: 'exit' }`, instance `inactive` | Container move |
-
-### Blocking one-button deploy
-
-| # | What | Today | Target | Ticket |
-|---|---|---|---|---|
-| ~~6~~ | ~~Three Worker URLs + Pages project name~~ | Done 2026-09-04: all four are deployer-supplied secrets the Worker forwards to the container (`workers/app/src/index.js`), and `.env.example` names every one | — | deploy button |
-| ~~7~~ | ~~The button and the secret checklist~~ | Done 2026-09-04: `README.md` carries the button, `.env.example` is the checklist the deploy page reads, and `package.json`'s `cloudflare.bindings` is the per-field guidance. There is no `deploy.json` — that file does not exist in this mechanism | — | deploy button |
-| ~~8~~ | ~~Three Workers vs one button~~ | Decided 2026-09-04: four buttons, the app primary. One button deploys one Worker, and the app's config moved to the repo root so its subdirectory constraint is satisfied | — | deploy button |
-| ~~8b~~ | ~~Three of the four buttons were never written~~ | Done 2026-09-05: `workers/rss/`, `workers/promote/` and `workers/newsletter/` each have a button, a README and `cloudflare.bindings`; `workers/promote/` had neither README nor `package.json`. `tests/test_deploy_inputs.py` walks `workers/*/wrangler.toml` and requires all three | — | deploy button |
-| ~~8c~~ | ~~A fork buffered the author's feeds~~ | Done 2026-09-05: `src/feeds.json` held 51 personal feeds and a Mailchimp recipient id, and `feeds.js` fell back to it exactly when a fresh fork's `sources` table was empty; `gen-feeds.py` then read `sources.example.yaml` only. Since 2026-09-19 there is no bundled list at all: the Worker polls the D1 table's rows, an empty table polls nothing and logs how to fill it, and a D1 read error fails the poll. `feeds.json` and `gen-feeds.py` are gone | — | deploy button |
-| ~~8d~~ | ~~A deployed digest was silently excerpt-only~~ | Done 2026-09-05: the LLM provider is grade D and has no env var, so a container with a pasted API key and no `/settings` visit published raw excerpts without a word. Since 2026-09-19 a first boot cannot get that far: every run stops, naming the missing keys, until `/settings` or `cyris settings push` fills every runtime setting. Excerpts are now a choice, `provider = "none"`, which `doctor` reports as one | — | deploy button |
-| ~~8e~~ | ~~A configured LLM that did nothing looked like a healthy run~~ | Done 2026-09-17: from 2026-09-08 to 09-13 twelve runs were excerpt-only with a provider set, and the Discord message looked the same as a healthy one. `is_degraded_run` (`domain/models.py`) now flags a run whose provider is not `none` and whose scoring, filter or summarize step went on without the LLM's answer, because no client was built or its call failed; the message, the page and the mail open with a degraded-digest notice. Zero input tokens was the test until 2026-10-02, and it flagged a healthy LLM with nothing to do, a fan-only window say | — | degraded run named in the notification |
-| ~~30~~ | ~~CI release image, and a deploy that references it~~ | GitHub Actions must build the amd64 image, bake `CYRIS_GIT_SHA`, push immutable and `release` registry tags, and annotate the source commit. The deploy remains separate: `wrangler deploy` still builds locally until that path changes | A release-image workflow dispatch publishes and verifies both tags. The deploy half landed 2026-09-15 as `.github/workflows/deploy.yml` plus `scripts/derive-wrangler-config.sh`, dispatch-only and taking a tag or digest. ✅ Dispatched the same day: the release tag `image/b208f09` records `sha256:75b9aeb…`, the deploy put that exact digest live in 21s, and `cyris doctor --deployment` then answered `runs b208f09 — HEAD is 1 commit ahead of it` and exited 0. Two things the first attempt taught: the deploy needs `bun install` before `wrangler deploy` bundles the Worker, and the reported sha lags a deploy for as long as an instance stays warm — asking repeatedly renews the idle timer that would have retired it, so the way to see a rollout is to stop asking for five minutes | image built in CI · deploy from the registry image |
-| ~~31~~ | ~~Whether a revert carries the image~~ | Answered 2026-09-15, and the answer is no. Production was on version `0c91b494` running `b208f09`; `wrangler rollback` moved it to `d6ada284`, a version created before that image was ever deployed, and 37 minutes later `cyris doctor --deployment` still reported `runs b208f09`. The version object explains why — `wrangler versions view --json` on the live version lists a container's `class_name` and `name` and no image at all, so there is nothing for a rollback to restore. The image belongs to a separate container application that only `wrangler deploy` updates, which is why `--containers-rollout` exists on that command and on no other | ✅ Going back is a deploy naming the digest, which the `image/<short-sha>` git tag records; the procedure is in `docs/operations.md` under *Going back*, and `docs/spec/revert-carries-the-image.md` states the rule | rollback carries the image? |
-| 9 | A clean-account run of the button | never done — the three failures above were found by reading, not by pressing | press it on an account that has never seen cyris, fill the secrets, get a digest | deploy button |
-| ~~36~~ | ~~Install steps a stranger can follow~~ | Done 2026-09-22 with release 0.3.0: the install steps moved out of `README.md` into `docs/install-local.md` (a `json` install on one machine), `docs/install-cloudflare.md` (the app Worker, D1 and the optional Workers) and `docs/operations.md` (running a deployment once it is up). `README.md` links to them and keeps what a reader needs before cloning | — | — |
-
-### Grade D has a home
-
-Both closed by M2 on 2026-08-27 — see §5. The Discord webhook joined them — Done 2026-09-17,
-in the ticket that moved notification credentials to D1: it lives in D1 `settings`, written by `/settings`,
-which asks Discord whether the webhook exists before saving it. Since 2026-09-19 every grade-D key
-has a home and a writer: every key in `GRADE_D_KEYS` has a `/settings` field, D1 is the
-only home a `d1` deployment reads, and `cyris doctor` reports what is missing rather than which
-home won, because there is only one.
-
-### Waiting on a receipt
-
-| # | What | Why it matters |
-|---|---|---|
-| ~~11~~ | ~~Retire the local JSON store~~ | Done 2026-08-29: the M-ship receipt landed (a scheduled container run advanced `pages_manifest` while every local file stayed frozen), and `agent-vault/articles/` was deleted. `cyris store migrate\|diff` **were not** removed with it — checked 2026-08-30, both are still on the CLI, and they still have a subject: `backend = "json"` remains the no-D1 fallback |
-| ~~12~~ | ~~Post-rebuild cleanup~~ | Done 2026-08-29 in the same window: `[miniflux]`, both embeddings caches, `agent-vault/html/` and its bind mount are gone. `agent-vault/` now holds ~52KB and no pipeline state. (2026-09-22: `docker-compose.yml` bind-mounts the whole `./agent-vault` again, for a `json` compose install; see §6.) |
-| 13 | Replace the absolute similarity threshold with a relative one | Superseded in shape by M-behaviour (`docs/milestones/schema-first-interleave.md`): suppression must carry a reason and a clock, not a recalibrated cosine. `[vote_similarity]` was turned **off** in production on 2026-08-28 — the stale cutoff was suppressing measurably (2→24 downvote seeds took suppression from 8 to 45 on a fixed window). It is on again, embedding with `gemini-embedding-001` (see *Why M4 did not use Vectorize*) |
-| 14 | Decide whether rendered digests need a durable backup | The archive of record is now the deployed Pages site (see M3). Until 2026-09-24 digest HTML held LLM summaries stored nowhere else, so deleting the Pages project deleted history. Better than the gitignored directory it replaced, worse than a copy in R2. Cost of closing it: one token permission (`R2 → Edit`). 2026-09-24 showed a second way to lose an issue: a deployment that lands after `_page_is_live` gives up never reaches `pages_manifest`, so the next deploy, a full snapshot, drops the page. That morning's issue was put back into the manifest by hand from the live site. That way of losing an issue closed 2026-09-24 (the publish-verification ticket): the manifest is saved on Cloudflare's reported stage `deploy`/`success`, falling back to the live alias only when no verdict arrives, and publish's Pages requests are bounded at 180s, within the limits *Publishing without a subprocess* above names. The D1 half is done 2026-09-24: every non-dry-run run stores its final `DigestContent` and raw-page flag in D1 `digests` (§4), so a lost digest page can be re-rendered, though its raw companion page cannot. Since 2026-10-08 `D1DigestStore.load` has a caller: the run after a failed publish re-renders that issue from its row and publishes it (§3; the republish ticket). Still open: a copy off Cloudflare, since D1 and Pages sit in one account (the off-site backup ticket) |
-| ~~32~~ | ~~Every run leaves a D1 row — the empty ones and the exceptions included~~ | Done 2026-09-17. `run_digest`'s `finally` logs the `run_summary` line and then hands the same dict to `Deps.record_run`, bound in `build_deps` only when D1 is wired, which inserts one `digest_runs` row stamped with the image's `CYRIS_GIT_SHA`; the call has its own `try/except`, so a D1 outage costs the row, never the run's result, exception or log line. `degraded` comes from `is_degraded_run` on the content path and is NULL where no content exists, agreeing with the Discord flag. Dry runs write too, and `last()` ignores them. `doctor --deployment` now prints a `last run` line under `deployment image`, comparing the last run's sha with the one production starts — the runtime half #33 left open; it warns, never fails, because a sha lags a deploy until the next run. What it replaced: On 2026-09-14 the 08:00 run left nothing: no `usage_log` row, no page, no notification. `no_articles` returns before storing, writing usage, publishing and notifying, so "ran and fetched an empty set" and "never started" leave the same trace — nothing — and telling them apart meant chasing a stream that expires in seven days. The row should record the degraded judgement through `is_degraded_run`, so it agrees with the notification. `run_summary` already has the right semantics (emitted in a `finally`, `status=error` on the exception path) but reaches only stdout, which is the operational window and not the record. A new table, not a new column: `schema.sql` is all `CREATE ... IF NOT EXISTS` applied at every entrypoint, so an existing deployment gets it on the next boot. The build sha rides along and corroborates #31 after the fact; it is not what a revert is judged by. Ticket: a D1 row for every run |
-| ~~33~~ | ~~`doctor` says which image production runs, and how far behind it is~~ | Done 2026-09-15. Printing the local sha would not have helped — `doctor` on a laptop reports the laptop — and the online half has exactly one source: Cloudflare documents no way to read the image a Worker version references (no Containers resource in the API reference; a version's response carries at most a Durable Object's container name) and injects no image identity into a running container. So the `ui` role answers `/api/build` with its baked `CYRIS_GIT_SHA`, and `doctor --deployment <url>` signs in with `CYRIS_UI_TOKEN`, reads it and counts the distance to local HEAD; any request wakes that instance, so the question is answerable on demand rather than at the next cron hour. A checkout ahead of production warns rather than fails — that is every working day. ✅ First run against the real deployment: `/login` answered 302 and the cookie carried, `/api/build` answered **404** — production still runs the 2026-09-14 image, which predates the endpoint. That is the check working, and a 404 after a successful sign-in gets its own verdict rather than the hostname hint a dead host would get. A green run needs #30's deploy path; the runtime half — which sha the last pipeline run executed — is an acceptance line on #32. Ticket: doctor names the image production runs |
-| 37 | The email channel, from prototype to channel | Both prototype steps landed 2026-09-27 beside Discord (§5 row *Mail recipient + sender*), injected as `send_email` next to `send_discord` with no sink list on purpose. The mail carries the whole issue: `templates/email.html.j2`, light by default and the §2 dark tokens under `prefers-color-scheme`, specified in `docs/design/ui-language.md` §6 *email*. ✅ The 2026-09-27 evening run published, notified Discord and logged `Digest mail delivered`, and the reader received it (the link-mail and HTML-body tickets). The failure alert (§3.2) adds a second pair, `send_discord_alert` and `send_email_alert`, for the multi-channel shape to absorb. Left open: the multi-channel shape a Telegram channel ticket was going to introduce, planned now that the prototype is done |
-| 38 | Record the vote-similarity candidate pool | Landed 2026-10-08 (the embedding shadow-record ticket): every run whose similarity pass embedded writes one D1 `vote_similarity_shadow` row per judged candidate (§4), with the nearest upvote and downvote, their cosines, the embedding model and the run's `started_at`. It records no verdict and uses no threshold, and selection is unchanged. Until it, the cosines `judge_by_votes` computed were dropped once suppression was applied, so nothing could calibrate on the real candidate pool. It is the input for a preference ranking, a blind-label benchmark and a deletion threshold to replace #13's fixed cutoff; none of those reads it yet. Still open: the receipt. After one production run, the run's row count must equal its `digest_runs.summary` `vote_similarity_judged` |
-| — | Legitimate archive prune has no in-band path | The scale guard refuses a deploy that would drop more than one live digest page. Intentionally shrinking the archive has to go around the guard |
-| — | `-raw.html` is outside the archive-shortfall signal | The live index lists digest pages only. A wrong D1 that kept every dated digest but dropped every `-raw.html` listing would pass |
-| ~~—~~ | ~~D1 calls have no total time budget~~ | Closed 2026-09-24 by the cheaper fix (the D1 time-budget ticket). The worry was the run's tail outlasting the shared 5-minute `sleepAfter`: `D1Client` retries a query for up to 4 × 60s + 12s, outside publish's 180s bound, and the slowest run in `digest_runs` already took 196s before promote-sync. A D1 deadline could not have bounded the run anyway — the LLM calls have none. Instead the `run` instance now gets its own `RUN_SLEEP_AFTER = "15m"` in `workers/app/src/index.js`, chosen from the Durable Object's own name (`ctx.id.name === "run"`) so a restart mid-run keeps it; it exits on its own, so the timer is only a cap on a hung run. `ui` keeps 5 minutes. A Python Worker, which would remove the timer entirely, was spiked the same day and not taken: sync `httpx` times out on fresh isolates, `aiohttp` cannot connect, `blake3` has no Pyodide wheel, and startup already used 934 of 1000 ms |
-| ~~—~~ | ~~Whether the run role stops on SIGTERM is unverified~~ | Done 2026-09-24. It did not: reproduced with `docker kill -s TERM` on a `run` container, PID 1's `SigCgt` lacked TERM, the container was still running 12 s later, and it exited 137 only after SIGKILL. The entrypoint now traps TERM, forwards it to the running step, waits for it and exits 143; `cyris run` cancels its pipeline on SIGTERM and exits 143, so the pass ends once the sync call in flight returns, `run_digest`'s `finally` (the D1 `digest_runs` write) finishes and `asyncio.run` has joined its executor threads (up to 300s; §6). No bound on the whole stop, and no SIGKILL bound, is claimed. The production receipt — `onStop` logging `exitCode: 143` for a run stopped by `sleepAfter` — is pending (§6) |
-
-### The reader-facing surfaces
-
-All three are on `<your custom domain>` since 2026-08-30, split by path rather than by hostname:
-
-```
-/                       digest index      ─┐ public unless CYRIS_PRIVATE_ARCHIVE is "true"
-/2026-08-30-evening.html  one digest      ─┘ (then the cookie too): the Worker proxies Pages, no container
-/triage*                                    404
-/settings · /api/* · /static/*              CYRIS_UI_TOKEN cookie; Access too if
-                                            CYRIS_UI_ACCESS_HOST matches this host
-```
-
-The Worker proxies `DIGEST_ORIGIN` for anything not on the protected list, which costs one Worker
-request; why the digest stays static rather than container-served is
-[ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md). `/triage*` returns
-404.
-
-~~**The archive is public, and what needs closing is the write, not the read.** Anyone holding a
-digest link can vote today: `_promote_script.html.j2` renders the promote bearer into every
-published page, so a stranger's click lands in `stored_articles` as a `triaged_at`-stamped *human*
-verdict and seeds `vote_similarity` and `article_tags`. Sharing a digest shares write access to the
-interest model.~~
-
-~~The fix keeps the archive public — which is what it should be, since a digest is worth sending to
-someone — and moves the capability instead of the content: the token stops being rendered at all,
-votes go to a same-origin `POST /api/vote` on the Worker, which attaches the bearer server-side, and
-the buttons render only where that endpoint is reachable and authorised. The same file then gives a
-reader on `pages.dev` everything except the ability to vote, and a reader on `<your custom domain>`
-— past Access — the whole thing. No second rendering, no second Access application, no service
-token.~~ **Done 2026-09-01** (the private-votes change), then the domainless form: the token stays server-side only, votes go through `POST /api/vote`, and vote buttons probe `/api/vote` to detect whether they should render. On a hostname equal to `CYRIS_UI_ACCESS_HOST`, the probe and the POST stay Access-only (no UI token). On every other hostname the session cookie is required, so a stranger on `*.workers.dev` cannot write a human verdict. `pages.dev` readers still see no buttons (`/api/vote` is not routed there). One HTML, two capabilities. `CYRIS_PROMOTE_TOKEN` is kept separate from `CYRIS_WORKER_TOKEN` and never rendered into templates.
-
-**Every HTML page the Worker serves carries the reader's type size** (since 2026-09-20,
-the reader type-size ticket; why injection, and why it is the only live reader preference:
-[ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md)).
-`workers/app/src/type_scale.js` reads `digest.type_scale` from D1 over REST with the
-`CLOUDFLARE_API_TOKEN` the container already holds, with no binding, and only when the store is
-D1 and the account, database and token are all set. One read per isolate is held for 60 s,
-failures included, and concurrent page views share the read in flight. A save clears the isolate's memo, so the reader who saved sees the
-new size on the next page; other isolates follow within a minute. At 1, the value production holds,
-the Worker changes nothing: pages pass through byte for byte with their validators. At 0.875 or
-1.125 it adds `<style>html:root{--type-scale:X}</style>` as the last child of `<head>` of every
-`text/html` answer, Pages' and the container's (`/settings`), drops `If-None-Match` and
-`If-Modified-Since` from what it asks Pages and `ETag` and `Last-Modified` from what it returns, so
-no browser revalidates a page into its old size. A failed, slow (over 1 s) or invalid read is 1.
-Issues published before 2026-09-18 set literal font sizes and do not change, and a page opened on
-pages.dev directly never passes the Worker, so it stays at 1.
-
-| # | What | Today | Target | Ticket |
-|---|---|---|---|---|
-| ~~15~~ | ~~A write surface for the `sources` table~~ | Done 2026-08-30 (P2): `POST /api/sources` upserts one row and `DELETE /api/sources/{name}` retires it, over the **existing** `sources` row — name, url, type, tier, tags, `homepage`, `email_match`. No new table, no new §4 row. Two shapes worth knowing: `cyris sources push` replaces the table wholesale, so it clobbers edits made here. Until 2026-09-19 a write against an **empty** table seeded it with the run's effective sources first, because an empty table meant "use `sources.yaml`"; the table is now a `d1` deployment's only list, so a first write stores exactly that source, and retiring the last source is refused, since a run with none stops | sources editor on /settings |
-| ~~17~~ | ~~Embedding provider is not on the page the LLM provider is on~~ | Done 2026-09-19: `vote_similarity.provider` and `.model` are grade-D keys (AC 1 rewritten: no `[embedding]` table — the embedder has one consumer, and a table split would rename keys in every fork's `cyris.toml`), written by the Model category with vote similarity's switch and seed count through one route, which makes one real embedding call when the feature is on and stores without one when it is off. AC 4 (doctor says whether D1 or the file won) is void: a deployment has one home. **`threshold` stays grade A**: the cosine scale is a measured property of the model, not a preference, so it follows the provider rather than being typed in. Since 2026-10-07 it follows the provider's calibrated *model*: the model is free text on `/settings`, and another model of the same provider gets no borrowed cutoff (see the threshold row in §5) | — | embedding provider on /settings |
-| ~~16~~ | ~~One visual system across the three surfaces~~ | Done 2026-08-30: `static/style.css` now carries the digest's token names and values (a digest is a standalone file deployed to Pages, so it cannot link the stylesheet and carries its own copy — the values come from `_tokens.css.j2`, and `tests/test_digest_css_partials.py` enforces that the two agree), plus Geist and the grid background. The deck's swipe glows follow `--accent`/`--warn`; `/settings` lost its two hard-coded result colours | — | one visual system |
-| ~~34~~ | ~~One design language beyond the tokens~~ | Step 1 landed 2026-09-18: every surface now carries the §2 token set, every `font-size` on the digest, archive and raw pages and in `style.css` follows the §3 roles times `--type-scale`, the §4 components live once in `_components.css.j2` and are mirrored in `style.css`, every page has a focus outline and honours reduced motion, and `tests/test_ui_spec.py` holds all of it to the spec. Step 2 landed 2026-09-18: archive, digest and raw open with the §4 site bar (Archive, and Settings behind the `/api/vote` probe), digest and raw add an issue bar that switches between the issue's two views, each archive row carries Digest and, when the raw page exists, All articles, and footers carry generation info only. Issues published before it keep their footer navigation, because Pages recovers old pages byte for byte and only the archive is re-rendered. Step 3 landed 2026-09-18: `/settings` is rendered from `entrypoints/templates/settings.html.j2` with the digest pages' own site bar, and splits into the four hash categories with one Save each, live only for unsaved changes and with its result beside it; sources are a filterable table edited in place, retired with a two-press confirm, and a read-only deployment disables every write with the reason shown. Its inline styles hold page layout only and pass the same literal guards as the digest pages, and `scripts/settings_probe.py --self-test` drives the page's behaviour in Chromium, proving every check can fail. Step 4 landed 2026-09-19: raw opens with the §6 page head and lists each source as a panel of state, score, title and vote rows at 960px, breaking only at 720px; a signed-in reader, as the same `/api/vote` probe decides, also gets a List / Triage switch, whose triage view deals the pending articles this browser has not voted on, one card at a time, voted by swipe or by the Down / Up buttons and opened by a tap. Every triage vote goes through the list's own `castVote`, so it lands on the same promote Worker path, shows in both views, and leaves its card in place with a notice when it fails; under reduced motion the card stays still and the deck still advances. `scripts/raw_probe.py --self-test` drives it in Chromium on the CDP core it shares with the settings probe, `scripts/cdp_probe.py`. Step 6 landed 2026-09-19: the archive opens with the §6 page head, then a headline card for this run's issue (Latest, date, period, its lead story, article count and two largest news clusters, all from memory) and one panel per month below it, a row per issue with its date, period, the article count `usage_log` recorded for it when there is one, and its two views. A day's issues follow the schedule's firing order, `schedule.PERIOD_ORDER`, and a day's later rows dim their repeated date whatever the labels are; every issue is still listed, and a test over 65 issues holds it. Step 7 landed 2026-09-19: the digest issue page follows §6 and the prototype. Each section is named once, by a label tag with no number; the lead is the prototype's card, with a Top story tag above it and its score above the title; heading levels step down one at a time, and one `.item-title` rule carries the §3 title role; every meta row is one `.meta` flex rule in the §3 label role, which the lead extends with `.meta.ruled`; the features grid and the radar list share one `auto-fit` track rule, so their column counts agree at every width; the page breaks only at 720px, and every body spacing is on the §2 scale, which `spacing_literals` in `tests/css_rules.py` checks from `tests/test_ui_spec.py`. `scripts/digest_probe.py --self-test` drives it in Chromium on the shared CDP core: every item kind's vote buttons stay on one row beside its meta at 360, 880, 1000 and 1440px, a real pointer click votes and marks the button, the two grids agree on their columns, and the page never scrolls sideways. Above 720px the stats column narrows with the page, so the title clears the stats card even in the fallback serif, which the probe measures from 721px up. One limitation is known: until the webfont loads, the issue title in the fallback serif is clipped at its right end on a phone; with Instrument Serif loaded it fits. Issues published before it keep the old layout, because Pages recovers old pages byte for byte. Step 5 landed 2026-09-19: each deployment has one settings home, so `/settings` shows no origin at all; it lists every runtime setting across five categories — Model (the LLM including `None — plain excerpts`, the embedder, vote similarity), Digest, Pipeline, Notifications (with a confirmed Turn off) and Sources — and marks a missing one in its field, at the top of its category and with a warn dot on the category list. All seven steps have landed | `docs/design/ui-language.md`, accepted 2026-09-17, with `docs/design/prototype.html` as its reference implementation: shared components as `_*.css.j2` partials copied into `style.css`, a site bar plus a Digest / All articles switch per issue, and `/settings` split into hash tabs (Model, Digest, Pipeline, Notifications, Sources). The spec's §8 is the landing order, seven steps that each ship alone | ~~UI spec step 1~~ → ~~2~~ → ~~3~~ → ~~4~~ → ~~5~~ → ~~6~~ → ~~7~~ (`docs/design/ui-language.md` §8). The deck's retirement landed 2026-09-19: the swipe deck, its page, script and stylesheet and its five article routes are gone, raw's triage view is the only triage surface, and the cross-day pending backlog is reachable only through `cyris articles` |
-| ~~35~~ | ~~Reader-adjustable type size~~ | Done 2026-09-20: one site-wide grade-D key, `digest.type_scale` (0.875, 1 or 1.125), set on `/settings` → Digest and required like every grade-D key (§5 row *Reader type size*). The app Worker reads it from D1 over REST and injects it into every HTML page it serves, so issues already published follow it too, and a save rescales `/settings` at once — see *Every HTML page the Worker serves carries the reader's type size* above. No column width follows the scale. One did for a day: the masthead's stats column narrowed above 1 so the larger issue title cleared the stats card, and on 2026-09-21 the §3 baseline itself came down one step (every role value × 0.875, the three steps unchanged, because reading the first issue at the 2026-09-17 baseline showed it too large). Measured at 1.125 with no webfont the plain `min(37vw, 320px)` column then cleared the card by 34.8px at 721px, the tightest width, so the scale-aware column was deleted rather than kept with a guard that could no longer fail. There is no site-bar control, and pages.dev opened directly stays at 1 | — | reader type size |
-
-### Found by the 2026-09-05 alignment pass
-
-Six things the code and this document disagreed about, none of them urgent, all of them
-the kind that get harder to see the longer they sit. One ticket each.
-
-| # | What | Today | Target | Ticket |
-|---|---|---|---|---|
-| ~~18~~ | ~~`doctor` builds adapters inside the service layer~~ — closed 2026-09-05 | It was six sites, not the three the ticket named: three more called `bootstrap.build_llm`/`build_store`, which imports the composition root into the core — the inversion the rule exists to prevent | ✅ Neither path on the ticket: `doctor`'s subject *is* the wiring, so it moved into a `diagnostics/` layer of its own and the rule now holds with **no** exception. §2 carries the reason; `tests/test_core_imports.py` is the receipt | doctor builds its own adapters |
-| ~~19~~ | ~~The CLI holds pipeline logic~~ — closed 2026-09-05 | Two findings: the scorable filter was not a copy but a *drifted* copy — the CLI scored fan-tier articles `run_digest` skips — and the comparison rules had no test at all because they were unreachable without running a typer command | ✅ Both sides now call `scoring.select_scorable`; the arm building, `margin` and the `api_calls == 0` rule moved to `diagnostics/compare.py` with `tests/test_compare.py`. Not `service_layer/`: a comparison builds two wirings, which the core may not do. `embed_compare` (78), `articles_score` (76) and `llm_compare` (67) are still over the ticket's 60 lines, all of it option declarations and output formatting | CLI holds pipeline logic |
-| ~~20~~ | ~~Two callers reach past their Protocol~~ — closed 2026-09-05 | The ticket feared `neurons` would force other providers to return a meaningless field; `None` already says "this one does not report", so it did not | ✅ Both declared, each in its own shape: `Embedder.usage: EmbeddingUsage`, and `neurons` moved from an ad-hoc counter on `WorkersAIClient` onto `LLMResponse`, summed by `UsageStats.add`. The `getattr` is gone. §2 carries the reason; three tests cover a provider that reports nothing and the trip from response to run total | embedder usage bypasses its port |
-| ~~21~~ | ~~§4 does not cover every write~~ — closed 2026-09-05 | Three separate things: the `usage.jsonl` row was a contradiction (the code was right, the doc called a live fallback retired), the comparisons wrote local files, and `CLAUDE.md` described an `agent-vault/daily/` nothing has written for a long time | ✅ §4 now says what it covers; the comparisons emit to stdout instead of writing, so there was nothing to add a row for; the `daily/` sentence is gone. Two tests were the receipt: `test_usage_jsonl_row_matches_bootstrap`, removed 2026-09-26 with the other doc-wording pins, and `test_only_the_documented_fallbacks_write_to_local_disk`, which pins the writers at four | §4 is missing rows |
-| ~~22~~ | ~~`max_featured` has no grade and no home~~ — closed 2026-09-05 | It was the last number in the file with neither a grade nor a config key | ✅ Grade D, and given the writer that makes D real: `[digest] max_featured`, D1 `settings`, and a field on `/settings` — a container has no writable `cyris.toml`, so a key graded D without a page is only half graded. Pinned by the same test that pins `featured_threshold` | featured cap has no grade |
-| ~~23~~ | ~~A second architecture diagram nothing reads~~ — closed 2026-09-05 | `docs/cyris-runtime.architecture.json` and its 735 KB `.html`: no producer, no consumer, no inbound link, and §2's filesystem table went stale on 2026-09-05 without either of them noticing | ✅ Both deleted. Not connected to a generator: §2's mermaid diagrams already describe the runtime, and they sit where someone reading this file will actually reach them. A second source of truth nobody reads does not fail loudly — it just stays trusted | retire the orphan runtime diagram |
-
-### The guards themselves, audited 2026-09-05
-
-The pass above closed its findings with tests. This one asked what those tests actually
-check. Four holes, all closed the same day, none of which had ever failed — which is the
-point: a guard with a hole reports green for the case it cannot see.
-
-| # | What | Closed by |
-|---|---|---|
-| ~~24~~ | ~~No Worker JS ran in CI~~ | `tests/test_worker_js_suite.py` shells out to vitest and skips when the binary is absent; `ci.yml` never installed one, so four Worker suites had never run there and the skip said nothing. The workflow installs bun, and the test now refuses to skip when `CI` is set |
-| ~~25~~ | ~~Nothing tied a new D1 table to a §4 row~~ | Four of the ten tables were named in an assertion beside their own store; the eleventh depended on the author remembering. `tests/test_residency_covers_schema.py` reads `schema.sql` instead |
-| ~~26~~ | ~~A Protocol was only enforced by whichever call site ran~~ | No type checker here, so a `ArticleRepository` method the digest run does not touch could be missing until someone opened the triage UI — as `ports.py` itself warned. `tests/test_protocol_conformance.py` checks all eleven implementations against their four Protocols |
-| ~~27~~ | ~~Both AST guards had a form that walked past them~~ | `test_core_imports` collected only `ast.ImportFrom`, so `import cyris.bootstrap` was not a layering violation it could see; `test_local_writes` matched attribute calls only, so `open(p, "a")` was invisible — `usage_log.py` was caught by the `mkdir` on the line above, not by its write. Both now have a test that fails without the fix |
-
-**#28, still open: a run's neuron figure has no persistent home.** `UsageStats.neurons` now survives every aggregation hop and reaches the `run_summary` line, which Workers Logs keeps for seven days — so the question is no longer visibility, it is permanence. The digest footer prints tokens and calls, and `usage_log` has no column for neurons or for embedding spend. One `detail` JSON column takes both, the shape `sources.config` already uses so that a later metric costs no migration — blocked on the manual ALTER that M6's missing schema evolution forces (the `usage_log` detail-column ticket).
-
-**#29, still open: `cost_usd` is a derived number stored beside its inputs.** It has already misled once — `vote-signal.md` §4 warns against it, 2× wrong across 49 rows — and the rate card it freezes keeps changing while `model` and the token counts sit in the same row. The fix is to stop writing it and recompute at read time; the column stays as it is, because those rows are history and SQLite cannot drop a NOT NULL without rebuilding the table (the cost-recompute ticket). `cyris llm-compare` is its one reader. Giving it a home means a `usage_log` column **and** a §4 row, which is why it is a ticket rather than a line of code.
-
-Two boundaries #15 does **not** cross, both already decided in §5:
-
-- **Cloudflare Email Routing stays manual.** The domain and the route are grade B and need the
-  operator's own domain. What #15 makes editable is the sender→source mapping (`email_match`), which
-  is grade D and already rides in the `sources` row. Putting a B-grade setting on a D-grade page is
-  how a deployment stops being portable.
-- **`sources.yaml` is the `json` backend's list only**
-  ([ADR-0003](decisions/0003-one-home-per-backend.md)). Until 2026-09-19 an empty or unreachable
-  table fell back to the file on both readers; now a `d1` deployment reads the table alone, an
-  empty one stops `cyris run` and polls no feed in `workers/rss`, and `cyris sources push` is how
-  the file's list reaches the table.
 
 ## 8. Where the core never changes
 
