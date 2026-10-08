@@ -185,31 +185,16 @@ bare vectors, and `0.0` there would read as a measured cost of nothing.
 
 ### `diagnostics/` — the tools that inspect the deployment
 
-`cyris doctor` is the one module whose subject is the wiring itself. `_check_build` exists because
-a config asking for `[store] backend = "d1"` ran for two days on an image that had no `[store]`
-table at all (§7, the 08-25→08-27 split), and the only check that catches it is
-`type(build_store(cfg)).__name__` — a direct question to the composition root. The Worker probes
-are the same shape: build the real adapter, call `health_check()`, report what answered.
+`src/cyris/diagnostics/` holds the tools whose subject is the deployment rather than the digest:
+`doctor`, which builds the real adapters itself and never calls `build_deps`; `embed-compare` and
+`llm-compare` in `compare.py`, which build two wirings and return rows; and `config show` in
+`config_show.py`. The CLI parses, prints and owns every local write. `tests/test_core_imports.py`
+fails if `service_layer/` or `domain/` imports `cyris.adapters` or `cyris.bootstrap` at runtime,
+and fails again if anything below `diagnostics/` imports it back. Why a layer of its own:
+[ADR-0007](decisions/0007-diagnostics-is-its-own-layer.md).
 
-So `doctor` lives in `src/cyris/diagnostics/`, a layer of its own for the tools whose subject is
-the deployment rather than the digest. `embed-compare` and `llm-compare` are the same shape and sit
-beside it in `compare.py`: each builds *two* wirings on purpose, which no core module may do and no
-single `build_deps` can express. What a comparison row means is decided there; the CLI parses
-`--arm`, prints, and owns every local write — which is what keeps these commands read-only by
-construction and keeps their output out of §4's decision. `config show` sits there too, in
-`config_show.py`: it asks `bootstrap` what a provider default or an embedding threshold resolves to,
-returns rows, and the CLI prints them. It is **not** an exception to the rule above — the rule holds
-with none. `tests/test_core_imports.py` fails if `service_layer/` or `domain/` imports
-`cyris.adapters` or `cyris.bootstrap` at runtime, and fails again if anything below `diagnostics/`
-imports it back.
-
-Two properties this preserves, both load-bearing: `doctor` never calls `build_deps`, which raises on
-missing credentials — reporting on missing credentials is the job — and it can report *not
-configured* as its own verdict, which an injected list of probes cannot express.
-
-One constraint shapes the store: **`ArticleRepository` is synchronous.** `run_digest` never awaits
-it, so `D1ArticleStore` uses a blocking HTTP client. Making it async would push `async` through
-`service_layer/`, which the cloud migration explicitly promised not to touch.
+One constraint shapes the store: **`ArticleRepository` is synchronous**, so `D1ArticleStore` uses a
+blocking HTTP client ([ADR-0002](decisions/0002-article-repository-stays-synchronous.md)).
 
 ## 3. How a digest is made
 
@@ -262,9 +247,9 @@ Each poll also upserts every polled feed's outcome into `feed_health` (§4), aft
 never at their expense: a feed that keeps failing used to be a `console.warn` per hour, gone with
 Workers Logs after 7 days, and on 2026-09-28 one had stored no article ever behind an hourly HTTP 503.
 
-The buffer exists because a digest-time poll only sees each feed's current snapshot — 2–4 hours for
-a busy feed, not 24. Measured: a digest-time poll missed 141 of 317 articles. `RssSource` (direct
-polling) remains as the no-Worker fallback and is correct only for slow feeds.
+Why a buffer rather than a poll at digest time, and why it has no ack:
+[ADR-0001](decisions/0001-rss-arrives-through-an-hourly-buffer.md). `RssSource` (direct polling)
+remains as the no-Worker fallback and is correct only for slow feeds.
 
 **Email — a queue, drained with an ack.** Cloudflare Email Routing delivers to the `email()` handler
 in `workers/newsletter`, which parses the message with PostalMime and stores
@@ -408,9 +393,8 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, a raw page cannot |
 | Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`**; the launch film in **R2 `musingfox-media`** under `cyris/` | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
-The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose: it is already
-declared as a binding in `workers/rss/wrangler.toml`, which is what a Deploy to Cloudflare button
-provisions from. A trial deployment (`scripts/trial-wizard.sh`, which renders its configs with
+The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose
+([ADR-0012](decisions/0012-the-app-deploys-from-the-repo-root.md)). A trial deployment (`scripts/trial-wizard.sh`, which renders its configs with
 `scripts/provision_trial.py`; `docs/trial-deployment.md`) shares nothing: its rss Worker binds the
 trial's own D1, the one its app uses, named like its app Worker. The wizard keeps a trial's inputs,
 ids and progress in `.env.trial-<slug>-wizard` at the repo root, beside the trial's secrets files;
@@ -419,11 +403,9 @@ those secrets files are the only copy, since Cloudflare cannot read a secret bac
 ### One store, one truth
 
 `ArticleStore` (JSON) and `D1ArticleStore` both satisfy `ArticleRepository`, and `[store] backend`
-picks one. **They are alternatives, never a pair.** Running both — as happened between 2026-08-25
-and 2026-08-27, when the container ran a stale image — splits the article store in both directions,
-and `store migrate`'s `INSERT OR IGNORE` cannot heal a two-way split: it adds missing rows but never
-overwrites, so a human triage decision recorded on the losing side is lost unless restored by hand.
-`cyris store diff` is what makes such a split visible; run it before and after any cutover.
+picks one. **They are alternatives, never a pair**
+([ADR-0003](decisions/0003-one-home-per-backend.md)). `cyris store diff` is what makes a split
+visible; run it before and after any cutover.
 
 ## 5. Configuration: four grades
 
@@ -502,17 +484,9 @@ no headroom on a busy window — the run does not degrade, it fails. gpt-oss has
 is also about 3x cheaper on output (68,182 against 204,805 neurons per M output tokens),
 which is the smaller reason but points the same way.
 
-**The two embedding thresholds are 0.53 and 0.68, and they are not interchangeable.**
-Each is a property of its model, measured, not a preference: `bge-m3`'s cosines run
-lower than `gemini-embedding-001`'s across the board, so the same number means different
-things to them. Reusing one across providers does not shift the boundary a little, it
-silently disables the feature in one direction or suppresses indiscriminately in the
-other. Both were calibrated in `docs/vote-signal-measurement.md`, which also records the
-gap they sit in (in-class minimum 0.690 against out-of-class maximum 0.673 for Gemini).
-
-That measured-property status is why the threshold is graded **A** while the embedding
-*provider and model* are graded D: one is a reader's choice, the other is arithmetic
-about the model they chose.
+**The two embedding thresholds are 0.53 and 0.68, and they are not interchangeable.** Why
+each is a measured property of its model, graded **A** while the provider and model are D:
+[ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md).
 
 ### Grade C is seven variables (2026-08-30)
 
@@ -521,78 +495,22 @@ GitHub Actions secret used only to push a release image, so it is not an eighth 
 
 **Current list (2026-09-22).** This heading records the 2026-08-30 reduction and stays as written.
 Since then the app Worker also forwards `CLOUDFLARE_AI_TOKEN`, the `workers_ai` LLM provider's own
-Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blank. The block below
-also lists `CLOUDFLARE_ACCOUNT_ID`, which is grade-B identity rather than a secret, and leaves out
-`CYRIS_UI_TOKEN`, the `/settings` login secret that the Worker checks and never forwards. The
+Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blank.
+`CYRIS_UI_TOKEN`, the `/settings` login secret, is checked by the Worker and never forwarded. The
 authoritative lists are `SECRETS` in `workers/app/src/index.js` and `.env.example`, which
 `tests/test_deploy_inputs.py` holds in step.
 
-It was twelve that morning. Two of them were not separate secrets at all, and the reduction is
-worth writing down because both mistakes regrow on their own.
-
-```
-ANTHROPIC_API_KEY  GEMINI_API_KEY  OPENAI_API_KEY   all three: the provider is a D1 setting,
-                                                    so the container carries every key
-CLOUDFLARE_ACCOUNT_ID
-CLOUDFLARE_API_TOKEN              D1 + Pages
-CLOUDFLARE_EMBEDDING_API_TOKEN    Workers AI only
-CYRIS_WORKER_TOKEN                rss + newsletter, server-to-server
-CYRIS_PROMOTE_TOKEN               the vote Worker — server-side only since
-                                  the private-votes change (M-ship)
-```
-
-**`CYRIS_D1_API_TOKEN` was `CLOUDFLARE_API_TOKEN` under another name** — the same string in `.env`
-twice, so `StoreConfig`'s fallback chain had never once chosen its second branch. What makes this
-findable rather than arguable is asking the API, since a token's permissions cannot be read back
-from `/user/tokens/verify`:
-
-| | D1 query | Workers AI | Pages project | upload-token | R2 |
-|---|---|---|---|---|---|
-| `CLOUDFLARE_API_TOKEN` | 200 | 401 | 200 | 200 | 403 |
-| `CYRIS_D1_API_TOKEN` *(deleted)* | 200 | 401 | 200 | 200 | 403 |
-| `CLOUDFLARE_EMBEDDING_API_TOKEN` | 403 | 200 | 403 | 403 | 403 |
-
-The embedding token stays: it is genuinely a different permission, and the row above is why the
-code refuses to fall back to `CLOUDFLARE_API_TOKEN` for inference — that token answers **401** on
-Workers AI, which reads as a broken key rather than a missing permission. (Both tokens answer 403
-on R2, unchanged since M3; see §7 #14.)
-
-**Two of the three Worker bearers are one value; `promote` is not, and the reason is the whole
-lesson.** `rss` and `newsletter` are server-to-server: their tokens live in `.env` and the Worker
-secret store, so whoever reads one reads the other, and holding them apart bought independent
-rotation of keys nobody rotates.
-
-`promote` is different in kind. Its up/down buttons run in the **reader's browser**, and until
-the private-votes change (M-ship) `_promote_script.html.j2` rendered the token into every
-digest and raw page — public pages, so recovering it took one `curl`. Votes now go through the app
-Worker's `POST /api/vote`, which attaches the token server-side. The renderer was left holding the
-URL and the token as constructor arguments nothing read for four days; both are gone, so the
-invariant is now that no template reaches for a credential at all —
-`tests/test_html_digest.py::test_no_template_reaches_for_a_credential`. The value is still not a
-secret and cannot be treated as one: it is baked into every page published before 2026-09-01, and
-those pages are still served.
-
-**This was merged into `CYRIS_WORKER_TOKEN` on 2026-08-30 and unmerged the same evening**, after the
-20:00 digest published the shared value in plain HTML. For about an hour, the token printed on a
-public page was also `newsletter`'s — whose `/ack` deletes a queue — and `rss`'s. The reasoning that
-produced it ("three random values but never three trust domains") was right about `rss` and
-`newsletter` and wrong about `promote`, and the evidence was in the repo the whole time, four lines
-into a template nobody re-read. **The dividing line is published-vs-secret, not
-one-value-vs-three.**
-
-The repair, and why each half: `rss` and `newsletter` rotated to a fresh value, because theirs had
-been published. `promote` went *back* to its original value rather than forward to a new one —
-rotating a token that is baked into 58 already-published pages would break every vote button in the
-archive, and rotating a public token buys nothing. Receipt: the old token answers 200 on
-`/promotions`, and the leaked one answers 401 on both `newsletter` and `rss`.
+Which credentials share one value and which stay separate — `rss` and `newsletter` share
+`CYRIS_WORKER_TOKEN`, `promote` keeps `CYRIS_PROMOTE_TOKEN`, and the embedding token stays its own —
+and why the dividing line is published-vs-secret, not one-value-vs-three:
+[ADR-0008](decisions/0008-worker-bearers-split-by-published-versus-secret.md).
 
 ### Where grade D lives (M2, 2026-08-27; one home per backend since 2026-09-19)
 
 D1 `settings` is a key/value table of dotted paths into `AppConfig`, JSON-encoded.
-`bootstrap.load_effective_config` is the **single seam** every entrypoint resolves through. Until
-2026-09-19 it loaded the file and overlaid D1, and a key missing from both took a value from code.
-That left three places a running value could come from, and a stale one could decide a run
-unseen. The rules now:
+`bootstrap.load_effective_config` is the **single seam** every entrypoint resolves through. Why
+each backend has exactly one home, with nothing overlaid:
+[ADR-0003](decisions/0003-one-home-per-backend.md). The rules:
 
 - **One home per backend.** A `d1` deployment reads grade D from D1 `settings` alone and its
   sources from D1 `sources` alone; a `json` deployment reads `cyris.toml` and `sources.yaml` alone.
@@ -603,8 +521,7 @@ unseen. The rules now:
   `run` and `llm-compare` also stop on an empty source list. The load itself never raises on
   completeness, so the commands that fill an empty D1 — `triage-ui` (`/settings`),
   `settings push`, `sources push|list`, `promote-sync`, `store *` — still start.
-- **A D1 read error propagates.** Falling back to the file on error would reintroduce exactly the
-  divergence the rule exists to prevent: one run on D1's values, the next on the file's.
+- **A D1 read error propagates.** Nothing falls back to the file.
 - **One key list.** `src/cyris/settings_fields.json` names every key with its `/settings` field —
   category, label, controls and save route, and whether a save applies live. `GRADE_D_KEYS` (the required set and `WRITABLE_KEYS`),
   the values route's plain keys, and the page's field map (served on `GET /api/settings`) all
@@ -775,13 +692,14 @@ day of repeated `stop()` calls.
 production receipt, `onStop` logging `{ exitCode: 143 }` for a run stopped by `sleepAfter`, is
 pending.
 
-**Auth is one layer always, two if you own a domain** (`workers/app/`). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. That layer deploys with the Worker, so a `*.workers.dev` fork is not an open write surface. Preview URLs stay disabled: a second public hostname is a second door.
+**Auth is one layer always, two if you own a domain** (`workers/app/`); why each layer, and why
+there is no JWT check, is [ADR-0009](decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. Preview URLs stay disabled.
 
-Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step on purpose: automating the hostname and the policy would tie the repo to one account. Access stays off `workers.dev`, because scripts sign in there with the cookie alone. Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required. The archive is public unless `CYRIS_PRIVATE_ARCHIVE` (grade B, Worker-only) is `"true"`: then a reader without the cookie is sent to `/login` before the Worker proxies a byte of Pages, and signs in to the page they asked for.
+Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step. Access stays off `workers.dev`, where scripts sign in with the cookie alone. Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required. The archive is public unless `CYRIS_PRIVATE_ARCHIVE` (grade B, Worker-only) is `"true"`: then a reader without the cookie is sent to `/login` before the Worker proxies a byte of Pages, and signs in to the page they asked for.
 
 `wrangler.toml` ships with `workers_dev = true` and no `routes`, so a clone deploys unmodified. Custom domains are attached from the dashboard or API, which means the file is then not the sole source of truth for routing; a trial config rendered by `scripts/provision_trial.py` is the other way, its `[[routes]]` attaching the trial's hostname on deploy.
 
-Cyris still does not validate `Cf-Access-Jwt-Assertion`. A request reaches the Worker on an Access host only after Access allowed it; verifying again defends only against someone who can already route traffic to the origin: that is a second copy of layer 1, not a third layer. On workers.dev the header is not a credential.
+Cyris does not validate `Cf-Access-Jwt-Assertion`.
 
 **Known failure mode.** Code is baked into the image; config is bind-mounted. The two can drift
 arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"` from a current
@@ -809,9 +727,10 @@ silently ignored for two days.
 
 **An item is open while its row is not struck through, or while its paragraph says *still
 open*.** The six the 2026-09-05 alignment pass opened (#18–#23) all closed the same day. Everything
-else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them
-(why not R2, why not Vectorize, why a fixed threshold was the wrong shape). It is kept because
-changing one of those decisions means reading why it was made, not because it is pending.
+else in this chapter is history — the milestones as they landed, and the reasoning behind the calls that shaped them.
+The decisions themselves (why not R2, why not Vectorize, and the others) are recorded in
+[`docs/decisions/`](decisions/), because changing one means reading why it was made; why a fixed
+threshold is the wrong shape stays below, with the open item it belongs to.
 
 Read the tables for what is open; read the prose for why the closed things closed that way.
 
@@ -869,40 +788,13 @@ Two things this table deliberately makes explicit:
 
 ### What the deploy button can and cannot do (M6, 2026-09-04)
 
-Settled against the [Deploy buttons documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/),
-which contradicts three assumptions the ticket carried:
-
-- **There is no `deploy.json`.** A button is a README link to
-  `deploy.workers.cloudflare.com/?url=<repo>`. Its inputs are the Wrangler config
-  (bindings), `.env.example` (which secrets to ask for), and `package.json`'s
-  `cloudflare.bindings` (the guidance rendered beside each field).
-- **A subdirectory must be self-contained**; Cloudflare treats it as the root of the
-  repo it clones. `workers/app/` is not — its image is built from the repo's Dockerfile
-  and installs the Python package. **That is why `wrangler.toml`, `package.json` and
-  `vitest.config.js` live at the repo root** rather than beside `workers/app/src/`.
-  Copying the Dockerfile down to fake isolation was considered and rejected: it
-  duplicates the thing being deployed.
-- **Workers Builds does build the container image** on the production branch, where it
-  runs `wrangler deploy` (Containers FAQ). This was the gate on the whole shape.
-
-Three steps the button cannot take. "The button cannot" is not the same as "stays
-manual", which is what this table said until 2026-09-06: the deployment holds a
-Cloudflare token of its own, so anything that token can do, first boot can do. The
-Pages row below is the first one moved that way:
-
-| Step | Why it cannot be provisioned |
-|---|---|
-| Create the D1 database, paste the UUID as `CYRIS_STORE_DATABASE_ID` | The container reaches D1 over REST, not through a binding. Adding a `[[d1_databases]]` binding would make the deploy create a database whose id nothing can read at runtime — a provisioning trick that still ends in a paste |
-| ~~Create the Pages project~~ (still name it: `CYRIS_PROMOTE_PAGES_PROJECT`, `DIGEST_ORIGIN`) | Deploy buttons support Workers only — but the button is not the only thing that can provision. Since 2026-09-06 the first publish creates the project itself over the same REST API it deploys with (`pages_deploy.create_project`, reached when the empty-manifest probe answers 404) |
-| Attach a domain, then Cloudflare Access | Neither is in the provisioning list, and Access stays off `workers.dev`, because scripts sign in there with the cookie alone |
-
-None of these breaks the acceptance condition, which is *no code edits* — an id pasted
-into a secret field is not a code edit.
-
-**Four Workers, four buttons**, and the app is the primary one. The coupling to name in
-any guide: `workers/rss/` and the app share one D1, because the RSS Worker reads the
-`sources` table the app writes. Provisioned separately they get two databases, and the
-RSS Worker reads an empty table and polls nothing; its log says `sources table is empty`.
+Four Workers, four buttons, the app's `wrangler.toml`, `package.json` and `vitest.config.js` at
+the repo root, and the three steps the button cannot take (the D1 database id, a domain and
+Access; the Pages project is created by the first publish since 2026-09-06, through
+`pages_deploy.create_project`): why each, in
+[ADR-0012](decisions/0012-the-app-deploys-from-the-repo-root.md). The coupling to name in any
+guide: `workers/rss/` and the app share one D1, and an RSS Worker provisioned with its own
+database reads an empty table and polls nothing; its log says `sources table is empty`.
 
 **Running wrangler from the repo root now means running it beside `.env`.** Wrangler
 loads the cwd's dotenv, and an expired `CLOUDFLARE_API_TOKEN` there overrides an OAuth
@@ -913,9 +805,9 @@ Token* without the flag and an *OAuth Token* with it.
 
 ### Publishing without a subprocess (M3, 2026-08-27)
 
-`wrangler pages deploy` is gone, and with it node and wrangler from the image. The replacement is
-the Pages **direct-upload** protocol spoken over REST in `adapters/output/pages_deploy.py`, read off
-wrangler's own `wrangler-dist/cli.js` rather than reconstructed from documentation:
+`wrangler pages deploy` is gone, and with it node and wrangler from the image
+([ADR-0004](decisions/0004-publish-over-pages-rest-without-r2.md)). The replacement is the Pages
+**direct-upload** protocol spoken over REST in `adapters/output/pages_deploy.py`:
 
 ```
 GET  /accounts/{a}/pages/projects/{p}/upload-token   → a short-lived JWT
@@ -981,25 +873,10 @@ deploy script touches them.
 
 ### Why M3 did not use R2 either
 
-R2 was the named destination for the HTML archive, and the archive does not need one.
-
-The reason it seemed to is that a Pages deployment is a full snapshot: every file that should stay
-reachable must be named in every deploy, so publishing appeared to require holding the whole
-archive. The first REST deploy disproved that — `check-missing` answered that **57 of 57** files
-were already in Cloudflare's account-wide, content-addressed asset store. The bytes were never ours
-to keep. Only the **list** has to survive between runs: path → hash, a few KB, which is D1
-`pages_manifest`.
-
-For the rare asset Cloudflare ages out, the bytes come back from the deployed site, which serves
-exactly what it was given — verified byte-for-byte against `asset_hash` on 2026-08-27. The live site
-is the archive of record, which is strictly better than the status quo it replaces: one gitignored
-directory on one local machine.
-
-This also removed the blocker: every token in `.env` answers **403** on `/r2/buckets`. R2 is enabled
-on the account (a bucket already exists), so it is a missing `R2 → Edit` permission, not a missing
-service. Nothing now waits on it. If independent durable backups of rendered digests are ever wanted
-— since 2026-09-24 a digest page can be re-rendered from D1 `digests` (§4), but that copy shares an
-account with Pages — R2 is where they go, and the token edit becomes worth making. That is a durability decision, not a cloud-move blocker.
+R2 was the named destination for the HTML archive, and the archive does not need one: the bytes
+live in Cloudflare's content-addressed asset store and only the list, D1 `pages_manifest`, has to
+survive between runs. Why, and what an R2 copy would still be for:
+[ADR-0004](decisions/0004-publish-over-pages-rest-without-r2.md).
 
 **The local-directory writer stays** as the no-D1 fallback: `backend = "json"` keeps writing
 `agent-vault/html/` and deploying a directory.
@@ -1039,26 +916,11 @@ account with Pages — R2 is where they go, and the token edit becomes worth mak
 
 ### Why M4 did not use Vectorize
 
-The doc named Vectorize, and this deviates from it deliberately.
-
-Vectorize is an approximate-nearest-neighbour index. The access pattern here is
-**fetch-by-key**: `judge_by_votes` asks for a vector per title and `domain/similarity.judge`
-does the cosine work, because the margin rule — how far above the cutoff, up versus down — is a
-domain rule, and §8 says the core does not move into an adapter. A vector database whose
-similarity search goes unused is a new service, a new binding and a new failure mode carrying no
-payload.
-
-Then the rung above that one applied: **the cache did not need a home, it needed deleting.** The
-415 MB of JSON was optimising a cost that stopped existing when the provider became `bge-m3` —
-measured at 7.59 neurons for 222 texts, so a full run of ~600 is ~20 against a 10,000/day free
-allowance. The observed run: 1,221 texts, 13 requests, 17.9s wall, 42 neurons. It also never
-extended a seed's life, which its own docstring implied it did: `vote_similarity._voted` reads
-seeds from store rows, so a deleted row takes its seed with it, cached vector or not.
-
-The provider half has since been reverted, as a config line: production embeds with
-`gemini-embedding-001` from 2026-09-21, after a 189-vote re-measurement found it predicts votes
-significantly better than `bge-m3` (`docs/vote-signal-measurement.md`, "Re-measured on 189
-votes"). The cache stayed deleted — a run embeds ~300 titles, and neither provider caches.
+Vectorize was the named destination for the embedding cache; the cache was deleted instead and
+nothing replaced it ([ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md)). The
+provider half of M4 has since been reverted as a config line: production embeds with
+`gemini-embedding-001` from 2026-09-21
+([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)).
 `WorkersAIEmbedder` stays as the example config's provider; `cyris embed-compare` stays for the
 next comparison.
 
@@ -1165,11 +1027,10 @@ All three are on `<your custom domain>` since 2026-08-30, split by path rather t
                                             CYRIS_UI_ACCESS_HOST matches this host
 ```
 
-The split is what "behind one Worker" should have meant. Serving the digest *from the container*
-would wake a container to hand back a file Cloudflare already holds, and putting the archive of
-record behind an auth layer would turn every Discord link into a login — so the Worker proxies
-`DIGEST_ORIGIN` for anything not on the protected list, which costs one Worker request. `/triage*`
-returns 404.
+The Worker proxies `DIGEST_ORIGIN` for anything not on the protected list, which costs one Worker
+request; why the digest stays static rather than container-served is
+[ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md). `/triage*` returns
+404.
 
 ~~**The archive is public, and what needs closing is the write, not the read.** Anyone holding a
 digest link can vote today: `_promote_script.html.j2` renders the promote bearer into every
@@ -1186,13 +1047,12 @@ reader on `pages.dev` everything except the ability to vote, and a reader on `<y
 token.~~ **Done 2026-09-01** (the private-votes change), then the domainless form: the token stays server-side only, votes go through `POST /api/vote`, and vote buttons probe `/api/vote` to detect whether they should render. On a hostname equal to `CYRIS_UI_ACCESS_HOST`, the probe and the POST stay Access-only (no UI token). On every other hostname the session cookie is required, so a stranger on `*.workers.dev` cannot write a human verdict. `pages.dev` readers still see no buttons (`/api/vote` is not routed there). One HTML, two capabilities. `CYRIS_PROMOTE_TOKEN` is kept separate from `CYRIS_WORKER_TOKEN` and never rendered into templates.
 
 **Every HTML page the Worker serves carries the reader's type size** (since 2026-09-20,
-the reader type-size ticket). `workers/app/src/type_scale.js` reads `digest.type_scale` from D1
-over REST with the `CLOUDFLARE_API_TOKEN` the container already holds — no binding, for the reason
-in *What the deploy button can and cannot do* — and only when the store is D1 and the account,
-database and token are all set. One read per isolate is held for 60 s, failures included, and
-concurrent page views share the read in flight, so the calls it adds to the account's shared REST
-limit are at most five per isolate per five minutes plus one per `/settings` save through that
-isolate, whatever the traffic. A save clears the isolate's memo, so the reader who saved sees the
+the reader type-size ticket; why injection, and why it is the only live reader preference:
+[ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md)).
+`workers/app/src/type_scale.js` reads `digest.type_scale` from D1 over REST with the
+`CLOUDFLARE_API_TOKEN` the container already holds, with no binding, and only when the store is
+D1 and the account, database and token are all set. One read per isolate is held for 60 s,
+failures included, and concurrent page views share the read in flight. A save clears the isolate's memo, so the reader who saved sees the
 new size on the next page; other isolates follow within a minute. At 1, the value production holds,
 the Worker changes nothing: pages pass through byte for byte with their validators. At 0.875 or
 1.125 it adds `<style>html:root{--type-scale:X}</style>` as the last child of `<head>` of every
@@ -1247,7 +1107,8 @@ Two boundaries #15 does **not** cross, both already decided in §5:
   operator's own domain. What #15 makes editable is the sender→source mapping (`email_match`), which
   is grade D and already rides in the `sources` row. Putting a B-grade setting on a D-grade page is
   how a deployment stops being portable.
-- **`sources.yaml` is the `json` backend's list only.** Until 2026-09-19 an empty or unreachable
+- **`sources.yaml` is the `json` backend's list only**
+  ([ADR-0003](decisions/0003-one-home-per-backend.md)). Until 2026-09-19 an empty or unreachable
   table fell back to the file on both readers; now a `d1` deployment reads the table alone, an
   empty one stops `cyris run` and polls no feed in `workers/rss`, and `cyris sources push` is how
   the file's list reaches the table.
