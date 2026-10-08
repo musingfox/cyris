@@ -34,9 +34,10 @@ switches either respx assertion off. It also fails when a test registers a respx
 is not bound to a name, or whose `call_count`, `len(route.calls)` or `not route.called`
 the same test never reads. A route must be registered and counted in one test function, so
 one built in a fixture or a helper is flagged. Its self-test plants each kind of violation.
-Two gaps stay with
-review. The scan sees that the count is read, not that it is asserted exactly. It also
-leaves `httpx.MockTransport` fakes out: their handlers record into lists, dicts, fixtures
+Three gaps stay with review. The scan sees that the count is read, not that it is asserted
+exactly. It recognises only routes registered on the name `respx`, which is every test
+today; one registered through the `respx_mock` fixture or a `MockRouter` variable passes
+unseen. It also leaves `httpx.MockTransport` fakes out: their handlers record into lists, dicts, fixtures
 and helper classes, and no scan of those shapes is free of false positives. The audit that
 brought the 19 edge-faking files up to the rule is
 `docs/spec/audits/tests-pin-every-outgoing-request-2026-10-08.md`.
