@@ -193,3 +193,20 @@ CREATE TABLE IF NOT EXISTS feed_health (
   last_failed_at       TEXT,
   last_ok_at           TEXT
 );
+
+-- One row per candidate a run judged against the reader's votes: the nearest
+-- upvoted and downvoted article and their cosines, under the embedding model that
+-- produced them. Raw data, no verdict: whether the run suppressed the candidate is
+-- left out on purpose. `run_at` is the run's `started_at`, the same string as
+-- `digest_runs.summary`'s. NULL up/down columns mean that side had no seed.
+CREATE TABLE IF NOT EXISTS vote_similarity_shadow (
+  run_at        TEXT NOT NULL,
+  period        TEXT NOT NULL,
+  model         TEXT NOT NULL,
+  candidate_url TEXT NOT NULL,
+  up_url        TEXT,
+  up_cosine     REAL,
+  down_url      TEXT,
+  down_cosine   REAL,
+  PRIMARY KEY (run_at, candidate_url)
+);
