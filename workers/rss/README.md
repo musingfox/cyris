@@ -115,5 +115,6 @@ normalisation) without needing the Workers runtime.
   HTTP 429 on the first cloud poll; concurrency was dropped from 10 to 4 and some
   still fail. Because the buffer accumulates, a 429'd feed usually lands on a later
   tick. A persistently blocked one is not silent: every poll upserts each feed's
-  outcome into D1 `feed_health` (failure streak, last error, last success), which
-  outlives Workers Logs' 7 days.
+  outcome into D1 `feed_health` (failure streak, last error, last success), and
+  `cyris doctor` names a feed that has failed three polls in a row or stored no
+  article in 30 days.
