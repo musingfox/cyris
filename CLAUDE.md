@@ -108,7 +108,8 @@ src/cyris/
 │   │                        #   runs.py = one `digest_runs` row per run, every path;
 │   │                        #   digests.py = each issue's final DigestContent + raw-page flag;
 │   │                        #   archive_meta.py = the archive rows' article counts, read from `usage_log`;
-│   │                        #   feed_health.py = each RSS feed's last poll outcome, written by workers/rss
+│   │                        #   feed_health.py = each RSS feed's last poll outcome, written by workers/rss;
+│   │                        #   similarity_shadow.py = each run's judged candidates with their nearest up/down vote and cosines, no verdict
 │   ├── fetch/               # RSS sources (direct + Worker buffer), Cloudflare newsletter Worker source, email parser
 │   ├── output/              # HTML digest, raw collected-article listings, usage log;
 │   │                        #   email_digest.py + templates/email.html.j2 = the digest as a mail body;
