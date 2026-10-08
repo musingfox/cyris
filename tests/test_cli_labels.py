@@ -1,11 +1,13 @@
 """`cyris labels draw|report`: the blind-label sample, drawn from D1 and scored back."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from fakes import SqliteD1, settings_toml
 from typer.testing import CliRunner
 
+from cyris.domain.similarity import normalize
 from cyris.entrypoints.cli import app
 
 pytestmark = pytest.mark.integration
@@ -134,3 +136,100 @@ class TestDraw:
 
         assert result.exit_code == 1
         assert "backend" in result.output
+
+
+SEEDS = {"Liked": [1.0, 0.0], "Disliked": [0.0, 1.0]}
+
+
+class FakeEmbedder:
+    """Titles of items labeled up sit near the liked seed, the rest near the disliked one."""
+
+    def __init__(self, ups: set[str]) -> None:
+        self.ups = ups
+        self.payloads: list[list[str]] = []
+        self.usage = SimpleNamespace(as_dict=lambda: {"texts": 10})
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.payloads.append(list(texts))
+        return [
+            normalize(SEEDS.get(t) or ([1.0, 0.2] if t in self.ups else [0.2, 1.0])) for t in texts
+        ]
+
+
+@pytest.fixture
+def labeled(deployment, monkeypatch):
+    """A drawn sample of eight, each stratum answered once up and once down, and one
+    human vote either way outside the sample."""
+    tmp_path, db = deployment
+    assert draw(tmp_path).exit_code == 0
+    rows = db.query("SELECT url, news, pipeline_state FROM blind_labels ORDER BY position").rows
+    seen: set[tuple] = set()
+    ups = set()
+    for r in rows:
+        key = (r["news"], r["pipeline_state"])
+        label = "down" if key in seen else "up"
+        seen.add(key)
+        if label == "up":
+            ups.add(r["url"])
+        db.query("UPDATE blind_labels SET label = ? WHERE url = ?", [label, r["url"]])
+        # The label's own vote, which must never seed its score.
+        db.query(
+            "UPDATE stored_articles SET triaged_at = ?, state = ? WHERE url = ?",
+            [AFTER, "accepted" if label == "up" else "rejected", r["url"]],
+        )
+    put(db, "seed-up", title="Liked", triaged_at=AFTER)
+    put(db, "seed-down", title="Disliked", state="rejected", triaged_at=AFTER)
+    embedder = FakeEmbedder(ups)
+    monkeypatch.setattr("cyris.bootstrap.make_embedder", lambda provider, model: embedder)
+    return tmp_path, db, embedder
+
+
+class TestReport:
+    def test_scores_the_filter_and_the_preference_over_the_labels(self, labeled) -> None:
+        tmp_path, _, _ = labeled
+
+        result = run(tmp_path, "report")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "8 labeled (4 up, 4 down), 0 skipped, 0 unanswered of 8" in out
+        assert "seed 3" in out and "2026-09-18T10:00:00" in out
+        for name in ("news", "non-news", "overall"):
+            line = next(line for line in out.splitlines() if line.startswith(f"{name} "))
+            assert line.split()[-2:] == ["0.500", "0.500"], line
+        assert "Kept at draw: 2 accepted, 2 pending" in out
+        assert "Seeds: 1 up, 1 down" in out
+        assert "AUC 1.000" in out
+        assert 'Embedding spend: {"texts": 10}' in out
+
+    def test_no_label_seeds_its_own_score(self, labeled) -> None:
+        tmp_path, db, embedder = labeled
+
+        run(tmp_path, "report")
+
+        sampled = {r["url"] for r in db.query("SELECT url FROM blind_labels").rows}
+        assert len(embedder.payloads) == 2
+        assert sorted(embedder.payloads[0]) == ["Disliked", "Liked"]
+        assert sorted(embedder.payloads[1]) == sorted(sampled)
+
+    def test_skips_are_counted_and_left_out(self, labeled) -> None:
+        tmp_path, db, embedder = labeled
+        db.query("UPDATE blind_labels SET label = 'skip' WHERE position = 0")
+
+        result = run(tmp_path, "report")
+
+        assert "7 labeled" in result.output
+        assert "1 skipped" in result.output
+        assert len(embedder.payloads[1]) == 7
+
+    def test_nothing_labeled_yet_is_said_and_embeds_nothing(self, deployment, monkeypatch) -> None:
+        tmp_path, _ = deployment
+        draw(tmp_path)
+        embedder = FakeEmbedder(set())
+        monkeypatch.setattr("cyris.bootstrap.make_embedder", lambda provider, model: embedder)
+
+        result = run(tmp_path, "report")
+
+        assert result.exit_code == 1
+        assert "No item is labeled up or down yet" in result.output
+        assert embedder.payloads == []

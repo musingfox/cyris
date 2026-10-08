@@ -136,6 +136,11 @@ class D1BlindLabels:
                 [value for row in chunk for value in row],
             )
 
+    def drawn(self) -> tuple[int, str] | None:
+        """The kept sample's seed and pool cutoff, or None before any draw."""
+        rows = self._db.query("SELECT seed, pool_since FROM blind_labels LIMIT 1").rows
+        return (rows[0]["seed"], rows[0]["pool_since"]) if rows else None
+
     def progress(self) -> tuple[int, int]:
         """(answered, total), a skip counting as answered."""
         row = self._db.query(

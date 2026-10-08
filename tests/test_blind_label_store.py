@@ -117,6 +117,15 @@ class TestSample:
         ]
         assert labels.size() == 1
 
+    def test_the_draw_names_its_seed_and_cutoff(self) -> None:
+        db = SqliteD1()
+        labels = D1BlindLabels(db)
+        assert labels.drawn() is None
+
+        labels.replace_sample([row("u1", 0)], seed=5, since=SINCE, drawn_at=DRAWN)
+
+        assert labels.drawn() == (5, "2026-09-18T10:00:00.000000+00:00")
+
     def test_replacing_drops_the_previous_sample(self) -> None:
         db = SqliteD1()
         labels = D1BlindLabels(db)
