@@ -1,7 +1,7 @@
 # Installing cyris on Cloudflare
 
 The deployment is one Worker, `cyris-app`, fronting a Container. An hourly Cron Trigger
-starts the pipeline, which runs once and exits; any HTTP request wakes the `/settings`
+starts the pipeline on the two publish hours, and it runs once and exits; any HTTP request wakes the `/settings`
 server, which sleeps again after five idle minutes. State lives in D1, and the digest
 is published to Cloudflare Pages. Three more Workers are optional and are added at the
 end.
@@ -171,8 +171,7 @@ source it stops with `No sources in D1`. `cyris settings push` and
 
 ## 7. Run the first digest now
 
-The hourly tick runs `cyris run --if-due`, which does nothing outside the publish
-hours. To get a digest without waiting, `POST /run` with a period. `/settings` has no
+The hourly tick starts the pipeline only on the publish hours. To get a digest without waiting, `POST /run` with a period. `/settings` has no
 button for it, so use curl with the session cookie:
 
 ```sh

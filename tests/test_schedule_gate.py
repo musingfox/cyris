@@ -1,6 +1,8 @@
 """The hourly tick's question: is this a digest hour?"""
 
+import json
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -54,3 +56,13 @@ def test_the_write_surface_refuses_what_the_tick_cannot_honour(times):
 
 def test_hours_are_normalised_and_sorted():
     assert validate_schedule(["9:00", "06:00"]) == ["06:00", "09:00"]
+
+
+SHARED_CASES = Path(__file__).parent.parent / "workers/app/test/schedule_cases.json"
+
+
+@pytest.mark.parametrize("case", json.loads(SHARED_CASES.read_text()), ids=lambda c: str(c))
+def test_due_period_agrees_with_the_app_workers_cron_check(case):
+    """workers/app/src/schedule.js answers the same cases before it wakes the container."""
+    now = datetime.fromisoformat(case["at"]).astimezone(ZoneInfo(case["timezone"]))
+    assert due_period(now, case["schedule"]) == case["due"]

@@ -7,6 +7,7 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env } from "cloudflare:workers";
 import { handleRequest } from "./router.js";
+import { shouldStartRun } from "./schedule.js";
 import { createTypeScale } from "./type_scale.js";
 
 // Every secret the pipeline reads from the environment. The provider is a
@@ -184,7 +185,13 @@ export default {
     });
   },
 
+  // Hourly, and 22 of every 24 ticks are not a digest hour: asking first keeps
+  // the container asleep through those instead of waking it to ask itself.
   async scheduled() {
-    await startRun();
+    if (await shouldStartRun({ env, fetchImpl: (input, init) => fetch(input, init) })) {
+      await startRun();
+    } else {
+      console.log("not a digest hour; the run container stays asleep");
+    }
   },
 };
