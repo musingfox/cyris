@@ -150,3 +150,25 @@ def test_failure_mail_is_one_field_and_ports_gain_no_sender_list() -> None:
     assert "send_email_alert" not in ports
     assert "senders" not in fields
     assert fields["send_email_alert"].default is None
+
+
+def test_a_d1_deployment_records_the_similarity_pool_under_its_embedding_model(
+    tmp_path: Path, db
+) -> None:
+    from cyris.domain.similarity import SimilarityVerdict
+
+    cfg = _d1_config(tmp_path)
+    verdict = SimilarityVerdict(
+        url="c", down_similarity=0.1, up_similarity=0.2, suppressed=False, nearest_up_url="u"
+    )
+
+    bootstrap.build_deps(cfg).record_similarity("2026-10-08T00:00:00+00:00", "morning", [verdict])
+
+    default_model = bootstrap.embedding_defaults(cfg.app.vote_similarity.provider)["model"]
+    assert db.query("SELECT model, candidate_url FROM vote_similarity_shadow").rows == [
+        {"model": default_model, "candidate_url": "c"}
+    ]
+
+
+def test_a_json_backend_records_no_similarity_pool(tmp_path: Path) -> None:
+    assert bootstrap.build_deps(_json_config(tmp_path)).record_similarity is None

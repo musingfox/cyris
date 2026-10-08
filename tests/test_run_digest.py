@@ -2453,3 +2453,170 @@ async def test_a_preview_republishes_nothing(tmp_path: Path) -> None:
     await run_digest(deps, RunOptions(dry_run=True))
 
     assert site.deploys == []
+
+
+# ---- the vote-similarity pool: recorded beside the run, never changing it ----------
+
+_LIKED = "https://example.com/liked"
+_DISLIKED = "https://example.com/disliked"
+_DISLIKED_AGAIN = "https://example.com/disliked-again"
+
+
+class _TitleEmbedder:
+    """Embeds each title the vote tests use to a fixed direction."""
+
+    VECTORS = {
+        "Liked before": [1.0, 0.0, 0.0],
+        "Disliked before": [0.0, 1.0, 0.0],
+        "Notify Path": [1.0, 0.2, 0.0],
+        "Disliked again": [0.0, 1.0, 0.1],
+    }
+
+    def __init__(self) -> None:
+        self.usage = SimpleNamespace(as_dict=lambda: {"embedded": 0})
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        from cyris.domain.similarity import normalize
+
+        return [normalize(self.VECTORS[t]) for t in texts]
+
+
+def _vote_article(article_id: int, title: str, url: str) -> Article:
+    return Article(
+        id=article_id,
+        title=title,
+        url=url,
+        content="Some text.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="NotifySource",
+        source_tier=Tier.SUMMARIZE,
+        source_tags=["tech"],
+    )
+
+
+def _vote_llm() -> FakeLLM:
+    """Summarizes the group's first article: the only one left once its neighbour is suppressed."""
+    section = {"heading": "AI", "summary": "S", "articles": [{"id": 0}]}
+    return FakeLLM([json.dumps({"scores": []}), json.dumps({"sections": [section]})])
+
+
+def _voting_deps(
+    tmp_path: Path, record_similarity, *, votes: bool = True
+) -> tuple[Deps, list, list[dict]]:
+    """Two candidates in the window, one close to a downvote, and the reader's two votes."""
+    candidates = [_notify_article(), _vote_article(8, "Disliked again", _DISLIKED_AGAIN)]
+    contents: list = []
+    deps, _ = make_deps(tmp_path, _vote_llm(), FakeSource(candidates), discord_contents=contents)
+    deps.cfg.app.vote_similarity.enabled = True
+    deps, recorded = _recording(
+        replace(
+            deps,
+            embedder=_TitleEmbedder(),
+            embedding_threshold=0.9,
+            record_similarity=record_similarity,
+        )
+    )
+    deps.store.save(candidates)
+    if votes:
+        deps.store.save(
+            [
+                _vote_article(20, "Liked before", _LIKED),
+                _vote_article(21, "Disliked before", _DISLIKED),
+            ]
+        )
+        deps.store.accept([_LIKED])
+        deps.store.reject([_DISLIKED], "not_interested")
+        deps.store.update_triage_timestamp([_LIKED, _DISLIKED], datetime.now(UTC))
+    return deps, contents, recorded
+
+
+async def test_the_similarity_record_gets_one_row_per_judged_candidate(tmp_path: Path) -> None:
+    calls: list[tuple] = []
+    deps, _, recorded = _voting_deps(
+        tmp_path, lambda run_at, period, verdicts: calls.append((run_at, period, verdicts))
+    )
+
+    await run_digest(deps, RunOptions(period="evening"))
+
+    [summary] = recorded
+    [(run_at, period, verdicts)] = calls
+    assert (run_at, period) == (summary["started_at"], "evening")
+    assert summary["vote_similarity_judged"] == len(verdicts) == 2
+    assert sorted((v.url, v.nearest_up_url, v.nearest_down_url) for v in verdicts) == [
+        (_DISLIKED_AGAIN, _LIKED, _DISLIKED),
+        ("https://example.com/notify", _LIKED, _DISLIKED),
+    ]
+    by_url = {v.url: v for v in verdicts}
+    assert by_url[_DISLIKED_AGAIN].down_similarity > by_url[_DISLIKED_AGAIN].up_similarity
+    assert summary["suppressed"] == 1
+
+
+async def test_the_digest_is_the_same_with_or_without_the_similarity_record(
+    tmp_path: Path,
+) -> None:
+    recorded_deps, recorded_contents, _ = _voting_deps(tmp_path / "a", lambda *_: None)
+    bare_deps, bare_contents, _ = _voting_deps(tmp_path / "b", None)
+
+    await run_digest(recorded_deps, RunOptions())
+    await run_digest(bare_deps, RunOptions())
+
+    [with_record], [without_record] = recorded_contents, bare_contents
+    assert with_record.model_dump() == without_record.model_dump()
+    assert "Notify Path" in str(with_record.model_dump())
+    assert "Disliked again" not in str(with_record.model_dump())
+
+
+async def test_a_failing_similarity_record_leaves_the_run_and_its_digest(
+    tmp_path: Path, caplog
+) -> None:
+    from cyris.adapters.store.d1 import D1Error
+
+    def down(*_args) -> None:
+        raise D1Error("down")
+
+    failing_deps, failing_contents, recorded = _voting_deps(tmp_path / "a", down)
+    bare_deps, bare_contents, _ = _voting_deps(tmp_path / "b", None)
+
+    with caplog.at_level("ERROR", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(failing_deps, RunOptions())
+    await run_digest(bare_deps, RunOptions())
+
+    [summary] = recorded
+    assert report.status == summary["status"] == "ok"
+    assert summary["vote_similarity_record_error"] == "down"
+    assert failing_contents[0].model_dump() == bare_contents[0].model_dump()
+    assert "Failed to record vote similarity: down" in caplog.text
+
+
+async def test_a_preview_judges_but_records_no_similarity(tmp_path: Path) -> None:
+    calls: list = []
+    deps, _, recorded = _voting_deps(tmp_path, lambda *args: calls.append(args))
+
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    [summary] = recorded
+    assert summary["vote_similarity_judged"] == 2
+    assert calls == []
+
+
+async def test_a_skipped_similarity_pass_records_nothing(tmp_path: Path) -> None:
+    calls: list = []
+    deps, _, recorded = _voting_deps(tmp_path, lambda *args: calls.append(args), votes=False)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert summary["vote_similarity_skipped"] == "no human-voted articles yet"
+    assert "vote_similarity_judged" not in summary
+    assert calls == []
+
+
+async def test_every_run_summary_carries_its_start_time(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps, recorded = _recording(deps)
+    before = datetime.now(UTC).replace(microsecond=0)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert before <= datetime.fromisoformat(summary["started_at"]) <= datetime.now(UTC)
