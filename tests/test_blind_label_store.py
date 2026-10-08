@@ -15,6 +15,7 @@ SINCE = datetime(2026, 9, 18, 10, tzinfo=UTC)
 AFTER = "2026-09-19T00:00:00.000000+00:00"
 BEFORE = "2026-09-18T09:59:59.000000+00:00"
 DRAWN = datetime(2026, 10, 8, 12, tzinfo=UTC)
+LATER = datetime(2026, 10, 9, 12, tzinfo=UTC)
 
 
 def put(
@@ -131,19 +132,101 @@ class TestSample:
         labels = D1BlindLabels(db)
         labels.replace_sample([row("old", 0)], seed=1, since=SINCE, drawn_at=DRAWN)
 
-        labels.replace_sample([row("new", 0)], seed=2, since=SINCE, drawn_at=DRAWN)
+        labels.replace_sample([row("new", 0)], seed=2, since=SINCE, drawn_at=LATER)
 
         assert [r["url"] for r in db.query("SELECT url FROM blind_labels").rows] == ["new"]
 
-    def test_a_hundred_rows_are_written_in_batches_under_the_parameter_budget(self) -> None:
-        db = CountingD1()
+    def test_a_draw_no_later_than_the_kept_one_is_refused(self) -> None:
+        db = SqliteD1()
+        labels = D1BlindLabels(db)
+        labels.replace_sample([row("old", 0)], seed=1, since=SINCE, drawn_at=LATER)
+
+        with pytest.raises(ValueError, match="later than"):
+            labels.replace_sample([row("new", 0)], seed=2, since=SINCE, drawn_at=DRAWN)
+
+        assert [r["url"] for r in db.query("SELECT url FROM blind_labels").rows] == ["old"]
+
+    def test_a_hundred_rows_go_in_one_statement_under_the_parameter_budget(self) -> None:
+        db = BudgetD1()
 
         D1BlindLabels(db).replace_sample(
             [row(f"u{i}", i) for i in range(100)], seed=1, since=SINCE, drawn_at=DRAWN
         )
 
-        # One DELETE, then eight parameters a row: twelve rows a statement.
-        assert db.query_count == 1 + 9
+        # A read of the kept draw, one INSERT holding every row, one DELETE of the old draw.
+        assert db.query_count == 3
+        assert D1BlindLabels(db).progress() == (0, 100)
+
+
+class FailingD1(SqliteD1):
+    """SqliteD1 that refuses every statement starting with `refused`, as D1 would on an outage."""
+
+    def __init__(self, refused: str) -> None:
+        super().__init__()
+        self.refused = refused
+
+    def query(self, sql, params=None):
+        from cyris.adapters.store.d1 import D1Error
+
+        if self.refused and sql.startswith(self.refused):
+            raise D1Error("HTTP 500: unavailable")
+        return super().query(sql, params)
+
+
+class BudgetD1(CountingD1):
+    """CountingD1 that also enforces D1's 100 bound parameters a statement."""
+
+    def query(self, sql, params=None):
+        from cyris.adapters.store.d1 import D1Error
+
+        if len(params or []) > 100:
+            raise D1Error("HTTP 400: too many SQL variables")
+        return super().query(sql, params)
+
+
+class TestReplacingIsAllOrNothing:
+    """A replace that fails part way leaves one whole sample, the old or the new."""
+
+    def kept(self, db: FailingD1) -> D1BlindLabels:
+        put(db, "old", title="Old")
+        labels = D1BlindLabels(db)
+        labels.replace_sample([row("old", 0)], seed=1, since=SINCE, drawn_at=DRAWN)
+        labels.record("old", "up", DRAWN)
+        return labels
+
+    def new_rows(self, db: FailingD1) -> list[SampleRow]:
+        for i in range(30):
+            put(db, f"new{i}", title=f"New {i}")
+        return [row(f"new{i}", i) for i in range(30)]
+
+    def test_a_failed_insert_keeps_the_old_sample_and_its_answers(self) -> None:
+        db = FailingD1("")
+        labels = self.kept(db)
+        rows = self.new_rows(db)
+        db.refused = "INSERT INTO blind_labels"
+
+        with pytest.raises(Exception, match="unavailable"):
+            labels.replace_sample(rows, seed=2, since=SINCE, drawn_at=LATER)
+
+        assert labels.progress() == (1, 1)
+        assert labels.drawn() == (1, "2026-09-18T10:00:00.000000+00:00")
+        assert [r.url for r in labels.labeled()] == ["old"]
+
+    def test_a_failed_cleanup_leaves_the_new_sample_whole(self) -> None:
+        db = FailingD1("")
+        labels = self.kept(db)
+        rows = self.new_rows(db)
+        db.refused = "DELETE FROM blind_labels"
+
+        with pytest.raises(Exception, match="unavailable"):
+            labels.replace_sample(rows, seed=2, since=SINCE, drawn_at=LATER)
+
+        assert labels.size() == 30
+        assert labels.progress() == (0, 30)
+        assert labels.drawn()[0] == 2
+        assert labels.labeled() == []
+        assert labels.next_card().url == "new0"
+        assert labels.record("old", "down", LATER) is False
 
 
 def sampled(db: SqliteD1, *urls: str) -> D1BlindLabels:

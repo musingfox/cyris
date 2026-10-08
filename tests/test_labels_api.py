@@ -254,9 +254,7 @@ class CheckingStore(D1ArticleStore):
 
 
 class TestTheSampleDecides:
-    async def test_the_vote_is_written_only_once_the_sample_holds_the_answer(
-        self, serve
-    ) -> None:
+    async def test_the_vote_is_written_only_once_the_sample_holds_the_answer(self, serve) -> None:
         url = "https://a.test/1"
         db = deployment(url)
         store = CheckingStore(db)

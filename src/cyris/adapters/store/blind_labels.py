@@ -10,22 +10,14 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from cyris.adapters.store.d1 import D1Queryable, chunk_rows
+from cyris.adapters.store.d1 import D1Queryable
 from cyris.adapters.store.d1_store import _iso
 from cyris.domain.models import ArticleState, Tier
 from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 
-_SAMPLE_COLUMNS = (
-    "url",
-    "position",
-    "news",
-    "pipeline_state",
-    "stratum_size",
-    "seed",
-    "pool_since",
-    "drawn_at",
-)
+# The kept sample: rows of an earlier draw outlive a replace whose cleanup failed.
+_CURRENT = "drawn_at = (SELECT MAX(drawn_at) FROM blind_labels)"
 
 # What the pipeline left a filter row in: shown, cut by a cap or suppressed, or
 # discarded by the filter itself. Any other state, or a rejection the filter did
@@ -108,43 +100,58 @@ class D1BlindLabels:
         ]
 
     def size(self) -> int:
-        return self._db.query("SELECT COUNT(*) AS n FROM blind_labels").rows[0]["n"]
+        return self._db.query(f"SELECT COUNT(*) AS n FROM blind_labels WHERE {_CURRENT}").rows[0][
+            "n"
+        ]
 
     def replace_sample(
         self, rows: list[SampleRow], *, seed: int, since: datetime, drawn_at: datetime
     ) -> None:
-        """Drop whatever sample was kept, answers included, and keep `rows` instead."""
-        self._db.query("DELETE FROM blind_labels")
-        values = [
+        """Keep `rows` as the sample, and drop the one kept before, answers included.
+
+        All or nothing without a transaction: every row goes in one INSERT, its rows
+        carried as one JSON parameter, so a failure leaves the old sample whole; the
+        new draw is current from that statement on, because readers take the latest
+        `drawn_at`. The old one's rows go in a second statement, and a failure there
+        leaves only rows no reader sees. So `drawn_at` must be later than the kept
+        draw's, or the new rows would not be the ones read.
+        """
+        kept = self._db.query("SELECT MAX(drawn_at) AS at FROM blind_labels").rows[0]["at"]
+        if kept is not None and _iso(drawn_at) <= kept:
+            raise ValueError(f"a new draw must be later than the kept one, drawn at {kept}")
+        payload = json.dumps(
             [
-                r.url,
-                r.position,
-                int(r.news),
-                str(r.pipeline_state),
-                r.stratum_size,
-                seed,
-                _iso(since),
-                _iso(drawn_at),
+                {
+                    "url": r.url,
+                    "position": r.position,
+                    "news": int(r.news),
+                    "pipeline_state": str(r.pipeline_state),
+                    "stratum_size": r.stratum_size,
+                }
+                for r in rows
             ]
-            for r in rows
-        ]
-        row_slots = "(" + ", ".join("?" for _ in _SAMPLE_COLUMNS) + ")"
-        for chunk in chunk_rows(values, len(_SAMPLE_COLUMNS)):
-            self._db.query(
-                f"INSERT INTO blind_labels ({', '.join(_SAMPLE_COLUMNS)}) VALUES "
-                + ", ".join(row_slots for _ in chunk),
-                [value for row in chunk for value in row],
-            )
+        )
+        self._db.query(
+            "INSERT INTO blind_labels (url, position, news, pipeline_state, stratum_size, "
+            "seed, pool_since, drawn_at) SELECT json_extract(value, '$.url'), "
+            "json_extract(value, '$.position'), json_extract(value, '$.news'), "
+            "json_extract(value, '$.pipeline_state'), json_extract(value, '$.stratum_size'), "
+            "?, ?, ? FROM json_each(?)",
+            [seed, _iso(since), _iso(drawn_at), payload],
+        )
+        self._db.query("DELETE FROM blind_labels WHERE drawn_at <> ?", [_iso(drawn_at)])
 
     def drawn(self) -> tuple[int, str] | None:
         """The kept sample's seed and pool cutoff, or None before any draw."""
-        rows = self._db.query("SELECT seed, pool_since FROM blind_labels LIMIT 1").rows
+        rows = self._db.query(
+            f"SELECT seed, pool_since FROM blind_labels WHERE {_CURRENT} LIMIT 1"
+        ).rows
         return (rows[0]["seed"], rows[0]["pool_since"]) if rows else None
 
     def progress(self) -> tuple[int, int]:
         """(answered, total), a skip counting as answered."""
         row = self._db.query(
-            "SELECT COUNT(label) AS answered, COUNT(*) AS total FROM blind_labels"
+            f"SELECT COUNT(label) AS answered, COUNT(*) AS total FROM blind_labels WHERE {_CURRENT}"
         ).rows[0]
         return row["answered"], row["total"]
 
@@ -152,7 +159,7 @@ class D1BlindLabels:
         rows = self._db.query(
             "SELECT b.url, a.title, a.source_name, a.content FROM blind_labels b "
             "JOIN stored_articles a ON a.url = b.url "
-            "WHERE b.label IS NULL ORDER BY b.position LIMIT 1"
+            f"WHERE b.label IS NULL AND b.{_CURRENT} ORDER BY b.position LIMIT 1"
         ).rows
         if not rows:
             return None
@@ -163,7 +170,8 @@ class D1BlindLabels:
         """Answer one open item; False when it is not in the sample or already answered."""
         return (
             self._db.query(
-                "UPDATE blind_labels SET label = ?, labeled_at = ? WHERE url = ? AND label IS NULL",
+                "UPDATE blind_labels SET label = ?, labeled_at = ? "
+                f"WHERE url = ? AND label IS NULL AND {_CURRENT}",
                 [label, _iso(at), url],
             ).changes
             > 0
@@ -174,7 +182,7 @@ class D1BlindLabels:
         return (
             self._db.query(
                 "UPDATE blind_labels SET label = NULL, labeled_at = NULL "
-                "WHERE url = ? AND label = ? AND labeled_at = ?",
+                f"WHERE url = ? AND label = ? AND labeled_at = ? AND {_CURRENT}",
                 [url, label, _iso(at)],
             ).changes
             > 0
@@ -185,7 +193,7 @@ class D1BlindLabels:
         rows = self._db.query(
             "SELECT b.url, a.title, b.news, b.pipeline_state, b.stratum_size, b.label "
             "FROM blind_labels b JOIN stored_articles a ON a.url = b.url "
-            "WHERE b.label IN ('up', 'down') ORDER BY b.position"
+            f"WHERE b.label IN ('up', 'down') AND b.{_CURRENT} ORDER BY b.position"
         ).rows
         return [
             LabeledRow(
