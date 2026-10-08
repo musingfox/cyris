@@ -1,6 +1,8 @@
 """Article selection with priority fill for digest output."""
 
 import logging
+from collections.abc import Mapping
+from itertools import zip_longest
 
 from cyris.domain.models import Article, DigestContent, DigestItem, DigestSection
 
@@ -109,14 +111,66 @@ def layer_by_score(
     return content.model_copy(update={"featured_articles": featured, "thematic_summaries": []})
 
 
-def _cap_featured(featured: list[DigestSection], max_items: int) -> list[DigestSection]:
-    """The Top story whole, or its best article in its slot, then Features by score."""
+def _urls(entry: DigestItem | DigestSection) -> list[str]:
+    if isinstance(entry, DigestSection):
+        return [url for item in entry.items for url in item.urls]
+    return entry.urls
+
+
+def _preference_of(
+    entry: DigestItem | DigestSection, preference: Mapping[str, float]
+) -> float | None:
+    """The best score among the entry's articles, or None when none of them was judged."""
+    return max((preference[u] for u in _urls(entry) if u in preference), default=None)
+
+
+def rank_by_preference[Ranked: (DigestItem, DigestSection)](
+    items: list[Ranked], preference: Mapping[str, float]
+) -> list[Ranked]:
+    """Highest preference first, by a stable sort, so equal scores keep the incoming order.
+
+    An entry none of whose articles has a score keeps its slot, and the scored
+    entries are ordered among the remaining slots: it carries no signal to move it by.
+    """
+    scores = [_preference_of(item, preference) for item in items]
+    ranked = iter(
+        sorted(
+            (item for item, score in zip(items, scores, strict=True) if score is not None),
+            key=lambda item: -_preference_of(item, preference),
+        )
+    )
+    return [
+        item if score is None else next(ranked) for item, score in zip(items, scores, strict=True)
+    ]
+
+
+def preference_moves(baseline: DigestContent, ranked: DigestContent) -> dict[str, int]:
+    """How many headline and Features positions name a different article than `baseline`'s."""
+
+    def moved(before: list, after: list) -> int:
+        pairs = zip_longest((_urls(e) for e in before), (_urls(e) for e in after))
+        return sum(a != b for a, b in pairs)
+
+    return {
+        "headlines": moved(baseline.filtered_headlines, ranked.filtered_headlines),
+        "features": moved(baseline.featured_articles[1:], ranked.featured_articles[1:]),
+    }
+
+
+def _cap_featured(
+    featured: list[DigestSection], max_items: int, preference: Mapping[str, float]
+) -> list[DigestSection]:
+    """The Top story whole, or its best article in its slot, then Features by preference.
+
+    Features of equal or no preference keep their score order.
+    """
     if not featured or max_items <= 0:
         return []
     lead, *features = featured
     if len(lead.items) > max_items:
         lead = _single(max(lead.items, key=_by_score))
     features = sorted(features, key=lambda s: max(_by_score(i) for i in s.items), reverse=True)
+    features = rank_by_preference(features, preference)
     return [lead, *_truncate_sections(features, max_items - len(lead.items))]
 
 
@@ -141,7 +195,9 @@ def _truncate_sections(sections: list[DigestSection], max_items: int) -> list[Di
     return result
 
 
-def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestContent:
+def select_digest_articles(
+    content: DigestContent, *, max_items: int, preference: Mapping[str, float] | None = None
+) -> DigestContent:
     """Apply priority fill to limit total digest articles.
 
     Priority order: featured_articles → thematic_summaries → news_clusters →
@@ -154,11 +210,15 @@ def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestC
     Args:
         content: Full processed digest content.
         max_items: Total article cap.
+        preference: Article URL to the reader's vote preference. When given, the
+            Features and the headlines are ordered by it before the cap cuts them;
+            the Top story is never moved.
 
     Returns:
         New DigestContent with limited items.
     """
-    selected_featured = _cap_featured(content.featured_articles, max_items)
+    preference = preference or {}
+    selected_featured = _cap_featured(content.featured_articles, max_items, preference)
     remaining = max_items - _count_section_items(selected_featured)
 
     # Priority 1: thematic summaries
@@ -196,7 +256,8 @@ def select_digest_articles(content: DigestContent, *, max_items: int) -> DigestC
     if remaining == 0:
         selected_headlines = []
     else:
-        selected_headlines = content.filtered_headlines[:remaining]
+        headlines = rank_by_preference(content.filtered_headlines, preference)
+        selected_headlines = headlines[:remaining]
         remaining -= len(selected_headlines)
 
     total_selected = (

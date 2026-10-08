@@ -7,6 +7,8 @@ from cyris.domain.selection import (
     _truncate_sections,
     count_dead_links,
     layer_by_score,
+    preference_moves,
+    rank_by_preference,
     select_digest_articles,
 )
 
@@ -379,6 +381,116 @@ class TestTheCapKeepsTheLeadWhole:
 
         assert [_titles(s) for s in result.featured_articles] == [["a", "b"]]
         assert sum(len(s.items) for s in result.news_clusters) == 1
+
+
+def _headline(name: str, *urls: str) -> DigestItem:
+    return DigestItem(
+        title=name,
+        summary="",
+        sources=["Wire"],
+        urls=list(urls) or [f"https://example.com/{name}"],
+    )
+
+
+def _names(items) -> list[str]:
+    return [getattr(i, "title", None) or i.heading for i in items]
+
+
+class TestRankByPreference:
+    """The reader's votes order the cap and Features; the LLM's order breaks every tie."""
+
+    def test_of_two_headlines_competing_for_the_last_slot_the_one_closer_to_an_upvote_stays(self):
+        content = _base_content(filtered_headlines=[_headline("disliked"), _headline("liked")])
+        preference = {"https://example.com/disliked": -0.2, "https://example.com/liked": 0.3}
+
+        result = select_digest_articles(content, max_items=1, preference=preference)
+
+        assert _names(result.filtered_headlines) == ["liked"]
+
+    def test_without_a_preference_the_cap_keeps_the_llms_order(self):
+        content = _base_content(filtered_headlines=[_headline("disliked"), _headline("liked")])
+
+        assert _names(select_digest_articles(content, max_items=1).filtered_headlines) == [
+            "disliked"
+        ]
+        assert _names(
+            select_digest_articles(content, max_items=1, preference={}).filtered_headlines
+        ) == ["disliked"]
+
+    def test_equal_scores_keep_the_llms_order(self):
+        items = [_headline(n) for n in "abc"]
+        preference = {f"https://example.com/{n}": 0.1 for n in "abc"}
+
+        assert _names(rank_by_preference(items, preference)) == ["a", "b", "c"]
+
+    def test_an_item_without_a_score_keeps_its_slot(self):
+        items = [_headline("unjudged"), _headline("low"), _headline("high")]
+        preference = {"https://example.com/low": -0.4, "https://example.com/high": 0.4}
+
+        assert _names(rank_by_preference(items, preference)) == ["unjudged", "high", "low"]
+
+    def test_an_item_of_several_articles_takes_its_best_articles_score(self):
+        items = [
+            _headline("single", "https://example.com/single"),
+            _headline("merged", "https://example.com/m1", "https://example.com/m2"),
+        ]
+        preference = {
+            "https://example.com/single": 0.2,
+            "https://example.com/m1": -0.5,
+            "https://example.com/m2": 0.3,
+        }
+
+        assert _names(rank_by_preference(items, preference)) == ["merged", "single"]
+
+    def test_features_follow_the_preference_and_the_top_story_stays(self):
+        content = _base_content(
+            featured_articles=[
+                DigestSection(heading=t, items=[_article(t, s)])
+                for t, s in (("lead", 99), ("high", 90), ("mid", 75), ("low", 60))
+            ]
+        )
+        preference = {
+            "https://example.com/lead": -0.9,
+            "https://example.com/high": -0.1,
+            "https://example.com/mid": 0.0,
+            "https://example.com/low": 0.2,
+        }
+
+        result = select_digest_articles(content, max_items=10, preference=preference)
+
+        assert _names(result.featured_articles) == ["lead", "low", "mid", "high"]
+
+    def test_features_of_equal_preference_keep_their_score_order(self):
+        content = _base_content(
+            featured_articles=[
+                DigestSection(heading=t, items=[_article(t, s)])
+                for t, s in (("lead", 99), ("low", 60), ("high", 90))
+            ]
+        )
+        preference = {"https://example.com/low": 0.1, "https://example.com/high": 0.1}
+
+        result = select_digest_articles(content, max_items=10, preference=preference)
+
+        assert _names(result.featured_articles) == ["lead", "high", "low"]
+
+    def test_the_moves_count_the_headline_and_feature_positions_that_changed(self):
+        content = _base_content(
+            featured_articles=[
+                DigestSection(heading=t, items=[_article(t, s)])
+                for t, s in (("lead", 99), ("high", 90), ("mid", 75), ("low", 60))
+            ],
+            filtered_headlines=[_headline("a"), _headline("b"), _headline("c")],
+        )
+        preference = {f"https://example.com/{n}": 0.0 for n in ("high", "mid", "a", "b")}
+        preference |= {"https://example.com/low": 0.5, "https://example.com/c": 0.5}
+
+        baseline = select_digest_articles(content, max_items=6)
+        ranked = select_digest_articles(content, max_items=6, preference=preference)
+
+        assert _names(ranked.featured_articles) == ["lead", "low", "high", "mid"]
+        assert _names(ranked.filtered_headlines) == ["c", "a"]
+        assert preference_moves(baseline, ranked) == {"headlines": 2, "features": 3}
+        assert preference_moves(baseline, baseline) == {"headlines": 0, "features": 0}
 
 
 class TestSelectDigestArticlesWithAttention:
