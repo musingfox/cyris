@@ -883,6 +883,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-10-08 | `2b15987` | §3.2 adds the vote order: with `[digest] rank_by_preference` on, headlines and Features are ordered by nearest-upvote minus nearest-downvote cosine before the issue cap; §5 grades the switch D. |
 | 2026-10-08 | `0285830` | Tracked topics: a run embeds each reader-written topic and lists the candidates at or above its threshold in the issue's Tracking section (§2, §3.2); topics live in D1 `tracked_topics` or `[[tracked_topics]]` (§4), grade D with the model each threshold was set for (§5). |
 | 2026-10-08 | `53539bc` | A deploy with no input reads the digest the release recorded in the commit's `image/<short-sha>` tag; `:release` is no longer read by anything (§6). |
+| 2026-10-08 | `f2c5ff6` | Blind labels: `cyris labels draw` keeps a stratified sample of the filter pool in D1 `blind_labels` (§4), `/labels` behind the app Worker records each answer and writes up/down as a human vote (§6), and `cyris labels report` scores the filter and the embedding preference on them. |
 
 ## 8. Where the core never changes
 
