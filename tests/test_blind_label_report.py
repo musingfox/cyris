@@ -90,6 +90,10 @@ class TestAuc:
         assert low <= auc(scores, positives) <= high
         assert low < high
 
+    @pytest.mark.parametrize("resamples", [0, 1])
+    def test_fewer_than_two_usable_resamples_have_no_interval(self, resamples: int) -> None:
+        assert bootstrap_auc([0.9, 0.1], [True, False], resamples=resamples, seed=1) is None
+
     def test_one_class_alone_has_no_interval(self) -> None:
         assert bootstrap_auc([0.1, 0.2], [True, True], resamples=10, seed=1) is None
 

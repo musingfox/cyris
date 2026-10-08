@@ -116,7 +116,8 @@ def bootstrap_auc(
 ) -> tuple[float, float] | None:
     """The 2.5th and 97.5th percentiles of the AUC over item resamples, drawn with `seed`.
 
-    A resample that draws one class alone has no AUC and is left out.
+    A resample that draws one class alone has no AUC and is left out, and fewer
+    than two resamples left mean no interval: None, as with one class alone.
     """
     if auc(scores, positives) is None:
         return None
@@ -128,6 +129,8 @@ def bootstrap_auc(
         value = auc([scores[i] for i in picks], [positives[i] for i in picks])
         if value is not None:
             estimates.append(value)
+    if len(estimates) < 2:
+        return None
     low, *_, high = statistics.quantiles(estimates, n=40, method="inclusive")
     return low, high
 
