@@ -323,6 +323,8 @@ EXPECTED_D1 = [
     "schema",
     "SELECT settings",
     "SELECT sources",
+    # An empty table: the run tracks no topic, so it embeds nothing.
+    "SELECT tracked_topics",
     # The stored issues the site might lack; a first run has none, so no manifest read.
     "SELECT digests",
     # The vote: find the voted article, reject it, stamp it as a human verdict.

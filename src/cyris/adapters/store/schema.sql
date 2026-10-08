@@ -74,6 +74,18 @@ CREATE TABLE IF NOT EXISTS sources (
   config  TEXT NOT NULL DEFAULT '{}'
 );
 
+-- Topics the reader tracks (grade D in docs/architecture.md §5), written by
+-- /settings. Not rows of `settings`: every key there is required, and an empty
+-- topic list is a valid deployment. `threshold` is a cosine on the scale of
+-- `model`, the embedding model it was set for; a run embedding with another
+-- model skips the topic. Hits are kept in the issue's `digests` row, not here.
+CREATE TABLE IF NOT EXISTS tracked_topics (
+  name        TEXT PRIMARY KEY,
+  description TEXT NOT NULL,
+  threshold   REAL NOT NULL,
+  model       TEXT NOT NULL
+);
+
 -- Runtime-mutable settings (grade D in docs/architecture.md §5), so changing the
 -- LLM provider or the digest times is a write rather than an image rebuild.
 -- `cyris.toml` is baked into the image and mounted `:ro` in the container, which

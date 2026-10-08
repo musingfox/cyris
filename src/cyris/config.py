@@ -25,7 +25,7 @@ from pydantic import (
     model_validator,
 )
 
-from cyris.domain.models import SourceConfig
+from cyris.domain.models import SourceConfig, TrackedTopic
 from cyris.service_layer.schedule import validate_schedule
 
 
@@ -417,6 +417,9 @@ class NoSourcesError(ValueError):
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
+    # Optional, unlike every grade-D key: an empty list tracks nothing and stops
+    # nothing. From `[[tracked_topics]]` in cyris.toml, or D1 `tracked_topics`.
+    tracked_topics: list[TrackedTopic] = Field(default_factory=list)
     # Grade-D keys this deployment's one home does not hold. Never raises at load:
     # the commands that fill the home have to start while it is empty.
     missing_settings: list[str] = Field(default_factory=list)
@@ -548,14 +551,17 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) ->
     """
     if d1_settings is None:
         settings_values, missing_settings = _file_settings(raw.toml)
+        tracked_topics = _file_topics(raw.toml)
     else:
         settings_values, missing_settings = _stored_settings(d1_settings)
+        tracked_topics = []
     app_config = AppConfig.model_validate(
         _with_settings(raw.toml, settings_values, missing_settings)
     )
     return Config(
         app=app_config,
         sources=raw.sources,
+        tracked_topics=tracked_topics,
         missing_settings=missing_settings,
         settings_values=settings_values,
         config_file_found=raw.config_file_found,
@@ -600,6 +606,16 @@ def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
         else:
             missing.append(key)
     return values, sorted(missing)
+
+
+def _file_topics(raw_toml: dict) -> list[TrackedTopic]:
+    """The `[[tracked_topics]]` a cyris.toml lists; none is a valid answer."""
+    topics = [TrackedTopic.model_validate(body) for body in raw_toml.get("tracked_topics", [])]
+    names = [topic.name for topic in topics]
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    if repeated:
+        raise ValueError(f"tracked_topics names {', '.join(repeated)} more than once")
+    return topics
 
 
 def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
