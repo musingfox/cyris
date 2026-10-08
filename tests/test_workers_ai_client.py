@@ -43,6 +43,7 @@ async def test_reads_the_openai_shaped_choices_and_usage():
     assert response.output_tokens == 207
     assert response.neurons == 19.0
 
+    assert route.call_count == 1
     request = route.calls[0].request
     assert request.headers["authorization"] == "Bearer test-cf-token"
     body = json.loads(request.content)
@@ -56,9 +57,12 @@ async def test_reads_the_openai_shaped_choices_and_usage():
 async def test_falls_back_to_the_flat_response_field():
     """llama-3.3 answers in `response`, not `choices`."""
     async with respx.mock:
-        respx.post(RUN_URL).mock(return_value=_envelope({"response": "plain text", "usage": {}}))
+        route = respx.post(RUN_URL).mock(
+            return_value=_envelope({"response": "plain text", "usage": {}})
+        )
         response = await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert response.text == "plain text"
     assert response.input_tokens == 0
 
@@ -71,9 +75,10 @@ async def test_reencodes_a_response_that_is_not_a_string():
     """
     decoded = [{"title": "台積電", "summary": "美國廠提前量產"}]
     async with respx.mock:
-        respx.post(RUN_URL).mock(return_value=_envelope({"response": decoded, "usage": {}}))
+        route = respx.post(RUN_URL).mock(return_value=_envelope({"response": decoded, "usage": {}}))
         response = await _client().complete("Summarise.")
 
+    assert route.call_count == 1
     assert json.loads(response.text) == decoded
     assert "台積電" in response.text  # not \u-escaped, so the digest stays readable
 
@@ -84,6 +89,7 @@ async def test_always_sends_max_tokens():
         route = respx.post(RUN_URL).mock(return_value=_envelope({"response": "ok", "usage": {}}))
         await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert json.loads(route.calls[0].request.content)["max_tokens"] == 8192
 
 
@@ -99,6 +105,7 @@ async def test_asks_for_low_reasoning_effort():
         route = respx.post(RUN_URL).mock(return_value=_envelope({"response": "ok", "usage": {}}))
         await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert json.loads(route.calls[0].request.content)["reasoning_effort"] == "low"
 
 
@@ -107,15 +114,17 @@ async def test_explicit_max_tokens_wins():
         route = respx.post(RUN_URL).mock(return_value=_envelope({"response": "ok", "usage": {}}))
         await _client().complete("Hi.", max_tokens=512)
 
+    assert route.call_count == 1
     assert json.loads(route.calls[0].request.content)["max_tokens"] == 512
 
 
 async def test_warns_when_the_reply_was_truncated(caplog):
     result = {"choices": [{"message": {"content": '{"a":'}, "finish_reason": "length"}]}
     async with respx.mock:
-        respx.post(RUN_URL).mock(return_value=_envelope(result))
+        route = respx.post(RUN_URL).mock(return_value=_envelope(result))
         await _client().complete("Summarise.")
 
+    assert route.call_count == 1
     assert "truncated" in caplog.text
 
 
@@ -123,7 +132,7 @@ async def test_neurons_are_reported_per_response_and_summed_by_the_caller():
     """The client is stateless about spend; `UsageStats.add` is what accumulates it."""
     usage = UsageStats(model="test")
     async with respx.mock:
-        respx.post(RUN_URL).mock(
+        route = respx.post(RUN_URL).mock(
             return_value=_envelope({"response": "ok", "usage": _usage(neurons=2.5)})
         )
         client = _client()
@@ -131,6 +140,7 @@ async def test_neurons_are_reported_per_response_and_summed_by_the_caller():
             r = await client.complete("Hi.")
             usage.add(r.input_tokens, r.output_tokens, r.neurons)
 
+    assert route.call_count == 2
     assert usage.neurons == 5.0
 
 
@@ -170,9 +180,11 @@ async def test_does_not_retry_a_403():
 async def test_raises_with_the_reason_cloudflare_gave():
     body = {"success": False, "errors": [{"message": "No such model"}], "result": None}
     async with respx.mock:
-        respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
         with pytest.raises(RuntimeError, match="No such model"):
             await _client().complete("Hi.")
+
+    assert route.call_count == 1
 
 
 async def test_a_4xx_body_reaches_the_caller():
@@ -183,9 +195,11 @@ async def test_a_4xx_body_reaches_the_caller():
     """
     body = {"success": False, "errors": [{"message": "prompt is too long"}], "result": None}
     async with respx.mock:
-        respx.post(RUN_URL).mock(return_value=httpx.Response(400, json=body))
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(400, json=body))
         with pytest.raises(RuntimeError, match="prompt is too long"):
             await _client().complete("Hi.")
+
+    assert route.call_count == 1
 
 
 async def test_an_empty_reply_is_reported_rather_than_returned_blank(caplog):
@@ -195,8 +209,9 @@ async def test_an_empty_reply_is_reported_rather_than_returned_blank(caplog):
         "usage": {"completion_tokens": 8192},
     }
     async with respx.mock:
-        respx.post(RUN_URL).mock(return_value=_envelope(result))
+        route = respx.post(RUN_URL).mock(return_value=_envelope(result))
         response = await _client().complete("Summarise.")
 
+    assert route.call_count == 1
     assert response.text == ""
     assert "returned no text" in caplog.text

@@ -36,6 +36,7 @@ async def test_parses_content_and_usage():
     assert response.input_tokens == 145
     assert response.output_tokens == 207
 
+    assert route.call_count == 1
     request = route.calls[0].request
     assert request.headers["authorization"] == "Bearer test-openai-key"
     body = json.loads(request.content)
@@ -53,6 +54,7 @@ async def test_sends_max_completion_tokens_not_the_deprecated_name():
         route = respx.post(URL).mock(return_value=_ok())
         await _client().complete("Hi.")
 
+    assert route.call_count == 1
     body = json.loads(route.calls[0].request.content)
     assert body["max_completion_tokens"] == 16384
     assert "max_tokens" not in body
@@ -63,6 +65,7 @@ async def test_explicit_max_tokens_maps_onto_the_current_parameter():
         route = respx.post(URL).mock(return_value=_ok())
         await _client().complete("Hi.", max_tokens=512)
 
+    assert route.call_count == 1
     assert json.loads(route.calls[0].request.content)["max_completion_tokens"] == 512
 
 
@@ -73,6 +76,7 @@ async def test_asks_for_low_reasoning_effort_and_json():
         route = respx.post(URL).mock(return_value=_ok())
         await _client().complete("Hi.")
 
+    assert route.call_count == 1
     body = json.loads(route.calls[0].request.content)
     assert body["reasoning_effort"] == "low"
     assert body["response_format"] == {"type": "json_object"}
@@ -80,17 +84,19 @@ async def test_asks_for_low_reasoning_effort_and_json():
 
 async def test_warns_when_truncated(caplog):
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok(content='{"a":', finish="length"))
+        route = respx.post(URL).mock(return_value=_ok(content='{"a":', finish="length"))
         await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert "truncated" in caplog.text
 
 
 async def test_warns_when_the_reply_is_empty(caplog):
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok(content="", finish="length"))
+        route = respx.post(URL).mock(return_value=_ok(content="", finish="length"))
         response = await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert response.text == ""
     assert "returned no text" in caplog.text
 

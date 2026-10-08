@@ -37,6 +37,7 @@ async def test_complete_parses_text_and_usage():
     assert result.input_tokens == 4
     assert result.output_tokens == 12
 
+    assert route.call_count == 1
     request = route.calls[0].request
     assert request.headers["x-goog-api-key"] == "test-gemini-key"
     body = json.loads(request.content)
@@ -52,7 +53,7 @@ async def test_complete_parses_text_and_usage():
 async def test_output_tokens_include_thinking():
     # Thinking is billed as output, and usageMetadata reports it in its own field.
     async with respx.mock:
-        respx.post(GENERATE_URL).mock(
+        route = respx.post(GENERATE_URL).mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -68,6 +69,7 @@ async def test_output_tokens_include_thinking():
         client = GeminiClient(api_key="k", model="gemini-2.5-flash")
         result = await client.complete("hi")
 
+    assert route.call_count == 1
     assert result.output_tokens == 67 + 161
 
 
@@ -77,6 +79,7 @@ async def test_complete_omits_optional_fields():
         client = GeminiClient(api_key="k", model="gemini-2.5-flash")
         await client.complete("hi")
 
+    assert route.call_count == 1
     body = json.loads(route.calls[0].request.content)
     assert "system_instruction" not in body
     assert body["generationConfig"] == {
@@ -124,7 +127,7 @@ async def test_structured_client_error_keeps_details_out_of_exception_text():
     system = "private system text"
     google_message = "The model is invalid."
     async with respx.mock:
-        respx.post(GENERATE_URL).mock(
+        route = respx.post(GENERATE_URL).mock(
             return_value=httpx.Response(
                 400,
                 json={
@@ -140,6 +143,7 @@ async def test_structured_client_error_keeps_details_out_of_exception_text():
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
             await client.complete(prompt, system=system)
 
+    assert route.call_count == 1
     error = exc_info.value
     assert isinstance(error, GeminiAPIError)
     assert error.code == 400
@@ -156,7 +160,7 @@ async def test_structured_client_error_keeps_details_out_of_exception_text():
 async def test_a_blocked_prompt_names_the_block_reason():
     # A blocked prompt comes back with no candidates at all, only promptFeedback.
     async with respx.mock:
-        respx.post(GENERATE_URL).mock(
+        route = respx.post(GENERATE_URL).mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -168,3 +172,5 @@ async def test_a_blocked_prompt_names_the_block_reason():
         client = GeminiClient(api_key="k", model="gemini-2.5-flash")
         with pytest.raises(RuntimeError, match="gemini-2.5-flash.*SAFETY"):
             await client.complete("hi")
+
+    assert route.call_count == 1
