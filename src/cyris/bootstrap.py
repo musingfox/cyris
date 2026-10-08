@@ -76,9 +76,14 @@ EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
 }
 
 
+def embedding_model(provider: str, model: str) -> str:
+    """The model `provider` embeds with; "" is its default model."""
+    return model or embedding_defaults(provider)["model"]
+
+
 def make_embedder(provider: str, model: str) -> Any:
     """The embedder for `provider`, keyed from the environment; "" is its default model."""
-    model = model or embedding_defaults(provider)["model"]
+    model = embedding_model(provider, model)
     env = [os.environ.get(name, "") for name in EMBEDDING_ENV[provider]]
     if provider == "gemini":
         from cyris.adapters.embedding import GeminiEmbedder
@@ -270,6 +275,9 @@ class Deps:
     embedding_threshold: float | None = None
     # Takes the final `run_summary` dict; None under json, where no run row is kept.
     record_run: Callable[[dict], None] | None = None
+    # Takes (run_at, period, verdicts) after a vote-similarity pass that embedded;
+    # None under json, which keeps no copy.
+    record_similarity: Callable[..., None] | None = None
     # `{(date, period): articles_included}` for the archive's history rows; D1 only,
     # so the json path's rows show no count.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
@@ -327,18 +335,24 @@ def build_deps(
     tag_store = None
     story_store = None
     record_run = None
+    record_similarity = None
     digest_store = None
     archive_counts: Callable[[], dict[tuple[str, str], int]] = dict
     if d1 is not None:
         from cyris.adapters.store.archive_meta import D1ArchiveMeta
         from cyris.adapters.store.digests import D1DigestStore
         from cyris.adapters.store.runs import D1RunLog
+        from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
         from cyris.adapters.store.stories import D1StoryStore
         from cyris.adapters.store.tags import D1TagStore
 
         tag_store = D1TagStore(d1)
         story_store = D1StoryStore(d1)
         record_run = D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record
+        vote = cfg.app.vote_similarity
+        record_similarity = D1SimilarityShadow(
+            d1, embedding_model(vote.provider, vote.model)
+        ).record
         archive_counts = D1ArchiveMeta(d1).article_counts
         digest_store = D1DigestStore(d1)
 
@@ -419,6 +433,7 @@ def build_deps(
         embedder=build_embedder(cfg),
         embedding_threshold=embedding_threshold(cfg),
         record_run=record_run,
+        record_similarity=record_similarity,
         archive_counts=archive_counts,
         digest_store=digest_store,
         worker_domains=build_worker_domains(),

@@ -151,6 +151,8 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         "status": "error",
         "period": options.period,
         "dry_run": options.dry_run,
+        # The key D1 `vote_similarity_shadow` rows are stamped with, so the two join.
+        "started_at": started_at.isoformat(timespec="seconds"),
     }
     # Held here, not read back off `summary["status"]`: a SIGTERM is a
     # CancelledError, which is not an Exception, and that run's status is also
@@ -403,6 +405,18 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         # line a digest run embedded ~600 texts and reported none of it.
         summary["embedding"] = deps.embedder.usage.as_dict()
         summary["suppressed"] = len(similarity.suppressed_urls)
+        if similarity.ran:
+            summary["vote_similarity_judged"] = len(similarity.verdicts)
+            if deps.record_similarity is not None and not options.dry_run:
+                # Its own guard: the record is data for later calibration, and
+                # losing it must cost nothing this run selects or publishes.
+                try:
+                    deps.record_similarity(
+                        summary["started_at"], options.period, list(similarity.verdicts.values())
+                    )
+                except Exception as e:
+                    logger.error("Failed to record vote similarity: %s", e)
+                    summary["vote_similarity_record_error"] = str(e)
 
         if similarity.suppressed_urls:
             dropped = set(similarity.suppressed_urls)
