@@ -877,6 +877,8 @@ on main after the change lands, citing the hash it landed as.
 | 2026-10-08 | `f16f8c2` | §3.2 says what a vote stamp can and cannot tell: it is the sync time, not the vote's, and a cluster vote fans out to several stamped rows. |
 | 2026-10-08 | `5cc13b8` | `AIGatewayClient` joined §2's `LLMClient` adapters (`provider = "ai_gateway"`, Cloudflare's `/ai/run` envelope with BYOK keys), and §5 adds it as a grade-D provider value that reuses the Workers AI token. |
 | 2026-10-08 | `2b15987` | §3.2 adds the vote order: with `[digest] rank_by_preference` on, headlines and Features are ordered by nearest-upvote minus nearest-downvote cosine before the issue cap; §5 grades the switch D. |
+| 2026-10-08 | `0285830` | Tracked topics: a run embeds each reader-written topic and lists the candidates at or above its threshold in the issue's Tracking section (§2, §3.2); topics live in D1 `tracked_topics` or `[[tracked_topics]]` (§4), grade D with the model each threshold was set for (§5). |
+| 2026-10-08 | `53539bc` | A deploy with no input reads the digest the release recorded in the commit's `image/<short-sha>` tag; `:release` is no longer read by anything (§6). |
 
 ## 8. Where the core never changes
 
