@@ -232,7 +232,13 @@ class TestRunRoleStopsOnSigterm:
         p = run_pass(
             cyris_body=f"test \"$1\" = {step} && echo $$ > '{pidfile}' && exec sleep 30\nexit 0"
         )
+        # The stub logs its call before the step records its pid, so the call alone
+        # does not mean there is a pid to check yet.
         p.wait_for_call(f"cyris {step}")
+        deadline = time.monotonic() + 5
+        while not (pidfile.exists() and pidfile.read_text().endswith("\n")):
+            assert time.monotonic() < deadline, f"cyris {step} never recorded its pid"
+            time.sleep(0.02)
         p.terminate(within=5)
         with pytest.raises(ProcessLookupError):
             os.kill(int(pidfile.read_text()), 0)
