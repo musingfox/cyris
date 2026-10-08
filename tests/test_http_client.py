@@ -12,7 +12,8 @@ pytestmark = pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_success():
     async with respx.mock:
-        respx.get("https://example.com").mock(return_value=httpx.Response(200, text="OK"))
+        route = respx.get("https://example.com").mock(return_value=httpx.Response(200, text="OK"))
         async with HttpClient() as client:
             resp = await client.get("https://example.com")
+        assert route.call_count == 1
         assert resp.status_code == 200
