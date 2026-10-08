@@ -40,8 +40,8 @@ jobs:
       - id: check
         run: scripts/check.sh
       # `wrangler containers push` resolves the account from the API token when this is
-      # empty, so both pushes would succeed and only the digest read-back would fail —
-      # after `:release` had already moved. Refuse before anything is published.
+      # empty, so the `:<sha>` push would succeed and only the registry read-back after
+      # it would fail — once the image was already published. Refuse before anything is.
       - id: preflight
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -149,17 +149,24 @@ jobs:
           image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$IMAGE_NAME"
           descriptor='if type == "array" then .[0] else . end | .Descriptor.digest // empty'
           sha_digest=${{ steps.verify_sha.outputs.digest }}
+          if [ -z "$sha_digest" ]; then
+            echo "verify_sha confirmed no digest for $IMAGE_NAME:${{ github.sha }}" >&2
+            exit 1
+          fi
           # The registry can answer the previous `:release` for a while after the push
-          # that moved it (seen twice on 2026-10-08), so a mismatch is read again for
-          # up to a minute before it counts.
+          # that moved it — on 2026-10-08, three releases of four, once for over 50
+          # seconds — so a mismatch is read again for up to a minute. After that it is
+          # only a warning: deploy.yml reads the digest from the `image/<sha7>` git tag,
+          # never from `:release`, so withholding that tag over a stale read would
+          # leave a pushed image undeployable.
           for attempt in 1 2 3 4 5 6; do
-            release_digest=$(docker manifest inspect -v "$image:release" | jq -r "$descriptor")
+            release_digest=$(docker manifest inspect -v "$image:release" \
+              | jq -r "$descriptor") || release_digest=""
             [ "$sha_digest" = "$release_digest" ] && break
             [ "$attempt" -lt 6 ] && sleep 10
           done
-          if [ -z "$release_digest" ] || [ "$sha_digest" != "$release_digest" ]; then
-            echo "registry tags empty or differ: sha=$sha_digest release=$release_digest" >&2
-            exit 1
+          if [ "$sha_digest" != "$release_digest" ]; then
+            echo "::warning::registry still serves :release as ${release_digest:-nothing}, not the pushed $sha_digest; recording $sha_digest"
           fi
           echo "digest=$sha_digest" >> "$GITHUB_OUTPUT"
       # The tag records which image a commit produced. When the commit already carried a
