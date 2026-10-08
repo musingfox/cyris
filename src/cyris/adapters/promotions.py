@@ -62,6 +62,23 @@ def ack_promotions(worker_url: str, token: str, urls: list[str]) -> None:
     resp.raise_for_status()
 
 
+def record_votes(
+    store: ArticleStore, *, accepted: list[str], rejected: list[str], at: datetime
+) -> None:
+    """Write votes as human decisions: rejected, accepted, then stamped `triaged_at`.
+
+    The one way a reader's verdict reaches the store. `/labels` writes its up and
+    down answers through it too, so a blind label seeds vote similarity exactly
+    as a digest vote does.
+    """
+    if rejected:
+        store.reject(rejected, reason=RejectReason.NOT_INTERESTED)
+    if accepted:
+        store.accept(accepted)
+    if rejected or accepted:
+        store.update_triage_timestamp(rejected + accepted, at)
+
+
 def sync_promotions(
     worker_url: str,
     token: str,
@@ -98,12 +115,7 @@ def sync_promotions(
 
     rejected = [a.url for a in found if vote_by_url[a.url] == "down"]
     accepted = [a.url for a in found if vote_by_url[a.url] != "down"]
-    if rejected:
-        store.reject(rejected, reason=RejectReason.NOT_INTERESTED)
-    if accepted:
-        store.accept(accepted)
-    if found:
-        store.update_triage_timestamp([a.url for a in found], datetime.now(UTC))
+    record_votes(store, accepted=accepted, rejected=rejected, at=datetime.now(UTC))
 
     ack_promotions(worker_url, token, urls)
     logger.info("Synced %d vote(s) (%d down)", len(urls), len(rejected))
