@@ -79,7 +79,9 @@ def check(cf: Cloudflare, *extra: str) -> int:
 
 
 def test_a_token_with_every_permission_passes(capsys) -> None:
-    assert check(Cloudflare(), "--email") == 0
+    cf = Cloudflare()
+    assert check(cf, "--email") == 0
+    assert len(cf.requests) == 4
     assert "✓ the token has every permission the trial needs" in capsys.readouterr().out
 
 
@@ -93,13 +95,17 @@ def test_a_token_with_every_permission_passes(capsys) -> None:
     ],
 )
 def test_each_missing_permission_is_named(capsys, answers: dict, missing: str) -> None:
-    assert check(Cloudflare(**answers), "--email") == 1
+    cf = Cloudflare(**answers)
+    assert check(cf, "--email") == 1
+    assert len(cf.requests) == 4
     out = capsys.readouterr().out
     assert out.strip().splitlines() == [f"✗ the token lacks {missing}"]
 
 
 def test_every_missing_permission_is_named_at_once(capsys) -> None:
-    assert check(Cloudflare(pages=AUTH, domains=AUTH)) == 1
+    cf = Cloudflare(pages=AUTH, domains=AUTH)
+    assert check(cf) == 1
+    assert len(cf.requests) == 3
     out = capsys.readouterr().out
     assert "Cloudflare Pages → Edit" in out and "Workers Scripts → Read" in out
 
@@ -107,18 +113,22 @@ def test_every_missing_permission_is_named_at_once(capsys) -> None:
 def test_mail_is_probed_only_when_asked() -> None:
     cf = Cloudflare(mail=AUTH)
     assert check(cf) == 0
+    assert len(cf.requests) == 3
     assert not any("/email/" in r.url.path for r in cf.requests)
 
 
 def test_the_mail_probe_sends_nothing_a_mail_could_be_made_of() -> None:
     cf = Cloudflare()
     check(cf, "--email")
+    assert len(cf.requests) == 4
     mail = next(r for r in cf.requests if "/email/" in r.url.path)
     assert mail.content == b"{}"
 
 
 def test_an_answer_that_is_not_json_is_not_a_grant(capsys) -> None:
-    assert check(Cloudflare(pages=httpx.Response(502, text="<html>bad gateway</html>"))) == 1
+    cf = Cloudflare(pages=httpx.Response(502, text="<html>bad gateway</html>"))
+    assert check(cf) == 1
+    assert len(cf.requests) == 3
     assert "Cloudflare Pages → Edit" in capsys.readouterr().out
 
 
@@ -126,6 +136,7 @@ def test_every_probe_targets_the_trial(capsys) -> None:
     cf = Cloudflare()
     check(cf, "--email")
     paths = {r.url.path for r in cf.requests}
+    assert len(cf.requests) == len(paths)
     base = f"/client/v4/accounts/{ACCOUNT}"
     assert paths == {
         f"{base}/d1/database/{D1_ID}/query",
@@ -140,13 +151,16 @@ def test_every_probe_targets_the_trial(capsys) -> None:
 def test_the_token_is_sent_and_never_printed(capsys) -> None:
     cf = Cloudflare(pages=AUTH)
     check(cf, "--email")
+    assert len(cf.requests) == 4
     assert {r.headers["authorization"] for r in cf.requests} == {f"Bearer {TOKEN}"}
     captured = capsys.readouterr()
     assert TOKEN not in captured.out + captured.err
 
 
 def test_no_token_on_stdin_is_refused(capsys) -> None:
-    assert trial_api.main(CHECK, io.StringIO(""), Cloudflare().client_for) == 1
+    cf = Cloudflare()
+    assert trial_api.main(CHECK, io.StringIO(""), cf.client_for) == 1
+    assert cf.requests == []
     assert "No token on stdin." in capsys.readouterr().err
 
 
@@ -204,6 +218,7 @@ def test_the_wait_ends_at_the_first_row_newer_than_the_one_before(capsys) -> Non
     clock = Clock()
     d1 = D1(_rows(RUN_4), _rows(RUN_4), _rows(RUN_5))
     assert wait(d1, clock, "--after", "4", "--interval", "15") == 0
+    assert len(d1.sql) == 3
     out = capsys.readouterr().out
     assert "run 5: status ok" in out
     assert clock.slept == [15, 15]
@@ -211,7 +226,9 @@ def test_the_wait_ends_at_the_first_row_newer_than_the_one_before(capsys) -> Non
 
 
 def test_the_new_row_shows_its_columns_and_its_counts(capsys) -> None:
-    assert wait(D1(_rows(RUN_5)), Clock(), "--after", "4") == 0
+    d1 = D1(_rows(RUN_5))
+    assert wait(d1, Clock(), "--after", "4") == 0
+    assert len(d1.sql) == 1
     lines = capsys.readouterr().out.splitlines()
     for line in ("build_sha = 00fa8ab", "fetched = 6", "included = 6", "period = evening"):
         assert f"    {line}" in lines
@@ -220,7 +237,9 @@ def test_the_new_row_shows_its_columns_and_its_counts(capsys) -> None:
 
 def test_a_count_both_a_column_and_in_the_summary_shows_once(capsys) -> None:
     row = RUN_5 | {"fetched": 6, "summary": '{"fetched": 6, "wall_seconds": 1.3}'}
-    wait(D1(_rows(row)), Clock(), "--after", "4")
+    d1 = D1(_rows(row))
+    wait(d1, Clock(), "--after", "4")
+    assert len(d1.sql) == 1
     lines = capsys.readouterr().out.splitlines()
     assert lines.count("    fetched = 6") == 1
     assert "    wall_seconds = 1.3" in lines
@@ -228,20 +247,26 @@ def test_a_count_both_a_column_and_in_the_summary_shows_once(capsys) -> None:
 
 def test_a_failed_publish_points_at_the_pages_permission(capsys) -> None:
     failed = RUN_5 | {"status": "publish_failed"}
-    assert wait(D1(_rows(failed)), Clock(), "--after", "4") == 0
+    d1 = D1(_rows(failed))
+    assert wait(d1, Clock(), "--after", "4") == 0
+    assert len(d1.sql) == 1
     out = capsys.readouterr().out
     assert "status publish_failed" in out
     assert "Cloudflare Pages → Edit" in out and "--from 7" in out
 
 
 def test_an_ok_run_does_not_mention_pages(capsys) -> None:
-    wait(D1(_rows(RUN_5)), Clock(), "--after", "4")
+    d1 = D1(_rows(RUN_5))
+    wait(d1, Clock(), "--after", "4")
+    assert len(d1.sql) == 1
     assert "Pages" not in capsys.readouterr().out
 
 
 def test_the_wait_gives_up_at_its_timeout_and_names_workers_logs(capsys) -> None:
     clock = Clock()
-    assert wait(D1(_rows(RUN_4)), clock, "--after", "4", "--timeout", "60", "--interval", "15") == 2
+    d1 = D1(_rows(RUN_4))
+    assert wait(d1, clock, "--after", "4", "--timeout", "60", "--interval", "15") == 2
+    assert len(d1.sql) == 5
     out = capsys.readouterr().out
     assert "No digest_runs row after 60s" in out
     assert f"https://dash.cloudflare.com/{ACCOUNT}/workers-and-pages → cyris-app-t1" in out
@@ -250,13 +275,19 @@ def test_the_wait_gives_up_at_its_timeout_and_names_workers_logs(capsys) -> None
 
 def test_an_empty_table_counts_as_run_zero(capsys) -> None:
     latest = ["latest-run", "--account-id", ACCOUNT, "--d1-id", D1_ID]
-    assert trial_api.main(latest, io.StringIO(TOKEN + "\n"), D1(_rows()).client_for) == 0
+    empty = D1(_rows())
+    assert trial_api.main(latest, io.StringIO(TOKEN + "\n"), empty.client_for) == 0
+    assert len(empty.sql) == 1
     assert capsys.readouterr().out.strip() == "0"
-    assert wait(D1(_rows(RUN_4)), Clock(), "--after", "0") == 0
+    d1 = D1(_rows(RUN_4))
+    assert wait(d1, Clock(), "--after", "0") == 0
+    assert len(d1.sql) == 1
 
 
 def test_a_refused_query_fails_without_the_token(capsys) -> None:
-    assert wait(D1(D1_DENIED), Clock(), "--after", "4") == 1
+    d1 = D1(D1_DENIED)
+    assert wait(d1, Clock(), "--after", "4") == 1
+    assert len(d1.sql) == 1
     captured = capsys.readouterr()
     assert "digest_runs query failed: errors [7403]" in captured.err
     assert TOKEN not in captured.out + captured.err
@@ -265,4 +296,5 @@ def test_a_refused_query_fails_without_the_token(capsys) -> None:
 def test_the_wait_only_reads() -> None:
     d1 = D1(_rows(RUN_5))
     wait(d1, Clock(), "--after", "4")
+    assert len(d1.sql) == 1
     assert d1.sql and all(s.startswith('{"sql":"SELECT * FROM digest_runs') for s in d1.sql)
