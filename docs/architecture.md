@@ -22,8 +22,8 @@ diagnostics       adapters   (implement the service layer's Protocols)
 `bootstrap.build_deps()` is the only place the three meet. The core (`service_layer` + `domain`)
 imports nothing from `adapters` — it names Protocols, and the composition root supplies bodies.
 
-`diagnostics/` is off the pipeline entirely: `doctor` asks whether this deployment works, `compare` runs one window through two wirings and reports where they differ. It may import everything below it and nothing below it may import it, so deleting the
-package would cost three commands and not one digest.
+`diagnostics/` is off the pipeline entirely: `doctor` asks whether this deployment works, `compare` runs one window through two wirings and reports where they differ, and `blind_labels` draws a blind-label sample and scores the filter against it. It may import everything below it and nothing below it may import it, so deleting the
+package would cost its commands and not one digest.
 
 Pipeline: **Fetch → Store → Score → Process → Output**, orchestrated end to end by
 `service_layer/run_digest.py`. The CLI parses arguments and calls it; it holds no logic of its own.
@@ -188,8 +188,9 @@ bare vectors, and `0.0` there would read as a measured cost of nothing.
 
 `src/cyris/diagnostics/` holds the tools whose subject is the deployment rather than the digest:
 `doctor`, which builds the real adapters itself and never calls `build_deps`; `embed-compare` and
-`llm-compare` in `compare.py`, which build two wirings and return rows; and `config show` in
-`config_show.py`. The CLI parses, prints and owns every local write. `tests/test_core_imports.py`
+`llm-compare` in `compare.py`, which build two wirings and return rows; `config show` in
+`config_show.py`; and `labels draw` and `labels report` in `blind_labels.py`, which draw the
+blind-label sample (§4) and score the filter and the embedding preference against its answers. The CLI parses, prints and owns every local write. `tests/test_core_imports.py`
 fails if `service_layer/` or `domain/` imports `cyris.adapters` or `cyris.bootstrap` at runtime,
 and fails again if anything below `diagnostics/` imports it back. Why a layer of its own:
 [ADR-0007](decisions/0007-diagnostics-is-its-own-layer.md).
@@ -385,7 +386,9 @@ itself and by the `cyris promote-sync` after it, which is what turns a click int
 payload's `ts` and never stores it, so how often votes arrive cannot be read from the store. A
 vote on a grouped item posts once for every URL in the group, so rows stamped at one instant may
 be one judgment rather than independent labels. The raw page's triage view is the only triage surface; the pending backlog
-across days is reachable only through `cyris articles`.
+across days is reachable only through `cyris articles`. `/labels` writes human verdicts too, through
+the same `record_votes` the vote sync calls and stamped at the answer's own time, but only on a drawn
+sample (§4 *Blind-label sample*): it measures the filter, and triages nothing a run would show.
 
 A run whose provider is not `none` but whose scoring, filter or summarize step went on without
 the LLM's answer, because no client was built or its call failed, is *degraded*
@@ -633,7 +636,7 @@ Cloudflare
 ├── Worker: newsletter → KV
 ├── Worker: promote    → KV
 ├── Worker: app        → Container ─┬─ cron  0 * * * *  →  CYRIS_ROLE=run  (one pass, then exits)
-│     <your custom domain>         └─ any request      →  CYRIS_ROLE=ui   (asleep after 5 min)
+│     <your custom domain>         └─ any request      →  CYRIS_ROLE=ui   (/settings, /labels; asleep after 5 min)
 ├── D1: every table in src/cyris/adapters/store/schema.sql, each with its §4 row
 ├── Pages: cyris-digest, and cyris-site (website/, outside the pipeline)
 └── Workers Logs: the container's stdout, 7 days
@@ -817,7 +820,7 @@ digest stays static is [ADR-0010](decisions/0010-the-digest-stays-static-behind-
 /                         digest index  ─┐ public unless CYRIS_PRIVATE_ARCHIVE is "true"
 /2026-08-30-evening.html  one digest    ─┘ (then the cookie too): the Worker proxies Pages
 /triage*                                   404
-/settings · /api/* · /static/*             CYRIS_UI_TOKEN cookie; Access too if
+/settings · /labels · /api/* · /static/*   CYRIS_UI_TOKEN cookie; Access too if
                                            CYRIS_UI_ACCESS_HOST matches this host
 ```
 

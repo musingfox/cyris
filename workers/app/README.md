@@ -1,6 +1,6 @@
 # `cyris-app` — the Container and its door
 
-The Worker that runs the pipeline and the only route to `/settings`. To deploy it, follow
+The Worker that runs the pipeline and the only route to `/settings` and `/labels`. To deploy it, follow
 [docs/install-cloudflare.md](../../docs/install-cloudflare.md); to update, roll back or
 check what it runs, see [docs/operations.md](../../docs/operations.md). Its
 `wrangler.toml` is at the repo root, because the image is built from the whole
@@ -56,7 +56,7 @@ One layer always, a second if you own a domain. Why this shape:
 A fork on `*.workers.dev` is a complete install with the cookie alone. Cyris does not
 validate the Access JWT itself.
 
-Protected paths are `/settings`, `/login`, `/run`, `/api/*` and `/static/*`; with
+Protected paths are `/settings`, `/labels`, `/login`, `/run`, `/api/*` and `/static/*`; with
 `CYRIS_PRIVATE_ARCHIVE` set to `"true"`, every other path needs the cookie too. Behind
 Access they 302 to `cloudflareaccess.com` rather than 401, so a script against an
 Access hostname needs an Access service token. `cyris doctor --deployment` and the
