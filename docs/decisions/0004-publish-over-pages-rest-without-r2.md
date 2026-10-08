@@ -42,11 +42,11 @@ wrangler's own `wrangler-dist/cli.js` rather than reconstructed from documentati
   `R2 → Edit` permission rather than a missing service.
 * Bad, because the deployed site holds the only copy of what D1 `digests` does not: the raw
   companion pages and the issues published before 2026-09-24. D1 and Pages sit in one account, so
-  an off-account backup is still open (`docs/architecture.md` §7 #14). If one is wanted, R2 is
+  an off-account backup is still open, tracked outside this repository. If one is wanted, R2 is
   where it goes; that is a durability decision, not a publishing one.
 * Bad, because losing D1 empties the manifest, and the next full-snapshot deploy would wipe every
   live page. The guards that refuse such a deploy, and the recovery path, are described in
-  `docs/architecture.md` §7 under *What this costs, stated plainly*.
+  `docs/architecture.md` §6 under *Publishing*.
 * Bad, because the asset key formula is load-bearing:
   `blake3(base64(bytes) + extension)`, hex, first 32 characters. Any other formulation makes
   `check-missing` answer "all new" and re-uploads the whole archive on every deploy.
@@ -64,5 +64,5 @@ Extracted on 2026-10-08 from these sources at commit `c353d3f`:
 * `docs/architecture.md:1035-1038` (the *Ceiling* bullet).
 
 The publish timing budget and how `_page_is_live` and Cloudflare's reported stage decide what
-`pages_manifest` records are current behaviour, described in `docs/architecture.md` §7 beside
-these sources.
+`pages_manifest` records are current behaviour, described in `docs/architecture.md` §6 under
+*Publishing*.

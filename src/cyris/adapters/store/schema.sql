@@ -14,7 +14,7 @@
 -- — so do not add anything here that would not survive being re-run hourly.
 -- That covers first creation only. There is no mechanism for evolving a database
 -- that already exists: an ADD COLUMN written here reaches a fresh deployment and
--- nothing else. See docs/architecture.md §7, M6.
+-- nothing else. See docs/architecture.md §6.
 --
 -- To apply it by hand anyway (inspection, or a database cyris never opens):
 --   wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql

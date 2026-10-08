@@ -61,8 +61,8 @@ code edit.
   table the app writes, and the article store and the RSS buffer share one database (`cyris-rss`),
   which is the binding `workers/rss/wrangler.toml` already declares. Provisioned separately they
   get two databases, and the RSS Worker reads an empty table and polls nothing.
-* Bad, because the clean-account run of the button has not been done (`docs/architecture.md` §7
-  #9); the three wrong assumptions above were found by reading, not by pressing.
+* Bad, because the clean-account run of the button has not been done (tracked outside this
+  repository); the three wrong assumptions above were found by reading, not by pressing.
 
 ## More Information
 

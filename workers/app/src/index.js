@@ -122,7 +122,7 @@ const RUN_INSTANCE = "run";
 
 export class CyrisContainer extends Container {
   defaultPort = 8766;
-  // Idle time is billed. §7 called the default 10 minutes ~10 container-hours
+  // Idle time is billed. The 10-minute default idle added ~10 container-hours
   // per 60 runs, which is why the hook below exists at all. Read from the
   // instance's own name, not from start()'s options, so a Durable Object
   // restart mid-run keeps the run's timer.

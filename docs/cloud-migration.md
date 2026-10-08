@@ -3,8 +3,8 @@
 > Status: **the move is done.** Phases 0–2 landed by 2026-08-25 (state in D1); the compute
 > followed on 2026-08-30, when `workers/app/` put the pipeline in a Cloudflare Container and the
 > local machine's `docker compose` was stopped. This file is kept for the measurements and the
-> reasoning behind each choice — **the live list of what is and is not done is
-> [`architecture.md`](architecture.md) §7**, not this plan.
+> reasoning behind each choice — **what is built is described in
+> [`architecture.md`](architecture.md)**, not this plan; open work is tracked outside this repository.
 >
 > It also supersedes the local-vs-Cloudflare assessment that preceded it (`docs/deployment.md`,
 > deleted 2026-09-05 once every line of it had either shipped or been measured away): its
@@ -217,7 +217,7 @@ anyone repeating it. Each step is separately reversible.
 1. `wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql`
    — creates `stored_articles`, `usage_log` and `sources`. Ran 2026-08-25; **no
    longer a step**, since 2026-09-04 the tables are created on first boot (see
-   §7, M6). Kept because it is what was actually run that day.
+   `architecture.md` §6). Kept because it is what was actually run that day.
 2. Give `.env`'s `CLOUDFLARE_API_TOKEN` the `D1:Edit` permission — the same token deploys Pages.
 3. `cyris store migrate`, then `cyris store diff` — expect no differences.
 4. Set `[store] backend = "d1"`, run `cyris doctor`, then a full `cyris run`.
@@ -252,8 +252,8 @@ Mechanical once phase 2 lands, with no new failure modes left untested.
 **The table below is the plan as written, not what landed.** Neither R2 nor Vectorize was
 used: the digest is published to Pages from memory and the embedding cache was deleted
 rather than relocated. Both reversals, with the measurements behind them, are in
-[`architecture.md`](architecture.md) §7 (*Why M3 did not use R2*, *Why M4 did not use
-Vectorize*).
+[ADR-0004](decisions/0004-publish-over-pages-rest-without-r2.md) and
+[ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md).
 
 | Adapter | Lines | Change |
 |---|---|---|

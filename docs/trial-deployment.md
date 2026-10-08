@@ -3,8 +3,8 @@
 A trial is one tester's own cyris on a Cloudflare account you hold: its own app Worker,
 container application, D1 database, KV namespace, Pages project, vote Worker and rss
 Worker, behind a login at `<slug>.<domain>`, with the archive private. On an account of
-its own, it is also the manual, non-button half of the clean-account run
-(`docs/architecture.md` §7, M6).
+its own, it is also the manual, non-button half of the deploy button's clean-account run
+(ADR-0012).
 
 `scripts/trial-wizard.sh` provisions one, stage by stage. This page says why the stages
 are shaped the way they are; the commands themselves live only in the script.

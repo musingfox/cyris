@@ -122,7 +122,7 @@ class TriageServer:
         # Already resolved by `load_effective_config` — D1's `sources` table under
         # a D1 store, empty or not; `sources.yaml` otherwise.
         self._sources = sources or {}
-        # The write surface (§7 #15). Absent on a `backend = "json"` deployment,
+        # The write surface. Absent on a `backend = "json"` deployment,
         # where `sources.yaml` is the only home and the list stays read-only.
         self._source_store = source_store
         # D1's `feed_health` beside each source's newest article; absent on a

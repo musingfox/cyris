@@ -34,7 +34,8 @@ from dataclasses import dataclass
 # `down_similarity`, and a fixed number suppresses more each time the reader votes.
 # Measured on one fixed window: 2 downvote seeds suppressed 8 articles, 24
 # suppressed 45. The replacement is a relative cutoff (rank, or a margin over the
-# window's own distribution); see docs/architecture.md §7.
+# window's own distribution); see
+# docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md.
 DEFAULT_THRESHOLD = 0.68
 
 

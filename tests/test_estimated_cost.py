@@ -128,7 +128,7 @@ async def test_neurons_and_calls_survive_every_aggregation_hop():
     the whole scoring stage into a single `api_calls`. The call count is read off
     the digest footer and the `usage_log` row; the neuron figure reaches neither
     — `llm-compare` is its only reader today, and giving it a persistent home
-    needs a column and a §4 row (§7 #28).
+    needs a column and a §4 row.
     """
     from cyris.domain.models import UsageStats
 

@@ -163,7 +163,7 @@ original baseline was judged too large, and the multiplier's three steps are for
 
 - **Every `font-size` is written as `calc(baseline * var(--type-scale))`**, with a clamp wrapped inside,
   for example `calc(clamp(46px, 7vw, 84px) * var(--type-scale))`. The later font size setting
-  (`docs/architecture.md` §7 #35) changes only the multiplier, never this table.
+  (`digest.type_scale`, ADR-0013) changes only the multiplier, never this table.
 - Control heights, column widths and spacing do not scale with the multiplier.
 - The multiplier has only three values: 0.875, 1 and 1.125. It is `digest.type_scale` in D1 `settings`,
   set in the Digest category of `/settings`; the app Worker adds `<style>html:root{--type-scale:X}</style>`
