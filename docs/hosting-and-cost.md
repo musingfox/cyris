@@ -20,6 +20,11 @@ hung run: its SIGTERM now ends the pass with exit 143 once the running step's in
 return, which until
 2026-09-24 it did not — the shell PID 1 ignored the signal).
 
+The figures above are the month as measured before 2026-10-08. Since then `scheduled()` reads the
+schedule from D1 first and starts the `run` role only on the two digest hours, so the 660 idle
+starts are gone and the month's container time is roughly the 60 × 64 s = 3,840 s of digest runs.
+The table below has not been re-measured.
+
 | Meter | Measured | Workers Paid included | Used |
 | --- | --- | --- | --- |
 | D1 storage | 29.9 MB | 5 GB [7] | 0.6 % |
