@@ -133,7 +133,7 @@ the seed list, measured at 2 downvote seeds → 8 articles suppressed, 24 seeds 
   [ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md).
 
 Two privately tracked tickets carry what is left: replacing the RSS buffer Worker with an
-hourly tick that fetches feeds itself, and a durable backup of digest content (architecture §7 #14).
+hourly tick that fetches feeds itself, and a durable backup of digest content.
 
 ## Sources
 

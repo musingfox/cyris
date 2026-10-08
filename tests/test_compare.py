@@ -29,7 +29,7 @@ class _Usage:
 
 
 class UsageTrackingEmbedder(FakeEmbedder):
-    """`Embedder` carries no usage; `embed-compare` reads it anyway — see §7 #20."""
+    """`Embedder` carries no usage; `embed-compare` reads it anyway — see `ports.Embedder.usage`."""
 
     usage = _Usage()
 

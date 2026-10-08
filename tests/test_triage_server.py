@@ -69,7 +69,7 @@ class TestTheDeckIsNotServed:
 
 
 class TestBuildEndpoint:
-    """The only surface that can say which image a deployment starts (§7 #33)."""
+    """The only surface that can say which image a deployment starts."""
 
     async def test_reports_the_sha_baked_into_the_image(
         self, client: TestClient, monkeypatch
@@ -94,7 +94,7 @@ class TestBuildEndpoint:
 
 
 class TestSourcesEndpoint:
-    """The settings page's source list and its write surface (§7 #15)."""
+    """The settings page's source list and its write surface."""
 
     async def test_lists_sources_without_an_origin(self) -> None:
         from cyris.domain.models import SourceConfig, Tier
@@ -131,7 +131,7 @@ class TestSourcesEndpoint:
 
 
 class TestSourcesWriteSurface:
-    """§7 #15: add, retire and re-tier a source over the existing D1 row."""
+    """Add, retire and re-tier a source over the existing D1 row."""
 
     @pytest.fixture
     async def client(self) -> TestClient:
