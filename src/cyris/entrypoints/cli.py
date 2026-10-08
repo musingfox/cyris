@@ -493,7 +493,7 @@ def _build_arm(spec: str):
     if llm is None:
         missing = (
             "CLOUDFLARE_ACCOUNT_ID"
-            if arm_cfg.provider == "workers_ai" and arm_cfg.api_key
+            if arm_cfg.provider in ("workers_ai", "ai_gateway") and arm_cfg.api_key
             else arm_cfg.api_key_env_var
         )
         raise typer.BadParameter(f"--arm {spec!r}: {missing} is empty")

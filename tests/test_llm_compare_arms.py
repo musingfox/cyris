@@ -63,6 +63,14 @@ def test_workers_ai_with_a_token_but_no_account_says_which_one(monkeypatch):
         _build_arm("workers_ai:@cf/openai/gpt-oss-120b")
 
 
+def test_ai_gateway_with_a_token_but_no_account_says_which_one(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "t")
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+
+    with pytest.raises(typer.BadParameter, match="CLOUDFLARE_ACCOUNT_ID is empty"):
+        _build_arm("ai_gateway:google/gemini-3.8-flash")
+
+
 def _deps_attrs(source: str) -> set[str]:
     tree = ast.parse(source)
     return {

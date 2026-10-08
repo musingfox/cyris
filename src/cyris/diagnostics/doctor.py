@@ -143,7 +143,7 @@ def _check_llm(cfg: Config) -> Check:
         return Check("llm provider", "ok", "none — digests list plain excerpts, by choice")
     if not llm.api_key:
         hint = f"Put {llm.api_key_env_var} in .env."
-        if llm.provider == "workers_ai":
+        if llm.provider in ("workers_ai", "ai_gateway"):
             hint += " CLOUDFLARE_EMBEDDING_API_TOKEN also works: the same Workers AI "
             hint += "permission covers text models."
         where = "on /settings" if cfg.app.store.is_d1 else "in [llm_provider]"
@@ -154,11 +154,11 @@ def _check_llm(cfg: Config) -> Check:
             f"provider is {llm.provider} but {llm.api_key_env_var} is empty",
             hint,
         )
-    if llm.provider == "workers_ai" and not llm.account_id:
+    if llm.provider in ("workers_ai", "ai_gateway") and not llm.account_id:
         return Check(
             "llm provider",
             "fail",
-            "workers_ai has a token but no account id — its REST path is per-account",
+            f"{llm.provider} has a token but no account id — its REST path is per-account",
             "Put CLOUDFLARE_ACCOUNT_ID in .env.",
         )
     return Check("llm provider", "ok", f"{llm.provider} · {llm.model or 'default model'}")
@@ -207,6 +207,7 @@ async def probe_llm(llm_cfg) -> Check:
     fetch has already happened — so anything that *writes* the provider config
     should call this before saving, not after.
     """
+    from cyris.adapters.ai_gateway_client import AIGatewayError
     from cyris.adapters.gemini_client import GeminiAPIError
     from cyris.bootstrap import build_llm
 
@@ -220,8 +221,8 @@ async def probe_llm(llm_cfg) -> Check:
             f"{llm_cfg.provider or 'no provider'} could not be built — "
             f"{llm_cfg.api_key_env_var} is empty"
             + (
-                " (workers_ai also needs CLOUDFLARE_ACCOUNT_ID)"
-                if llm_cfg.provider == "workers_ai"
+                f" ({llm_cfg.provider} also needs CLOUDFLARE_ACCOUNT_ID)"
+                if llm_cfg.provider in ("workers_ai", "ai_gateway")
                 else ""
             ),
             f"Set {llm_cfg.api_key_env_var} on this deployment, then save again.",
@@ -250,6 +251,29 @@ async def probe_llm(llm_cfg) -> Check:
             "fail",
             f"{llm.model} refused: code={e.code}, status={e.status}, message={detail}",
             refused,
+        )
+    except AIGatewayError as e:
+        detail = e.message.replace(LLM_PROBE_PROMPT, "[probe text redacted]")
+        who = {
+            "gateway": f"AI Gateway refused the request for {llm.model}",
+            "model": f"AI Gateway refused the model {llm.model}",
+        }.get(e.side, f"AI Gateway returned an error for {llm.model}")
+        fix = {
+            "gateway": (
+                "Store this model's provider key under Provider Keys in the gateway named "
+                f"default (alias default), and check that {llm_cfg.api_key_env_var} carries "
+                "Workers AI Read. Then save again."
+            ),
+            "model": (
+                "Check the model name against Cloudflare's model catalog "
+                "(developers.cloudflare.com/ai/models), as author/model. Then save again."
+            ),
+        }.get(e.side, refused)
+        return Check(
+            "llm probe",
+            "fail",
+            f"{who}: HTTP {e.status}, code={e.code}, message={detail}",
+            fix,
         )
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
         return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}", refused)

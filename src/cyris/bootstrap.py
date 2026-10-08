@@ -9,6 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
+from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord, send_discord_alert
@@ -63,6 +64,10 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
         if not cfg.account_id:
             return None  # doctor names the missing CLOUDFLARE_ACCOUNT_ID
         return WorkersAIClient(cfg.api_key, cfg.account_id, model)
+    if cfg.provider == "ai_gateway":
+        if not cfg.account_id:
+            return None  # doctor names the missing CLOUDFLARE_ACCOUNT_ID
+        return AIGatewayClient(cfg.api_key, cfg.account_id, model)
     return AnthropicClient(cfg.api_key, model)
 
 

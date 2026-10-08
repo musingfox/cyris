@@ -129,10 +129,10 @@ class GeneralConfig(BaseModel):
 
 class LLMProviderConfig(BaseModel):
     # "none" ⇒ excerpt-only by choice: no client is built and no key is needed.
-    provider: Literal["anthropic", "gemini", "openai", "workers_ai", "none"]
+    provider: Literal["anthropic", "gemini", "openai", "workers_ai", "ai_gateway", "none"]
     model: str  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     api_key: str = ""
-    account_id: str = ""  # workers_ai only: its REST path is per-account
+    account_id: str = ""  # workers_ai and ai_gateway only: their REST paths are per-account
 
     @property
     def chooses_no_llm(self) -> bool:
@@ -144,6 +144,8 @@ class LLMProviderConfig(BaseModel):
             "gemini": "GEMINI_API_KEY",
             "openai": "OPENAI_API_KEY",
             "workers_ai": "CLOUDFLARE_AI_TOKEN",
+            # `/ai/run` needs the same Workers AI -> Read, third-party models included.
+            "ai_gateway": "CLOUDFLARE_AI_TOKEN",
             "none": "",
         }.get(self.provider, "ANTHROPIC_API_KEY")
 
@@ -153,7 +155,7 @@ class LLMProviderConfig(BaseModel):
             return self
         if not self.api_key:
             self.api_key = os.environ.get(self.api_key_env_var, "")
-        if self.provider == "workers_ai":
+        if self.provider in ("workers_ai", "ai_gateway"):
             if not self.api_key:
                 # The Workers AI token `cyris embed-compare` already uses: the same
                 # "Workers AI -> Read" covers text models, so an existing setup needs
