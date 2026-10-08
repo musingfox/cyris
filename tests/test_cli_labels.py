@@ -202,6 +202,16 @@ class TestReport:
         assert "AUC 1.000" in out
         assert 'Embedding spend: {"texts": 10}' in out
 
+    def test_an_auc_without_an_interval_says_why(self, labeled) -> None:
+        tmp_path, _, _ = labeled
+
+        result = run(tmp_path, "report", "--resamples", "1")
+
+        assert result.exit_code == 0, result.output
+        assert "AUC 1.000, no 95% interval: fewer than 2 of the 1 bootstrap resamples" in (
+            result.output
+        )
+
     def test_no_label_seeds_its_own_score(self, labeled) -> None:
         tmp_path, db, embedder = labeled
 

@@ -1275,8 +1275,14 @@ def labels_report(
     )
     point = auc(values, positives)
     interval = bootstrap_auc(values, positives, resamples=resamples, seed=bootstrap_seed)
-    if point is None or interval is None:
+    if point is None:
         typer.echo(f"AUC n/a: the {len(scored)} scored items are not both up and down.")
+    elif interval is None:
+        typer.echo(
+            f"AUC {point:.3f}, no 95% interval: fewer than 2 of the {resamples} bootstrap "
+            f"resamples drew both an up and a down label. Over {len(scored)} labeled items, "
+            "unweighted."
+        )
     else:
         typer.echo(
             f"AUC {point:.3f}, 95% CI {interval[0]:.3f} to {interval[1]:.3f} "
