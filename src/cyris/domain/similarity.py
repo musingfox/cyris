@@ -63,6 +63,14 @@ def max_similarity(candidate: list[float], seeds: list[list[float]]) -> float:
     return max(cosine(candidate, seed) for seed in seeds)
 
 
+def nearest(candidate: list[float], seeds: dict[str, list[float]]) -> tuple[str | None, float]:
+    """The nearest seed's key and its cosine; `max_similarity` with the winner named."""
+    if not seeds:
+        return None, 0.0
+    scored = ((url, cosine(candidate, seed)) for url, seed in seeds.items())
+    return max(scored, key=lambda pair: pair[1])
+
+
 @dataclass(frozen=True)
 class SimilarityVerdict:
     """What the vote signal says about one candidate article."""
@@ -71,6 +79,8 @@ class SimilarityVerdict:
     down_similarity: float
     up_similarity: float
     suppressed: bool
+    nearest_up_url: str | None = None
+    nearest_down_url: str | None = None
 
     @property
     def net(self) -> float:
@@ -83,6 +93,9 @@ def judge(
     upvoted: list[list[float]],
     downvoted: list[list[float]],
     threshold: float = DEFAULT_THRESHOLD,
+    *,
+    upvoted_urls: list[str] | None = None,
+    downvoted_urls: list[str] | None = None,
 ) -> list[SimilarityVerdict]:
     """Score every candidate against both vote classes.
 
@@ -95,20 +108,33 @@ def judge(
         upvoted: normalized embeddings of accepted articles.
         downvoted: normalized embeddings of rejected articles.
         threshold: cosine at or above which a downvote match suppresses.
+        upvoted_urls: one URL per `upvoted` vector, to name each verdict's nearest
+            upvote; without it the verdict names none.
+        downvoted_urls: the same for `downvoted`.
 
     Returns:
         One verdict per candidate, ordered by descending net preference.
     """
     verdicts = []
     for url, vector in candidates.items():
-        down = max_similarity(vector, downvoted)
-        up = max_similarity(vector, upvoted)
+        down_url, down = _closest(vector, downvoted, downvoted_urls)
+        up_url, up = _closest(vector, upvoted, upvoted_urls)
         verdicts.append(
             SimilarityVerdict(
                 url=url,
                 down_similarity=down,
                 up_similarity=up,
                 suppressed=down >= threshold and up < down,
+                nearest_up_url=up_url,
+                nearest_down_url=down_url,
             )
         )
     return sorted(verdicts, key=lambda v: v.net, reverse=True)
+
+
+def _closest(
+    vector: list[float], seeds: list[list[float]], urls: list[str] | None
+) -> tuple[str | None, float]:
+    if urls is None:
+        return None, max_similarity(vector, seeds)
+    return nearest(vector, dict(zip(urls, seeds, strict=True)))

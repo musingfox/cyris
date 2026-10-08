@@ -9,6 +9,7 @@ from cyris.domain.similarity import (
     cosine,
     judge,
     max_similarity,
+    nearest,
     normalize,
 )
 
@@ -78,3 +79,46 @@ def test_verdicts_are_ordered_by_net_preference():
     verdicts = judge({"bad": disliked, "good": liked}, upvoted=[liked], downvoted=[disliked])
 
     assert [v.url for v in verdicts] == ["good", "bad"]
+
+
+def test_nearest_names_the_closest_seed_and_its_cosine():
+    candidate = unit(1.0, 0.2)
+    seeds = {"far": unit(0.0, 1.0), "near": unit(1.0, 0.0)}
+
+    url, similarity = nearest(candidate, seeds)
+
+    assert url == "near"
+    assert similarity == max_similarity(candidate, list(seeds.values()))
+
+
+def test_nearest_without_seeds_names_nothing():
+    assert nearest(unit(1.0, 0.0), {}) == (None, 0.0)
+
+
+def test_a_verdict_built_without_seed_urls_names_none():
+    [verdict] = judge({"u": unit(1.0, 0.0)}, upvoted=[unit(1.0, 0.0)], downvoted=[])
+
+    assert (verdict.nearest_up_url, verdict.nearest_down_url) == (None, None)
+
+
+def test_seed_urls_name_each_side_s_nearest_without_changing_the_verdict():
+    candidate = unit(1.0, 0.3, 0.1)
+    up = [unit(0.0, 0.0, 1.0), unit(1.0, 0.2, 0.0)]
+    down = [unit(1.0, 0.3, 0.0), unit(0.0, 1.0, 0.0)]
+
+    [plain] = judge({"c": candidate}, up, down, 0.5)
+    [named] = judge(
+        {"c": candidate},
+        up,
+        down,
+        0.5,
+        upvoted_urls=["up-far", "up-near"],
+        downvoted_urls=["down-near", "down-far"],
+    )
+
+    assert (named.nearest_up_url, named.nearest_down_url) == ("up-near", "down-near")
+    assert (named.up_similarity, named.down_similarity, named.suppressed) == (
+        plain.up_similarity,
+        plain.down_similarity,
+        plain.suppressed,
+    )
