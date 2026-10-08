@@ -221,6 +221,7 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     """
     from cyris.adapters.store.d1 import apply_schema
     from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.adapters.store.tracked_topics import D1TrackedTopicStore
     from cyris.config import read_config_files, resolve_config
 
     raw = read_config_files(config_path, sources_path)
@@ -239,6 +240,7 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     cfg = resolve_config(raw, d1_settings=settings.all())
     # The table alone, empty included: sources.yaml is not a D1 deployment's list.
     cfg.sources = D1SourceStore(d1).list_sources()
+    cfg.tracked_topics = D1TrackedTopicStore(d1).list_topics()
     return cfg
 
 
