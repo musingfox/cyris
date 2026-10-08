@@ -354,7 +354,10 @@ container cannot read and a container that never starts: those are left to Worke
 run, a run started by hand and a SIGTERM-cancelled run send no alert. Votes cast on the
 published digest go to the promote Worker's KV and are drained at each digest run, by the run
 itself and by the `cyris promote-sync` after it, which is what turns a click into a
-`triaged_at` stamp. The raw page's triage view is the only triage surface; the pending backlog
+`triaged_at` stamp. The stamp is the sync's time, not the click's: `sync_promotions` parses the
+payload's `ts` and never stores it, so how often votes arrive cannot be read from the store. A
+vote on a grouped item posts once for every URL in the group, so rows stamped at one instant may
+be one judgment rather than independent labels. The raw page's triage view is the only triage surface; the pending backlog
 across days is reachable only through `cyris articles`.
 
 A run whose provider is not `none` but whose scoring, filter or summarize step went on without
