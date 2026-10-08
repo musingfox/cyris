@@ -195,9 +195,7 @@ class TestRecord:
         db = SqliteD1()
         labels = sampled(db, "a")
 
-        assert labels.is_open("a")
         assert labels.record("a", "up", DRAWN) is True
-        assert not labels.is_open("a")
         assert db.query("SELECT label, labeled_at FROM blind_labels").rows == [
             {"label": "up", "labeled_at": "2026-10-08T12:00:00.000000+00:00"}
         ]
@@ -213,8 +211,19 @@ class TestRecord:
     def test_a_url_outside_the_sample_is_not_open(self) -> None:
         labels = sampled(SqliteD1(), "a")
 
-        assert not labels.is_open("elsewhere")
         assert labels.record("elsewhere", "up", DRAWN) is False
+
+    def test_a_release_reopens_only_the_answer_it_names(self) -> None:
+        db = SqliteD1()
+        labels = sampled(db, "a")
+        labels.record("a", "up", DRAWN)
+
+        assert labels.release("a", "down", DRAWN) is False
+        assert labels.release("a", "up", DRAWN) is True
+        assert db.query("SELECT label, labeled_at FROM blind_labels").rows == [
+            {"label": None, "labeled_at": None}
+        ]
+        assert labels.record("a", "down", DRAWN) is True
 
     def test_the_table_refuses_a_label_that_is_not_up_down_or_skip(self) -> None:
         labels = sampled(SqliteD1(), "a")

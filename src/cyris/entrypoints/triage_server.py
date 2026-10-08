@@ -812,8 +812,10 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_post_label(self, request: web.Request) -> web.Response:
-        """Answer one open item: up and down are written to the article as a vote first,
-        then the answer to the sample; a skip goes to the sample alone."""
+        """Answer one open item. The sample decides: the answer is kept there first, by a
+        write that succeeds only on an unanswered item, and only its winner writes the
+        vote to the article. A vote that fails releases the answer, so the item stays
+        open rather than kept with no vote behind it. A skip goes to the sample alone."""
         from cyris.adapters.promotions import record_votes
 
         if self._blind_labels is None:
@@ -832,7 +834,7 @@ class TriageServer:
 
         now = datetime.now(UTC)
         try:
-            if not self._blind_labels.is_open(url):
+            if not self._blind_labels.record(url, label, now):
                 return web.json_response(
                     {
                         "ok": False,
@@ -841,14 +843,24 @@ class TriageServer:
                     },
                     status=409,
                 )
-            if label != "skip":
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if label != "skip":
+            try:
                 record_votes(
                     self._article_store,
                     accepted=[url] if label == "up" else [],
                     rejected=[url] if label == "down" else [],
                     at=now,
                 )
-            self._blind_labels.record(url, label, now)
+            except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+                logger.warning("Label vote for %s failed; releasing the answer: %s", url, e)
+                try:
+                    self._blind_labels.release(url, label, now)
+                except Exception:  # noqa: BLE001 - the vote's failure is the one to report
+                    logger.exception("Could not release the answer for %s", url)
+                return web.json_response({"ok": False, "error": str(e)}, status=500)
+        try:
             return web.json_response({"ok": True, **self._deck()})
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
