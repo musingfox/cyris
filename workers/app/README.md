@@ -11,8 +11,10 @@ repository: run wrangler from there.
 One image, started in one of two roles:
 
 - **Hourly cron** → `CYRIS_ROLE=run`: one `cyris run --if-due` plus one
-  `cyris promote-sync`, then the process exits and the instance stops billing. The
-  tick is unconditional; which hours are digest hours is a D1 setting.
+  `cyris promote-sync`, then the process exits and the instance stops billing. Which
+  hours are digest hours is a D1 setting, and the Worker reads it before starting the
+  container (`src/schedule.js`), so the other 22 ticks start nothing. When it cannot
+  read the setting it starts the container and `--if-due` decides.
   `POST /run?period=morning|evening` starts the same role with that period, skipping
   the schedule check.
 - **Any HTTP request** → `CYRIS_ROLE=ui`: `cyris triage-ui` on port 8766, asleep 5

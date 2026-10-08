@@ -171,8 +171,9 @@ source it stops with `No sources in D1`. `cyris settings push` and
 
 ## 7. Run the first digest now
 
-The hourly tick starts the pipeline only on the publish hours. To get a digest without waiting, `POST /run` with a period. `/settings` has no
-button for it, so use curl with the session cookie:
+The hourly tick starts the pipeline only on the publish hours. To get a digest without
+waiting, `POST /run` with a period. `/settings` has no button for it, so use curl with
+the session cookie:
 
 ```sh
 APP=https://cyris-app.<subdomain>.workers.dev
