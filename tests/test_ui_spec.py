@@ -395,6 +395,34 @@ def test_every_website_button_lowers_its_opacity_when_pressed() -> None:
     }
 
 
+class _Anchors(HTMLParser):
+    """Every <a>'s attributes, including the anchors inside a ``data-zh`` translation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.anchors: list[dict[str, str | None]] = []
+        self.translations: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self.anchors.append(dict(attrs))
+        if (translation := dict(attrs).get("data-zh")) is not None:
+            self.translations.append(translation)
+
+
+def test_every_website_link_off_the_page_opens_a_new_tab() -> None:
+    parser = _Anchors()
+    parser.feed(WEBSITE.read_text())
+    for translation in parser.translations:
+        parser.feed(translation)
+    leaving = [a for a in parser.anchors if not a["href"].startswith("#")]
+
+    assert leaving
+    assert [
+        a["href"] for a in leaving if (a.get("target"), a.get("rel")) != ("_blank", "noopener")
+    ] == []
+
+
 def test_the_digest_keeps_its_stats_rows_to_the_stats_card() -> None:
     # The stats card writes <div class="row">, so a shared `.row` would restyle it.
     rules = parse_style_block(receipt_fixtures()[1])
