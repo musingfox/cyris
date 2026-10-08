@@ -68,12 +68,52 @@ sees.
   `gemini-embedding-2` as its replacement, which therefore needs its own calibration.
 * Bad, because both thresholds were calibrated against 7 upvote and 2 downvote seeds. An
   absolute cutoff over a growing seed list over-suppresses more with every downvote, so both are
-  already stale. Replacing the absolute cutoff is open work (`docs/architecture.md` §7 #13 and
-  *A fixed threshold is the wrong shape*), not part of this decision.
+  already stale. Why that follows from the cutoff's shape is recorded below, under *A fixed
+  threshold is the wrong shape*. Replacing the absolute cutoff is tracked outside this
+  repository and is not part of this decision.
 * Neutral, because `cyris.toml.example` keeps `workers_ai`. Vote similarity ships off there, and
   `bge-m3` needs no key beyond the Cloudflare ones a deployment already has.
 
+### A fixed threshold is the wrong shape
+
+This was found while collecting milestone M4's receipt, which was "`cyris vote-sim`
+at ≈0.53 suppresses the same set it does today". It did not, and the reason was neither the new
+provider nor a number that needed re-measuring.
+
+The embedding model is general-purpose and knows nothing about this reader. A vote's only effect
+is to add one more title vector to a seed list, and `domain/similarity.max_similarity` takes the
+maximum cosine over that list. A maximum over a growing set never decreases, so every downvote can
+only raise every candidate's `down_similarity`. A fixed absolute cutoff therefore suppresses more
+each time the reader votes, by construction rather than by drift.
+
+Measured on one 168-hour window of 1,112 candidates at a fixed 0.53, varying only the seed cap:
+
+| `max_seeds` | seeds (up / down) | suppressed |
+|---|---|---|
+| 2 | 2 / 2 | 8 |
+| 5 | 5 / 5 | 27 |
+| 10 | 10 / 10 | 35 |
+| 25 | 25 / 24 | 45 |
+| 200 | 101 / 24 | 40 |
+
+Downvote seeds drive suppression up steeply. Upvote seeds claw some back through the
+`up < down` guard, which is the only thing keeping it bounded. Both published thresholds were
+calibrated against 7 upvote and 2 downvote seeds, and at the time of the measurement there were
+101 and 24, so Gemini at 0.68 was over-suppressing too.
+
+The numbers were left at their published values. Re-tuning them to make M4's own receipt pass
+would have shaped the check to fit what was built, and a new constant would go stale the same
+way for the same reason. The fix is a different shape: a relative cutoff, by rank or by a margin
+over the window's own distribution, rather than an absolute cosine.
+
+The field that names the embedder is also part of this record. `vote_similarity.provider` and
+`.model` are grade-D keys inside `[vote_similarity]`, not a separate `[embedding]` table, because
+the embedder has one consumer and a split would rename keys in every fork's `cyris.toml`.
+
 ## More Information
+
+The section *A fixed threshold is the wrong shape* was added on 2026-10-08 from
+`docs/architecture.md:927-958` and `docs/architecture.md:1068` (§7 row #17) at commit `2b31535`.
 
 Extracted on 2026-10-08 from these sources at commit `c353d3f`; the measurement document stays
 the evidence record, with the full tables:
