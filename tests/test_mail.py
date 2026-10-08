@@ -43,6 +43,7 @@ class TestSendMail:
         )
 
         assert status == "delivered"
+        assert route.call_count == 1
         request = route.calls.last.request
         assert request.headers["Authorization"] == "Bearer tok"
         assert json.loads(request.content) == {
@@ -54,13 +55,14 @@ class TestSendMail:
 
     @respx.mock
     async def test_a_queued_message_counts_as_sent(self):
-        respx.post(SEND_URL).mock(
+        route = respx.post(SEND_URL).mock(
             return_value=httpx.Response(200, json=_result(queued=["me@example.org"]))
         )
 
         assert await send_mail(ACCOUNT, "tok", "d@example.org", "me@example.org", "S", "B") == (
             "queued"
         )
+        assert route.call_count == 1
 
     @respx.mock
     async def test_the_html_part_rides_along_when_given(self):
@@ -72,20 +74,23 @@ class TestSendMail:
             ACCOUNT, "tok", "d@example.org", "me@example.org", "S", "B", html="<p>B</p>"
         )
 
+        assert route.call_count == 1
         assert json.loads(route.calls.last.request.content)["html"] == "<p>B</p>"
 
     @respx.mock
     async def test_a_permanent_bounce_under_success_is_still_a_failure(self):
-        respx.post(SEND_URL).mock(
+        route = respx.post(SEND_URL).mock(
             return_value=httpx.Response(200, json=_result(permanent_bounces=["me@example.org"]))
         )
 
         with pytest.raises(RuntimeError, match="me@example.org bounced permanently"):
             await send_mail(ACCOUNT, "tok", "d@example.org", "me@example.org", "S", "B")
 
+        assert route.call_count == 1
+
     @respx.mock
     async def test_a_refusal_carries_the_api_message(self):
-        respx.post(SEND_URL).mock(
+        route = respx.post(SEND_URL).mock(
             return_value=httpx.Response(
                 403,
                 json={
@@ -102,19 +107,25 @@ class TestSendMail:
         with pytest.raises(RuntimeError, match="authentication.forbidden"):
             await send_mail(ACCOUNT, "tok", "d@example.org", "me@example.org", "S", "B")
 
+        assert route.call_count == 1
+
     @respx.mock
     async def test_a_body_that_is_not_json_names_the_status(self):
-        respx.post(SEND_URL).mock(return_value=httpx.Response(502, text="Bad gateway"))
+        route = respx.post(SEND_URL).mock(return_value=httpx.Response(502, text="Bad gateway"))
 
         with pytest.raises(RuntimeError, match="HTTP 502"):
             await send_mail(ACCOUNT, "tok", "d@example.org", "me@example.org", "S", "B")
 
+        assert route.call_count == 1
+
     @respx.mock
     async def test_an_unreachable_api_is_named(self):
-        respx.post(SEND_URL).mock(side_effect=httpx.ConnectError("no route"))
+        route = respx.post(SEND_URL).mock(side_effect=httpx.ConnectError("no route"))
 
         with pytest.raises(RuntimeError, match="could not reach the Email Sending API"):
             await send_mail(ACCOUNT, "tok", "d@example.org", "me@example.org", "S", "B")
+
+        assert route.call_count == 1
 
 
 class TestDigestMail:
@@ -198,6 +209,8 @@ class TestDigestMail:
             token="tok",
         )
 
+        assert route.call_count == 1
+        assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
         sent = json.loads(route.calls.last.request.content)
         assert sent["subject"] == "Morning digest 2026-09-27"
         assert "https://digest.example.org/x" in sent["text"]
@@ -220,6 +233,7 @@ class TestDigestMail:
             token="tok",
         )
 
+        assert route.call_count == 1
         sent = json.loads(route.calls.last.request.content)
         assert (
             '<p class="notice">Some or all of this issue is unscored or plain excerpts'
@@ -234,7 +248,7 @@ class TestDigestMail:
 
     @respx.mock
     async def test_a_failure_is_logged_and_not_raised(self, caplog):
-        respx.post(SEND_URL).mock(
+        route = respx.post(SEND_URL).mock(
             return_value=httpx.Response(
                 403,
                 json={"success": False, "errors": [{"code": 10102, "message": "forbidden"}]},
@@ -246,6 +260,7 @@ class TestDigestMail:
                 "me@example.org", "d@example.org", _content(), account_id=ACCOUNT, token="t"
             )
 
+        assert route.call_count == 1
         assert "forbidden" in caplog.text
 
 
@@ -305,6 +320,7 @@ class TestDigestMailText:
             token="tok",
         )
 
+        assert route.call_count == 1
         sent = json.loads(route.calls.last.request.content)
         assert (self.DEGRADED in sent["text"]) is degraded
 
@@ -325,6 +341,8 @@ class TestAlertMail:
             token="tok",
         )
 
+        assert route.call_count == 1
+        assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
         assert json.loads(route.calls.last.request.content) == {
             "to": "me@example.org",
             "from": "digest@example.org",
@@ -382,6 +400,7 @@ class TestAlertMail:
             token="tok",
         )
 
+        assert route.call_count == 1
         sent = json.loads(route.calls.last.request.content)
         assert "s3cr3t-token" not in sent["subject"]
         assert "s3cr3t-token" not in sent["text"]
