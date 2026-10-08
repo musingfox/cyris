@@ -1,5 +1,7 @@
 """Tests for the Anthropic Messages adapter."""
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -37,9 +39,15 @@ def _text(text: str) -> dict:
 
 async def test_parses_text_and_usage():
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok([_text('{"items": []}')]))
+        route = respx.post(URL).mock(return_value=_ok([_text('{"items": []}')]))
         response = await _client().complete("Hi.")
 
+    assert route.call_count == 1
+    request = route.calls.last.request
+    assert request.headers["x-api-key"] == "test-anthropic-key"
+    body = json.loads(request.content)
+    assert body["model"] == "claude-sonnet-4-6"
+    assert body["messages"] == [{"role": "user", "content": "Hi."}]
     assert response.text == '{"items": []}'
     assert response.input_tokens == 145
     assert response.output_tokens == 207
@@ -49,32 +57,36 @@ async def test_reads_past_a_leading_thinking_block():
     # Models that think by default put a thinking block first, and it has no text.
     thinking = {"type": "thinking", "thinking": "", "signature": "sig"}
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok([thinking, _text('{"a": 1}')]))
+        route = respx.post(URL).mock(return_value=_ok([thinking, _text('{"a": 1}')]))
         response = await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert response.text == '{"a": 1}'
 
 
 async def test_joins_every_text_block():
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok([_text('{"a": '), _text("1}")]))
+        route = respx.post(URL).mock(return_value=_ok([_text('{"a": '), _text("1}")]))
         response = await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert response.text == '{"a": 1}'
 
 
 async def test_warns_when_truncated(caplog):
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok([_text('{"a":')], stop_reason="max_tokens"))
+        route = respx.post(URL).mock(return_value=_ok([_text('{"a":')], stop_reason="max_tokens"))
         await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert "truncated" in caplog.text
 
 
 async def test_warns_on_a_refusal(caplog):
     async with respx.mock:
-        respx.post(URL).mock(return_value=_ok([], stop_reason="refusal"))
+        route = respx.post(URL).mock(return_value=_ok([], stop_reason="refusal"))
         response = await _client().complete("Hi.")
 
+    assert route.call_count == 1
     assert response.text == ""
     assert "refused" in caplog.text
