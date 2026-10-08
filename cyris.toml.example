@@ -102,6 +102,18 @@ max_seeds = 200           # recent votes on each side a run compares against
 # switching provider is how this feature silently stops suppressing anything.
 # threshold = 0.53
 
+# Tracked topics: each issue lists, under Tracking, every candidate whose title sits
+# within `threshold` (a cosine) of the topic's description. Optional: none is valid.
+# No LLM call; the embedder is the one [vote_similarity] names, on or off. There is
+# no default threshold: read one off `cyris topic-sim "<description>" --hours 168`.
+# `model` is the embedding model that threshold was set for; a run embedding with
+# another model skips the topic. A D1 deployment keeps topics on /settings instead.
+# [[tracked_topics]]
+# name = "Anthropic"
+# description = "The company that makes Claude and publishes on AI safety"
+# threshold = 0.6
+# model = "@cf/baai/bge-m3"
+
 [rss]
 # Cloudflare feed-buffer Worker (see workers/rss/): polls feeds hourly into D1 so
 # the 24h window sees more than a feed snapshot holds. Leave empty and the
