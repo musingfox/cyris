@@ -41,8 +41,10 @@ code is worse than none, because it is still trusted. Two more doc rules:
 When adding or swapping IO, work in `adapters/` and `bootstrap.build_deps()` — never touch
 `service_layer/` or `domain/` (architecture.md §8). Only a genuine IO boundary gets a Protocol in
 `ports.py`; a single-implementation component is injected directly. Each embedding model
-carries its **own** similarity threshold, in `src/cyris/provider_defaults.json`: the cosine
+carries its **own** vote-similarity threshold, in `src/cyris/provider_defaults.json`: the cosine
 scales differ, so reusing one number across models silently disables vote similarity (ADR-0006).
+A tracked topic's threshold obeys the same rule from the other side: it is stored with the topic,
+beside the model it was set for, and a run embedding with any other model skips the topic.
 
 ## Testing
 
