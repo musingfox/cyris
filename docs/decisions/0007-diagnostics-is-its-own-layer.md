@@ -59,5 +59,10 @@ which an injected list of probes cannot express.
 Extracted on 2026-10-08 from these sources at commit `c353d3f`:
 
 * `docs/architecture.md:186-208` (*`diagnostics/` — the tools that inspect the deployment*).
-* `docs/architecture.md:1220-1221` (§7 rows #18 and #19, the two options the ticket named and the
-  drifted scorable filter).
+* `docs/architecture.md:1220-1221` (§7 rows #18 and #19, the six sites and the drifted scorable
+  filter).
+
+The ticket behind #18 is tracked privately, and the source says only that neither of its two
+paths was taken. The two rejected options above are inferred from the §2 text, which says the
+layer is "not an exception to the rule" and that "an injected list of probes cannot express" a
+*not configured* verdict.

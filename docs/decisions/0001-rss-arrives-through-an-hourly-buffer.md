@@ -62,8 +62,9 @@ crashes, while an idempotent read lets a crashed digest read the same window aga
 
 ### Keep Miniflux as the buffer
 
-* Good, because it already accumulated hourly.
-* Bad, because it is an always-on service on the local machine the cloud move was removing.
+* Good, because it already accumulated hourly, which is the property the comparison showed mattered.
+* Neutral, because the cloud move replaced it with `workers/rss/` as the buffer; the earlier
+  advice to drop it for direct polling was the one measured wrong.
 
 ### A Worker buffer drained with an ack
 
@@ -76,7 +77,8 @@ Extracted on 2026-10-08 from these sources at commit `c353d3f`:
 
 * `docs/architecture.md:251-267` (§3.1, *RSS — a buffer, read idempotently*, and the paragraph
   on why the buffer exists).
-* `docs/cloud-migration.md:35-45` (*Why a buffer, and not direct polling*).
+* `docs/cloud-migration.md:35-45` (*Why a buffer, and not direct polling*) and
+  `docs/cloud-migration.md:8-11` (the superseded advice to drop Miniflux for direct polling).
 * `workers/rss/README.md:20-28` (*Needs Workers Paid* and *Why this exists*) and
   `workers/rss/README.md:38-40` (no ack endpoint).
 * `docs/hosting-and-cost.md:54-58` (the free plan's Cron Trigger limits).
