@@ -62,6 +62,7 @@ uv run pytest tests/test_newsletter_real_fixtures.py
 - **§4 Data residency** — every persistent datum, where it lives, where it is going. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
 - **§5 Configuration: four grades** — A baked / B deployment identity / C secrets / D runtime-mutable. Every new setting must be assigned a grade and put in that grade's home. `cyris.toml` is not a default home.
 - **§7 Outstanding work** — the open items with their tickets, plus the record of how the closed ones closed. Work is driven from here. If you name a new destination anywhere in the doc, add it to §7 in the same edit.
+- **`docs/decisions/`** — why each hard-to-reverse decision was made (MADR ADRs). Read the ADR before reversing a decision; architecture.md describes the system, not why.
 
 Keep the document current in the same change that makes it stale — an architecture doc that lags the code is worse than none, because it is still trusted.
 
@@ -137,7 +138,7 @@ workers/              # Cloudflare Workers (deployed to the user's CF account)
 │                     #   (CYRIS_ROLE=run, one pass then exits), any HTTP request wakes the
 │                     #   /settings server (CYRIS_ROLE=ui). Auth = CYRIS_UI_TOKEN cookie, plus
 │                     #   Cloudflare Access on a custom hostname if you add it. Its `wrangler.toml` is at the repo root, because the image is
-│                     #   built from the whole repo — deploy from there, not from this directory
+│                     #   built from the whole repo — deploy from there, not from this directory (ADR-0012)
 ├── promote/          # Digest vote clicks (up/down): KV queue, cyris pulls (adapters/promotions.py)
 ├── newsletter/       # Email→RSS ingestion: Email Worker parses mail → KV, cyris pulls
 │                     #   (adapters/fetch/newsletter_worker_source.py). See its README to deploy.
@@ -155,7 +156,7 @@ scripts/              # check.sh (the local and release gate), derive-wrangler-c
 docs/                 # architecture.md (read first); install-local.md, install-cloudflare.md and
                       #   operations.md (install and run a deployment); trial-deployment.md (one tester's
                       #   trial on its own names); sources.md (source tiers);
-                      #   design/ (UI spec); history
+                      #   design/ (UI spec); decisions/ (ADRs: why each decision was made); history
 ```
 
 ### Key Data Flow
@@ -177,7 +178,7 @@ docs/                 # architecture.md (read first); install-local.md, install-
 All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or swapping IO, work at these seams — never touch `service_layer/` or `domain/`:
 
 - **`FetchSource`** (`ports.py`) — input sources. Implement `fetch_articles` / `health_check`, then append to `fetch_sources` in `build_deps()`. Existing: `CloudflareRssSource` (or `RssSource` when no buffer is configured) and `CloudflareNewsletterSource`.
-- **`Embedder`** (`ports.py`) — vote-similarity embeddings, selected in `build_embedder()`: `WorkersAIEmbedder` (`@cf/baai/bge-m3`, the default) or `GeminiEmbedder`. Neither caches — a run is ~600 texts ≈ 20 neurons. Each provider's calibrated model carries its **own** threshold, in `src/cyris/provider_defaults.json` (reasons in `docs/architecture.md` §5); the cosine scales differ, so reusing one number across models silently disables the feature. Any other model gets no threshold until `[vote_similarity] threshold` sets one, and until then a run skips vote similarity.
+- **`Embedder`** (`ports.py`) — vote-similarity embeddings, selected in `build_embedder()`: `WorkersAIEmbedder` (`@cf/baai/bge-m3`, the default) or `GeminiEmbedder`. Neither caches — a run is ~600 texts ≈ 20 neurons. Each provider's calibrated model carries its **own** threshold, in `src/cyris/provider_defaults.json` (reasons in `docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md`); the cosine scales differ, so reusing one number across models silently disables the feature. Any other model gets no threshold until `[vote_similarity] threshold` sets one, and until then a run skips vote similarity.
 - **`LLMClient`** (`ports.py`) — AI providers. Implement `complete()`; selected in `build_llm()`. Existing: `AnthropicClient`, `GeminiClient`, `OpenAIClient`, `WorkersAIClient` (Cloudflare Workers AI; see `cyris llm-compare` before switching to it). `provider = "none"` builds no client: the digest lists plain excerpts by choice, needs no key, and is not flagged degraded.
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation would fail at the CLI, not at import, so `tests/test_protocol_conformance.py` checks every implementation against its Protocol instead.
 - **Output sinks** — `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
@@ -205,7 +206,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 
 - `cyris.toml` — app config (API endpoints, LLM provider/model, digest limits, schedule, routing thresholds, `[store]` backend, `[notify]` webhook and mail addresses, `[promote]`/`[newsletter]`/`[rss]` Worker URLs). For grade-D keys it is the home only under `[store] backend = "json"`; a D1 deployment reads them from D1 `settings` alone and `cyris doctor` fails on any the file still sets. Either way a missing key stops the run — no value lives in code. See `docs/architecture.md` §5
 - `sources.yaml` — RSS/newsletter source definitions with tier and tags. The `json` backend's list; with `[store] backend = "d1"` the pipeline and `workers/rss/` both read D1's `sources` table alone, and `cyris sources push` is what fills it from the file. An empty table stops `cyris run` and polls nothing in the Worker; email-only sources use `type: newsletter` + `email_match: "from:..."`, plus an optional `homepage` doing double duty: its host identifies the sender's own domain when extracting an issue's canonical link (without it the From address's domain does), and when an issue has no link at all it becomes the issue's only `ref_urls` entry so the reader still has somewhere to go (never `Article.url` — see below). Other links in the mail body never reach `ref_urls`: one email is one article, not a list of sources
-- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own, kept a separate value; `CLOUDFLARE_AI_TOKEN` for the `workers_ai` LLM provider; `CYRIS_UI_TOKEN`, the `/settings` login, read by the app Worker alone; see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`, and no environment variable supplies it. `.env.example` is the full list
+- `.env` — secrets (API keys for Anthropic/Gemini/OpenAI; `CLOUDFLARE_EMBEDDING_API_TOKEN` for `bge-m3`, which is **not** the wrangler `CLOUDFLARE_API_TOKEN`; `CYRIS_WORKER_TOKEN`, the bearer the `rss` and `newsletter` Workers accept; `CYRIS_PROMOTE_TOKEN`, the vote Worker's own, kept a separate value (ADR-0008); `CLOUDFLARE_AI_TOKEN` for the `workers_ai` LLM provider; `CYRIS_UI_TOKEN`, the `/settings` login, read by the app Worker alone; see `docs/architecture.md` §5). Discord webhook is grade D: `/settings` writes D1 `settings`, and no environment variable supplies it. `.env.example` is the full list
 
 ### Agent Vault (`agent-vault/`)
 
