@@ -237,15 +237,17 @@ def test_git_sha_is_not_a_deploy_form_input() -> None:
     assert {"CYRIS_GIT_SHA", "GIT_SHA", "CLOUDFLARE_CONTAINERS_TOKEN"}.isdisjoint(deploy_inputs)
 
 
-def _run_digest_step(tmp_path: Path, release_reads: list[str]) -> tuple[int, str]:
+def _run_digest_step(
+    tmp_path: Path, release_reads: list[str], sha: str = "sha256:" + "a" * 64
+) -> tuple[int, str, str]:
     """Run the workflow's digest step with `docker` and `sleep` stubbed.
 
     Each `docker manifest inspect :release` answers the next digest in
-    `release_reads`, the last one repeating.
+    `release_reads`, the last one repeating; `error` makes that read fail. The
+    shell flags are GitHub's own for a `run` step, pipefail included.
     """
     if shutil.which("jq") is None:
         pytest.skip("jq is not on PATH")
-    sha = "sha256:" + "a" * 64
     reads = tmp_path / "reads"
     reads.write_text("\n".join(release_reads) + "\n")
     bin_dir = tmp_path / "bin"
@@ -254,6 +256,7 @@ def _run_digest_step(tmp_path: Path, release_reads: list[str]) -> tuple[int, str
         "#!/bin/sh\n"
         f'next=$(head -n 1 "{reads}")\n'
         f'[ "$(wc -l < "{reads}")" -gt 1 ] && sed -i.bak 1d "{reads}"\n'
+        '[ "$next" = error ] && { echo "manifest unknown" >&2; exit 1; }\n'
         'printf \'{"Descriptor": {"digest": "%s"}}\' "$next"\n'
     )
     (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
@@ -271,20 +274,48 @@ def _run_digest_step(tmp_path: Path, release_reads: list[str]) -> tuple[int, str
         "IMAGE_NAME": "img",
         "GITHUB_OUTPUT": str(output),
     }
-    result = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True)
-    return result.returncode, output.read_text()
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, output.read_text(), result.stdout
 
 
 def test_the_digest_step_waits_out_a_stale_release_read(tmp_path: Path) -> None:
     # 2026-10-08, twice: the push printed the new digest, and the read right after
     # it still answered an older one.
     old, new = "sha256:" + "0" * 64, "sha256:" + "a" * 64
-    code, output = _run_digest_step(tmp_path, [old, old, new])
+    code, output, stdout = _run_digest_step(tmp_path, [old, old, new])
     assert code == 0
     assert output == f"digest={new}\n"
+    assert "::warning::" not in stdout
 
 
-def test_the_digest_step_still_fails_when_release_never_moves(tmp_path: Path) -> None:
-    code, output = _run_digest_step(tmp_path, ["sha256:" + "0" * 64])
+def test_a_release_tag_that_never_moves_warns_and_records_the_sha_digest(tmp_path: Path) -> None:
+    """Deploys read the `image/<sha7>` git tag, so a stale `:release` must not withhold it.
+
+    2026-10-08: three of four releases saw `:release` answer the previous digest for
+    over 50 seconds after the push that moved it, while the sha tag read back right.
+    """
+    old, new = "sha256:" + "0" * 64, "sha256:" + "a" * 64
+    code, output, stdout = _run_digest_step(tmp_path, [old])
+    assert code == 0
+    assert output == f"digest={new}\n"
+    [warning] = [line for line in stdout.splitlines() if line.startswith("::warning::")]
+    assert old in warning and new in warning
+
+
+def test_an_unreadable_release_tag_warns_and_records_the_sha_digest(tmp_path: Path) -> None:
+    new = "sha256:" + "a" * 64
+    code, output, stdout = _run_digest_step(tmp_path, ["error"])
+    assert code == 0
+    assert output == f"digest={new}\n"
+    assert "::warning::" in stdout
+
+
+def test_the_digest_step_fails_without_a_sha_digest(tmp_path: Path) -> None:
+    code, output, _ = _run_digest_step(tmp_path, ["sha256:" + "a" * 64], sha="")
     assert code != 0
     assert output == ""
