@@ -105,6 +105,21 @@ async def test_embedding_failure_lets_the_digest_through():
     assert "embedding failed" in report.skipped_reason
 
 
+async def test_a_short_embedding_answer_lets_the_digest_through():
+    """An embedder that answers fewer vectors than texts cannot be paired back to URLs."""
+
+    class Short:
+        async def embed(self, texts):
+            return [normalize([1.0, 0.0])] * (len(texts) - 1)
+
+    store = FakeStore([article("d", "Lottery", ArticleState.REJECTED, triaged=True)])
+
+    report = await judge_by_votes(store, Short(), [article("c1", "Lottery")], max_seeds=200)
+
+    assert not report.ran
+    assert "embedding failed" in report.skipped_reason
+
+
 async def test_an_already_voted_article_is_not_re_judged():
     """It would match its own seed at 1.0 and report a decision already made."""
     voted = article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)
@@ -150,3 +165,29 @@ async def test_no_calibrated_threshold_skips_before_embedding():
     assert not report.ran
     assert "threshold" in report.skipped_reason
     assert embedder.calls == 0
+
+
+class SeedGapEmbedder(FakeEmbedder):
+    """Embeds a title starting with E to nothing, as a provider does for a text it cannot read."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        vectors = await super().embed(texts)
+        return [[] if t.startswith("E") else v for t, v in zip(texts, vectors, strict=True)]
+
+
+async def test_each_verdict_names_the_seed_its_cosine_came_from_past_an_empty_vector():
+    store = FakeStore(
+        [
+            article("u-tech", "Tech upvoted", ArticleState.ACCEPTED, triaged=True),
+            article("d-empty", "Empty title", ArticleState.REJECTED, triaged=True),
+            article("d-lottery", "Lottery draw", ArticleState.REJECTED, triaged=True),
+        ]
+    )
+
+    report = await judge_by_votes(
+        store, SeedGapEmbedder(), [article("c1", "Lottery again")], max_seeds=200
+    )
+
+    verdict = report.verdicts["c1"]
+    assert (verdict.nearest_up_url, verdict.nearest_down_url) == ("u-tech", "d-lottery")
+    assert report.downvote_seeds == 1
