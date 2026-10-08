@@ -73,6 +73,11 @@ sees.
   repository and is not part of this decision.
 * Neutral, because `cyris.toml.example` keeps `workers_ai`. Vote similarity ships off there, and
   `bge-m3` needs no key beyond the Cloudflare ones a deployment already has.
+* Bad, because every measurement below embeds titles only. Content embeddings were never
+  measured and may behave better or worse.
+* Bad, because the measurements show retrieval, not ranking. That the right neighbours come back
+  does not show that a digest reranked by vote similarity reads better; that needs a before and
+  after on a real digest, which was never run.
 
 ### A fixed threshold is the wrong shape
 
@@ -110,13 +115,77 @@ The field that names the embedder is also part of this record. `vote_similarity.
 `.model` are grade-D keys inside `[vote_similarity]`, not a separate `[embedding]` table, because
 the embedder has one consumer and a split would rename keys in every fork's `cyris.toml`.
 
+### The measurements behind the two numbers
+
+Both calibrations ran on 2026-08-10 over the whole store of 5,724 titles, seeded with the
+reader's two downvoted titles and judged by the nearest-seed rule. The truth class is 71 lottery
+draw reports: the 69 the regex under *More Information* matches, plus two it misses because
+neither carries 第N期 (「大樂透頭獎9.1億元1注獨得」 and 「大樂透頭獎連19槓」).
+
+`gemini-embedding-001` at 3,072 dimensions:
+
+| threshold | false positives | lottery reports missed |
+|---|---|---|
+| 0.62 | 18 | 0 |
+| 0.65 | 8 | 0 |
+| 0.68 | 0 | 0 |
+| 0.70 | 0 | 1 |
+| 0.72 | 0 | 2 |
+
+Every title near the boundary is from 中央社財經. The false positives below 0.68 are an adjacent
+class the reader never voted on: seven 統一發票千萬獎 titles at 0.657–0.673 and 台股漲/跌
+headlines at 0.640. Where the cut falls decides their fate, so the threshold has more leverage
+over what is suppressed than the choice of model does.
+
+The two models on the same corpus and seeds. Precision and the first non-lottery rank count
+against the regex's 69; `in-min` is the lowest cosine inside the 71 and `out-max` the highest
+outside them:
+
+| arm | precision@69 | first non-lottery rank | in-min | out-max | gap |
+|---|---|---|---|---|---|
+| `gemini-embedding-001`, 3,072d | 1.000 | 70 | 0.6897 | 0.6732 | +0.0164 |
+| `gemini-embedding-001`, 1,024d | 1.000 | 70 | 0.6660 | 0.6461 | +0.0199 |
+| `gemini-embedding-001`, 768d | 1.000 | 70 | 0.6718 | 0.6525 | +0.0193 |
+| `bge-m3`, 1,024d | 0.971 | 68 | 0.5438 | 0.5073 | +0.0365 |
+
+`bge-m3`'s two misses inside the top 69 are the two reports the regex misses, ranked 68 and 69,
+so against the 71 it separates the class perfectly too. **0.68 was calibrated at 3,072
+dimensions.** At 1,024 and 768 dimensions the in-class minimum above falls below it, so wiring
+`GeminiEmbedder`'s `output_dimensions`, which nothing sets today, calls for a calibration first. Data handling did not
+separate the providers either: this project's Gemini key is on the paid tier (confirmed
+2026-08-10), which does not use inputs to improve Google's products, the same as Workers AI.
+
+The 2026-09-18 re-measurement on 189 human votes (132 up, 57 down). A fixed seed draws 10 up and
+10 down as examples and the other 169 are the test set. An article's score is its cosine to the
+nearest upvote minus its cosine to the nearest downvote, read as AUC:
+
+| model | 20 seeds | all other votes as seeds | all other votes, lottery excluded |
+|---|---|---|---|
+| `gemini-embedding-001` | 0.971 | 0.992 | 0.983 |
+| `gemini-embedding-2` | 0.956 | 0.986 | 0.969 |
+| `bge-m3` | 0.937 | 0.977 | 0.950 |
+
+* `gemini-embedding-001`'s lead over `bge-m3` has these confidence intervals, from 1,000 paired
+  bootstrap resamples: +0.010 to +0.066, +0.002 to +0.034 and +0.002 to +0.070, by column.
+* `gemini-embedding-2` cannot be told apart from either.
+* The task prefixes Google documents (`task: classification`, `sentence similarity`, and 001's
+  `CLASSIFICATION` / `SEMANTIC_SIMILARITY`) did not help and were slightly worse.
+* Adding the excerpt to the title did not help Gemini (0.992 against 0.991) and helped `bge-m3` a
+  little (0.977 against 0.984).
+
 ## More Information
 
 The section *A fixed threshold is the wrong shape* was added on 2026-10-08 from
 `docs/architecture.md:927-958` and `docs/architecture.md:1068` (§7 row #17) at commit `2b31535`.
 
-Extracted on 2026-10-08 from these sources at commit `c353d3f`; the measurement document stays
-the evidence record, with the full tables:
+The lottery reports in the truth class are the titles this regex matches, plus the two named
+under *The measurements behind the two numbers*:
+
+    (今彩539|大樂透|威力彩|雙贏彩|[34]星彩|39樂合彩|運彩).*第\d+期|第\d+期.*(開獎|中獎|槓龜)
+
+Extracted on 2026-10-08 from these sources at commit `c353d3f`. The measurement document was
+deleted afterwards; the tables under *The measurements behind the two numbers* are the part of it
+this decision rests on:
 
 * `docs/vote-signal-measurement.md:136-169` (*Recalibration — 2026-08-10, full corpus*).
 * `docs/vote-signal-measurement.md:198-295` (*Head-to-head: `@cf/baai/bge-m3`* and *They also
