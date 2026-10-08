@@ -605,8 +605,10 @@ class TestVoteSimilarity:
 
         monkeypatch.setenv("GEMINI_API_KEY", "sentinel-key-123")
         real = httpx.AsyncClient
+        sent: list[httpx.Request] = []
 
         def refuse(request):
+            sent.append(request)
             return httpx.Response(
                 400, json={"error": {"message": "API key sentinel-key-123 not valid"}}
             )
@@ -626,6 +628,7 @@ class TestVoteSimilarity:
         await client.close()
 
         assert res.status == 400
+        assert len(sent) == 1
         assert "sentinel-key-123" not in text
         assert settings.calls == []
 
@@ -1049,12 +1052,14 @@ class TestEmailSettingsWrite:
         assert settings.calls == [
             {"notify.email_to": "me@example.org", "notify.email_from": "digest@example.org"}
         ]
+        assert route.call_count == 1
+        assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
         sent = json.loads(route.calls.last.request.content)
         assert (sent["to"], sent["from"]) == ("me@example.org", "digest@example.org")
 
     @respx.mock
     async def test_a_pair_cloudflare_refuses_is_never_stored(self, settings, cloudflare_env):
-        respx.post(EMAIL_SEND).mock(
+        route = respx.post(EMAIL_SEND).mock(
             return_value=httpx.Response(
                 403,
                 json={"success": False, "errors": [{"code": 10102, "message": "forbidden"}]},
@@ -1070,6 +1075,7 @@ class TestEmailSettingsWrite:
         await client.close()
 
         assert res.status == 400
+        assert route.call_count == 1
         assert "forbidden" in body["error"]
         assert settings.calls == []
 
