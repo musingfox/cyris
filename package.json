@@ -71,7 +71,7 @@
         "description": "Optional. A `Workers AI:Read` token for `@cf/baai/bge-m3` vote-similarity filtering. Not the same token as `CLOUDFLARE_API_TOKEN`."
       },
       "CLOUDFLARE_AI_TOKEN": {
-        "description": "Optional. A `Workers AI:Read` token for the `workers_ai` LLM provider. Blank falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN`, which the same permission already covers."
+        "description": "Optional. A `Workers AI:Read` token for the `workers_ai` and `ai_gateway` LLM providers. Blank falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN`, which the same permission already covers."
       }
     }
   }

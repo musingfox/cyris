@@ -41,7 +41,7 @@ Change these; the rest works as shipped.
 
 | Key | Set it to |
 |---|---|
-| `[llm_provider] provider` | `anthropic`, `gemini`, `openai` or `workers_ai`, matching the key you put in `.env`; or `none` |
+| `[llm_provider] provider` | `anthropic`, `gemini`, `openai`, `workers_ai` or `ai_gateway`, matching the key you put in `.env`; or `none` |
 | `[llm_provider] model` | A model of that provider (the example is an Anthropic model), or `""` with `none` |
 | `[general] timezone` | Your IANA zone, such as `Europe/Berlin`. The example is `Asia/Taipei` |
 | `[general] digest_schedule` | The local hours to publish, such as `["08:00", "20:00"]`, read in that timezone |
@@ -54,7 +54,8 @@ or focus, or keep each as `""` to leave it off. Keep `[store] backend = "json"` 
 
 Then put the matching key in `.env` (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
 `OPENAI_API_KEY`, or `CLOUDFLARE_AI_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for
-`workers_ai`), and replace the sample feeds in `sources.yaml` with yours. Each source
+`workers_ai` and for `ai_gateway`, which also needs the provider's key stored in your gateway:
+see [Running the LLM through AI Gateway](operations.md#running-the-llm-through-ai-gateway)), and replace the sample feeds in `sources.yaml` with yours. Each source
 takes a tier; see [How sources are processed](sources.md).
 Email-only newsletters (`type: newsletter`) are inert locally.
 

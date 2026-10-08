@@ -82,6 +82,24 @@ edit. A local run
 cannot see the container's own environment, so `CYRIS_GIT_SHA` and the Worker secrets show what
 this machine has, not what production has.
 
+## Running the LLM through AI Gateway
+
+`provider = "ai_gateway"` sends every LLM call to Cloudflare, which forwards it with a provider key
+stored in the gateway and logs each request and response body. The path refuses a key carried in the
+request, so the key has to be stored there first:
+
+1. In the Cloudflare dashboard, go to **AI** > **AI Gateway** and open the gateway named `default`.
+   A request that names no gateway goes to that one.
+2. Under **Provider Keys**, select **Add API Key**, choose **Google AI Studio**, paste the Gemini key,
+   and keep the alias `default`.
+3. Check that `CLOUDFLARE_AI_TOKEN` (or `CLOUDFLARE_EMBEDDING_API_TOKEN`) and
+   `CLOUDFLARE_ACCOUNT_ID` are set; `/ai/run` needs Workers AI Read and nothing more.
+4. On `/settings`, choose `ai_gateway` with a `google/` model. The save makes one real call, and a
+   refusal names the side that refused: the gateway (a missing key or token) or the model (a name the
+   catalog lacks, or one it has retired).
+
+The gateway's log has a cost per call. It shows spend and cyris caps none of it.
+
 ## Going back
 
 `wrangler rollback` restores the Worker's code and configuration but not the container

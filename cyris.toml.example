@@ -26,6 +26,8 @@ email_from = ""                         # an address on one of the account's Ema
 # "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY), "openai" (OPENAI_API_KEY),
 # "workers_ai"
 # (CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying Workers AI -> Read),
+# "ai_gateway" (the same two; the provider's key is stored in the AI Gateway named
+# default, and the model is written author/model, e.g. "google/gemini-3.8-flash"),
 # or "none" for plain excerpts with no model and no key (set model = "").
 # workers_ai keeps everything on one Cloudflare account, but it is not yet a
 # drop-in: run `cyris llm-compare` and read both digests before switching.
