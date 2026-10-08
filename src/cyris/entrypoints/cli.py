@@ -668,6 +668,36 @@ def doctor(
     typer.echo("\nReady to run.")
 
 
+config_app = typer.Typer(help="Show the configuration a run would use")
+app.add_typer(config_app, name="config")
+
+
+@config_app.command("show")
+def config_show(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Print every setting's effective value and where it came from. Secrets show only set."""
+    from cyris.adapters.store.d1 import D1Error
+    from cyris.bootstrap import load_effective_config
+    from cyris.diagnostics.config_show import config_rows, render
+
+    try:
+        cfg = load_effective_config(config_path, sources_path)
+    except (FileNotFoundError, ValueError) as e:
+        typer.echo(f"✗ config — {e}", err=True)
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        _echo_d1_failure(e)
+        raise typer.Exit(1) from e
+
+    typer.echo(render(config_rows(cfg)))
+
+
 @app.command("triage-ui")
 def triage_ui(
     port: Annotated[int, typer.Option(help="Server port")] = 8766,

@@ -29,17 +29,26 @@ from cyris.domain.models import SourceConfig
 from cyris.service_layer.schedule import validate_schedule
 
 
-def _load_dotenv(env_path: Path | None = None) -> None:
-    """Load .env file into os.environ (setdefault, won't override existing)."""
+def _load_dotenv(env_path: Path | None = None) -> frozenset[str]:
+    """Load .env file into os.environ (setdefault, won't override existing).
+
+    Returns the names it set, which is how `cyris config show` tells a value
+    from `.env` from one the process environment already held.
+    """
     path = env_path or Path(".env")
     if not path.exists():
-        return
+        return frozenset()
+    loaded = set()
     for line in path.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
+        key = key.strip()
+        if key not in os.environ:
+            loaded.add(key)
+        os.environ.setdefault(key, value.strip())
+    return frozenset(loaded)
 
 
 logger = logging.getLogger(__name__)
@@ -410,6 +419,10 @@ class Config(BaseModel):
     # from the tables, which fill what is absent.
     settings_values: dict[str, Any] = Field(default_factory=dict)
     config_file_found: bool = True
+    # Provenance only, for `cyris config show`: what cyris.toml said, and which
+    # environment names the `.env` beside it supplied. No value is read from here.
+    file_toml: dict[str, Any] = Field(default_factory=dict)
+    dotenv_names: frozenset[str] = frozenset()
 
     def present_settings(self) -> dict[str, Any]:
         """The grade-D values this deployment's home holds, by `table.field`."""
@@ -472,6 +485,7 @@ class RawConfig:
     toml: dict[str, Any]
     sources: dict[str, SourceConfig]
     config_file_found: bool
+    dotenv_names: frozenset[str] = frozenset()
 
 
 def read_config_files(
@@ -487,7 +501,7 @@ def read_config_files(
     config_path = config_path or Path("cyris.toml")
     sources_path = sources_path or Path("sources.yaml")
 
-    _load_dotenv(config_path.parent / ".env")
+    dotenv_names = _load_dotenv(config_path.parent / ".env")
 
     config_file_found = config_path.exists()
     if config_file_found:
@@ -515,6 +529,7 @@ def read_config_files(
         toml=raw_toml,
         sources={s.name: s for s in sources_config.sources},
         config_file_found=config_file_found,
+        dotenv_names=dotenv_names,
     )
 
 
@@ -539,6 +554,8 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) ->
         missing_settings=missing_settings,
         settings_values=settings_values,
         config_file_found=raw.config_file_found,
+        file_toml=raw.toml,
+        dotenv_names=raw.dotenv_names,
     )
 
 
