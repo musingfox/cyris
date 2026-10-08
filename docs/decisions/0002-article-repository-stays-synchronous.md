@@ -13,8 +13,9 @@ decision-makers: ""
 HTTP API. The cloud move needed a D1-backed store, and it had promised that `service_layer/` and
 `domain/` would not change.
 
-Before any code moved, the cloud-migration plan settled this as its first design constraint and
-said that if the constraint failed, the plan would need rewriting.
+Before any code moved, the cloud migration plan (`docs/cloud-migration.md` at commit `c353d3f`)
+settled this as its first design constraint and said that if the constraint failed, the plan
+would need rewriting.
 
 ## Considered Options
 
