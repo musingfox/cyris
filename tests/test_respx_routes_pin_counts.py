@@ -109,8 +109,8 @@ def test_every_respx_route_has_its_call_count_asserted() -> None:
 
 def test_no_test_switches_off_respxs_own_assertions() -> None:
     offenders = [
-        path.name
-        for path in sorted(TESTS.glob("test_*.py"))
+        str(path.relative_to(TESTS))
+        for path in sorted(TESTS.rglob("*.py"))
         if switches_off_respx(path.read_text(encoding="utf-8"))
     ]
 
