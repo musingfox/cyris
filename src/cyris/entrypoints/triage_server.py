@@ -182,7 +182,7 @@ class TriageServer:
             # `configured` reflects what a run would actually find, not a guess.
             probe_cfg = LLMProviderConfig(provider=name, model="")
             ready = bool(probe_cfg.api_key) and (
-                bool(probe_cfg.account_id) if name == "workers_ai" else True
+                bool(probe_cfg.account_id) if name in ("workers_ai", "ai_gateway") else True
             )
             providers.append(
                 {

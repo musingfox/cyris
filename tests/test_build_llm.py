@@ -2,6 +2,7 @@
 
 import pytest
 
+from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.openai_client import OpenAIClient
@@ -70,3 +71,16 @@ def test_gemini_honours_an_explicit_model():
 
     assert isinstance(gemini, GeminiClient)
     assert gemini.model == "gemini-2.5-pro"
+
+
+def test_ai_gateway_defaults_to_the_model_production_runs():
+    llm = build_llm(LLMProviderConfig(provider="ai_gateway", model="", api_key="k", account_id="a"))
+
+    assert isinstance(llm, AIGatewayClient)
+    assert llm.model == "google/gemini-3.8-flash"
+
+
+def test_ai_gateway_without_an_account_id_builds_nothing(monkeypatch):
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+
+    assert build_llm(LLMProviderConfig(provider="ai_gateway", model="", api_key="k")) is None

@@ -68,6 +68,7 @@ EXPECTED_READINESS = {
     "gemini": True,
     "openai": False,
     "workers_ai": False,
+    "ai_gateway": False,
     "none": True,
 }
 

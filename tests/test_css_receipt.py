@@ -689,6 +689,7 @@ async def test_the_probe_environment_resolves_the_provider_readiness_it_promises
             "gemini": True,
             "openai": False,
             "workers_ai": False,
+            "ai_gateway": False,
             "none": True,
         }
     )

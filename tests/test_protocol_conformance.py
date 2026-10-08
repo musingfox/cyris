@@ -20,6 +20,7 @@ from typing import Protocol
 
 import pytest
 
+from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
 from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
@@ -41,6 +42,7 @@ IMPLEMENTATIONS = [
     (LLMClient, GeminiClient),
     (LLMClient, OpenAIClient),
     (LLMClient, WorkersAIClient),
+    (LLMClient, AIGatewayClient),
     (Embedder, GeminiEmbedder),
     (Embedder, WorkersAIEmbedder),
     (FetchSource, RssSource),

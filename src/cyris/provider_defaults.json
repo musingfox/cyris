@@ -4,7 +4,8 @@
     "anthropic": "claude-sonnet-4-6",
     "gemini": "gemini-2.5-flash",
     "openai": "gpt-5.6-luna",
-    "workers_ai": "@cf/openai/gpt-oss-120b"
+    "workers_ai": "@cf/openai/gpt-oss-120b",
+    "ai_gateway": "google/gemini-3.8-flash"
   },
   "embedding": {
     "workers_ai": { "model": "@cf/baai/bge-m3", "threshold": 0.53 },
