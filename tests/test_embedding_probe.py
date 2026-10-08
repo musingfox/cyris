@@ -55,6 +55,8 @@ async def test_workers_ai_answering_is_ok_with_its_dimensions(requests) -> None:
 
     check = await probe_embedder("workers_ai", "")
 
+    [request] = requests
+    assert request.headers["Authorization"] == "Bearer sentinel-cf-token"
     assert check.status == "ok"
     assert check.detail == "workers_ai · @cf/baai/bge-m3 answered (2 dimensions)"
 
@@ -64,6 +66,7 @@ async def test_a_refusal_carries_the_providers_words_and_not_the_key(requests) -
 
     check = await probe_embedder("gemini", "typo-model")
 
+    assert len(requests) == 1
     assert check.status == "fail"
     assert check.detail.startswith("typo-model refused: 400 ")
     assert "model not found" in check.detail
@@ -92,6 +95,7 @@ async def test_a_transport_error_is_a_failure_not_an_exception(requests) -> None
 
     check = await probe_embedder("gemini", "")
 
+    assert len(requests) == 1
     assert check.status == "fail"
     assert "sentinel-key-123" not in check.detail
 
@@ -103,6 +107,8 @@ async def test_a_rate_limited_embedder_fails_within_the_probe_bound(requests, mo
 
     check = await asyncio.wait_for(probe_embedder("gemini", ""), timeout=5)
 
+    # The first backoff (3 s) outlasts the 0.2 s bound, so no retry is sent.
+    assert len(requests) == 1
     assert check.status == "fail"
     assert check.detail == "gemini-embedding-001 did not answer within 0.2 s"
     assert "rate-limiting" in check.fix

@@ -66,11 +66,21 @@ async def test_the_gemini_embedder_sends_its_key_as_a_header_not_a_query_string(
 
 
 async def test_workers_ai_returns_unit_vectors_and_records_what_it_charged(patched_client):
-    patched_client(lambda r: httpx.Response(200, json=workers_response([[3.0, 4.0]])))
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=workers_response([[3.0, 4.0]]))
+
+    patched_client(handler)
     embedder = WorkersAIEmbedder("tok", "acct")
 
     [vector] = await embedder.embed(["今彩539開獎"])
 
+    [request] = seen
+    assert request.method == "POST"
+    assert request.url.path == "/client/v4/accounts/acct/ai/run/@cf/baai/bge-m3"
+    assert request.headers["Authorization"] == "Bearer tok"
     assert vector == pytest.approx([0.6, 0.8])  # normalised
     assert embedder.usage.input_tokens == 24
     assert embedder.usage.neurons == pytest.approx(0.0258)
@@ -98,19 +108,27 @@ async def test_a_repeated_text_is_embedded_once_per_call(patched_client):
 
 async def test_a_200_carrying_success_false_is_an_error(patched_client):
     """Cloudflare answers 200 with success:false, so raise_for_status alone lets it pass."""
-    patched_client(
-        lambda r: httpx.Response(200, json={"success": False, "errors": [{"code": 10000}]})
-    )
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"success": False, "errors": [{"code": 10000}]})
+
+    patched_client(handler)
     embedder = WorkersAIEmbedder("tok", "acct")
 
     with pytest.raises(RuntimeError, match="refused"):
         await embedder.embed(["anything"])
 
+    assert len(seen) == 1
+
 
 async def test_gemini_asks_for_truncated_dimensions_when_told_to(patched_client):
     seen = {}
+    sent: list[httpx.Request] = []
 
     def handler(request):
+        sent.append(request)
         seen.update(json.loads(request.content)["requests"][0])
         return httpx.Response(200, json={"embeddings": [{"values": [0.0, 2.0]}]})
 
@@ -119,16 +137,24 @@ async def test_gemini_asks_for_truncated_dimensions_when_told_to(patched_client)
 
     [vector] = await embedder.embed(["title"])
 
+    assert len(sent) == 1
     assert seen["outputDimensionality"] == 768
     # The API returns non-unit vectors below 3072d; the adapter has to fix that.
     assert vector == pytest.approx([0.0, 1.0])
 
 
 async def test_an_empty_input_never_reaches_the_api(patched_client):
-    patched_client(lambda r: httpx.Response(500))
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(500)
+
+    patched_client(handler)
     embedder = WorkersAIEmbedder("tok", "acct")
 
     assert await embedder.embed([]) == []
+    assert seen == []
     assert embedder.usage.requests == 0
 
 
