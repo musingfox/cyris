@@ -107,6 +107,39 @@ def _setup_logging(verbose: bool = False) -> None:
             handler.addFilter(_RedactCredentials())
 
 
+def _alert_could_not_start(cfg, error: Exception) -> None:
+    """Alert the configured channels that a scheduled run stopped before `run_digest`.
+
+    Only on a digest hour: the cron tick is hourly, and a broken configuration
+    fails every tick. Settings that cannot say whether this hour is one, or
+    where to send, alert nobody. Never raises: the run's own exit code stands.
+    """
+    from cyris import bootstrap
+    from cyris.adapters import notify
+    from cyris.service_layer.run_digest import failure_alert_text, send_alert
+    from cyris.service_layer.schedule import due_period
+    from cyris.utils.timezone import now_in_timezone
+
+    try:
+        tz = cfg.app.general.timezone
+        now = now_in_timezone(tz)
+        period = due_period(now, cfg.app.general.digest_schedule)
+        if period is None:
+            return
+        subject = f"Digest run could not start: {period}, {now:%Y-%m-%d %H:%M} {tz}"
+        asyncio.run(
+            send_alert(
+                cfg.app.notify,
+                notify.send_discord_alert,
+                bootstrap.build_send_email_alert(),
+                subject,
+                failure_alert_text(error),
+            )
+        )
+    except Exception as e:
+        logger.error("Could not send the alert that the run did not start: %s", e)
+
+
 @app.command("run")
 def run(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing")] = False,
@@ -140,6 +173,7 @@ def run(
     from cyris.service_layer.schedule import due_period
     from cyris.utils.timezone import now_in_timezone
 
+    cfg = None
     try:
         cfg = load_effective_config(config_path, sources_path)
         cfg.validate_required_keys()
@@ -147,6 +181,8 @@ def run(
         cfg.require_sources()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
+        if if_due and not dry_run and cfg is not None:
+            _alert_could_not_start(cfg, e)
         raise typer.Exit(1) from e
 
     if if_due:
@@ -159,7 +195,12 @@ def run(
             return
         period = due
 
-    deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run)
+    try:
+        deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run)
+    except Exception as e:
+        if if_due and not dry_run:
+            _alert_could_not_start(cfg, e)
+        raise
     options = RunOptions(period=period, dry_run=dry_run, force=force)
 
     # The Container stops a run with SIGTERM, whose default kills the process

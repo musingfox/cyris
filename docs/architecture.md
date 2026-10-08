@@ -353,8 +353,12 @@ issue the site lacks, re-rendered from its row, before anything can end the run 
 page is not stored, so a republished issue links none. A run that
 raises inside `run_digest`, or fetches nothing while a source failed, sends a failure alert to
 the same channels after the run is recorded. It carries the error or the failed sources and the
-time the run started. A dry run, a SIGTERM-cancelled run and a run that fails before it starts
-send no alert. Votes cast on the published digest go to the promote Worker's KV and are drained
+time the run started. A scheduled run (`--if-due`) that stops before `run_digest`, on incomplete
+settings or a `build_deps` that raises, sends `Digest run could not start` to the same channels,
+on a digest hour only, since every hourly tick hits the same failure; it leaves no `digest_runs`
+row. Settings that cannot name the schedule or a channel send nothing, and so do a D1 the
+container cannot read and a container that never starts: those are left to Workers Logs. A dry
+run, a run started by hand and a SIGTERM-cancelled run send no alert. Votes cast on the published digest go to the promote Worker's KV and are drained
 hourly by `cyris promote-sync`, which is what turns a click into a `triaged_at` stamp.
 
 ## 4. Data residency
