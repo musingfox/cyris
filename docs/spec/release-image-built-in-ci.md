@@ -18,11 +18,13 @@ local registry login, or a local keychain.
 
 A `workflow_dispatch` job in `.github/workflows/` builds the image with
 `docker build --build-arg GIT_SHA=$GITHUB_SHA` and pushes it to the Cloudflare
-registry under two tags: the immutable `:<sha>`, and the mutable `:release`
-which a routine deploy asks for. The deployed configuration names neither: the
-deploy workflow resolves the tag to its digest and deploys that. Pushing both
-is what makes the mutable tag reversible — if a deploy has to be pinned, it is
-a one-string edit to an already-published digest, not another build.
+registry under two tags: the immutable `:<sha>`, and the mutable `:release`.
+The deployed configuration names neither: a routine deploy reads the digest
+the release recorded in the commit's `image/<short-sha>` git tag and deploys
+that, because the registry has answered a stale `:release` after the push that
+moved it. Recording the digest is what makes a deploy reversible — if a deploy
+has to be pinned, it is a one-string edit to an already-published digest, not
+another build.
 
 Out of scope: the deploy itself, which stays a separate step and a separate
 ticket. Also out of scope: a developer building the image locally to test it —

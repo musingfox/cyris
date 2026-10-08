@@ -628,8 +628,10 @@ builds `./Dockerfile` locally — that config stays fork-neutral by
 *derived* config instead: `.github/workflows/deploy.yml` renders it with
 `scripts/derive-wrangler-config.sh` and passes it as `--config`. That workflow is dispatch-only
 and separate from the build, because building and deploying fail differently and because
-pinning is its job — `image_tag` takes a `sha256:…` digest, which is how a deploy goes back to
-an image already published. Going back is a reference to an image already in the
+pinning is its job. With no input it deploys the digest the release recorded in the dispatched
+commit's `image/<short-sha>` git tag, never `:release`, which the registry has answered stale for
+over 50 seconds after a push; `image_tag` takes a `sha256:…` digest, which is how a deploy goes
+back to an image already published. Going back is a reference to an image already in the
 registry, never a rebuild of the old commit — the workflow refuses to republish a commit because
 the image is not reproducible — and the platform's own rollback does not move that reference:
 `docs/spec/revert-carries-the-image.md` holds the rule, and `docs/operations.md` *Going back*
