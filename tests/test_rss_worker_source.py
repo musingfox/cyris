@@ -34,7 +34,7 @@ ROW = {
 @pytest.mark.asyncio
 async def test_rows_map_to_articles_with_tier_from_config():
     """The buffer stores only the source name; tier and tags come from sources.yaml."""
-    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
 
     articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
         after=AFTER,
@@ -42,6 +42,7 @@ async def test_rows_map_to_articles_with_tier_from_config():
         sources={"A": SourceConfig(name="A", url="https://a.test/feed", tier=Tier.SUMMARIZE)},
     )
 
+    assert route.call_count == 1
     assert len(articles) == 1
     assert articles[0].url == "https://a.test/1"
     assert articles[0].source_tier == Tier.SUMMARIZE
@@ -100,6 +101,7 @@ async def test_the_read_asks_for_the_workers_ceiling_not_the_run_cap():
 
     await CloudflareRssSource(WORKER, "tok").fetch_articles(after=AFTER, before=BEFORE, sources={})
 
+    assert route.call_count == 1
     assert route.calls.last.request.url.params["limit"] == _worker_row_ceiling()
 
 
@@ -107,12 +109,13 @@ async def test_the_read_asks_for_the_workers_ceiling_not_the_run_cap():
 @pytest.mark.asyncio
 async def test_unknown_source_falls_back_to_filter_tier():
     """A feed added to the Worker but not yet in sources.yaml must not crash the run."""
-    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
 
     articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
         after=AFTER, before=BEFORE, sources={}
     )
 
+    assert route.call_count == 1
     assert articles[0].source_tier == Tier.FILTER
 
 
@@ -121,18 +124,20 @@ async def test_unknown_source_falls_back_to_filter_tier():
 async def test_a_failed_buffer_read_raises():
     """`fetch_all_articles` skips a raising source and lists it in `failed_sources`,
     which is what the failed-fetch alert reads; an empty list would hide the outage."""
-    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(500))
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(500))
 
     with pytest.raises(httpx.HTTPStatusError):
         await CloudflareRssSource(WORKER, "tok").fetch_articles(
             after=AFTER, before=BEFORE, sources={}
         )
 
+    assert route.call_count == 1
+
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_malformed_row_is_skipped_not_fatal():
-    respx.get(f"{WORKER}/articles").mock(
+    route = respx.get(f"{WORKER}/articles").mock(
         return_value=httpx.Response(200, json=[{"title": "no url"}, ROW])
     )
 
@@ -140,6 +145,7 @@ async def test_malformed_row_is_skipped_not_fatal():
         after=AFTER, before=BEFORE, sources={}
     )
 
+    assert route.call_count == 1
     assert [a.url for a in articles] == ["https://a.test/1"]
 
 
@@ -149,24 +155,28 @@ async def test_a_read_that_fills_the_ceiling_is_logged(monkeypatch, caplog):
     """A full read means the earliest-buffered rows were left in the buffer, never stored."""
     monkeypatch.setattr("cyris.adapters.fetch.rss_worker_source.WORKER_ROW_CEILING", 2)
     second = {**ROW, "url": "https://a.test/2", "guid": "tag:a.test,2"}
-    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW, second]))
+    route = respx.get(f"{WORKER}/articles").mock(
+        return_value=httpx.Response(200, json=[ROW, second])
+    )
 
     with caplog.at_level("WARNING", logger="cyris.adapters.fetch.rss_worker_source"):
         await CloudflareRssSource(WORKER, "tok").fetch_articles(
             after=AFTER, before=BEFORE, sources={}
         )
 
+    assert route.call_count == 1
     assert any("ceiling" in r.getMessage() for r in caplog.records), caplog.records
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_a_read_below_the_ceiling_logs_no_warning(caplog):
-    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
 
     with caplog.at_level("WARNING", logger="cyris.adapters.fetch.rss_worker_source"):
         await CloudflareRssSource(WORKER, "tok").fetch_articles(
             after=AFTER, before=BEFORE, sources={}
         )
 
+    assert route.call_count == 1
     assert not caplog.records
