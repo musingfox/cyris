@@ -114,6 +114,6 @@ normalisation) without needing the Workers runtime.
 - **Substack rate-limits Cloudflare's egress.** 8 of the 9 Substack feeds returned
   HTTP 429 on the first cloud poll; concurrency was dropped from 10 to 4 and some
   still fail. Because the buffer accumulates, a 429'd feed usually lands on a later
-  tick — but a persistently blocked one would silently vanish from the digest.
-  `/stats` counts the whole buffer, not each feed, so watch the `failures` list a
-  `POST /poll` returns for Substack feeds that keep failing.
+  tick. A persistently blocked one is not silent: every poll upserts each feed's
+  outcome into D1 `feed_health` (failure streak, last error, last success), which
+  outlives Workers Logs' 7 days.

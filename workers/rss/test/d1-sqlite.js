@@ -34,5 +34,18 @@ export function d1Sqlite() {
     async exec(sql) {
       raw.exec(sql);
     },
+    // D1 runs a batch as one transaction: one failing statement writes none.
+    async batch(statements) {
+      raw.exec("BEGIN");
+      try {
+        const results = [];
+        for (const statement of statements) results.push(await statement.run());
+        raw.exec("COMMIT");
+        return results;
+      } catch (error) {
+        raw.exec("ROLLBACK");
+        throw error;
+      }
+    },
   };
 }
