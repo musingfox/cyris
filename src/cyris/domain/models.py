@@ -300,6 +300,8 @@ class ProcessResult(BaseModel):
     rejected_urls: list[str]
     url_to_tags: dict[str, list[str]] = Field(default_factory=dict)
     story_records: list[StoryRecord] = Field(default_factory=list)
+    # Headline and Features positions the vote preference changed; None when none was given.
+    preference_moves: dict[str, int] | None = None
 
 
 class TriageFeedbackData(BaseModel):

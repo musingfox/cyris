@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from collections.abc import Mapping
 
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -16,6 +17,7 @@ from cyris.domain.models import (
 from cyris.domain.selection import (
     digest_urls,
     layer_by_score,
+    preference_moves,
     select_digest_articles,
     split_summarize_tier_by_score,
 )
@@ -81,6 +83,7 @@ class DigestPipeline:
         *,
         timezone: str,
         article_scores: dict[str, float] | None = None,
+        preference: Mapping[str, float] | None = None,
     ) -> ProcessResult:
         """Process articles through tier-based pipeline.
 
@@ -92,6 +95,8 @@ class DigestPipeline:
             sources: Source configs keyed by name.
             period: Digest period ("morning" or "evening").
             timezone: IANA timezone for date formatting.
+            preference: Article URL to the reader's vote preference, which orders
+                the headlines and Features before the cap; None keeps the model's order.
 
         Returns:
             ProcessResult with content and URL classification.
@@ -265,10 +270,16 @@ class DigestPipeline:
         )
 
         # Laid out before the cap, so the cap takes by score and sees the Top story's group.
-        content = layer_by_score(
+        laid_out = layer_by_score(
             content, featured_threshold=self.featured_threshold, max_featured=self.max_featured
         )
-        content = select_digest_articles(content, max_items=self.max_digest_output)
+        content = select_digest_articles(
+            laid_out, max_items=self.max_digest_output, preference=preference
+        )
+        moves = None
+        if preference is not None:
+            unranked = select_digest_articles(laid_out, max_items=self.max_digest_output)
+            moves = preference_moves(unranked, content)
         # Accepted means shown in this issue. What the cap cut, or the summarizer
         # left out of every section, stays pending for the next run in the window.
         accepted_urls = list(digest_urls(content))
@@ -279,4 +290,5 @@ class DigestPipeline:
             rejected_urls=rejected_urls,
             url_to_tags=url_to_tags,
             story_records=story_records,
+            preference_moves=moves,
         )

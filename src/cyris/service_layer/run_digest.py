@@ -27,6 +27,7 @@ from cyris.utils.timezone import now_in_timezone
 
 if TYPE_CHECKING:
     from cyris.bootstrap import Deps
+    from cyris.service_layer.vote_similarity import VoteSimilarityReport
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,19 @@ def _newest(articles: list[StoredArticle], n: int) -> list[StoredArticle]:
     """
     keep = {a.url for a in sorted(articles, key=lambda a: a.published_at, reverse=True)[:n]}
     return [a for a in articles if a.url in keep]
+
+
+def _vote_preference(
+    rank: bool, similarity: "VoteSimilarityReport | None"
+) -> tuple[dict[str, float] | None, str]:
+    """Each judged candidate's preference, or why this issue keeps the model's order."""
+    if not rank:
+        return None, "switched off"
+    if similarity is None:
+        return None, "vote similarity off"
+    if not similarity.ran:
+        return None, f"vote similarity skipped: {similarity.skipped_reason}"
+    return {url: verdict.net for url, verdict in similarity.verdicts.items()}, ""
 
 
 def _render_site(
@@ -391,6 +405,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
 
     # Vote similarity runs over every candidate, not just the scored ones: the
     # scorer skips news, and the class that drew the first downvote is news-tagged.
+    similarity = None
     if cfg.app.vote_similarity.enabled and deps.embedder is not None:
         from cyris.service_layer.vote_similarity import judge_by_votes
 
@@ -429,6 +444,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             log = logger.warning if deps.embedding_threshold is None else logger.info
             log("Vote similarity skipped: %s", similarity.skipped_reason)
 
+    preference, unranked_reason = _vote_preference(cfg.app.digest.rank_by_preference, similarity)
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}
     digest_articles = [a.to_article() for a in pending_articles]
 
@@ -455,8 +471,15 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         period=options.period,
         timezone=tz,
         article_scores=article_scores,
+        preference=preference,
     )
     content = result.content
+    summary["preference_rank_applied"] = result.preference_moves is not None
+    if result.preference_moves is None:
+        summary["preference_rank_skipped"] = unranked_reason
+    else:
+        summary["preference_rank_moved_headlines"] = result.preference_moves["headlines"]
+        summary["preference_rank_moved_features"] = result.preference_moves["features"]
     if not options.dry_run and deps.tag_store is not None and result.url_to_tags:
         try:
             deps.tag_store.save(result.url_to_tags)

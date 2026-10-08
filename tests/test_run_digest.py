@@ -2621,3 +2621,132 @@ async def test_every_run_summary_carries_its_start_time(tmp_path: Path) -> None:
 
     [summary] = recorded
     assert before <= datetime.fromisoformat(summary["started_at"]) <= datetime.now(UTC)
+
+
+# ---- the vote order: the reader's preference orders the cap, never a verdict ----------
+
+_LEANS_DISLIKED = "https://example.com/leans-disliked"
+_LEANS_LIKED = "https://example.com/leans-liked"
+_OFF_TOPIC = "https://example.com/off-topic"
+
+
+class _RankEmbedder(_TitleEmbedder):
+    VECTORS = {
+        "Liked before": [1.0, 0.0, 0.0],
+        "Disliked before": [0.0, 1.0, 0.0],
+        "Leans disliked": [0.6, 1.0, 0.6],
+        "Leans liked": [1.0, 0.6, 0.6],
+        "Off topic": [0.0, 0.0, 1.0],
+    }
+
+
+def _headline_article(article_id: int, title: str, url: str) -> Article:
+    return _vote_article(article_id, title, url).model_copy(update={"source_tier": Tier.FILTER})
+
+
+def _ranking_deps(
+    tmp_path: Path, *, rank: bool, similarity: bool = True, votes: bool = True
+) -> tuple[Deps, list, list[dict]]:
+    """Three headlines: the model keeps two, disliked first, and the issue has room for one."""
+    candidates = [
+        _headline_article(1, "Leans disliked", _LEANS_DISLIKED),
+        _headline_article(2, "Leans liked", _LEANS_LIKED),
+        _headline_article(3, "Off topic", _OFF_TOPIC),
+    ]
+    selected = [
+        {"id": 0, "title": "Leans disliked", "source": "NotifySource"},
+        {"id": 1, "title": "Leans liked", "source": "NotifySource"},
+    ]
+    llm = FakeLLM([json.dumps({"scores": []}), json.dumps({"selected": selected})])
+    contents: list = []
+    deps, _ = make_deps(tmp_path, llm, FakeSource(candidates), discord_contents=contents)
+    deps.cfg.app.digest.max_articles_per_digest_output = 1
+    deps.cfg.app.digest.rank_by_preference = rank
+    deps.cfg.app.vote_similarity.enabled = similarity
+    # No candidate reaches a cosine of 1.0, so nothing is suppressed and only the order moves.
+    deps, recorded = _recording(
+        replace(deps, embedder=_RankEmbedder(), embedding_threshold=1.0, record_similarity=None)
+    )
+    deps.store.save(candidates)
+    if votes:
+        deps.store.save(
+            [
+                _vote_article(20, "Liked before", _LIKED),
+                _vote_article(21, "Disliked before", _DISLIKED),
+            ]
+        )
+        deps.store.accept([_LIKED])
+        deps.store.reject([_DISLIKED], "not_interested")
+        deps.store.update_triage_timestamp([_LIKED, _DISLIKED], datetime.now(UTC))
+    return deps, contents, recorded
+
+
+def _headlines(content: DigestContent) -> list[str]:
+    return [item.title for item in content.filtered_headlines]
+
+
+async def test_the_headline_closer_to_an_upvote_takes_the_last_slot(tmp_path: Path) -> None:
+    on, on_contents, on_recorded = _ranking_deps(tmp_path / "on", rank=True)
+    off, off_contents, off_recorded = _ranking_deps(tmp_path / "off", rank=False)
+
+    await run_digest(on, RunOptions())
+    await run_digest(off, RunOptions())
+
+    assert _headlines(on_contents[0]) == ["Leans liked"]
+    assert _headlines(off_contents[0]) == ["Leans disliked"]
+    [on_summary], [off_summary] = on_recorded, off_recorded
+    assert on_summary["preference_rank_applied"] is True
+    assert on_summary["preference_rank_moved_headlines"] == 1
+    assert on_summary["preference_rank_moved_features"] == 0
+    assert "preference_rank_skipped" not in on_summary
+    assert off_summary["preference_rank_applied"] is False
+    assert off_summary["preference_rank_skipped"] == "switched off"
+    assert "preference_rank_moved_headlines" not in off_summary
+
+
+async def test_the_vote_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Path) -> None:
+    on, _, _ = _ranking_deps(tmp_path / "on", rank=True)
+    off, _, _ = _ranking_deps(tmp_path / "off", rank=False)
+
+    await run_digest(on, RunOptions())
+    await run_digest(off, RunOptions())
+
+    urls = [_LEANS_DISLIKED, _LEANS_LIKED, _OFF_TOPIC]
+    on_rows = {a.url: a for a in on.store.get_by_urls(urls)}
+    off_rows = {a.url: a for a in off.store.get_by_urls(urls)}
+    rejected = {u for u, a in on_rows.items() if a.state == ArticleState.REJECTED}
+    assert rejected == {u for u, a in off_rows.items() if a.state == ArticleState.REJECTED}
+    assert rejected == {_OFF_TOPIC}
+    assert [a.triaged_at for a in (*on_rows.values(), *off_rows.values())] == [None] * 6
+    # Which headline the cap shows is exactly what the order decides; the other waits.
+    assert (on_rows[_LEANS_LIKED].state, on_rows[_LEANS_DISLIKED].state) == (
+        ArticleState.ACCEPTED,
+        ArticleState.PENDING,
+    )
+    assert (off_rows[_LEANS_LIKED].state, off_rows[_LEANS_DISLIKED].state) == (
+        ArticleState.PENDING,
+        ArticleState.ACCEPTED,
+    )
+
+
+@pytest.mark.parametrize(
+    ("similarity", "votes", "reason"),
+    [
+        (False, True, "vote similarity off"),
+        (True, False, "vote similarity skipped: no human-voted articles yet"),
+    ],
+    ids=["disabled", "no-votes"],
+)
+async def test_without_a_similarity_verdict_nothing_is_reordered(
+    tmp_path: Path, similarity: bool, votes: bool, reason: str
+) -> None:
+    deps, contents, recorded = _ranking_deps(
+        tmp_path, rank=True, similarity=similarity, votes=votes
+    )
+
+    await run_digest(deps, RunOptions())
+
+    assert _headlines(contents[0]) == ["Leans disliked"]
+    [summary] = recorded
+    assert summary["preference_rank_applied"] is False
+    assert summary["preference_rank_skipped"] == reason
