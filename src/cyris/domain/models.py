@@ -2,8 +2,9 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 NO_LLM_MODEL = "none"
 
@@ -40,6 +41,24 @@ class SourceConfig(BaseModel):
         if self.type == NEWSLETTER_SOURCE_TYPE:
             return bool(self.email_match and self.email_match.strip())
         return False
+
+
+_Filled = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class TrackedTopic(BaseModel):
+    """A subject the reader follows: one sentence of theirs, compared with every title.
+
+    The threshold is a cosine on `model`'s scale, set by the reader for this one
+    sentence, so it carries the model it was set for. A run embedding with any
+    other model skips the topic rather than judge one model's cosines by
+    another's number (docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md).
+    """
+
+    name: _Filled
+    description: _Filled
+    threshold: float = Field(gt=0.0, le=1.0)
+    model: _Filled
 
 
 class Article(BaseModel):
@@ -203,6 +222,9 @@ class DigestContent(BaseModel):
     attention_sections: list[DigestSection] = Field(default_factory=list)
     filtered_headlines: list[DigestItem] = Field(default_factory=list)
     fan_sections: list[DigestSection] = Field(default_factory=list)
+    # One section per tracked topic with a hit this run, headed by the topic's name.
+    # Outside the issue's cap and its article count: a hit changes no article's state.
+    tracked_topics: list[DigestSection] = Field(default_factory=list)
     triage_pending_count: int | None = None
     dead_link_count: int | None = None
     synthetic_url_count: int | None = None
