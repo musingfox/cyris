@@ -658,7 +658,10 @@ class TestDeploymentProvenance:
         from aiohttp import web
         from aiohttp.test_utils import TestServer
 
+        hits: list[str] = []
+
         async def login(request: web.Request) -> web.Response:
+            hits.append(request.path)
             form = await request.post()
             if form.get("token") != "s3cret":
                 return web.Response(status=401)
@@ -667,6 +670,7 @@ class TestDeploymentProvenance:
             )
 
         async def build(request: web.Request) -> web.Response:
+            hits.append(request.path)
             if request.cookies.get("cyris_session") != "ok":
                 return web.json_response({"error": "unauthorized"}, status=401)
             return web.json_response({"git_sha": "f" * 40})
@@ -681,6 +685,7 @@ class TestDeploymentProvenance:
             assert await doctor._fetch_build_sha(str(server.make_url("")).rstrip("/")) == "f" * 40
         finally:
             await server.close()
+        assert hits == ["/login", "/api/build"]
 
     async def test_a_deployment_older_than_the_endpoint_is_not_blamed_on_its_hostname(
         self, monkeypatch
@@ -790,6 +795,7 @@ async def test_a_live_webhook_is_named_back_to_the_reader() -> None:
         transport=_discord_transport(responses, seen),
     )
 
+    assert seen == ["https://discord.com/api/webhooks/123/probe-live"]
     assert check.status == "ok"
     assert "digest-bot" in check.detail
 
@@ -803,6 +809,7 @@ async def test_a_wrong_token_is_reported_with_its_status() -> None:
         transport=_discord_transport(responses, seen),
     )
 
+    assert len(seen) == 1
     assert check.status == "fail"
     assert "401" in check.detail
 
@@ -816,6 +823,7 @@ async def test_a_deleted_webhook_is_reported_with_its_status() -> None:
         transport=_discord_transport(responses, seen),
     )
 
+    assert len(seen) == 1
     assert check.status == "fail"
     assert "404" in check.detail
 
@@ -837,7 +845,10 @@ async def test_being_rate_limited_says_so_in_discords_own_words() -> None:
 
 
 async def test_an_unreachable_discord_is_a_failed_check_not_an_exception() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         raise httpx.ConnectError("boom")
 
     check = await doctor.probe_discord(
@@ -845,6 +856,7 @@ async def test_an_unreachable_discord_is_a_failed_check_not_an_exception() -> No
         transport=httpx.MockTransport(handler),
     )
 
+    assert len(seen) == 1
     assert check.status == "fail"
     assert "boom" in check.detail
 
@@ -1102,21 +1114,29 @@ class TestFeedHealth:
 
 
 async def test_egress_probe_reads_colo_and_location_from_the_trace() -> None:
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(200, text="fl=1\ncolo=YVR\nloc=CA\nip=1.2.3.4\n")
 
     assert await doctor.probe_egress(httpx.MockTransport(handler)) == {
         "colo": "YVR",
         "loc": "CA",
     }
+    assert len(seen) == 1
 
 
 async def test_egress_probe_reports_rather_than_raises() -> None:
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         raise httpx.ConnectError("no route")
 
     result = await doctor.probe_egress(httpx.MockTransport(handler))
 
+    assert len(seen) == 1
     assert "no route" in result["error"]
 
 
