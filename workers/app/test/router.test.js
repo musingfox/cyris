@@ -180,6 +180,18 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
     expect(resp.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
   });
 
+  it("GET /labels with a valid cookie reaches the container, not Pages", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("GET", "/labels", { cookie: await sessionCookie() }),
+      env(),
+      deps,
+    );
+    expect(resp.status).toBe(200);
+    expect(deps.container.calls).toHaveLength(1);
+    expect(deps.fetchImpl.calls).toHaveLength(0);
+  });
+
   it("GET /static/settings.js with no cookie is 401", async () => {
     const resp = await handleRequest(request("GET", "/static/settings.js"), env(), makeDeps());
     expect(resp.status).toBe(401);

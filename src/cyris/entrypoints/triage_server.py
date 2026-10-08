@@ -1,4 +1,4 @@
-"""The settings web server: /settings and the APIs it calls."""
+"""The settings web server: /settings, /labels and the APIs they call."""
 
 import logging
 import os
@@ -86,10 +86,10 @@ TOPIC_REFUSALS = {
 }
 
 
-def render_settings_page() -> str:
-    """Render /settings with the digest pages' own site bar.
+def _render_page(template: str) -> str:
+    """Render one of this server's pages with the digest pages' own site bar.
 
-    The page lives outside `static/` so no unrendered copy is served, and the
+    The pages live outside `static/` so no unrendered copy is served, and the
     loader also reads the digest templates, where the site bar partial is.
     Autoescaping matches `HtmlDigestWriter`: these templates end in `.j2`.
     """
@@ -102,11 +102,23 @@ def render_settings_page() -> str:
         ),
         autoescape=select_autoescape(["html", "xml"], default=True),
     )
-    return env.get_template("settings.html.j2").render()
+    return env.get_template(template).render()
+
+
+def render_settings_page() -> str:
+    return _render_page("settings.html.j2")
+
+
+def render_labels_page() -> str:
+    return _render_page("labels.html.j2")
+
+
+# The answers /labels takes; a skip is kept on the sample alone.
+LABELS = ("up", "down", "skip")
 
 
 class TriageServer:
-    """Serves /settings and the settings, sources and build APIs."""
+    """Serves /settings, /labels and the settings, sources, labels and build APIs."""
 
     def __init__(
         self,
@@ -120,6 +132,8 @@ class TriageServer:
         feed_health=None,
         tracked_topics: list[TrackedTopic] | None = None,
         topic_store=None,
+        blind_labels=None,
+        article_store=None,
     ) -> None:
         self._host = host
         self._port = port
@@ -143,7 +157,12 @@ class TriageServer:
         # deployment, whose topics live in cyris.toml; D1's table otherwise.
         self._tracked_topics = tracked_topics or []
         self._topic_store = topic_store
+        # D1's blind-label sample, and the store its up and down answers are
+        # written to as votes; both absent on a `backend = "json"` deployment.
+        self._blind_labels = blind_labels
+        self._article_store = article_store
         self._settings_page = render_settings_page()
+        self._labels_page = render_labels_page()
         self._app = web.Application()
         self._app.router.add_get("/api/build", self._handle_build)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
@@ -160,7 +179,10 @@ class TriageServer:
         self._app.router.add_get("/api/topics", self._handle_get_topics)
         self._app.router.add_post("/api/topics", self._handle_post_topic)
         self._app.router.add_delete("/api/topics/{name}", self._handle_delete_topic)
+        self._app.router.add_get("/api/labels", self._handle_get_labels)
+        self._app.router.add_post("/api/labels", self._handle_post_label)
         self._app.router.add_get("/settings", self._handle_settings_page)
+        self._app.router.add_get("/labels", self._handle_labels_page)
         # Production never reaches this: the app Worker sends /favicon.svg to Pages.
         # A local `cyris triage-ui` has no Pages behind it.
         self._app.router.add_get("/favicon.svg", self._handle_favicon)
@@ -755,6 +777,84 @@ class TriageServer:
 
         logger.info("Tracked topic %s removed", name)
         return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
+
+    def _no_sample(self) -> web.Response:
+        return web.json_response(
+            {
+                "ok": False,
+                "error": 'Blind labels live in D1: this deployment\'s [store] backend is not "d1".',
+            },
+            status=409,
+        )
+
+    def _deck(self) -> dict[str, Any]:
+        """Progress and the next item, as the page shows it: nothing of the pipeline's verdict."""
+        from cyris.service_layer.degrade import excerpt
+
+        answered, total = self._blind_labels.progress()
+        card = self._blind_labels.next_card()
+        item = None
+        if card is not None:
+            item = {
+                "url": card.url,
+                "title": card.title,
+                "source": card.source,
+                "excerpt": excerpt(card.content),
+            }
+        return {"answered": answered, "total": total, "item": item}
+
+    async def _handle_get_labels(self, request: web.Request) -> web.Response:
+        if self._blind_labels is None:
+            return self._no_sample()
+        try:
+            return web.json_response(self._deck())
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _handle_post_label(self, request: web.Request) -> web.Response:
+        """Answer one open item: up and down are written to the article as a vote first,
+        then the answer to the sample; a skip goes to the sample alone."""
+        from cyris.adapters.promotions import record_votes
+
+        if self._blind_labels is None:
+            return self._no_sample()
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict) or not isinstance(body.get("url"), str):
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        url, label = body["url"], body.get("label")
+        if label not in LABELS:
+            return web.json_response(
+                {"ok": False, "error": f"label is one of {', '.join(LABELS)}"}, status=400
+            )
+
+        now = datetime.now(UTC)
+        try:
+            if not self._blind_labels.is_open(url):
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": "This item is already answered or not in the sample: "
+                        "reload the page.",
+                    },
+                    status=409,
+                )
+            if label != "skip":
+                record_votes(
+                    self._article_store,
+                    accepted=[url] if label == "up" else [],
+                    rejected=[url] if label == "down" else [],
+                    at=now,
+                )
+            self._blind_labels.record(url, label, now)
+            return web.json_response({"ok": True, **self._deck()})
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _handle_labels_page(self, request: web.Request) -> web.Response:
+        return web.Response(text=self._labels_page, content_type="text/html")
 
     async def _handle_settings_page(self, request: web.Request) -> web.Response:
         return web.Response(text=self._settings_page, content_type="text/html")

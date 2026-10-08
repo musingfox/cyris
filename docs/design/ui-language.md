@@ -7,8 +7,8 @@ updated: 2026-10-08
 # cyris UI design spec
 
 Every change that touches a reader-facing page follows this spec: `src/cyris/adapters/output/templates/`
-(archive, digest, raw), `src/cyris/entrypoints/templates/` (settings), `src/cyris/entrypoints/static/`
-(the settings scripts and `style.css`), and any page added later.
+(archive, digest, raw), `src/cyris/entrypoints/templates/` (settings, labels), `src/cyris/entrypoints/static/`
+(the settings and labels scripts and `style.css`), and any page added later.
 
 - **This document is the spec.** `docs/design/prototype.html` is its reference implementation; open it
   directly in a browser. `#system` is the overview of tokens and components, and `#archive`, `#digest`,
@@ -217,7 +217,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
   Only inputs may remove the outline, showing focus by a border colour change instead.
 - **Transitions:** only `color`, `background-color`, `border-color` and `opacity` change, over `--t-fast`,
   and `transition: all` is never written. Transform is used only for the triage card's drag and fly-out,
-  and to rotate the feature flow's static chevrons.
+  on raw and on labels, and to rotate the feature flow's static chevrons.
 - **Hover** neither moves nor scales. The pressed state only lowers opacity, to the button's .7 (§4).
   A disabled button neither hovers nor presses.
 - **Reduced motion:** `@media (prefers-reduced-motion: reduce)` cancels transitions, animations and smooth
@@ -237,6 +237,7 @@ Archive (/) ──► an issue ─┬─ Digest       ◄── the Discord noti
                                                  └─ Triage (appears only when authorized)
 Settings (/settings): on the site bar, appears only when authorized
 Sign in (/login): on the site bar in Settings' place, when the app Worker answers signed out
+Labels (/labels): reached by its URL alone, behind the same sign-in as Settings; not on the site bar
 ```
 
 - Every page has the site bar at the top; digest and raw also have the issue bar. Navigation does not go
@@ -244,7 +245,8 @@ Sign in (/login): on the site bar in Settings' place, when the app Worker answer
 - A tap anywhere on the archive's headline card or on a row opens that issue's `Digest`, except on its
   `All articles` button, which opens the raw page and shows only when the issue has one.
 - There is no separate triage page. Articles are judged in raw's triage view; the deck was retired on
-  2026-09-19 (§8 step 4).
+  2026-09-19 (§8 step 4). `/labels` is not one: it answers a sample drawn to measure the filter, and
+  is reached by the URL `docs/operations.md` gives while a sample is being labeled.
 - There is no previous or next issue. The use case is reading each day's issue on that day.
 - A back link must point to a path that exists. `/triage` is a 404 in production.
 
@@ -371,7 +373,27 @@ and switching does not reload.
 - A voted article shows its state in both views: the list's state text turns `accepted` for up and
   `rejected` for down. On a later visit, a vote this browser remembers changes only a row rendered
   `pending`, because each run applies the votes cast before it. Votes go through the existing promote Worker, with no new backend.
-- The drag and fly-out are the only transform motion on the site, and are cancelled under reduced motion.
+- The drag and fly-out are the only transform motion on the site, besides labels' card, and are
+  cancelled under reduced motion.
+
+### labels
+
+`/labels` answers the blind-label sample `cyris labels draw` keeps in D1, one item at a time. The same
+container serves it as serves settings, behind the same sign-in, and it reuses raw's triage card with
+these differences, which keep it blind:
+
+- The card's face is the source (label), the title (title role, 26px) and the article's excerpt (small),
+  the last two with `lang=""`. Nothing the pipeline decided shows: no state text, score, tier, tags or
+  rejection reason, and the server deals the sample in its own order, which is shuffled across verdicts.
+- Below the card, a danger `Down`, a secondary `Skip` and a primary `Up` sit side by side, all 56px high.
+  Up and down are written to the article as a digest vote; a skip is kept on the sample alone.
+- Above it, the page head's label shows `N of M answered · K remaining`. With no item left the card and
+  its buttons go, and one small sentence says which command to run next.
+- The swipes, the tap and Enter that open the article, the lean colours, the answer-first fly-out and
+  reduced motion are raw's triage view's. A skip does not fly: the next card replaces it. An answer that
+  does not land leaves the card in place with an error notice below the buttons saying why.
+- The page is 600px wide, raw's deck width, with settings' gutters. The site bar is settings', with no
+  item marked current.
 
 ### settings
 
