@@ -180,7 +180,7 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
             logger.error("Failed to send the failure alert: %s", e)
 
 
-def _failure_alert_text(failure: Exception) -> str:
+def failure_alert_text(failure: Exception) -> str:
     """`RuntimeError: ...`, or just the type when the message is empty.
 
     `str(failure)` can itself raise. Callers keep that inside the alert guard.
@@ -200,15 +200,13 @@ async def _send_failure_alert(
     """One alert per configured channel when a run raised, or fetched nothing
     while at least one source failed.
 
-    An empty window whose sources all answered is not an alert. Empty
-    configuration does not call the sender. Each call has its own guard so one
-    channel's failure still leaves the other its attempt.
+    An empty window whose sources all answered is not an alert.
     """
     if options.dry_run:
         return
     if failure is not None:
         headline = "Digest run failed"
-        text = _failure_alert_text(failure)
+        text = failure_alert_text(failure)
     else:
         failed = summary.get("failed_sources") or []
         if summary.get("status") != "no_articles" or not failed:
@@ -219,24 +217,34 @@ async def _send_failure_alert(
     subject = (
         f"{headline}: {options.period}, {started_at.astimezone(ZoneInfo(tz)):%Y-%m-%d %H:%M} {tz}"
     )
-    notify = deps.cfg.app.notify
+    await send_alert(
+        deps.cfg.app.notify, deps.send_discord_alert, deps.send_email_alert, subject, text
+    )
+
+
+async def send_alert(notify, send_discord_alert, send_email_alert, subject: str, text: str) -> None:
+    """`subject` and `text` to each channel `notify` configures.
+
+    Empty configuration does not call the sender. Each call has its own guard so
+    one channel's failure still leaves the other its attempt.
+    """
     if not notify.discord_webhook_url:
         logger.info("Failure alert: no webhook set, skipping Discord")
     else:
         try:
-            await deps.send_discord_alert(notify.discord_webhook_url, subject, text)
+            await send_discord_alert(notify.discord_webhook_url, subject, text)
         except Exception as e:
             logger.error("Failure alert: Discord skipped: %s", e)
     if not notify.email_to:
         logger.info("Failure alert: no email address set, skipping mail")
-    elif deps.send_email_alert is None:
+    elif send_email_alert is None:
         logger.warning(
             "Failure alert: an email address is set, but CLOUDFLARE_ACCOUNT_ID or "
             "CLOUDFLARE_API_TOKEN is missing, so no mail can be sent"
         )
     else:
         try:
-            await deps.send_email_alert(notify.email_to, notify.email_from, subject, text)
+            await send_email_alert(notify.email_to, notify.email_from, subject, text)
         except Exception as e:
             logger.error("Failure alert: mail skipped: %s", e)
 
