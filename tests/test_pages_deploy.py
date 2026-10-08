@@ -64,8 +64,10 @@ def test_only_the_files_the_account_lacks_are_uploaded(tmp_path, monkeypatch):
     """The whole archive goes in the manifest every deploy — a Pages deployment is
     a full snapshot — but the bytes only go up once per account."""
     seen = {"uploaded": [], "manifest": None}
+    sent: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
         if request.url.path.endswith("/upload-token"):
             return httpx.Response(200, json={"success": True, "result": {"jwt": "j"}})
         if request.url.path.endswith("/check-missing"):
@@ -90,6 +92,13 @@ def test_only_the_files_the_account_lacks_are_uploaded(tmp_path, monkeypatch):
     monkeypatch.setattr(httpx, "Client", patched)
 
     assert client.deploy(tmp_path).id == "dep-1"
+    assert [(r.url.path.rsplit("/", 1)[-1], r.headers["Authorization"]) for r in sent] == [
+        ("upload-token", "Bearer tok"),
+        ("check-missing", "Bearer j"),
+        ("upload", "Bearer j"),
+        ("upsert-hashes", "Bearer j"),
+        ("deployments", "Bearer tok"),
+    ]
     assert len(seen["uploaded"]) == 1, "an asset the account already holds was re-uploaded"
     assert sorted(seen["manifest"]) == ["/2026-08-27-morning.html", "/index.html"]
     assert seen["branch"], "without the production branch this lands as a preview"
@@ -123,9 +132,14 @@ def test_a_one_bucket_deploy_makes_the_requests_its_worst_case_counts(tmp_path, 
 
 
 def _deploying(deployment_result):
-    """Every protocol step answers success; the deployments POST answers `deployment_result`."""
+    """Every protocol step answers success; the deployments POST answers `deployment_result`.
+
+    The handler keeps each request it answered in `handler.requests`.
+    """
+    requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
         if request.url.path.endswith("/upload-token"):
             return httpx.Response(200, json={"success": True, "result": {"jwt": "j"}})
         if request.url.path.endswith("/check-missing"):
@@ -134,7 +148,13 @@ def _deploying(deployment_result):
             return httpx.Response(200, json={"success": True, "result": deployment_result})
         return httpx.Response(200, json={"success": True, "result": None})
 
+    handler.requests = requests
     return handler
+
+
+# With nothing missing from the asset store: upload-token, check-missing, upsert-hashes,
+# deployments.
+NOTHING_MISSING_REQUESTS = 4
 
 
 def test_a_deploy_returns_cloudflares_verdict_on_the_deployment(tmp_path, monkeypatch):
@@ -144,11 +164,13 @@ def test_a_deploy_returns_cloudflares_verdict_on_the_deployment(tmp_path, monkey
         "url": "https://f64788e9.proj.pages.dev",
         "latest_stage": {"name": "deploy", "status": "success"},
     }
-    client, patched = _routed(_deploying(result), tmp_path)
+    handler = _deploying(result)
+    client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
     record = client.deploy(tmp_path)
 
+    assert len(handler.requests) == NOTHING_MISSING_REQUESTS
     url = "https://f64788e9.proj.pages.dev"
     assert record == DeploymentRecord("dep-1", url, "deploy", "success")
     assert record.landed is True
@@ -165,39 +187,49 @@ def test_a_deploy_returns_cloudflares_verdict_on_the_deployment(tmp_path, monkey
     ],
 )
 def test_only_deploy_success_is_landed(tmp_path, monkeypatch, stage, landed, failed):
-    client, patched = _routed(_deploying({"id": "dep-1", "latest_stage": stage}), tmp_path)
+    handler = _deploying({"id": "dep-1", "latest_stage": stage})
+    client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
     record = client.deploy(tmp_path)
 
+    assert len(handler.requests) == NOTHING_MISSING_REQUESTS
     assert record.landed is landed
     assert record.failed is failed
 
 
 def test_a_deployment_without_a_stage_is_neither_landed_nor_failed(tmp_path, monkeypatch):
-    client, patched = _routed(_deploying({"id": "dep-1"}), tmp_path)
+    handler = _deploying({"id": "dep-1"})
+    client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
     record = client.deploy(tmp_path)
 
+    assert len(handler.requests) == NOTHING_MISSING_REQUESTS
     assert (record.stage, record.status) == (None, None)
     assert record.landed is False
     assert record.failed is False
 
 
 def test_a_deployment_result_without_an_id_is_an_error(tmp_path, monkeypatch):
-    client, patched = _routed(_deploying({"url": "https://x.proj.pages.dev"}), tmp_path)
+    handler = _deploying({"url": "https://x.proj.pages.dev"})
+    client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
     with pytest.raises(PagesDeployError, match="no id"):
         client.deploy(tmp_path)
+
+    assert len(handler.requests) == NOTHING_MISSING_REQUESTS
 
 
 def test_a_step_that_answers_success_false_is_an_error(tmp_path, monkeypatch):
     """Cloudflare returns 200 with success:false. Raising on status alone would let
     a deploy that uploaded nothing report as a success — the 08-18 failure mode."""
 
+    seen: list[httpx.Request] = []
+
     def handler(request):
+        seen.append(request)
         return httpx.Response(200, json={"success": False, "errors": [{"code": 8000013}]})
 
     client, patched = _routed(handler, tmp_path)
@@ -205,6 +237,8 @@ def test_a_step_that_answers_success_false_is_an_error(tmp_path, monkeypatch):
 
     with pytest.raises(PagesDeployError, match="8000013"):
         client.deploy(tmp_path)
+
+    assert len(seen) == 1
 
 
 def test_an_empty_directory_is_refused_rather_than_wiping_the_site(tmp_path):
@@ -225,21 +259,33 @@ def _probe(handler, monkeypatch):
 
 
 def test_has_deployments_is_true_when_the_list_holds_one(monkeypatch):
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(200, json={"success": True, "result": [{"id": "dep-1"}]})
 
     assert _probe(handler, monkeypatch).has_deployments() is True
+    assert len(seen) == 1
+    assert seen[0].headers["Authorization"] == "Bearer tok"
 
 
 def test_has_deployments_is_false_when_the_list_is_empty(monkeypatch):
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(200, json={"success": True, "result": []})
 
     assert _probe(handler, monkeypatch).has_deployments() is False
+    assert len(seen) == 1
 
 
 def test_has_deployments_raises_when_the_project_is_missing(monkeypatch):
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(
             404,
             json={"success": False, "errors": [{"message": "Project not found"}]},
@@ -248,13 +294,20 @@ def test_has_deployments_raises_when_the_project_is_missing(monkeypatch):
     with pytest.raises(PagesDeployError, match="404"):
         _probe(handler, monkeypatch).has_deployments()
 
+    assert len(seen) == 1
+
 
 def test_has_deployments_raises_when_result_is_missing(monkeypatch):
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(200, json={"success": True})
 
     with pytest.raises(PagesDeployError):
         _probe(handler, monkeypatch).has_deployments()
+
+    assert len(seen) == 1
 
 
 def test_has_deployments_asks_for_one_page_of_the_project_list(monkeypatch):
@@ -275,12 +328,16 @@ def test_has_deployments_asks_for_one_page_of_the_project_list(monkeypatch):
 def test_an_error_carries_the_status_it_was_answered_with(monkeypatch):
     """404 (no such project) and 403 (no such permission) need telling apart."""
 
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(404, json={"success": False, "errors": [{"message": "not found"}]})
 
     with pytest.raises(PagesDeployError) as caught:
         _probe(handler, monkeypatch).has_deployments()
 
+    assert len(seen) == 1
     assert caught.value.status == 404
 
 
@@ -294,18 +351,23 @@ def test_creating_the_project_names_it_and_its_production_branch(monkeypatch):
     _probe(handler, monkeypatch).create_project()
 
     assert len(seen) == 1
+    assert seen[0].headers["Authorization"] == "Bearer tok"
     assert seen[0].method == "POST"
     assert seen[0].url.path.endswith("/accounts/acct/pages/projects")
     assert json.loads(seen[0].content) == {"name": "proj", "production_branch": "main"}
 
 
 def test_a_refused_creation_is_an_error_rather_than_a_silent_no_op(monkeypatch):
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(403, json={"success": False, "errors": [{"message": "forbidden"}]})
 
     with pytest.raises(PagesDeployError) as caught:
         _probe(handler, monkeypatch).create_project()
 
+    assert len(seen) == 1
     assert caught.value.status == 403
 
 
@@ -324,10 +386,14 @@ def test_a_deployment_is_reread_by_its_id(monkeypatch):
 
 
 def test_rereading_a_deployment_cloudflare_does_not_know_is_an_error(monkeypatch):
+    seen: list[httpx.Request] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
         return httpx.Response(404, json={"success": False, "errors": [{"code": 8000009}]})
 
     with pytest.raises(PagesDeployError, match="8000009") as caught:
         _probe(handler, monkeypatch).get_deployment("dep-1")
 
+    assert len(seen) == 1
     assert caught.value.status == 404
