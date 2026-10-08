@@ -57,7 +57,7 @@ flowchart TB
     end
 
     subgraph ADP["Adapters"]
-        LLM["Anthropic · Gemini · OpenAI · WorkersAI"]
+        LLM["Anthropic · Gemini · OpenAI · WorkersAI · AIGateway"]
         STORE["D1ArticleStore"]
         CFRSS["CloudflareRssSource"]
         CFNL["CloudflareNewsletterSource"]
@@ -459,10 +459,10 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` sends a reader without a session to `/login`; unset = public archive) | done 2026-10-05 — default off, so production's archive stays public; a trial deployment turns it on in its generated config |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, three Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM), one Worker bearer, one vote token, the `/settings` login token (`CYRIS_UI_TOKEN`, read by the Worker only) | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. `CYRIS_UI_TOKEN` is also a GitHub Actions secret, a copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
+| LLM API keys, three Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — the last also the `ai_gateway` provider's), one Worker bearer, one vote token, the `/settings` login token (`CYRIS_UI_TOKEN`, read by the Worker only) | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. `CYRIS_UI_TOKEN` is also a GitHub Actions secret, a copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` for a `json` deployment | done — a table with no fetchable source stops the run; `/settings` refuses to retire the last source, and refuses an RSS source with no feed URL or a newsletter with no `email_match` |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
-| LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai` or `"none"`. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
+| LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST /accounts/{id}/ai/run` to Cloudflare with the model as `author/model`; the provider's key is stored in the gateway (BYOK), which that path requires, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AI_TOKEN`, because `/ai/run` asks for the same Workers AI Read; the account is `CLOUDFLARE_ACCOUNT_ID`; and no gateway id is sent, because Cloudflare routes a request that names none to the gateway called `default`. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
 | Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many Features cards an issue shows is not a number this codebase can measure, and `featured_threshold` beside it was already D |
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
@@ -491,6 +491,11 @@ no headroom on a busy window — the run does not degrade, it fails. gpt-oss has
 is also about 3x cheaper on output (68,182 against 204,805 neurons per M output tokens),
 which is the smaller reason but points the same way.
 
+**`ai_gateway` defaults to `google/gemini-3.8-flash`.** It is the model production runs through
+`gemini`, under the name the gateway catalog gives it, so switching providers changes the path and
+not the model. It was in the catalog when measured on 2026-09-21: the gateway answered 402 for a
+missing key, where a model it lacks answers 404.
+
 **The two embedding thresholds are 0.53 and 0.68, and they are not interchangeable.** Why
 each is a measured property of its model, graded **A** while the provider and model are D:
 [ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md).
@@ -502,7 +507,8 @@ GitHub Actions secret used only to push a release image, so it is not an eighth 
 
 **Current list (2026-09-22).** This heading records the 2026-08-30 reduction and stays as written.
 Since then the app Worker also forwards `CLOUDFLARE_AI_TOKEN`, the `workers_ai` LLM provider's own
-Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blank.
+Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blank. The `ai_gateway`
+provider reads the same token, and a deployment on it can leave the three LLM API keys blank.
 `CYRIS_UI_TOKEN`, the `/settings` login secret, is checked by the Worker and never forwarded. The
 authoritative lists are `SECRETS` in `workers/app/src/index.js` and `.env.example`, which
 `tests/test_deploy_inputs.py` holds in step.
