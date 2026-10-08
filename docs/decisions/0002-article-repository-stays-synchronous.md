@@ -34,8 +34,8 @@ already used a blocking client, so the D1 store followed it.
   payoff `docs/architecture.md` §8 describes.
 * Good, because `ArticleStore` (JSON) and `D1ArticleStore` satisfy one Protocol and stay
   interchangeable.
-* Bad, because a D1 call blocks the event loop while it runs, retries included. A SIGTERM lands
-  only at an `await`, so a D1 write in flight finishes before the run can be cancelled.
+* Bad, because a cancellation lands only at an `await`, so a synchronous D1 call in flight,
+  `D1Client`'s own retries included, finishes before a SIGTERM can cancel the run.
 
 ### Confirmation
 
