@@ -59,9 +59,9 @@ uv run pytest tests/test_newsletter_real_fixtures.py
 
 - **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. It also names what is *out* of the target architecture, not merely unfinished: Obsidian output is gone, and the local-filesystem edges are closed — with D1 the only writes left are the `json` backend's, which is the documented fallback.
 - **§3 How a digest is made** — the two ingestion paths and why they have different shapes (RSS is an idempotent buffer, email is a pull/ack queue). Read this before touching a Worker or a `FetchSource`.
-- **§4 Data residency** — every persistent datum, where it lives, where it is going. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
+- **§4 Data residency** — every persistent datum and where it lives. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
 - **§5 Configuration: four grades** — A baked / B deployment identity / C secrets / D runtime-mutable. Every new setting must be assigned a grade and put in that grade's home. `cyris.toml` is not a default home.
-- **§7 Outstanding work** — the open items with their tickets, plus the record of how the closed ones closed. Work is driven from here. If you name a new destination anywhere in the doc, add it to §7 in the same edit.
+- **§7 Architecture changes** — one row per landed change, added on main after landing with the settled hash.
 - **`docs/decisions/`** — why each hard-to-reverse decision was made (MADR ADRs). Read the ADR before reversing a decision; architecture.md describes the system, not why.
 
 Keep the document current in the same change that makes it stale — an architecture doc that lags the code is worse than none, because it is still trusted.
@@ -183,7 +183,7 @@ All IO is behind `adapters/`, wired in `bootstrap.build_deps()`. When adding or 
 - **`ArticleRepository`** (`ports.py`) — persistence. `ArticleStore` (JSON) and `D1ArticleStore` (Cloudflare D1) both satisfy it structurally; `[store] backend` picks one via `bootstrap.build_store()`. The Protocol lists every method callers use, not just the digest run's — a partial implementation would fail at the CLI, not at import, so `tests/test_protocol_conformance.py` checks every implementation against its Protocol instead.
 - **Output sinks** — `HtmlDigestWriter`, `publish`, `notify` are injected directly (single impl, no Protocol). Add a sink by extending the `Deps` dataclass + wiring in `build_deps()`, then calling it from `run_digest`.
 
-`ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map, and what each of these is being replaced by: `docs/architecture.md`.
+`ports.py` rule: only genuine IO boundaries get a Protocol; single-implementation components are injected directly. Full map: `docs/architecture.md`.
 
 ### CLI Commands
 
