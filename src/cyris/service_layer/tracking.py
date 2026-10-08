@@ -103,3 +103,22 @@ async def track_topics(
         sum(report.hits.values()),
     )
     return report
+
+
+async def rank_titles(
+    embedder: Embedder, description: str, candidates: list[StoredArticle]
+) -> list[tuple[StoredArticle, float]]:
+    """Every candidate with its title's cosine to `description`, nearest first.
+
+    The hit list a threshold is read off before a topic is saved, so it ranks
+    everything rather than cut anywhere. An embedding failure raises.
+    """
+    titles = list(dict.fromkeys(a.title for a in candidates))
+    vectors = await embedder.embed([description, *titles])
+    if len(vectors) != len(titles) + 1:
+        raise ValueError("the embedder answered a different number of vectors than texts")
+    by_title = dict(zip(titles, vectors[1:], strict=True))
+    articles = {a.url: a for a in candidates}
+    # Every cosine is at least -1, so this threshold keeps them all.
+    ranked = hits(vectors[0], {a.url: by_title[a.title] for a in candidates}, -1.0)
+    return [(articles[url], score) for url, score in ranked]

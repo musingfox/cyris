@@ -344,6 +344,69 @@ def vote_sim(
         typer.echo(f"  {v.up_similarity:.3f}  [{a.source_name[:18]:18}] {a.title[:52]}")
 
 
+@app.command("topic-sim")
+def topic_sim(
+    description: Annotated[
+        str, typer.Argument(help="The topic's description, as it would be saved")
+    ],
+    hours: Annotated[int, typer.Option(help="Hours of stored articles to rank")] = 168,
+    threshold: Annotated[
+        float | None, typer.Option(help="Mark this cutoff in the list and count the hits above it")
+    ] = None,
+    show: Annotated[int, typer.Option(help="How many ranked titles to print")] = 60,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Rank stored titles by cosine to a topic's description, to read its threshold off.
+
+    Read-only, and no LLM call: it embeds the description and each title in the
+    window once, with the embedder the next run uses, and prints them nearest
+    first. A topic saved with the threshold you pick lists what sits above it.
+    """
+    _setup_logging(verbose)
+
+    from datetime import UTC, datetime, timedelta
+
+    from cyris.bootstrap import build_store, embedding_model, load_effective_config, make_embedder
+    from cyris.service_layer.tracking import rank_titles
+
+    try:
+        cfg = load_effective_config(config_path, sources_path)
+        cfg.require_complete_settings()
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    vote = cfg.app.vote_similarity
+    model = embedding_model(vote.provider, vote.model)
+    now = datetime.now(UTC)
+    candidates = build_store(cfg).load_by_time_range(start=now - timedelta(hours=hours), end=now)
+    if not candidates:
+        typer.echo(f"No stored article in the last {hours}h: nothing to rank.")
+        raise typer.Exit(1)
+
+    ranked = asyncio.run(
+        rank_titles(make_embedder(vote.provider, vote.model), description, candidates)
+    )
+    typer.echo(f"\n{len(ranked)} title(s) over {hours}h, by cosine to the description ({model})\n")
+    cut_shown = threshold is None
+    for article, score in ranked[:show]:
+        if not cut_shown and score < threshold:
+            typer.echo(f"  ---- {threshold:.2f} ----")
+            cut_shown = True
+        typer.echo(f"  {score:.3f}  [{article.source_name[:18]:18}] {article.title[:60]}")
+    if len(ranked) > show:
+        typer.echo(f"  ... and {len(ranked) - show} more")
+    if threshold is not None:
+        hit_count = sum(1 for _, score in ranked if score >= threshold)
+        typer.echo(f"\nAt {threshold:.2f}: {hit_count} hit(s). Save the topic with model {model}.")
+
+
 @app.command("embed-compare")
 def embed_compare(
     hours: Annotated[int, typer.Option("--hours", help="Window to judge")] = 24,

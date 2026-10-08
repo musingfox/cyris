@@ -203,3 +203,29 @@ def test_a_topic_has_no_threshold_or_model_of_its_own() -> None:
         TrackedTopic(name="A", description="B")
 
     assert {err["loc"][0] for err in exc.value.errors()} == {"threshold", "model"}
+
+
+# ---- the calibration ranking ------------------------------------------------------
+
+
+async def test_ranking_lists_every_title_nearest_first_with_its_cosine() -> None:
+    from cyris.service_layer.tracking import rank_titles
+
+    embedder = TableEmbedder()
+
+    ranked = await rank_titles(embedder, topic().description, [FAR, CLOSE, WORDY])
+
+    assert [a.url for a, _ in ranked] == [CLOSE.url, WORDY.url, FAR.url]
+    assert ranked[0][1] == pytest.approx(0.95 / (0.95**2 + 0.31**2) ** 0.5)
+    assert embedder.payloads == [[topic().description, FAR.title, CLOSE.title, WORDY.title]]
+
+
+async def test_ranking_raises_when_the_embedder_fails() -> None:
+    from cyris.service_layer.tracking import rank_titles
+
+    class Broken:
+        async def embed(self, texts):
+            raise RuntimeError("401")
+
+    with pytest.raises(RuntimeError, match="401"):
+        await rank_titles(Broken(), "x", [CLOSE])
