@@ -26,6 +26,14 @@ def test_a_priced_model_uses_its_own_rate_card():
     assert _usage("claude-haiku-4-5").estimated_cost == 1.00 + 5.00
 
 
+def test_a_gateway_model_is_priced_as_the_model_it_names():
+    """AI Gateway names a model `author/model`; the rate card is the author's own.
+
+    The ticket recomputed one gateway log by hand at these rates and matched it.
+    """
+    assert _usage("google/gemini-3.8-flash").estimated_cost == 0.75 + 3.75
+
+
 def test_providers_are_no_longer_priced_as_sonnet():
     """The regression itself: Gemini billed at Sonnet's rate was ~4x too high."""
     sonnet_rate = (1_000_000 * 3 + 1_000_000 * 15) / 1_000_000
