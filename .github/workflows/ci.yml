@@ -20,6 +20,11 @@ jobs:
       # Each suite skips when its toolchain is missing, except under CI, where
       # it fails instead: that silent skip is why no Worker JS ran here at all.
       - uses: oven-sh/setup-bun@v2
+      # The rss suite needs `node:sqlite` (Node 22.13+), and the runner image's own
+      # Node changes whenever `ubuntu-latest` moves to a new Ubuntu.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun install --frozen-lockfile
         working-directory: workers/rss

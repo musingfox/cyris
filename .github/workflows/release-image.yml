@@ -33,6 +33,10 @@ jobs:
         with:
           enable-cache: true
       - uses: oven-sh/setup-bun@v2
+      # Same Node as ci.yml, for the same reason: the rss suite's `node:sqlite`.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - id: check
         run: scripts/check.sh
       # `wrangler containers push` resolves the account from the API token when this is
