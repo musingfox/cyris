@@ -6,6 +6,9 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   trimValues: true,
+  // Off by default, which leaves `&#8217;` in a title as literal text; feedparser,
+  // the direct-polling path, decodes it.
+  htmlEntities: true,
 });
 
 // Mirror of cyris's strip_tracking_params (adapters/fetch/email_parser.py).
