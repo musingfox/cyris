@@ -107,3 +107,14 @@ def test_a_rerun_replaces_the_issue_row() -> None:
     loaded = store.load("2026-09-24", "morning")
     assert loaded.content.articles_included == 7
     assert loaded.raw_page is False
+
+
+def test_issues_lists_the_most_recently_saved_first() -> None:
+    store = D1DigestStore(SqliteD1())
+    assert store.issues() == []
+
+    store.save(_content("morning"), raw_page=False)
+    store.save(_content("evening"), raw_page=False)
+    store.save(_content("morning", articles_included=6), raw_page=False)
+
+    assert store.issues() == [("2026-09-24", "morning"), ("2026-09-24", "evening")]
