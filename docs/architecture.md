@@ -828,6 +828,7 @@ on main after the change lands, citing the hash it landed as.
 
 | Date | Commit | What changed |
 |---|---|---|
+| 2026-10-08 | `c8f1917` | Became a system map: the outstanding-work chapter left the doc for the tracker, this table replaced it, and §6's compose mounts and §2's `Embedder` port were corrected. |
 
 ## 8. Where the core never changes
 
