@@ -118,11 +118,16 @@ async def test_the_real_send_path_logs_no_token(monkeypatch, caplog):
     from cyris.domain.models import DigestContent, UsageStats
 
     real = httpx.AsyncClient
+    sent: list[httpx.Request] = []
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
         lambda *a, **kw: real(
-            *a, **{**kw, "transport": httpx.MockTransport(lambda r: httpx.Response(204))}
+            *a,
+            **{
+                **kw,
+                "transport": httpx.MockTransport(lambda r: sent.append(r) or httpx.Response(204)),
+            },
         ),
     )
     content = DigestContent(
@@ -142,6 +147,7 @@ async def test_the_real_send_path_logs_no_token(monkeypatch, caplog):
         await send_discord(WEBHOOK, content)
 
     emitted = "\n".join(logging.Formatter("%(message)s").format(r) for r in caplog.records)
+    assert len(sent) == 1
     assert "HTTP Request" in emitted, "httpx stopped logging requests; this test no longer guards"
     assert TOKEN not in emitted
 
@@ -161,11 +167,16 @@ async def test_a_failed_send_logs_neither_the_error_url_nor_the_traceback_token(
     from cyris.domain.models import DigestContent, UsageStats
 
     real = httpx.AsyncClient
+    sent: list[httpx.Request] = []
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
         lambda *a, **kw: real(
-            *a, **{**kw, "transport": httpx.MockTransport(lambda r: httpx.Response(401))}
+            *a,
+            **{
+                **kw,
+                "transport": httpx.MockTransport(lambda r: sent.append(r) or httpx.Response(401)),
+            },
         ),
     )
     content = DigestContent(
@@ -184,6 +195,7 @@ async def test_a_failed_send_logs_neither_the_error_url_nor_the_traceback_token(
 
     formatter = logging.Formatter("%(message)s")
     emitted = "\n".join(formatter.format(r) + (r.exc_text or "") for r in caplog.records)
+    assert len(sent) == 1
     assert "Discord webhook failed" in emitted, "the exception branch did not run"
     assert TOKEN not in emitted
 

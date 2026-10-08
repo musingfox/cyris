@@ -557,6 +557,9 @@ class TestSendDiscord:
 
         await send_discord("https://discord.com/api/webhooks/123/token", content, degraded=True)
 
+        assert len(requests) == 1
+        assert requests[0].method == "POST"
+        assert str(requests[0].url) == "https://discord.com/api/webhooks/123/token"
         assert json.loads(requests[0].content)["content"].startswith("⚠️ Degraded digest")
 
     async def test_posts_healthy_payload_without_content(self, monkeypatch):
@@ -582,6 +585,7 @@ class TestSendDiscord:
 
         await send_discord("https://discord.com/api/webhooks/123/token", content)
 
+        assert len(requests) == 1
         assert "content" not in json.loads(requests[0].content)
 
     async def test_empty_webhook_posts_nothing(self, monkeypatch):
@@ -710,6 +714,7 @@ class TestSendDiscordAlert:
 
         await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", "S", text)
 
+        assert len(requests) == 1
         content = json.loads(requests[0].content)["content"]
         assert content == ("S\n" + text)[:2000]
         assert len(content) == 2000
@@ -783,6 +788,7 @@ class TestDiscordAlertRedaction:
 
         await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", "S", _LEAK)
 
+        assert len(requests) == 1
         body = requests[0].content.decode()
         assert "s3cr3t-token" not in body
         assert _MASKED in body
@@ -798,12 +804,16 @@ class TestDiscordAlertRedaction:
 
         await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", _LEAK, "B")
 
+        assert len(requests) == 1
         body = requests[0].content.decode()
         assert "s3cr3t-token" not in body
         assert _MASKED in body
 
     async def test_failure_log_redacts_the_webhook_token(self, monkeypatch, caplog):
+        requests: list[httpx.Request] = []
+
         def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
             return httpx.Response(404)
 
         _discord_transport(monkeypatch, handler)
@@ -811,6 +821,7 @@ class TestDiscordAlertRedaction:
         with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
             await send_discord_alert("https://discord.com/api/webhooks/999/s3cr3t-token", "S", "B")
 
+        assert len(requests) == 1
         assert "404" in caplog.text
         assert _MASKED in caplog.text
         assert "s3cr3t-token" not in caplog.text
