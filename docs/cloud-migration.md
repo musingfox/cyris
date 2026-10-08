@@ -34,14 +34,8 @@ the triage UI. Persistent state moved to D1 on 2026-08-25.
 
 ### Why a buffer, and not direct polling
 
-A feed publishes only its current snapshot, and high-volume feeds hold 2–4h of it.
-Polling once at digest time cannot see a 24h window: measured against Miniflux over
-the same window, a digest-time poll missed 141 of 317 articles, all from those feeds.
-What Miniflux provided is hourly *accumulation*, not parsing — so the replacement has
-to be a scheduled buffer, which is what `workers/rss/` is.
-
-`RssSource` (the direct-polling adapter that comparison was built on) is now the wired
-fallback for when `[rss]` is unconfigured, and carries that measured caveat with it.
+Recorded, with the measurement, in
+[ADR-0001](decisions/0001-rss-arrives-through-an-hourly-buffer.md).
 
 ## Budget
 
@@ -72,12 +66,8 @@ Image size is not a constraint: 672 MB against `basic`'s 4 GB disk.
 
 These decide the shape of the work, so they are settled before any code moves.
 
-1. **`ArticleRepository` is a synchronous Protocol.** `ports.py` declares `def save(...)`,
-   and `run_digest.py` calls it without `await`. From Python in a Container, D1 is not a
-   binding — it is HTTP. The D1-backed store therefore **must use a blocking client**
-   (as `newsletter_worker_source.py` already does). An async adapter would push `async`
-   up through every call site and straight into `service_layer/`, which is the one thing
-   this plan promises not to touch. If this constraint fails, the plan needs rewriting.
+1. **`ArticleRepository` is a synchronous Protocol**, so the D1-backed store uses a blocking
+   client: [ADR-0002](decisions/0002-article-repository-stays-synchronous.md).
 2. ~~**`ArticleStore`'s callers use more than the 9 methods in the Protocol.**~~ Fixed at
    the source on 2026-08-25: `delete_articles`, `update_article_state` and
    `update_triage_timestamp` were added to `ArticleRepository`, so the Protocol is now

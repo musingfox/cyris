@@ -6,6 +6,10 @@
 > That document's §1–§5 (label reality, the news/scorer mismatch, cluster attribution,
 > the PreferenceProfile ruling, the cost baseline) record what was measured then, not
 > what the code does now.
+> The decision these measurements settled — a calibrated threshold per embedding model, and
+> `gemini-embedding-001` in production — is
+> [ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md); this file stays
+> its evidence.
 
 ## Why this ran
 

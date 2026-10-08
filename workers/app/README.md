@@ -35,7 +35,8 @@ string `undefined`.
 
 ## Auth
 
-One layer always, a second if you own a domain.
+One layer always, a second if you own a domain. Why this shape:
+[ADR-0009](../../docs/decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md).
 
 1. **The `CYRIS_UI_TOKEN` secret**, checked in `src/router.js` before anything reaches
    the container. `/login` takes the token and sets an HttpOnly cookie,

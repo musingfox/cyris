@@ -23,9 +23,9 @@ Free the scheduled handler died with *Exceeded CPU Limit* on every tick — pars
 
 ## Why this exists
 
-A feed publishes only its current snapshot, and a busy one holds 2–4 hours of it, so
-fetching at digest time misses much of a 24h window. Hourly polling into a retention
-buffer closes that gap.
+Fetching at digest time misses much of a 24h window, and a buffer that is read
+rather than drained loses nothing when a digest crashes:
+[ADR-0001](../../docs/decisions/0001-rss-arrives-through-an-hourly-buffer.md).
 
 ## Endpoints (Bearer `RSS_TOKEN`)
 
@@ -36,8 +36,7 @@ buffer closes that gap.
 | GET  | `/stats` | Row count and the oldest/newest `published_at` |
 
 There is deliberately **no ack endpoint**: this is a retention buffer, not a
-queue. Deleting on read would defeat its purpose and lose a batch whenever a
-digest crashes. Rows age out 8 days after they entered the buffer, matching the ArticleStore's dedup scan.
+queue (ADR-0001 above). Rows age out 8 days after they entered the buffer, matching the ArticleStore's dedup scan.
 
 ## Deploy
 

@@ -111,22 +111,10 @@ is **not measured** in this repo.
 
 ## 6. Evaluated and not done
 
-**A dynamic archive index.** No public, unauthenticated, container-served path exists today: every
-container fetch sits behind the cookie gate in `workers/app/src/router.js`, only `/login` and
-`/api/vote` bypass it. The published `/index.html` is also load-bearing beyond readers — the deploy
-guard fetches the live index and refuses to deploy when it cannot be read (`publish.py`), recovery
-rebuilds the manifest from it, and every archived page links `href="index.html"` relatively.
+**A dynamic archive index**: see [ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md).
 
-**UI theme customization.** The three sanctioned colour literals are hand-derived from
-tokens (`--accent` at 45 %, `--bg` at 88 %, a lightened `--accent`), so overriding `--accent` leaves
-the brand glow, site-bar background and primary-button hover behind — and the colour-literal test
-passes anyway, those strings being its allow-list. The Google Fonts URL is literal in every
-page template, so a font-token override changes no webfont.
-
-**Structural UI customization.** Section identity is a pydantic field name in four layers at once —
-`domain/models.py` → `service_layer/digest_pipeline.py` → `domain/selection.py` →
-`digest.html.j2` — and `filtered_headlines` is a `list[DigestItem]` where its siblings are
-`list[DigestSection]`, so a reorderable section list is a model change, not a rename.
+**UI theme customization** and **structural UI customization**: see
+[ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md).
 
 **Full-pass raw triage.** `sync_promotions` stamps `triaged_at` on every row it finds, whatever the
 vote and the prior state, and a stamped row is immune to the pipeline's `update_states` and to
@@ -136,13 +124,13 @@ the seed list, measured at 2 downvote seeds → 8 articles suppressed, 24 seeds 
 
 ## 7. Decisions and their dates
 
-- **Stay on Cloudflare Workers Paid** (2026-09-20). The $5 minimum is the whole gap to §4's stack,
-  and it buys Containers, the hourly buffer Worker (§2) and one bill instead of four vendors.
-- **The digest stays static** (2026-09-20/21). Pages serves it free and unlimited [11]; serving it
-  from the container prices at minutes-available (§5) and needs a path shape that does not exist.
+- **Stay on Cloudflare Workers Paid** (2026-09-20):
+  [ADR-0011](decisions/0011-stay-on-cloudflare-workers-paid.md).
+- **The digest stays static** (2026-09-20/21):
+  [ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md).
 - **Browsing history stays behind Access** (2026-09-20/21), a private tool, not a reader page.
-- **Reader-facing live preferences stop at the type size** (2026-09-20/21) — the one token axis with
-  a grade-D setting, a Worker injection path and a closed allowlist; a theme override has no grade.
+- **Reader-facing live preferences stop at the type size** (2026-09-20/21):
+  [ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md).
 
 Two privately tracked tickets carry what is left: replacing the RSS buffer Worker with an
 hourly tick that fetches feeds itself, and a durable backup of digest content (architecture §7 #14).
