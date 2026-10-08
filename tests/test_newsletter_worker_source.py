@@ -44,7 +44,7 @@ async def test_matched_sender_acked():
         "text": "no links",
         "date": "2026-07-13T00:00:00Z",
     }
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok")
@@ -53,7 +53,10 @@ async def test_matched_sender_acked():
 
     assert len(articles) == 1  # body becomes the one article
     assert articles[0].url.startswith("newsletter:")
-    assert ack.called
+    assert pull.call_count == 1
+    assert pull.calls.last.request.headers["Authorization"] == "Bearer tok"
+    assert ack.call_count == 1
+    assert ack.calls.last.request.headers["Authorization"] == "Bearer tok"
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:abc"]}
 
 
@@ -69,7 +72,7 @@ async def test_unknown_sender_skipped_but_acked():
         "text": "",
         "date": "2026-07-13T00:00:00Z",
     }
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok")
@@ -77,6 +80,8 @@ async def test_unknown_sender_skipped_but_acked():
     articles = await src.fetch_articles(after, before, _source())
 
     assert articles == []  # unknown sender still skipped
+    assert pull.call_count == 1
+    assert ack.call_count == 1
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:xyz"]}
 
 
@@ -103,12 +108,13 @@ def test_match_forwarded_no_body_sender_returns_none():
 @respx.mock
 async def test_empty_queue_no_ack():
     """Nothing queued -> no ACK call."""
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[]))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[]))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok")
     after, before = _now()
     assert await src.fetch_articles(after, before, _source()) == []
+    assert pull.call_count == 1
     assert not ack.called
 
 
@@ -116,13 +122,14 @@ async def test_empty_queue_no_ack():
 @respx.mock
 async def test_a_failed_pull_raises_and_acks_nothing():
     """A dead queue raises, so the run lists this source under `failed_sources`."""
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(500))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(500))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok")
     after, before = _now()
     with pytest.raises(httpx.HTTPStatusError):
         await src.fetch_articles(after, before, _source())
+    assert pull.call_count == 1
     assert not ack.called
 
 
@@ -188,13 +195,15 @@ async def test_private_reply_not_ingested_but_acked():
         "text": "好的",
         "date": "2026-07-30T02:00:00Z",
     }
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok")
     after, before = _now()
     articles = await src.fetch_articles(after, before, _source())
     assert articles == []
+    assert pull.call_count == 1
+    assert ack.call_count == 1
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:reply"]}
 
 
@@ -211,7 +220,7 @@ async def test_non_string_subject_does_not_raise_and_still_acks():
         "text": "foo",
         "date": "2026-07-30T02:00:00Z",
     }
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok")
@@ -219,7 +228,8 @@ async def test_non_string_subject_does_not_raise_and_still_acks():
     # call must not raise to outer (would skip ack)
     articles = await src.fetch_articles(after, before, _source())
     assert articles == []
-    assert ack.called
+    assert pull.call_count == 1
+    assert ack.call_count == 1
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:badsubj"]}
 
 
@@ -251,13 +261,15 @@ async def test_malformed_item_missing_id_does_not_crash_batch_acks_goods():
         "date": "2026-07-13T00:00:00Z",
     }
     queued = [good, bad, good2]
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=queued))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=queued))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200))
     source = CloudflareNewsletterSource(WORKER, "tok")
     articles = await source.fetch_articles(*_now(), sources=_source())
     assert len(articles) == 2
     assert articles[0].title == "Weekly #1"
     assert articles[1].title == "Weekly #2"
+    assert pull.call_count == 1
+    assert ack.call_count == 1
     assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:good1", "nl:good2"]}
 
 
@@ -278,7 +290,7 @@ async def test_a_preview_pulls_without_acking():
         "text": "no links",
         "date": "2026-07-13T00:00:00Z",
     }
-    respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
+    pull = respx.get(f"{WORKER}/newsletters").mock(return_value=httpx.Response(200, json=[item]))
     ack = respx.post(f"{WORKER}/ack").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     src = CloudflareNewsletterSource(WORKER, "tok", ack=False)
@@ -287,4 +299,5 @@ async def test_a_preview_pulls_without_acking():
 
     # The preview still sees what the run would fetch — only the delete is off.
     assert len(articles) == 1
+    assert pull.call_count == 1
     assert not ack.called
