@@ -2013,12 +2013,13 @@ async def _fetch_failure_alerts(tmp_path: Path, sources: list) -> tuple[object, 
 @respx.mock
 async def test_a_dead_rss_buffer_alerts_as_a_failed_fetch(tmp_path: Path) -> None:
     worker = "https://cyris-rss.test"
-    respx.get(f"{worker}/articles").mock(return_value=httpx.Response(503))
+    route = respx.get(f"{worker}/articles").mock(return_value=httpx.Response(503))
 
     report, discord_calls, mail_calls = await _fetch_failure_alerts(
         tmp_path, [CloudflareRssSource(worker, "tok")]
     )
 
+    assert route.call_count == 1
     assert report.status == "no_articles"
     assert report.failed_sources == ["CloudflareRssSource"]
     assert discord_calls[0][2] == "Failed sources: CloudflareRssSource"
