@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <title>Cyris Settings</title>
-  <meta name="description" content="Settings for this Cyris deployment: model, digest, pipeline, notifications and sources.">
+  <meta name="description" content="Settings for this Cyris deployment: model, digest, pipeline, notifications, sources and tracked topics.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -77,6 +77,7 @@
         <a class="label" href="#pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#tracking" data-tab="tracking">Tracking <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
       <div>
@@ -293,6 +294,24 @@
             </table>
           </div>
         </div>
+
+        <div class="tab" data-tab="tracking" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Tracking</h2>
+            <p class="small">Topics each issue lists every close article for, under Tracking.</p>
+            <details class="more"><summary>More</summary><p class="small">An article is listed when the cosine between its title and the topic's description reaches the topic's threshold. A threshold holds for the embedding model it was set for, so a topic set for another model is skipped. No topic is a valid answer: the next run still goes out.</p></details>
+          </div>
+          <div class="toolbar">
+            <div class="notice" id="topics-notice" role="status" hidden></div>
+            <button class="btn primary" type="button" id="add-topic" disabled>+ Add topic</button>
+          </div>
+          <div class="table-wrap">
+            <table class="src">
+              <thead><tr><th class="label">Name</th><th class="label">Description</th><th class="label">Threshold</th><th class="label">Embedding model</th></tr></thead>
+              <tbody id="topic-body"><tr data-loading><td colspan="4" class="small">Loading topics…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -325,6 +344,34 @@
         </div>
         <div class="actions-line">
           <button class="btn danger" type="button" data-act="retire">Retire</button>
+          <div class="notice" role="status" hidden></div>
+        </div>
+      </div>
+    </div></td></tr>
+  </template>
+
+  <template id="topic-editor-tpl">
+    <tr class="editor"><td colspan="4"><div class="editor-body">
+      <h3 class="label editor-title"></h3>
+      <div class="form">
+        <div class="field"><label class="label" for="t-name">Name</label><input class="input" id="t-name" name="name" type="text" autocomplete="off"></div>
+        <div class="field"><label class="label" for="t-description">Description</label><textarea class="input" id="t-description" name="description" rows="3"></textarea>
+          <p class="small">One sentence saying what the topic is about.</p></div>
+        <div class="field-row">
+          <div class="field"><label class="label" for="t-threshold">Threshold</label><input class="input narrow" id="t-threshold" name="threshold" type="number" min="0" max="1" step="0.01" autocomplete="off"></div>
+          <div class="field"><label class="label" for="t-model">Embedding model</label><input class="input" id="t-model" name="model" type="text" autocomplete="off"></div>
+        </div>
+        <p class="small">The cosine a title must reach, on the scale of that model.</p>
+        <details class="more"><summary>More</summary><p class="small">There is no default threshold. Run <code>cyris topic-sim</code> with the description to see the window's titles ranked by cosine, then pick the lowest one that is still on topic.</p></details>
+      </div>
+      <div class="editor-foot">
+        <div class="actions-line">
+          <button class="btn primary" type="button" data-act="save" disabled>Save topic</button>
+          <button class="btn secondary" type="button" data-act="cancel">Cancel</button>
+          <div class="notice" role="status" hidden></div>
+        </div>
+        <div class="actions-line">
+          <button class="btn danger" type="button" data-act="remove">Remove</button>
           <div class="notice" role="status" hidden></div>
         </div>
       </div>

@@ -821,6 +821,7 @@ tr.editor[inert] .form { opacity: .4; }
         <a class="label missing" href="#settings/pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#settings/notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#settings/sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#settings/tracking" data-tab="tracking">Tracking <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
       <div>
@@ -1022,6 +1023,26 @@ tr.editor[inert] .form { opacity: .4; }
             <table class="src">
               <thead><tr><th class="label">Name</th><th class="label">Type</th><th class="label">Tier</th><th class="label">Feed or sender</th><th class="label">Tags</th></tr></thead>
               <tbody id="src-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TRACKING: the rows open an editor exactly as a source's do, so only the table is drawn here -->
+        <div class="tab" data-tab="tracking" hidden>
+          <div class="tab-head">
+            <h2 class="heading">Tracking</h2>
+            <p class="small">Topics each issue lists every close article for, under Tracking.</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn primary" type="button">+ Add topic</button>
+          </div>
+          <div class="table-wrap">
+            <table class="src">
+              <thead><tr><th class="label">Name</th><th class="label">Description</th><th class="label">Threshold</th><th class="label">Embedding model</th></tr></thead>
+              <tbody>
+                <tr class="src-row" tabindex="0"><td class="name">Anthropic</td><td class="small">The company that makes Claude and publishes on AI safety.</td><td class="target">0.72</td><td class="target">gemini-embedding-001</td></tr>
+                <tr class="src-row" tabindex="0"><td class="name">Taiwan chips<span class="small feed-problem">Set for @cf/baai/bge-m3; runs embed with gemini-embedding-001, so it is skipped</span></td><td class="small">Semiconductor makers in Taiwan and their export rules.</td><td class="target">0.55</td><td class="target">@cf/baai/bge-m3</td></tr>
+              </tbody>
             </table>
           </div>
         </div>

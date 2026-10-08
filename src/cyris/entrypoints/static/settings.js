@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 let state = null;
 
-const TABS = ["model", "digest", "pipeline", "notifications", "sources"];
+const TABS = ["model", "digest", "pipeline", "notifications", "sources", "tracking"];
 const SETTINGS_NOTICES = ["model-result", "digest-result", "pipeline-result", "notify-result"];
 
 // The category lives in the hash, not the path: the Worker guards /settings by
@@ -834,6 +834,187 @@ const loadSources = () =>
     });
 
 loadSources();
+
+// Tracked topics: the same table and in-place editor as sources. An empty list
+// is a valid answer, so Tracking never takes the missing dot.
+let topics = [];
+let topicsWritable = false;
+// The model the next run embeds with: a new topic starts from it, and a topic
+// set for another one is marked, because the run skips it.
+let topicModel = "";
+// Which editor is open: null for none, "" for a new topic, else its name.
+let openTopic = null;
+
+const NO_TOPIC_TABLE = "No writable topic table here — edit [[tracked_topics]] in cyris.toml instead.";
+
+const topicRow = (name) => $("topic-body").querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
+
+const trackingNav = () => document.querySelector('.settings-nav a[data-tab="tracking"]');
+
+const topicProblem = (t) => topicModel && t.model !== topicModel
+  ? `<span class="small feed-problem">${esc(`Set for ${t.model}; runs embed with ${topicModel}, so it is skipped`)}</span>`
+  : "";
+
+function renderTopics() {
+  $("topic-body").innerHTML = topics.length
+    ? topics.map((t) => `
+      <tr class="src-row" data-name="${esc(t.name)}" tabindex="0">
+        <td class="name">${esc(t.name)}${topicProblem(t)}</td>
+        <td class="small">${esc(t.description)}</td>
+        <td class="target">${esc(t.threshold)}</td>
+        <td class="target">${esc(t.model)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" class="small">No topics yet.</td></tr>`;
+  trackingNav().classList.remove("dirty");
+  if (openTopic !== null) openTopicEditor(openTopic);
+}
+
+function openTopicEditor(name) {
+  const adding = name === "";
+  const t = adding
+    ? {name: "", description: "", threshold: "", model: topicModel}
+    : topics.find((x) => x.name === name);
+  const anchor = adding ? null : topicRow(name);
+  if (!adding && !(t && anchor)) {
+    openTopic = null;
+    return null;
+  }
+  const ed = $("topic-editor-tpl").content.firstElementChild.cloneNode(true);
+  const q = (selector) => ed.querySelector(selector);
+  if (anchor) {
+    anchor.after(ed);
+    anchor.classList.add("open");
+  } else {
+    $("topic-body").prepend(ed);
+  }
+  q(".editor-title").textContent = adding ? "New topic" : `Editing ${t.name}`;
+  q("#t-name").value = t.name;
+  q("#t-name").readOnly = !adding;
+  q("#t-description").value = t.description;
+  q("#t-threshold").value = t.threshold;
+  q("#t-model").value = t.model;
+  const save = q('[data-act="save"]'), remove = q('[data-act="remove"]');
+  const values = () => JSON.stringify([...ed.querySelectorAll("input, textarea")].map((i) => i.value));
+  const initial = values();
+  const refreshEditor = () => {
+    const dirty = values() !== initial;
+    save.disabled = ed.inert || !topicsWritable || !dirty || !q("#t-name").value.trim();
+    trackingNav().classList.toggle("dirty", dirty && topicsWritable);
+  };
+  const editorEdited = () => {
+    if (topicsWritable) ed.querySelectorAll(".notice").forEach((n) => { n.hidden = true; });
+    ed.querySelectorAll(".invalid").forEach(clearRefusal);
+    refreshEditor();
+  };
+  ed.addEventListener("input", editorEdited);
+  ed.addEventListener("change", editorEdited);
+  refreshEditor();
+  remove.hidden = adding;
+  if (!topicsWritable) {
+    remove.disabled = true;
+    show("err", NO_TOPIC_TABLE, save.parentElement.querySelector(".notice"));
+  }
+  q('[data-act="cancel"]').addEventListener("click", () => {
+    openTopic = null;
+    renderTopics();
+    (adding ? $("add-topic") : topicRow(name)).focus();
+  });
+  save.addEventListener("click", () => saveTopic(ed, save));
+  // The spec's destructive confirm, as Retire does it.
+  let armTimer;
+  const disarm = () => {
+    clearTimeout(armTimer);
+    remove.classList.remove("armed");
+    remove.textContent = "Remove";
+  };
+  remove.addEventListener("click", async () => {
+    if (!remove.classList.contains("armed")) {
+      remove.classList.add("armed");
+      remove.textContent = "Confirm remove";
+      armTimer = setTimeout(disarm, 3000);
+      return;
+    }
+    disarm();
+    const data = await writeSource(`/api/topics/${encodeURIComponent(t.name)}`, "DELETE", null,
+                                   remove, "Removing…");
+    if (!data) {
+      returnFocus(remove);
+      return;
+    }
+    openTopic = null;
+    await loadTopics();
+    show("ok", `${t.name} removed. ${data.note}`, "topics-notice");
+    returnFocus($("add-topic"));
+  });
+  q("#t-name").focus();
+  return ed;
+}
+
+async function saveTopic(ed, button) {
+  const q = (selector) => ed.querySelector(selector);
+  const threshold = q("#t-threshold").value;
+  // Locked while the save is out, as a source editor is.
+  ed.inert = true;
+  const data = await writeSource("/api/topics", "POST", {
+    name: q("#t-name").value.trim(),
+    description: q("#t-description").value.trim(),
+    // No number is not 0: the server refuses it rather than store a threshold nobody set.
+    threshold: threshold === "" ? null : Number(threshold),
+    model: q("#t-model").value.trim(),
+  }, button, "Saving…");
+  if (!data) {
+    ed.inert = false;
+    returnFocus(button);
+    return;
+  }
+  openTopic = data.name;
+  await loadTopics();
+  const reopened = $("topic-body").querySelector("tr.editor");
+  show("ok", `${data.name} saved. ${data.note}`,
+       reopened ? reopened.querySelector(".notice") : "topics-notice");
+}
+
+$("topic-body").addEventListener("click", (e) => {
+  const row = e.target.closest("tr.src-row");
+  if (!row) return;
+  const name = row.dataset.name;
+  openTopic = openTopic === name ? null : name;
+  renderTopics();
+  if (openTopic === null) topicRow(name).focus();
+});
+
+$("topic-body").addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches("tr.src-row")) {
+    // Space would otherwise scroll the page.
+    e.preventDefault();
+    e.target.click();
+  }
+});
+
+$("add-topic").addEventListener("click", () => {
+  openTopic = "";
+  renderTopics();
+});
+
+const loadTopics = () =>
+  fetch("/api/topics")
+    .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
+    .then((d) => {
+      topics = d.topics;
+      topicsWritable = d.writable;
+      topicModel = d.embedding_model;
+      $("add-topic").disabled = !d.writable;
+      if (!d.writable) show("err", NO_TOPIC_TABLE, "topics-notice");
+      renderTopics();
+    })
+    .catch((e) => {
+      $("topic-body").querySelector("[data-loading]")?.remove();
+      $("add-topic").disabled = true;
+      show("err", e === SESSION_EXPIRED ? e.message
+        : `Could not load topics: ${e}. Reload the page to try again.`, "topics-notice");
+    });
+
+loadTopics();
 
 fetch("/api/settings")
   .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
