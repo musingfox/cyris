@@ -1,0 +1,53 @@
+{
+  "_comment": "What `cyris config show` lists beyond the two registries it derives from (settings_fields.json for grade D, config.B_GRADE_ENV_VARS for grade B), and the words it prints. `baked` names a code constant as module:attribute, so the value shown is the one the code runs with, never a copy. `secrets` is every grade-C name in .env.example; tests/test_deploy_inputs.py holds the two in step.",
+  "sources": {
+    "code": "code",
+    "default": "default (provider_defaults.json)",
+    "file": "cyris.toml",
+    "d1": "D1 settings",
+    "dotenv": ".env",
+    "environment": "environment",
+    "missing": "missing",
+    "unset": "unset"
+  },
+  "values": {
+    "none": "-",
+    "set": "set"
+  },
+  "header": ["KEY", "VALUE", "SOURCE"],
+  "grades": {
+    "A": "A - baked into the image",
+    "B": "B - deployment identity",
+    "C": "C - secrets",
+    "D": "D - runtime-mutable"
+  },
+  "baked": {
+    "scoring.batch_size": "cyris.service_layer.scoring:BATCH_SIZE",
+    "embedding.workers_ai.batch_size": "cyris.adapters.embedding:WorkersAIEmbedder.BATCH_SIZE",
+    "embedding.gemini.batch_size": "cyris.adapters.embedding:GeminiEmbedder.BATCH_SIZE",
+    "rss_worker.row_ceiling": "cyris.adapters.fetch.rss_worker_source:WORKER_ROW_CEILING",
+    "feed_health.unhealthy_failure_streak": "cyris.adapters.store.feed_health:UNHEALTHY_FAILURE_STREAK",
+    "feed_health.quiet_days": "cyris.adapters.store.feed_health:QUIET_DAYS",
+    "publish.budget_seconds": "cyris.adapters.output.publish:PUBLISH_BUDGET_SECONDS",
+    "publish.run_reserve_seconds": "cyris.adapters.output.publish:RUN_RESERVE_SECONDS",
+    "pages_deploy.timeout_seconds": "cyris.adapters.output.pages_deploy:TIMEOUT_SECONDS",
+    "probe.llm_timeout_seconds": "cyris.diagnostics.doctor:LLM_PROBE_TIMEOUT_SECONDS",
+    "probe.embedding_timeout_seconds": "cyris.diagnostics.doctor:EMBEDDING_PROBE_TIMEOUT_SECONDS",
+    "probe.discord_timeout_seconds": "cyris.diagnostics.doctor:DISCORD_PROBE_TIMEOUT_SECONDS"
+  },
+  "baked_env": ["CYRIS_GIT_SHA", "CYRIS_APP_WORKER_NAME"],
+  "identity": {
+    "store.account_id": "CLOUDFLARE_ACCOUNT_ID"
+  },
+  "secrets": [
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "OPENAI_API_KEY",
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_EMBEDDING_API_TOKEN",
+    "CLOUDFLARE_AI_TOKEN",
+    "CYRIS_WORKER_TOKEN",
+    "CYRIS_PROMOTE_TOKEN",
+    "CYRIS_UI_TOKEN"
+  ]
+}

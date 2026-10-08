@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from cyris.diagnostics.config_show import IDENTITY, SECRETS
+
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +57,16 @@ def _worker_env() -> set[str]:
 
 def test_env_example_and_deploy_form_name_the_same_variables() -> None:
     assert _env_example() == set(_bindings())
+
+
+def test_config_show_lists_every_name_the_container_can_read() -> None:
+    """`cyris config show` cannot read `.env.example`, which the image does not ship.
+
+    A Worker-only name never reaches the container, so it is left out; `CYRIS_UI_TOKEN`
+    is shown anyway, because `cyris doctor --deployment` reads it from a local `.env`.
+    """
+    assert _env_example() - set(_WORKER_ONLY) - set(SECRETS) - set(IDENTITY.values()) == set()
+    assert set(SECRETS) <= _env_example()
 
 
 def _wrangler_vars() -> dict[str, str]:
