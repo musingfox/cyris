@@ -32,7 +32,9 @@ canned response looks the same each time.
 The `check:` runs `tests/test_respx_routes_pin_counts.py`. It fails when a test file
 switches either respx assertion off. It also fails when a test registers a respx route that
 is not bound to a name, or whose `call_count`, `len(route.calls)` or `not route.called`
-the same test never reads. Its self-test plants each kind of violation. Two gaps stay with
+the same test never reads. A route must be registered and counted in one test function, so
+one built in a fixture or a helper is flagged. Its self-test plants each kind of violation.
+Two gaps stay with
 review. The scan sees that the count is read, not that it is asserted exactly. It also
 leaves `httpx.MockTransport` fakes out: their handlers record into lists, dicts, fixtures
 and helper classes, and no scan of those shapes is free of false positives. The audit that
