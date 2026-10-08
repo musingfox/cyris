@@ -256,6 +256,9 @@ its feed gave it, so an entry a feed lists late still reaches the next run. That
 run's window reaches back past the previous run by more than one poll's duration: a poll stamps its
 rows when it starts, so a row can land after a run has already read past its stamp. `RssSource`
 stays on publish time. **There is no ack**, so a crashed digest simply reads the window again.
+Each poll also upserts every polled feed's outcome into `feed_health` (§4), after the articles and
+never at their expense: a feed that keeps failing used to be a `console.warn` per hour, gone with
+Workers Logs after 7 days, and on 2026-09-28 one had stored no article ever behind an hourly HTTP 503.
 
 The buffer exists because a digest-time poll only sees each feed's current snapshot — 2–4 hours for
 a busy feed, not 24. Measured: a digest-time poll missed 141 of 317 articles. `RssSource` (direct

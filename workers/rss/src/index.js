@@ -57,19 +57,49 @@ async function fetchFeed(feed) {
   return parseFeed(await response.text(), feed.name);
 }
 
+// One upsert per polled feed, so a feed that keeps failing outlives Workers Logs'
+// 7 days. A success resets the streak but keeps the last error and its time.
+async function recordHealth(env, outcomes, now) {
+  if (!outcomes.length) return;
+  const ok = env.DB.prepare(
+    `INSERT INTO feed_health (name, consecutive_failures, last_ok_at) VALUES (?, 0, ?)
+     ON CONFLICT(name) DO UPDATE SET consecutive_failures = 0, last_ok_at = excluded.last_ok_at`
+  );
+  const failed = env.DB.prepare(
+    `INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at)
+     VALUES (?, 1, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET
+       consecutive_failures = feed_health.consecutive_failures + 1,
+       last_error = excluded.last_error,
+       last_failed_at = excluded.last_failed_at`
+  );
+  await env.DB.batch(
+    outcomes.map(({ name, error }) =>
+      error === null ? ok.bind(name, now) : failed.bind(name, error, now)
+    )
+  );
+}
+
 async function poll(env, feeds) {
   await ensureSchema(env);
   feeds = feeds ?? (await loadFeeds(env));
   const fetchedAt = new Date().toISOString();
   const rows = [];
   const failures = [];
+  const outcomes = [];
 
   for (let i = 0; i < feeds.length; i += CONCURRENCY) {
     const batch = feeds.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(batch.map(fetchFeed));
     results.forEach((result, index) => {
-      if (result.status === "fulfilled") rows.push(...result.value);
-      else failures.push(`${batch[index].name}: ${result.reason}`);
+      const name = batch[index].name;
+      if (result.status === "fulfilled") {
+        rows.push(...result.value);
+        outcomes.push({ name, error: null });
+      } else {
+        failures.push(`${name}: ${result.reason}`);
+        outcomes.push({ name, error: result.reason?.message ?? String(result.reason) });
+      }
     });
   }
 
@@ -108,6 +138,14 @@ async function poll(env, feeds) {
   )
     .bind(cutoff)
     .run();
+
+  // After the articles, and never fatal: losing one poll's health record costs a
+  // streak one count, while failing the poll would cost the articles.
+  try {
+    await recordHealth(env, outcomes, fetchedAt);
+  } catch (error) {
+    console.error(`could not record feed_health — ${error.message ?? error}`);
+  }
 
   console.log(
     `polled ${feeds.length} feeds: ${rows.length} entries, ${fresh.length} in window, ` +
