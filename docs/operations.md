@@ -24,10 +24,14 @@ instances, so avoid landing one just before a publish hour.
   (`GIT_SHA`), pushes it to the account's Cloudflare registry as `:<sha>` and
   `:release`, and records the image digest in a git tag `image/<short-sha>`. It
   skips the build and push for a commit it has already published, because the image
-  is not reproducible.
+  is not reproducible. If the registry still answers the previous `:release` after a
+  minute, the run ends with a warning and records the digest anyway; nothing deploys
+  from `:release`.
 - `.github/workflows/deploy.yml` ("Deploy the container Worker") deploys an image that
-  is already in the registry. Its `image_tag` input is `release` by default, or a
-  `sha256:…` digest to pin one exact image.
+  is already in the registry. With its `image_tag` input left empty, it deploys the
+  digest recorded in the dispatched commit's `image/<short-sha>` tag, and fails if
+  that commit has not been released. A `sha256:…` digest pins one exact image instead.
+  It refuses a tag name such as `release`.
 
 On a fork they need, under Settings → Secrets and variables → Actions:
 
