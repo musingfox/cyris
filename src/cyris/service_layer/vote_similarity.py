@@ -81,15 +81,28 @@ async def judge_by_votes(
     try:
         seed_vectors = await embedder.embed([a.title for a in up + down])
         candidate_vectors = await embedder.embed([a.title for a in candidates])
+        # Each vector is paired back to its article by position below.
+        if len(seed_vectors) != len(up + down) or len(candidate_vectors) != len(candidates):
+            raise ValueError("the embedder answered a different number of vectors than texts")
     except Exception as e:
         logger.warning("Vote similarity unavailable, digest continues unfiltered: %s", e)
         return VoteSimilarityReport(skipped_reason=f"embedding failed: {e}")
 
-    up_vectors = [v for v in seed_vectors[: len(up)] if v]
-    down_vectors = [v for v in seed_vectors[len(up) :] if v]
+    # Paired before the empty vectors drop out, so each URL stays with its own vector.
+    up_seeds = {a.url: v for a, v in zip(up, seed_vectors[: len(up)], strict=True) if v}
+    down_seeds = {a.url: v for a, v in zip(down, seed_vectors[len(up) :], strict=True) if v}
+    up_vectors = list(up_seeds.values())
+    down_vectors = list(down_seeds.values())
     by_url = {a.url: v for a, v in zip(candidates, candidate_vectors, strict=True) if v}
 
-    verdicts = judge(by_url, up_vectors, down_vectors, threshold)
+    verdicts = judge(
+        by_url,
+        up_vectors,
+        down_vectors,
+        threshold,
+        upvoted_urls=list(up_seeds),
+        downvoted_urls=list(down_seeds),
+    )
     suppressed = [v.url for v in verdicts if v.suppressed]
     logger.info(
         "Vote similarity: %d candidate(s) judged against %d up / %d down seed(s), %d suppressed",
