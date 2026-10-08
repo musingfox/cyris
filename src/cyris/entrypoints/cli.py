@@ -7,6 +7,7 @@ import logging
 import os
 import signal
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -1094,6 +1095,84 @@ def articles_score(
         )
 
     asyncio.run(_run())
+
+
+labels_app = typer.Typer(help="Blind labels on the filter's candidates, kept in D1")
+app.add_typer(labels_app, name="labels")
+
+
+def _blind_labels(config_path: Path, sources_path: Path):
+    """The D1 blind-label store, or exit naming why there is none."""
+    from cyris.adapters.store.blind_labels import D1BlindLabels
+    from cyris.bootstrap import build_d1_client, load_effective_config
+
+    try:
+        cfg = load_effective_config(config_path, sources_path)
+        d1 = build_d1_client(cfg)
+    except (FileNotFoundError, ValueError) as e:
+        typer.echo(f"Configuration error: {e}")
+        raise typer.Exit(1) from e
+    if d1 is None:
+        typer.echo('Blind labels live in D1: set [store] backend = "d1".')
+        raise typer.Exit(1)
+    return cfg, D1BlindLabels(d1)
+
+
+@labels_app.command("draw")
+def labels_draw(
+    since: Annotated[str, typer.Option(help="First-seen cutoff of the pool, with a UTC offset")],
+    seed: Annotated[int, typer.Option(help="Seed for the draw and its order")],
+    size: Annotated[int, typer.Option(help="Items to draw")] = 100,
+    min_rejected: Annotated[
+        int, typer.Option(help="Fewest pipeline-rejected items the sample may hold")
+    ] = 30,
+    replace: Annotated[
+        bool, typer.Option(help="Discard the kept sample and its answers first")
+    ] = False,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+) -> None:
+    """Draw the sample /labels shows: filter candidates since a cutoff, stratified by
+    news and by the pipeline's verdict, that no human has judged yet."""
+    from cyris.diagnostics.blind_labels import STRATA, draw_sample, stratum_of
+
+    try:
+        cutoff = datetime.fromisoformat(since)
+    except ValueError as e:
+        typer.echo(f"--since {since} is not an ISO 8601 time, such as 2026-01-02T10:00Z.")
+        raise typer.Exit(1) from e
+    if cutoff.tzinfo is None:
+        typer.echo(f"--since {since} has no UTC offset: write it as {since}Z.")
+        raise typer.Exit(1)
+
+    _, labels = _blind_labels(config_path, sources_path)
+    if (kept := labels.size()) and not replace:
+        answered, _ = labels.progress()
+        typer.echo(
+            f"A sample is already drawn: {kept} items, {answered} answered. "
+            "Pass --replace to discard it and its answers."
+        )
+        raise typer.Exit(1)
+
+    pool = labels.pool(cutoff)
+    try:
+        rows = draw_sample(pool, size=size, min_rejected=min_rejected, seed=seed)
+    except ValueError as e:
+        typer.echo(f"Nothing drawn: {e}.")
+        raise typer.Exit(1) from e
+    labels.replace_sample(rows, seed=seed, since=cutoff, drawn_at=datetime.now(UTC))
+
+    pooled = Counter(stratum_of(r.news, r.state) for r in pool)
+    drawn = Counter(stratum_of(r.news, r.pipeline_state) for r in rows)
+    typer.echo(f"Drew {len(rows)} of {len(pool)} filter candidates first seen since {since}.")
+    for news, rejected in STRATA:
+        name = f"{'news' if news else 'non-news'} · {'rejected' if rejected else 'kept'}"
+        typer.echo(f"  {name:20} {drawn[(news, rejected)]:4} of {pooled[(news, rejected)]}")
+    typer.echo("Label them at /labels on this deployment's app Worker.")
 
 
 store_app = typer.Typer(help="Move the article store between backends")
