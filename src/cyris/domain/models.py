@@ -143,7 +143,10 @@ class UsageStats(BaseModel):
         and nothing in the output said which vendor the number came from. An
         unpriced model now prints no number at all rather than borrowing one.
         """
-        price = _PRICES_PER_MTOK.get(self.model)
+        # AI Gateway names a model `author/model`, and bills it at the author's rate.
+        price = _PRICES_PER_MTOK.get(self.model) or _PRICES_PER_MTOK.get(
+            self.model.rpartition("/")[2]
+        )
         if price is None:
             return None
         input_price, output_price = price
