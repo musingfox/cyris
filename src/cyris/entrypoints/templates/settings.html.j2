@@ -177,6 +177,12 @@
               <p class="small">How large the text is on every page.</p>
               <details class="more"><summary>More</summary><p class="small">It applies within a minute, to issues already published too, except those rendered before this setting existed and pages opened on pages.dev directly.</p></details>
             </div>
+            <div class="field">
+              <label class="label" for="rank-by-preference">Order by your votes</label>
+              <select class="select" id="rank-by-preference"><option value="false">Off</option><option value="true">On</option></select>
+              <p class="small">Put the headlines and Features closest to what you voted up first.</p>
+              <details class="more"><summary>More</summary><p class="small">It works while vote similarity is on (Model). When an issue is full, the headlines it leaves out stay for the next issue; none is dropped. Off keeps the model's order.</p></details>
+            </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
               <div class="notice" id="digest-result" role="status" hidden></div>

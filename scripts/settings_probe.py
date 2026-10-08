@@ -158,6 +158,7 @@ _PROBE_VALUES = {
     "digest.output_language": "zh-Hant",
     "digest.style_prompt": "x",
     "digest.type_scale": 1,
+    "digest.rank_by_preference": False,
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,

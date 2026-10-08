@@ -572,10 +572,10 @@ class TestJsonSettingsFromFileOnly:
         assert cfg.present_settings() == {}
         assert cfg.config_file_found is False
 
-    def test_a_file_with_one_key_leaves_the_other_twenty_two_missing(self, tmp_path):
+    def test_a_file_with_one_key_leaves_the_other_twenty_three_missing(self, tmp_path):
         cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
 
-        assert len(cfg.missing_settings) == 22
+        assert len(cfg.missing_settings) == 23
         assert "general.timezone" not in cfg.missing_settings
         assert cfg.present_settings() == {"general.timezone": "UTC"}
 
