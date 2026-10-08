@@ -149,7 +149,14 @@ jobs:
           image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$IMAGE_NAME"
           descriptor='if type == "array" then .[0] else . end | .Descriptor.digest // empty'
           sha_digest=${{ steps.verify_sha.outputs.digest }}
-          release_digest=$(docker manifest inspect -v "$image:release" | jq -r "$descriptor")
+          # The registry can answer the previous `:release` for a while after the push
+          # that moved it (seen twice on 2026-10-08), so a mismatch is read again for
+          # up to a minute before it counts.
+          for attempt in 1 2 3 4 5 6; do
+            release_digest=$(docker manifest inspect -v "$image:release" | jq -r "$descriptor")
+            [ "$sha_digest" = "$release_digest" ] && break
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
           if [ -z "$release_digest" ] || [ "$sha_digest" != "$release_digest" ]; then
             echo "registry tags empty or differ: sha=$sha_digest release=$release_digest" >&2
             exit 1

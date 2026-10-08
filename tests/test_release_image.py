@@ -1,5 +1,8 @@
 """Release-image invariants that cannot be exercised by the application suite."""
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -232,3 +235,56 @@ def test_git_sha_is_not_a_deploy_form_input() -> None:
     )
     deploy_inputs = env_names | bindings | worker_names
     assert {"CYRIS_GIT_SHA", "GIT_SHA", "CLOUDFLARE_CONTAINERS_TOKEN"}.isdisjoint(deploy_inputs)
+
+
+def _run_digest_step(tmp_path: Path, release_reads: list[str]) -> tuple[int, str]:
+    """Run the workflow's digest step with `docker` and `sleep` stubbed.
+
+    Each `docker manifest inspect :release` answers the next digest in
+    `release_reads`, the last one repeating.
+    """
+    if shutil.which("jq") is None:
+        pytest.skip("jq is not on PATH")
+    sha = "sha256:" + "a" * 64
+    reads = tmp_path / "reads"
+    reads.write_text("\n".join(release_reads) + "\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(
+        "#!/bin/sh\n"
+        f'next=$(head -n 1 "{reads}")\n'
+        f'[ "$(wc -l < "{reads}")" -gt 1 ] && sed -i.bak 1d "{reads}"\n'
+        'printf \'{"Descriptor": {"digest": "%s"}}\' "$next"\n'
+    )
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    for stub in bin_dir.iterdir():
+        stub.chmod(0o755)
+    script = _steps_by_id()["digest"][1]["run"].replace(
+        "${{ steps.verify_sha.outputs.digest }}", sha
+    )
+    output = tmp_path / "output"
+    output.touch()
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "CLOUDFLARE_ACCOUNT_ID": "acct",
+        "IMAGE_NAME": "img",
+        "GITHUB_OUTPUT": str(output),
+    }
+    result = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True)
+    return result.returncode, output.read_text()
+
+
+def test_the_digest_step_waits_out_a_stale_release_read(tmp_path: Path) -> None:
+    # 2026-10-08, twice: the push printed the new digest, and the read right after
+    # it still answered an older one.
+    old, new = "sha256:" + "0" * 64, "sha256:" + "a" * 64
+    code, output = _run_digest_step(tmp_path, [old, old, new])
+    assert code == 0
+    assert output == f"digest={new}\n"
+
+
+def test_the_digest_step_still_fails_when_release_never_moves(tmp_path: Path) -> None:
+    code, output = _run_digest_step(tmp_path, ["sha256:" + "0" * 64])
+    assert code != 0
+    assert output == ""
