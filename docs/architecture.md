@@ -314,8 +314,9 @@ Each source carries a **tier**, which decides how much attention it gets:
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
 sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
 the scorer skips news and the first downvote was news-tagged. It is the only personalization in the
-pipeline: prompt-level preference learning was removed on 2026-08-27 because it had never produced a
-profile. On D1, every candidate it judged also leaves a row in `vote_similarity_shadow` naming its
+pipeline, and it acts twice: here it suppresses, and with the vote order on its verdicts also order
+the issue (below). Prompt-level preference learning was removed on 2026-08-27 because it had never
+produced a profile. On D1, every candidate it judged also leaves a row in `vote_similarity_shadow` naming its
 nearest upvoted and downvoted article and both cosines (§4), a record that changes nothing the run
 selects.
 
@@ -326,6 +327,20 @@ carries every article of that group, since the group summary covers them all. Ev
 article is one Features card under its own summary, highest score first, at most
 `[digest] max_featured` of them. An article past either limit is left out of the issue and stays
 pending. The cap takes the Top story whole, or its best article in its slot, before anything else.
+
+**The vote order** (`[digest] rank_by_preference`). When it is on and vote similarity judged this
+run's candidates, a candidate's preference is its cosine to the nearest upvote minus its cosine to
+the nearest downvote, a side with no seed counting 0. `select_digest_articles` orders by it before
+the issue cap: the Features after their score sort, and the headlines, which otherwise keep the
+model's order. The cap then cuts as before, so of two headlines competing for the last slot the one
+closer to an upvote is shown. An item of several articles takes its best article's preference,
+equal preferences keep the incoming order, and an item with none keeps its slot. The Top story
+never moves, and which Features `max_featured` keeps is still the score's choice. The order rejects
+nothing and stamps no `triaged_at`: what it changes is which article the cap shows, accepted, and
+which it cuts, left pending. Off, or with vote similarity off or skipped, the issue keeps the
+model's order. `run_summary` records which: `preference_rank_applied`, the reason in
+`preference_rank_skipped`, and `preference_rank_moved_headlines` and `_features`, the positions
+that differ from the order without it.
 
 Two analytics facts are persisted beside the digest, both fail-soft — a write failure is logged
 and the run continues. Topic tags emitted by scoring and by news clustering land normalized in D1
@@ -468,6 +483,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST /accounts/{id}/ai/run` to Cloudflare with the model as `author/model`; the provider's key is stored in the gateway (BYOK), which that path requires, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AI_TOKEN`, because `/ai/run` asks for the same Workers AI Read; the account is `CLOUDFLARE_ACCOUNT_ID`; and no gateway id is sent, because Cloudflare routes a request that names none to the gateway called `default`. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
 | Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many Features cards an issue shows is not a number this codebase can measure, and `featured_threshold` beside it was already D |
+| Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
 | Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 |
 | Embedding threshold | **A** | `cyris.toml`, else the calibration in `provider_defaults.json` when the configured model is the one it was measured on | unchanged — a measured property of the model, not a preference. Any other model has none: the run skips vote similarity, says why in `run_summary` as `vote_similarity_skipped`, and `doctor` fails until `cyris.toml` sets one (2026-10-07) |

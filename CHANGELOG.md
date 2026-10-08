@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Your votes can order each issue. With **Order by your votes** on (`/settings`,
+  Digest) and vote similarity on, the headlines and Features closest to what you
+  voted up come first, and when an issue is full the headline closer to an
+  upvote takes the last slot. Nothing is dropped: a headline the issue leaves out
+  stays for the next one. Off keeps the model's order.
+
 ### Fixed
 
 - An entry a feed lists late now reaches the next digest. The RSS Worker selected
@@ -32,7 +40,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   time, so the first digest after it may list a few extra articles.
 - Entries that entered the buffer more than a day before the deploy and that no
   run has read stay unread; they age out within 8 days.
-- No setting, table or secret changed.
+- Before deploying, store the new runtime setting `digest.rank_by_preference`
+  (`true` turns the vote order on, `false` keeps the model's order). Every
+  runtime setting is required, so a run without it stops, and the old image's
+  `/settings` cannot write it. A `json` deployment adds `rank_by_preference`
+  under `[digest]` in `cyris.toml`. No table or secret changed.
 
 ## [0.5.0] — 2026-10-02
 
