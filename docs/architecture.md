@@ -43,7 +43,7 @@ flowchart TB
 
     subgraph CORE["Core · service_layer + domain"]
         RUN["run_digest orchestrator"]
-        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity"]
+        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity · tracking"]
         DOM["domain (pure): selection · models · similarity"]
         RUN --> UC
         RUN --> DOM
@@ -319,6 +319,18 @@ the issue (below). Prompt-level preference learning was removed on 2026-08-27 be
 produced a profile. On D1, every candidate it judged also leaves a row in `vote_similarity_shadow` naming its
 nearest upvoted and downvoted article and both cosines (§4), a record that changes nothing the run
 selects.
+
+**Topic tracking** runs right after it, over the candidates vote similarity left
+(`service_layer/tracking.py`). Each tracked topic (§4, §5) is a name, one sentence the reader wrote,
+a cosine threshold and the embedding model that threshold was set for. The run embeds each sentence
+once, compares it with every candidate title, and lists the titles at or above the topic's threshold
+in the issue's Tracking section. It calls no LLM. A title vote similarity already embedded this run
+is reused, and the rest are embedded once, so `run_summary`'s `embedding` is the run's whole
+embedding spend either way. A topic set for a model other than the run's is skipped, never judged,
+and `run_summary`'s `tracking` names it beside each judged topic's hit count. The hits are the
+issue's `DigestContent.tracked_topics` and nothing else: no store of their own, outside the issue's
+cap and its article count, and no article's state changes for being one. A hit the cap cut stays
+pending, so the next run in the window can list it again.
 
 The summarize call writes a summary for each group and one for each article. `layer_by_score`
 then lays them out inside `DigestPipeline`, before the issue's article cap: the Top story is a

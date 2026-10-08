@@ -111,7 +111,15 @@ def test_render_empty_sections(tmp_path):
         assert label not in html
 
 
-SECTION_LABELS = ("Top story", "Features", "In Focus", "Following", "On the Radar", "The Wire")
+SECTION_LABELS = (
+    "Top story",
+    "Features",
+    "Tracking",
+    "In Focus",
+    "Following",
+    "On the Radar",
+    "The Wire",
+)
 
 EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
 DEGRADED_NOTICE = (
@@ -198,7 +206,7 @@ def test_each_section_names_itself_once(label):
 
 def test_each_body_section_is_headed_by_its_tag_alone():
     digest = receipt_fixtures()[1]
-    assert digest.count('<h2 class="section-tag"><span class="label">') == 5
+    assert digest.count('<h2 class="section-tag"><span class="label">') == 6
     assert 'class="id"' not in digest
     assert "section-heading" not in digest
 
@@ -225,11 +233,11 @@ def test_every_body_title_carries_the_title_class_and_block_titles_the_large_one
     main = digest[digest.index("<main>") : digest.index("</main>")]
     h3s = re.findall(r"<h3\b[^>]*>", main)
     h4s = re.findall(r"<h4\b[^>]*>", main)
-    # Two featured cards, titled by their articles, then one cluster, the Following
-    # block and the radar block.
-    assert h3s == ['<h3 class="item-title lg" lang="">'] * 2 + ['<h3 class="item-title lg">'] * 3
-    # The Following article and the radar item.
-    assert h4s == ['<h4 class="item-title">'] * 2
+    # Two featured cards, titled by their articles, then the tracked topic, one
+    # cluster, the Following block and the radar block.
+    assert h3s == ['<h3 class="item-title lg" lang="">'] * 2 + ['<h3 class="item-title lg">'] * 4
+    # The tracked hit, the Following article and the radar item.
+    assert h4s == ['<h4 class="item-title">'] * 3
 
 
 def test_render_optional_score(tmp_path):
@@ -2282,3 +2290,44 @@ def test_a_raw_title_has_no_reliable_language_so_it_is_unknown(tmp_path):
     assert langs["中文標題"] == langs["Unscored title"] == ""
     assert langs["Src"] == "en"
     assert "title.lang = next.querySelector('a').lang;" in html
+
+
+# ---- tracked topics: their own section, after Features ----------------------------
+
+
+def _tracked_issue(tmp_path, topics: list[DigestSection]) -> str:
+    content = _every_section("ja")
+    content.tracked_topics = topics
+    return HtmlDigestWriter(tmp_path).render(content)
+
+
+_HIT = DigestItem(
+    title="那家做 Constitutional AI 的公司",
+    summary="",
+    sources=["Wire"],
+    urls=["https://wire.test/hit"],
+)
+
+
+def test_each_tracked_topic_lists_its_hits_between_features_and_in_focus(tmp_path):
+    html = _tracked_issue(tmp_path, [DigestSection(heading="Anthropic", items=[_HIT])])
+    texts = _main_text(html).texts
+
+    assert texts.index("Features") < texts.index("Tracking") < texts.index("In Focus")
+    assert texts.index("Tracking") < texts.index("Anthropic") < texts.index(_HIT.title)
+    assert '<a href="https://wire.test/hit" target="_blank"' in html
+    assert '<span class="vote-group" data-urls=\'["https://wire.test/hit"]\'' in html
+
+
+def test_a_tracked_topic_and_its_hits_leave_their_language_unknown(tmp_path):
+    langs = text_langs(_tracked_issue(tmp_path, [DigestSection(heading="Anthropic", items=[_HIT])]))
+
+    assert _langs_of(langs, ["Anthropic", _HIT.title]) == {"Anthropic": "", _HIT.title: ""}
+    assert langs["Tracking"] == "en"
+
+
+def test_an_issue_with_no_hit_has_no_tracking_section(tmp_path):
+    html = _tracked_issue(tmp_path, [])
+
+    assert "Tracking" not in _main_text(html).texts
+    assert html == HtmlDigestWriter(tmp_path).render(_every_section("ja"))

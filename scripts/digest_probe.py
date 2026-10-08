@@ -149,6 +149,13 @@ def content(grouped_lead: bool = False) -> DigestContent:
                 story_id=f"{DATE}-{PERIOD}-1",
             ),
         ],
+        # Between Features and In Focus on the page, so it holds the first `.article-item`.
+        tracked_topics=[
+            DigestSection(
+                heading="A tracked topic",
+                items=[_item(f"tracked-{n}", f"Tracked hit {n}", ["Wire"]) for n in range(1, 3)],
+            )
+        ],
         fan_sections=[
             DigestSection(
                 heading="Followed",
@@ -243,7 +250,7 @@ def first_vote_urls() -> dict[str, list[str]]:
         ".lead-story": features[0].urls,
         ".featured-item": features[1].urls,
         ".news-cluster": digest.news_clusters[0].items[0].urls,
-        ".article-item": digest.fan_sections[0].items[0].urls,
+        ".article-item": digest.tracked_topics[0].items[0].urls,
         ".attention-item": digest.attention_sections[0].items[0].urls,
         ".headline-item": digest.filtered_headlines[0].urls,
     }

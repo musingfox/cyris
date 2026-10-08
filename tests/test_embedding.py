@@ -217,6 +217,28 @@ def test_the_feature_off_means_no_embedder_at_all():
     assert build_embedder(make_config()) is None
 
 
+def test_a_tracked_topic_needs_the_embedder_with_vote_similarity_off(monkeypatch, tmp_path):
+    from fakes import make_config
+
+    from cyris.bootstrap import build_deps
+    from cyris.config import AgentVaultConfig
+    from cyris.domain.models import TrackedTopic
+
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path))
+    cfg.app.vote_similarity.provider = "gemini"
+    cfg.tracked_topics = [
+        TrackedTopic(name="A", description="B", threshold=0.7, model="gemini-embedding-001")
+    ]
+
+    deps = build_deps(cfg)
+
+    assert type(deps.embedder).__name__ == "GeminiEmbedder"
+    # The model a topic is matched against is the resolved one, never the empty setting.
+    assert cfg.app.vote_similarity.model == ""
+    assert deps.embedding_model == "gemini-embedding-001"
+
+
 def test_module_default_models_match_provider_defaults() -> None:
     """The adapters' fallback models must equal provider_defaults.json's.
 

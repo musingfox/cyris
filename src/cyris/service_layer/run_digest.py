@@ -444,6 +444,32 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             log = logger.warning if deps.embedding_threshold is None else logger.info
             log("Vote similarity skipped: %s", similarity.skipped_reason)
 
+    # Over what vote similarity left: a candidate close to a downvote is not in
+    # this issue, so it is not listed as a hit either. No LLM call; its spend is
+    # embedding only, and `summary["embedding"]` is the embedder's running total.
+    tracked_sections = []
+    if cfg.tracked_topics and pending_articles and deps.embedder is not None:
+        from cyris.service_layer.tracking import track_topics
+
+        try:
+            tracking = await track_topics(
+                deps.embedder,
+                deps.embedding_model,
+                cfg.tracked_topics,
+                pending_articles,
+                # The titles vote similarity already embedded this run, by URL.
+                known=similarity.candidate_vectors if similarity else {},
+            )
+        except Exception as e:
+            logger.error("Topic tracking failed, digest continues without it: %s", e)
+            summary["tracking_error"] = str(e)
+        else:
+            tracked_sections = tracking.sections
+            summary["embedding"] = deps.embedder.usage.as_dict()
+            summary["tracking"] = {"hits": tracking.hits, "skipped": tracking.skipped}
+            if tracking.skipped:
+                logger.warning("Tracked topics skipped: %s", tracking.skipped)
+
     preference, unranked_reason = _vote_preference(cfg.app.digest.rank_by_preference, similarity)
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}
     digest_articles = [a.to_article() for a in pending_articles]
@@ -480,6 +506,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     else:
         summary["preference_rank_moved_headlines"] = result.preference_moves["headlines"]
         summary["preference_rank_moved_features"] = result.preference_moves["features"]
+    # A view, not a verdict: no hit changes its article's state or the issue's counts.
+    content.tracked_topics = tracked_sections
     if not options.dry_run and deps.tag_store is not None and result.url_to_tags:
         try:
             deps.tag_store.save(result.url_to_tags)

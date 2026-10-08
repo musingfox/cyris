@@ -194,6 +194,7 @@ class HtmlDigestWriter:
             usage=content.usage,
             lead_story=lead_story,
             featured_articles=featured_articles,
+            tracked_topics=content.tracked_topics,
             news_clusters=content.news_clusters,
             fan_sections=content.fan_sections,
             attention_sections=content.attention_sections,
