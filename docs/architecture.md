@@ -838,6 +838,8 @@ on main after the change lands, citing the hash it landed as.
 | Date | Commit | What changed |
 |---|---|---|
 | 2026-10-08 | `c8f1917` | Became a system map: the outstanding-work chapter left the doc for the tracker, this table replaced it, and §6's compose mounts and §2's `Embedder` port were corrected. |
+| 2026-10-08 | `f16f8c2` | §3.2 says what a vote stamp can and cannot tell: it is the sync time, not the vote's, and a cluster vote fans out to several stamped rows. |
+| 2026-10-08 | `5cc13b8` | `AIGatewayClient` joined §2's `LLMClient` adapters (`provider = "ai_gateway"`, Cloudflare's `/ai/run` envelope with BYOK keys), and §5 adds it as a grade-D provider value that reuses the Workers AI token. |
 
 ## 8. Where the core never changes
 
