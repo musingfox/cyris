@@ -37,7 +37,7 @@ from cyris.config import DigestConfig
 CHECK_TIMEOUT_S = 30
 POINTERS = ("mouse", "touch")
 MOUSE_BUTTONS = ("left", "middle", "right")
-KEYS = ("Enter", " ", "Tab")
+KEYS = ("Enter", " ", "Tab", "ArrowLeft", "ArrowRight")
 HEIGHT = 900
 # The UI spec's tap area (§4): the least a target takes taps over, each way.
 TAP_PX = 44
@@ -441,6 +441,8 @@ const KEY_EVENTS = {
   'Enter': { code: 'Enter', windowsVirtualKeyCode: 13, text: '\\r' },
   ' ': { code: 'Space', windowsVirtualKeyCode: 32, text: ' ' },
   'Tab': { code: 'Tab', windowsVirtualKeyCode: 9 },
+  'ArrowLeft': { code: 'ArrowLeft', windowsVirtualKeyCode: 37 },
+  'ArrowRight': { code: 'ArrowRight', windowsVirtualKeyCode: 39 },
 };
 const press = async (key) => {
   await call('Input.dispatchKeyEvent', { type: 'keyDown', key, ...KEY_EVENTS[key] });

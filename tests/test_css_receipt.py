@@ -762,7 +762,13 @@ def test_a_probe_job_carries_a_mouse_button_and_a_vertical_move():
 
 
 def test_a_probe_job_carries_its_key_presses():
-    gestures = ({"key": "Tab"}, {"key": "Enter"}, {"key": " "})
+    gestures = (
+        {"key": "Tab"},
+        {"key": "Enter"},
+        {"key": " "},
+        {"key": "ArrowLeft"},
+        {"key": "ArrowRight"},
+    )
     check = cdp_probe.Check(id="x", fixture="k", path="/p", script="", gestures=gestures)
     assert cdp_probe.build_job(check, "http://h", False, "")["gestures"] == list(gestures)
 
