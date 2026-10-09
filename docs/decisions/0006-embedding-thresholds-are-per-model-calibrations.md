@@ -174,6 +174,29 @@ nearest upvote minus its cosine to the nearest downvote, read as AUC:
 * Adding the excerpt to the title did not help Gemini (0.992 against 0.991) and helped `bge-m3` a
   little (0.977 against 0.984).
 
+Every vote in the 189 sits on an article the reader had already seen in a digest, and 25 of the
+47 test downvotes are lottery reports, a fixed-format class that nearest-seed matching separates
+by construction. The 2026-10-09 blind-label round measured the same score on articles the reader
+had not seen. `cyris labels draw --since 2026-09-18T10:00Z --seed 1` drew 100 filter candidates,
+25 from each of news or not crossed with kept or rejected by the pipeline. 98 were labelled (34
+up, 64 down) and 2 skipped. Seeded with every human vote outside the sample (167 up, 72 down),
+`gemini-embedding-001` on titles:
+
+| measure | value |
+|---|---|
+| AUC of the score | 0.596, 95% interval 0.472 to 0.722 |
+| AUC of the pipeline's keep-or-reject verdict, same items | 0.598, 95% interval 0.494 to 0.700 |
+| score minus verdict, paired | −0.002, 95% interval −0.151 to +0.139 |
+| filter precision / recall, news | 0.480 / 0.631 |
+| filter precision / recall, non-news | 0.391 / 0.183 |
+| filter precision / recall, overall | 0.471 / 0.527 |
+
+* Intervals come from 1,000 bootstrap resamples, 2,000 for the paired difference.
+* Precision and recall weight each stratum by its share of the candidate pool (news kept 1,143,
+  news rejected 2,006, non-news kept 123, non-news rejected 598). The AUCs are unweighted.
+* The numbers were computed with the functions `cyris labels report` uses
+  (`src/cyris/diagnostics/blind_labels.py`) on the same seeds; at 59 labels the two agreed.
+
 ## More Information
 
 The section *A fixed threshold is the wrong shape* was added on 2026-10-08 from
