@@ -690,7 +690,7 @@ tr.editor[inert] .form { opacity: .4; }
         <button class="btn primary" type="button" id="t-up" data-dir="up">Up</button>
       </div>
       <div class="notice err" id="t-error" role="alert" hidden>The vote did not go through, so this card stays. Check your connection, then try again.</div>
-      <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
+      <p class="small" id="t-hint">Swipe left for down, right for up; with the card focused, ← and → do the same. Tap the card to open the article in a new tab.</p>
     </div>
     <div class="footer">// <a href="https://cyris.musingfox.com/">cyris</a></div>
   </main>
@@ -1189,6 +1189,13 @@ const lean = (dir) => {
   card.classList.toggle("lean-down", dir === "down");
 };
 const dirOf = (dx, min) => dx > min ? "up" : dx < -min ? "down" : null;
+/* The card or deck button that held focus when its vote began; with no card left the
+   buttons are hidden, so focus goes to the Triage switch instead. */
+let deckFocus = null;
+const refocusDeck = () => {
+  if (deckFocus) (($("#t-actions").hidden ? $('[data-raw-view="triage"]') : deckFocus)).focus();
+  deckFocus = null;
+};
 function settle() {
   const dir = card.dataset.flying;
   delete card.dataset.flying;
@@ -1199,16 +1206,19 @@ function settle() {
   void card.offsetWidth;
   card.classList.remove("dragging");
   busy(false);
+  refocusDeck();
 }
 /* The page POSTs /api/vote here; the prototype has no network, so a vote always lands. */
 const sendVote = () => Promise.resolve(true);
 const busy = (on) => $$("#t-actions button").forEach((b) => b.disabled = on);
 async function fly(dir) {
   if (!pending().length || card.dataset.flying || $("#t-up").disabled) return;
+  deckFocus = [card, ...$$("#t-actions button")].find((b) => b === document.activeElement) || null;
   busy(true);
   $("#t-error").hidden = true;
   if (!await sendVote(pending()[0], dir)) {
     busy(false);
+    refocusDeck();
     card.style.transform = "";
     lean(null);
     $("#t-error").hidden = false;
@@ -1253,6 +1263,12 @@ card.addEventListener("pointerup", endDrag);
 card.addEventListener("pointercancel", endDrag);
 card.addEventListener("keydown", (e) => {
   if (e.key === "Enter") window.open("#raw", "_blank", "noopener");
+});
+const ARROW_VOTES = { ArrowLeft: "down", ArrowRight: "up" };
+$("#raw-triage").addEventListener("keydown", (e) => {
+  if ($("#raw-triage").hidden || !Object.hasOwn(ARROW_VOTES, e.key)) return;
+  if (e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  fly(ARROW_VOTES[e.key]);
 });
 [["#t-up", "up"], ["#t-down", "down"]].forEach(([id, dir]) => {
   const b = $(id);

@@ -102,7 +102,7 @@
             <article class="card" id="t-card" tabindex="0" role="link"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
             <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">Down</button><button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>
             <p class="notice err" id="t-error" role="alert" hidden></p>
-            <p class="small" id="t-hint">Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
+            <p class="small" id="t-hint">Swipe left for down, right for up; with the card focused, ← and → do the same. Tap the card to open the article in a new tab.</p>
         </div>
 
         <div class="footer">// <a href="{{ project_url }}">cyris</a></div>
@@ -161,13 +161,17 @@
     // One card, one vote: set before the first await, so a second press or a drag
     // while the vote is in flight finds the deck taken.
     let busy = false;
-    // The deck button that held focus when its vote began, so a run of Enter presses
-    // keeps voting card after card.
+    // The card or deck button that held focus when its vote began, so a run of Enter or
+    // arrow presses keeps voting card after card.
     let deckFocus = null;
     // With no card left the buttons are hidden, so focus goes to the Triage switch instead.
+    // Firefox and Safari still report the just-hidden card as focused here, where Chromium
+    // has already dropped focus to the body, so focus left on deckFocus has not moved on.
     const refocusDeck = () => {
         const actions = document.getElementById('t-actions');
-        if (deckFocus) returnFocus(actions.hidden ? document.querySelector('[data-raw-view="triage"]') : deckFocus);
+        const target = actions.hidden ? document.querySelector('[data-raw-view="triage"]') : deckFocus;
+        if (deckFocus && document.activeElement === deckFocus) target.focus();
+        else if (deckFocus) returnFocus(target);
         deckFocus = null;
     };
 
@@ -176,7 +180,7 @@
         const [row] = pool();
         if (busy || !row) return;
         busy = true;
-        deckFocus = deckButtons.find((b) => b === document.activeElement) || null;
+        deckFocus = [card, ...deckButtons].find((b) => b === document.activeElement) || null;
         enableDeck(false);
         voteError.hidden = true;
         const failure = await castVote(row.querySelector('.vote-group'), dir);
@@ -260,6 +264,15 @@
     card.addEventListener('pointercancel', endDrag);
     card.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') openCard();
+    });
+    const ARROW_VOTES = { ArrowLeft: 'down', ArrowRight: 'up' };
+    // A modified arrow is left alone: Alt+Left is the browser's Back.
+    // The hidden check: focus can linger on the card for a frame after a switch to List.
+    const rawTriage = document.getElementById('raw-triage');
+    rawTriage.addEventListener('keydown', (e) => {
+        if (rawTriage.hidden || !Object.hasOwn(ARROW_VOTES, e.key)) return;
+        if (e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        voteCard(ARROW_VOTES[e.key]);
     });
     for (const b of deckButtons) {
         b.addEventListener('mouseenter', () => lean(b.dataset.dir));

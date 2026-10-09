@@ -365,11 +365,13 @@ and switching does not reload.
   The card is square, on `--surface`, with a 1px `--border-strong` border and no shadow; tilting towards
   up turns the border `--accent`, tilting towards down turns it `--warn`. Swiping left is down, swiping
   right is up, and a tap opens the original in a new tab. The card takes keyboard focus as a link, and
-  Enter on it opens the original the same way. Below it, a danger `Down` and a primary `Up` button sit
-  side by side, both 56px high, for desktops without touch; above it, a label shows
-  `N remaining`. Cards take only articles whose state is still pending and that have not been voted on
-  yet; to overturn an article the pipeline has already judged, vote in the list view. With no cards left,
-  only `0 remaining` remains.
+  Enter on it opens the original the same way. While the card or a deck button has focus, ← votes down
+  and → votes up as the swipes do, one vote per press; a held key votes once, and a modified arrow is
+  left to the browser. Focus stays where it was, or moves to the `Triage` switch once no card is left.
+  Below it, a danger `Down` and a primary `Up` button sit side by side, both 56px high, for desktops
+  without touch; above it, a label shows `N remaining`. Cards take only articles whose state is still
+  pending and that have not been voted on yet; to overturn an article the pipeline has already judged,
+  vote in the list view. With no cards left, only `0 remaining` remains.
 - A voted article shows its state in both views: the list's state text turns `accepted` for up and
   `rejected` for down. On a later visit, a vote this browser remembers changes only a row rendered
   `pending`, because each run applies the votes cast before it. Votes go through the existing promote Worker, with no new backend.
@@ -390,8 +392,9 @@ these differences, which keep it blind:
 - Above it, the page head's label shows `N of M answered · K remaining`. With no item left the card and
   its buttons go, and one small sentence says which command to run next.
 - The swipes, the tap and Enter that open the article, the lean colours, the answer-first fly-out and
-  reduced motion are raw's triage view's. A skip does not fly: the next card replaces it. An answer that
-  does not land leaves the card in place with an error notice below the buttons saying why.
+  reduced motion are raw's triage view's; raw's arrow keys do not answer here. A skip does not fly:
+  the next card replaces it. An answer that does not land leaves the card in place with an error
+  notice below the buttons saying why.
 - The page is 600px wide, raw's deck width, with settings' gutters. The site bar is settings', with no
   item marked current.
 

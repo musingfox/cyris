@@ -214,6 +214,11 @@ NO_ABORT_CONTROLLER = """window.AbortController = undefined;"""
 # A sabotage: focus() stops working, so nothing the page does can give focus back.
 NO_FOCUS = """HTMLElement.prototype.focus = function () {};"""
 
+# A sabotage: no arrow key reaches the page's own handlers.
+NO_ARROWS = """window.addEventListener("keydown", (e) => {
+  if (e.key.startsWith("Arrow")) e.stopImmediatePropagation();
+}, true);"""
+
 # Installed before the page loads: a new tab is recorded rather than opened.
 RECORD_OPEN = """
 window.__opened = [];
@@ -1021,6 +1026,180 @@ _CHECKS: list[Check] = [
             expect(same(opened, wanted), `opened: ${JSON.stringify(opened)}`);
         """,
         sabotage="""$("#t-card").removeAttribute("tabindex");""",
+        receipt=_posted(),
+    ),
+    # A keyboard reader votes with the arrows from the card or from a deck button; the key,
+    # not the focused button, picks the direction.
+    *(
+        Check(
+            id=check_id,
+            fixture="signed-in",
+            path=PAGE,
+            focused=True,
+            act=f"""
+                await showView("triage");
+                {focus}.focus();
+            """,
+            gestures=({"key": key},),
+            script=script,
+            sabotage=NO_ARROWS,
+            receipt=_posted(vote_body("pending-two", vote)),
+        )
+        for check_id, focus, key, vote, script in (
+            *(
+                (
+                    check_id,
+                    '$("#t-card")',
+                    key,
+                    vote,
+                    f"""
+                    await waitFor(() => deck()[0] === "3 remaining", "the next card");
+                    const wanted = ["3 remaining", "Source A", "Pending Three"];
+                    expect(same(deck(), wanted), `deck: ${{deck()}}`);
+                    expect(marked("Pending Two", "{vote}", "done"), "the row is not marked");
+                    """,
+                )
+                for check_id, key, vote in (
+                    ("deck-arrow-left-votes-down", "ArrowLeft", "down"),
+                    ("deck-arrow-right-votes-up", "ArrowRight", "up"),
+                )
+            ),
+            (
+                "deck-arrow-on-a-button-votes",
+                '$("#t-down")',
+                "ArrowRight",
+                "up",
+                """
+                await waitFor(() => deck()[0] === "3 remaining", "the next card");
+                const now = document.activeElement;
+                expect(now === $("#t-down"), `focus is on ${now && (now.id || now.tagName)}`);
+                """,
+            ),
+        )
+    ),
+    # A held arrow repeats keydown; only the press votes.
+    Check(
+        id="deck-held-arrow-votes-once",
+        fixture="signed-in",
+        path=PAGE,
+        focused=True,
+        act="""
+            await showView("triage");
+            $("#t-card").focus();
+        """,
+        gestures=({"key": "ArrowRight"},),
+        script="""
+            await waitFor(() => deck()[0] === "3 remaining", "the next card");
+            $("#t-card").dispatchEvent(
+                new KeyboardEvent("keydown", {key: "ArrowRight", repeat: true, bubbles: true}));
+            await sleep(400);
+            expect(deck()[0] === "3 remaining", `count: ${deck()[0]}`);
+        """,
+        sabotage="""
+            Object.defineProperty(KeyboardEvent.prototype, "repeat", {get: () => false});
+        """,
+        receipt=_posted(vote_body("pending-two", "up")),
+    ),
+    # The last card's arrow vote empties the deck, so focus lands on the Triage switch.
+    Check(
+        id="deck-last-arrow-focuses-the-switch",
+        fixture="signed-in",
+        path=PAGE,
+        preload=with_votes("pending-two", "pending-three", "pending-four"),
+        focused=True,
+        act="""
+            await showView("triage");
+            $("#t-card").focus();
+        """,
+        gestures=({"key": "ArrowRight"},),
+        sabotage=NO_FOCUS,
+        script="""
+            await waitFor(() => deck()[0] === "0 remaining", "the empty deck");
+            const now = document.activeElement;
+            const wanted = $('[data-raw-view="triage"]');
+            expect(now === wanted, `focus is on ${now && (now.id || now.tagName)}`);
+        """,
+        receipt=_posted(vote_body("six", "up")),
+    ),
+    # The arrows belong to the deck: in the List view they cast nothing.
+    Check(
+        id="list-arrow-no-vote",
+        fixture="signed-in",
+        path=PAGE,
+        focused=True,
+        act="""
+            await signedIn();
+            voteButton("Pending Two", "up").focus();
+        """,
+        gestures=({"key": "ArrowLeft"}, {"key": "ArrowRight"}),
+        script="""
+            await sleep(400);
+            expect($$(".promote-btn.done").length === 0, "a row was voted");
+            expect(stateOf("Pending Two").textContent === "pending", "the row changed state");
+        """,
+        sabotage="""Object.defineProperty($("#raw-triage"), "hidden", {get: () => false});
+        document.addEventListener("keydown", (e) => {
+            if (!e.isTrusted) return;
+            $("#t-card").dispatchEvent(new KeyboardEvent("keydown", {key: e.key, bubbles: true}));
+        });""",
+        receipt=_posted(),
+    ),
+    # Focus can linger on the card for a frame after a scripted switch to List.
+    Check(
+        id="list-arrow-after-switch-no-vote",
+        fixture="signed-in",
+        path=PAGE,
+        focused=True,
+        act="""
+            await showView("triage");
+            $("#t-card").focus();
+            $('[data-raw-view="list"]').click();
+        """,
+        gestures=({"key": "ArrowLeft"},),
+        script="""
+            await sleep(400);
+            expect($$(".promote-btn.done").length === 0, "a row was voted");
+            expect(stateOf("Pending Two").textContent === "pending", "the row changed state");
+        """,
+        sabotage="""Object.defineProperty($("#raw-triage"), "hidden", {get: () => false});""",
+        receipt=_posted(),
+    ),
+    # Only a key the deck maps votes; names inherited from Object.prototype are not keys.
+    Check(
+        id="deck-inherited-key-no-vote",
+        fixture="signed-in",
+        path=PAGE,
+        act="""await showView("triage");""",
+        script="""
+            for (const key of ["constructor", "toString", "__proto__"]) {
+                $("#t-card").dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true}));
+            }
+            await sleep(400);
+            expect(same(deck(), ["4 remaining", "Source A", "Pending Two"]), `deck: ${deck()}`);
+        """,
+        sabotage="""Object.hasOwn = () => true;""",
+        receipt=_posted(),
+    ),
+    # Alt+Left is the browser's Back, so a modified arrow is not a vote.
+    Check(
+        id="deck-modified-arrow-no-vote",
+        fixture="signed-in",
+        path=PAGE,
+        act="""await showView("triage");""",
+        script="""
+            for (const key of ["ArrowLeft", "ArrowRight"]) {
+                for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+                    $("#t-card").dispatchEvent(
+                        new KeyboardEvent("keydown", {key, [modifier]: true, bubbles: true}));
+                }
+            }
+            await sleep(400);
+            expect(deck()[0] === "4 remaining", `count: ${deck()[0]}`);
+            expect($$(".promote-btn.done").length === 0, "a row was voted");
+        """,
+        sabotage="""for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+            Object.defineProperty(KeyboardEvent.prototype, modifier, {get: () => false});
+        }""",
         receipt=_posted(),
     ),
     Check(

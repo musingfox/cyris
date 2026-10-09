@@ -1776,7 +1776,8 @@ TRIAGE_MARKUP = (
     '<div class="deck-actions" id="t-actions">'
     '<button class="btn danger" type="button" id="t-down" data-dir="down">Down</button>'
     '<button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>',
-    '<p class="small" id="t-hint">Swipe left for down, right for up.'
+    '<p class="small" id="t-hint">Swipe left for down, right for up;'
+    " with the card focused, ← and → do the same."
     " Tap the card to open the article in a new tab.</p>",
 )
 
