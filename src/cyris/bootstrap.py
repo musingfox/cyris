@@ -19,7 +19,7 @@ from cyris.adapters.promotions import sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
-from cyris.service_layer.ports import ArticleRepository, FetchSource, LLMClient
+from cyris.service_layer.ports import ArticleRepository, AskClef, FetchSource, LLMClient
 
 
 @cache
@@ -182,6 +182,19 @@ def build_send_email_alert() -> Callable[..., Any] | None:
     return partial(send_alert_mail, account_id=account_id, token=token)
 
 
+def build_ask_clef() -> AskClef | None:
+    """Clef bound to the Workers AI token, else the embedding one; None without either."""
+    from cyris.adapters.clef import ClefClient
+
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    token = os.environ.get("CLOUDFLARE_AI_TOKEN", "") or os.environ.get(
+        "CLOUDFLARE_EMBEDDING_API_TOKEN", ""
+    )
+    if not (account_id and token):
+        return None
+    return ClefClient(token, account_id).ask
+
+
 def build_d1_client(cfg: Config) -> Any | None:
     """The D1 connection, or None when `[store] backend` is still json."""
     if not cfg.app.store.is_d1:
@@ -308,6 +321,8 @@ class Deps:
     # reached by name, and a missing mail sender is None rather than an entry.
     send_email_alert: Callable[..., Any] | None = None
     send_discord_alert: Callable[..., Any] = send_discord_alert
+    # None without a Workers AI (or embedding) token and an account id.
+    ask_clef: AskClef | None = None
 
 
 def build_promotion_sync(
@@ -456,4 +471,5 @@ def build_deps(
         worker_domains=build_worker_domains(),
         send_email=build_send_email(),
         send_email_alert=build_send_email_alert(),
+        ask_clef=build_ask_clef(),
     )
