@@ -309,6 +309,7 @@ EXPECTED_ROUTES = {
     "email_send": 1,
     "discord_webhook": 1,
     "gemini_generate": 5,
+    "workers_ai_clef": 0,
     "rss_articles": 1,
     "newsletter_list": 1,
     "newsletter_ack": 1,

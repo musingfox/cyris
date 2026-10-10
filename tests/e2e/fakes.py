@@ -168,6 +168,13 @@ class Fakes:
                 r"/v1beta/models/[^/:]+:generateContent",
                 self.gemini,
             ),
+            (
+                "workers_ai_clef",
+                "POST",
+                CF,
+                CF_ACCOUNT + r"/ai/run/@cf/cloudflare/clef-flash",
+                self.clef,
+            ),
             ("rss_articles", "GET", "rss_host", r"/articles", self.rss_articles),
             ("newsletter_list", "GET", "newsletter_host", r"/newsletters", self.newsletters),
             ("newsletter_ack", "POST", "newsletter_host", r"/ack", self.newsletter_ack),
@@ -384,6 +391,15 @@ class Fakes:
 
     def promotions(self, request, entry):
         return _json(200, self.script["promotions"])
+
+    def clef(self, request, entry):
+        return _cf(
+            {
+                "model": "clef-flash",
+                "answers": {"q": {"type": "noul", "noul": 0.5}},
+                "usage": {"input_tokens": 842, "output_tokens": 0},
+            }
+        )
 
     # ---- Gemini ------------------------------------------------------------
 
