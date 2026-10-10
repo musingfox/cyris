@@ -73,6 +73,13 @@ def nearest(candidate: list[float], seeds: dict[str, list[float]]) -> tuple[str 
     return max(scored, key=lambda pair: pair[1])
 
 
+def nearest_k(vector: list[float], seeds: dict[str, list[float]], k: int) -> list[str]:
+    """The `k` closest seed keys, closest first; ties keep the seeds' order."""
+    scored = [(key, cosine(vector, seed)) for key, seed in seeds.items()]
+    scored.sort(key=lambda pair: pair[1], reverse=True)
+    return [key for key, _ in scored[:k]]
+
+
 @dataclass(frozen=True)
 class SimilarityVerdict:
     """What the vote signal says about one candidate article."""

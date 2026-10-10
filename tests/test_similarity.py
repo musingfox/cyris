@@ -10,6 +10,7 @@ from cyris.domain.similarity import (
     judge,
     max_similarity,
     nearest,
+    nearest_k,
     normalize,
 )
 
@@ -122,3 +123,28 @@ def test_seed_urls_name_each_side_s_nearest_without_changing_the_verdict():
         plain.down_similarity,
         plain.suppressed,
     )
+
+
+_K_SEEDS = {"a": [1.0, 0.0], "b": [0.0, 1.0], "c": [0.8, 0.6]}
+
+
+def test_nearest_k_names_the_k_closest_seeds_closest_first():
+    assert nearest_k([1.0, 0.0], _K_SEEDS, 2) == ["a", "c"]
+
+
+def test_nearest_k_returns_every_seed_when_fewer_than_k():
+    assert nearest_k([1.0, 0.0], _K_SEEDS, 5) == ["a", "c", "b"]
+
+
+def test_nearest_k_without_seeds_is_empty():
+    assert nearest_k([1.0, 0.0], {}, 5) == []
+
+
+def test_nearest_k_ties_keep_the_seeds_insertion_order():
+    seeds = {"x": [0.6, 0.8], "y": [0.6, 0.8]}
+    assert nearest_k([1.0, 0.0], seeds, 1) == ["x"]
+
+
+def test_nearest_k_rejects_a_seed_of_another_length():
+    with pytest.raises(ValueError):
+        nearest_k([1.0, 0.0], {"a": [1.0]}, 1)
