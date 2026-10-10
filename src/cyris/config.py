@@ -185,6 +185,9 @@ class DigestConfig(BaseModel):
     # Order the headlines and Features by vote similarity's preference before the
     # issue cap cuts them; false keeps the model's order. See docs/architecture.md §3.2.
     rank_by_preference: bool
+    # Which judge scores the vote order: cosine is vote similarity's title match, clef
+    # is the Workers AI model; an issue clef cannot fully score falls back to cosine.
+    preference_source: Literal["cosine", "clef"]
 
 
 class AgentVaultConfig(BaseModel):

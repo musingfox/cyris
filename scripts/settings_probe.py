@@ -198,6 +198,7 @@ _PROBE_VALUES = {
     "digest.style_prompt": "x",
     "digest.type_scale": 1,
     "digest.rank_by_preference": False,
+    "digest.preference_source": "cosine",
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,

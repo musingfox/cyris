@@ -929,6 +929,18 @@ tr.editor[inert] .form { opacity: .4; }
               <p class="small">How large the text is on every page.</p>
               <details class="more"><summary>More</summary><p class="small">It applies within a minute, to issues already published too, except those rendered before this setting existed and pages opened on pages.dev directly.</p></details>
             </div>
+            <div class="field">
+              <label class="label" for="rank-by-preference">Order by your votes</label>
+              <select class="select" id="rank-by-preference"><option value="false">Off</option><option value="true" selected>On</option></select>
+              <p class="small">Put the headlines and Features closest to what you voted up first.</p>
+              <details class="more"><summary>More</summary><p class="small">It works while vote similarity is on (Model). When an issue is full, the headlines it leaves out stay for the next issue; none is dropped. Off keeps the model's order.</p></details>
+            </div>
+            <div class="field">
+              <label class="label" for="preference-source">Order judged by</label>
+              <select class="select" id="preference-source"><option value="cosine">Title similarity</option><option value="clef">Clef</option></select>
+              <p class="small">Who decides which headlines are closest to your votes.</p>
+              <details class="more"><summary>More</summary><p class="small">Clef needs a Workers AI token. An issue Clef cannot fully score uses title similarity.</p></details>
+            </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
               <div class="notice" role="status" hidden>Publish hours 08:00 and 20:00. Applies from the next tick.</div>

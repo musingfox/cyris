@@ -37,6 +37,7 @@ class TestLoadConfig:
         assert cfg.app.general.timezone == "Asia/Taipei"
         assert cfg.app.llm_provider.model == "claude-sonnet-4-6"
         assert cfg.app.llm_provider.api_key == "test-anthropic-key"
+        assert cfg.app.digest.preference_source == "cosine"
 
         # Curated teaching sample covering the main source shapes.
         assert len(cfg.sources) == 5
@@ -472,6 +473,8 @@ class TestValidateSetting:
             ("llm_provider.model", "", ""),
             ("vote_similarity.model", "", ""),
             ("notify.discord_webhook_url", "", ""),
+            ("digest.preference_source", "cosine", "cosine"),
+            ("digest.preference_source", "clef", "clef"),
         ],
     )
     def test_an_acceptable_value_comes_back(self, key, value, expected):
@@ -492,6 +495,8 @@ class TestValidateSetting:
             ("digest.output_language", "  ", None),
             ("llm_provider.provider", None, "required"),
             ("vote_similarity.provider", "openai", None),
+            ("digest.preference_source", True, "Input should be 'cosine' or 'clef'"),
+            ("digest.preference_source", "embedding", "Input should be 'cosine' or 'clef'"),
             ("digest.bogus", 1, "not a settings key"),
         ],
     )
@@ -572,10 +577,16 @@ class TestJsonSettingsFromFileOnly:
         assert cfg.present_settings() == {}
         assert cfg.config_file_found is False
 
-    def test_a_file_with_one_key_leaves_the_other_twenty_three_missing(self, tmp_path):
+    def test_a_file_without_the_vote_order_judge_leaves_the_digest_unset(self, tmp_path):
+        cfg = self._load(tmp_path, settings_toml(omit=["digest.preference_source"]))
+
+        assert cfg.app.digest is None
+        assert cfg.missing_settings == ["digest.preference_source"]
+
+    def test_a_file_with_one_key_leaves_the_other_twenty_four_missing(self, tmp_path):
         cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
 
-        assert len(cfg.missing_settings) == 23
+        assert len(cfg.missing_settings) == 24
         assert "general.timezone" not in cfg.missing_settings
         assert cfg.present_settings() == {"general.timezone": "UTC"}
 

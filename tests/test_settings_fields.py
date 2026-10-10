@@ -22,6 +22,16 @@ def test_every_field_control_is_on_the_page(key: str) -> None:
         assert f'id="{control}"' in page, f"{key}: no #{control}"
 
 
+def test_the_vote_order_judge_is_a_select_in_the_digest_form() -> None:
+    page = render_settings_page()
+    form = re.search(r'<form[^>]*id="digest-form".*?</form>', page, re.S)
+    assert form, "no digest form"
+    select = re.search(r'<select class="select" id="preference-source">(.*?)</select>', form[0])
+    assert select, "no #preference-source in the digest form"
+    options = re.findall(r'<option value="([^"]*)">([^<]*)</option>', select[1])
+    assert options == [("cosine", "Title similarity"), ("clef", "Clef")]
+
+
 async def test_the_page_reads_its_fields_from_the_api() -> None:
     client = TestClient(TestServer(TriageServer()._app))
     await client.start_server()

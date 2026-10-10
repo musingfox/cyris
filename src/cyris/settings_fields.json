@@ -113,6 +113,14 @@
     ],
     "route": "plain"
   },
+  "digest.preference_source": {
+    "tab": "digest",
+    "label": "Order judged by",
+    "controls": [
+      "preference-source"
+    ],
+    "route": "plain"
+  },
   "general.digest_window_hours": {
     "tab": "pipeline",
     "label": "Window (hours)",

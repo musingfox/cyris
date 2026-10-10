@@ -223,6 +223,16 @@ class TestEveryKeyReported:
         assert data["values"] == dict.fromkeys(GRADE_D_KEYS)
         assert data["writable"] is True
 
+    async def test_a_home_without_the_vote_order_judge_reports_only_it_missing(self, settings):
+        values = {k: v for k, v in TEST_SETTINGS.items() if k != "digest.preference_source"}
+        client = await _client(settings, values)
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["missing"] == ["digest.preference_source"]
+        assert data["values"]["digest.preference_source"] is None
+
     async def test_the_keys_an_empty_field_answers_are_named(self, settings):
         client = await _client(settings, {})
 
@@ -410,6 +420,33 @@ class TestPlainValues:
         assert res.status == 200
         assert body["values"] == {"digest.rank_by_preference": True}
         assert settings.calls == [{"digest.rank_by_preference": True}]
+
+    async def test_the_vote_order_judge_is_stored(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.preference_source": "clef"}}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["values"] == {"digest.preference_source": "clef"}
+        assert settings.calls == [{"digest.preference_source": "clef"}]
+
+    async def test_an_unknown_vote_order_judge_is_refused(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.preference_source": "embedding"}}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["error"] == "Order judged by: Input should be 'cosine' or 'clef'"
+        assert body["field"] == "digest.preference_source"
+        assert settings.calls == []
 
     async def test_the_type_size_as_a_string_is_refused(self, settings):
         client = await _client(settings)
