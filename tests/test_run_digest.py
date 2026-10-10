@@ -14,6 +14,7 @@ import pytest
 import respx
 from fakes import FakeLLM, make_config
 
+from cyris.adapters.clef import ClefClient, ClefError
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
 from cyris.adapters.store import ArticleStore
@@ -32,6 +33,7 @@ from cyris.domain.models import (
     Tier,
     UsageStats,
 )
+from cyris.service_layer.ports import NoulAnswer
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 from cyris.utils.timezone import now_in_timezone
 
@@ -2627,6 +2629,7 @@ async def test_every_run_summary_carries_its_start_time(tmp_path: Path) -> None:
 
 _LEANS_DISLIKED = "https://example.com/leans-disliked"
 _LEANS_LIKED = "https://example.com/leans-liked"
+_CLEF_PICK = "https://example.com/clef-pick"
 _OFF_TOPIC = "https://example.com/off-topic"
 
 
@@ -2636,6 +2639,7 @@ class _RankEmbedder(_TitleEmbedder):
         "Disliked before": [0.0, 1.0, 0.0],
         "Leans disliked": [0.6, 1.0, 0.6],
         "Leans liked": [1.0, 0.6, 0.6],
+        "Clef pick": [0.5, 0.5, 1.0],
         "Off topic": [0.0, 0.0, 1.0],
     }
 
@@ -2644,28 +2648,68 @@ def _headline_article(article_id: int, title: str, url: str) -> Article:
     return _vote_article(article_id, title, url).model_copy(update={"source_tier": Tier.FILTER})
 
 
+_KEPT = ("Leans disliked", "Leans liked", "Clef pick")
+
+
+class _FakeClef:
+    """Answers by article title; an Exception value is raised instead."""
+
+    def __init__(self, answers: dict[str, float | Exception]) -> None:
+        self.answers = answers
+        self.calls: list[str] = []
+
+    async def __call__(self, state: dict, instructions: str) -> NoulAnswer:
+        title = state["article"]["title"]
+        self.calls.append(title)
+        answer = self.answers[title]
+        if isinstance(answer, Exception):
+            raise answer
+        return NoulAnswer(noul=answer, model="clef-flash", input_tokens=842)
+
+
+_CLEF_ANSWERS = {"Leans disliked": 0.5, "Leans liked": 0.1, "Clef pick": 0.9}
+
+
 def _ranking_deps(
-    tmp_path: Path, *, rank: bool, similarity: bool = True, votes: bool = True
+    tmp_path: Path,
+    *,
+    rank: bool,
+    similarity: bool = True,
+    votes: bool = True,
+    source: str = "cosine",
+    ask_clef=None,
+    kept: tuple[str, ...] = _KEPT,
+    log_usage=None,
 ) -> tuple[Deps, list, list[dict]]:
-    """Three headlines: the model keeps two, disliked first, and the issue has room for one."""
+    """Headlines the model keeps, disliked first, and the issue has room for one."""
     candidates = [
         _headline_article(1, "Leans disliked", _LEANS_DISLIKED),
         _headline_article(2, "Leans liked", _LEANS_LIKED),
         _headline_article(3, "Off topic", _OFF_TOPIC),
+        _headline_article(4, "Clef pick", _CLEF_PICK),
     ]
+    pool = ("Leans disliked", "Leans liked", "Off topic", "Clef pick")
     selected = [
-        {"id": 0, "title": "Leans disliked", "source": "NotifySource"},
-        {"id": 1, "title": "Leans liked", "source": "NotifySource"},
+        {"id": pool.index(title), "title": title, "source": "NotifySource"} for title in kept
     ]
     llm = FakeLLM([json.dumps({"scores": []}), json.dumps({"selected": selected})])
     contents: list = []
     deps, _ = make_deps(tmp_path, llm, FakeSource(candidates), discord_contents=contents)
     deps.cfg.app.digest.max_articles_per_digest_output = 1
     deps.cfg.app.digest.rank_by_preference = rank
+    deps.cfg.app.digest.preference_source = source
     deps.cfg.app.vote_similarity.enabled = similarity
     # No candidate reaches a cosine of 1.0, so nothing is suppressed and only the order moves.
     deps, recorded = _recording(
-        replace(deps, embedder=_RankEmbedder(), embedding_threshold=1.0, record_similarity=None)
+        replace(
+            deps,
+            embedder=_RankEmbedder(),
+            embedding_threshold=1.0,
+            embedding_model="test-embedding-model",
+            record_similarity=None,
+            ask_clef=ask_clef,
+            log_usage=log_usage or deps.log_usage,
+        )
     )
     deps.store.save(candidates)
     if votes:
@@ -2750,6 +2794,163 @@ async def test_without_a_similarity_verdict_nothing_is_reordered(
     [summary] = recorded
     assert summary["preference_rank_applied"] is False
     assert summary["preference_rank_skipped"] == reason
+
+
+async def test_cosine_names_its_source_and_model_in_the_summary(tmp_path: Path) -> None:
+    clef = _FakeClef(_CLEF_ANSWERS)
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=True, ask_clef=clef)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert _headlines(contents[0]) == ["Leans liked"]
+    assert summary["preference_source"] == "cosine"
+    assert summary["preference_model"] == "test-embedding-model"
+    assert "preference_clef_skipped" not in summary
+    assert "clef" not in summary
+    assert clef.calls == []
+
+
+async def test_clef_orders_the_issue_and_reports_its_spend(tmp_path: Path) -> None:
+    clef = _FakeClef(_CLEF_ANSWERS)
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=True, source="clef", ask_clef=clef)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert _headlines(contents[0]) == ["Clef pick"]
+    assert summary["preference_source"] == "clef"
+    assert summary["preference_model"] == "clef-flash"
+    assert summary["clef"] == {
+        "calls": 3,
+        "answered": 3,
+        "input_tokens": 2526,
+        "model": "clef-flash",
+    }
+    assert summary["preference_rank_moved_headlines"] == 1
+    assert sorted(clef.calls) == sorted(_KEPT)
+
+
+async def test_a_failed_clef_question_leaves_the_cosine_order_and_a_reason(tmp_path: Path) -> None:
+    clef = _FakeClef({**_CLEF_ANSWERS, "Leans liked": ClefError("x")})
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=True, source="clef", ask_clef=clef)
+
+    report = await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert report.status == summary["status"] == "ok"
+    assert _headlines(contents[0]) == ["Leans liked"]
+    assert summary["preference_source"] == "cosine"
+    assert summary["preference_clef_skipped"] == "clef failed: ClefError: x"
+
+
+async def test_clef_without_a_client_leaves_the_cosine_order_and_a_reason(tmp_path: Path) -> None:
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=True, source="clef", ask_clef=None)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert _headlines(contents[0]) == ["Leans liked"]
+    assert summary["preference_clef_skipped"] == "no Workers AI token or account id"
+    assert "clef" not in summary
+
+
+async def test_ranking_off_ignores_the_clef_source(tmp_path: Path) -> None:
+    clef = _FakeClef(_CLEF_ANSWERS)
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=False, source="clef", ask_clef=clef)
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert _headlines(contents[0]) == ["Leans disliked"]
+    assert summary["preference_rank_applied"] is False
+    assert summary["preference_rank_skipped"] == "switched off"
+    assert "preference_source" not in summary
+    assert "preference_clef_skipped" not in summary
+    assert clef.calls == []
+
+
+async def test_the_clef_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Path) -> None:
+    on, _, _ = _ranking_deps(
+        tmp_path / "on", rank=True, source="clef", ask_clef=_FakeClef(_CLEF_ANSWERS)
+    )
+    off, _, _ = _ranking_deps(tmp_path / "off", rank=False)
+
+    await run_digest(on, RunOptions())
+    await run_digest(off, RunOptions())
+
+    urls = [_LEANS_DISLIKED, _LEANS_LIKED, _CLEF_PICK, _OFF_TOPIC]
+    on_rows = {a.url: a for a in on.store.get_by_urls(urls)}
+    off_rows = {a.url: a for a in off.store.get_by_urls(urls)}
+    rejected = {u for u, a in on_rows.items() if a.state == ArticleState.REJECTED}
+    assert rejected == {u for u, a in off_rows.items() if a.state == ArticleState.REJECTED}
+    assert rejected == {_OFF_TOPIC}
+    assert [a.triaged_at for a in (*on_rows.values(), *off_rows.values())] == [None] * 8
+    assert on_rows[_CLEF_PICK].state == ArticleState.ACCEPTED
+    assert on_rows[_LEANS_DISLIKED].state == ArticleState.PENDING
+    assert on_rows[_LEANS_LIKED].state == ArticleState.PENDING
+
+
+async def test_clef_spend_stays_out_of_the_llm_usage(tmp_path: Path) -> None:
+    logged: dict[str, list] = {"clef": [], "cosine": []}
+    clef_deps, _, clef_recorded = _ranking_deps(
+        tmp_path / "clef",
+        rank=True,
+        source="clef",
+        ask_clef=_FakeClef(_CLEF_ANSWERS),
+        log_usage=lambda content: logged["clef"].append(content.usage.model_dump()),
+    )
+    cosine_deps, _, cosine_recorded = _ranking_deps(
+        tmp_path / "cosine",
+        rank=True,
+        log_usage=lambda content: logged["cosine"].append(content.usage.model_dump()),
+    )
+
+    await run_digest(clef_deps, RunOptions())
+    await run_digest(cosine_deps, RunOptions())
+
+    [clef_summary], [cosine_summary] = clef_recorded, cosine_recorded
+    assert clef_summary["llm"] == cosine_summary["llm"]
+    assert logged["clef"] == logged["cosine"]
+    assert len(logged["clef"]) == 1
+    assert clef_summary["degraded"] == cosine_summary["degraded"]
+    assert clef_summary["clef"]["input_tokens"] == 2526
+    assert "clef" not in cosine_summary
+
+
+_CLEF_RUN_URL = (
+    "https://api.cloudflare.com/client/v4/accounts/acct-clef/ai/run/@cf/cloudflare/clef-flash"
+)
+
+
+@pytest.mark.parametrize("with_client", [True, False], ids=["refused", "no-client"])
+async def test_a_refused_clef_call_leaks_no_token(tmp_path: Path, caplog, with_client) -> None:
+    ask = (
+        ClefClient(api_token="tok-secret-clef", account_id="acct-clef").ask if with_client else None
+    )
+    deps, _, recorded = _ranking_deps(
+        tmp_path, rank=True, source="clef", ask_clef=ask, kept=("Leans liked",)
+    )
+    refusal = {"success": False, "errors": [{"code": 10000, "message": "Authentication error"}]}
+
+    with caplog.at_level("DEBUG"):
+        async with respx.mock:
+            route = respx.post(_CLEF_RUN_URL).mock(return_value=httpx.Response(401, json=refusal))
+            report = await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert report.status == "ok"
+    if with_client:
+        assert route.call_count == 1
+        assert summary["preference_clef_skipped"].startswith(
+            "clef failed: ClefError: Clef refused the request (HTTP 401)"
+        )
+        assert route.calls[0].request.headers["authorization"] == "Bearer tok-secret-clef"
+    else:
+        assert route.call_count == 0
+        assert summary["preference_clef_skipped"] == "no Workers AI token or account id"
+    assert "tok-secret-clef" not in json.dumps(summary)
+    assert "tok-secret-clef" not in caplog.text
 
 
 # ---- tracked topics: a section of hits, no LLM call, no title embedded twice ----------
@@ -2883,3 +3084,32 @@ async def test_a_failed_tracking_embedding_leaves_the_digest(tmp_path: Path) -> 
     assert report.status == "ok"
     assert contents[0].tracked_topics == []
     assert summary["tracking"]["skipped"] == {"AI at work": "embedding failed: embedding API down"}
+
+
+async def test_a_string_token_count_from_clef_never_fails_the_run(tmp_path: Path) -> None:
+    deps, contents, recorded = _ranking_deps(
+        tmp_path,
+        rank=True,
+        source="clef",
+        ask_clef=ClefClient(api_token="tok", account_id="acct-clef").ask,
+    )
+    body = {
+        "success": True,
+        "result": {
+            "model": "clef-flash",
+            "answers": {"q": {"type": "noul", "noul": 0.5}},
+            "usage": {"input_tokens": "842"},
+        },
+    }
+
+    async with respx.mock:
+        route = respx.post(_CLEF_RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        report = await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert report.status == "ok"
+    assert summary["status"] == "ok"
+    assert route.call_count == 3
+    assert summary["preference_source"] == "clef"
+    assert summary["clef"]["input_tokens"] is None
+    assert len(contents) == 1

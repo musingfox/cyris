@@ -23,11 +23,11 @@ from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.schedule import Period
 from cyris.service_layer.scoring import score_in_batches, select_scorable
+from cyris.service_layer.vote_order import VoteOrder
 from cyris.utils.timezone import now_in_timezone
 
 if TYPE_CHECKING:
     from cyris.bootstrap import Deps
-    from cyris.service_layer.vote_similarity import VoteSimilarityReport
 
 logger = logging.getLogger(__name__)
 
@@ -55,19 +55,6 @@ def _newest(articles: list[StoredArticle], n: int) -> list[StoredArticle]:
     """
     keep = {a.url for a in sorted(articles, key=lambda a: a.published_at, reverse=True)[:n]}
     return [a for a in articles if a.url in keep]
-
-
-def _vote_preference(
-    rank: bool, similarity: "VoteSimilarityReport | None"
-) -> tuple[dict[str, float] | None, str]:
-    """Each judged candidate's preference, or why this issue keeps the model's order."""
-    if not rank:
-        return None, "switched off"
-    if similarity is None:
-        return None, "vote similarity off"
-    if not similarity.ran:
-        return None, f"vote similarity skipped: {similarity.skipped_reason}"
-    return {url: verdict.net for url, verdict in similarity.verdicts.items()}, ""
 
 
 def _render_site(
@@ -470,7 +457,14 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             if tracking.skipped:
                 logger.warning("Tracked topics skipped: %s", tracking.skipped)
 
-    preference, unranked_reason = _vote_preference(cfg.app.digest.rank_by_preference, similarity)
+    order = VoteOrder(
+        rank=cfg.app.digest.rank_by_preference,
+        source=cfg.app.digest.preference_source,
+        similarity=similarity,
+        ask_clef=deps.ask_clef,
+        embedding_model=deps.embedding_model,
+        snippet_length=cfg.app.digest.scoring_snippet_length,
+    )
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}
     digest_articles = [a.to_article() for a in pending_articles]
 
@@ -492,24 +486,22 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         style_prompt=cfg.app.digest.style_prompt,
     )
 
-    async def provide_preference(_kept):
-        return preference
-
     result = await digest_pipeline.process(
         digest_articles,
         cfg.sources,
         period=options.period,
         timezone=tz,
         article_scores=article_scores,
-        preference=provide_preference,
+        preference=order,
     )
     content = result.content
     summary["preference_rank_applied"] = result.preference_moves is not None
     if result.preference_moves is None:
-        summary["preference_rank_skipped"] = unranked_reason
+        summary["preference_rank_skipped"] = order.receipt.skipped
     else:
         summary["preference_rank_moved_headlines"] = result.preference_moves["headlines"]
         summary["preference_rank_moved_features"] = result.preference_moves["features"]
+    summary.update(order.receipt.as_summary())
     # A view, not a verdict: no hit changes its article's state or the issue's counts.
     content.tracked_topics = tracked_sections
     if not options.dry_run and deps.tag_store is not None and result.url_to_tags:
