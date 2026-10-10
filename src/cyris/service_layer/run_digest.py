@@ -491,13 +491,17 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         output_language=cfg.app.digest.output_language,
         style_prompt=cfg.app.digest.style_prompt,
     )
+
+    async def provide_preference(_kept):
+        return preference
+
     result = await digest_pipeline.process(
         digest_articles,
         cfg.sources,
         period=options.period,
         timezone=tz,
         article_scores=article_scores,
-        preference=preference,
+        preference=provide_preference,
     )
     content = result.content
     summary["preference_rank_applied"] = result.preference_moves is not None

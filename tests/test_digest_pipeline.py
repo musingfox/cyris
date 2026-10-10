@@ -606,3 +606,113 @@ async def test_an_article_layering_or_the_cap_leaves_out_stays_pending(
 
     assert set(result.accepted_urls) == {f"https://essays.example/{n}" for n in shown}
     assert result.rejected_urls == []
+
+
+def _scored_item(article: Article, score: float, title: str | None = None) -> DigestItem:
+    return _item(article).model_copy(update={"title": title or article.title, "score": score})
+
+
+class TestKeptItemsReachThePreference:
+    """The vote order scores what this issue kept, in the articles' fetched text."""
+
+    @staticmethod
+    def _kept_issue():
+        h1, h2, h3 = (_article(i, Tier.FILTER, "TechCrunch") for i in (1, 2, 3))
+        s1, s2 = (_article(i, Tier.SUMMARIZE, "Stratechery") for i in (4, 5))
+        h1.title, h2.title = "Original one", "Original two"
+        translated = [_item(h1).model_copy(update={"title": "譯一"})]
+        translated.append(_item(h2).model_copy(update={"title": "譯二"}))
+        sections = [
+            DigestSection(heading="Theme", items=[_scored_item(s1, 90), _scored_item(s2, 80)])
+        ]
+        return [h1, h2, h3, s1, s2], translated, sections
+
+    async def _process(self, articles, sample_sources, *, headlines, sections, preference, news=()):
+        pipeline = DigestPipeline(
+            FakeLLM(),
+            **pipeline_settings(summarize_score_threshold=0, featured_threshold=100),
+        )
+        with (
+            patch(
+                "cyris.service_layer.digest_pipeline.filter_articles",
+                new_callable=AsyncMock,
+                return_value=headlines,
+            ),
+            patch(
+                "cyris.service_layer.digest_pipeline.summarize_articles",
+                new_callable=AsyncMock,
+                return_value=sections,
+            ),
+            patch(
+                "cyris.service_layer.digest_pipeline.cluster_news",
+                new_callable=AsyncMock,
+                return_value=(list(news), []),
+            ),
+        ):
+            return await pipeline.process(
+                articles,
+                sample_sources,
+                timezone=TEST_SETTINGS["general.timezone"],
+                article_scores={a.url: 1.0 for a in articles},
+                preference=preference,
+            )
+
+    async def test_the_preference_sees_the_kept_headlines_and_features_in_original_text(
+        self, sample_sources
+    ):
+        articles, headlines, sections = self._kept_issue()
+        asked: list[list[Article]] = []
+
+        async def preference(kept):
+            asked.append(kept)
+            return None
+
+        await self._process(
+            articles, sample_sources, headlines=headlines, sections=sections, preference=preference
+        )
+
+        [kept] = asked
+        assert [a.url for a in kept] == [articles[0].url, articles[1].url, articles[4].url]
+        assert [a.title for a in kept] == ["Original one", "Original two", articles[4].title]
+
+    async def test_a_news_cluster_never_reaches_the_preference(self, sample_sources):
+        articles, headlines, sections = self._kept_issue()
+        wire = Article(
+            id=9,
+            title="Wire story",
+            url="https://news.example/9",
+            content="News content",
+            published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            source_name="Wire",
+            source_tier=Tier.FILTER,
+            source_tags=["news"],
+        )
+        cluster = DigestSection(heading="News", items=[_item(wire)])
+        asked: list[list[Article]] = []
+
+        async def preference(kept):
+            asked.append(kept)
+            return None
+
+        await self._process(
+            [*articles, wire],
+            sample_sources,
+            headlines=headlines,
+            sections=sections,
+            preference=preference,
+            news=[cluster],
+        )
+
+        [kept] = asked
+        assert wire.url not in [a.url for a in kept]
+        assert len(kept) == 3
+
+    async def test_without_a_preference_nothing_is_asked_and_nothing_moves(self, sample_sources):
+        articles, headlines, sections = self._kept_issue()
+
+        result = await self._process(
+            articles, sample_sources, headlines=headlines, sections=sections, preference=None
+        )
+
+        assert result.preference_moves is None
+

@@ -2,7 +2,7 @@
 
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -33,6 +33,8 @@ from cyris.service_layer.summarize import (
 from cyris.utils.timezone import now_in_timezone
 
 logger = logging.getLogger(__name__)
+
+PreferenceSource = Callable[[list[Article]], Awaitable[Mapping[str, float] | None]]
 
 
 def _story_id(date: str, period: str, member_urls: list[str]) -> str:
@@ -83,7 +85,7 @@ class DigestPipeline:
         *,
         timezone: str,
         article_scores: dict[str, float] | None = None,
-        preference: Mapping[str, float] | None = None,
+        preference: PreferenceSource | None = None,
     ) -> ProcessResult:
         """Process articles through tier-based pipeline.
 
@@ -95,8 +97,8 @@ class DigestPipeline:
             sources: Source configs keyed by name.
             period: Digest period ("morning" or "evening").
             timezone: IANA timezone for date formatting.
-            preference: Article URL to the reader's vote preference, which orders
-                the headlines and Features before the cap; None keeps the model's order.
+            preference: Scores the articles this issue kept, by URL, to order the
+                headlines and Features before the cap; None keeps the model's order.
 
         Returns:
             ProcessResult with content and URL classification.
@@ -273,11 +275,23 @@ class DigestPipeline:
         laid_out = layer_by_score(
             content, featured_threshold=self.featured_threshold, max_featured=self.max_featured
         )
+        scores = None
+        if preference is not None:
+            by_url = {a.url: a for a in articles}
+            kept_urls = dict.fromkeys(
+                url
+                for entry in (
+                    *laid_out.filtered_headlines,
+                    *(item for section in laid_out.featured_articles[1:] for item in section.items),
+                )
+                for url in entry.urls
+            )
+            scores = await preference([by_url[u] for u in kept_urls if u in by_url])
         content = select_digest_articles(
-            laid_out, max_items=self.max_digest_output, preference=preference
+            laid_out, max_items=self.max_digest_output, preference=scores
         )
         moves = None
-        if preference is not None:
+        if scores is not None:
             unranked = select_digest_articles(laid_out, max_items=self.max_digest_output)
             moves = preference_moves(unranked, content)
         # Accepted means shown in this issue. What the cap cut, or the summarizer
