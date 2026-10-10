@@ -33,7 +33,12 @@
     "pages_deploy.timeout_seconds": "cyris.adapters.output.pages_deploy:TIMEOUT_SECONDS",
     "probe.llm_timeout_seconds": "cyris.diagnostics.doctor:LLM_PROBE_TIMEOUT_SECONDS",
     "probe.embedding_timeout_seconds": "cyris.diagnostics.doctor:EMBEDDING_PROBE_TIMEOUT_SECONDS",
-    "probe.discord_timeout_seconds": "cyris.diagnostics.doctor:DISCORD_PROBE_TIMEOUT_SECONDS"
+    "probe.discord_timeout_seconds": "cyris.diagnostics.doctor:DISCORD_PROBE_TIMEOUT_SECONDS",
+    "clef.model": "cyris.adapters.clef:CLEF_MODEL",
+    "clef.request_timeout_seconds": "cyris.adapters.clef:CLEF_REQUEST_TIMEOUT_SECONDS",
+    "clef.neighbours_per_side": "cyris.service_layer.vote_order:CLEF_NEAREST_VOTES",
+    "clef.concurrency": "cyris.service_layer.vote_order:CLEF_CONCURRENCY",
+    "clef.pass_seconds": "cyris.service_layer.vote_order:CLEF_PASS_SECONDS"
   },
   "baked_env": ["CYRIS_GIT_SHA", "CYRIS_APP_WORKER_NAME"],
   "identity": {

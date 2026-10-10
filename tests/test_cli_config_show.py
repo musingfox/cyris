@@ -152,6 +152,19 @@ def test_a_baked_threshold_is_labelled_code(tmp_path: Path) -> None:
     assert rows["feed_health.unhealthy_failure_streak"] == (str(UNHEALTHY_FAILURE_STREAK), "code")
 
 
+def test_the_clef_constants_are_listed_as_code(tmp_path: Path) -> None:
+    result = _show(tmp_path, settings_toml())
+
+    rows = _rows(result.stdout)
+    assert {k: v for k, v in rows.items() if k.startswith("clef.")} == {
+        "clef.model": ('"@cf/cloudflare/clef-flash"', "code"),
+        "clef.request_timeout_seconds": ("20", "code"),
+        "clef.neighbours_per_side": ("5", "code"),
+        "clef.concurrency": ("8", "code"),
+        "clef.pass_seconds": ("60", "code"),
+    }
+
+
 def test_the_embedding_threshold_follows_the_calibrated_model(tmp_path: Path) -> None:
     toml = settings_toml(**{"vote_similarity.provider": "workers_ai", "vote_similarity.model": ""})
 
