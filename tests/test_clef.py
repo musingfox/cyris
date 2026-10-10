@@ -88,3 +88,150 @@ async def test_gives_up_after_three_503s(backoff_sleeps):
     assert "busy" in str(err.value)
     assert route.call_count == 3
     assert backoff_sleeps == [1, 2]
+
+
+async def test_a_400_raises_with_cloudflares_reason(backoff_sleeps):
+    # Error body is the Cloudflare v4 envelope.
+    body = {"success": False, "errors": [{"code": 5006, "message": "Type mismatch of '/model'"}]}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(400, json=body))
+        with pytest.raises(ClefError) as err:
+            await _client().ask(STATE, "I")
+
+    assert "HTTP 400" in str(err.value)
+    assert "Type mismatch of '/model'" in str(err.value)
+    assert route.call_count == 1
+    assert backoff_sleeps == []
+
+
+async def test_a_401_error_never_carries_the_token():
+    body = {"success": False, "errors": [{"code": 10000, "message": "Authentication error"}]}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(401, json=body))
+        with pytest.raises(ClefError) as err:
+            await _client("tok-secret-clef").ask(STATE, "I")
+
+    assert "tok-secret-clef" not in str(err.value)
+    assert route.call_count == 1
+
+
+async def test_a_2xx_that_says_it_failed_is_an_answer_without_a_noul():
+    body = {"success": False, "errors": [{"code": 1, "message": "nope"}], "result": None}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        with pytest.raises(ClefError, match="without a noul probability"):
+            await _client().ask(STATE, "I")
+
+    assert route.call_count == 1
+
+
+async def test_an_answer_without_a_noul_raises():
+    body = {
+        **ANSWER,
+        "result": {"model": "clef-flash", "answers": {}, "usage": {"input_tokens": 842}},
+    }
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        with pytest.raises(ClefError, match="without a noul"):
+            await _client().ask(STATE, "I")
+
+    assert route.call_count == 1
+
+
+async def test_a_non_numeric_noul_raises():
+    body = {**ANSWER, "result": {"answers": {"q": {"type": "noul", "noul": "high"}}}}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        with pytest.raises(ClefError):
+            await _client().ask(STATE, "I")
+
+    assert route.call_count == 1
+
+
+_UNUSABLE = [
+    pytest.param({"success": True, "result": "x"}, id="result-not-a-dict"),
+    pytest.param({"success": True, "result": {"answers": []}}, id="answers-not-a-dict"),
+    pytest.param({"success": True, "result": {"answers": {"q": 0.5}}}, id="q-not-a-dict"),
+    pytest.param(
+        {"success": True, "result": {"answers": {"q": {"noul": 0.5}}, "usage": 7}},
+        id="usage-not-a-dict",
+    ),
+    pytest.param({"success": True, "result": {"answers": {"q": {"noul": True}}}}, id="noul-a-bool"),
+    pytest.param(
+        {"success": True, "result": {"answers": {"q": {"noul": 1.5}}}}, id="noul-above-one"
+    ),
+    pytest.param(
+        {"success": True, "result": {"answers": {"q": {"noul": -0.1}}}}, id="noul-below-zero"
+    ),
+]
+
+
+@pytest.mark.parametrize("body", _UNUSABLE)
+async def test_an_unusable_answer_raises_clef_error(body):
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        with pytest.raises(ClefError, match="without a noul probability"):
+            await _client().ask(STATE, "I")
+
+    assert route.call_count == 1
+
+
+async def test_a_nan_noul_raises_clef_error():
+    raw = b'{"success": true, "result": {"answers": {"q": {"noul": NaN}}}}'
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(
+            return_value=httpx.Response(
+                200, content=raw, headers={"content-type": "application/json"}
+            )
+        )
+        with pytest.raises(ClefError, match="without a noul probability"):
+            await _client().ask(STATE, "I")
+
+    assert route.call_count == 1
+
+
+async def test_malformed_json_on_a_2xx_raises_clef_error():
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(
+            return_value=httpx.Response(
+                200, content=b"{not json", headers={"content-type": "application/json"}
+            )
+        )
+        with pytest.raises(ClefError, match="without a noul probability: {not json"):
+            await _client().ask(STATE, "I")
+
+    assert route.call_count == 1
+
+
+async def test_malformed_json_on_a_4xx_keeps_the_refusal_shape():
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(
+            return_value=httpx.Response(
+                400, content=b"{not json", headers={"content-type": "application/json"}
+            )
+        )
+        with pytest.raises(ClefError) as err:
+            await _client().ask(STATE, "I")
+
+    assert str(err.value) == "Clef refused the request (HTTP 400): {not json"
+    assert route.call_count == 1
+
+
+async def test_a_string_token_count_is_dropped_to_none():
+    body = {**ANSWER, "result": {**ANSWER["result"], "usage": {"input_tokens": "842"}}}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        answer = await _client().ask(STATE, "I")
+
+    assert answer == NoulAnswer(noul=0.8833, model="clef-flash", input_tokens=None)
+    assert route.call_count == 1
+
+
+async def test_a_non_string_model_is_dropped_to_none():
+    body = {**ANSWER, "result": {**ANSWER["result"], "model": 3}}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=body))
+        answer = await _client().ask(STATE, "I")
+
+    assert answer.model is None
+    assert route.call_count == 1
