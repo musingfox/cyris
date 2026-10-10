@@ -6,7 +6,7 @@ import pytest
 
 from cyris.domain.models import ArticleState, StoredArticle, Tier
 from cyris.domain.similarity import normalize
-from cyris.service_layer.vote_similarity import judge_by_votes
+from cyris.service_layer.vote_similarity import VoteSimilarityReport, judge_by_votes
 
 pytestmark = pytest.mark.unit
 
@@ -191,3 +191,50 @@ async def test_each_verdict_names_the_seed_its_cosine_came_from_past_an_empty_ve
     verdict = report.verdicts["c1"]
     assert (verdict.nearest_up_url, verdict.nearest_down_url) == ("u-tech", "d-lottery")
     assert report.downvote_seeds == 1
+
+
+async def test_the_report_keeps_each_side_s_seed_vectors_and_titles():
+    store = FakeStore(
+        [
+            article("u", "Liked title", ArticleState.ACCEPTED, triaged=True),
+            article("d", "Disliked title", ArticleState.REJECTED, triaged=True),
+        ]
+    )
+    embedder = FakeEmbedder()
+
+    report = await judge_by_votes(store, embedder, [article("c", "Tech thing")], max_seeds=200)
+
+    assert list(report.up_seed_vectors) == ["u"]
+    assert list(report.down_seed_vectors) == ["d"]
+    assert report.seed_titles == {"u": "Liked title", "d": "Disliked title"}
+    assert embedder.calls == 2
+
+
+async def test_a_pass_that_did_not_run_keeps_no_seeds():
+    report = await judge_by_votes(
+        FakeStore([]), FakeEmbedder(), [article("c", "Tech")], max_seeds=5
+    )
+
+    assert report.skipped_reason == "no human-voted articles yet"
+    assert report.up_seed_vectors == {}
+    assert report.seed_titles == {}
+
+
+async def test_a_seed_with_an_empty_vector_is_kept_nowhere():
+    store = FakeStore([article("u-empty", "Empty title", ArticleState.ACCEPTED, triaged=True)])
+
+    report = await judge_by_votes(store, SeedGapEmbedder(), [article("c", "Tech")], max_seeds=5)
+
+    assert "u-empty" not in report.up_seed_vectors
+    assert "u-empty" not in report.seed_titles
+
+
+def test_nearest_titles_names_the_closest_votes_each_way_closest_first():
+    report = VoteSimilarityReport(
+        candidate_vectors={"c": [1.0, 0.0]},
+        up_seed_vectors={"u1": [0.0, 1.0], "u2": [1.0, 0.1], "u3": [1.0, 1.0]},
+        down_seed_vectors={"d1": [1.0, 0.5], "d2": [0.0, 1.0]},
+        seed_titles={"u1": "U1", "u2": "U2", "u3": "U3", "d1": "D1", "d2": "D2"},
+    )
+
+    assert report.nearest_titles("c", 2) == (["U2", "U3"], ["D1", "D2"])

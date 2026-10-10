@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 
 from cyris.domain.models import ArticleState, StoredArticle
-from cyris.domain.similarity import DEFAULT_THRESHOLD, SimilarityVerdict, judge
+from cyris.domain.similarity import DEFAULT_THRESHOLD, SimilarityVerdict, judge, nearest_k
 from cyris.service_layer.ports import ArticleRepository, Embedder
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,19 @@ class VoteSimilarityReport:
     # url -> title vector for each candidate judged, so a later pass this run
     # (topic tracking) need not embed the same titles again.
     candidate_vectors: dict[str, list[float]] = field(default_factory=dict)
+    # The same for the vote seeds and their stored titles, so a later pass can name
+    # a candidate's neighbours without embedding the votes again.
+    up_seed_vectors: dict[str, list[float]] = field(default_factory=dict)
+    down_seed_vectors: dict[str, list[float]] = field(default_factory=dict)
+    seed_titles: dict[str, str] = field(default_factory=dict)
+
+    def nearest_titles(self, url: str, k: int) -> tuple[list[str], list[str]]:
+        """Titles of the `k` upvotes and `k` downvotes closest to a judged candidate."""
+        vector = self.candidate_vectors[url]
+        return (
+            [self.seed_titles[u] for u in nearest_k(vector, self.up_seed_vectors, k)],
+            [self.seed_titles[u] for u in nearest_k(vector, self.down_seed_vectors, k)],
+        )
 
     @property
     def ran(self) -> bool:
@@ -120,4 +133,7 @@ async def judge_by_votes(
         upvote_seeds=len(up_vectors),
         downvote_seeds=len(down_vectors),
         candidate_vectors=by_url,
+        up_seed_vectors=up_seeds,
+        down_seed_vectors=down_seeds,
+        seed_titles={a.url: a.title for a in up + down if a.url in up_seeds or a.url in down_seeds},
     )
