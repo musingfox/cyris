@@ -716,3 +716,43 @@ class TestKeptItemsReachThePreference:
 
         assert result.preference_moves is None
 
+
+class TestPreferenceScoresOrderTheCap:
+    async def _headlines(self, sample_sources, scores):
+        h1, h2 = (_article(i, Tier.FILTER, "TechCrunch") for i in (1, 2))
+
+        async def preference(_kept):
+            return scores
+
+        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings(max_digest_output=1))
+        with patch(
+            "cyris.service_layer.digest_pipeline.filter_articles",
+            new_callable=AsyncMock,
+            return_value=[_item(h1), _item(h2)],
+        ):
+            result = await pipeline.process(
+                [h1, h2],
+                sample_sources,
+                timezone=TEST_SETTINGS["general.timezone"],
+                preference=preference,
+            )
+        return h1, h2, result
+
+    async def test_the_higher_score_takes_the_last_slot(self, sample_sources):
+        h1, h2 = (f"https://example.com/{i}" for i in (1, 2))
+        _, _, scored = await self._headlines(sample_sources, {h1: 0.1, h2: 0.9})
+
+        assert [i.title for i in scored.content.filtered_headlines] == ["Article 2"]
+        assert scored.preference_moves == {"headlines": 1, "features": 0}
+
+    async def test_no_scores_keep_the_model_order(self, sample_sources):
+        h1, _, result = await self._headlines(sample_sources, None)
+
+        assert [i.title for i in result.content.filtered_headlines] == [h1.title]
+        assert result.preference_moves is None
+
+    async def test_an_empty_mapping_orders_nothing_but_still_reports(self, sample_sources):
+        h1, _, result = await self._headlines(sample_sources, {})
+
+        assert [i.title for i in result.content.filtered_headlines] == [h1.title]
+        assert result.preference_moves == {"headlines": 0, "features": 0}
