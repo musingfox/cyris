@@ -5,6 +5,7 @@ fake that records its arguments. Its stdin is closed unless a test types answers
 stage that would wait for a key reads end-of-file instead: a "no" at every y/N gate.
 """
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -222,7 +223,8 @@ def test_the_login_wait_stops_at_its_limit(rig) -> None:
     r = rig(_stages(11), FAKE_LOGIN_NEVER="1", TRIAL_WIZARD_LOGIN_WAIT="0")
     run = r.run(stdin=START + "y\n")
     assert run.code == 1
-    assert "No 302 → /login after 0s." in run.out
+    # $SECONDS counts whole seconds, so a run that crosses a second boundary reports 1s.
+    assert re.search(r"No 302 → /login after \d+s\.", run.out)
     assert "docs/install-cloudflare.md step 6" in run.out
     assert r.done() == f"STAGES_DONE={_stages(11)}"
 
