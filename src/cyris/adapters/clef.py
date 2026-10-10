@@ -8,7 +8,7 @@ import asyncio
 
 import httpx
 
-from cyris.adapters.cloudflare import API_ROOT
+from cyris.adapters.cloudflare import API_ROOT, errors_of
 from cyris.service_layer.ports import NoulAnswer
 
 _RETRYABLE_STATUS = (429, 500, 502, 503)
@@ -43,14 +43,14 @@ class ClefClient:
             if attempt == self._max_retries:
                 raise ClefError(
                     f"Clef kept failing (HTTP {response.status_code}): "
-                    f"{_errors_of(_json_of(response)) or response.text[:300]}"
+                    f"{errors_of(_json_of(response)) or response.text[:300]}"
                 )
             await asyncio.sleep(attempt + 1)
         data = _json_of(response)
         if response.status_code >= 400:
             raise ClefError(
                 f"Clef refused the request (HTTP {response.status_code}): "
-                f"{_errors_of(data) or response.text[:300]}"
+                f"{errors_of(data) or response.text[:300]}"
             )
 
         unusable = ClefError(f"Clef answered without a noul probability: {response.text[:300]}")
@@ -86,10 +86,3 @@ def _json_of(response: httpx.Response) -> dict:
     except ValueError:
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def _errors_of(data: dict) -> str:
-    errors = data.get("errors")
-    if not isinstance(errors, list):
-        return ""
-    return "; ".join(str(e.get("message", e) if isinstance(e, dict) else e) for e in errors)

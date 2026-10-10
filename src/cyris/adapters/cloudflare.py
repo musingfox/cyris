@@ -1,4 +1,5 @@
-"""Cloudflare account-level checks that aren't tied to one Worker."""
+"""Cloudflare API pieces shared across adapters: the API root, the v4 error reader, and
+account-level checks that aren't tied to one Worker."""
 
 from __future__ import annotations
 
@@ -6,6 +7,14 @@ import httpx
 
 API_ROOT = "https://api.cloudflare.com/client/v4"
 TIMEOUT_SECONDS = 15
+
+
+def errors_of(data: dict) -> str:
+    """The messages in a Cloudflare v4 error envelope, joined; "" when it has none."""
+    errors = data.get("errors")
+    if not isinstance(errors, list):
+        return ""
+    return "; ".join(str(e.get("message", e) if isinstance(e, dict) else e) for e in errors)
 
 
 def check_pages_access(account_id: str, project: str, token: str) -> tuple[bool, str]:

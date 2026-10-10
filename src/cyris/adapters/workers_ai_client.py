@@ -19,6 +19,7 @@ import logging
 
 import httpx
 
+from cyris.adapters.cloudflare import errors_of
 from cyris.service_layer.ports import LLMResponse
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ class WorkersAIClient:
         if response.status_code >= 400 or not data.get("success", True):
             raise RuntimeError(
                 f"Workers AI refused the request (HTTP {response.status_code}): "
-                f"{_errors_of(data) or response.text[:300]}"
+                f"{errors_of(data) or response.text[:300]}"
             )
 
         result = data.get("result") or {}
@@ -132,10 +133,6 @@ class WorkersAIClient:
             # Reported per request, which beats deriving a number from published rates.
             neurons=usage.get("neurons"),
         )
-
-
-def _errors_of(data: dict) -> str:
-    return "; ".join(str(e.get("message", e)) for e in data.get("errors") or [])
 
 
 def _text_of(result: dict) -> str:
