@@ -154,6 +154,7 @@ def _grade_d_parameters():
         prompts,
         scoring,
         summarize,
+        vote_order,
         vote_similarity,
     )
 
@@ -174,6 +175,9 @@ def _grade_d_parameters():
         (scoring.score_articles_batch, "snippet_length"),
         (scoring.score_in_batches, "snippet_length"),
         (vote_similarity.judge_by_votes, "max_seeds"),
+        (vote_order.VoteOrder.__init__, "rank"),
+        (vote_order.VoteOrder.__init__, "source"),
+        (vote_order.VoteOrder.__init__, "snippet_length"),
         (prompts.build_filter_prompt, "snippet_length"),
         (prompts.build_summarize_prompt, "snippet_length"),
         (prompts.build_news_cluster_prompt, "snippet_length"),

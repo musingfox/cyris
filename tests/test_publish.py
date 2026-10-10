@@ -10,6 +10,7 @@ from cyris.adapters.output import pages_deploy
 from cyris.adapters.output import publish as publish_mod
 from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.publish import publish_html_digest
+from cyris.service_layer import vote_order
 
 pytestmark = pytest.mark.unit
 
@@ -141,7 +142,10 @@ def test_the_publish_time_budget_fits_inside_the_containers_sleep_after():
     index_js = Path(__file__).parents[1] / "workers" / "app" / "src" / "index.js"
     sleep_after = _sleep_after_seconds(index_js.read_text())
     assert sleep_after == 900
-    assert sleep_after >= p.PUBLISH_BUDGET_SECONDS + p.RUN_RESERVE_SECONDS
+    assert (
+        sleep_after
+        >= vote_order.CLEF_PASS_SECONDS + p.PUBLISH_BUDGET_SECONDS + p.RUN_RESERVE_SECONDS
+    )
 
 
 def test_verification_tolerates_propagation_delay(monkeypatch):
