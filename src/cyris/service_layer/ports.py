@@ -4,6 +4,7 @@ Only genuine IO boundaries get a Protocol here; single-implementation
 components are injected directly.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
@@ -22,6 +23,18 @@ class LLMResponse:
     # provider that does not bill this way has nothing to report, and a zero would
     # read as a measurement.
     neurons: float | None = None
+
+
+@dataclass(frozen=True)
+class NoulAnswer:
+    """One Clef noul question's answer: the probability, and what it was read from."""
+
+    noul: float
+    model: str | None
+    input_tokens: int | None
+
+
+AskClef = Callable[[dict, str], Awaitable[NoulAnswer]]
 
 
 class LLMClient(Protocol):
