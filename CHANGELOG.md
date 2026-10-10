@@ -12,6 +12,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   voted up come first, and when an issue is full the headline closer to an
   upvote takes the last slot. Nothing is dropped: a headline the issue leaves out
   stays for the next one. Off keeps the model's order.
+- The vote order can be asked of Clef. With `digest.preference_source` set to
+  `clef`, Cloudflare's Clef model scores each headline and Feature the issue
+  kept from its five nearest upvoted and downvoted titles, and that score
+  replaces the cosine difference in the order. Nothing is dropped or stamped,
+  and an issue Clef cannot fully score keeps the cosine order, recording why as
+  `preference_clef_skipped` in the run summary. `cosine` stays the order until
+  you choose otherwise.
 
 ### Fixed
 
@@ -45,6 +52,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   runtime setting is required, so a run without it stops, and the old image's
   `/settings` cannot write it. A `json` deployment adds `rank_by_preference`
   under `[digest]` in `cyris.toml`. No table or secret changed.
+- Before deploying, store the new runtime setting `digest.preference_source`
+  (`"cosine"` keeps today's order, `"clef"` turns the Clef order on). Every
+  runtime setting is required, so a run without it stops, and the old image's
+  `/settings` cannot write it. A `json` deployment adds `preference_source`
+  under `[digest]` in `cyris.toml`. Set `CLOUDFLARE_AI_TOKEN` or
+  `CLOUDFLARE_EMBEDDING_API_TOKEN` before choosing `clef`; without one the run
+  keeps the cosine order and says so.
 
 ## [0.5.0] — 2026-10-02
 

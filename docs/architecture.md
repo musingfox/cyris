@@ -43,7 +43,7 @@ flowchart TB
 
     subgraph CORE["Core · service_layer + domain"]
         RUN["run_digest orchestrator"]
-        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity · tracking"]
+        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity · vote_order · tracking"]
         DOM["domain (pure): selection · models · similarity"]
         RUN --> UC
         RUN --> DOM
@@ -69,6 +69,7 @@ flowchart TB
         NOTI["send_discord"]
         MAIL["send_digest_mail"]
         EMB["Embedder"]
+        CLEF["ClefClient"]
         TAGS["D1TagStore"]
         STORIES["D1StoryStore"]
         DIGESTS["D1DigestStore"]
@@ -107,6 +108,7 @@ flowchart TB
     RUN -->|direct inject| TAGS
     RUN -->|direct inject| STORIES
     RUN -->|direct inject| DIGESTS
+    RUN -->|direct inject| CLEF
 
     LLM --> API
     STORE --> CFW
@@ -122,6 +124,7 @@ flowchart TB
     NOTI --> DISC
     MAIL --> CFW
     EMB --> CFW
+    CLEF --> CFW
     HTML -->|json backend only| FS
 
     classDef port fill:#0F6E7A,stroke:#5AC3CC,color:#fff;
@@ -131,7 +134,7 @@ flowchart TB
     class P1,P2,P3,P4 port;
     class HTML,FS fallback;
     class RSS,FEEDS bad;
-    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,DIGESTS,EMB,MAIL cloud;
+    class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,DIGESTS,EMB,MAIL,CLEF cloud;
 ```
 
 **Legend**: 🟢 Protocol boundary　🟠 the `json` backend's fallback path　🔴 must not exist in the
@@ -171,7 +174,7 @@ test.
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore` | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `ask_clef` (`ClefClient`) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -355,6 +358,20 @@ model's order. `run_summary` records which: `preference_rank_applied`, the reaso
 `preference_rank_skipped`, and `preference_rank_moved_headlines` and `_features`, the positions
 that differ from the order without it.
 
+**Who scores them** (`digest.preference_source`, `cosine` or `clef`). `cosine` is the order above.
+`clef` replaces the cosine difference with Clef's probability that the reader upvotes the item,
+asked once per kept item, the headlines and Features the issue kept and no other candidate, so a run
+makes tens of calls, not one per candidate. Each question carries the article's title, source and
+first `digest.scoring_snippet_length` characters (the snippet scoring reads), and the titles, never the text, of its five nearest upvotes and five nearest
+downvotes. The filter is untouched, the cap and the pending-left-over rule apply as before, and no `triaged_at` is
+stamped. The whole issue falls back to the cosine order when Clef cannot score every asked item:
+no `CLOUDFLARE_AI_TOKEN` (or `CLOUDFLARE_EMBEDDING_API_TOKEN`) with `CLOUDFLARE_ACCOUNT_ID`, no kept
+item with a nearest vote, a failed call, a question left unanswered, or the pass passing 60 seconds. A half-Clef order would mix
+two scales, so one failed question drops all of them; the run does not fail. `run_summary` records
+`preference_source` and `preference_model` for the order used, `preference_clef_skipped` with the
+reason when `clef` was chosen and did not order the issue, and `clef` with the calls, answers
+and input tokens it spent. That spend stays out of the LLM `usage`.
+
 Two analytics facts are persisted beside the digest, both fail-soft — a write failure is logged
 and the run continues. Topic tags emitted by scoring and by news clustering land normalized in D1
 `tags`/`article_tags` (`D1TagStore`), and each run's pre-truncation story membership — which
@@ -494,13 +511,15 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` sends a reader without a session to `/login`; unset = public archive) | done 2026-10-05 — default off, so production's archive stays public; a trial deployment turns it on in its generated config |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, three Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — the last also the `ai_gateway` provider's), one Worker bearer, one vote token, the `/settings` login token (`CYRIS_UI_TOKEN`, read by the Worker only) | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. `CYRIS_UI_TOKEN` is also a GitHub Actions secret, a copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
+| LLM API keys, three Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — the last also the `ai_gateway` provider's and the Clef vote order's), one Worker bearer, one vote token, the `/settings` login token (`CYRIS_UI_TOKEN`, read by the Worker only) | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. `CYRIS_UI_TOKEN` is also a GitHub Actions secret, a copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` for a `json` deployment | done — a table with no fetchable source stops the run; `/settings` refuses to retire the last source, and refuses an RSS source with no feed URL or a newsletter with no `email_match` |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST /accounts/{id}/ai/run` to Cloudflare with the model as `author/model`; the provider's key is stored in the gateway (BYOK), which that path requires, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AI_TOKEN`, because `/ai/run` asks for the same Workers AI Read; the account is `CLOUDFLARE_ACCOUNT_ID`; and no gateway id is sent, because Cloudflare routes a request that names none to the gateway called `default`. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
 | Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many Features cards an issue shows is not a number this codebase can measure, and `featured_threshold` beside it was already D |
 | Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
+| Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` keeps today's order and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
+| Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
 | Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 |
 | Embedding threshold | **A** | `cyris.toml`, else the calibration in `provider_defaults.json` when the configured model is the one it was measured on | unchanged — a measured property of the model, not a preference. Any other model has none: the run skips vote similarity, says why in `run_summary` as `vote_similarity_skipped`, and `doctor` fails until `cyris.toml` sets one (2026-10-07) |
@@ -546,6 +565,8 @@ GitHub Actions secret used only to push a release image, so it is not an eighth 
 Since then the app Worker also forwards `CLOUDFLARE_AI_TOKEN`, the `workers_ai` LLM provider's own
 Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blank. The `ai_gateway`
 provider reads the same token, and a deployment on it can leave the three LLM API keys blank.
+The Clef vote order (`digest.preference_source = "clef"`) authenticates with it too, else with
+`CLOUDFLARE_EMBEDDING_API_TOKEN`.
 `CYRIS_UI_TOKEN`, the `/settings` login secret, is checked by the Worker and never forwarded. The
 authoritative lists are `SECRETS` in `workers/app/src/index.js` and `.env.example`, which
 `tests/test_deploy_inputs.py` holds in step.
