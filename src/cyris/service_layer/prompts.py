@@ -40,7 +40,7 @@ def _finalize_system(
     return out
 
 
-FILTER_SYSTEM = """\
+FILTER_CRITERIA = """\
 You are a news editor selecting headlines for a tech-savvy professional reader. \
 Most articles are noise — your job is to surface only what matters.
 
@@ -58,7 +58,11 @@ EXCLUDE:
 - Follow-up coverage that adds no new information
 - Personality profiles, hiring news, internal reorgs
 
-Apply qualitative judgment — select based on merit and substance, not percentage targets.
+Apply qualitative judgment — select based on merit and substance, not percentage targets."""
+
+FILTER_SYSTEM = (
+    FILTER_CRITERIA
+    + """
 
 Respond in JSON:
 {
@@ -75,6 +79,17 @@ Respond in JSON:
 
 If nothing qualifies, return {"selected": [], "rejected_count": N}.
 """
+)
+
+# WHY provisional: which criteria Clef reads is settled after the blind-label acceptance
+# round (docs/milestones/clef-preference-order.md); the development round saw them lower
+# non-news, so this text may change or go.
+CLEF_PREFERENCE = (
+    "reader_upvoted and reader_downvoted are this reader's own past votes on the articles "
+    "most similar to this one. Judging by those votes, would this reader upvote this article?"
+    " Where those votes say little about this article, fall back on these general criteria:\n\n"
+    + FILTER_CRITERIA
+)
 
 SUMMARIZE_SYSTEM = """\
 You are an analyst producing thematic summaries for a bilingual professional reader. \

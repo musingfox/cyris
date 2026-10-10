@@ -6,6 +6,8 @@ import pytest
 
 from cyris.domain.models import Article, Tier
 from cyris.service_layer.prompts import (
+    CLEF_PREFERENCE,
+    FILTER_CRITERIA,
     FILTER_SYSTEM,
     SUMMARIZE_SYSTEM,
     build_filter_prompt,
@@ -158,3 +160,24 @@ class TestOutputLanguage:
         assert "繁體中文 (Traditional Chinese)" in prompt
         assert "zh-Hant" not in prompt
         assert "<output_language>" not in prompt
+
+
+class TestClefPreference:
+    WANT = (
+        "reader_upvoted and reader_downvoted are this reader's own past votes on the articles "
+        "most similar to this one. Judging by those votes, would this reader upvote this article?"
+    )
+    SEPARATOR = (
+        " Where those votes say little about this article, fall back on these general criteria:\n\n"
+    )
+
+    def test_criteria_is_the_filter_prompt_before_its_format_block(self):
+        assert FILTER_SYSTEM.split("Respond in JSON")[0].strip() == FILTER_CRITERIA
+
+    def test_preference_is_framing_then_criteria(self):
+        assert CLEF_PREFERENCE == self.WANT + self.SEPARATOR + FILTER_CRITERIA
+
+    def test_preference_carries_selection_rules_but_not_the_format_block(self):
+        assert "INCLUDE articles with at least one of these qualities:" in CLEF_PREFERENCE
+        assert "EXCLUDE:" in CLEF_PREFERENCE
+        assert "Respond in JSON" not in CLEF_PREFERENCE
