@@ -39,7 +39,7 @@ string `undefined`.
 ## Auth
 
 One layer always, a second if you own a domain. Why this shape:
-[ADR-0009](../../docs/decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md).
+[ADR-0009](../../docs/decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md) (superseded — see [ADR-0015](../../docs/decisions/0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md)).
 
 1. **The `CYRIS_UI_TOKEN` secret**, checked in `src/router.js` before anything reaches
    the container. `/login` takes the token and sets an HttpOnly cookie,

@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by [ADR-0015](0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md)
 date: 2026-10-08
 decision-makers: ""
 ---
+
+> **SUPERSEDED**: This ADR has been superseded by [ADR-0015: Cloudflare Access is the only sign-in, and the Worker checks its JWT](0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md). The decision described here is no longer in effect.
 
 # A token cookie guards the app always, and Cloudflare Access is an optional second layer
 
