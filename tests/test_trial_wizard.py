@@ -48,7 +48,7 @@ case "$*" in
       [[ -n "${FAKE_RENDER_SKIP:-}" && "$f" == *"workers/$FAKE_RENDER_SKIP/"* ]] && continue
       echo rendered > "$f"
     done ;;
-  *"python -c"*) echo 1 ;;
+  *"python -c"*) shift 2; exec "$REAL_PYTHON" "$@" ;;
 esac
 """
 
@@ -208,6 +208,7 @@ def rig(tmp_path: Path):
         state_dir.mkdir()
         base = {
             "PATH": f"{fakes}:/usr/bin:/bin",
+            "REAL_PYTHON": sys.executable,
             "HOME": str(tmp_path),
             "CALLS": str(repo / "calls.log"),
             "FAKE_DIR": str(state_dir),
@@ -297,6 +298,59 @@ def test_a_newsletter_dry_run_failure_dies_naming_the_worker(rig) -> None:
     run = rig(_stages(8), FAKE_DRY_FAIL="workers/newsletter/wrangler.trial-t1.toml").run()
     assert run.code == 1
     assert "Newsletter Worker dry run failed." in run.out
+
+
+SOURCES_BOTH = """sources:
+  - {name: a, url: "https://a.example/feed", type: rss}
+  - {name: b, url: "https://b.example/feed"}
+  - {name: c, email_match: "news@sender.example", type: newsletter}
+"""
+
+
+def test_a_newsletter_source_is_accepted_and_both_counts_are_saved(rig) -> None:
+    r = rig(_stages(12))
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(SOURCES_BOTH)
+    run = r.run(stdin=START)
+    assert "has a newsletter source" not in run.out
+    assert "3 source(s), 2 for the rss Worker." in run.out
+    assert "SOURCE_COUNT=3" in run.state.splitlines()
+    assert "RSS_SOURCE_COUNT=2" in run.state.splitlines()
+
+
+def test_a_single_newsletter_source_counts_zero_rss(rig) -> None:
+    r = rig(_stages(12))
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(
+        'sources:\n  - {name: c, email_match: "news@sender.example", type: newsletter}\n'
+    )
+    state = r.run(stdin=START).state.splitlines()
+    assert "SOURCE_COUNT=1" in state
+    assert "RSS_SOURCE_COUNT=0" in state
+
+
+def test_a_source_with_no_type_counts_as_rss(rig) -> None:
+    r = rig(_stages(12))
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(
+        'sources:\n  - {name: a, url: "https://a.example/feed", type: rss}\n'
+        '  - {name: b, url: "https://b.example/feed"}\n'
+    )
+    run = r.run(stdin=START)
+    assert "RSS_SOURCE_COUNT=2" in run.state.splitlines()
+
+
+def test_a_sources_file_that_is_not_yaml_stops_stage_13(rig) -> None:
+    r = rig(_stages(12))
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text("sources: [\n")
+    run = r.run(stdin=START)
+    assert run.code == 1
+    assert f"{SLUG}-sources.yaml is not valid YAML with a sources list." in run.out
+
+
+def test_stage_13_tells_the_operator_to_match_the_sender(rig) -> None:
+    r = rig(_stages(12))
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(SOURCES_BOTH)
+    run = r.run(stdin=START)
+    assert "email_match" in run.out
+    assert "RSS only" not in run.out
 
 
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:

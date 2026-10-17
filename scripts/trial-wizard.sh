@@ -682,16 +682,18 @@ sources:
     tags: [tech, business-strategy]
 YAML
   fi
-  say "Replace the example with the tester's feeds: RSS only, never type: newsletter."
+  say "Replace the example with the tester's feeds: RSS or newsletter sources."
+  say 'A newsletter source needs email_match, the sender to match, not <slug>@<domain>.'
   say "Tiers are explained in docs/sources.md. Keep to the source limit you agreed."
   say "File: $REPO/$SOURCES_FILE"
   if confirm "Open it in ${EDITOR:-vi} now?"; then ${EDITOR:-vi} "$SOURCES_FILE"; fi
   pause "Saved the tester's feeds? Press Enter"
-  grep -qE 'type:[[:space:]]*"?newsletter' "$SOURCES_FILE" && die "$SOURCES_FILE has a newsletter source; a trial has no newsletter Worker."
-  SOURCE_COUNT=$(uv run python -c 'import sys, yaml; print(len(yaml.safe_load(open(sys.argv[1]))["sources"]))' "$SOURCES_FILE") \
+  counts=$(uv run python -c 'import sys, yaml; s = yaml.safe_load(open(sys.argv[1]))["sources"]; print(len(s), sum(1 for x in s if x.get("type", "rss") == "rss"))' "$SOURCES_FILE") \
     || die "$SOURCES_FILE is not valid YAML with a sources list."
+  read -r SOURCE_COUNT RSS_SOURCE_COUNT <<<"$counts"
   write_env SOURCE_COUNT "$SOURCE_COUNT"
-  say "$SOURCE_COUNT source(s)."
+  write_env RSS_SOURCE_COUNT "$RSS_SOURCE_COUNT"
+  say "$SOURCE_COUNT source(s), $RSS_SOURCE_COUNT for the rss Worker."
   local TRIAL_DIR
   TRIAL_DIR=$(mktemp -d)
   grep -E '^(CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_STORE_DATABASE_ID|CYRIS_PROMOTE_PAGES_PROJECT)=' "$APP_ENV" > "$TRIAL_DIR/.env"
