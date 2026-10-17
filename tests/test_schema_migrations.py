@@ -1,5 +1,7 @@
 """The step runner: each step runs once, in order, and a failed step stops the run."""
 
+import json
+
 import pytest
 from fakes import RecordingD1, SqliteD1
 from legacy_schema import columns as _columns
@@ -223,3 +225,62 @@ def test_an_empty_database_gets_the_lane_column_and_no_rewrite() -> None:
         r["id"] for r in db.query("SELECT id FROM schema_migrations").rows
     ]
     assert not [s for s in db.statements if "SET source_tier" in s]
+
+
+def _insert_source(db: SqliteD1, name: str, config: str) -> None:
+    db.query("INSERT INTO sources (name, config) VALUES (?, ?)", [name, config])
+
+
+def _configs(db: SqliteD1) -> dict[str, str]:
+    return {r["name"]: r["config"] for r in db.query("SELECT name, config FROM sources").rows}
+
+
+def test_each_source_config_gets_its_lane_and_a_malformed_one_is_left_alone() -> None:
+    db = _old_db()
+    _insert_source(db, "a", '{"tier":"summarize","tags":["a"],"language":"en"}')
+    _insert_source(db, "b", '{"tier":"fan"}')
+    _insert_source(db, "c", '{"tags":[]}')
+    _insert_source(db, "d", "not json{")
+
+    apply_schema(db)
+
+    configs = _configs(db)
+    assert json.loads(configs["a"]) == {"lane": "read", "tags": ["a"], "language": "en"}
+    assert json.loads(configs["b"]) == {"lane": "follow"}
+    assert json.loads(configs["c"]) == {"tags": []}
+    assert configs["d"] == "not json{"
+    assert not [c for c in configs.values() if "tier" in c]
+
+
+def test_the_store_lists_the_migrated_lanes() -> None:
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.domain.models import Lane
+
+    db = _old_db()
+    _insert_source(db, "a", '{"tier":"summarize"}')
+    _insert_source(db, "b", '{"tier":"fan"}')
+
+    apply_schema(db)
+
+    listed = D1SourceStore(db).list_sources()
+    assert (listed["a"].lane, listed["b"].lane) == (Lane.READ, Lane.FOLLOW)
+
+
+def test_an_unknown_tier_value_passes_through_as_its_lane() -> None:
+    db = _old_db()
+    _insert_source(db, "w", '{"tier":"weird"}')
+
+    apply_schema(db)
+
+    assert json.loads(_configs(db)["w"]) == {"lane": "weird"}
+
+
+def test_a_second_apply_leaves_the_configs_as_they_were() -> None:
+    db = _old_db()
+    _insert_source(db, "a", '{"tier":"summarize"}')
+    apply_schema(db)
+    once = _configs(db)
+
+    apply_schema(db)
+
+    assert _configs(db) == once

@@ -36,6 +36,11 @@ class Step:
 LANE_STEP = Step(
     "0001_tier_to_lane",
     (
+        "UPDATE sources SET config = json_set(json_remove(config, '$.tier'), '$.lane', "
+        "CASE json_extract(config, '$.tier') "
+        "WHEN 'filter' THEN 'skim' WHEN 'summarize' THEN 'read' WHEN 'fan' THEN 'follow' "
+        "ELSE json_extract(config, '$.tier') END) "
+        "WHERE CASE WHEN json_valid(config) THEN json_type(config, '$.tier') END IS NOT NULL",
         "UPDATE stored_articles SET source_tier = CASE source_tier "
         "WHEN 'filter' THEN 'skim' WHEN 'summarize' THEN 'read' WHEN 'fan' THEN 'follow' "
         "ELSE source_tier END WHERE source_tier IN ('filter', 'summarize', 'fan')",
