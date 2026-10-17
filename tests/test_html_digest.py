@@ -1946,15 +1946,65 @@ def test_settings_links_the_archive_only_once_the_probe_says_signed_in(tmp_path)
     assert "a.href = a.dataset.gatedHref" in probe
 
 
-def test_the_probe_offers_sign_in_only_on_the_workers_own_refusal(tmp_path):
-    """Sign in links /login with this page as next; pages.dev and Access redirects get none."""
+def test_the_probe_links_sign_in_to_login_with_this_page_as_next(tmp_path):
+    """Sign in links /login with this page as next; it is shown only on an Access redirect."""
     html = HtmlDigestWriter(tmp_path).render_index([])
 
     assert '<a class="label signin-link" href="/login" hidden>Sign in</a>' in html
-    assert "if (resp.status === 401) {" in html
-    assert "if (refused.authorized !== false) return;" in html
     assert "encodeURIComponent(location.pathname + location.search)" in html
     assert "a.href = '/login?next=' + next;" in html
+
+
+def test_the_probe_checks_the_access_redirect_before_it_parses_an_answer(tmp_path):
+    script = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+
+    assert script.index("resp.type === 'opaqueredirect'") < script.index("resp.json()")
+
+
+def test_the_probe_returns_on_403_before_it_touches_any_sign_in_link(tmp_path):
+    script = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+
+    assert "if (resp.status === 403) return;" in script
+    refusal = script.index("if (resp.status === 403) return;")
+    assert refusal < script.index("a.href = '/login?next='")
+
+
+def test_the_probe_shows_sign_in_only_on_an_access_redirect(tmp_path):
+    script = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+    catch = script[script.index("} catch {") : script.index("function showSignIn()")]
+
+    assert script.count("showSignIn()") == 2
+    assert "showSignIn" not in catch
+    assert "if (!resp.ok) return;" in script
+
+
+def probe_outcomes_missing(source: str) -> list[str]:
+    """The refusals the probe must still name: the Worker's 403 and the Access redirect."""
+    missing = []
+    if "if (resp.status === 403) return;" not in source:
+        missing.append("403")
+    if "if (resp.type === 'opaqueredirect') return showSignIn();" not in source:
+        missing.append("opaqueredirect")
+    return missing
+
+
+def test_the_probe_names_both_refusals_and_a_copy_without_them_is_flagged(tmp_path):
+    script = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+
+    assert probe_outcomes_missing(script) == []
+    no_403 = script.replace("if (resp.status === 403) return;", "")
+    assert probe_outcomes_missing(no_403) == ["403"]
+    no_redirect = script.replace("if (resp.type === 'opaqueredirect') return showSignIn();", "")
+    assert probe_outcomes_missing(no_redirect) == ["opaqueredirect"]
+
+
+def test_the_vote_names_the_access_refusal_and_the_redirect(tmp_path):
+    templates = Path(html_digest.__file__).parent / "templates"
+    script = (templates / "_promote_script.html.j2").read_text()
+
+    assert "accessNotSetUp: 'Access is not set up for this deployment." in script
+    assert "if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;" in script
+    assert "if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;" in script
 
 
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])
@@ -2651,12 +2701,3 @@ def test_the_interest_page_is_never_an_issue_row_or_counted(tmp_path) -> None:
     assert html.count("2026-10-17") == bare.count("2026-10-17")
     assert "1 issue" in html
     assert "2 issue" not in html
-
-
-def test_the_vote_names_the_access_refusal_and_the_redirect(tmp_path):
-    templates = Path(html_digest.__file__).parent / "templates"
-    script = (templates / "_promote_script.html.j2").read_text()
-
-    assert "accessNotSetUp: 'Access is not set up for this deployment." in script
-    assert "if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;" in script
-    assert "if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;" in script

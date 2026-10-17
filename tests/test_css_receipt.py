@@ -974,7 +974,7 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
         answers = []
         for method, path in requests:
             body = PENDING_TWO_UP if method == "POST" else None
-            response = await client.request(method, path, json=body)
+            response = await client.request(method, path, json=body, allow_redirects=False)
             answers.append((response.status, await response.text()))
         return answers
     finally:
@@ -987,7 +987,8 @@ async def _raw_answers(fixture, requests: list[tuple[str, str]]) -> list[tuple[i
         ("signed-in", 200, True),
         ("signed-in-largest", 200, True),
         ("signed-in-smallest", 200, True),
-        ("signed-out", 401, False),
+        ("signed-out", 302, None),
+        ("worker-refused", 403, None),
         ("no-worker", 404, None),
         ("slow-vote", 200, True),
         ("vote-signed-out", 200, True),
@@ -1024,7 +1025,7 @@ async def test_the_raw_probe_fixture_can_refuse_every_vote_or_only_the_first():
 @pytest.mark.parametrize(
     ("kind", "status", "body"),
     [
-        ("vote-signed-out", 401, {"authorized": False, "error": "unauthorized"}),
+        ("vote-signed-out", 302, None),
         ("vote-unconfigured", 503, {"error": "promote worker not configured"}),
         ("promote-503", 503, {"error": "unavailable"}),
     ],
@@ -1032,7 +1033,9 @@ async def test_the_raw_probe_fixture_can_refuse_every_vote_or_only_the_first():
 async def test_the_raw_probe_fixture_refuses_a_vote_as_the_app_worker_would(kind, status, body):
     fixture = raw_probe.build_fixture(kind)
     [(answered, text)] = await _raw_answers(fixture, [("POST", "/api/vote")])
-    assert (answered, json.loads(text)) == (status, body)
+    assert answered == status
+    if body is not None:
+        assert json.loads(text) == body
     assert fixture.posts == [PENDING_TWO_UP]
 
 

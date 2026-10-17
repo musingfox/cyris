@@ -82,9 +82,9 @@ def build_fixture(kind: str) -> LabelsFixture:
 
     `sample` deals the three `ITEMS` and takes every answer, and `sample-largest`
     does too on the page at the largest type size; `answer-fails` deals them but
-    refuses every answer with D1's 500; `signed-out` refuses every answer with
-    the app Worker's own 401; `redirected` refuses every answer with an Access redirect, and
-    `access-off` with the Worker's own 403; `all-answered` has every item answered, and
+    refuses every answer with D1's 500; `signed-out` and `redirected` refuse every answer
+    with an Access redirect to another origin, as a lapsed session gets; `access-off` with
+    the Worker's own 403; `all-answered` has every item answered, and
     `no-sample` has none drawn.
     """
     if kind not in KINDS:
@@ -110,9 +110,7 @@ def build_fixture(kind: str) -> LabelsFixture:
         fixture.posts.append(await request.json())
         if kind == "answer-fails":
             return web.json_response({"ok": False, "error": "D1 is unreachable"}, status=500)
-        if kind == "signed-out":
-            return web.json_response({"error": "unauthorized"}, status=401)
-        if kind == "redirected":
+        if kind in ("signed-out", "redirected"):
             raise web.HTTPFound(ACCESS_LOGIN)
         if kind == "access-off":
             return web.json_response({"error": "forbidden"}, status=403)
