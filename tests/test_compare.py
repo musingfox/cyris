@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from fakes import FakeLLM, make_config
 from test_vote_similarity import FakeEmbedder, FakeStore, article
+from typer.testing import CliRunner
 
 from cyris.diagnostics.compare import (
     NothingToCompareError,
@@ -19,8 +20,9 @@ from cyris.diagnostics.compare import (
     margin,
 )
 from cyris.domain.models import Article, ArticleState, SourceConfig, Tier
+from cyris.entrypoints.cli import app
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 class _Usage:
@@ -53,59 +55,72 @@ def test_margin_reports_both_sides_of_the_boundary():
     assert m == {"suppressed_min": 0.58, "kept_max": 0.49}
 
 
+def test_margin_names_the_lowest_cut_and_highest_kept_cosine():
+    assert margin(_verdicts([(0.82, True), (0.61, False)])) == {
+        "suppressed_min": 0.82,
+        "kept_max": 0.61,
+    }
+
+
 def test_margin_has_no_boundary_when_a_side_is_empty():
     assert margin(_verdicts([(0.61, True)])) == {"suppressed_min": 0.61, "kept_max": None}
     assert margin(_verdicts([(0.2, False)])) == {"suppressed_min": None, "kept_max": 0.2}
 
 
-async def test_the_arms_agree_and_disagree_by_url():
-    """A shared threshold makes both arms suppress the same row; a raised one does not."""
-    store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)])
-    candidates = [article("c1", "Lottery again"), article("c2", "Tech thing")]
-    now = datetime(2026, 9, 5, tzinfo=UTC)
+class _ScaledEmbedder(UsageTrackingEmbedder):
+    """Seeds on [1, 0]; each candidate's cosine is its table value plus `shift`."""
 
+    COSINES = {f"C{i}": 0.40 + 0.01 * i for i in range(11)} | {"Out": 0.70}
+
+    def __init__(self, shift: float = 0.0) -> None:
+        self._shift = shift
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        out = []
+        for text in texts:
+            if text.startswith("S"):
+                out.append([1.0, 0.0])
+            else:
+                c = self.COSINES[text] + self._shift
+                out.append([c, (1 - c * c) ** 0.5])
+        return out
+
+
+_WINDOW_SEEDS = FakeStore(
+    [article(f"s{i}", f"S{i}", ArticleState.REJECTED, triaged=True) for i in range(3)]
+)
+_WINDOW = [article(title, title) for title in [*_ScaledEmbedder.COSINES]]
+
+
+async def test_an_outlier_is_the_same_under_a_shifted_cosine_scale():
+    """One window, two arms on different cosine scales: both cut the same row, so it agrees."""
     comparison = await compare_embedders(
-        store,
-        [
-            ("gemini", UsageTrackingEmbedder(), 0.8),
-            ("workers_ai", UsageTrackingEmbedder(), 1.5),  # above any cosine: suppresses nothing
-        ],
-        candidates,
-        hours=24,
-        max_seeds=200,
-        checked_at=now,
-    )
-
-    assert comparison.agreed == set()
-    assert comparison.only == {"gemini_only": ["c1"], "workers_ai_only": []}
-
-    row = comparison.log_row()
-    assert row["checked_at"] == now.isoformat()
-    assert row["candidates"] == 2
-    assert row["gemini"]["suppressed"] == 1
-    assert row["workers_ai"]["suppressed"] == 0
-
-
-async def test_what_both_arms_suppress_is_agreement_not_a_disagreement():
-    """The broken version of this returns each arm's whole set as its own — every
-    row would read as a disagreement, which is the one number the log is kept for."""
-    store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)])
-    candidates = [article("c1", "Lottery again"), article("c2", "Tech thing")]
-
-    comparison = await compare_embedders(
-        store,
-        [
-            ("gemini", UsageTrackingEmbedder(), 0.8),
-            ("workers_ai", UsageTrackingEmbedder(), 0.8),
-        ],
-        candidates,
+        _WINDOW_SEEDS,
+        [("gemini", _ScaledEmbedder()), ("workers_ai", _ScaledEmbedder(shift=0.2))],
+        _WINDOW,
         hours=24,
         max_seeds=200,
         checked_at=datetime(2026, 9, 5, tzinfo=UTC),
     )
 
-    assert comparison.agreed == {"c1"}
+    assert comparison.agreed == {"Out"}
     assert comparison.only == {"gemini_only": [], "workers_ai_only": []}
+
+
+async def test_the_log_row_names_each_arms_cut_and_carries_no_threshold():
+    comparison = await compare_embedders(
+        _WINDOW_SEEDS,
+        [("gemini", _ScaledEmbedder()), ("workers_ai", _ScaledEmbedder(shift=0.2))],
+        _WINDOW,
+        hours=24,
+        max_seeds=200,
+        checked_at=datetime(2026, 9, 5, tzinfo=UTC),
+    )
+
+    arm = comparison.log_row()["gemini"]
+    assert {"suppressed", "suppressed_min", "kept_max"} <= arm.keys()
+    assert "threshold" not in arm
+    assert arm["suppressed_min"] == 0.7
 
 
 async def test_a_window_without_seeds_is_not_a_comparison():
@@ -114,7 +129,7 @@ async def test_a_window_without_seeds_is_not_a_comparison():
     with pytest.raises(NothingToCompareError):
         await compare_embedders(
             store,
-            [("gemini", UsageTrackingEmbedder(), 0.8)],
+            [("gemini", UsageTrackingEmbedder())],
             [article("c1", "Lottery again")],
             hours=24,
             max_seeds=200,
@@ -169,22 +184,16 @@ def test_the_cli_no_longer_holds_the_comparison_logic() -> None:
     assert "api_calls == 0" not in source
 
 
-def test_both_embedding_cutoffs_default_to_the_provider_file() -> None:
-    """A stale cutoff makes the comparison measure drift instead of the models.
-
-    `--workers-threshold` carried 0.53 as a typer default, which matched the
-    file until someone retuned the file.
-    """
-    import json
-    from pathlib import Path
-
+def test_each_arm_is_named_with_its_embedder() -> None:
     from cyris.diagnostics.compare import build_embedding_arms
-
-    defaults = json.loads(Path("src/cyris/provider_defaults.json").read_text())["embedding"]
 
     arms = build_embedding_arms("acct", "gemini-key", "workers-token")
 
-    assert {name: threshold for name, _, threshold in arms} == {
-        "gemini": defaults["gemini"]["threshold"],
-        "workers_ai": defaults["workers_ai"]["threshold"],
-    }
+    assert [name for name, _ in arms] == ["gemini", "workers_ai"]
+
+
+@pytest.mark.parametrize("flag", ["--threshold", "--workers-threshold"])
+def test_embed_compare_refuses_a_cutoff_option(flag: str) -> None:
+    result = CliRunner().invoke(app, ["embed-compare", flag, "0.5"])
+
+    assert result.exit_code == 2

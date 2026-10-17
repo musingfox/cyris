@@ -133,8 +133,8 @@ class WorkersAIEmbedder:
     Multilingual, which a corpus 62% of which is Chinese-language newswire requires — the
     English-only trap is the
     `bge-*-en-v1.5` family, not this model. Its cosines run lower than Gemini's across
-    the board, so its threshold is its own (~0.53 against ~0.68); the scale differs,
-    the discrimination does not.
+    the board; the scale differs, the discrimination does not. Vote similarity's cutoff
+    is relative to each run's window (ADR-0017), so the scale needs no number of its own.
 
     Needs a token with Workers AI → Read (`CLOUDFLARE_EMBEDDING_API_TOKEN`); the wrangler
     token carries account:read only.

@@ -314,18 +314,16 @@ class NewsletterConfig(WorkerConfig):
 
 
 class VoteSimilarityConfig(BaseModel):
-    """Suppress candidates that sit close to what the reader downvoted.
+    """Suppress candidates that are outliers close to what the reader downvoted.
 
-    It changes what reaches the digest, and the threshold was calibrated on one
-    reader's votes. See docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md.
+    It changes what reaches the digest. See
+    docs/decisions/0017-suppression-is-a-relative-outlier-with-a-reason-and-a-clock.md.
     """
 
     enabled: bool
     provider: Literal["workers_ai", "gemini"]
-    # None means "the calibrated model's own cutoff". Grade A: the pairing is a
-    # measured property of the model, not a preference — bge-m3's cosines run
-    # lower than Gemini's across the board, so carrying 0.68 over to it would
-    # suppress nothing and the feature would silently no-op.
+    # Ignored since ADR-0017. Still parsed so a cyris.toml that sets it loads; doctor
+    # warns that it is ignored.
     threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     model: str
     max_seeds: int = Field(ge=1)

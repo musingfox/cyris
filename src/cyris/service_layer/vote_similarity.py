@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 
 from cyris.domain.models import ArticleState, StoredArticle
-from cyris.domain.similarity import DEFAULT_THRESHOLD, SimilarityVerdict, judge, nearest_k
+from cyris.domain.similarity import SimilarityVerdict, judge, nearest_k
 from cyris.service_layer.ports import ArticleRepository, Embedder
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,6 @@ async def judge_by_votes(
     embedder: Embedder,
     candidates: list[StoredArticle],
     *,
-    threshold: float | None = DEFAULT_THRESHOLD,
     max_seeds: int,
 ) -> VoteSimilarityReport:
     """Compare candidates against upvoted and downvoted articles.
@@ -76,8 +75,6 @@ async def judge_by_votes(
     Degrades to an empty report rather than raising: a digest must still go out
     if the embedding API is down.
     """
-    if threshold is None:
-        return VoteSimilarityReport(skipped_reason="no calibrated threshold for this model")
     if not candidates:
         return VoteSimilarityReport(skipped_reason="no candidates")
 
@@ -115,7 +112,6 @@ async def judge_by_votes(
         by_url,
         up_vectors,
         down_vectors,
-        threshold,
         upvoted_urls=list(up_seeds),
         downvoted_urls=list(down_seeds),
     )

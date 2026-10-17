@@ -282,3 +282,23 @@ CREATE TABLE IF NOT EXISTS blind_labels (
   labeled_at     TEXT,
   PRIMARY KEY (drawn_at, url)
 );
+
+-- One row per candidate a run suppressed as an outlier among the window it was judged
+-- in: the downvote it sat nearest to, how strong that signal was, and the instant the
+-- hold expires (`until`, run_at plus SUPPRESSION_CLOCK_DAYS). A suppression is not a
+-- vote: `stored_articles` keeps the article pending with no triaged_at, so this table
+-- is the only record. `reason` is fixed to REASON in domain/suppression.py for now.
+CREATE TABLE IF NOT EXISTS suppressions (
+  run_at            TEXT NOT NULL,
+  period            TEXT NOT NULL,
+  model             TEXT NOT NULL,
+  candidate_url     TEXT NOT NULL,
+  reason            TEXT NOT NULL,
+  nearest_down_url  TEXT NOT NULL,
+  down_cosine       REAL NOT NULL,
+  up_cosine         REAL,
+  outlier_score     REAL NOT NULL,
+  until             TEXT NOT NULL,
+  PRIMARY KEY (candidate_url, run_at)
+);
+CREATE INDEX IF NOT EXISTS idx_suppressions_until ON suppressions(until);

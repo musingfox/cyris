@@ -393,9 +393,6 @@ def promote_sync(
 @app.command("vote-sim")
 def vote_sim(
     hours: Annotated[int, typer.Option("--hours", help="Window to judge")] = 24,
-    threshold: Annotated[
-        float | None, typer.Option("--threshold", help="Override the configured cutoff")
-    ] = None,
     show: Annotated[int, typer.Option("--show", help="Rows to print per side")] = 15,
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
@@ -415,7 +412,8 @@ def vote_sim(
 
     from datetime import UTC, datetime, timedelta
 
-    from cyris.bootstrap import build_deps, embedding_threshold, load_effective_config
+    from cyris.bootstrap import build_deps, load_effective_config
+    from cyris.domain.similarity import OUTLIER_MARGIN
     from cyris.service_layer.vote_similarity import judge_by_votes
 
     try:
@@ -442,7 +440,6 @@ def vote_sim(
             deps.store,
             embedder,
             candidates,
-            threshold=threshold if threshold is not None else embedding_threshold(cfg),
             max_seeds=cfg.app.vote_similarity.max_seeds,
         )
     )
@@ -451,11 +448,10 @@ def vote_sim(
         raise typer.Exit(1)
 
     by_url = {a.url: a for a in candidates}
-    cut = threshold if threshold is not None else embedding_threshold(cfg)
     typer.echo(
         f"\n{len(candidates)} candidate(s) over {hours}h, judged against "
-        f"{report.upvote_seeds} up / {report.downvote_seeds} down seed(s) at "
-        f"threshold {cut:.2f}\n"
+        f"{report.upvote_seeds} up / {report.downvote_seeds} down seed(s), "
+        f"outlier margin {OUTLIER_MARGIN:g}\n"
     )
     typer.echo(f"WOULD SUPPRESS ({len(report.suppressed_urls)}):")
     for url in report.suppressed_urls[:show]:
@@ -538,13 +534,6 @@ def topic_sim(
 @app.command("embed-compare")
 def embed_compare(
     hours: Annotated[int, typer.Option("--hours", help="Window to judge")] = 24,
-    threshold: Annotated[
-        float | None, typer.Option("--threshold", help="Gemini cutoff (default: configured)")
-    ] = None,
-    workers_threshold: Annotated[
-        float | None,
-        typer.Option("--workers-threshold", help="bge-m3 cutoff (default: configured)"),
-    ] = None,
     as_json: Annotated[
         bool,
         typer.Option(
@@ -603,8 +592,6 @@ def embed_compare(
             account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
             gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
             workers_api_token=os.environ.get("CLOUDFLARE_EMBEDDING_API_TOKEN", ""),
-            gemini_threshold=threshold,
-            workers_threshold=workers_threshold,
         )
         comparison = asyncio.run(
             compare_embedders(
@@ -636,7 +623,7 @@ def embed_compare(
         m = margin(arm.report)
         cost = f", {u['input_tokens']} tokens, {u['neurons']} neurons" if u["neurons"] else ""
         report(
-            f"  {arm.name:<11} @ {arm.threshold:.2f}  "
+            f"  {arm.name:<11}  "
             f"suppresses {len(arm.report.suppressed_urls):>3}   "
             f"margin {m['kept_max']} -> {m['suppressed_min']}   "
             f"({u['embedded']} embedded in {u['requests']} req, "

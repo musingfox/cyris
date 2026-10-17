@@ -1,5 +1,5 @@
 {
-  "_comment": "What each provider is used with when the config names a provider but no model, and the similarity cutoff each embedding model is calibrated at. These are values, not reasons: why gpt-oss-120b rather than llama-3.3-70b is in docs/architecture.md §5 under 'Provider defaults', and why the two thresholds are 0.53 and 0.68 rather than one number is in docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md. Adding a provider means a row here plus a branch in bootstrap.build_llm.",
+  "_comment": "What each provider is used with when the config names a provider but no model. These are values, not reasons: why gpt-oss-120b rather than llama-3.3-70b is in docs/architecture.md §5 under 'Provider defaults'. Adding a provider means a row here plus a branch in bootstrap.build_llm. The vote-similarity cutoff is no longer per model: docs/decisions/0017-suppression-is-a-relative-outlier-with-a-reason-and-a-clock.md.",
   "llm_models": {
     "anthropic": "claude-sonnet-4-6",
     "gemini": "gemini-2.5-flash",
@@ -8,7 +8,7 @@
     "ai_gateway": "google/gemini-3.8-flash"
   },
   "embedding": {
-    "workers_ai": { "model": "@cf/baai/bge-m3", "threshold": 0.53 },
-    "gemini": { "model": "gemini-embedding-001", "threshold": 0.68 }
+    "workers_ai": { "model": "@cf/baai/bge-m3" },
+    "gemini": { "model": "gemini-embedding-001" }
   }
 }

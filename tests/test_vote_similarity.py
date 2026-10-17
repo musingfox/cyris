@@ -53,16 +53,6 @@ class FakeEmbedder:
         return [normalize(self.AXES.get(t[0], [1.0, 1.0, 1.0])) for t in texts]
 
 
-async def test_a_candidate_like_a_downvote_is_suppressed():
-    store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)])
-    candidates = [article("c1", "Lottery again"), article("c2", "Tech thing")]
-
-    report = await judge_by_votes(store, FakeEmbedder(), candidates, max_seeds=200)
-
-    assert report.suppressed_urls == ["c1"]
-    assert report.downvote_seeds == 1
-
-
 async def test_pipeline_verdicts_are_not_seeds():
     """48 of 50 lottery rows were pipeline-accepted; seeding on those inverts the filter."""
     store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=False)])
@@ -140,31 +130,49 @@ async def test_no_candidates_short_circuits_before_any_api_call():
     assert embedder.calls == 0
 
 
-@pytest.mark.parametrize("threshold,expected", [(0.99, []), (0.4, ["c1"])])
-async def test_threshold_moves_the_boundary(threshold, expected):
-    """The partial match at cosine 0.5 falls on either side depending on the setting."""
-    store = FakeStore([article("d", "Lottery", ArticleState.REJECTED, triaged=True)])
-    candidates = [article("c1", "Partial match")]
+class _OutlierEmbedder:
+    """Three downvotes on [1, 0]; each candidate's cosine to them is written in its title."""
 
-    report = await judge_by_votes(
-        store, FakeEmbedder(), candidates, threshold=threshold, max_seeds=200
+    def __init__(self, cosines: dict[str, float]) -> None:
+        self._cosines = cosines
+        self.usage = None
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        out = []
+        for text in texts:
+            if text.startswith("S"):
+                out.append([1.0, 0.0])
+            else:
+                c = self._cosines[text]
+                out.append([c, (1 - c * c) ** 0.5])
+        return out
+
+
+async def test_the_outlier_among_the_candidates_is_the_only_one_suppressed():
+    cosines = {f"C{i}": 0.40 + 0.01 * i for i in range(11)}
+    cosines["Out"] = 0.95
+    store = FakeStore(
+        [article(f"s{i}", f"S{i}", ArticleState.REJECTED, triaged=True) for i in range(3)]
     )
+    candidates = [article(title, title) for title in cosines]
 
-    assert report.suppressed_urls == expected
+    report = await judge_by_votes(store, _OutlierEmbedder(cosines), candidates, max_seeds=200)
+
+    assert report.suppressed_urls == ["Out"]
+    assert report.downvote_seeds == 3
 
 
-async def test_no_calibrated_threshold_skips_before_embedding():
-    """Another model's cutoff would judge this one's cosines on the wrong scale."""
-    store = FakeStore([article("d", "Lottery draw", ArticleState.REJECTED, triaged=True)])
-    embedder = FakeEmbedder()
+async def test_a_threshold_argument_is_refused():
+    with pytest.raises(TypeError):
+        await judge_by_votes(FakeStore([]), FakeEmbedder(), [], threshold=0.5, max_seeds=5)
 
-    report = await judge_by_votes(
-        store, embedder, [article("c1", "Lottery again")], threshold=None, max_seeds=200
+
+def test_max_seeds_has_no_default():
+    import inspect
+
+    assert (
+        inspect.signature(judge_by_votes).parameters["max_seeds"].default is inspect.Parameter.empty
     )
-
-    assert not report.ran
-    assert "threshold" in report.skipped_reason
-    assert embedder.calls == 0
 
 
 class SeedGapEmbedder(FakeEmbedder):

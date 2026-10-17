@@ -6,10 +6,15 @@ decision-makers: ""
 
 # Each embedding model carries its own measured threshold, and production embeds with `gemini-embedding-001`
 
+> Superseded in part by [ADR-0017](0017-suppression-is-a-relative-outlier-with-a-reason-and-a-clock.md)
+> (2026-10-17). The absolute cutoff and the per-model thresholds below are history: suppression
+> is now a relative outlier over each window. The choice of embedding model and its measurements
+> still stand.
+
 ## Context and Problem Statement
 
-Vote similarity suppresses a candidate whose cosine to its nearest downvoted title reaches a
-threshold, unless it sits closer still to an upvoted one. Two embedding providers are wired
+Vote similarity suppressed a candidate whose cosine to its nearest downvoted title reached a
+threshold, unless it sat closer still to an upvoted one. Two embedding providers are wired
 behind `ports.Embedder`: `gemini-embedding-001` and Workers AI `@cf/baai/bge-m3`. Two questions
 had to be settled. Where does the threshold come from, and which model does production embed
 with?
@@ -37,8 +42,8 @@ a little. Carrying 0.68 over to `bge-m3` suppresses nothing, so the feature sile
 carrying 0.53 over to Gemini suppresses indiscriminately. That is why the threshold is grade A
 while the provider and model are grade D: the reader chooses the model, and the threshold is
 arithmetic about the model they chose. A model with no calibration gets no borrowed cutoff. The
-run skips vote similarity and says why, and `cyris doctor` fails until `cyris.toml` sets one
-(2026-10-07).
+run skipped vote similarity and said why, and `cyris doctor` failed until `cyris.toml` set one
+(2026-10-07). Both behaviours are history: ADR-0017 removed the per-model cutoff.
 
 * **0.68 for Gemini (2026-08-10).** Over the whole 5,724-article store, seeded with the two real
   downvotes, the 71-article lottery class has an in-class minimum of 0.690 and an out-of-class
@@ -62,15 +67,14 @@ sees.
 ### Consequences
 
 * Good, because changing the embedding model on `/settings` cannot silently disable or inflate
-  suppression; an uncalibrated model is skipped and reported.
+  suppression, which ADR-0017's relative cutoff keeps true without a calibration.
 * Bad, because adopting a new model means a calibration on labelled votes before the feature
   works with it. `gemini-embedding-001` retires on 2028-05-14, and Google names
   `gemini-embedding-2` as its replacement, which therefore needs its own calibration.
 * Bad, because both thresholds were calibrated against 7 upvote and 2 downvote seeds. An
   absolute cutoff over a growing seed list over-suppresses more with every downvote, so both are
   already stale. Why that follows from the cutoff's shape is recorded below, under *A fixed
-  threshold is the wrong shape*. Replacing the absolute cutoff is tracked outside this
-  repository and is not part of this decision.
+  threshold is the wrong shape*. The replacement is ADR-0017.
 * Neutral, because `cyris.toml.example` keeps `workers_ai`. Vote similarity ships off there, and
   `bge-m3` needs no key beyond the Cloudflare ones a deployment already has.
 * Bad, because every measurement below embeds titles only. Content embeddings were never
