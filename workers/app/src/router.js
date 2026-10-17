@@ -241,6 +241,12 @@ export async function handleRequest(request, env, deps) {
     return sized(await deps.fetchImpl(proxied), scale, deps);
   }
 
+  // Access has already signed the reader in, so /login only sends them back where they came from.
+  if (url.pathname === "/login") {
+    const location = returnPath(url.searchParams.get("next"), url.origin);
+    return new Response(null, { status: 302, headers: { Location: location } });
+  }
+
   if (VOTE_ONLY(url.pathname)) {
     return handleVote(request, env, deps);
   }
