@@ -9,6 +9,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,7 +33,8 @@ case "$*" in
     printf '%s\n' TRIAL_APP_WORKER=cyris-app-t1 TRIAL_CONTAINER=cyris-app-cyriscontainer-t1 \
       TRIAL_PROMOTE_WORKER=cyris-promote-t1 TRIAL_KV_TITLE=cyris-promote-t1 \
       TRIAL_D1_NAME=cyris-app-t1 TRIAL_PAGES_PROJECT=cyris-app-t1-0123456789abcdef \
-      TRIAL_RSS_WORKER=cyris-rss-t1 ;;
+      TRIAL_RSS_WORKER=cyris-rss-t1 TRIAL_NEWSLETTER_WORKER=cyris-newsletter-t1 \
+      TRIAL_NEWSLETTER_KV_TITLE=cyris-newsletter-t1 ;;
   *"trial_api.py check-token"*)
     cat > "$FAKE_DIR/stdin"
     [[ "$(cat "$FAKE_DIR/stdin")" == "$FAKE_GOOD_TOKEN" ]] && exit 0
@@ -184,6 +186,16 @@ def rig(tmp_path: Path):
         return Rig(repo, base | env)
 
     return make
+
+
+def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:
+    real = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/provision_trial.py"), "names", "--slug", SLUG,
+         "--pages-suffix", "0123456789abcdef"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    fake = set(re.findall(r"(TRIAL_[A-Z0-9_]+)=", FAKE_UV))
+    assert fake == {line.split("=", 1)[0] for line in real.splitlines()}
 
 
 def test_a_resumed_run_starts_at_the_first_stage_not_done(rig) -> None:
