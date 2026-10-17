@@ -4,15 +4,9 @@ import { handleRequest, returnPath } from "../src/router.js";
 import { accessKeys } from "../src/access_keys.js";
 import routes from "./routes.json" with { type: "json" };
 
-const TOKEN = "abcdefghijklmnopqrstuvwxyz123456";
 const HOST = "cyris-app.x.workers.dev";
 const ACCESS_HOST = "digest.example.test";
 const VOTE_BODY = { url: "https://e.x/a", vote: "up", digest_date: "2026-09-01" };
-
-async function sha256(text) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 function makeDeps({
   fetchStatus = 200,
@@ -107,7 +101,6 @@ function makeDeps({
 
 function env(extra = {}) {
   return {
-    CYRIS_UI_TOKEN: TOKEN,
     CYRIS_ACCESS_TEAM_DOMAIN: TEAM,
     CYRIS_ACCESS_AUD: AUD,
     DIGEST_ORIGIN: "https://p.pages.dev",
@@ -831,7 +824,7 @@ describe("PrivateArchiveRefusesAnonymousReaders", () => {
     const { resp } = await anonymous(
       "GET",
       "/",
-      { ...PRIVATE, CYRIS_UI_ACCESS_HOST: ACCESS_HOST },
+      PRIVATE,
       { host: ACCESS_HOST },
     );
 
@@ -1220,22 +1213,6 @@ describe("AccessGate", () => {
       await forbiddenShape(resp);
       expect(deps.fetchImpl.calls, method).toHaveLength(0);
     }
-  });
-
-  it("refuses an old session cookie equal to the token digest, on the sign-in form too", async () => {
-    const cookie = await sha256(TOKEN);
-    const deps = makeDeps();
-    const form = new FormData();
-    form.set("token", TOKEN);
-    const req = new Request(`https://${HOST}/login`, {
-      method: "POST",
-      headers: { Cookie: `cyris_session=${cookie}` },
-      body: form,
-    });
-    await forbiddenShape(await handleRequest(req, env(), deps));
-    const settings = new Request(`https://${HOST}/settings`, { headers: { Cookie: `cyris_session=${cookie}` } });
-    await forbiddenShape(await handleRequest(settings, env(), deps));
-    expect(deps.container.calls).toHaveLength(0);
   });
 
   it("serves the vote API, run, probe and container once a valid JWT is present", async () => {

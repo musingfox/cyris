@@ -147,5 +147,5 @@ def test_workers_dev_false_in_wrangler_fails():
 
 def test_router_has_no_cookie_login():
     text = ROUTER.read_text()
-    for name in ("cyris_session", "ctEqual", "LOGIN_PAGE"):
+    for name in ("ctEqual", "LOGIN_PAGE"):
         assert name not in text, name

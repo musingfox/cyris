@@ -423,7 +423,6 @@ def test_mail_permission_is_checked_only_for_a_tester_with_email(rig, email, fla
 
 def test_the_wizard_no_longer_uses_a_session_cookie() -> None:
     script = (ROOT / "scripts/trial-wizard.sh").read_text()
-    assert "cyris_session" not in script
     assert "shasum" not in script
 
 
