@@ -354,3 +354,14 @@ class TestReportReads:
             ("seed-down", "Down", False),
             ("seed-up", "Up", True),
         ]
+
+
+def test_the_pool_draws_only_skim_lane_rows() -> None:
+    db = SqliteD1()
+    put(db, "a", lane="skim")
+    put(db, "b", lane="read")
+    put(db, "c", lane="follow")
+
+    pool = D1BlindLabels(db).pool(SINCE)
+
+    assert [r.url for r in pool] == ["a"]
