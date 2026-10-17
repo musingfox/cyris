@@ -418,7 +418,6 @@ fi
 # ── 1 ─────────────────────────────────────────────────────────────────────
 stage_1() {
   stage "Before you start: the wrangler login"
-  say "A wildcard Access policy on the trial's domain would give the tester a second login."
   say "Stage 11 has you create the trial's Access application, its policies and a service token."
   say "Log wrangler in as the account the trial belongs to."
   if confirm "Log wrangler in now? (No if it already is, as that account)"; then

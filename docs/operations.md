@@ -40,9 +40,10 @@ On a fork they need, under Settings → Secrets and variables → Actions:
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | Your account id |
 | Secret | `CLOUDFLARE_CONTAINERS_TOKEN` | An API token with Workers Scripts → Edit plus the Containers edit permission |
 | Variable | `CYRIS_DEPLOYMENT_URL` | The app Worker's `workers.dev` URL, for the deploy's check that production serves the new image |
-| Secret | `CYRIS_UI_TOKEN` | The same value as the `cyris-app` Worker secret; replace both together when you rotate it |
+| Secret | `CYRIS_ACCESS_CLIENT_ID` | The Client ID of an Access service token; the deploy's `verify` step sends it as `CF-Access-Client-Id` |
+| Secret | `CYRIS_ACCESS_CLIENT_SECRET` | The Client Secret of the same service token, sent as `CF-Access-Client-Secret` |
 
-`CLOUDFLARE_CONTAINERS_TOKEN` is for CI only and never enters the container. After `wrangler deploy`, the deploy workflow waits six minutes, logs in to `CYRIS_DEPLOYMENT_URL` and fails unless `/api/build` names the commit baked into the deployed image; it asks once more after another six minutes before giving up.
+`CLOUDFLARE_CONTAINERS_TOKEN` is for CI only and never enters the container. After `wrangler deploy`, the deploy workflow waits six minutes, reads `/api/build` at `CYRIS_DEPLOYMENT_URL` with the service token and fails unless `/api/build` names the commit baked into the deployed image; it asks once more after another six minutes before giving up.
 
 `scripts/check.sh` runs the test suite; the real-newsletter tests skip when their samples are absent.
 
@@ -73,10 +74,10 @@ deploy by hand.
 ## Which image is running
 
 ```sh
-CYRIS_UI_TOKEN=<token> uv run cyris doctor --deployment https://cyris-app.<subdomain>.workers.dev
+CYRIS_ACCESS_CLIENT_ID=<client id> CYRIS_ACCESS_CLIENT_SECRET=<client secret> uv run cyris doctor --deployment https://cyris-app.<subdomain>.workers.dev
 ```
 
-It logs in, asks the deployment which commit its image was built from, and compares
+It sends the service token to Access, asks the deployment which commit its image was built from, and compares
 that with the checkout you run it in. It also prints a `last run` line: the commit,
 time and status of the last production run, read from D1 `digest_runs`. It needs the
 `.env` described in
@@ -84,7 +85,6 @@ time and status of the last production run, read from D1 `digest_runs`. It needs
 
 - An image built by `wrangler deploy` has no commit baked in, so the check fails with
   "runs an image that cannot name its commit". Only the release workflow bakes one.
-- Use the `workers.dev` URL. Behind Cloudflare Access the login cannot succeed.
 - The answer comes from whichever instance replied. A warm instance keeps reporting
   the image it started from until it sleeps after five idle minutes, and each request
   renews that timer, so asking again and again keeps the old answer alive.
@@ -191,9 +191,9 @@ D1 `blind_labels` (`docs/architecture.md` §4).
    100 items, an equal share from each of four strata, and at least 30 the pipeline
    rejected, and prints how many of each it took. A second draw is refused while a sample
    is kept; `--replace` discards the kept sample and its answers.
-3. On a phone, open `https://cyris-app.<subdomain>.workers.dev/labels` and sign in with
-   `CYRIS_UI_TOKEN`; the page sits behind the same sign-in as `/settings`, on a custom
-   domain too. Swipe right or press Up for an article you want more of, left or Down for
+3. On a phone, open `https://cyris-app.<subdomain>.workers.dev/labels` and sign in
+   through Cloudflare Access; the page sits behind the same Access application as `/settings`,
+   on a custom domain too. Swipe right or press Up for an article you want more of, left or Down for
    one you do not, and Skip one you cannot judge. A tap on the card opens the article.
    Up and down are written at once, exactly as a digest vote: the article's state changes
    and it seeds vote similarity from the next run. A skip changes nothing on the article.
@@ -252,8 +252,14 @@ re-run. When the live archive lists none of the named pages, it prints `Nothing 
 
 ## Routine
 
-- **Rotating `CYRIS_UI_TOKEN`** ends every session at once; that is how a session is
-  revoked. Set the new value with `wrangler secret put` and log in again.
+- **Revoking a reader's session** is done in the Zero Trust dashboard. The reader meets the
+  Access sign-in again on the next protected page.
+- **Rotating the service token** that `cyris doctor --deployment`, the deploy's `verify` step and
+  the trial wizard use: in the Zero Trust dashboard, create a new service token under Access →
+  Service Auth, put its Client ID and Client Secret in `CYRIS_ACCESS_CLIENT_ID` and
+  `CYRIS_ACCESS_CLIENT_SECRET` (your local `.env` and the GitHub Actions secrets of the same
+  names), then delete the old token there. A token also expires on the duration it was created
+  with, so rotate before that date.
 - **Changing a secret the container reads** reaches it only when an instance starts: the app
   Worker hands secrets over at start, and drops an empty one. A warm `ui` instance keeps the old
   environment until it sleeps, so stay off `/settings` until `bunx wrangler containers instances

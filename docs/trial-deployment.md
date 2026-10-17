@@ -125,7 +125,7 @@ The wizard writes these at the repo root, all gitignored:
 ## What stays by hand
 
 - Creating the Access application for `<slug>.<domain>` in stage 11, with its two
-  policies and a service token; a wildcard policy would give the tester a second login.
+  policies and a service token.
 - The tester's own `/onboarding`: sources, votes, notifications and the first issue; then
   `/settings` for anything else.
 - The vote round trip: the tester votes, you run `cyris promote-sync` against the trial,

@@ -86,16 +86,18 @@ go into the secrets file in step 4, and a deploy before they are set leaves `/se
 answering `403`.
 
 1. Zero Trust → Access → Applications → Add an application → **Self-hosted**. The
-   application domain is the hostname the Worker answers on: `cyris-app.<subdomain>.workers.dev`,
-   or your custom domain. Destinations are `/settings`, `/onboarding`, `/labels`, `/login`, `/run`,
-   `/api/*` and `/static/*` on that hostname. If you set `CYRIS_PRIVATE_ARCHIVE=true`, make the
-   destination the whole hostname instead, so the archive sits behind the same sign-in.
+   application domains are every hostname the Worker answers on: `cyris-app.<subdomain>.workers.dev`,
+   and your custom domain if you set one. Destinations are `/settings`, `/onboarding`, `/labels`,
+   `/interest`, `/login`, `/run`, `/api/*` and `/static/*` on that hostname. If you set
+   `CYRIS_PRIVATE_ARCHIVE=true`, make the destination the whole hostname instead, so the archive
+   sits behind the same sign-in.
 2. Add two policies to the application. An **Allow** policy with the one-time PIN method and
    your address, for readers. A **Service Auth** policy for scripts, which needs a service
    token: Zero Trust → Access → Service Auth → Create Service Token.
 3. Copy the application's **Application Audience (AUD) tag** from its overview into
    `CYRIS_ACCESS_AUD`. Set `CYRIS_ACCESS_TEAM_DOMAIN` to your team domain as a host without a
-   scheme, such as `yourteam.cloudflareaccess.com`.
+   scheme, such as `yourteam.cloudflareaccess.com`. The Worker uses the value as given: with
+   `https://` or a trailing slash in it, every sign-in is refused.
 4. Check from a browser you are not logged in with: `/settings` must redirect to the Access
    login, not show the page.
 
@@ -223,10 +225,9 @@ from step 3a:
 APP=https://cyris-app.<subdomain>.workers.dev
 CYRIS_ACCESS_CLIENT_ID=<the service token's client id>
 CYRIS_ACCESS_CLIENT_SECRET=<the service token's client secret>
-curl -s -X POST \
-  -H "CF-Access-Client-Id: $CYRIS_ACCESS_CLIENT_ID" \
-  -H "CF-Access-Client-Secret: $CYRIS_ACCESS_CLIENT_SECRET" \
-  "$APP/run?period=morning"
+printf 'header = "CF-Access-Client-Id: %s"\nheader = "CF-Access-Client-Secret: %s"\n' \
+  "$CYRIS_ACCESS_CLIENT_ID" "$CYRIS_ACCESS_CLIENT_SECRET" \
+  | curl -s -X POST --config - "$APP/run?period=morning"
 ```
 
 It answers `{"started":"run", …}` at once; the run takes minutes. `period` is
