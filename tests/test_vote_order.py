@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from cyris.adapters.clef import ClefError
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.domain.similarity import SimilarityVerdict
 from cyris.service_layer import prompts, vote_order
 from cyris.service_layer.ports import NoulAnswer
@@ -28,7 +28,7 @@ def _article(url: str, title: str = "T", content: str = "body") -> Article:
         content=content,
         published_at=datetime(2026, 4, 10, tzinfo=UTC),
         source_name="Wire",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
 
 

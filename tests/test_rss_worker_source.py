@@ -10,7 +10,7 @@ import pytest
 import respx
 
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Lane, SourceConfig
 
 pytestmark = pytest.mark.unit
 
@@ -32,20 +32,20 @@ ROW = {
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_rows_map_to_articles_with_tier_from_config():
-    """The buffer stores only the source name; tier and tags come from sources.yaml."""
+async def test_rows_map_to_articles_with_lane_from_config():
+    """The buffer stores only the source name; lane and tags come from sources.yaml."""
     route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
 
     articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
         after=AFTER,
         before=BEFORE,
-        sources={"A": SourceConfig(name="A", url="https://a.test/feed", tier=Tier.SUMMARIZE)},
+        sources={"A": SourceConfig(name="A", url="https://a.test/feed", lane=Lane.READ)},
     )
 
     assert route.call_count == 1
     assert len(articles) == 1
     assert articles[0].url == "https://a.test/1"
-    assert articles[0].source_tier == Tier.SUMMARIZE
+    assert articles[0].source_lane == Lane.READ
     assert articles[0].published_at.tzinfo is not None
 
 
@@ -107,7 +107,7 @@ async def test_the_read_asks_for_the_workers_ceiling_not_the_run_cap():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_unknown_source_falls_back_to_filter_tier():
+async def test_unknown_source_falls_back_to_skim_lane():
     """A feed added to the Worker but not yet in sources.yaml must not crash the run."""
     route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[ROW]))
 
@@ -116,7 +116,7 @@ async def test_unknown_source_falls_back_to_filter_tier():
     )
 
     assert route.call_count == 1
-    assert articles[0].source_tier == Tier.FILTER
+    assert articles[0].source_lane == Lane.SKIM
 
 
 @respx.mock

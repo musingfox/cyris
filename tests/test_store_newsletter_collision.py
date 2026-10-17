@@ -14,7 +14,7 @@ from cyris.adapters.fetch.email_parser import ParsedNewsletter
 from cyris.adapters.fetch.newsletter import newsletter_article
 from cyris.adapters.store.article_store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
-from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, SourceConfig, Tier
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, Lane, SourceConfig
 from cyris.service_layer.fetching import fetch_all_articles
 
 pytestmark = pytest.mark.integration
@@ -36,7 +36,7 @@ def _issue(article_id: str, title: str, url: str = NAV, source_name: str = "NL")
         content="body",
         published_at=NOW,
         source_name=source_name,
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_type=NEWSLETTER_SOURCE_TYPE,
     )
 
@@ -80,7 +80,7 @@ async def test_two_issues_through_fetch_and_save_both_reach_the_digest_window(st
     source = SourceConfig(
         name="NL",
         type="newsletter",
-        tier=Tier.SUMMARIZE,
+        lane=Lane.READ,
         email_match="from:list@s.com",
         homepage="https://s.com",
     )
@@ -144,7 +144,7 @@ def _rss(title: str, source_name: str = "R") -> Article:
         content="c",
         published_at=NOW,
         source_name=source_name,
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
 
 

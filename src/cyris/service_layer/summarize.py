@@ -1,4 +1,4 @@
-"""Summarize-tier processor: group articles by tag, then summarize each group via Claude."""
+"""Read-lane processor: group articles by tag, then summarize each group via Claude."""
 
 import logging
 from collections import defaultdict
@@ -39,7 +39,7 @@ async def summarize_articles(
     is sent to Claude for thematic summarization.
 
     Args:
-        articles: Summarize-tier articles to process.
+        articles: Read-lane articles to process.
         llm: LLM client.
         usage: Optional UsageStats object to accumulate token usage.
         snippet_length: Maximum length of content snippet to include in prompt.
@@ -52,7 +52,7 @@ async def summarize_articles(
 
     # Degraded mode: no LLM → one plain excerpt per article, grouped by tag
     if llm is None:
-        logger.warning("No LLM configured; summarize tier falls back to excerpts")
+        logger.warning("No LLM configured; read lane falls back to excerpts")
         if usage is not None:
             usage.fell_back_to_excerpts = True
         return excerpt_sections_from_articles(articles, article_scores)
@@ -137,15 +137,15 @@ async def summarize_articles(
     return sections
 
 
-def build_fan_sections(articles: list[Article]) -> list[DigestSection]:
-    """Build fan-tier sections grouped by source (no AI, never discarded).
+def build_follow_sections(articles: list[Article]) -> list[DigestSection]:
+    """Build follow-lane sections grouped by source (no AI, never discarded).
 
     Each followed group/newsletter becomes one section; items carry a short
     non-LLM excerpt so updates from tracked groups keep their own channel and
     aren't washed out by the knowledge sections.
 
     Args:
-        articles: Fan-tier articles to group by source.
+        articles: Follow-lane articles to group by source.
 
     Returns:
         One DigestSection per source, items in feed order.

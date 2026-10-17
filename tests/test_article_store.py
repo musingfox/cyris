@@ -13,7 +13,7 @@ from fakes import SqliteD1
 
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
-from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
+from cyris.domain.models import Article, ArticleState, Lane, StoredArticle
 
 pytestmark = pytest.mark.unit
 
@@ -39,7 +39,7 @@ def sample_articles() -> list[Article]:
             author="Author 1",
             published_at=now,
             source_name="Source A",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["tech"],
         ),
         Article(
@@ -50,7 +50,7 @@ def sample_articles() -> list[Article]:
             author="Author 2",
             published_at=now,
             source_name="Source B",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["news"],
         ),
         Article(
@@ -61,7 +61,7 @@ def sample_articles() -> list[Article]:
             author=None,
             published_at=now,
             source_name="Source C",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=[],
         ),
     ]
@@ -102,7 +102,7 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
             content="Content",
             published_at=now,
             source_name="RSS",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
         Article(
             id="newsletter-123",
@@ -111,7 +111,7 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
             content="Content",
             published_at=now,
             source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
         ),
         Article(
             id=102,
@@ -120,7 +120,7 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
             content="Content",
             published_at=now,
             source_name="RSS",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
     ]
 
@@ -141,7 +141,7 @@ def test_save_preserves_ref_urls(store: ArticleStore) -> None:
         content="Content",
         published_at=now,
         source_name="Newsletter",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         ref_urls=["https://example.com/a"],
     )
     store.save([article], now=now)
@@ -252,7 +252,7 @@ def test_load_by_time_range_multiple_days(store: ArticleStore) -> None:
             content="Content",
             published_at=day,
             source_name="Source",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         store.save([article], now=day)
 
@@ -276,7 +276,7 @@ def test_load_by_time_range_excludes_older_rows(store: ArticleStore) -> None:
         content="Old content",
         published_at=now - timedelta(days=30),
         source_name="Test Source",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         source_tags=["tech"],
     )
     store.save([article], now=now - timedelta(days=30))
@@ -327,7 +327,7 @@ def test_stored_article_from_article() -> None:
         author="Test Author",
         published_at=now,
         source_name="Test Source",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         source_tags=["test"],
     )
 
@@ -340,7 +340,7 @@ def test_stored_article_from_article() -> None:
     assert stored.author == article.author
     assert stored.published_at == article.published_at
     assert stored.source_name == article.source_name
-    assert stored.source_tier == article.source_tier
+    assert stored.source_lane == article.source_lane
     assert stored.source_tags == article.source_tags
     assert stored.state == ArticleState.PENDING
     assert stored.first_seen_at == now
@@ -359,7 +359,7 @@ def test_stored_article_to_article() -> None:
         author="Test Author",
         published_at=now,
         source_name="Test Source",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         source_tags=["test"],
         state=ArticleState.ACCEPTED,
         first_seen_at=now,
@@ -376,7 +376,7 @@ def test_stored_article_to_article() -> None:
     assert article.author == stored.author
     assert article.published_at == stored.published_at
     assert article.source_name == stored.source_name
-    assert article.source_tier == stored.source_tier
+    assert article.source_lane == stored.source_lane
     assert article.source_tags == stored.source_tags
 
 
@@ -569,7 +569,7 @@ def test_delete_articles_older_than(store: ArticleStore) -> None:
         content="C",
         published_at=old_date,
         source_name="S",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
     new_article = Article(
         id=2,
@@ -578,7 +578,7 @@ def test_delete_articles_older_than(store: ArticleStore) -> None:
         content="C",
         published_at=new_date,
         source_name="S",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
     store.save([old_article], now=old_date)
     store.save([new_article], now=new_date)
@@ -607,7 +607,7 @@ def test_delete_articles_preserves_triaged_rows(store: ArticleStore) -> None:
             content="C",
             published_at=old,
             source_name="S",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
         first_seen_at=old,
     )
@@ -621,7 +621,7 @@ def test_delete_articles_preserves_triaged_rows(store: ArticleStore) -> None:
             content="C",
             published_at=old,
             source_name="S",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
         first_seen_at=old,
     )

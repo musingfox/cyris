@@ -13,7 +13,7 @@ from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.adapters.store.runs import D1RunLog
-from cyris.domain.models import Article, ArticleState, DigestContent, Tier, UsageStats
+from cyris.domain.models import Article, ArticleState, DigestContent, Lane, UsageStats
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -30,7 +30,7 @@ def _article(i: int, title: str) -> Article:
         content="A launch.",
         published_at=datetime.now(UTC) - timedelta(hours=i),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
 

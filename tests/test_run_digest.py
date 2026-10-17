@@ -29,8 +29,8 @@ from cyris.domain.models import (
     DigestContent,
     DigestItem,
     DigestSection,
+    Lane,
     StoredArticle,
-    Tier,
     UsageStats,
 )
 from cyris.service_layer.ports import NoulAnswer
@@ -100,7 +100,7 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
         content="Enterprises accelerate AI adoption.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
     # Call order: score batch, then summarize (no news, empty filter pool)
@@ -151,7 +151,7 @@ def _published(name: str, source_name: str, hours_ago: float) -> Article:
         content=f"{name} body",
         published_at=datetime.now(UTC) - timedelta(hours=hours_ago),
         source_name=source_name,
-        source_tier=Tier.FAN,
+        source_lane=Lane.FOLLOW,
     )
 
 
@@ -214,7 +214,7 @@ async def test_the_run_lays_out_the_page_from_the_configured_settings(
             content=f"Essay {n} body.",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="TechSource",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
         for n in (1, 2, 3)
@@ -273,7 +273,7 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
         content="Cloud security update.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
     llm = FakeLLM(
@@ -329,7 +329,7 @@ async def test_publish_outcome_reaches_discord(
             content="Enterprises accelerate AI adoption.",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="TechSource",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
 
@@ -411,7 +411,7 @@ def _fan_article(*, article_id: int, title: str, url: str) -> Article:
         content="Newsletter body.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="NL",
-        source_tier=Tier.FAN,
+        source_lane=Lane.FOLLOW,
         source_tags=[],
     )
 
@@ -499,7 +499,7 @@ async def test_scoring_tag_write_failure_does_not_stop_the_run(tmp_path: Path) -
             content="Content",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="Source",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         for i in range(1, 22)
     ]
@@ -560,7 +560,7 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
             content="News content",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="Wire",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["news"],
         )
         for i in (1, 2)
@@ -601,7 +601,7 @@ def _fresh_and_earlier_deps(tmp_path: Path) -> Deps:
         content="Enterprises accelerate AI adoption.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
     earlier = fetched.model_copy(
@@ -652,7 +652,7 @@ async def test_an_article_the_cap_cut_stays_pending_and_listed_as_pending(
             content="Body.",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="TechSource",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
         for i, title in ((1, "Shown In The Issue"), (2, "Cut By The Cap"))
@@ -738,7 +738,7 @@ def _stored_article() -> StoredArticle:
         content="",
         published_at=now,
         source_name="Src",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         state=ArticleState.PENDING,
         first_seen_at=now,
     )
@@ -896,7 +896,7 @@ def _one_article_source() -> FakeSource:
                 content="Enterprises accelerate AI adoption.",
                 published_at=datetime.now(UTC) - timedelta(hours=1),
                 source_name="TechSource",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
                 source_tags=["tech"],
             )
         ]
@@ -971,7 +971,7 @@ async def test_a_run_that_raises_still_says_so(tmp_path: Path, caplog) -> None:
         content="c",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
     )
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([article]))
 
@@ -1021,7 +1021,7 @@ def _notify_article() -> Article:
         content="Enterprises accelerate AI adoption.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="NotifySource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
 
@@ -1550,7 +1550,7 @@ async def test_a_provider_none_run_ignores_a_leftover_model(tmp_path: Path) -> N
 def _quiet_window_article() -> Article:
     article = _notify_article()
     article.source_name = "FanSource"
-    article.source_tier = Tier.FAN
+    article.source_lane = Lane.FOLLOW
     return article
 
 
@@ -2491,7 +2491,7 @@ def _vote_article(article_id: int, title: str, url: str) -> Article:
         content="Some text.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="NotifySource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
 
@@ -2644,7 +2644,7 @@ class _RankEmbedder(_TitleEmbedder):
 
 
 def _headline_article(article_id: int, title: str, url: str) -> Article:
-    return _vote_article(article_id, title, url).model_copy(update={"source_tier": Tier.FILTER})
+    return _vote_article(article_id, title, url).model_copy(update={"source_lane": Lane.SKIM})
 
 
 _KEPT = ("Leans disliked", "Leans liked", "Clef pick")

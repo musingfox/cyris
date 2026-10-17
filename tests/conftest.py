@@ -12,8 +12,8 @@ from cyris.domain.models import (
     DigestContent,
     DigestItem,
     DigestSection,
+    Lane,
     SourceConfig,
-    Tier,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -82,19 +82,19 @@ def sample_sources() -> dict[str, SourceConfig]:
         "TechCrunch": SourceConfig(
             name="TechCrunch",
             url="https://techcrunch.com/feed/",
-            tier=Tier.FILTER,
+            lane=Lane.SKIM,
             tags=["tech", "startup"],
         ),
         "Reuters - World": SourceConfig(
             name="Reuters - World",
             url="https://www.reutersagency.com/feed/",
-            tier=Tier.FILTER,
+            lane=Lane.SKIM,
             tags=["international", "news"],
         ),
         "Stratechery": SourceConfig(
             name="Stratechery",
             url="https://stratechery.com/feed/",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
             tags=["tech", "business-strategy"],
         ),
     }
@@ -110,7 +110,7 @@ def sample_filter_articles() -> list[Article]:
             content="Apple announced the second generation Vision Pro today.",
             published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
             source_name="TechCrunch",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["tech", "startup"],
         ),
         Article(
@@ -120,7 +120,7 @@ def sample_filter_articles() -> list[Article]:
             content="TSMC confirmed that its Arizona Phase 2 expansion has been delayed.",
             published_at=datetime(2026, 3, 16, 8, 30, tzinfo=UTC),
             source_name="Reuters - World",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["international", "news"],
         ),
     ]
@@ -137,7 +137,7 @@ def sample_summarize_articles() -> list[Article]:
             author="Ben Thompson",
             published_at=datetime(2026, 3, 16, 7, 0, tzinfo=UTC),
             source_name="Stratechery",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech", "business-strategy"],
         ),
     ]

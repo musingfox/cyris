@@ -9,19 +9,19 @@ from cyris.domain.models import Article, DigestContent, DigestItem, DigestSectio
 logger = logging.getLogger(__name__)
 
 
-def split_summarize_tier_by_score(
+def split_read_lane_by_score(
     articles: list[Article],
     article_scores: dict[str, float] | None,
     threshold: int,
 ) -> tuple[list[Article], list[Article]]:
-    """Split summarize-tier articles by score threshold.
+    """Split read-lane articles by score threshold.
 
     Articles with score >= threshold go to high_score (AI summarization).
     Articles with score < threshold go to low_score (attention sections).
     Articles without scores default to high_score.
 
     Args:
-        articles: Summarize-tier articles to split.
+        articles: Read-lane articles to split.
         article_scores: Optional mapping of article URLs to scores.
         threshold: Score threshold for splitting.
 
@@ -63,7 +63,7 @@ def _single(item: DigestItem) -> DigestSection:
 def layer_by_score(
     content: DigestContent, *, featured_threshold: float, max_featured: int
 ) -> DigestContent:
-    """Lay the summarize tier out as the Top story and Features.
+    """Lay the read lane out as the Top story and Features.
 
     `featured_articles[0]` is the Top story. It is a group, with its group summary,
     when two or more articles of one summarized group score at least
@@ -204,7 +204,7 @@ def select_digest_articles(
     attention_sections → filtered_headlines. Each category fills completely before
     the next gets remaining slots. Featured articles are laid out first
     (`layer_by_score`), so the cap never splits the Top story's group.
-    Summaries lead: the knowledge channel (summarize tier, inherently small) must
+    Summaries lead: the knowledge channel (read lane, inherently small) must
     never be crowded out of the digest by a heavy news day.
 
     Args:

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS stored_articles (
   author           TEXT,
   published_at     TEXT NOT NULL,        -- ISO8601 UTC with microseconds, string-comparable
   source_name      TEXT NOT NULL,
-  source_tier      TEXT NOT NULL,
+  source_lane      TEXT NOT NULL,
   source_tags      TEXT NOT NULL DEFAULT '[]',   -- JSON array
   ref_urls         TEXT NOT NULL DEFAULT '[]',   -- JSON array
 

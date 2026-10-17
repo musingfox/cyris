@@ -26,8 +26,8 @@ def _db(*sources: tuple[str, str, str | None]) -> SqliteD1:
 
 def _article(db: SqliteD1, url: str, source: str, first_seen: datetime) -> None:
     db.query(
-        "INSERT INTO stored_articles (url, published_at, source_name, source_tier, first_seen_at) "
-        "VALUES (?, ?, ?, 'filter', ?)",
+        "INSERT INTO stored_articles (url, published_at, source_name, source_lane, first_seen_at) "
+        "VALUES (?, ?, ?, 'skim', ?)",
         [url, first_seen.isoformat(), source, first_seen.isoformat()],
     )
 

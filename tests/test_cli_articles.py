@@ -9,7 +9,7 @@ from fakes import settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store import ArticleStore
-from cyris.domain.models import Article, ArticleState, Tier
+from cyris.domain.models import Article, ArticleState, Lane
 from cyris.entrypoints.cli import app
 
 pytestmark = pytest.mark.integration
@@ -52,7 +52,7 @@ path = "{tmp_path / "agent-vault"}"
             content="Content 1",
             published_at=now,
             source_name="Source A",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
         Article(
             id=2,
@@ -61,7 +61,7 @@ path = "{tmp_path / "agent-vault"}"
             content="Content 2",
             published_at=now,
             source_name="Source B",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
         ),
     ]
     store.save(articles, now=now)
@@ -282,7 +282,7 @@ def test_articles_score_persists_tags_when_d1_available(
                 content="Content",
                 published_at=now,
                 source_name="Source A",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             )
         ],
         now=now,

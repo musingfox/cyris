@@ -12,7 +12,7 @@
 # for a non-English source.
 
 defaults:
-  tier: filter
+  lane: skim
   language: auto  # auto-detect, or force: zh, en, ja
 
 sources:
@@ -20,17 +20,17 @@ sources:
 
   - name: "Stratechery"
     url: "https://stratechery.com/feed/"
-    tier: summarize
+    lane: read
     tags: [tech, business-strategy]
 
   - name: "ByteByteGo Newsletter"
     url: "https://blog.bytebytego.com/feed"
-    tier: summarize
+    lane: read
     tags: [programming, system-design]
 
   - name: "報導者"
     url: "https://www.twreporter.org/a/rss2.xml"
-    tier: summarize
+    lane: read
     tags: [news, investigative]
     language: zh
 
@@ -38,7 +38,7 @@ sources:
 
   - name: "TechCrunch"
     url: "https://techcrunch.com/feed/"
-    tier: filter
+    lane: skim
     tags: [tech, startup]
 
   # --- Email-only newsletter (no RSS): ingested via the Cloudflare newsletter Worker ---
@@ -56,5 +56,5 @@ sources:
     type: newsletter
     email_match: "from:newsletter@example.com"
     homepage: "https://newsletter.example.com"
-    tier: summarize
+    lane: read
     tags: [newsletter]

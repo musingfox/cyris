@@ -17,8 +17,8 @@ NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 def _article(db, url, source, title, published, first_seen) -> None:
     db.query(
-        "INSERT INTO stored_articles (url, title, published_at, source_name, source_tier, "
-        "first_seen_at) VALUES (?, ?, ?, ?, 'filter', ?)",
+        "INSERT INTO stored_articles (url, title, published_at, source_name, source_lane, "
+        "first_seen_at) VALUES (?, ?, ?, ?, 'skim', ?)",
         [
             url,
             title,

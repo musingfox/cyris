@@ -19,7 +19,7 @@ from cyris.adapters.store.stories import D1StoryStore
 from cyris.adapters.store.tags import D1TagStore
 from cyris.bootstrap import Deps
 from cyris.config import AgentVaultConfig
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -44,7 +44,7 @@ def _article() -> Article:
         content="Enterprises accelerate AI adoption.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="NotifySource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
 

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from cyris.domain.models import ArticleState, StoredArticle, Tier
+from cyris.domain.models import ArticleState, Lane, StoredArticle
 from cyris.domain.similarity import normalize
 from cyris.service_layer.vote_similarity import VoteSimilarityReport, judge_by_votes
 
@@ -18,7 +18,7 @@ def article(url: str, title: str, state=ArticleState.PENDING, triaged=False) -> 
         title=title,
         content="c",
         source_name="Src",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         published_at=datetime(2026, 8, 9, tzinfo=UTC),
         first_seen_at=datetime(2026, 8, 9, tzinfo=UTC),
         state=state,

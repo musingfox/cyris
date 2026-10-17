@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, Tier
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, Lane
 from cyris.service_layer.fetching import fetch_all_articles
 
 pytestmark = pytest.mark.unit
@@ -21,7 +21,7 @@ def rss_articles():
             content="C",
             published_at=datetime(2026, 3, 18),
             source_name="RSS",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
         Article(
             id=2,
@@ -30,7 +30,7 @@ def rss_articles():
             content="C",
             published_at=datetime(2026, 3, 18),
             source_name="RSS",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         ),
     ]
 
@@ -45,7 +45,7 @@ def newsletter_articles():
             content="C",
             published_at=datetime(2026, 3, 18, 8, 0, 0),
             source_name="NL",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
         ),
     ]
 
@@ -83,7 +83,7 @@ async def test_deduplicates_by_url(newsletter_articles):
             content="RSS",
             published_at=datetime(2026, 3, 18),
             source_name="RSS",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
     ]
 
@@ -113,7 +113,7 @@ def _issue(article_id: str, title: str, url: str = "https://s.com/account/settin
         content="C",
         published_at=datetime(2026, 9, 1),
         source_name="NL",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_type=NEWSLETTER_SOURCE_TYPE,
     )
 
@@ -146,7 +146,7 @@ async def test_rss_then_newsletter_with_the_same_url_still_collapses():
         content="RSS",
         published_at=datetime(2026, 3, 18),
         source_name="RSS",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
     result = await _fetch([rss], [_issue("nl", "NL 1", url="https://b.com/1")])
     assert len(result) == 1

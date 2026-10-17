@@ -125,7 +125,7 @@ Respond in JSON format:
 
 
 def build_filter_prompt(articles: list[Article], *, snippet_length: int) -> str:
-    """Build user prompt for filter-tier batch processing.
+    """Build user prompt for skim-lane batch processing.
 
     Args:
         articles: Articles to process.
@@ -142,7 +142,7 @@ def build_filter_prompt(articles: list[Article], *, snippet_length: int) -> str:
 
 
 def build_summarize_prompt(tag: str, articles: list[Article], *, snippet_length: int) -> str:
-    """Build user prompt for summarize-tier grouped processing.
+    """Build user prompt for read-lane grouped processing.
 
     Args:
         tag: The topic tag this group shares.

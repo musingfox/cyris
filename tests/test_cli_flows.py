@@ -11,7 +11,7 @@ from fakes import settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store.article_store import ArticleStore
-from cyris.domain.models import Article, ArticleState, Tier
+from cyris.domain.models import Article, ArticleState, Lane
 from cyris.entrypoints.cli import app
 
 pytestmark = pytest.mark.integration
@@ -73,15 +73,15 @@ path = "{tmp_path / "agent-vault"}"
 sources:
   - name: "TechCrunch"
     url: "https://techcrunch.com/feed/"
-    tier: filter
+    lane: skim
     tags: [tech, startup]
   - name: "Reuters"
     url: "https://reuters.com/feed/"
-    tier: filter
+    lane: skim
     tags: [international, news]
   - name: "Stratechery"
     url: "https://stratechery.com/feed/"
-    tier: summarize
+    lane: read
     tags: [tech, business-strategy]
 """
     sources_path = tmp_path / "sources.yaml"
@@ -178,7 +178,7 @@ class TestRunPipelineE2E:
 
             # All LLM calls go through the single AnthropicClient adapter;
             # pipeline order is score -> cluster -> summarize (filter pool
-            # is empty here since all filter-tier articles are news).
+            # is empty here since all skim-lane articles are news).
             with patch("cyris.adapters.anthropic_client.anthropic.AsyncAnthropic") as mock_llm_cls:
                 mock_llm_client = AsyncMock()
                 mock_llm_client.messages.create = AsyncMock(
@@ -206,7 +206,7 @@ class TestRunPipelineE2E:
         digest_files = [p for p in html_dir.glob("*-morning.html") if "raw" not in p.name]
         assert len(digest_files) == 1, f"Expected one digest, found {digest_files}"
 
-        # Verify digest content: the summarize-tier article reaches the page
+        # Verify digest content: the read-lane article reaches the page
         digest_content = digest_files[0].read_text()
         assert "Weekly Tech Trends" in digest_content
 
@@ -269,7 +269,7 @@ path = "{tmp_path / "agent-vault"}"
                 content="Content 1",
                 published_at=now,
                 source_name="Source A",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
             ),
             Article(
                 id=2,
@@ -278,7 +278,7 @@ path = "{tmp_path / "agent-vault"}"
                 content="Content 2",
                 published_at=now,
                 source_name="Source B",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
             Article(
                 id=3,
@@ -287,7 +287,7 @@ path = "{tmp_path / "agent-vault"}"
                 content="Content 3",
                 published_at=now,
                 source_name="Source C",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
             ),
         ]
         store.save(articles, now=now)

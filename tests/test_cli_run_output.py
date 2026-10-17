@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 from cyris import bootstrap
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.config import AgentVaultConfig, SourceConfig, StoreConfig
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.entrypoints.cli import app
 
 pytestmark = pytest.mark.integration
@@ -29,7 +29,7 @@ def _article() -> Article:
         content="Enterprises accelerate AI adoption.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
 

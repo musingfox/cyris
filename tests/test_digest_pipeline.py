@@ -9,8 +9,8 @@ import pytest
 from fakes import TEST_SETTINGS, FakeLLM, pipeline_settings
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.domain.models import Article, DigestItem, DigestSection, Tier
-from cyris.domain.selection import split_summarize_tier_by_score
+from cyris.domain.models import Article, DigestItem, DigestSection, Lane
+from cyris.domain.selection import split_read_lane_by_score
 from cyris.service_layer.digest_pipeline import DigestPipeline
 
 pytestmark = pytest.mark.integration
@@ -101,7 +101,7 @@ class TestDigestPipeline:
                 content="Notes.",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Fan source",
-                source_tier=Tier.FAN,
+                source_lane=Lane.FOLLOW,
             )
         ][:fan_articles]
 
@@ -111,8 +111,8 @@ class TestDigestPipeline:
 
         assert result.content.output_language == "ja"
 
-    async def test_fan_tier_passthrough(self, pipeline, sample_sources):
-        """Fan-tier articles bypass LLM, group by source, and are never discarded."""
+    async def test_follow_lane_passthrough(self, pipeline, sample_sources):
+        """Follow-lane articles bypass LLM, group by source, and are never discarded."""
         fan_articles = [
             Article(
                 id=90,
@@ -121,7 +121,7 @@ class TestDigestPipeline:
                 content="<p>本週活動整理與公告內容……</p>",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="某社團電子報",
-                source_tier=Tier.FAN,
+                source_lane=Lane.FOLLOW,
             ),
             Article(
                 id=91,
@@ -130,11 +130,11 @@ class TestDigestPipeline:
                 content="下週活動預告",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="某社團電子報",
-                source_tier=Tier.FAN,
+                source_lane=Lane.FOLLOW,
             ),
         ]
 
-        # No filter/summarize mocks needed — fan tier never reaches the LLM path.
+        # No filter/summarize mocks needed — follow lane never reaches the LLM path.
         result = await pipeline.process(
             fan_articles,
             sample_sources,
@@ -162,7 +162,7 @@ class TestDigestPipeline:
                 content="News content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Wire",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
             )
             for i in (1, 2, 3)
@@ -204,7 +204,7 @@ class TestDigestPipeline:
                 content="News content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Wire",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
             )
             for i in (1, 2, 3)
@@ -246,7 +246,7 @@ class TestDigestPipeline:
         assert result.rejected_urls == []
 
 
-def _article(article_id: int, tier: Tier, source_name: str) -> Article:
+def _article(article_id: int, lane: Lane, source_name: str) -> Article:
     return Article(
         id=article_id,
         title=f"Article {article_id}",
@@ -254,7 +254,7 @@ def _article(article_id: int, tier: Tier, source_name: str) -> Article:
         content="Body.",
         published_at=datetime(2026, 4, 10, tzinfo=UTC),
         source_name=source_name,
-        source_tier=tier,
+        source_lane=lane,
     )
 
 
@@ -289,7 +289,7 @@ class TestVerdictsFollowTheCappedDigest:
             )
 
     async def test_a_headline_the_cap_cut_is_neither_accepted_nor_rejected(self, sample_sources):
-        shown, cut, discarded = (_article(i, Tier.FILTER, "TechCrunch") for i in (1, 2, 3))
+        shown, cut, discarded = (_article(i, Lane.SKIM, "TechCrunch") for i in (1, 2, 3))
 
         result = await self._process(
             [shown, cut, discarded],
@@ -305,7 +305,7 @@ class TestVerdictsFollowTheCappedDigest:
     async def test_a_summary_item_the_cap_cut_is_neither_accepted_nor_rejected(
         self, sample_sources
     ):
-        shown, cut = (_article(i, Tier.SUMMARIZE, "Stratechery") for i in (1, 2))
+        shown, cut = (_article(i, Lane.READ, "Stratechery") for i in (1, 2))
 
         result = await self._process(
             [shown, cut],
@@ -321,7 +321,7 @@ class TestVerdictsFollowTheCappedDigest:
     async def test_a_summarize_article_no_section_names_is_neither_accepted_nor_rejected(
         self, sample_sources
     ):
-        named, left_out = (_article(i, Tier.SUMMARIZE, "Stratechery") for i in (1, 2))
+        named, left_out = (_article(i, Lane.READ, "Stratechery") for i in (1, 2))
 
         result = await self._process(
             [named, left_out],
@@ -335,7 +335,7 @@ class TestVerdictsFollowTheCappedDigest:
         assert result.rejected_urls == []
 
 
-class TestSplitSummarizeTierByScore:
+class TestSplitReadLaneByScore:
     def test_all_above_threshold(self):
         articles = [
             Article(
@@ -345,7 +345,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
             Article(
                 id=2,
@@ -354,7 +354,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
         ]
         article_scores = {
@@ -362,7 +362,7 @@ class TestSplitSummarizeTierByScore:
             "https://example.com/2": 75.0,
         }
 
-        high, low = split_summarize_tier_by_score(articles, article_scores, threshold=70)
+        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
 
         assert len(high) == 2
         assert len(low) == 0
@@ -376,7 +376,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
             Article(
                 id=2,
@@ -385,7 +385,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
             Article(
                 id=3,
@@ -394,7 +394,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
         ]
         article_scores = {
@@ -403,7 +403,7 @@ class TestSplitSummarizeTierByScore:
             "https://example.com/3": 65.0,
         }
 
-        high, low = split_summarize_tier_by_score(articles, article_scores, threshold=70)
+        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
 
         assert len(high) == 1
         assert high[0].title == "High"
@@ -420,7 +420,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
             Article(
                 id=2,
@@ -429,14 +429,14 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
         ]
         article_scores = {
             "https://example.com/1": 55.0,
         }
 
-        high, low = split_summarize_tier_by_score(articles, article_scores, threshold=70)
+        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
 
         assert len(high) == 1
         assert high[0].title == "No Score"
@@ -452,7 +452,7 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
             Article(
                 id=2,
@@ -461,17 +461,17 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
         ]
 
-        high, low = split_summarize_tier_by_score(articles, None, threshold=70)
+        high, low = split_read_lane_by_score(articles, None, threshold=70)
 
         assert len(high) == 2
         assert len(low) == 0
 
     def test_empty_articles(self):
-        high, low = split_summarize_tier_by_score([], {}, threshold=70)
+        high, low = split_read_lane_by_score([], {}, threshold=70)
 
         assert high == []
         assert low == []
@@ -485,19 +485,19 @@ class TestSplitSummarizeTierByScore:
                 content="Content",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="Source",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             ),
         ]
         article_scores = {"https://example.com/1": 70.0}
 
-        high, low = split_summarize_tier_by_score(articles, article_scores, threshold=70)
+        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
 
         assert len(high) == 1
         assert len(low) == 0
 
 
 def _scored_topic() -> tuple[list[Article], dict[str, float], FakeLLM]:
-    """Three summarize-tier articles on one tag, and a model that writes both summary kinds."""
+    """Three read-lane articles on one tag, and a model that writes both summary kinds."""
     articles = [
         Article(
             id=n,
@@ -506,7 +506,7 @@ def _scored_topic() -> tuple[list[Article], dict[str, float], FakeLLM]:
             content=f"Essay {n} body.",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Stratechery",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
         for n in range(3)
@@ -617,8 +617,8 @@ class TestKeptItemsReachThePreference:
 
     @staticmethod
     def _kept_issue():
-        h1, h2, h3 = (_article(i, Tier.FILTER, "TechCrunch") for i in (1, 2, 3))
-        s1, s2 = (_article(i, Tier.SUMMARIZE, "Stratechery") for i in (4, 5))
+        h1, h2, h3 = (_article(i, Lane.SKIM, "TechCrunch") for i in (1, 2, 3))
+        s1, s2 = (_article(i, Lane.READ, "Stratechery") for i in (4, 5))
         h1.title, h2.title = "Original one", "Original two"
         translated = [_item(h1).model_copy(update={"title": "譯一"})]
         translated.append(_item(h2).model_copy(update={"title": "譯二"}))
@@ -684,7 +684,7 @@ class TestKeptItemsReachThePreference:
             content="News content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Wire",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["news"],
         )
         cluster = DigestSection(heading="News", items=[_item(wire)])
@@ -719,7 +719,7 @@ class TestKeptItemsReachThePreference:
 
 class TestPreferenceScoresOrderTheCap:
     async def _headlines(self, sample_sources, scores):
-        h1, h2 = (_article(i, Tier.FILTER, "TechCrunch") for i in (1, 2))
+        h1, h2 = (_article(i, Lane.SKIM, "TechCrunch") for i in (1, 2))
 
         async def preference(_kept):
             return scores

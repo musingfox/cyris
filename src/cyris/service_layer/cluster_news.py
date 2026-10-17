@@ -80,7 +80,7 @@ async def cluster_news(
         # Deliberately not read from the response. `unclustered_ids` used to be
         # taken at face value, which meant an article the model neither clustered
         # nor listed there vanished from the run — no warning, no exception, gone
-        # before the filter tier. Measured 2026-08-25 on a 143-article window:
+        # before the skim lane. Measured 2026-08-25 on a 143-article window:
         # llama-4-scout named 4 and dropped 139, and a bad gemini-3.6-flash run
         # dropped all 143. Subtraction cannot lose an article, so what a weak
         # model costs is a worse digest rather than a shorter one.

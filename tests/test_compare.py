@@ -18,7 +18,7 @@ from cyris.diagnostics.compare import (
     compare_llms,
     margin,
 )
-from cyris.domain.models import Article, ArticleState, SourceConfig, Tier
+from cyris.domain.models import Article, ArticleState, Lane, SourceConfig
 
 pytestmark = pytest.mark.unit
 
@@ -130,7 +130,7 @@ def _article(url: str) -> Article:
         content="Body text",
         published_at=datetime(2026, 9, 5, tzinfo=UTC),
         source_name="Src",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
 
 
@@ -139,7 +139,7 @@ def test_an_arm_that_never_reached_its_model_is_not_a_row():
     at all. Printing it beside a real arm invites reading the fallback as that model's
     work, so zero API calls is dropped rather than reported."""
     cfg = make_config(
-        sources={"Src": SourceConfig(name="Src", url="http://s", tier=Tier.FILTER)},
+        sources={"Src": SourceConfig(name="Src", url="http://s", lane=Lane.SKIM)},
     )
 
     rows = compare_llms(

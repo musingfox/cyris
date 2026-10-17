@@ -7,7 +7,7 @@ from fakes import SqliteD1
 from cyris.adapters.store.areas import D1AreaStore
 from cyris.adapters.store.source_store import D1SourceStore
 from cyris.domain.areas import AreaCatalog
-from cyris.domain.models import SourceConfig
+from cyris.domain.models import Lane, SourceConfig
 from cyris.entrypoints.triage_server import TriageServer
 
 pytestmark = pytest.mark.integration
@@ -162,7 +162,7 @@ async def test_a_rename_of_the_target_is_seen_through_the_merged_name(
 async def test_assigning_sources_sets_only_their_area(db: SqliteD1) -> None:
     _row(db, 1, "Tech", "active", position=0)
     sources = D1SourceStore(db)
-    sources.upsert(SourceConfig(name="a", url="https://a.example/f", tags=["x"], tier="fan"))
+    sources.upsert(SourceConfig(name="a", url="https://a.example/f", tags=["x"], lane=Lane.FOLLOW))
     sources.upsert(SourceConfig(name="b", url="https://b.example/f"))
     client = await _client(db)
     try:
@@ -176,7 +176,7 @@ async def test_assigning_sources_sets_only_their_area(db: SqliteD1) -> None:
     stored = sources.list_sources()
     assert (stored["a"].area_id, stored["b"].area_id) == (1, 1)
     assert stored["a"].tags == ["x"]
-    assert stored["a"].tier == "fan"
+    assert stored["a"].lane == Lane.FOLLOW
 
 
 async def test_an_unknown_source_name_is_refused_and_writes_nothing(db: SqliteD1) -> None:

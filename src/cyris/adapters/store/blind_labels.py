@@ -12,7 +12,7 @@ from datetime import datetime
 
 from cyris.adapters.store.d1 import D1Queryable
 from cyris.adapters.store.d1_store import _iso
-from cyris.domain.models import ArticleState, Tier
+from cyris.domain.models import ArticleState, Lane
 from cyris.domain.tags import NEWS_TAG
 from cyris.domain.triage import RejectReason
 
@@ -79,10 +79,10 @@ class D1BlindLabels:
         kept = ", ".join("?" for _ in _KEPT_STATES)
         rows = self._db.query(
             "SELECT url, state, source_tags FROM stored_articles "
-            "WHERE source_tier = ? AND first_seen_at >= ? AND triaged_at IS NULL "
+            "WHERE source_lane = ? AND first_seen_at >= ? AND triaged_at IS NULL "
             f"AND (state IN ({kept}) OR (state = ? AND rejection_reason = ?)) ORDER BY url",
             [
-                str(Tier.FILTER),
+                str(Lane.SKIM),
                 # The store's own form, so the cutoff compares as `first_seen_at` is written.
                 _iso(since),
                 *map(str, _KEPT_STATES),

@@ -18,7 +18,7 @@ from cyris.adapters.fetch.newsletter import (
     select_primary_content_url,
     sender_domain,
 )
-from cyris.domain.models import Article, SourceConfig, StoredArticle, Tier
+from cyris.domain.models import Article, Lane, SourceConfig, StoredArticle
 
 pytestmark = pytest.mark.unit
 
@@ -37,7 +37,7 @@ def parsed_body():
 
 @pytest.fixture
 def source_summarize():
-    return SourceConfig(name="Test Newsletter", tier=Tier.SUMMARIZE, tags=["tech"])
+    return SourceConfig(name="Test Newsletter", lane=Lane.READ, tags=["tech"])
 
 
 class TestGenerateArticleId:
@@ -78,7 +78,7 @@ class TestNewsletterBodyIsTheArticle:
         # url == 'newsletter:' + sha256(name + subject).hexdigest()
         expected_id = _generate_article_id("Test Newsletter", "曼報 #67｜IMAX")
         assert art.url == f"newsletter:{expected_id}"
-        assert art.source_tier == Tier.SUMMARIZE
+        assert art.source_lane == Lane.READ
 
     def test_track_click_wrapper_not_treated_as_self_link(self):
         # T2: use hostname check on href (not substring), so e= tracking stays out of public url
@@ -87,7 +87,7 @@ class TestNewsletterBodyIsTheArticle:
             'https%3A%2F%2Fmailchi.mp%2Fabc%2Fno-28&e=deadbeef00">View this email</a>'
         )
         p = _make_parsed(text_content="本文", html_content=html)
-        src = SourceConfig(name="Test", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="Test", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url.startswith("newsletter:")
@@ -96,17 +96,17 @@ class TestNewsletterBodyIsTheArticle:
         # T3
         html = '<a href="https://mailchi.mp/abc/no-28">View this email</a><p>…</p>'
         p = _make_parsed(subject="粉虱通訊 No. 28", text_content="本期開場白……", html_content=html)
-        src = SourceConfig(name="粉虱通訊", tier=Tier.FAN, tags=[])
+        src = SourceConfig(name="粉虱通訊", lane=Lane.FOLLOW, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url == "https://mailchi.mp/abc/no-28"
         assert art.content == "本期開場白……"
-        assert art.source_tier == Tier.FAN
+        assert art.source_lane == Lane.FOLLOW
 
     def test_html_unescape_and_whitespace(self):
         # T4
         p = _make_parsed(text_content="", html_content="<div><p>Hello &amp; goodbye</p></div>")
-        src = SourceConfig(name="Test", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="Test", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.content == "Hello & goodbye"
@@ -115,7 +115,7 @@ class TestNewsletterBodyIsTheArticle:
     def test_empty_body_returns_none_and_warns(self, caplog):
         # T5
         p = _make_parsed(subject="Issue #9", text_content="", html_content="")
-        src = SourceConfig(name="Test Newsletter", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="Test Newsletter", lane=Lane.READ, tags=[])
         with caplog.at_level(logging.WARNING):
             art = newsletter_article(p, src)
         assert art is None
@@ -180,7 +180,7 @@ class TestNewsletterBodyIsTheArticle:
         # normal campaign-archive.com host is used as view url
         html = '<a href="https://campaign-archive.com/x?u=1">View</a>'
         p = _make_parsed(text_content="body", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url == "https://campaign-archive.com/x?u=1"
@@ -189,7 +189,7 @@ class TestNewsletterBodyIsTheArticle:
         # campaign-archive1.com (and sub) is accepted (old code missed)
         html = '<a href="https://us1.campaign-archive1.com/?u=abc&id=def">View</a>'
         p = _make_parsed(text_content="body", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert "campaign-archive1.com" in art.url
@@ -198,7 +198,7 @@ class TestNewsletterBodyIsTheArticle:
         # substring evil like campaign-archive.com.evil.net must NOT be adopted
         html = '<a href="https://campaign-archive.com.evil.net/z">View</a>'
         p = _make_parsed(text_content="body", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url.startswith("newsletter:")
@@ -206,7 +206,7 @@ class TestNewsletterBodyIsTheArticle:
     def test_mailchi_mp_normal_host_accepted(self):
         html = '<a href="https://mailchi.mp/abc/28">View</a>'
         p = _make_parsed(text_content="body", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url == "https://mailchi.mp/abc/28"
@@ -214,7 +214,7 @@ class TestNewsletterBodyIsTheArticle:
     def test_mailchi_mp_subdomain_host_accepted(self):
         html = '<a href="https://us1.mailchi.mp/def/29">View</a>'
         p = _make_parsed(text_content="body", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url == "https://us1.mailchi.mp/def/29"
@@ -222,7 +222,7 @@ class TestNewsletterBodyIsTheArticle:
     def test_mailchi_mp_evil_not_accepted(self):
         html = '<a href="https://mailchi.mp.evil.net/evil">View</a>'
         p = _make_parsed(text_content="body", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url.startswith("newsletter:")
@@ -358,7 +358,7 @@ class TestArticleSourceType:
             content="c",
             published_at=datetime(2026, 9, 1),
             source_name="R",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         assert art.source_type == "rss"
 
@@ -528,7 +528,7 @@ class TestNewsletterViewUrlResolutionOrder:
     def test_esp_archive_guard_when_no_sender_post(self):
         html = '<a href="https://mailchi.mp/abc/28">View</a>'
         p = _make_parsed(text_content="本期開場白……", html_content=html)
-        src = SourceConfig(name="t", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="t", lane=Lane.READ, tags=[])
         art = newsletter_article(p, src)
         assert art is not None
         assert art.url == "https://mailchi.mp/abc/28"
@@ -542,7 +542,7 @@ class TestNewsletterViewUrlResolutionOrder:
         assert art.url == "https://site.com/x"
 
     def test_synthetic_url_when_no_links(self):
-        src = SourceConfig(name="Test Newsletter", tier=Tier.SUMMARIZE, tags=[])
+        src = SourceConfig(name="Test Newsletter", lane=Lane.READ, tags=[])
         art = newsletter_article(
             _make_parsed(
                 subject="Issue #1",
@@ -561,7 +561,7 @@ class TestNewsletterViewUrlResolutionOrder:
             name="Test Newsletter",
             type="newsletter",
             homepage="https://site.com/newsletter",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
             tags=[],
         )
         art = newsletter_article(
@@ -633,7 +633,7 @@ class TestSourceHomepageFallback:
             type="newsletter",
             homepage="https://example.com/newsletter",
             email_match="from:list@mailchimpapp.com",
-            tier=Tier.FAN,
+            lane=Lane.FOLLOW,
         )
         art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
         assert art is not None
@@ -646,7 +646,7 @@ class TestSourceHomepageFallback:
             name="曼報",
             type="newsletter",
             homepage="https://site.com/newsletter",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
         )
         art = newsletter_article(
             _make_parsed(text_content="本期 https://site.com/posts/42"), source
@@ -661,7 +661,7 @@ class TestSourceHomepageFallback:
             name="X",
             type="newsletter",
             homepage="https://example.com/n?e=TOKEN",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
         )
         art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
         assert art is not None
@@ -674,7 +674,7 @@ class TestSourceHomepageFallback:
             name="粉虱通訊",
             type="newsletter",
             homepage="https://us20.campaign-archive.com/home/?u=abc&id=def",
-            tier=Tier.FAN,
+            lane=Lane.FOLLOW,
         )
         art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
         assert art is not None
@@ -682,7 +682,7 @@ class TestSourceHomepageFallback:
 
     def test_non_http_homepage_is_refused(self):
         source = SourceConfig(
-            name="X", type="newsletter", homepage="javascript:alert(1)", tier=Tier.SUMMARIZE
+            name="X", type="newsletter", homepage="javascript:alert(1)", lane=Lane.READ
         )
         art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
         assert art is not None

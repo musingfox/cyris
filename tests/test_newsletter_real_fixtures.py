@@ -7,7 +7,7 @@ from conftest import load_newsletter_fixture
 
 from cyris.adapters.fetch.email_parser import ParsedNewsletter
 from cyris.adapters.fetch.newsletter import newsletter_article
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Lane, SourceConfig
 
 pytestmark = [pytest.mark.unit, pytest.mark.real_fixture]
 
@@ -30,7 +30,7 @@ def _parsed(
 
 
 def _source(name: str, homepage: str | None = None) -> SourceConfig:
-    return SourceConfig(name=name, tier=Tier.SUMMARIZE, tags=[], homepage=homepage)
+    return SourceConfig(name=name, lane=Lane.READ, tags=[], homepage=homepage)
 
 
 # Each sample's sender, as the deployed source knows it: the homepage and the From

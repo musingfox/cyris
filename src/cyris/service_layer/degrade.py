@@ -44,7 +44,7 @@ def _item(a: Article, scores: dict[str, float] | None) -> DigestItem:
 def headlines_from_articles(
     articles: list[Article], scores: dict[str, float] | None = None
 ) -> list[DigestItem]:
-    """Filter-tier fallback: keep every article as a headline with a plain excerpt.
+    """Skim-lane fallback: keep every article as a headline with a plain excerpt.
 
     Without the LLM we cannot judge what to discard, so nothing is dropped here;
     the final per-digest cap in domain.selection still bounds the output size.
@@ -55,7 +55,7 @@ def headlines_from_articles(
 def excerpt_sections_from_articles(
     articles: list[Article], scores: dict[str, float] | None = None
 ) -> list[DigestSection]:
-    """Summarize-tier fallback: group by first tag, emit a plain excerpt per article."""
+    """Read-lane fallback: group by first tag, emit a plain excerpt per article."""
     groups: dict[str, list[Article]] = defaultdict(list)
     for a in articles:
         tag = a.source_tags[0] if a.source_tags else "general"

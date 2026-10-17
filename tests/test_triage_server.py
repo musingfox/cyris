@@ -97,11 +97,11 @@ class TestSourcesEndpoint:
     """The settings page's source list and its write surface."""
 
     async def test_lists_sources_without_an_origin(self) -> None:
-        from cyris.domain.models import SourceConfig, Tier
+        from cyris.domain.models import Lane, SourceConfig
 
         server = TriageServer(
             sources={
-                "feed": SourceConfig(name="feed", url="https://e.com/rss", tier=Tier.SUMMARIZE),
+                "feed": SourceConfig(name="feed", url="https://e.com/rss", lane=Lane.READ),
                 "letter": SourceConfig(
                     name="letter", type="newsletter", email_match="from:a@b.com"
                 ),
@@ -116,7 +116,7 @@ class TestSourcesEndpoint:
 
         assert set(data) == {"writable", "sources"}
         by_name = {s["name"]: s for s in data["sources"]}
-        assert by_name["feed"]["tier"] == "summarize"
+        assert by_name["feed"]["lane"] == "read"
         assert by_name["letter"]["email_match"] == "from:a@b.com"
 
     async def test_no_sources_wired_is_empty_not_an_error(self, client: TestClient) -> None:
@@ -131,7 +131,7 @@ class TestSourcesEndpoint:
 
 
 class TestSourcesWriteSurface:
-    """Add, retire and re-tier a source over the existing D1 row."""
+    """Add, retire and re-lane a source over the existing D1 row."""
 
     @pytest.fixture
     async def client(self) -> TestClient:
@@ -160,7 +160,7 @@ class TestSourcesWriteSurface:
         monkeypatch.setattr(D1SourceStore, "replace_all", refuse)
         resp = await client.post(
             "/api/sources",
-            json={"name": "New", "type": "rss", "tier": "filter", "url": "https://n.test/feed"},
+            json={"name": "New", "type": "rss", "lane": "skim", "url": "https://n.test/feed"},
         )
         assert resp.status == 200
 
@@ -171,22 +171,22 @@ class TestSourcesWriteSurface:
         assert (await client.delete("/api/sources/From File")).status == 200
         assert set(self.sources.list_sources()) == {"New Feed"}
 
-    async def test_re_tiering_replaces_the_row_it_owns(self, client: TestClient) -> None:
+    async def test_changing_lane_replaces_the_row_it_owns(self, client: TestClient) -> None:
         await client.post(
             "/api/sources",
-            json={"name": "From File", "url": "https://file.test/feed", "tier": "summarize"},
+            json={"name": "From File", "url": "https://file.test/feed", "lane": "read"},
         )
         stored = self.sources.list_sources()
         assert len(stored) == 1
-        assert stored["From File"].tier.value == "summarize"
+        assert stored["From File"].lane.value == "read"
 
-    async def test_an_invalid_tier_is_a_400_not_a_row(self, client: TestClient) -> None:
-        resp = await client.post("/api/sources", json={"name": "x", "tier": "nonsense"})
+    async def test_an_invalid_lane_is_a_400_not_a_row(self, client: TestClient) -> None:
+        resp = await client.post("/api/sources", json={"name": "x", "lane": "nonsense"})
         assert resp.status == 400
         assert await resp.json() == {
             "ok": False,
-            "error": "tier: Input should be 'filter', 'summarize' or 'fan'",
-            "field": "tier",
+            "error": "lane: Input should be 'skim', 'read' or 'follow'",
+            "field": "lane",
         }
         assert self.sources.list_sources() == {}
 
@@ -330,8 +330,8 @@ class TestSourcesHealth:
         db = SqliteD1()
         seen = datetime.now(UTC).isoformat()
         db.query(
-            "INSERT INTO stored_articles (url, published_at, source_name, source_tier, "
-            "first_seen_at) VALUES ('https://failing.test/1', ?, 'failing', 'filter', ?)",
+            "INSERT INTO stored_articles (url, published_at, source_name, source_lane, "
+            "first_seen_at) VALUES ('https://failing.test/1', ?, 'failing', 'skim', ?)",
             [seen, seen],
         )
         db.query(

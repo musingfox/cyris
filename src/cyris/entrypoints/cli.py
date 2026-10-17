@@ -1731,5 +1731,5 @@ def sources_list(
         )
         return
     for source in sources.values():
-        typer.echo(f"{source.tier.value:<10} {source.type:<11} {source.name} — {source.url or '—'}")
+        typer.echo(f"{source.lane.value:<10} {source.type:<11} {source.name} — {source.url or '—'}")
     typer.echo(f"\n{len(sources)} sources in D1.")

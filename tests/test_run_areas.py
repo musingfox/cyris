@@ -12,7 +12,7 @@ from test_run_digest import FakeSource, make_deps
 from cyris.adapters.store.areas import D1AreaStore
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.domain.areas import Area
-from cyris.domain.models import Article, ArticleState, Tier
+from cyris.domain.models import Article, ArticleState, Lane
 from cyris.domain.selection import digest_urls
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
@@ -41,7 +41,7 @@ def _articles() -> list[Article]:
             content="A launch and a satellite.",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="TechSource",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
         for i in (1, 2, 3)
@@ -175,7 +175,7 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
                 content="A rocket.",
                 published_at=now,
                 source_name="Src",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             )
         ],
         now=now,
@@ -360,7 +360,7 @@ async def test_a_failed_stamp_saves_no_area_order_and_no_area(tmp_path: Path, mo
 
 
 def _radar_articles(n: int, *, synthetic_last: bool = False) -> list[Article]:
-    """Low-scored summarize-tier articles: each one is a radar row, with no LLM call."""
+    """Low-scored read-lane articles: each one is a radar row, with no LLM call."""
     return [
         Article(
             id=i,
@@ -369,7 +369,7 @@ def _radar_articles(n: int, *, synthetic_last: bool = False) -> list[Article]:
             content="A launch.",
             published_at=datetime.now(UTC) - timedelta(hours=1),
             source_name="TechSource",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
         for i in range(1, n + 1)
@@ -377,7 +377,7 @@ def _radar_articles(n: int, *, synthetic_last: bool = False) -> list[Article]:
 
 
 async def _run_radar(tmp_path: Path, articles: list[Article], *, areas=(), filtered=()):
-    """Run a digest over `articles` plus `filtered` (filter-tier), all scored into Tech."""
+    """Run a digest over `articles` plus `filtered` (skim-lane), all scored into Tech."""
     everything = [*articles, *filtered]
     scores = [
         {"id": a.id, "score": 10, "language": "en", "tags": ["s"], "area": "Tech"}
@@ -480,7 +480,7 @@ async def test_a_filter_rejected_article_stays_rejected_past_the_quota(tmp_path:
         content="Not news.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="Filtered",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         source_tags=["misc"],
     )
 

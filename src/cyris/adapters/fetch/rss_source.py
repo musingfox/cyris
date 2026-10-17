@@ -18,7 +18,7 @@ import feedparser
 
 from cyris.adapters.fetch.email_parser import strip_tracking_params
 from cyris.adapters.http_client import HttpClient
-from cyris.domain.models import Article, SourceConfig, Tier
+from cyris.domain.models import Article, Lane, SourceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class RssSource:
                     author=getattr(entry, "author", None) or None,
                     published_at=published_at,
                     source_name=source.name,
-                    source_tier=source.tier or Tier.FILTER,
+                    source_lane=source.lane or Lane.SKIM,
                     source_tags=source.tags,
                 )
             )

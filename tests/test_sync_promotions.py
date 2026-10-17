@@ -8,7 +8,7 @@ import pytest
 
 from cyris.adapters.promotions import PromotedArticle, pull_promotions, sync_promotions
 from cyris.adapters.store import ArticleStore
-from cyris.domain.models import Article, ArticleState, Tier
+from cyris.domain.models import Article, ArticleState, Lane
 from cyris.domain.triage import RejectReason
 
 pytestmark = pytest.mark.integration
@@ -42,7 +42,7 @@ def store(tmp_path) -> ArticleStore:
                 content="Full text here",
                 published_at=datetime.now(UTC),
                 source_name="Source A",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             )
         ]
     )
@@ -115,7 +115,7 @@ def test_sync_routes_votes(store):
                 content="body",
                 published_at=datetime.now(UTC),
                 source_name="Source A",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             )
         ]
     )
@@ -169,7 +169,7 @@ def test_voted_articles_reach_learning_but_pipeline_verdicts_do_not(store):
                 content="body",
                 published_at=datetime.now(UTC),
                 source_name="Source A",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
             )
         ]
     )

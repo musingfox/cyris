@@ -1,4 +1,4 @@
-"""Tests for filter-tier processor."""
+"""Tests for skim-lane processor."""
 
 import json
 import logging
@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Article, Tier, UsageStats
+from cyris.domain.models import Article, Lane, UsageStats
 from cyris.service_layer import filtering
 from cyris.service_layer.filtering import BATCH_SIZE, filter_articles
 
@@ -245,7 +245,7 @@ class TestFilterArticles:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             ref_urls=["https://r1.com/a", "https://r2.com/b"],
         )
         llm = FakeLLM(
@@ -273,7 +273,7 @@ class TestFilterArticles:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="RSS",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         llm = FakeLLM(json.dumps({"selected": [{"id": 0, "title": "RSS", "source": "RSS"}]}))
 
@@ -314,7 +314,7 @@ def _cna_articles() -> list[Article]:
             content="Content",
             published_at=datetime(2026, 9, 17, 10, 0, tzinfo=UTC),
             source_name="中央社即時新聞 財經新聞",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         for n in ("55", "47")
     ]
@@ -374,7 +374,7 @@ def _articles(n: int) -> list[Article]:
             content="Content",
             published_at=datetime(2026, 9, 17, 10, 0, tzinfo=UTC),
             source_name="S",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         for i in range(n)
     ]

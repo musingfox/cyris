@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from cyris.domain.models import StoredArticle, Tier, TrackedTopic
+from cyris.domain.models import Lane, StoredArticle, TrackedTopic
 from cyris.domain.similarity import normalize
 from cyris.domain.tracking import hits
 from cyris.service_layer.tracking import track_topics
@@ -21,7 +21,7 @@ def article(url: str, title: str) -> StoredArticle:
         title=title,
         content="c",
         source_name="Src",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         published_at=datetime(2026, 10, 8, tzinfo=UTC),
         first_seen_at=datetime(2026, 10, 8, tzinfo=UTC),
     )

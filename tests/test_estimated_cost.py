@@ -156,7 +156,7 @@ async def test_a_batched_scoring_stage_reports_what_it_spent():
     import json
     from datetime import UTC, datetime
 
-    from cyris.domain.models import ArticleState, StoredArticle, Tier
+    from cyris.domain.models import ArticleState, Lane, StoredArticle
     from cyris.service_layer.ports import LLMResponse
     from cyris.service_layer.scoring import score_in_batches
 
@@ -179,7 +179,7 @@ async def test_a_batched_scoring_stage_reports_what_it_spent():
             published_at=when,
             first_seen_at=when,
             source_name="S",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             state=ArticleState.PENDING,
         )
         for i in range(60)

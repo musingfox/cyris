@@ -11,12 +11,12 @@ NO_LLM_MODEL = "none"
 NEWSLETTER_SOURCE_TYPE = "newsletter"
 
 
-class Tier(StrEnum):
-    """Content processing tier determining filtering depth."""
+class Lane(StrEnum):
+    """Content processing lane determining filtering depth."""
 
-    FILTER = "filter"
-    SUMMARIZE = "summarize"
-    FAN = "fan"  # followed groups/newsletters: passthrough, never scored/filtered/summarized
+    SKIM = "skim"
+    READ = "read"
+    FOLLOW = "follow"  # followed groups/newsletters: passthrough, never scored/filtered/summarized
 
 
 class SourceConfig(BaseModel):
@@ -25,7 +25,7 @@ class SourceConfig(BaseModel):
     name: str
     url: str | None = None
     type: str = "rss"
-    tier: Tier = Tier.FILTER
+    lane: Lane = Lane.SKIM
     tags: list[str] = Field(default_factory=list)
     language: str = "auto"
     email_match: str | None = None
@@ -73,7 +73,7 @@ class Article(BaseModel):
     author: str | None = None
     published_at: datetime
     source_name: str
-    source_tier: Tier
+    source_lane: Lane
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
     # Not persisted: only the store's save needs it, to tell a newsletter issue's
@@ -112,7 +112,7 @@ class DigestSection(BaseModel):
     description: str | None = None
     items: list[DigestItem] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
-    # One summary the LLM wrote for the whole summarize-tier group, beside each item's
+    # One summary the LLM wrote for the whole read-lane group, beside each item's
     # own. Set only there, and printed only when the group is the Top story.
     summary: str | None = None
     # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
@@ -257,7 +257,7 @@ class StoredArticle(BaseModel):
     author: str | None = None
     published_at: datetime
     source_name: str
-    source_tier: Tier
+    source_lane: Lane
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
 
@@ -280,7 +280,7 @@ class StoredArticle(BaseModel):
             author=article.author,
             published_at=article.published_at,
             source_name=article.source_name,
-            source_tier=article.source_tier,
+            source_lane=article.source_lane,
             source_tags=article.source_tags,
             ref_urls=article.ref_urls,
             first_seen_at=first_seen_at,
@@ -296,7 +296,7 @@ class StoredArticle(BaseModel):
             author=self.author,
             published_at=self.published_at,
             source_name=self.source_name,
-            source_tier=self.source_tier,
+            source_lane=self.source_lane,
             source_tags=self.source_tags,
             ref_urls=self.ref_urls,
         )
@@ -322,7 +322,7 @@ class StoryRecord(BaseModel):
 
 
 class ProcessResult(BaseModel):
-    """Result of processing articles through tier-based pipeline."""
+    """Result of processing articles through lane-based pipeline."""
 
     content: DigestContent
     accepted_urls: list[str]

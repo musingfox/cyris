@@ -12,7 +12,7 @@ from cyris.adapters.store.d1 import D1Client, D1Error, chunk_rows
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.bootstrap import build_store
 from cyris.config import Config, StoreConfig
-from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
+from cyris.domain.models import Article, ArticleState, Lane, StoredArticle
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +30,7 @@ def _article(url: str, article_id: int | str = 1) -> Article:
         content="Content",
         published_at=datetime.now(UTC),
         source_name="Source",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
 
 
@@ -85,7 +85,7 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
         author="Author",
         published_at=now,
         source_name="Source",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech", "ai"],
         ref_urls=["https://example.com/ref"],
         state=ArticleState.AWAITING_TRIAGE,

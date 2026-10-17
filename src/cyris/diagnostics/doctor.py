@@ -23,7 +23,7 @@ from typing import Literal, get_args
 import httpx
 
 from cyris.config import GRADE_D_KEYS, Config
-from cyris.domain.models import Tier
+from cyris.domain.models import Lane
 
 Status = Literal["ok", "warn", "fail", "skip"]
 
@@ -56,14 +56,13 @@ def _check_sources(cfg: Config) -> Check:
         home, fix = "sources.yaml", "Add feeds to sources.yaml (see sources.example.yaml)."
     feeds = [s for s in cfg.sources.values() if s.url and s.type == "rss"]
     email = [s for s in cfg.sources.values() if s.email_match]
-    summarize = [s for s in cfg.sources.values() if s.tier == Tier.SUMMARIZE]
+    read = [s for s in cfg.sources.values() if s.lane == Lane.READ]
     if not feeds and not email:
         return Check("sources", "fail", "no usable sources", fix)
     return Check(
         "sources",
         "ok",
-        f"{len(feeds)} RSS, {len(email)} email-only, {len(summarize)} on the summarize tier "
-        f"— from {home}",
+        f"{len(feeds)} RSS, {len(email)} email-only, {len(read)} on the read lane — from {home}",
     )
 
 

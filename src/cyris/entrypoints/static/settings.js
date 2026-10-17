@@ -609,7 +609,7 @@ function renderSources() {
       <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
         <td class="name">${esc(s.name)}${feedProblem(s)}</td>
         <td><span class="label">${esc(s.type)}</span></td>
-        <td><span class="pill">${esc(s.tier)}</span></td>
+        <td><span class="pill">${esc(s.lane)}</span></td>
         <td class="target">${esc(s.url || s.email_match || "—")}</td>
         <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
       </tr>`).join("")
@@ -626,7 +626,7 @@ function editorValues(ed) {
 function openEditor(name) {
   const adding = name === "";
   const s = adding
-    ? {name: "", type: "rss", tier: "filter", tags: []}
+    ? {name: "", type: "rss", lane: "skim", tags: []}
     : sources.find((x) => x.name === name);
   const anchor = adding ? null : rowOf(name);
   if (!adding && !(s && anchor)) {
@@ -644,7 +644,7 @@ function openEditor(name) {
   q(".editor-title").textContent = adding ? "New source" : `Editing ${s.name}`;
   q("#e-name").value = s.name;
   q("#e-name").readOnly = !adding;
-  q("#e-tier").value = s.tier;
+  q("#e-lane").value = s.lane;
   q("#e-url").value = s.url || "";
   q("#e-email").value = s.email_match || "";
   q("#e-home").value = s.homepage || "";
@@ -860,7 +860,7 @@ async function saveSource(ed, button) {
   const data = await writeSource("/api/sources", "POST", {
     name,
     type,
-    tier: q("#e-tier").value,
+    lane: q("#e-lane").value,
     url: shown("#e-url"),
     email_match: shown("#e-email"),
     homepage: shown("#e-home"),

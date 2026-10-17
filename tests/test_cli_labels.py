@@ -19,8 +19,8 @@ AFTER = "2026-09-19T00:00:00.000000+00:00"
 def put(db, url, *, state="accepted", tags=(), reason=None, triaged_at=None, title=""):
     db.query(
         "INSERT INTO stored_articles (url, title, content, published_at, source_name, "
-        "source_tier, source_tags, state, first_seen_at, rejection_reason, triaged_at) "
-        "VALUES (?, ?, '', ?, 'Source', 'filter', ?, ?, ?, ?, ?)",
+        "source_lane, source_tags, state, first_seen_at, rejection_reason, triaged_at) "
+        "VALUES (?, ?, '', ?, 'Source', 'skim', ?, ?, ?, ?, ?)",
         [url, title or url, AFTER, json.dumps(list(tags)), state, AFTER, reason, triaged_at],
     )
 

@@ -1351,10 +1351,10 @@ SETTINGS_JS = STYLE.with_name("settings.js")
 
 
 @pytest.mark.parametrize("source", [SETTINGS_JS, PROTOTYPE], ids=["settings.js", "prototype"])
-def test_a_source_tier_is_a_plain_pill(source: Path) -> None:
-    tier_span = r"<span class=(.*?)>\$\{(?:esc\()?s\.tier\)?\}</span>"
-    tier_spans = re.findall(tier_span, source.read_text())
-    assert tier_spans == ['"pill"']
+def test_a_source_lane_is_a_plain_pill(source: Path) -> None:
+    lane_span = r"<span class=(.*?)>\$\{(?:esc\()?s\.lane\)?\}</span>"
+    lane_spans = re.findall(lane_span, source.read_text())
+    assert lane_spans == ['"pill"']
 
 
 def test_the_websites_secondary_button_is_the_apps() -> None:

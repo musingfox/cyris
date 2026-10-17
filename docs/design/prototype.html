@@ -979,7 +979,7 @@ table.src td.areas-pos-cell { width: 1%; }
             <div class="field">
               <label class="label" for="summarize-threshold">Summary score</label>
               <input class="input narrow" id="summarize-threshold" type="number" min="0" max="100" value="70">
-              <p class="small">A summarize-tier article scoring below this is listed for attention instead of summarized.</p>
+              <p class="small">A read-lane article scoring below this is listed for attention instead of summarized.</p>
             </div>
             <div class="field">
               <span class="label">Characters read</span>
@@ -1136,8 +1136,8 @@ table.src td.areas-pos-cell { width: 1%; }
         <div class="field"><span class="label">Type</span>
           <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
         </div>
-        <div class="field"><label class="label" for="e-tier">Tier</label>
-          <select class="select" id="e-tier"><option>filter</option><option>summarize</option><option>fan</option></select>
+        <div class="field"><label class="label" for="e-lane">Lane</label>
+          <select class="select" id="e-lane"><option>skim</option><option>read</option><option>follow</option></select>
         </div>
       </div>
       <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" type="text"></div>
@@ -1182,11 +1182,11 @@ const rawGroups = [
   ["Hacker News", [["accepted", .77, "Show HN: A 400-line Datalog in Rust"], ["rejected", .12, "Ask HN: Who is hiring? (September)"], ["pending", null, "The case against microservices, again"]]],
 ];
 let sources = [
-  {name: "Simon Willison", type: "rss", tier: "summarize", url: "https://simonwillison.net/atom/everything/", tags: ["ai", "tools"]},
-  {name: "Hacker News", type: "rss", tier: "filter", url: "https://hnrss.org/frontpage?points=200", tags: ["news", "tech"]},
-  {name: "曼報", type: "newsletter", tier: "summarize", email_match: "from:manpao@substack.com", homepage: "https://manpaoreport.com", tags: ["business"]},
-  {name: "Cloudflare Blog", type: "rss", tier: "filter", url: "https://blog.cloudflare.com/rss/", tags: ["infra"], health: {problems: ["3 failures in a row · HTTP 503"]}},
-  {name: "IEO", type: "newsletter", tier: "fan", email_match: "from:news@ieo.example", homepage: "", tags: []},
+  {name: "Simon Willison", type: "rss", lane: "read", url: "https://simonwillison.net/atom/everything/", tags: ["ai", "tools"]},
+  {name: "Hacker News", type: "rss", lane: "skim", url: "https://hnrss.org/frontpage?points=200", tags: ["news", "tech"]},
+  {name: "曼報", type: "newsletter", lane: "read", email_match: "from:manpao@substack.com", homepage: "https://manpaoreport.com", tags: ["business"]},
+  {name: "Cloudflare Blog", type: "rss", lane: "skim", url: "https://blog.cloudflare.com/rss/", tags: ["infra"], health: {problems: ["3 failures in a row · HTTP 503"]}},
+  {name: "IEO", type: "newsletter", lane: "follow", email_match: "from:news@ieo.example", homepage: "", tags: []},
 ];
 
 /* ---- archive ---- */
@@ -1370,21 +1370,21 @@ function renderSources() {
     <tr class="src-row ${openName === s.name ? "open" : ""}" data-name="${esc(s.name)}" tabindex="0">
       <td class="name">${esc(s.name)}${feedProblem(s)}</td>
       <td><span class="label">${s.type}</span></td>
-      <td><span class="pill">${s.tier}</span></td>
+      <td><span class="pill">${s.lane}</span></td>
       <td class="target">${esc(s.url || s.email_match || "—")}</td>
       <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
     </tr>`).join("") || `<tr><td class="small" colspan="5">No sources yet. The next run stops until one is added.</td></tr>`;
   if (openName !== null) openEditor(openName);
 }
 function openEditor(name) {
-  const s = sources.find((x) => x.name === name) || {name: "", type: "rss", tier: "filter", tags: []};
+  const s = sources.find((x) => x.name === name) || {name: "", type: "rss", lane: "skim", tags: []};
   const ed = $("#editor-tpl").content.firstElementChild.cloneNode(true);
   const anchor = name ? $(`tr.src-row[data-name="${CSS.escape(name)}"]`) : null;
   anchor ? anchor.after(ed) : $("#src-body").prepend(ed);
   $(".editor-title", ed).textContent = name ? `Editing ${name}` : "New source";
   $("#e-name", ed).value = s.name;
   $("#e-name", ed).readOnly = !!name;
-  $("#e-tier", ed).value = s.tier;
+  $("#e-lane", ed).value = s.lane;
   $("#e-url", ed).value = s.url || "";
   $("#e-email", ed).value = s.email_match || "";
   $("#e-home", ed).value = s.homepage || "";

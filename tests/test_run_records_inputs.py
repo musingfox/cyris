@@ -13,14 +13,14 @@ from cyris.adapters.store.areas import D1AreaStore
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.domain.areas import Area
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.service_layer.run_digest import RunOptions, run_digest
 from cyris.utils.timezone import now_in_timezone
 
 pytestmark = pytest.mark.integration
 
 
-def _article(i: int, *, hours: int = 1, tier: Tier = Tier.SUMMARIZE) -> Article:
+def _article(i: int, *, hours: int = 1, lane: Lane = Lane.READ) -> Article:
     return Article(
         id=i,
         title=f"Story {i}",
@@ -28,7 +28,7 @@ def _article(i: int, *, hours: int = 1, tier: Tier = Tier.SUMMARIZE) -> Article:
         content="A launch.",
         published_at=datetime.now(UTC) - timedelta(hours=hours),
         source_name="TechSource",
-        source_tier=tier,
+        source_lane=lane,
         source_tags=["tech"],
     )
 
@@ -79,7 +79,7 @@ async def test_the_record_holds_the_newest_capped_urls_in_original_order(tmp_pat
 
 
 async def test_a_filter_rejected_article_is_recorded(tmp_path: Path) -> None:
-    articles = [_article(1, tier=Tier.FILTER)]
+    articles = [_article(1, lane=Lane.SKIM)]
     deps = _deps(tmp_path, articles)
     deps, store, _ = _recording(deps)
 

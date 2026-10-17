@@ -46,7 +46,7 @@ from cdp_probe import (
 from css_computed import find_browser
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.domain.models import ArticleState, StoredArticle, Tier
+from cyris.domain.models import ArticleState, Lane, StoredArticle
 
 DATE = "2026-01-02"
 PERIOD = "morning"
@@ -101,7 +101,7 @@ def _articles() -> list[StoredArticle]:
             content="Raw probe fixture article.",
             published_at=timestamp,
             source_name=source,
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             state=state,
             first_seen_at=timestamp,
             score=score,
