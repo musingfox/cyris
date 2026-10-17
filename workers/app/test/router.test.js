@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import { handleRequest, returnPath } from "../src/router.js";
 import routes from "./routes.json" with { type: "json" };
 
@@ -19,6 +20,7 @@ function makeDeps({
   fetchHeaders = {},
   scale = 1,
   containerResponse = () => new Response("container", { status: 200 }),
+  accessKeys = ACCESS_KEYS,
 } = {}) {
   const wrappedContainer = async (req) => {
     wrappedContainer.calls.push(req);
@@ -81,6 +83,7 @@ function makeDeps({
   injectStyle.calls = [];
 
   return {
+    accessKeys,
     container: wrappedContainer,
     startRun,
     probeGemini,
@@ -93,6 +96,8 @@ function makeDeps({
 function env(extra = {}) {
   return {
     CYRIS_UI_TOKEN: TOKEN,
+    CYRIS_ACCESS_TEAM_DOMAIN: TEAM,
+    CYRIS_ACCESS_AUD: AUD,
     DIGEST_ORIGIN: "https://p.pages.dev",
     CYRIS_PROMOTE_WORKER_URL: "https://promote.example",
     CYRIS_PROMOTE_TOKEN: "promote-tok",
@@ -100,9 +105,9 @@ function env(extra = {}) {
   };
 }
 
-function request(method, path, { host = HOST, headers = {}, body, cookie } = {}) {
+function request(method, path, { host = HOST, headers = {}, body, jwt } = {}) {
   const h = new Headers(headers);
-  if (cookie) h.set("Cookie", `cyris_session=${cookie}`);
+  if (jwt) h.set("Cf-Access-Jwt-Assertion", jwt);
   const init = { method, headers: h };
   if (body instanceof FormData) {
     init.body = body;
@@ -113,77 +118,95 @@ function request(method, path, { host = HOST, headers = {}, body, cookie } = {})
   return new Request(`https://${host}${path}`, init);
 }
 
-async function sessionCookie() {
-  return sha256(TOKEN);
+const TEAM = "team.example";
+const AUD = "AUD1";
+const { privateKey, publicKey } = await generateKeyPair("RS256");
+const JWK = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
+const ACCESS_KEYS = { keySet: createLocalJWKSet({ keys: [JWK] }), issuer: `https://${TEAM}` };
+
+async function accessJwt({
+  key = privateKey,
+  iss = `https://${TEAM}`,
+  aud = AUD,
+  exp = Math.floor(Date.now() / 1000) + 3600,
+  claims = {},
+} = {}) {
+  return new SignJWT({ ...claims })
+    .setProtectedHeader({ alg: "RS256", kid: "k1" })
+    .setIssuer(iss)
+    .setAudience(aud)
+    .setIssuedAt()
+    .setExpirationTime(exp)
+    .sign(key);
 }
 
 describe("UnauthenticatedWriteSurfaceRejected", () => {
   it("POST /api/settings with no cookie does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/settings"), env(), deps);
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
   it("POST /api/articles/accept with no cookie does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/articles/accept"), env(), deps);
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
   it("DELETE /api/sources/demo with no cookie does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("DELETE", "/api/sources/demo"), env(), deps);
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
   it("POST /api/settings/schedule with no cookie does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/settings/schedule"), env(), deps);
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
   it("POST /api/sources with no cookie does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/sources"), env(), deps);
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
-  it("POST /api/articles/reject with no cookie is 401", async () => {
+  it("POST /api/articles/reject with no cookie is 403", async () => {
     const resp = await handleRequest(request("POST", "/api/articles/reject"), env(), makeDeps());
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
   });
 
-  it("POST /api/articles/undo with no cookie is 401", async () => {
+  it("POST /api/articles/undo with no cookie is 403", async () => {
     const resp = await handleRequest(request("POST", "/api/articles/undo"), env(), makeDeps());
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
   });
 
   it("POST /run with no cookie does not start a run", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/run"), env(), deps);
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.startRun.calls).toHaveLength(0);
   });
 
-  it("GET /settings with Accept text/html and no cookie is HTML 401", async () => {
+  it("GET /settings with Accept text/html and no cookie is JSON 403", async () => {
     const resp = await handleRequest(
       request("GET", "/settings", { headers: { Accept: "text/html" } }),
       env(),
       makeDeps(),
     );
-    expect(resp.status).toBe(401);
-    expect(resp.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(resp.status).toBe(403);
+    expect(resp.headers.get("Content-Type")).toBe("application/json");
   });
 
   it("GET /labels with a valid cookie reaches the container, not Pages", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
-      request("GET", "/labels", { cookie: await sessionCookie() }),
+      request("GET", "/labels", { jwt: await accessJwt() }),
       env(),
       deps,
     );
@@ -192,39 +215,29 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
     expect(deps.fetchImpl.calls).toHaveLength(0);
   });
 
-  it("GET /static/settings.js with no cookie is 401", async () => {
+  it("GET /static/settings.js with no cookie is 403", async () => {
     const resp = await handleRequest(request("GET", "/static/settings.js"), env(), makeDeps());
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
   });
 
-  it("GET /api/zzz-undefined with no cookie is 401", async () => {
+  it("GET /api/zzz-undefined with no cookie is 403", async () => {
     const resp = await handleRequest(request("GET", "/api/zzz-undefined"), env(), makeDeps());
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
   });
 
-  it("GET /settings with a junk cookie is 401", async () => {
+  it("GET /settings with a junk cookie is 403", async () => {
     const resp = await handleRequest(
-      request("GET", "/settings", { cookie: "deadbeef" }),
+      request("GET", "/settings", { jwt: "deadbeef" }),
       env(),
       makeDeps(),
     );
-    expect(resp.status).toBe(401);
-  });
-
-  it("GET /settings with a well-formed cookie but no token is 401", async () => {
-    const cookie = await sessionCookie();
-    const resp = await handleRequest(
-      request("GET", "/settings", { cookie }),
-      env({ CYRIS_UI_TOKEN: "" }),
-      makeDeps(),
-    );
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
   });
 
   it("GET /api/settings with a valid cookie reaches the container", async () => {
     const deps = makeDeps();
-    const cookie = await sessionCookie();
-    await handleRequest(request("GET", "/api/settings", { cookie }), env(), deps);
+    const jwt = await accessJwt();
+    await handleRequest(request("GET", "/api/settings", { jwt }), env(), deps);
     expect(deps.container.calls).toHaveLength(1);
   });
 
@@ -249,7 +262,7 @@ describe("ManualRunPeriod", () => {
   it("POST /run?period=evening starts a run for that period", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
-      request("POST", "/run?period=evening", { cookie: await sessionCookie() }),
+      request("POST", "/run?period=evening", { jwt: await accessJwt() }),
       env(),
       deps,
     );
@@ -261,7 +274,7 @@ describe("ManualRunPeriod", () => {
   it("POST /run with no period leaves the schedule to decide", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
-      request("POST", "/run", { cookie: await sessionCookie() }),
+      request("POST", "/run", { jwt: await accessJwt() }),
       env(),
       deps,
     );
@@ -273,7 +286,7 @@ describe("ManualRunPeriod", () => {
   it("rejects an unknown period before starting a run", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
-      request("POST", "/run?period=noon", { cookie: await sessionCookie() }),
+      request("POST", "/run?period=noon", { jwt: await accessJwt() }),
       env(),
       deps,
     );
@@ -289,7 +302,7 @@ describe("GeminiProbeIsWorkerLocal", () => {
     const deps = makeDeps();
     const resp = await handleRequest(
       request("POST", "/api/diagnostics/gemini?model=gemini-3.7-flash", {
-        cookie: await sessionCookie(),
+        jwt: await accessJwt(),
       }),
       env(),
       deps,
@@ -309,7 +322,7 @@ describe("GeminiProbeIsWorkerLocal", () => {
     const deps = makeDeps();
     const resp = await handleRequest(
       request("POST", "/api/diagnostics/gemini?model=not/a-model", {
-        cookie: await sessionCookie(),
+        jwt: await accessJwt(),
       }),
       env(),
       deps,
@@ -335,9 +348,9 @@ describe("VotePostRequiresCookieOffAccessHost", () => {
 
   it("POST /api/vote with a valid cookie forwards the promote bearer", async () => {
     const deps = makeDeps({ fetchStatus: 201, fetchBody: { ok: true } });
-    const cookie = await sessionCookie();
+    const jwt = await accessJwt();
     const resp = await handleRequest(
-      request("POST", "/api/vote", { body: { ...VOTE_BODY, vote: "up" }, cookie }),
+      request("POST", "/api/vote", { body: { ...VOTE_BODY, vote: "up" }, jwt }),
       env(),
       deps,
     );
@@ -348,9 +361,9 @@ describe("VotePostRequiresCookieOffAccessHost", () => {
   });
 
   it("POST /api/vote with a valid cookie but no promote URL is 503", async () => {
-    const cookie = await sessionCookie();
+    const jwt = await accessJwt();
     const resp = await handleRequest(
-      request("POST", "/api/vote", { body: VOTE_BODY, cookie }),
+      request("POST", "/api/vote", { body: VOTE_BODY, jwt }),
       env({ CYRIS_PROMOTE_WORKER_URL: "" }),
       makeDeps(),
     );
@@ -372,8 +385,8 @@ describe("VoteProbeReflectsCookieOffAccessHost", () => {
   });
 
   it("GET /api/vote with a valid cookie is authorized", async () => {
-    const cookie = await sessionCookie();
-    const resp = await handleRequest(request("GET", "/api/vote", { cookie }), env(), makeDeps());
+    const jwt = await accessJwt();
+    const resp = await handleRequest(request("GET", "/api/vote", { jwt }), env(), makeDeps());
     expect(resp.status).toBe(200);
     expect(await resp.json()).toEqual({ authorized: true });
   });
@@ -391,76 +404,6 @@ describe("VoteProbeReflectsCookieOffAccessHost", () => {
     );
     expect(resp.status).toBe(401);
     expect(resp.headers.get("Content-Type")).toBe("application/json");
-  });
-});
-
-describe("VoteAccessHostProbeExempt", () => {
-  it("GET /api/vote on the Access host needs no cookie", async () => {
-    const resp = await handleRequest(
-      request("GET", "/api/vote", { host: ACCESS_HOST }),
-      env({ CYRIS_UI_ACCESS_HOST: ACCESS_HOST }),
-      makeDeps(),
-    );
-    expect(resp.status).toBe(200);
-    expect(await resp.json()).toEqual({ authorized: true });
-  });
-
-  it("exemption is bound to the hostname", async () => {
-    const resp = await handleRequest(
-      request("GET", "/api/vote", { host: HOST }),
-      env({ CYRIS_UI_ACCESS_HOST: ACCESS_HOST }),
-      makeDeps(),
-    );
-    expect(resp.status).toBe(401);
-  });
-
-  it("unset CYRIS_UI_ACCESS_HOST never exempts", async () => {
-    const resp = await handleRequest(
-      request("GET", "/api/vote", { host: ACCESS_HOST }),
-      env(),
-      makeDeps(),
-    );
-    expect(resp.status).toBe(401);
-  });
-});
-
-describe("VoteAccessHostPostForwards", () => {
-  it("POST /api/vote on the Access host forwards without a cookie", async () => {
-    const deps = makeDeps({ fetchStatus: 200, fetchBody: { ok: true } });
-    const resp = await handleRequest(
-      request("POST", "/api/vote", {
-        host: ACCESS_HOST,
-        body: { url: "https://e.x/a", vote: "down", digest_date: "2026-09-01" },
-      }),
-      env({ CYRIS_UI_ACCESS_HOST: ACCESS_HOST }),
-      deps,
-    );
-    expect(resp.status).toBe(200);
-    expect(await resp.json()).toEqual({ ok: true });
-    const call = deps.fetchImpl.calls[0];
-    const url = typeof call.input === "string" ? call.input : call.input.url;
-    expect(url).toBe("https://promote.example/promote");
-    expect(call.init.headers.Authorization).toBe("Bearer promote-tok");
-  });
-
-  it("PUT /api/vote on the Access host is 405", async () => {
-    const resp = await handleRequest(
-      request("PUT", "/api/vote", { host: ACCESS_HOST }),
-      env({ CYRIS_UI_ACCESS_HOST: ACCESS_HOST }),
-      makeDeps(),
-    );
-    expect(resp.status).toBe(405);
-  });
-
-  it("POST /api/vote on the Access host maps fetch throws to 502", async () => {
-    const deps = makeDeps({ fetchThrow: true });
-    const resp = await handleRequest(
-      request("POST", "/api/vote", { host: ACCESS_HOST, body: VOTE_BODY }),
-      env({ CYRIS_UI_ACCESS_HOST: ACCESS_HOST }),
-      deps,
-    );
-    expect(resp.status).toBe(502);
-    expect(await resp.json()).toEqual({ error: "promote worker failed" });
   });
 });
 
@@ -596,16 +539,6 @@ describe("LoginReturnsToThePage", () => {
       makeDeps(),
     );
     expect(nextField(await resp.text())).toBe("/2026-10-01-morning.html");
-  });
-
-  it("a protected page that asks for the token returns to itself", async () => {
-    const resp = await handleRequest(
-      request("GET", "/settings?tab=model", { headers: { Accept: "text/html" } }),
-      env(),
-      makeDeps(),
-    );
-    expect(resp.status).toBe(401);
-    expect(nextField(await resp.text())).toBe("/settings?tab=model");
   });
 
   it("a wrong token keeps next for the second try", async () => {
@@ -761,9 +694,9 @@ describe("HtmlResponsesCarryTheScale", () => {
 
   it("sizes /settings as the container serves it", async () => {
     const deps = makeDeps({ scale: 0.875, containerResponse: containerAnswering("text/html") });
-    const cookie = await sessionCookie();
+    const jwt = await accessJwt();
 
-    const resp = await handleRequest(request("GET", "/settings", { cookie }), env(), deps);
+    const resp = await handleRequest(request("GET", "/settings", { jwt }), env(), deps);
 
     expect(await resp.text()).toContain("<style>html:root{--type-scale:0.875}</style></head>");
     expect(deps.injectStyle.calls).toHaveLength(1);
@@ -771,9 +704,9 @@ describe("HtmlResponsesCarryTheScale", () => {
 
   it("leaves the container's JSON alone", async () => {
     const deps = makeDeps({ scale: 1.125, containerResponse: containerAnswering("application/json") });
-    const cookie = await sessionCookie();
+    const jwt = await accessJwt();
 
-    await handleRequest(request("GET", "/api/settings", { cookie }), env(), deps);
+    await handleRequest(request("GET", "/api/settings", { jwt }), env(), deps);
 
     expect(deps.injectStyle.calls).toEqual([]);
     expect(deps.typeScale.reads).toBe(0);
@@ -835,13 +768,13 @@ describe("ScaledHtmlDropsValidators", () => {
 });
 
 describe("SettingsSaveForgetsTheScale", () => {
-  const save = async (deps, path, cookie) =>
-    handleRequest(request("POST", path, { cookie, body: { values: {} } }), env(), deps);
+  const save = async (deps, path, jwt) =>
+    handleRequest(request("POST", path, { jwt, body: { values: {} } }), env(), deps);
 
   it("forgets the size when a values save lands", async () => {
     const deps = makeDeps({ containerResponse: containerAnswering("application/json") });
 
-    await save(deps, "/api/settings/values", await sessionCookie());
+    await save(deps, "/api/settings/values", await accessJwt());
 
     expect(deps.typeScale.forgets).toBe(1);
   });
@@ -849,7 +782,7 @@ describe("SettingsSaveForgetsTheScale", () => {
   it("keeps it when the save is refused", async () => {
     const deps = makeDeps({ containerResponse: containerAnswering("application/json", 400) });
 
-    await save(deps, "/api/settings/values", await sessionCookie());
+    await save(deps, "/api/settings/values", await accessJwt());
 
     expect(deps.typeScale.forgets).toBe(0);
   });
@@ -859,7 +792,7 @@ describe("SettingsSaveForgetsTheScale", () => {
 
     const resp = await save(deps, "/api/settings/values", undefined);
 
-    expect(resp.status).toBe(401);
+    expect(resp.status).toBe(403);
     expect(deps.typeScale.forgets).toBe(0);
     expect(deps.container.calls).toHaveLength(0);
   });
@@ -867,7 +800,7 @@ describe("SettingsSaveForgetsTheScale", () => {
   it("keeps it for another settings route", async () => {
     const deps = makeDeps({ containerResponse: containerAnswering("application/json") });
 
-    await save(deps, "/api/settings", await sessionCookie());
+    await save(deps, "/api/settings", await accessJwt());
 
     expect(deps.typeScale.forgets).toBe(0);
   });
@@ -922,14 +855,14 @@ describe("PrivateArchiveRedirectsAnonymousReaders", () => {
   });
 
   it("redirects a cookie that is not the session", async () => {
-    const { resp } = await anonymous("GET", "/", PRIVATE, { cookie: "deadbeef" });
+    const { resp } = await anonymous("GET", "/", PRIVATE, { jwt: "deadbeef" });
 
     expect(resp.status).toBe(302);
   });
 
   it("redirects the session of an empty token", async () => {
     const { resp } = await anonymous("GET", "/", { ...PRIVATE, CYRIS_UI_TOKEN: "" }, {
-      cookie: await sha256(TOKEN),
+      jwt: await sha256(TOKEN),
     });
 
     expect(resp.status).toBe(302);
@@ -984,7 +917,7 @@ describe("PrivateArchiveServesSignedInReaders", () => {
   it("serves an archive page through the proxy", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
-      request("GET", "/2026-08-30-evening.html", { cookie: await sessionCookie() }),
+      request("GET", "/2026-08-30-evening.html", { jwt: await accessJwt() }),
       env(PRIVATE),
       deps,
     );
@@ -1002,7 +935,7 @@ describe("PrivateArchiveServesSignedInReaders", () => {
       fetchBody: "<html><head></head><body></body></html>",
     });
     const resp = await handleRequest(
-      request("GET", "/", { cookie: await sessionCookie() }),
+      request("GET", "/", { jwt: await accessJwt() }),
       env(PRIVATE),
       deps,
     );
@@ -1013,7 +946,7 @@ describe("PrivateArchiveServesSignedInReaders", () => {
 
   it("answers 503 when no archive origin is named", async () => {
     const resp = await handleRequest(
-      request("GET", "/", { cookie: await sessionCookie() }),
+      request("GET", "/", { jwt: await accessJwt() }),
       env({ ...PRIVATE, DIGEST_ORIGIN: "" }),
       makeDeps(),
     );
@@ -1023,7 +956,7 @@ describe("PrivateArchiveServesSignedInReaders", () => {
 
   it("passes an upstream 404 through", async () => {
     const resp = await handleRequest(
-      request("GET", "/", { cookie: await sessionCookie() }),
+      request("GET", "/", { jwt: await accessJwt() }),
       env(PRIVATE),
       makeDeps({ fetchStatus: 404 }),
     );
@@ -1054,5 +987,132 @@ describe("PublicArchiveUnchangedWhenFlagIsOff", () => {
     );
 
     expect(resp.status).toBe(200);
+  });
+});
+
+describe("AccessJwtCheck", () => {
+  const GET_SETTINGS = (jwt, extra = {}) => request("GET", "/settings", { jwt, ...extra });
+  const unsignedJwt = () => {
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    return `${b64({ alg: "none" })}.${b64({ iss: `https://${TEAM}`, aud: AUD, exp: Math.floor(Date.now() / 1000) + 3600 })}.`;
+  };
+
+  it("admits a valid JWT whose audience list holds the AUD", async () => {
+    const deps = makeDeps();
+    const jwt = await accessJwt({ aud: [AUD, "other"] });
+    const resp = await handleRequest(GET_SETTINGS(jwt), env(), deps);
+    expect(resp.status).toBe(200);
+    expect(deps.container.calls).toHaveLength(1);
+  });
+
+  it("admits a service-token style JWT with no subject", async () => {
+    const deps = makeDeps();
+    const jwt = await accessJwt({ claims: { common_name: "id.access", sub: "" } });
+    await handleRequest(GET_SETTINGS(jwt), env(), deps);
+    expect(deps.container.calls).toHaveLength(1);
+  });
+
+  it("refuses an audience that is not the AUD", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(GET_SETTINGS(await accessJwt({ aud: ["other"] })), env(), deps);
+    expect(resp.status).toBe(403);
+    expect(deps.container.calls).toHaveLength(0);
+  });
+
+  it("refuses an issuer other than the team domain", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      GET_SETTINGS(await accessJwt({ iss: "https://evil.example" })),
+      env(),
+      deps,
+    );
+    expect(resp.status).toBe(403);
+    expect(deps.container.calls).toHaveLength(0);
+  });
+
+  it("refuses a token signed by another key under the same kid", async () => {
+    const other = await generateKeyPair("RS256");
+    const resp = await handleRequest(
+      GET_SETTINGS(await accessJwt({ key: other.privateKey })),
+      env(),
+      makeDeps(),
+    );
+    expect(resp.status).toBe(403);
+  });
+
+  it("refuses an expired token", async () => {
+    const resp = await handleRequest(
+      GET_SETTINGS(await accessJwt({ exp: Math.floor(Date.now() / 1000) - 60 })),
+      env(),
+      makeDeps(),
+    );
+    expect(resp.status).toBe(403);
+  });
+
+  it("refuses an unsigned token with alg none", async () => {
+    const resp = await handleRequest(GET_SETTINGS(unsignedJwt()), env(), makeDeps());
+    expect(resp.status).toBe(403);
+  });
+
+  it("reads the header only, never the CF_Authorization cookie", async () => {
+    const jwt = await accessJwt();
+    const req = new Request(`https://${HOST}/settings`, { headers: { Cookie: `CF_Authorization=${jwt}` } });
+    const resp = await handleRequest(req, env(), makeDeps());
+    expect(resp.status).toBe(403);
+  });
+
+  it("keeps a malformed header out of the response and the console", async () => {
+    const spies = ["log", "warn", "error"].map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    try {
+      const resp = await handleRequest(GET_SETTINGS("not-a-jwt"), env(), makeDeps());
+      const text = await resp.text();
+      expect(resp.status).toBe(403);
+      expect(text).not.toContain("not-a-jwt");
+      for (const spy of spies) {
+        for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toContain("not-a-jwt");
+      }
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+  });
+
+  it("names CYRIS_ACCESS_TEAM_DOMAIN when it is unset", async () => {
+    const jwt = await accessJwt();
+    const resp = await handleRequest(
+      GET_SETTINGS(jwt),
+      env({ CYRIS_ACCESS_TEAM_DOMAIN: "" }),
+      makeDeps(),
+    );
+    expect(resp.status).toBe(403);
+    expect((await resp.json()).detail).toContain("CYRIS_ACCESS_TEAM_DOMAIN");
+  });
+
+  it("names CYRIS_ACCESS_AUD alone when only it is unset", async () => {
+    const jwt = await accessJwt();
+    const resp = await handleRequest(GET_SETTINGS(jwt), env({ CYRIS_ACCESS_AUD: "" }), makeDeps());
+    const detail = (await resp.json()).detail;
+    expect(resp.status).toBe(403);
+    expect(detail).toContain("CYRIS_ACCESS_AUD");
+    expect(detail).not.toContain("CYRIS_ACCESS_TEAM_DOMAIN");
+  });
+
+  it("refuses when the key set is missing", async () => {
+    const jwt = await accessJwt();
+    const resp = await handleRequest(GET_SETTINGS(jwt), env(), makeDeps({ accessKeys: null }));
+    expect(resp.status).toBe(403);
+  });
+
+  it("refuses, not 500, when the key set rejects", async () => {
+    const jwt = await accessJwt();
+    const deps = makeDeps({
+      accessKeys: {
+        keySet: async () => {
+          throw new Error("certs unreachable");
+        },
+        issuer: `https://${TEAM}`,
+      },
+    });
+    const resp = await handleRequest(GET_SETTINGS(jwt), env(), deps);
+    expect(resp.status).toBe(403);
   });
 });
