@@ -945,7 +945,7 @@ def triage_ui(
             host=host,
             port=port,
             settings=build_settings(cfg),
-            values=cfg.present_settings(),
+            values={**cfg.present_settings(), **cfg.defaulted_settings()},
             sources=cfg.sources,
             source_store=D1SourceStore(d1) if d1 else None,
             feed_health=D1FeedHealth(d1) if d1 else None,
