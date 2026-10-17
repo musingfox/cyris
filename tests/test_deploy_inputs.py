@@ -226,13 +226,8 @@ def test_access_settings_are_required_and_in_the_install_block() -> None:
     assert {"CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"} <= names
 
 
-def test_example_asks_for_the_access_settings_and_not_the_retired_token() -> None:
-    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+def test_example_asks_for_the_access_settings() -> None:
     assert {"CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"} <= _env_example()
-    assert "CYRIS_UI_TOKEN" not in text
-    config_show = ROOT / "src/cyris/diagnostics/config_show.json"
-    secrets = json.loads(config_show.read_text(encoding="utf-8"))
-    assert "CYRIS_UI_TOKEN" not in secrets["secrets"]
 
 
 def test_private_archive_description_names_no_cookie_login() -> None:

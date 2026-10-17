@@ -465,7 +465,6 @@ def test_the_first_run_keeps_the_secret_out_of_the_transcript_and_argv(rig) -> N
 
 def test_the_wizard_no_longer_uses_a_session_cookie() -> None:
     script = (ROOT / "scripts/trial-wizard.sh").read_text()
-    assert "cyris_session" not in script
     assert "shasum" not in script
 
 

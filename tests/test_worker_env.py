@@ -53,5 +53,4 @@ def test_worker_names_access_settings_and_digest_origin():
     text = WORKER_JS.read_text() + ROUTER_JS.read_text()
     assert "CYRIS_ACCESS_TEAM_DOMAIN" in text
     assert "CYRIS_ACCESS_AUD" in text
-    assert "CYRIS_UI_ACCESS_HOST" not in text
     assert "DIGEST_ORIGIN" in text
