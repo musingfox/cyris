@@ -118,3 +118,23 @@ def test_issues_lists_the_most_recently_saved_first() -> None:
     store.save(_content("morning", articles_included=6), raw_page=False)
 
     assert store.issues() == [("2026-09-24", "morning"), ("2026-09-24", "evening")]
+
+
+def test_delete_removes_only_the_named_issue() -> None:
+    store = D1DigestStore(SqliteD1())
+    store.save(_content("morning"), raw_page=True)
+    store.save(_content("evening"), raw_page=True)
+
+    store.delete("2026-09-24", "morning")
+
+    assert store.load("2026-09-24", "morning") is None
+    assert store.issues() == [("2026-09-24", "evening")]
+
+
+def test_deleting_an_absent_issue_is_a_no_op() -> None:
+    store = D1DigestStore(SqliteD1())
+    store.save(_content("morning"), raw_page=True)
+
+    store.delete("2026-09-09", "morning")
+
+    assert store.issues() == [("2026-09-24", "morning")]

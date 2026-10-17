@@ -47,6 +47,12 @@ class D1DigestStore:
             raw_page=bool(row["raw_page"]),
         )
 
+    def delete(self, date: str, period: str) -> None:
+        self._db.query(
+            "DELETE FROM digests WHERE date = ? AND period = ?",
+            [date, period],
+        )
+
     def issues(self) -> list[tuple[str, str]]:
         """Every stored issue's (date, period), the most recently saved first."""
         rows = self._db.query(

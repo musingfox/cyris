@@ -50,3 +50,22 @@ def test_four_hundred_long_urls_round_trip_in_one_statement() -> None:
 
     assert writes == 1
     assert store.load("2026-10-14", "evening") == urls
+
+
+def test_delete_removes_one_issue_and_leaves_the_others() -> None:
+    store = D1DigestInputStore(SqliteD1())
+    store.save("2026-10-01", "morning", ["u0"])
+    store.save("2026-10-01", "evening", ["u1"])
+
+    store.delete("2026-10-01", "morning")
+
+    assert store.load("2026-10-01", "morning") is None
+    assert store.load("2026-10-01", "evening") == ["u1"]
+
+
+def test_deleting_an_absent_issue_is_a_no_op() -> None:
+    store = D1DigestInputStore(SqliteD1())
+
+    store.delete("2026-10-01", "morning")
+
+    assert store.load("2026-10-01", "morning") is None
