@@ -6,7 +6,8 @@
 //
 // CYRIS_PRIVATE_ARCHIVE=true puts the archive behind that same cookie: an
 // anonymous reader is sent to /login and returns to the page they asked for.
-// Access never stands in for it. Anything else leaves the archive public.
+// Access never stands in for it. The interest page is signed-in only on every
+// deployment, flag or not. Anything else leaves the archive public.
 
 import { typeScaleStyle } from "./type_scale.js";
 
@@ -24,6 +25,20 @@ export const PROTECTED = (path) =>
 const privateArchive = (env) => String(env.CYRIS_PRIVATE_ARCHIVE) === "true";
 
 const VOTE_ONLY = (path) => path === "/api/vote";
+
+const INTEREST_PATHS = ["/interest", "/interest.html", "/interest/"];
+
+// Matched on the decoded path, so an encoded spelling cannot slip past. A path
+// that does not decode is gated, not served.
+const signedInOnly = (path) => {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(path).toLowerCase();
+  } catch {
+    return true;
+  }
+  return INTEREST_PATHS.includes(decoded);
+};
 
 // `cyris run --period` takes these; anything else would reach the container and fail there.
 const RUN_PERIODS = ["morning", "evening"];
@@ -201,7 +216,7 @@ export async function handleRequest(request, env, deps) {
 
   // The digest is a static snapshot Cloudflare already holds.
   if (!PROTECTED(url.pathname)) {
-    if (privateArchive(env) && !(await authorized(request, env))) {
+    if ((privateArchive(env) || signedInOnly(url.pathname)) && !(await authorized(request, env))) {
       const login = new URL("/login", url.origin);
       login.searchParams.set("next", url.pathname + url.search);
       return new Response(null, {
