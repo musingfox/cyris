@@ -353,7 +353,7 @@ def test_receipts_send_the_service_token_and_the_doctor_gets_it(rig) -> None:
     doctor = (Path(r.env["FAKE_DIR"]) / "doctor.env").read_text().splitlines()
     assert "CYRIS_ACCESS_CLIENT_ID=cid" in doctor
     assert "CYRIS_ACCESS_CLIENT_SECRET=sek-9f3" in doctor
-    assert not any(ln.startswith("CYRIS_UI_TOKEN") for ln in doctor)
+    assert "UI_TOKEN" not in "\n".join(doctor)
 
 
 def test_a_declined_deploy_looks_once_instead_of_waiting(rig) -> None:
@@ -479,3 +479,10 @@ def test_declining_the_post_starts_nothing(rig) -> None:
     run = rig(_stages(16)).run(stdin=START + "evening\nn\n")
     assert "/run?period=" not in run.calls
     assert "wait-run" not in run.calls
+
+
+def test_the_hand_over_copies_no_token_to_the_clipboard(rig) -> None:
+    run = rig(_stages(15)).run(stdin=START + "\nmorning\nn\n")
+    assert "pbcopy" not in run.calls
+    assert "password manager" not in run.out
+    assert "Access one-time PIN" in run.out

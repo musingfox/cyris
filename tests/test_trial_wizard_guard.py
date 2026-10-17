@@ -235,7 +235,7 @@ TRIAL_DEPLOY = 'bunx wrangler deploy --config "$APP_CFG" --env-file /dev/null'
         ("node_modules/.bin/wrangler deploy --env-file /dev/null", "b"),
         ("bunx wrangler deploy --config wrangler.toml --env-file /dev/null", "b"),
         ("bunx wrangler deploy --config workers/rss/wrangler.toml --env-file /dev/null", "b"),
-        ("./node_modules/.bin/wrangler secret put CYRIS_UI_TOKEN --env-file /dev/null", "c"),
+        ("./node_modules/.bin/wrangler secret put CYRIS_WORKER_TOKEN --env-file /dev/null", "c"),
         (f"{TRIAL_DEPLOY}; bunx wrangler deploy --env-file /dev/null", "b"),
         (f"{TRIAL_DEPLOY} && bunx wrangler d1 list", "a"),
         ("WHO=$(bunx wrangler whoami 2>&1 || true)", "a"),
@@ -304,7 +304,9 @@ def assert_points_not_copies(runbook: str, guide: str) -> None:
     for anchor in REQUIRED_ANCHORS:
         assert anchor in linked, f"the runbook does not link {anchor}"
     for ln in _code_lines(runbook):
-        assert not re.match(r"(export\s+)?CYRIS_UI_TOKEN=", ln), f"copied secret line: {ln}"
+        assert not re.match(r"(export\s+)?CYRIS_[A-Z_]*(TOKEN|SECRET)=", ln), (
+            f"copied secret line: {ln}"
+        )
         assert not WRANGLER.search(ln), f"a wrangler step the wizard owns: {ln}"
 
 
@@ -326,9 +328,15 @@ def test_a_dead_install_guide_anchor_is_named() -> None:
         assert_points_not_copies(dead, _guide())
 
 
-def test_a_copied_ui_token_line_is_refused() -> None:
-    text = _runbook() + "\n```sh\nCYRIS_UI_TOKEN=abc\n```\n"
-    with pytest.raises(AssertionError, match="CYRIS_UI_TOKEN"):
+def test_a_copied_worker_token_line_is_refused() -> None:
+    text = _runbook() + "\n```sh\nCYRIS_WORKER_TOKEN=abc\n```\n"
+    with pytest.raises(AssertionError, match="CYRIS_WORKER_TOKEN"):
+        assert_points_not_copies(text, _guide())
+
+
+def test_a_copied_access_secret_line_is_refused() -> None:
+    text = _runbook() + "\n```sh\nCYRIS_ACCESS_CLIENT_SECRET=abc\n```\n"
+    with pytest.raises(AssertionError, match="CYRIS_ACCESS_CLIENT_SECRET"):
         assert_points_not_copies(text, _guide())
 
 
