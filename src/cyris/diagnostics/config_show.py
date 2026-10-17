@@ -127,8 +127,12 @@ def _secrets(cfg: Config) -> list[Row]:
 def _runtime(cfg: Config) -> list[Row]:
     home = SOURCES["d1"] if cfg.app.store.is_d1 else SOURCES["file"]
     values = cfg.present_settings()
+    defaulted = cfg.defaulted_settings()
     rows = []
     for key in GRADE_D_KEYS:
+        if key not in values and key in defaulted:
+            rows.append(Row("D", key, _shown(defaulted[key]), SOURCES["code"]))
+            continue
         if key not in values:
             rows.append(Row("D", key, _NONE, SOURCES["missing"]))
             continue
