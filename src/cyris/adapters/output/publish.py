@@ -24,13 +24,14 @@ from cyris.adapters.output.pages_deploy import DeploymentRecord, PagesClient, Pa
 logger = logging.getLogger(__name__)
 
 DEPLOY_ATTEMPTS = 3
-# One page, because one is the largest shortfall this system can legitimately
-# produce. Two things put the site one page ahead of the manifest: a deployment
-# that landed but whose manifest save then failed, and one Cloudflare gave no
-# verdict on and whose page the alias did not serve in time, which lands later.
+# One issue, a digest page and its raw page together, because one issue is the
+# largest shortfall this system can legitimately produce. Two things put the site
+# one issue ahead of the manifest: a deployment that landed but whose manifest
+# save then failed, and one Cloudflare gave no verdict on and whose pages the
+# alias did not serve in time, which land later.
 # The lead cannot accumulate: the next deploy is a full snapshot of `new_files`
-# plus the manifest, and that page is in neither, so it is dropped and the count
-# returns to one. Anything above that is a database describing a different
+# plus the manifest, and those pages are in neither, so they are dropped and the
+# count returns to one issue. Anything above that is a database describing a different
 # archive: a staging clone or a point-in-time restore a few days behind, which
 # is exactly what this guard is for. A same-size-but-different archive is caught
 # regardless, because the check is a set difference and not a count.
@@ -89,15 +90,12 @@ _DATED_HTML = re.compile(r"^/?\d{4}-\d{2}-\d{2}-.+\.html$")
 
 
 def _parse_archive_anchors(html: str) -> set[str]:
-    """Dated digest hrefs on the live archive index, each with a leading slash."""
+    """Dated same-site hrefs on the live archive index, raw pages included, with a leading slash."""
     found: set[str] = set()
     for href in _HREF_RE.findall(html):
         if "://" in href or not _DATED_HTML.match(href):
             continue
-        path = _slash(href)
-        if path.endswith("-raw.html"):
-            continue
-        found.add(path)
+        found.add(_slash(href))
     return found
 
 
@@ -105,6 +103,11 @@ def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
     """Live archive pages this manifest would not put on the next deploy."""
     kept = {_slash(p) for p in manifest_paths}
     return {_slash(p) for p in live} - kept
+
+
+def _issue(path: str) -> str:
+    """The `/{date}-{period}` stem a digest or raw page belongs to."""
+    return _slash(path).removesuffix(".html").removesuffix("-raw")
 
 
 def _fetch_live_index(pages_project: str) -> set[str] | None:
@@ -240,13 +243,15 @@ def publish_site(
             )
             live = set()
         missing = _archive_shortfall(live, manifest)
-        if len(missing) > ARCHIVE_SHORTFALL_TOLERANCE:
+        issues = {_issue(p) for p in missing}
+        if len(issues) > ARCHIVE_SHORTFALL_TOLERANCE:
             # The names, not just the count: five filenames tell an operator
             # whether this is the wrong `database_id` or a prune they meant.
             logger.error(
-                "Refusing to deploy: the live archive still lists %d page(s) "
-                "this manifest would drop, e.g. %s. Check [store] database_id",
+                "Refusing to deploy: the live archive still lists %d page(s) across "
+                "%d issue(s) this manifest would drop, e.g. %s. Check [store] database_id",
                 len(missing),
+                len(issues),
                 ", ".join(sorted(missing)[:5]),
             )
             return False

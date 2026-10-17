@@ -787,10 +787,11 @@ production branch, or it lands on a preview URL. The first publish creates the P
   that already has deployments and no `pages_deploy_receipt` stops the publish and names the two
   ways out, `[store] database_id` and `scripts/backfill_pages_manifest.py`. A non-empty but wrong
   manifest is caught by set difference: `publish_site` fetches the live archive index and
-  refuses when more than one dated page listed there is missing from the manifest. A receipt
-  skips only the Cloudflare deployments probe, never this check. Zero dated anchors on the live
-  index passes; an unreadable index fails closed. `-raw.html` pages are not in the signal, and a
-  deliberate prune of more than one issue has no in-band path.
+  refuses when the pages listed there that the manifest lacks span more than one issue. An issue
+  is a digest page and its `-raw.html` page under one `{date}-{period}` stem, so a raw page is
+  in the signal and counts with its digest. A receipt skips only the Cloudflare deployments
+  probe, never this check. Zero dated anchors on the live index passes; an unreadable index
+  fails closed. A deliberate prune of more than one issue has no in-band path.
 - **Recovery reads the live site.** The live `index.html` lists every digest, so fetching each
   page and re-running `asset_hash` rebuilds path → hash exactly; that is what the backfill script
   does. The archive also reads `usage_log` for its rows' article counts, and a failed read drops

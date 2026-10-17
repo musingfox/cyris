@@ -837,10 +837,8 @@ def _dated(n, *, month=1):
 
 
 def test_archive_shortfall_is_empty_when_every_live_page_is_in_the_manifest():
-    live = set(_dated(62))
+    live = set(_dated(62)) | {f"/2026-01-{i:02d}-morning-raw.html" for i in range(1, 25)}
     manifest = {p: "h" for p in live}
-    for i in range(1, 25):
-        manifest[f"/2026-01-{i:02d}-morning-raw.html"] = "r"
     manifest["/index.html"] = "i"
 
     assert publish_mod._archive_shortfall(live, manifest) == set()
@@ -999,6 +997,7 @@ def test_parse_archive_anchors_from_the_real_index_template(tmp_path):
         "/2026-09-04-morning.html",
         "/2026-09-03-evening.html",
         "/2026-09-03-morning.html",
+        "/2026-09-03-morning-raw.html",
     }
 
 
@@ -1056,6 +1055,17 @@ def test_parse_archive_anchors_does_not_double_slash_an_absolute_href():
     assert publish_mod._parse_archive_anchors('<a href="/2026-09-04-morning.html">') == {
         "/2026-09-04-morning.html"
     }
+
+
+def test_parse_archive_anchors_reports_a_raw_page():
+    assert publish_mod._parse_archive_anchors('<a href="/2026-09-04-morning-raw.html">') == {
+        "/2026-09-04-morning-raw.html"
+    }
+
+
+def test_parse_archive_anchors_ignores_an_absolute_raw_url():
+    html = '<a href="https://example.com/2026-09-04-morning-raw.html">'
+    assert publish_mod._parse_archive_anchors(html) == set()
 
 
 def test_parse_archive_anchors_ignores_undated_hrefs():
@@ -1219,6 +1229,69 @@ def test_publish_refuses_when_five_live_pages_are_missing(monkeypatch, caplog):
     message = caplog.text
     assert "database_id" in message
     assert any(page.lstrip("/") in message for page in live[:5])
+
+
+def _with_raws(digests):
+    return [p for d in digests for p in (d, d.replace(".html", "-raw.html"))]
+
+
+def test_publish_refuses_five_issues_whose_raw_pages_the_manifest_lacks(monkeypatch, caplog):
+    digests = _dated(5)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=_with_raws(digests), deployed=deployed)
+    store = _Store({**{p: "h" for p in digests}, "/index.html": "i"})
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
+    assert store.saved is None
+    assert "-raw.html" in caplog.text
+    assert "5 issue" in caplog.text
+
+
+def test_publish_deploys_when_one_issue_lacks_its_digest_and_raw_page(monkeypatch):
+    digests = _dated(62)
+    live = _with_raws(digests)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    gone = {digests[-1], digests[-1].replace(".html", "-raw.html")}
+    store = _Store({p: "h" for p in live if p not in gone})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is True
+    assert len(deployed) == 1
+    assert store.saved is not None
+
+
+def test_publish_deploys_when_one_issue_lacks_only_its_raw_page(monkeypatch):
+    digests = _dated(62)
+    live = _with_raws(digests)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    raw = digests[-1].replace(".html", "-raw.html")
+    store = _Store({p: "h" for p in live if p != raw})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is True
+    assert len(deployed) == 1
+
+
+def test_publish_refuses_two_issues_missing_their_digest_and_raw_pages(monkeypatch):
+    digests = _dated(62)
+    live = _with_raws(digests)
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    gone = set(digests[-2:]) | {d.replace(".html", "-raw.html") for d in digests[-2:]}
+    store = _Store({p: "h" for p in live if p not in gone})
+
+    ok = publish_mod.publish_site({"/new.html": b"x"}, "slug", store, "proj", _Receipt())
+
+    assert ok is False
+    assert deployed == []
 
 
 def test_publish_deploys_when_the_live_index_has_no_anchors(monkeypatch):
