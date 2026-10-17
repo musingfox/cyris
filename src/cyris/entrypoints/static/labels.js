@@ -15,6 +15,7 @@ let answerFocus = null;
 
 const FAILED = {
   signedOut: "Your session has ended, so the answer was not taken. Reload the page and sign in again.",
+  accessNotSetUp: "Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.",
   refused: (status, reason) => `The answer was not taken (HTTP ${status})${reason ? `: ${reason}` : "."}`,
   unanswered: "No answer from the server, so the answer may not have been taken. Check your connection, then try again.",
 };
@@ -38,7 +39,8 @@ function show(deck) {
 }
 
 async function failureOf(resp) {
-  if (resp.status === 401) return FAILED.signedOut;
+  if (resp.type === "opaqueredirect") return FAILED.signedOut;
+  if (resp.status === 403) return FAILED.accessNotSetUp;
   const body = await resp.json().catch(() => ({}));
   return FAILED.refused(resp.status, body.error);
 }
@@ -51,7 +53,7 @@ const lean = (dir) => {
 
 async function load() {
   try {
-    const resp = await fetch("/api/labels");
+    const resp = await fetch("/api/labels", { redirect: "manual" });
     if (!resp.ok) throw new Error(await failureOf(resp));
     show(await resp.json());
   } catch (error) {
@@ -74,6 +76,7 @@ async function answer(label) {
   try {
     const resp = await fetch("/api/labels", {
       method: "POST",
+      redirect: "manual",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: current.url, label }),
     });

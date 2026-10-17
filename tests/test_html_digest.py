@@ -1706,7 +1706,7 @@ def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
     pages = _issue_pages(tmp_path)
 
     for html in (pages["digest"], pages["raw"]):
-        assert html.count("redirect: 'manual'") == 1
+        assert html.count("redirect: 'manual'") == 2
         assert "DIGEST_DATE" in html
 
 
@@ -2592,3 +2592,12 @@ def test_a_headline_without_a_group_summary_keeps_every_story_in_the_top_story(t
     ]
     assert "X1" in lead.text_content()
     assert top.find_all(lambda n: n.tag == "h2" and "section-tag" in n.classes) == []
+
+
+def test_the_vote_names_the_access_refusal_and_the_redirect(tmp_path):
+    templates = Path(html_digest.__file__).parent / "templates"
+    script = (templates / "_promote_script.html.j2").read_text()
+
+    assert "accessNotSetUp: 'Access is not set up for this deployment." in script
+    assert "if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;" in script
+    assert "if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;" in script
