@@ -161,7 +161,7 @@ none has a default in code, so save every category until nothing is marked:
   destination address (Email Service → Email Routing → Destination Addresses, then
   open the verification mail), and the sender must be an address on your Email Routing
   domain. Save sends a test message and stores the pair only if it is delivered.
-- **Sources**: add at least one RSS source. Each takes a tier; see
+- **Sources**: add at least one RSS source. Each takes a lane; see
   [How sources are processed](sources.md).
 
 Until all 23 are saved, every run stops with `Missing settings in D1: …`; with no

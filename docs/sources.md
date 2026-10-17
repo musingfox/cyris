@@ -1,13 +1,13 @@
 # How sources are processed
 
-Each source declares a tier, in `sources.yaml` on a local install or on `/settings`
-(Sources) on Cloudflare, and the tier decides how much LLM attention it gets:
+Each source declares a lane, in `sources.yaml` on a local install or on `/settings`
+(Sources) on Cloudflare, and the lane decides how much LLM attention it gets:
 
-| Tier | Processing | Example |
+| Lane | Processing | Example |
 |------|-----------|---------|
-| `filter` | Discard most; surface only significant headlines. News-tagged articles are clustered by topic | TechCrunch, 聯合新聞網 |
-| `summarize` | Scored, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions | Stratechery, Benedict Evans |
-| `fan` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
+| `skim` | Discard most; surface only significant headlines. News-tagged articles are clustered by topic | TechCrunch, 聯合新聞網 |
+| `read` | Scored, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions | Stratechery, Benedict Evans |
+| `follow` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
 
 An article moves `pending → accepted / rejected / awaiting_triage`. A run accepts only
 what its issue shows; an article the per-issue cap cut stays pending, and the next run

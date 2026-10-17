@@ -57,7 +57,7 @@ Then put the matching key in `.env` (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
 `workers_ai`, or `CLOUDFLARE_AIG_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for `ai_gateway`, which also
 needs the provider's key stored in your gateway:
 see [Running the LLM through AI Gateway](operations.md#running-the-llm-through-ai-gateway)), and replace the sample feeds in `sources.yaml` with yours. Each source
-takes a tier; see [How sources are processed](sources.md).
+takes a lane; see [How sources are processed](sources.md).
 Email-only newsletters (`type: newsletter`) are inert locally.
 
 ## 4. Check the configuration

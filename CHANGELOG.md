@@ -20,6 +20,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `preference_clef_skipped` in the run summary. `cosine` stays the order until
   you choose otherwise.
 
+### Changed
+
+- A source's tier is now its lane. `tier:` in `sources.yaml`, `tier` on `/settings`
+  and in the triage API is `lane:`, and the values are renamed: `filter` is
+  `skim`, `summarize` is `read` and `fan` is `follow`. An existing database moves to
+  the new names when it next starts. A config or request that still says `tier` is
+  refused, and the error names the lane to write instead.
+
 ### Fixed
 
 - An entry a feed lists late now reaches the next digest. The RSS Worker selected
