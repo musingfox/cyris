@@ -1,11 +1,11 @@
 // The Worker in front of the cyris Container: the hourly tick, and the only
 // door to /settings.
 //
-// Auth is one layer always — the CYRIS_UI_TOKEN cookie, checked in router.js
-// before anything reaches the container. Cloudflare Access is an optional
-// second layer on the hostname named by CYRIS_UI_ACCESS_HOST (grade B).
+// Auth is Cloudflare Access alone: router.js checks the Access JWT before
+// anything reaches the container. The team domain and AUD are grade-B settings.
 import { Container, getContainer } from "@cloudflare/containers";
 import { env } from "cloudflare:workers";
+import { accessKeys } from "./access_keys.js";
 import { handleRequest } from "./router.js";
 import { planTick, readTimeZone } from "./schedule.js";
 import { createTypeScale } from "./type_scale.js";
@@ -184,6 +184,7 @@ export default {
       runTimeZone: () => readTimeZone({ env, fetchImpl: (input, init) => fetch(input, init) }),
       probeGemini,
       fetchImpl: (input, init) => fetch(input, init),
+      accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
       typeScale,
       injectStyle,
     });

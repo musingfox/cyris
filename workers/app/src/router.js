@@ -1,13 +1,14 @@
-// Request routing and cookie auth. No workerd-only imports: vitest runs this
-// under Node. index.js is the thin shim that injects the Container.
+// Request routing and the Cloudflare Access check. No workerd-only imports: vitest
+// runs this under Node. index.js is the thin shim that injects the Container and
+// the Access keys.
 //
-// One layer always: CYRIS_UI_TOKEN cookie. A second layer (Cloudflare Access)
-// only when the request hostname equals CYRIS_UI_ACCESS_HOST.
+// A request is signed in only with a Cf-Access-Jwt-Assertion header that jose verifies
+// against the team's keys, issuer and audience.
 //
-// CYRIS_PRIVATE_ARCHIVE=true puts the archive behind that same cookie: an
-// anonymous reader is sent to /login and returns to the page they asked for.
-// Access never stands in for it. Anything else leaves the archive public.
+// CYRIS_PRIVATE_ARCHIVE=true puts the archive behind the same Access check.
+// Anything else leaves the archive public.
 
+import { jwtVerify } from "jose";
 import { typeScaleStyle } from "./type_scale.js";
 
 const COOKIE = "cyris_session";
@@ -97,21 +98,31 @@ const ctEqual = (a, b) => {
   return diff === 0;
 };
 
-const cookieOf = (request) =>
-  (request.headers.get("Cookie") || "")
-    .split(";")
-    .map((c) => c.trim().split("="))
-    .find(([k]) => k === COOKIE)?.[1];
+const ACCESS_SETTINGS = ["CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"];
+const NOT_SIGNED_IN = "This page needs a Cloudflare Access sign-in, and this request has no valid one.";
 
-async function authorized(request, env) {
-  const token = env.CYRIS_UI_TOKEN;
-  if (!token) return false;
-  const cookie = cookieOf(request);
-  if (!cookie) return false;
-  const expected = await sha256(token);
-  if (cookie.length !== expected.length) return false;
-  return ctEqual(cookie, expected);
+// null when the request carries a valid Access JWT, else the detail a 403 names.
+// Errors from parsing, signature, claims or the key fetch all mean refused, and
+// the token never reaches the detail or the console.
+async function accessRefusal(request, env, deps) {
+  const unset = ACCESS_SETTINGS.filter((name) => !env[name]);
+  if (unset.length) {
+    return `The Worker has no ${unset.join(" and ")} set, so no Access sign-in can be checked.`;
+  }
+  const token = request.headers.get("Cf-Access-Jwt-Assertion");
+  if (!token || !deps.accessKeys) return NOT_SIGNED_IN;
+  try {
+    await jwtVerify(token, deps.accessKeys.keySet, {
+      issuer: deps.accessKeys.issuer,
+      audience: env.CYRIS_ACCESS_AUD,
+    });
+    return null;
+  } catch {
+    return NOT_SIGNED_IN;
+  }
 }
+
+const authorized = async (request, env, deps) => (await accessRefusal(request, env, deps)) === null;
 
 const escapeHtml = (text) =>
   text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -195,14 +206,9 @@ function sized(response, scale, deps) {
   });
 }
 
-const onAccessHost = (request, env) =>
-  Boolean(env.CYRIS_UI_ACCESS_HOST) &&
-  new URL(request.url).hostname === env.CYRIS_UI_ACCESS_HOST;
-
-async function handleVote(request, env, fetchImpl) {
-  // Off the Access hostname the cookie is required, including GET/HEAD probe
-  // and methods we would otherwise 405 — cookie check first.
-  if (!onAccessHost(request, env) && !(await authorized(request, env))) {
+async function handleVote(request, env, deps) {
+  // The Access check comes first, including for GET/HEAD and the methods we would otherwise 405.
+  if (!(await authorized(request, env, deps))) {
     return json({ authorized: false, error: "unauthorized" }, 401);
   }
   if (request.method === "HEAD" || request.method === "GET") {
@@ -217,7 +223,7 @@ async function handleVote(request, env, fetchImpl) {
   }
   try {
     const body = await request.json();
-    const resp = await fetchImpl(promoteUrl + "/promote", {
+    const resp = await deps.fetchImpl(promoteUrl + "/promote", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + env.CYRIS_PROMOTE_TOKEN,
@@ -247,7 +253,6 @@ async function handleGeminiProbe(url, deps) {
 
 export async function handleRequest(request, env, deps) {
   const url = new URL(request.url);
-  const fetchImpl = deps.fetchImpl;
 
   // /triage was removed in M1; return 404 instead of proxying to the archive.
   if (url.pathname === "/triage" || url.pathname.startsWith("/triage/")) {
@@ -256,7 +261,7 @@ export async function handleRequest(request, env, deps) {
 
   // The digest is a static snapshot Cloudflare already holds.
   if (!PROTECTED(url.pathname)) {
-    if (privateArchive(env) && !(await authorized(request, env))) {
+    if (privateArchive(env) && !(await authorized(request, env, deps))) {
       const login = new URL("/login", url.origin);
       login.searchParams.set("next", url.pathname + url.search);
       return new Response(null, {
@@ -280,7 +285,7 @@ export async function handleRequest(request, env, deps) {
       for (const name of VALIDATORS) headers.delete(name);
       proxied = new Request(proxied, { headers });
     }
-    return sized(await fetchImpl(proxied), scale, deps);
+    return sized(await deps.fetchImpl(proxied), scale, deps);
   }
 
   if (url.pathname === "/login") {
@@ -322,15 +327,11 @@ export async function handleRequest(request, env, deps) {
   }
 
   if (VOTE_ONLY(url.pathname)) {
-    return handleVote(request, env, fetchImpl);
+    return handleVote(request, env, deps);
   }
 
-  if (!(await authorized(request, env))) {
-    const wantsHtml = (request.headers.get("Accept") || "").includes("text/html");
-    return wantsHtml
-      ? html(LOGIN_PAGE("", returnPath(url.pathname + url.search, url.origin)), 401)
-      : json({ error: "unauthorized" }, 401);
-  }
+  const refusal = await accessRefusal(request, env, deps);
+  if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
 
   if (request.method === "POST" && url.pathname === "/api/diagnostics/gemini") {
     return handleGeminiProbe(url, deps);
