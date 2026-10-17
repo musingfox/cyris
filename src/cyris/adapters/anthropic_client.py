@@ -19,8 +19,11 @@ class AnthropicClient:
         model: str,
         max_retries: int = 2,
         timeout: float = 120.0,
+        *,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.model = model
+        self._reasoning_effort = reasoning_effort
         self._client = anthropic.AsyncAnthropic(
             api_key=api_key, max_retries=max_retries, timeout=timeout
         )
@@ -39,6 +42,11 @@ class AnthropicClient:
             kwargs["system"] = system
         if temperature is not None:
             kwargs["temperature"] = temperature
+        if self._reasoning_effort is not None:
+            kwargs["output_config"] = {"effort": self._reasoning_effort}
+            # Effort sets thinking depth only in adaptive mode, and Claude 4.6 does
+            # not think unless asked; on Claude 5 this is already the default.
+            kwargs["thinking"] = {"type": "adaptive"}
         message = await self._client.messages.create(
             model=self.model,
             max_tokens=limit,
