@@ -6,6 +6,7 @@ stage that would wait for a key reads end-of-file instead: a "no" at every y/N g
 """
 
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -26,8 +27,11 @@ TOKEN = "cf-token-NOT-FOR-OUTPUT"
 START = "\n\n"
 
 FAKE_UV = r"""#!/bin/bash
+# `env -i` in the wizard strips the rig's variables, so read them back from the file.
+[[ -n "${CALLS:-}" ]] || . "${0%/*}/../fake/env"
 echo "uv $*" >> "$CALLS"
 case "$*" in
+  *"cyris settings push"*) echo "D1 database $FAKE_D1_ID" ;;
   *"cyris doctor"*) cp .env "${0%/*}/../fake/doctor.env" ;;  # env -i hides FAKE_DIR
   *"provision_trial.py names"*)
     printf '%s\n' TRIAL_APP_WORKER=cyris-app-t1 TRIAL_CONTAINER=cyris-app-cyriscontainer-t1 \
@@ -48,6 +52,10 @@ case "$*" in
       [[ -n "${FAKE_RENDER_SKIP:-}" && "$f" == *"workers/$FAKE_RENDER_SKIP/"* ]] && continue
       echo rendered > "$f"
     done ;;
+  *"cyris sources list"*)
+    if [[ -n "${FAKE_D1_SOURCES:-}" ]]; then printf '%s\n' "$FAKE_D1_SOURCES"
+    else echo "D1 has no sources; runs stop until you add one on /settings."
+    fi ;;
   *"python -c"*) shift 2; exec "$REAL_PYTHON" "$@" ;;
 esac
 """
@@ -67,6 +75,8 @@ case "$*" in
     if [[ -z "${FAKE_BUILD_NEVER:-}" && $n -gt ${FAKE_BUILD_FAIL_FIRST:-0} ]]; then echo 200
     else echo 503; fi ;;
   *"/settings"*) echo "${FAKE_SETTINGS_CODE:-302}" ;;
+  *"/stats"*) echo 401 ;;
+  *"/poll"*) echo "{\"feeds\":${FAKE_POLL_FEEDS:-0}}" ;;
   *"/run?period="*)
     body='{"started":"run","at":"2026-10-06T10:50:10Z"}'
     [[ -n "${FAKE_RUN_BODY+x}" ]] && body="$FAKE_RUN_BODY"
@@ -213,7 +223,11 @@ def rig(tmp_path: Path):
             "CALLS": str(repo / "calls.log"),
             "FAKE_DIR": str(state_dir),
             "TRIAL_WIZARD_LOGIN_INTERVAL": "0",
+            "FAKE_D1_ID": D1_ID,
         }
+        (state_dir / "env").write_text(
+            "".join(f"export {k}={shlex.quote(v)}\n" for k, v in (base | env).items())
+        )
         return Rig(repo, base | env)
 
     return make
@@ -351,6 +365,104 @@ def test_stage_13_tells_the_operator_to_match_the_sender(rig) -> None:
     run = r.run(stdin=START)
     assert "email_match" in run.out
     assert "RSS only" not in run.out
+
+
+# What `cyris sources list` prints for a D1 the tester changed on /settings: a dropped, b
+# kept, d added, c a newsletter.
+D1_EDITED = """summarize  rss         b — https://b.example/feed
+filter     rss         d — https://d.example/feed
+filter     newsletter  c — —
+
+3 sources in D1."""
+# Enter keeps the editor closed, Enter passes the pause, y pushes the settings.
+TO_SOURCES = START + "n\n\ny\n"
+# Stage 14 then skips the rss deploy, keeps the saved URL and stops at the /poll count, so a
+# closed stdin never reaches a prompt that asks again.
+TO_POLL = "n\n\n"
+
+
+def test_an_empty_d1_gets_the_file_without_a_question(rig) -> None:
+    r = rig(_stages(12), state={"TRIAL_RSS_URL": RSS_URL})
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(SOURCES_BOTH)
+    run = r.run(stdin=TO_SOURCES + TO_POLL)
+    assert "cyris sources push" in run.calls
+    assert "Replace D1's sources" not in run.out
+
+
+def test_sources_the_tester_changed_are_kept_unless_the_operator_replaces_them(rig) -> None:
+    r = rig(_stages(12), state={"TRIAL_RSS_URL": RSS_URL}, FAKE_D1_SOURCES=D1_EDITED)
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(SOURCES_BOTH)
+    run = r.run(stdin=TO_SOURCES + "n\n" + TO_POLL)
+    assert "cyris sources push" not in run.calls
+    lines = run.out.splitlines()
+    assert "    -d" in lines
+    assert "    +a" in lines
+    assert "Kept the 3 source(s) in D1." in run.out
+    state = run.state.splitlines()
+    assert "SOURCE_COUNT=3" in state
+    assert "RSS_SOURCE_COUNT=2" in state
+    assert f"STAGES_DONE={_stages(13)}" in state
+
+
+def test_the_operator_can_replace_what_d1_holds(rig) -> None:
+    r = rig(_stages(12), state={"TRIAL_RSS_URL": RSS_URL}, FAKE_D1_SOURCES=D1_EDITED)
+    (r.repo / f".env.trial-{SLUG}-sources.yaml").write_text(SOURCES_BOTH)
+    run = r.run(stdin=TO_SOURCES + "y\n" + TO_POLL)
+    assert "cyris sources push" in run.calls
+    assert "RSS_SOURCE_COUNT=2" in run.state.splitlines()
+
+
+RSS_URL = "https://r-t1.x.workers.dev"
+# Declines the rss deploy, keeps the URL, declines the app deploy and reaches stage 17, where
+# "morning" answers the period and "n" declines the post, so a passing poll ends without a hang.
+POLL_PASS_STDIN = START + "n\n" + "\n" * 5 + "morning\nn\n"
+
+
+def test_the_poll_counts_the_rss_sources_only(rig) -> None:
+    run = rig(
+        _stages(13),
+        state={"TRIAL_RSS_URL": RSS_URL, "SOURCE_COUNT": "3", "RSS_SOURCE_COUNT": "2"},
+        FAKE_POLL_FEEDS="2",
+    ).run(stdin=POLL_PASS_STDIN)
+    assert "/poll feeds = 2" in run.out
+
+
+def test_a_poll_count_other_than_the_rss_sources_dies(rig) -> None:
+    run = rig(
+        _stages(13),
+        state={"TRIAL_RSS_URL": RSS_URL, "SOURCE_COUNT": "3", "RSS_SOURCE_COUNT": "2"},
+        FAKE_POLL_FEEDS="3",
+    ).run(stdin=START + "n\n")
+    assert run.code == 1
+    assert "feeds '3'" in run.out
+
+
+def test_without_an_rss_count_the_total_is_the_expectation(rig) -> None:
+    run = rig(
+        _stages(13),
+        state={"TRIAL_RSS_URL": RSS_URL, "RSS_SOURCE_COUNT": None, "SOURCE_COUNT": "1"},
+        FAKE_POLL_FEEDS="1",
+    ).run(stdin=POLL_PASS_STDIN)
+    assert "/poll feeds = 1" in run.out
+
+
+def test_zero_rss_sources_and_zero_feeds_pass(rig) -> None:
+    run = rig(
+        _stages(13),
+        state={"TRIAL_RSS_URL": RSS_URL, "RSS_SOURCE_COUNT": "0"},
+        FAKE_POLL_FEEDS="0",
+    ).run(stdin=POLL_PASS_STDIN)
+    assert "/poll feeds = 0" in run.out
+
+
+def test_zero_feeds_with_rss_sources_sends_the_operator_back(rig) -> None:
+    run = rig(
+        _stages(13),
+        state={"TRIAL_RSS_URL": RSS_URL, "RSS_SOURCE_COUNT": "2"},
+        FAKE_POLL_FEEDS="0",
+    ).run(stdin=START + "n\n")
+    assert run.code == 1
+    assert "Go back to stage 13" in run.out
 
 
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:

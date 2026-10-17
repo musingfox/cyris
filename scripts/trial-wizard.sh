@@ -711,6 +711,28 @@ YAML
   head -1 "$TRIAL_DIR/settings-push.log" | grep -qx "D1 database $TRIAL_D1_ID" \
     || die "settings push wrote to a database other than $TRIAL_D1_ID. Stop and check."
   printf '  %s✓%s settings push went to %s\n' "$GREEN" "$RESET" "$TRIAL_D1_ID"
+  # A re-run must not silently replace what the tester changed on /settings: sources push
+  # makes D1 match the file exactly, removals included.
+  local d1_sources
+  d1_sources=$(env -i HOME="$HOME" PATH="$PATH" uv run cyris sources list --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml") \
+    || die "sources list failed."
+  if grep -qE '^[0-9]+ sources in D1\.$' <<<"$d1_sources"; then
+    warn "The trial's D1 already has sources; the tester may have changed them on /settings."
+    printf '%s\n' "$d1_sources" | sed 's/^/    /'
+    diff -u --label "names in D1" --label "names in $SOURCES_FILE" \
+      <(grep -E '^[a-z]+ +[a-z]+ ' <<<"$d1_sources" | sed -E 's/^[a-z]+ +[a-z]+ +//; s/ — .*$//' | sort) \
+      <(uv run python -c 'import sys, yaml; print("\n".join(sorted(s["name"] for s in yaml.safe_load(open(sys.argv[1]))["sources"])))' "$SOURCES_FILE") \
+      | sed 's/^/    /' || true
+    if ! confirm "Replace D1's sources with $SOURCES_FILE?"; then
+      SOURCE_COUNT=$(grep -oE '^[0-9]+ sources in D1\.$' <<<"$d1_sources" | grep -oE '^[0-9]+')
+      RSS_SOURCE_COUNT=$(awk '$2 == "rss"' <<<"$d1_sources" | wc -l | tr -d ' ')
+      write_env SOURCE_COUNT "$SOURCE_COUNT"
+      write_env RSS_SOURCE_COUNT "$RSS_SOURCE_COUNT"
+      say "Kept the $SOURCE_COUNT source(s) in D1."
+      rm -r "$TRIAL_DIR"
+      return 0
+    fi
+  fi
   env -i HOME="$HOME" PATH="$PATH" uv run cyris sources push --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml" \
     || die "sources push failed."
   rm -r "$TRIAL_DIR"
@@ -726,7 +748,7 @@ stage_14() {
     printf 'RSS_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$RSS_ENV"
   fi
   grep -qx "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV" || die "$RSS_ENV does not hold the token."
-  local rc=0 code poll feeds
+  local rc=0 code poll feeds want
   gated rss "Deploy the rss Worker with $RSS_CFG?" \
     bunx wrangler deploy --config "$RSS_CFG" --env-file /dev/null --secrets-file "$RSS_ENV" || rc=$?
   [[ $rc -eq 0 || $rc -eq 2 ]] || die "rss Worker deploy failed."
@@ -742,8 +764,9 @@ stage_14() {
   poll=$(curl -s -X POST --max-time 120 -H "Authorization: Bearer $TRIAL_WORKER_TOKEN" "$TRIAL_RSS_URL/poll" || true)
   say "/poll: $poll"
   feeds=$(grep -oE '"feeds":[0-9]+' <<<"$poll" | cut -d: -f2 || true)
-  [[ "$feeds" == 0 ]] && die "/poll reports feeds 0: the first boot pushed no RSS source. Go back to stage 13."
-  [[ "$feeds" == "$SOURCE_COUNT" ]] || die "/poll reports feeds '$feeds', sources push had $SOURCE_COUNT."
+  want=${RSS_SOURCE_COUNT:-$SOURCE_COUNT}
+  if [[ "$feeds" == 0 ]] && (( want > 0 )); then die "/poll reports feeds 0, expected $want. Go back to stage 13."; fi
+  [[ "$feeds" == "$want" ]] || die "/poll reports feeds '$feeds', the rss sources push had $want."
   printf '  %s✓%s /poll feeds = %s\n' "$GREEN" "$RESET" "$feeds"
   in_file "$APP_ENV" write_env CYRIS_WORKER_TOKEN "$TRIAL_WORKER_TOKEN"
   in_file "$APP_ENV" write_env CYRIS_RSS_WORKER_URL "$TRIAL_RSS_URL"
