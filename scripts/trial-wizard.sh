@@ -600,17 +600,16 @@ stage_13() {
   if [[ ! -f "$SOURCES_FILE" ]]; then
     cat > "$SOURCES_FILE" <<'YAML'
 defaults:
-  tier: filter
   language: auto
 sources:
   - name: "Stratechery"
     url: "https://stratechery.com/feed/"
-    tier: summarize
+    lane: read
     tags: [tech, business-strategy]
 YAML
   fi
   say "Replace the example with the tester's feeds: RSS only, never type: newsletter."
-  say "Tiers are explained in docs/sources.md. Keep to the source limit you agreed."
+  say "Lanes are explained in docs/sources.md. Keep to the source limit you agreed."
   say "File: $REPO/$SOURCES_FILE"
   if confirm "Open it in ${EDITOR:-vi} now?"; then ${EDITOR:-vi} "$SOURCES_FILE"; fi
   pause "Saved the tester's feeds? Press Enter"
