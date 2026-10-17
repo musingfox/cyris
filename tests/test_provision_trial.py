@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = "wrangler.toml"
 PROMOTE = "workers/promote/wrangler.toml"
 RSS = "workers/rss/wrangler.toml"
+NEWSLETTER = "workers/newsletter/wrangler.toml"
 OUT_APP = "wrangler.trial-alice.toml"
 OUT_PROMOTE = "workers/promote/wrangler.trial-alice.toml"
 OUT_RSS = "workers/rss/wrangler.trial-alice.toml"
@@ -54,6 +55,7 @@ def tree(tmp_path: Path) -> Path:
         APP,
         PROMOTE,
         RSS,
+        NEWSLETTER,
     ]:
         (t / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / rel, t / rel)
@@ -97,7 +99,7 @@ def prod() -> dict:
 # --- names
 
 
-def test_names_prints_seven_slugged_lines(tree: Path) -> None:
+def test_names_prints_nine_slugged_lines(tree: Path) -> None:
     before = listing(tree)
     done = run(tree, "names", "--slug", "alice", "--pages-suffix", SUFFIX)
 
@@ -110,11 +112,21 @@ def test_names_prints_seven_slugged_lines(tree: Path) -> None:
         "TRIAL_D1_NAME=cyris-app-alice\n"
         f"TRIAL_PAGES_PROJECT=cyris-app-alice-{SUFFIX}\n"
         "TRIAL_RSS_WORKER=cyris-rss-alice\n"
+        "TRIAL_NEWSLETTER_WORKER=cyris-newsletter-alice\n"
+        "TRIAL_NEWSLETTER_KV_TITLE=cyris-newsletter-alice\n"
     )
     assert listing(tree) == before
     again = run(tree, "names", "--slug", "alice", "--pages-suffix", SUFFIX)
     assert again.stdout == done.stdout
     assert all(re.fullmatch(r"TRIAL_[A-Z0-9_]+=[a-z0-9-]+", x) for x in done.stdout.split())
+
+
+def test_names_without_the_newsletter_template_exits_1(tree: Path) -> None:
+    (tree / NEWSLETTER).unlink()
+    done = run(tree, "names", "--slug", "alice", "--pages-suffix", SUFFIX)
+
+    assert done.returncode == 1
+    assert NEWSLETTER in done.stderr
 
 
 def test_no_trial_name_equals_a_production_name(tree: Path) -> None:
@@ -125,6 +137,7 @@ def test_no_trial_name_equals_a_production_name(tree: Path) -> None:
         p["promote"]["name"],
         p["rss"]["name"],
         p["rss"]["d1_databases"][0]["database_name"],
+        _toml(ROOT / NEWSLETTER)["name"],
         "cyris-digest",
     }
     done = run(tree, "names", "--slug", "alice", "--pages-suffix", SUFFIX)

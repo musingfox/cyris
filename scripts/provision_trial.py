@@ -31,6 +31,7 @@ DERIVE = ROOT / "scripts/derive-wrangler-config.sh"
 APP = "wrangler.toml"
 PROMOTE = "workers/promote/wrangler.toml"
 RSS = "workers/rss/wrangler.toml"
+NEWSLETTER = "workers/newsletter/wrangler.toml"
 
 _LABEL = r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
 _DOMAIN = rf"^{_LABEL}(\.{_LABEL})+$"
@@ -92,6 +93,7 @@ def _template_names() -> dict[str, str]:
         "container": _get(APP, app, "containers", 0, "name"),
         "promote": _get(PROMOTE, _load(PROMOTE), "name"),
         "rss": _get(RSS, _load(RSS), "name"),
+        "newsletter": _get(NEWSLETTER, _load(NEWSLETTER), "name"),
     }
 
 
@@ -219,6 +221,7 @@ def _names(slug: str, n: dict[str, str]) -> dict[str, str]:
         "promote": f"{n['promote']}-{slug}",
         "d1": f"{n['root']}-{slug}",
         "rss": f"{n['rss']}-{slug}",
+        "newsletter": f"{n['newsletter']}-{slug}",
     }
 
 
@@ -232,6 +235,8 @@ def cmd_names(args) -> int:
     print(f"TRIAL_D1_NAME={t['d1']}")
     print(f"TRIAL_PAGES_PROJECT={n['root']}-{args.slug}-{args.pages_suffix}")
     print(f"TRIAL_RSS_WORKER={t['rss']}")
+    print(f"TRIAL_NEWSLETTER_WORKER={t['newsletter']}")
+    print(f"TRIAL_NEWSLETTER_KV_TITLE={t['newsletter']}")
     return 0
 
 
