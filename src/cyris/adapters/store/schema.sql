@@ -12,9 +12,10 @@
 -- to D1 in one POST before the settings read, on every boot. It is idempotent by
 -- construction — every statement is CREATE ... IF NOT EXISTS and none seed a row
 -- — so do not add anything here that would not survive being re-run hourly.
--- That covers first creation only. There is no mechanism for evolving a database
--- that already exists: an ADD COLUMN written here reaches a fresh deployment and
--- nothing else. See docs/architecture.md §6.
+-- That covers first creation only. A database that already exists is changed by a
+-- versioned step in adapters/store/migrations.py (ADR-0016), never by an edit here:
+-- an ADD COLUMN written here would reach a fresh deployment and never an existing one.
+-- See docs/architecture.md §6.
 --
 -- To apply it by hand anyway (inspection, or a database cyris never opens):
 --   wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql

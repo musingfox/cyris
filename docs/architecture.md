@@ -318,13 +318,13 @@ store saw them. The RSS Worker read has a bound of its own, the Worker's row cei
 row carries the feed's full content and the Worker holds the whole result in memory. A read that
 fills the ceiling logs a warning, since the window's earliest-buffered rows then stay unstored.
 
-Each source carries a **tier**, which decides how much attention it gets:
+Each source carries a **lane**, which decides how much attention it gets:
 
-| Tier | Treatment |
+| Lane | Treatment |
 |---|---|
-| `filter` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
-| `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
-| `fan` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
+| `skim` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
+| `read` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
+| `follow` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
 sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
@@ -591,7 +591,7 @@ output tokens). The context window is the other reason, and it still applies to
 `cluster_news`, which sends every news article of a window in one prompt
 (`cluster_news()` in `service_layer/cluster_news.py`): llama's 24k context leaves no headroom
 on a busy window, so clustering fails, every news article falls through to the filter
-unclustered, and the digest loses its news clusters. gpt-oss has 128k. The filter tier no longer
+unclustered, and the digest loses its news clusters. gpt-oss has 128k. The skim lane no longer
 grows with the window, because its prompt is bounded by `BATCH_SIZE` in
 `service_layer/filtering.py`.
 
@@ -805,12 +805,17 @@ deploy button, the app's config sits at the repo root, and three steps stay outs
 share one D1: an RSS Worker provisioned with its own database reads an empty `sources` table,
 polls nothing and logs `sources table is empty`.
 
-**A first boot creates its own tables, and nothing evolves them.** `load_effective_config` applies
-`schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry
-points. Every statement is `CREATE ... IF NOT EXISTS`, so a new table reaches an existing
-deployment on its next boot, while an `ADD COLUMN` reaches only a fresh database. A first boot then
-stops every run, naming what is missing, until `/settings` or `cyris settings push` holds every
-runtime setting and `sources` holds a source (§5).
+**A first boot creates its own tables, and a versioned step changes the ones that already exist.**
+`load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its
+buffer table at both entry points. Every statement there is `CREATE ... IF NOT EXISTS`, so a new table
+reaches an existing deployment on its next boot, while a column does not. A column reaches an existing
+deployment only as a step in `adapters/store/migrations.py`: after `schema.sql`, each step in
+`MIGRATIONS` whose id is not in `schema_migrations` runs once, in order, and is recorded there. A
+step may name a `Requires(table, column, present)` precondition, and its SQL is skipped when the
+precondition does not hold. `schema.sql` must not index a column a step adds, since it runs first
+([ADR-0016](decisions/0016-version-table-schema-migrations.md) gives the rules). A
+first boot then stops every run, naming what is missing, until `/settings` or `cyris settings push`
+holds every runtime setting and `sources` holds a source (§5).
 
 **Two schedulers is the failure mode this cutover had to avoid.** The local machine and the Container
 run the same pipeline against the same D1 and publish to the same Pages project, where a deployment
