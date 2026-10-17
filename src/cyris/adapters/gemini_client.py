@@ -38,8 +38,13 @@ class GeminiClient:
         model: str,
         max_retries: int = 2,
         timeout: float = 120.0,
+        *,
+        reasoning_effort: str | None = None,
+        thinking_budget: int | None = None,
     ) -> None:
         self.model = model
+        self._reasoning_effort = reasoning_effort
+        self._thinking_budget = thinking_budget
         self._max_retries = max_retries
         self._client = httpx.AsyncClient(
             base_url=_BASE_URL,
@@ -61,6 +66,10 @@ class GeminiClient:
             "maxOutputTokens": max_tokens or _MAX_OUTPUT_TOKENS,
             "responseMimeType": "application/json",
         }
+        if self._thinking_budget is not None:
+            generation_config["thinkingConfig"] = {"thinkingBudget": self._thinking_budget}
+        elif self._reasoning_effort is not None:
+            generation_config["thinkingConfig"] = {"thinkingLevel": self._reasoning_effort.upper()}
         if temperature is not None:
             generation_config["temperature"] = temperature
         body: dict = {

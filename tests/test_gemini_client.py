@@ -174,3 +174,50 @@ async def test_a_blocked_prompt_names_the_block_reason():
             await client.complete("hi")
 
     assert route.call_count == 1
+
+
+THINKING_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+)
+
+
+@pytest.mark.parametrize(
+    ("effort", "expected"),
+    [("low", {"thinkingLevel": "LOW"}), ("high", {"thinkingLevel": "HIGH"})],
+)
+async def test_reasoning_effort_is_sent_as_an_uppercase_thinking_level(effort, expected):
+    async with respx.mock:
+        route = respx.post(THINKING_URL).mock(return_value=_ok_response())
+        client = GeminiClient(api_key="k", model="gemini-3.8-flash", reasoning_effort=effort)
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    config = json.loads(route.calls[0].request.content)["generationConfig"]
+    assert config["thinkingConfig"] == expected
+    assert config["responseMimeType"] == "application/json"
+    assert config["maxOutputTokens"] == 65536
+    assert "thinkingBudget" not in json.dumps(config)
+
+
+async def test_thinking_budget_is_sent_as_a_budget_and_never_with_a_level():
+    async with respx.mock:
+        route = respx.post(THINKING_URL.replace("gemini-3.8-flash", "gemini-2.5-flash")).mock(
+            return_value=_ok_response()
+        )
+        client = GeminiClient(api_key="k", model="gemini-2.5-flash", thinking_budget=1024)
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    config = json.loads(route.calls[0].request.content)["generationConfig"]
+    assert config["thinkingConfig"] == {"thinkingBudget": 1024}
+
+
+async def test_no_reasoning_effort_sends_no_thinking_config():
+    async with respx.mock:
+        route = respx.post(THINKING_URL).mock(return_value=_ok_response())
+        client = GeminiClient(api_key="k", model="gemini-3.8-flash", reasoning_effort=None)
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    config = json.loads(route.calls[0].request.content)["generationConfig"]
+    assert "thinkingConfig" not in config
