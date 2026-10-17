@@ -585,12 +585,14 @@ stage_8() {
 
 # ── 9 ─────────────────────────────────────────────────────────────────────
 stage_9() {
-  stage "Dry-run all three configs"
+  stage "Dry-run all four configs"
   (cd workers/rss && bun install --frozen-lockfile) || die "bun install in workers/rss failed."
+  (cd workers/newsletter && bun install --frozen-lockfile) || die "bun install in workers/newsletter failed."
   show_run dry-app bunx wrangler deploy --dry-run --config "$APP_CFG" --env-file /dev/null || die "App dry run failed."
   show_run dry-promote bunx wrangler deploy --dry-run --config "$PROMOTE_CFG" --env-file /dev/null || die "Vote Worker dry run failed."
   show_run dry-rss bunx wrangler deploy --dry-run --config "$RSS_CFG" --env-file /dev/null || die "rss Worker dry run failed."
-  printf '\n  %s✓%s all three dry runs passed\n' "$GREEN" "$RESET"
+  show_run dry-newsletter bunx wrangler deploy --dry-run --config "$NEWSLETTER_CFG" --env-file /dev/null || die "Newsletter Worker dry run failed."
+  printf '\n  %s✓%s all four dry runs passed\n' "$GREEN" "$RESET"
   next
 }
 

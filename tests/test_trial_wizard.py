@@ -75,8 +75,15 @@ case "$*" in
 esac
 """
 
+FAKE_BUN = r"""#!/bin/bash
+echo "bun $* in $(basename "$PWD")" >> "$CALLS"
+[[ -n "${FAKE_BUN_FAIL:-}" && "$(basename "$PWD")" == "$FAKE_BUN_FAIL" ]] && exit 1
+exit 0
+"""
+
 FAKE_BUNX = r"""#!/bin/bash
 echo "bunx $*" >> "$CALLS"
+[[ -n "${FAKE_DRY_FAIL:-}" && "$*" == *"--dry-run --config $FAKE_DRY_FAIL "* ]] && exit 1
 case " $* " in
   *" --dry-run "*) ;;
   *" deploy "*) echo "https://w-t1.x.workers.dev" ;;
@@ -190,7 +197,7 @@ def rig(tmp_path: Path):
         )
         fakes = tmp_path / "bin"
         fakes.mkdir()
-        scripts = {"uv": FAKE_UV, "curl": FAKE_CURL, "bunx": FAKE_BUNX}
+        scripts = {"uv": FAKE_UV, "curl": FAKE_CURL, "bunx": FAKE_BUNX, "bun": FAKE_BUN}
         scripts["git"] = FAKE_GIT
         for name in ("gh", "open", "xdg-open", "pbcopy"):
             scripts[name] = FAKE_QUIET
@@ -259,6 +266,37 @@ def test_a_newsletter_config_git_does_not_ignore_dies(rig) -> None:
     run = rig(_stages(7), FAKE_UNIGNORED="workers/newsletter/wrangler.trial-t1.toml").run()
     assert run.code == 1
     assert "workers/newsletter/wrangler.trial-t1.toml is not gitignored." in run.out
+
+
+def test_stage_9_installs_both_workers_and_dry_runs_all_four_configs(rig) -> None:
+    run = rig(_stages(8)).run()
+    calls = run.calls.splitlines()
+    assert calls.count("bun install --frozen-lockfile in rss") == 1
+    assert calls.count("bun install --frozen-lockfile in newsletter") == 1
+    dry = [
+        next(i for i, c in enumerate(calls) if f"--dry-run --config {cfg} " in c)
+        for cfg in (
+            "wrangler.trial-t1.toml",
+            "workers/promote/wrangler.trial-t1.toml",
+            "workers/rss/wrangler.trial-t1.toml",
+            "workers/newsletter/wrangler.trial-t1.toml",
+        )
+    ]
+    assert dry == sorted(dry)
+    assert "all four dry runs passed" in run.out
+
+
+def test_a_newsletter_install_failure_dies_before_any_dry_run(rig) -> None:
+    run = rig(_stages(8), FAKE_BUN_FAIL="newsletter").run()
+    assert run.code == 1
+    assert "bun install in workers/newsletter failed." in run.out
+    assert "--dry-run --config workers/newsletter/" not in run.calls
+
+
+def test_a_newsletter_dry_run_failure_dies_naming_the_worker(rig) -> None:
+    run = rig(_stages(8), FAKE_DRY_FAIL="workers/newsletter/wrangler.trial-t1.toml").run()
+    assert run.code == 1
+    assert "Newsletter Worker dry run failed." in run.out
 
 
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:

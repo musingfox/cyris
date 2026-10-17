@@ -218,7 +218,7 @@ def _deploy_lines() -> list[int]:
 def test_the_wizard_deploys_all_three_workers() -> None:
     lines = _wizard().split("\n")
     configs = {_option(lines[i], "--config") for i in _deploy_lines()}
-    assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG"}
+    assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG", "$NEWSLETTER_CFG"}
 
 
 @pytest.mark.parametrize("index", _deploy_lines())
