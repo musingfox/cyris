@@ -32,3 +32,9 @@ class D1DigestInputStore:
         if not rows:
             return None
         return json.loads(rows[0]["urls"])
+
+    def delete(self, date: str, period: str) -> None:
+        self._db.query(
+            "DELETE FROM digest_inputs WHERE date = ? AND period = ?",
+            [date, period],
+        )

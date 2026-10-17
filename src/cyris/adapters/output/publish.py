@@ -24,13 +24,14 @@ from cyris.adapters.output.pages_deploy import DeploymentRecord, PagesClient, Pa
 logger = logging.getLogger(__name__)
 
 DEPLOY_ATTEMPTS = 3
-# One page, because one is the largest shortfall this system can legitimately
-# produce. Two things put the site one page ahead of the manifest: a deployment
-# that landed but whose manifest save then failed, and one Cloudflare gave no
-# verdict on and whose page the alias did not serve in time, which lands later.
+# One issue, a digest page and its raw page together, because one issue is the
+# largest shortfall this system can legitimately produce. Two things put the site
+# one issue ahead of the manifest: a deployment that landed but whose manifest
+# save then failed, and one Cloudflare gave no verdict on and whose pages the
+# alias did not serve in time, which land later.
 # The lead cannot accumulate: the next deploy is a full snapshot of `new_files`
-# plus the manifest, and that page is in neither, so it is dropped and the count
-# returns to one. Anything above that is a database describing a different
+# plus the manifest, and those pages are in neither, so they are dropped and the
+# count returns to one issue. Anything above that is a database describing a different
 # archive: a staging clone or a point-in-time restore a few days behind, which
 # is exactly what this guard is for. A same-size-but-different archive is caught
 # regardless, because the check is a set difference and not a count.
@@ -89,15 +90,12 @@ _DATED_HTML = re.compile(r"^/?\d{4}-\d{2}-\d{2}-.+\.html$")
 
 
 def _parse_archive_anchors(html: str) -> set[str]:
-    """Dated digest hrefs on the live archive index, each with a leading slash."""
+    """Dated same-site hrefs on the live archive index, raw pages included, with a leading slash."""
     found: set[str] = set()
     for href in _HREF_RE.findall(html):
         if "://" in href or not _DATED_HTML.match(href):
             continue
-        path = _slash(href)
-        if path.endswith("-raw.html"):
-            continue
-        found.add(path)
+        found.add(_slash(href))
     return found
 
 
@@ -105,6 +103,22 @@ def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
     """Live archive pages this manifest would not put on the next deploy."""
     kept = {_slash(p) for p in manifest_paths}
     return {_slash(p) for p in live} - kept
+
+
+def unexpected_live_pages(live: set[str], manifest, drop) -> set[str]:
+    """Live archive pages that `manifest` minus `drop` lacks, leaving out the `drop` pages.
+
+    The one rule for "the live archive would lose a page nobody named": `publish_site`
+    applies it before a deploy, and the prune preflight before it writes anything.
+    """
+    dropped = {_slash(p) for p in drop}
+    kept = {_slash(p) for p in manifest} - dropped
+    return _archive_shortfall(live, kept) - dropped
+
+
+def _issue(path: str) -> str:
+    """The `/{date}-{period}` stem a digest or raw page belongs to."""
+    return _slash(path).removesuffix(".html").removesuffix("-raw")
 
 
 def _fetch_live_index(pages_project: str) -> set[str] | None:
@@ -182,13 +196,17 @@ def publish_site(
     manifest_store,
     pages_project: str,
     receipt_store,
+    *,
+    drop: frozenset[str] = frozenset(),
 ) -> bool:
     """Publish without a local archive: this run's files plus the D1 manifest.
 
     The archive is not a directory any more. Cloudflare's asset store already
     holds every byte ever deployed, so all that has to survive between runs is
     path → hash; the bytes of an evicted asset come back from the live site,
-    which serves exactly what it was given.
+    which serves exactly what it was given. `drop` names pages to remove from
+    the site; they leave the deploy and the saved manifest, and do not count
+    toward the shortfall, which then tolerates no other missing issue.
     """
     if not pages_project:
         logger.warning("Pages publish enabled but promote.pages_project is empty")
@@ -198,6 +216,8 @@ def publish_site(
     if client is None:
         return False
 
+    dropped = {_slash(p) for p in drop}
+    new_files = {path: data for path, data in new_files.items() if _slash(path) not in dropped}
     manifest = manifest_store.load()
     owned_at_entry = False
     if not manifest:
@@ -239,23 +259,27 @@ def publish_site(
                 "manifest to compare; deploying as a first publish"
             )
             live = set()
-        missing = _archive_shortfall(live, manifest)
-        if len(missing) > ARCHIVE_SHORTFALL_TOLERANCE:
+        missing = unexpected_live_pages(live, manifest, dropped)
+        issues = {_issue(p) for p in missing}
+        tolerance = 0 if dropped else ARCHIVE_SHORTFALL_TOLERANCE
+        if len(issues) > tolerance:
             # The names, not just the count: five filenames tell an operator
             # whether this is the wrong `database_id` or a prune they meant.
             logger.error(
-                "Refusing to deploy: the live archive still lists %d page(s) "
-                "this manifest would drop, e.g. %s. Check [store] database_id",
+                "Refusing to deploy: the live archive still lists %d page(s) across "
+                "%d issue(s) this manifest would drop, e.g. %s. Check [store] database_id",
                 len(missing),
+                len(issues),
                 ", ".join(sorted(missing)[:5]),
             )
             return False
     updated: dict[str, str] = {}
+    kept = {path: h for path, h in manifest.items() if _slash(path) not in dropped}
 
     def deploy() -> DeploymentRecord:
         nonlocal updated
         record, updated = client.deploy_manifest(
-            new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
+            new_files, kept, recover=lambda path: _fetch_live(pages_project, path)
         )
         return record
 

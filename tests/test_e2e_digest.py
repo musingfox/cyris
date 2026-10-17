@@ -365,8 +365,9 @@ EXPECTED_D1 = [
     "SELECT pages_manifest",
     "SELECT pages_deploy_receipt",
     "INSERT OR IGNORE INTO pages_deploy_receipt",
-    "DELETE FROM pages_manifest",
+    "SELECT pages_manifest",
     "INSERT INTO pages_manifest",
+    "DELETE FROM pages_manifest",
     "INSERT INTO digest_runs",
 ]
 EXPECTED_ROUTES["d1_query"] = len(EXPECTED_D1)
@@ -706,8 +707,7 @@ def test_pages_receives_every_file_of_the_site_once(receipts) -> None:
         for s in d1_statements(receipts.records)
         if statement_kind(s["sql"]) == "INSERT INTO pages_manifest"
     ]
-    params = insert["params"]
-    assert {params[i]: params[i + 1] for i in range(0, len(params), 3)} == manifest
+    assert {p["p"]: p["h"] for p in json.loads(insert["params"][1])} == manifest
 
 
 def test_the_raw_page_lists_the_window_and_the_index_links_both_pages(receipts) -> None:

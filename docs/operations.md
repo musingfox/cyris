@@ -190,6 +190,45 @@ D1 `blind_labels` (`docs/architecture.md` §4).
    configured embedder and prints that spend; it writes nothing. A report run before the
    last item reports on the items answered so far.
 
+## Pruning old issues
+
+Pruning removes named issues from the published archive. Back up the deployment's D1
+database first: the rows the prune deletes cannot be restored from cyris.
+
+1. From a checkout whose `.env` points at the deployment's D1, as for `cyris doctor`, dry-run
+   the prune with the issues to remove:
+
+   ```sh
+   uv run python scripts/prune_archive.py 2026-10-01-morning 2026-10-01-evening
+   ```
+
+   It prints, for each issue, how many digest rows, digest input rows and manifest pages it
+   holds, and writes nothing. Read the counts before going on.
+2. Re-run the same command with `--yes` to delete. It deletes each named issue's `digests`
+   and `digest_inputs` rows, then redeploys the site without that issue's digest and raw
+   page. No other D1 table changes.
+
+Run it away from the two digest hours on `/settings` (General → digest schedule, in its time
+zone; 00:00 and 12:00 UTC on a deployment set to 08:00 and 20:00 Asia/Taipei). A scheduled
+run, like any publishing run, deploys from the manifest it read when it started, and nothing
+locks the two against each other: a run that read the manifest before the prune saved its own
+deploys the pruned issues back, and its save puts their pages back in the manifest. Their
+`digests` rows stay deleted, so the next run does not republish them again. If the site shows
+a pruned issue again, re-run the same command with `--yes`: it finds the pages in the
+manifest and redeploys without them.
+
+Both the dry run and `--yes` read the live site first. The script refuses, before it deletes
+anything, when the live archive lists a page the manifest lacks that you did not name, or when
+the live archive cannot be read. The message names the pages and says to check
+`[store] database_id`.
+
+A failure after the delete leaves the rows deleted, and the site may still show the pruned
+issues or may already have dropped them. That covers a deploy error and a refusal by the deploy
+guard because the live archive changed between the check and the deploy. Re-run the same
+command to finish. A re-run that finds nothing stored still reads the live archive: while it
+lists a named page, the re-run refuses. The last deploy may not be live yet, so wait and
+re-run. When the live archive lists none of the named pages, it prints `Nothing to prune.`
+
 ## Routine
 
 - **Rotating `CYRIS_UI_TOKEN`** ends every session at once; that is how a session is
