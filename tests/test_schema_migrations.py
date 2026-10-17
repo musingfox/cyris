@@ -9,7 +9,7 @@ from legacy_schema import old_db as _old_db
 from legacy_schema import recorded as _recorded
 
 from cyris.adapters.store.d1 import SCHEMA_PATH, D1Error, apply_schema
-from cyris.adapters.store.migrations import Requires, Step
+from cyris.adapters.store.migrations import LANE_STEP, Requires, Step
 
 pytestmark = pytest.mark.integration
 
@@ -284,3 +284,48 @@ def test_a_second_apply_leaves_the_configs_as_they_were() -> None:
     apply_schema(db)
 
     assert _configs(db) == once
+
+
+def _seeded_old_db() -> SqliteD1:
+    db = _old_db()
+    _insert(db, "https://example.com/filter", "filter", triaged_at="2026-10-01T00:00:00Z")
+    _insert(db, "https://example.com/summarize", "summarize", score=0.7)
+    _insert(db, "https://example.com/fan", "fan")
+    _insert_source(db, "a", '{"tier":"summarize","tags":["a"]}')
+    _insert_source(db, "b", '{"tier":"fan"}')
+    return db
+
+
+def _final_state(db: SqliteD1) -> tuple[dict[str, str], dict[str, str]]:
+    return _lanes(db), _configs(db)
+
+
+def _clean_run_state() -> tuple[dict[str, str], dict[str, str]]:
+    db = _seeded_old_db()
+    apply_schema(db)
+    return _final_state(db)
+
+
+@pytest.mark.parametrize("k", [0, 1, 2, 3])
+def test_an_interrupted_lane_migration_finishes_on_the_next_boot(k: int) -> None:
+    db = _seeded_old_db()
+    for statement in LANE_STEP.statements[:k]:
+        db.query(statement)
+
+    apply_schema(db)
+
+    assert _final_state(db) == _clean_run_state()
+    recorded = [r["id"] for r in db.query("SELECT id FROM schema_migrations").rows]
+    assert recorded == ["0001_tier_to_lane"]
+
+
+def test_the_whole_script_run_before_the_record_is_not_run_twice() -> None:
+    db = _seeded_old_db()
+    db.query(";\n".join(LANE_STEP.statements))
+
+    apply_schema(db)
+    apply_schema(db)
+
+    assert _final_state(db) == _clean_run_state()
+    recorded = [r["id"] for r in db.query("SELECT id FROM schema_migrations").rows]
+    assert recorded == ["0001_tier_to_lane"]
