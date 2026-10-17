@@ -1247,7 +1247,7 @@ CHECKS: list[Check] = [
         script="""
             const pills = $$("table.src .pill");
             const lanes = pills.map((pill) => pill.textContent);
-            expect(lanes.includes("summarize"), `lanes: ${lanes}`);
+            expect(lanes.includes("read"), `lanes: ${lanes}`);
             const variants = pills.filter((pill) => pill.className !== "pill");
             expect(!variants.length, `a lane took a variant: ${variants.map((p) => p.className)}`);
         """,

@@ -246,7 +246,7 @@
             <div class="field">
               <label class="label" for="summarize-threshold">Summary score</label>
               <input class="input narrow" id="summarize-threshold" type="number" min="0" max="100" autocomplete="off">
-              <p class="small">A summarize-tier article scoring below this is listed for attention instead of summarized.</p>
+              <p class="small">A read-lane article scoring below this is listed for attention instead of summarized.</p>
             </div>
             <div class="field">
               <span class="label">Characters read</span>
@@ -317,7 +317,7 @@
           </div>
           <div class="table-wrap">
             <table class="src">
-              <thead><tr><th class="label">Name</th><th class="label">Type</th><th class="label">Tier</th><th class="label">Feed or sender</th><th class="label">Tags</th></tr></thead>
+              <thead><tr><th class="label">Name</th><th class="label">Type</th><th class="label">Lane</th><th class="label">Feed or sender</th><th class="label">Tags</th></tr></thead>
               <tbody id="src-body"><tr data-loading><td colspan="5" class="small">Loading sources…</td></tr></tbody>
             </table>
           </div>
@@ -416,7 +416,7 @@
           <div class="field"><span class="label">Type</span>
             <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
           </div>
-          <div class="field"><label class="label" for="e-lane">Tier</label>
+          <div class="field"><label class="label" for="e-lane">Lane</label>
             <select class="select" id="e-lane" name="lane"><option>skim</option><option>read</option><option>follow</option></select>
           </div>
         </div>

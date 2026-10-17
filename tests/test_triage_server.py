@@ -60,6 +60,17 @@ class TestTheDeckIsNotServed:
     ) -> None:
         assert (await client.get(path)).status == 200
 
+    async def test_the_settings_page_offers_the_three_lanes_under_a_lane_header(
+        self, client: TestClient
+    ) -> None:
+        html = await (await client.get("/settings")).text()
+
+        assert '<th class="label">Lane</th>' in html
+        assert (
+            '<select class="select" id="e-lane" name="lane"><option>skim</option>'
+            "<option>read</option><option>follow</option></select>"
+        ) in html
+
     async def test_the_favicon_the_settings_page_links_is_served(self, client: TestClient) -> None:
         response = await client.get("/favicon.svg")
 
@@ -189,6 +200,17 @@ class TestSourcesWriteSurface:
             "field": "lane",
         }
         assert self.sources.list_sources() == {}
+
+    async def test_a_stale_tier_post_is_refused_with_the_rename_and_no_row(
+        self, client: TestClient
+    ) -> None:
+        resp = await client.post(
+            "/api/sources",
+            json={"name": "Old", "type": "rss", "tier": "summarize", "url": "https://o.test/feed"},
+        )
+        assert resp.status == 400
+        assert "renamed to `lane`" in (await resp.json())["error"]
+        assert "Old" not in self.sources.list_sources()
 
     async def test_a_body_that_is_not_an_object_is_one_line(self, client: TestClient) -> None:
         resp = await client.post("/api/sources", json=["x"])
