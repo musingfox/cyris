@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>CYRIS // Interest map</title>
+    <meta name="description" content="The tags of the articles you voted on in Cyris, joined where they appear together, with how much of each suppression clock is left.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+    <style>
+        {% include "_tokens.css.j2" %}
+
+        {% include "_components.css.j2" %}
+
+        {% with container_width="960px", container_relative=false, line_height="1.6", font_features=false %}{% include "_page.css.j2" %}{% endwith %}
+
+        {% include "_footer.css.j2" %}
+    </style>
+</head>
+<body>
+    {% include "_site_bar.html.j2" %}
+    <div class="container">
+        <div class="page-head">
+            <span class="label">Interest</span>
+            <h1 class="display">What the <em>map</em> holds</h1>
+            <p class="small">The tags of the articles you voted on, joined where they appear together.</p>
+        </div>
+
+        {% if graph.nodes %}
+        <svg class="graph-map" viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="Interest map">
+            {% for edge in graph.edges %}{% set a = positions[edge.a] %}{% set b = positions[edge.b] %}<line class="graph-edge" x1="{{ a[0] }}" y1="{{ a[1] }}" x2="{{ b[0] }}" y2="{{ b[1] }}"></line>{% endfor %}
+            {% for node in graph.nodes %}{% set p = positions[node.tag] %}<circle class="graph-node {{ node.polarity }}" data-polarity="{{ node.polarity }}" style="--b: {{ node.brightness }}" cx="{{ p[0] }}" cy="{{ p[1] }}" r="14"></circle>{% endfor %}
+            {% for node in graph.nodes %}{% set p = positions[node.tag] %}<text class="graph-label" lang="" x="{{ p[0] }}" y="{{ p[1] + 30 }}" text-anchor="middle">{{ node.tag }}</text>{% endfor %}
+        </svg>
+        {% if lit %}
+        <p class="small">Lit = suppressed now; dimmer = less time left; half colour = not suppressed.</p>
+        {% elif holds_active %}
+        <p class="small">Suppressions are active, but none is near a tag on this map.</p>
+        {% else %}
+        <p class="small">No suppression is active.</p>
+        {% endif %}
+        <div class="panel">
+            <div class="panel-head"><span class="label">Tags</span></div>
+            <table>
+                <thead><tr><th>Tag</th><th>Up</th><th>Down</th><th>Polarity</th><th>Days left</th></tr></thead>
+                <tbody>
+                {% for node in graph.nodes %}
+                <tr><td lang="">{{ node.tag }}</td><td>{{ node.up }}</td><td>{{ node.down }}</td><td>{{ node.polarity }}</td><td>{{ "%.1f" | format(node.brightness * clock_days) }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="data">As of {{ generated_at }}</p>
+        {% else %}
+        <p class="small">No voted article carries a tag yet. Run <code class="data">cyris run</code> after you vote on articles.</p>
+        {% endif %}
+
+        <div class="footer">// <a href="{{ project_url }}">cyris</a></div>
+    </div>
+    {% include "_probe_script.html.j2" %}
+</body>
+</html>

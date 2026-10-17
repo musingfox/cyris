@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from cyris.domain.area_layout import cap_lower_layers
 from cyris.domain.areas import AreaCatalog
+from cyris.domain.interest_graph import MAX_INTEREST_NODES, build_graph
 from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
@@ -20,6 +21,7 @@ from cyris.domain.models import (
     is_degraded_run,
 )
 from cyris.domain.selection import count_dead_links, digest_urls
+from cyris.domain.suppression import SUPPRESSION_CLOCK_DAYS, Suppression, suppression_until
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.area_stamp import stamp_areas
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -94,16 +96,58 @@ def _newest(articles: list[StoredArticle], n: int) -> list[StoredArticle]:
     return [a for a in articles if a.url in keep]
 
 
+def _interest_page(deps: "Deps", summary: dict) -> dict[str, str]:
+    """The interest map's page, or nothing when there is no reader or building it fails.
+
+    Its own guard: a map that fails to build costs the issue nothing.
+    """
+    if deps.interest_reader is None:
+        return {}
+    started_at = summary["started_at"]
+    try:
+        inputs = deps.interest_reader(started_at)
+        graph = build_graph(
+            inputs.voted,
+            inputs.clocks,
+            datetime.fromisoformat(started_at),
+            clock_days=SUPPRESSION_CLOCK_DAYS,
+            max_nodes=MAX_INTEREST_NODES,
+        )
+        html = deps.html_writer.render_interest(
+            graph,
+            holds_active=inputs.active_holds > 0,
+            generated_at=started_at,
+            clock_days=SUPPRESSION_CLOCK_DAYS,
+        )
+    except Exception as e:
+        logger.error("Failed to build the interest page: %s", e)
+        summary["interest_page_error"] = str(e)
+        return {}
+    return {"/interest.html": html}
+
+
 def _render_site(
-    deps: "Deps", content, collected, *, raw_page: bool, degraded: bool
+    deps: "Deps",
+    content,
+    collected,
+    *,
+    raw_page: bool,
+    degraded: bool,
+    summary: dict | None = None,
 ) -> dict[str, bytes]:
-    """This run's pages as bytes, keyed by the path Pages will serve them at."""
+    """This run's pages as bytes, keyed by the path Pages will serve them at.
+
+    `summary` is given only on a run that publishes a new issue: a rerun leaves the
+    interest map as the site already has it.
+    """
     writer = deps.html_writer
     page = "/" + writer.digest_filename(content.date, content.period)
     pages = {page: writer.render(content, raw_page=raw_page, degraded=degraded)}
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
+    if summary is not None:
+        pages.update(_interest_page(deps, summary))
     # The archive leads with this run's issue: its title and count come from memory.
     return _with_archive(deps, pages, lead=content)
 
@@ -559,7 +603,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             store,
             deps.embedder,
             pending_articles,
-            threshold=deps.embedding_threshold,
             max_seeds=cfg.app.vote_similarity.max_seeds,
         )
         # `Embedder.usage` exists because `embed-compare` needs it; until this
@@ -579,16 +622,50 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                     logger.error("Failed to record vote similarity: %s", e)
                     summary["vote_similarity_record_error"] = str(e)
 
-        if similarity.suppressed_urls:
-            dropped = set(similarity.suppressed_urls)
-            pending_articles = [a for a in pending_articles if a.url not in dropped]
-            progress(f"Vote similarity suppressed {len(dropped)} article(s).")
-        elif not similarity.ran:
+        if not similarity.ran:
             summary["vote_similarity_skipped"] = similarity.skipped_reason
-            # The other reasons are a quiet window; this one recurs every run until
-            # someone sets a threshold.
-            log = logger.warning if deps.embedding_threshold is None else logger.info
-            log("Vote similarity skipped: %s", similarity.skipped_reason)
+            logger.info("Vote similarity skipped: %s", similarity.skipped_reason)
+
+    # Read after judging, and whether or not judging ran: a hold set by an earlier
+    # run stands on its own clock, not on this run's embeddings.
+    flagged = set(similarity.suppressed_urls) if similarity is not None else set()
+    held: dict = {}
+    holding: set[str] = set()
+    if cfg.app.vote_similarity.enabled and deps.suppressions is not None:
+        try:
+            held = deps.suppressions.active(summary["started_at"])
+            # `active` already leaves out a hold whose article a human has decided since.
+            holding = {a.url for a in pending_articles if a.url in held}
+            # Only what the clock alone removed: a held URL this run flagged again
+            # is already counted in `suppressed`.
+            summary["suppression_honoured"] = len(holding - flagged)
+        except Exception as e:
+            logger.error("Reading suppressions failed, this run judges alone: %s", e)
+            summary["suppression_read_error"] = str(e)
+    dropped = flagged | holding
+    if dropped:
+        pending_articles = [a for a in pending_articles if a.url not in dropped]
+        progress(f"Vote similarity suppressed {len(dropped)} article(s).")
+    if similarity is not None:
+        new_holds = []
+        for url in flagged - held.keys():
+            verdict = similarity.verdicts[url]
+            new_holds.append(
+                Suppression(
+                    candidate_url=url,
+                    nearest_down_url=verdict.nearest_down_url,
+                    down_cosine=verdict.down_similarity,
+                    up_cosine=None if verdict.nearest_up_url is None else verdict.up_similarity,
+                    outlier_score=verdict.outlier_score,
+                    until=suppression_until(summary["started_at"]),
+                )
+            )
+        if new_holds and deps.suppressions is not None and not options.dry_run:
+            try:
+                deps.suppressions.record(summary["started_at"], options.period, new_holds)
+            except Exception as e:
+                logger.error("Failed to record suppressions: %s", e)
+                summary["suppression_record_error"] = str(e)
 
     # Over what vote similarity left: a candidate close to a downvote is not in
     # this issue, so it is not listed as a hit either. No LLM call; its spend is
@@ -819,7 +896,12 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 # file list comes from D1. Nothing here touches the filesystem.
                 try:
                     pages = _render_site(
-                        deps, content, collected, raw_page=raw_page, degraded=degraded
+                        deps,
+                        content,
+                        collected,
+                        raw_page=raw_page,
+                        degraded=degraded,
+                        summary=None if rerun else summary,
                     )
                     published = (
                         _publish_verified(deps, pages, slug)

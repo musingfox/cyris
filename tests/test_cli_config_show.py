@@ -8,7 +8,7 @@ from fakes import SqliteD1, seed_d1_settings, settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store.feed_health import UNHEALTHY_FAILURE_STREAK
-from cyris.bootstrap import default_model, embedding_defaults
+from cyris.bootstrap import default_model
 from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS
 from cyris.entrypoints.cli import app
 
@@ -165,14 +165,38 @@ def test_the_clef_constants_are_listed_as_code(tmp_path: Path) -> None:
     }
 
 
-def test_the_embedding_threshold_follows_the_calibrated_model(tmp_path: Path) -> None:
-    toml = settings_toml(**{"vote_similarity.provider": "workers_ai", "vote_similarity.model": ""})
+def test_the_outlier_margin_is_listed_as_code_with_the_value_it_runs(tmp_path: Path) -> None:
+    rows = _rows(_show(tmp_path, settings_toml()).stdout)
 
-    result = _show(tmp_path, toml)
+    assert rows["vote_similarity.outlier_margin"] == ("3.5", "code")
+    assert rows["vote_similarity.min_outlier_window"] == ("10", "code")
+    assert rows["vote_similarity.suppression_clock_days"] == ("7", "code")
 
-    value, source = _rows(result.stdout)["vote_similarity.threshold"]
-    assert value == str(embedding_defaults("workers_ai")["threshold"])
-    assert source.startswith("default")
+
+def test_the_listed_margin_is_read_from_the_code(tmp_path: Path, monkeypatch) -> None:
+    import cyris.domain.similarity as similarity
+
+    monkeypatch.setattr(similarity, "OUTLIER_MARGIN", 4.0)
+
+    rows = _rows(_show(tmp_path, settings_toml()).stdout)
+
+    assert rows["vote_similarity.outlier_margin"] == ("4.0", "code")
+
+
+def test_the_listed_minimum_window_is_read_from_the_code(tmp_path: Path, monkeypatch) -> None:
+    import cyris.domain.similarity as similarity
+
+    monkeypatch.setattr(similarity, "MIN_OUTLIER_WINDOW", 12)
+
+    rows = _rows(_show(tmp_path, settings_toml()).stdout)
+
+    assert rows["vote_similarity.min_outlier_window"] == ("12", "code")
+
+
+def test_no_threshold_row_appears_even_with_one_in_the_file(tmp_path: Path) -> None:
+    toml = settings_toml().replace("[vote_similarity]\n", "[vote_similarity]\nthreshold = 0.9\n", 1)
+
+    assert "vote_similarity.threshold" not in _rows(_show(tmp_path, toml).stdout)
 
 
 def test_the_output_has_no_terminal_escapes_and_aligned_columns(tmp_path: Path) -> None:

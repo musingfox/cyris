@@ -99,10 +99,8 @@ provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
                           # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
 model = ""                # "" uses the provider's default model
 max_seeds = 200           # recent votes on each side a run compares against
-# Leave `threshold` unset: each provider carries its own calibration (bge-m3 0.53,
-# gemini 0.68) because their cosines run on different scales. Setting one value and
-# switching provider is how this feature silently stops suppressing anything.
-# threshold = 0.53
+# A `threshold` key here is ignored (ADR-0017): each run suppresses the outliers of its
+# own window, so there is no cutoff to set and none to carry across providers.
 
 # Tracked topics: each issue lists, under Tracking, every candidate whose title sits
 # within `threshold` (a cosine) of the topic's description. Optional: none is valid.

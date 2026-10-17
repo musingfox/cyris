@@ -1,11 +1,14 @@
 """Tests for vote-seeded similarity judging."""
 
+import inspect
 import math
 
 import pytest
 
+import cyris.domain.similarity as similarity
 from cyris.domain.similarity import (
-    DEFAULT_THRESHOLD,
+    MIN_OUTLIER_WINDOW,
+    OUTLIER_MARGIN,
     cosine,
     judge,
     max_similarity,
@@ -48,12 +51,81 @@ def test_max_similarity_without_seeds_is_zero():
     assert max_similarity(unit(1.0, 0.0), []) == 0.0
 
 
-def test_a_close_downvote_match_is_suppressed():
-    lottery = unit(1.0, 0.0, 0.0)
-    [verdict] = judge({"u": lottery}, upvoted=[], downvoted=[lottery])
+def _window(cosines: list[float]) -> dict[str, list[float]]:
+    """Candidates whose cosine to the seed [1, 0] is each value, and nothing else."""
+    return {f"u{i}": [c, math.sqrt(1 - c * c)] for i, c in enumerate(cosines)}
 
-    assert verdict.suppressed
-    assert math.isclose(verdict.down_similarity, 1.0, abs_tol=1e-9)
+
+_DOWN_BASE = [0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.47, 0.48]
+
+
+def test_the_outlier_of_a_window_is_suppressed():
+    verdicts = judge(_window([*_DOWN_BASE, 0.58]), [], [[1.0, 0.0]])
+
+    assert [v.url for v in verdicts if v.suppressed] == ["u9"]
+    [outlier] = [v for v in verdicts if v.url == "u9"]
+    assert math.isclose(outlier.outlier_score, 0.6745 * (0.58 - 0.445) / 0.025, rel_tol=1e-6)
+
+
+def test_a_value_just_under_the_margin_is_not_suppressed():
+    verdicts = judge(_window([*_DOWN_BASE, 0.574]), [], [[1.0, 0.0]])
+
+    assert not any(v.suppressed for v in verdicts)
+    assert OUTLIER_MARGIN == 3.5
+
+
+def test_the_same_outlier_is_suppressed_whatever_the_window_level():
+    raised = [c + 0.15 for c in [*_DOWN_BASE, 0.58]]
+
+    base = judge(_window([*_DOWN_BASE, 0.58]), [], [[1.0, 0.0]])
+    shifted = judge(_window(raised), [], [[1.0, 0.0]])
+
+    assert [v.url for v in base if v.suppressed] == ["u9"]
+    assert [v.url for v in shifted if v.suppressed] == ["u9"]
+
+
+def test_a_window_of_equal_similarities_suppresses_nothing():
+    verdicts = judge(_window([0.9] * 20), [], [[1.0, 0.0]])
+
+    assert not any(v.suppressed for v in verdicts)
+    assert all(v.outlier_score is None for v in verdicts)
+
+
+def test_an_outlier_with_an_upvote_at_least_as_close_is_kept():
+    verdicts = judge(
+        {**_window([*_DOWN_BASE, 0.58]), "up": [0.60, math.sqrt(1 - 0.36)]},
+        upvoted=[[0.60, math.sqrt(1 - 0.36)]],
+        downvoted=[[1.0, 0.0]],
+    )
+
+    assert not next(v for v in verdicts if v.url == "u9").suppressed
+
+
+def test_a_window_below_the_minimum_suppresses_nothing():
+    verdicts = judge(_window([*_DOWN_BASE[:8], 0.70]), [], [[1.0, 0.0]])
+
+    assert len(verdicts) == MIN_OUTLIER_WINDOW - 1
+    assert not any(v.suppressed for v in verdicts)
+    assert all(v.outlier_score is None for v in verdicts)
+
+
+def test_the_same_shape_at_the_minimum_window_suppresses_the_outlier():
+    verdicts = judge(_window([*_DOWN_BASE, 0.70]), [], [[1.0, 0.0]])
+
+    assert len(verdicts) == MIN_OUTLIER_WINDOW == 10
+    assert [v.url for v in verdicts if v.suppressed] == ["u9"]
+
+
+def test_no_downvote_seed_names_no_neighbour_and_suppresses_nothing():
+    verdicts = judge(_window([0.5, 0.6]), [], [])
+
+    assert not any(v.suppressed for v in verdicts)
+    assert all(v.nearest_down_url is None for v in verdicts)
+
+
+def test_judge_takes_no_cutoff_parameter():
+    assert "threshold" not in inspect.signature(judge).parameters
+    assert not hasattr(similarity, "DEFAULT_THRESHOLD")
 
 
 def test_a_distant_article_survives():
@@ -68,11 +140,6 @@ def test_a_stronger_upvote_match_rescues_an_article():
     [verdict] = judge({"u": candidate}, upvoted=[candidate], downvoted=[unit(1.0, 0.0, 0.0)])
 
     assert not verdict.suppressed
-
-
-def test_threshold_is_the_boundary_measured_on_real_data():
-    """0.737 in-class low vs 0.666 out-of-class high — the default sits between."""
-    assert 0.666 < DEFAULT_THRESHOLD < 0.737
 
 
 def test_verdicts_are_ordered_by_net_preference():
@@ -107,12 +174,11 @@ def test_seed_urls_name_each_side_s_nearest_without_changing_the_verdict():
     up = [unit(0.0, 0.0, 1.0), unit(1.0, 0.2, 0.0)]
     down = [unit(1.0, 0.3, 0.0), unit(0.0, 1.0, 0.0)]
 
-    [plain] = judge({"c": candidate}, up, down, 0.5)
+    [plain] = judge({"c": candidate}, up, down)
     [named] = judge(
         {"c": candidate},
         up,
         down,
-        0.5,
         upvoted_urls=["up-far", "up-near"],
         downvoted_urls=["down-near", "down-far"],
     )

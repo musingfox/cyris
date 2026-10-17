@@ -33,13 +33,10 @@ class NothingToCompareError(Exception):
 
 
 def margin(report) -> dict[str, float | None]:
-    """Where this window's boundary actually fell, per arm.
+    """Where this window's cut fell, per arm: the lowest suppressed and highest kept down cosine.
 
-    The thresholds are pinned constants calibrated against two downvote seeds. As
-    the seed set grows they drift, and by different amounts because the two cosine
-    scales differ — so the first disagreement this log records could just as easily
-    be threshold staleness as a model difference. Recording each side of the
-    boundary is what lets the two be told apart later.
+    Read off the same window the arm judged, so a cut that moves between readings can
+    be told from a model difference by its scores, not by a stored constant.
     """
     cut_side = [v.down_similarity for v in report.verdicts.values() if v.suppressed]
     keep_side = [v.down_similarity for v in report.verdicts.values() if not v.suppressed]
@@ -52,7 +49,6 @@ def margin(report) -> dict[str, float | None]:
 @dataclass(frozen=True)
 class EmbedArm:
     name: str
-    threshold: float
     report: Any
     usage: EmbeddingUsage
     wall_seconds: float
@@ -93,7 +89,6 @@ class EmbedComparison:
             **self.only,
             **{
                 arm.name: {
-                    "threshold": arm.threshold,
                     "suppressed": len(arm.report.suppressed_urls),
                     "wall_seconds": round(arm.wall_seconds, 2),
                     **margin(arm.report),
@@ -108,17 +103,8 @@ def build_embedding_arms(
     account_id: str,
     gemini_api_key: str,
     workers_api_token: str,
-    *,
-    gemini_threshold: float | None = None,
-    workers_threshold: float | None = None,
-) -> list[tuple[str, Any, float]]:
-    """Every arm, built before a single embedding is paid for.
-
-    Both cutoffs default to `provider_defaults.json` rather than to a number
-    written here: each is a measured property of its model, and a comparison
-    running on a stale one measures threshold drift instead of the difference
-    between two models — the confusion `margin()` exists to prevent.
-    """
+) -> list[tuple[str, Any]]:
+    """Every arm, built before a single embedding is paid for."""
     from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
     from cyris.bootstrap import embedding_defaults
 
@@ -130,24 +116,19 @@ def build_embedding_arms(
     gemini = embedding_defaults("gemini")
     workers = embedding_defaults("workers_ai")
     return [
-        (
-            "gemini",
-            GeminiEmbedder(api_key=gemini_api_key, model=gemini["model"]),
-            gemini_threshold if gemini_threshold is not None else gemini["threshold"],
-        ),
+        ("gemini", GeminiEmbedder(api_key=gemini_api_key, model=gemini["model"])),
         (
             "workers_ai",
             WorkersAIEmbedder(
                 api_token=workers_api_token, account_id=account_id, model=workers["model"]
             ),
-            workers_threshold if workers_threshold is not None else workers["threshold"],
         ),
     ]
 
 
 async def compare_embedders(
     store,
-    arms: list[tuple[str, Any, float]],
+    arms: list[tuple[str, Any]],
     candidates: list[StoredArticle],
     *,
     hours: int,
@@ -155,18 +136,16 @@ async def compare_embedders(
     checked_at: datetime,
 ) -> EmbedComparison:
     results = []
-    for name, embedder, threshold in arms:
+    for name, embedder in arms:
         # Wall-clock, not just api_seconds: Gemini sleeps 1.5s between batches of 50
         # where bge-m3 batches 100 with no pause, and that gap is the throughput
         # difference the per-request timer cannot see.
         started = time.monotonic()
-        report = await judge_by_votes(
-            store, embedder, candidates, threshold=threshold, max_seeds=max_seeds
-        )
+        report = await judge_by_votes(store, embedder, candidates, max_seeds=max_seeds)
         elapsed = time.monotonic() - started
         if not report.ran:
             raise NothingToCompareError(report.skipped_reason)
-        results.append(EmbedArm(name, threshold, report, embedder.usage, elapsed))
+        results.append(EmbedArm(name, report, embedder.usage, elapsed))
     return EmbedComparison(checked_at, hours, candidates, results)
 
 

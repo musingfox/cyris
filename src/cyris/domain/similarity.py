@@ -9,7 +9,8 @@ Re-measured 2026-08-10 with gemini-embedding-001 over the whole 5,724-article st
 (the 2026-08-09 pass sampled one source, which put the boundary in the wrong place):
 seeded with the two real downvoted titles, cosine ranks the entire 71-article class
 above everything else — in-class minimum 0.690 against out-of-class maximum 0.673.
-DEFAULT_THRESHOLD sits in that gap. See
+The absolute cutoff measured there does not carry to another model, so the cutoff is
+now relative to the window. See
 docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md.
 
 ponytail: pure-stdlib dot products. ~400 candidates x a handful of seeds is a few
@@ -20,23 +21,23 @@ when the whole corpus needs embedding, not for one digest's candidates.
 from __future__ import annotations
 
 import math
+import statistics
 from dataclasses import dataclass
 
-# Inside the measured gap (0.690 in-class low / 0.673 out-of-class high), leaning
-# high: the cost of the two errors is not symmetric. A false positive silently
-# deletes an article the reader might have wanted; a miss just lets one through.
-# The band is only 0.017 wide, so this is a real setting, not a round number —
-# 0.62 would suppress 18 unvoted articles, including every receipt-lottery jackpot
-# headline — measured, not hypothetical; those are not what the two downvotes meant.
-# ponytail: an absolute cutoff is the wrong shape and this constant is already
-# stale. `max_similarity` takes a maximum over the seed list, and a maximum over a
-# growing set can only rise — so every downvote raises every candidate's
-# `down_similarity`, and a fixed number suppresses more each time the reader votes.
-# Measured on one fixed window: 2 downvote seeds suppressed 8 articles, 24
-# suppressed 45. The replacement is a relative cutoff (rank, or a margin over the
-# window's own distribution); see
-# docs/decisions/0006-embedding-thresholds-are-per-model-calibrations.md.
-DEFAULT_THRESHOLD = 0.68
+# A candidate is an outlier when its robust z-score against the window's down
+# similarities exceeds this (Iglewicz and Hoaglin's recommended cut for the modified
+# z-score). Relative, so a growing vote set cannot raise the count the way a fixed
+# cosine did (measured 2026-08: 2 downvotes suppressed 8 articles, 24 suppressed 45).
+# See docs/decisions/0017-suppression-is-a-relative-outlier-with-a-reason-and-a-clock.md.
+OUTLIER_MARGIN = 3.5
+
+# Below about ten candidates the median and MAD rest on two or three articles, so one
+# article moves the cut. Production windows are hundreds of candidates. A floor on
+# sample size, not a cosine, so it does not go stale as votes grow.
+MIN_OUTLIER_WINDOW = 10
+
+# Scales the median absolute deviation to a standard deviation for a normal sample.
+_MAD_SCALE = 0.6745
 
 
 def normalize(vector: list[float]) -> list[float]:
@@ -90,6 +91,7 @@ class SimilarityVerdict:
     suppressed: bool
     nearest_up_url: str | None = None
     nearest_down_url: str | None = None
+    outlier_score: float | None = None
 
     @property
     def net(self) -> float:
@@ -101,22 +103,23 @@ def judge(
     candidates: dict[str, list[float]],
     upvoted: list[list[float]],
     downvoted: list[list[float]],
-    threshold: float = DEFAULT_THRESHOLD,
     *,
     upvoted_urls: list[str] | None = None,
     downvoted_urls: list[str] | None = None,
 ) -> list[SimilarityVerdict]:
-    """Score every candidate against both vote classes.
+    """Score every candidate against both vote classes, and flag the outliers.
 
-    An article close to both is not suppressed: the upvote is the more specific
-    signal, and a reader who liked something very like it should not lose it to a
-    rejection of a broader neighbourhood.
+    A candidate is suppressed when its down similarity is an outlier among the
+    candidates judged together (see OUTLIER_MARGIN; a window smaller than
+    MIN_OUTLIER_WINDOW scores none) and it is not closer to an
+    upvote. An article close to both is not suppressed: the upvote is the more
+    specific signal, and a reader who liked something very like it should not lose it
+    to a rejection of a broader neighbourhood.
 
     Args:
         candidates: url -> normalized embedding.
         upvoted: normalized embeddings of accepted articles.
         downvoted: normalized embeddings of rejected articles.
-        threshold: cosine at or above which a downvote match suppresses.
         upvoted_urls: one URL per `upvoted` vector, to name each verdict's nearest
             upvote; without it the verdict names none.
         downvoted_urls: the same for `downvoted`.
@@ -124,21 +127,39 @@ def judge(
     Returns:
         One verdict per candidate, ordered by descending net preference.
     """
-    verdicts = []
+    rows = []
     for url, vector in candidates.items():
         down_url, down = _closest(vector, downvoted, downvoted_urls)
         up_url, up = _closest(vector, upvoted, upvoted_urls)
-        verdicts.append(
-            SimilarityVerdict(
-                url=url,
-                down_similarity=down,
-                up_similarity=up,
-                suppressed=down >= threshold and up < down,
-                nearest_up_url=up_url,
-                nearest_down_url=down_url,
-            )
+        rows.append((url, down_url, down, up_url, up))
+    scores = _outlier_scores([down for _, _, down, _, _ in rows])
+    verdicts = [
+        SimilarityVerdict(
+            url=url,
+            down_similarity=down,
+            up_similarity=up,
+            suppressed=score is not None and score > OUTLIER_MARGIN and up < down,
+            nearest_up_url=up_url,
+            nearest_down_url=down_url,
+            outlier_score=score,
         )
+        for (url, down_url, down, up_url, up), score in zip(rows, scores, strict=True)
+    ]
     return sorted(verdicts, key=lambda v: v.net, reverse=True)
+
+
+def _outlier_scores(values: list[float]) -> list[float | None]:
+    """Robust z-score of each value against the others.
+
+    None for every value when the window is below MIN_OUTLIER_WINDOW or the spread is zero.
+    """
+    if len(values) < MIN_OUTLIER_WINDOW:
+        return [None] * len(values)
+    middle = statistics.median(values)
+    spread = statistics.median(abs(v - middle) for v in values)
+    if spread == 0.0:
+        return [None] * len(values)
+    return [_MAD_SCALE * (v - middle) / spread for v in values]
 
 
 def _closest(

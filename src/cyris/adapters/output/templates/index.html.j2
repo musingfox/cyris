@@ -56,7 +56,7 @@
         <div class="page-head">
             <span class="label">Archive</span>
             <h1 class="display">Every <em>issue</em></h1>
-            <p class="small">Cyris collects articles from RSS feeds and newsletters and selects the ones worth reading into a digest. Newest first. Each issue has the digest and the full list of articles it judged.</p>
+            <p class="small">Cyris collects articles from RSS feeds and newsletters and selects the ones worth reading into a digest. Newest first. Each issue has the digest and the full list of articles it judged.{% if has_interest %} See the <a href="interest.html">Interest map</a> of the tags you vote on.{% endif %}</p>
         </div>
 
         {% if digests %}

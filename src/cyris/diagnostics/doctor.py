@@ -170,25 +170,22 @@ LLM_PROBE_PROMPT = 'Reply with JSON: {"ok": true}'
 
 
 def _check_vote_similarity(cfg: Config) -> Check:
-    from cyris.bootstrap import embedding_defaults, embedding_threshold
+    from cyris.bootstrap import embedding_defaults
 
     vote = cfg.app.vote_similarity
     if vote is None or any(k.startswith("vote_similarity.") for k in cfg.missing_settings):
         return Check("vote similarity", "skip", "not set — see settings")
+    if vote.threshold is not None:
+        return Check(
+            "vote similarity",
+            "warn",
+            f"[vote_similarity] threshold = {vote.threshold:g} is ignored (ADR-0017)",
+            "Remove the threshold line from cyris.toml; the cutoff is relative to each window.",
+        )
     if not vote.enabled:
         return Check("vote similarity", "skip", "off")
     model = vote.model or embedding_defaults(vote.provider)["model"]
-    threshold = embedding_threshold(cfg)
-    if threshold is None:
-        calibrated = embedding_defaults(vote.provider)["model"]
-        return Check(
-            "vote similarity",
-            "fail",
-            f"{model} has no calibrated threshold, so every run skips vote similarity",
-            f"Set [vote_similarity] threshold in cyris.toml after measuring {model}, "
-            f"or switch the embedding model back to {calibrated}.",
-        )
-    return Check("vote similarity", "ok", f"{vote.provider} · {model} at {threshold:g}")
+    return Check("vote similarity", "ok", f"{vote.provider} · {model}")
 
 
 # The clients allow 120-180 s per attempt and retry twice, which a run can afford

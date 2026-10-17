@@ -478,13 +478,19 @@ table.src td.areas-pos-cell { width: 1%; }
   .feature-flow { grid-template-columns: minmax(0, 1fr); gap: var(--s-16); }
   .feature-flow li:not(:last-child)::after { top: auto; right: calc(50% - var(--s-2)); bottom: calc(-1 * var(--s-8)); transform: rotate(135deg); }
 }
+.graph-map { display: block; width: 100%; height: auto; margin-top: var(--s-6); }
+.graph-edge { stroke: var(--border-strong); stroke-width: 1; }
+.graph-node.up { fill: color-mix(in srgb, var(--accent) calc(50% + 50% * var(--b)), var(--text-faint)); }
+.graph-node.down { fill: color-mix(in srgb, var(--text-dim) calc(50% + 50% * var(--b)), var(--text-faint)); }
+.graph-node.mixed { fill: none; stroke: var(--text-dim); stroke-width: 1.5; }
+.graph-label { fill: var(--text); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); }
 </style>
 </head>
 <body>
 
 <div class="proto-strip">
   <span>PROTOTYPE · sample data ·</span>
-  <a href="#system">system</a><a href="#archive">archive</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a>
+  <a href="#system">system</a><a href="#archive">archive</a><a href="#interest">interest</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a>
   <label><input type="checkbox" id="authorized" checked> signed in (shows Settings, votes, List/Triage; off shows Sign in)</label>
 </div>
 
@@ -509,6 +515,37 @@ table.src td.areas-pos-cell { width: 1%; }
     </div>
     <div id="archive-list"></div>
     <div class="footer" id="archive-footer"></div>
+  </main>
+</section>
+
+<!-- ============ INTEREST ============ -->
+<section data-view="interest" hidden>
+  <main class="page">
+    <div class="page-head">
+      <span class="label">Interest</span>
+      <h1 class="display">What the <em>map</em> holds</h1>
+      <p class="small">Tags from the articles you voted on, joined where they appear together. Sample data.</p>
+    </div>
+    <svg class="graph-map" viewBox="0 0 480 200" role="img" aria-label="interest graph">
+      <line class="graph-edge" x1="120" y1="80" x2="300" y2="60"/>
+      <line class="graph-edge" x1="300" y1="60" x2="220" y2="150"/>
+      <circle class="graph-node up" style="--b: 1" cx="120" cy="80" r="14"/>
+      <circle class="graph-node mixed" cx="300" cy="60" r="14"/>
+      <circle class="graph-node down" style="--b: .5" cx="220" cy="150" r="14"/>
+      <text class="graph-label" x="120" y="112">agents</text>
+      <text class="graph-label" x="300" y="36">embeddings</text>
+      <text class="graph-label" x="220" y="182">gpu</text>
+    </svg>
+    <p class="small">Lit = suppressed now; dimmer = less time left; half colour = not suppressed.</p>
+    <table>
+      <thead><tr><th>Tag</th><th>Up</th><th>Down</th><th>Polarity</th><th>Days left</th></tr></thead>
+      <tbody>
+        <tr><td>agents</td><td>2</td><td>0</td><td>up</td><td>7</td></tr>
+        <tr><td>embeddings</td><td>1</td><td>1</td><td>mixed</td><td>0</td></tr>
+        <tr><td>gpu</td><td>0</td><td>2</td><td>down</td><td>3.5</td></tr>
+      </tbody>
+    </table>
+    <p class="data">As of 2026-10-17 08:00</p>
   </main>
 </section>
 

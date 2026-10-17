@@ -1056,3 +1056,85 @@ describe("PublicArchiveUnchangedWhenFlagIsOff", () => {
     expect(resp.status).toBe(200);
   });
 });
+
+describe("InterestPageGate", () => {
+  const anonymous = async (method, path, extra = {}, opts = {}) => {
+    const deps = makeDeps();
+    const resp = await handleRequest(request(method, path, opts), env(extra), deps);
+    return { resp, deps };
+  };
+
+  it("sends an anonymous reader to sign-in on the public archive", async () => {
+    const { resp, deps } = await anonymous("GET", "/interest.html");
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get("Location")).toBe("/login?next=%2Finterest.html");
+    expect(deps.fetchImpl.calls).toHaveLength(0);
+    expect(deps.container.calls).toHaveLength(0);
+    expect(resp.headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("gates every spelling of the page, including the encoded one", async () => {
+    for (const [method, path] of [
+      ["GET", "/interest"],
+      ["GET", "/interest/"],
+      ["HEAD", "/interest.html"],
+      ["GET", "/%69nterest.html"],
+      ["GET", "/%E0%A4%A"],
+    ]) {
+      const { resp, deps } = await anonymous(method, path);
+
+      expect(resp.status, `${method} ${path}`).toBe(302);
+      expect(resp.headers.get("Location"), path).toMatch(/^\/login\?next=/);
+      expect(deps.fetchImpl.calls, path).toHaveLength(0);
+    }
+  });
+
+  it("gates the page on the Access hostname too", async () => {
+    const { resp } = await anonymous(
+      "GET",
+      "/interest.html",
+      { CYRIS_UI_ACCESS_HOST: ACCESS_HOST },
+      { host: ACCESS_HOST },
+    );
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("serves the page through the proxy to a signed-in reader", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("GET", "/interest.html", { cookie: await sessionCookie() }),
+      env(),
+      deps,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(deps.fetchImpl.calls[0].input.url).toBe("https://p.pages.dev/interest.html");
+    expect(deps.container.calls).toHaveLength(0);
+    expect(deps.typeScale.reads).toBe(1);
+  });
+
+  it("leaves the archive root and its pages public when the flag is off", async () => {
+    for (const path of ["/", "/2026-08-30-evening.html"]) {
+      const { resp } = await anonymous("GET", path);
+
+      expect(resp.status, path).toBe(200);
+    }
+  });
+
+  it("still gates the page when the private archive flag is on", async () => {
+    const { resp } = await anonymous("GET", "/interest.html", { CYRIS_PRIVATE_ARCHIVE: "true" });
+
+    expect(resp.status).toBe(302);
+  });
+
+  it("does not gate paths that only start like the page", async () => {
+    for (const path of ["/interestx.html", "/interest.html.bak"]) {
+      const { resp, deps } = await anonymous("GET", path);
+
+      expect(resp.status, path).toBe(200);
+      expect(deps.fetchImpl.calls, path).toHaveLength(1);
+    }
+  });
+});

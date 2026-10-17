@@ -40,7 +40,10 @@
     "clef.request_timeout_seconds": "cyris.adapters.clef:CLEF_REQUEST_TIMEOUT_SECONDS",
     "clef.neighbours_per_side": "cyris.service_layer.vote_order:CLEF_NEAREST_VOTES",
     "clef.concurrency": "cyris.service_layer.vote_order:CLEF_CONCURRENCY",
-    "clef.pass_seconds": "cyris.service_layer.vote_order:CLEF_PASS_SECONDS"
+    "clef.pass_seconds": "cyris.service_layer.vote_order:CLEF_PASS_SECONDS",
+    "vote_similarity.outlier_margin": "cyris.domain.similarity:OUTLIER_MARGIN",
+    "vote_similarity.min_outlier_window": "cyris.domain.similarity:MIN_OUTLIER_WINDOW",
+    "vote_similarity.suppression_clock_days": "cyris.domain.suppression:SUPPRESSION_CLOCK_DAYS"
   },
   "baked_env": ["CYRIS_GIT_SHA", "CYRIS_APP_WORKER_NAME"],
   "identity": {

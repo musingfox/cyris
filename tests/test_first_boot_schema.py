@@ -37,6 +37,14 @@ def test_a_clean_database_gets_its_tables() -> None:
     assert D1ArticleStore(db).count_by_state() == {}
 
 
+def test_applying_the_schema_twice_is_a_no_op() -> None:
+    db = SqliteD1()
+
+    apply_schema(db)
+
+    assert D1ArticleStore(db).count_by_state() == {}
+
+
 def test_the_settings_read_finds_its_table_on_first_boot(tmp_path, monkeypatch) -> None:
     """The seam that mattered: `settings` is read before anything else touches D1."""
     from cyris import bootstrap

@@ -15,7 +15,7 @@ from importlib.resources import files
 from typing import Any
 
 from cyris.adapters.notify import mask_discord_webhook_url
-from cyris.bootstrap import default_models, embedding_defaults, embedding_threshold
+from cyris.bootstrap import default_models, embedding_defaults
 from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config
 
 _REGISTRY: dict[str, Any] = json.loads(
@@ -83,23 +83,9 @@ def _baked(cfg: Config) -> list[Row]:
         module, attribute = ref.split(":")
         value = reduce(getattr, attribute.split("."), importlib.import_module(module))
         rows.append(Row("A", key, _shown(value), SOURCES["code"]))
-    rows.append(_threshold_row(cfg))
     for name in _REGISTRY["baked_env"]:
         rows.append(_env_row(cfg, "A", name, name, _shown(os.environ.get(name, ""))))
     return rows
-
-
-def _threshold_row(cfg: Config) -> Row:
-    key = "vote_similarity.threshold"
-    vote = cfg.app.vote_similarity
-    if vote is None:
-        return Row("A", key, _NONE, SOURCES["missing"])
-    if vote.threshold is not None:
-        return Row("A", key, _shown(vote.threshold), SOURCES["file"])
-    threshold = embedding_threshold(cfg)
-    if threshold is None:
-        return Row("A", key, _NONE, SOURCES["missing"])
-    return Row("A", key, _shown(threshold), SOURCES["default"])
 
 
 def _identity(cfg: Config) -> list[Row]:

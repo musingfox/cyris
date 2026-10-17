@@ -1,13 +1,18 @@
 """Tests for the embedding adapters."""
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
+from typer.testing import CliRunner
 
 from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
+from cyris.entrypoints.cli import app
 
 pytestmark = pytest.mark.integration
+
+runner = CliRunner()
 
 
 def workers_response(vectors: list[list[float]], tokens: int = 24, neurons: float = 0.0258):
@@ -158,12 +163,10 @@ async def test_an_empty_input_never_reaches_the_api(patched_client):
     assert embedder.usage.requests == 0
 
 
-def test_each_provider_carries_its_own_calibration(monkeypatch):
-    """Switching provider without switching threshold is how this feature dies
-    silently: bge-m3's cosines run lower, so 0.68 would suppress nothing."""
+def test_each_provider_builds_its_own_embedder(monkeypatch):
     from fakes import make_config
 
-    from cyris.bootstrap import build_embedder, embedding_threshold
+    from cyris.bootstrap import build_embedder
 
     monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
@@ -173,40 +176,10 @@ def test_each_provider_carries_its_own_calibration(monkeypatch):
     cfg.app.vote_similarity.enabled = True
 
     cfg.app.vote_similarity.provider = "workers_ai"
-    assert embedding_threshold(cfg) == 0.53
     assert type(build_embedder(cfg)).__name__ == "WorkersAIEmbedder"
 
     cfg.app.vote_similarity.provider = "gemini"
-    assert embedding_threshold(cfg) == 0.68
     assert type(build_embedder(cfg)).__name__ == "GeminiEmbedder"
-
-
-def test_a_configured_threshold_still_wins():
-    from fakes import make_config
-
-    from cyris.bootstrap import embedding_threshold
-
-    cfg = make_config()
-    cfg.app.vote_similarity.threshold = 0.6
-
-    assert embedding_threshold(cfg) == 0.6
-
-
-def test_a_model_without_a_calibration_has_no_threshold():
-    """The cutoff is a property of the model it was measured on, not of its vendor."""
-    from fakes import make_config
-
-    from cyris.bootstrap import embedding_threshold
-
-    cfg = make_config()
-    cfg.app.vote_similarity.provider = "gemini"
-
-    cfg.app.vote_similarity.model = "gemini-embedding-001"
-    assert embedding_threshold(cfg) == 0.68
-    cfg.app.vote_similarity.model = "gemini-embedding-2"
-    assert embedding_threshold(cfg) is None
-    cfg.app.vote_similarity.threshold = 0.7
-    assert embedding_threshold(cfg) == 0.7
 
 
 def test_the_feature_off_means_no_embedder_at_all():
@@ -276,3 +249,80 @@ def test_a_provider_that_reports_no_cost_says_none_rather_than_zero() -> None:
 
     assert usage["input_tokens"] is None
     assert usage["neurons"] is None
+
+
+class _WindowEmbedder:
+    """Three downvotes on [1, 0]; each candidate's cosine to them is written in its title."""
+
+    COSINES = {f"C{i}": 0.40 + 0.01 * i for i in range(11)} | {"Out": 0.95}
+
+    def __init__(self) -> None:
+        self.usage = None
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        out = []
+        for text in texts:
+            if text.startswith("S"):
+                out.append([1.0, 0.0])
+            else:
+                c = self.COSINES[text]
+                out.append([c, (1 - c * c) ** 0.5])
+        return out
+
+
+def _vote_sim_world(tmp_path: Path, monkeypatch) -> Path:
+    from datetime import UTC, datetime, timedelta
+
+    from fakes import settings_toml
+
+    from cyris.adapters.store import ArticleStore
+    from cyris.domain.models import Article, Tier
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cyris.bootstrap.build_embedder", lambda cfg: _WindowEmbedder())
+    (tmp_path / "cyris.toml").write_text(
+        settings_toml(**{"vote_similarity.enabled": True, "vote_similarity.provider": "gemini"})
+    )
+    sources = tmp_path / "sources.yaml"
+    sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
+    now = datetime.now(UTC)
+    titles = [f"S{i}" for i in range(3)] + list(_WindowEmbedder.COSINES)
+    articles = [
+        Article(
+            id=i,
+            title=title,
+            url=f"https://example.com/{title}",
+            content="c",
+            published_at=now - timedelta(hours=1),
+            source_name="Src",
+            source_tier=Tier.SUMMARIZE,
+        )
+        for i, title in enumerate(titles)
+    ]
+    store = ArticleStore(tmp_path / "agent-vault")
+    store.save(articles)
+    seeds = [f"https://example.com/S{i}" for i in range(3)]
+    store.reject(seeds, "not_interested")
+    store.update_triage_timestamp(seeds, now)
+    return sources
+
+
+def test_vote_sim_marks_the_one_outlier_it_would_suppress(tmp_path: Path, monkeypatch) -> None:
+    sources = _vote_sim_world(tmp_path, monkeypatch)
+
+    result = runner.invoke(app, ["vote-sim", "--sources", str(sources)])
+
+    assert result.exit_code == 0, result.output
+    section = result.output.split("WOULD SUPPRESS")[1].split("CLOSEST TO UPVOTES")[0]
+    rows = [line for line in section.splitlines() if line.startswith("  ")]
+    assert len(rows) == 1 and rows[0].endswith("Out")
+    assert "outlier margin 3.5" in result.output
+    assert "threshold" not in result.output
+
+
+def test_vote_sim_refuses_a_threshold_option(tmp_path: Path, monkeypatch) -> None:
+    sources = _vote_sim_world(tmp_path, monkeypatch)
+
+    result = runner.invoke(app, ["vote-sim", "--threshold", "0.5", "--sources", str(sources)])
+
+    assert result.exit_code == 2

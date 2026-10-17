@@ -33,6 +33,7 @@ from css_rules import (
 import cyris.entrypoints
 from cyris.adapters.output.email_digest import LIGHT_PALETTE, tokens
 from cyris.adapters.output.html_digest import FAVICON, PROJECT_URL, HtmlDigestWriter
+from cyris.domain.interest_graph import InterestEdge, InterestGraph, InterestNode
 from cyris.entrypoints.triage_server import (
     TriageServer,
     render_labels_page,
@@ -53,13 +54,23 @@ def _source(name: str) -> str:
         return render_settings_page()
     if name == "labels":
         return render_labels_page()
+    if name == "interest":
+        graph = InterestGraph(
+            nodes=[InterestNode("agents", 2, 0, "up", 1.0), InterestNode("gpu", 0, 2, "down", 0.5)],
+            edges=[InterestEdge("agents", "gpu")],
+        )
+        return HtmlDigestWriter("unused-by-these-tests").render_interest(
+            graph, holds_active=True, generated_at="2026-10-17 08:00 UTC", clock_days=7
+        )
     return dict(zip(("index", "digest", "raw"), receipt_fixtures(), strict=True))[name]
 
 
-GUARDED = ["index", "digest", "raw", "style.css", "settings", "labels"]
+GUARDED = ["index", "digest", "raw", "style.css", "settings", "labels", "interest"]
 
 
-@pytest.mark.parametrize("page", ["index", "digest", "raw", "settings", "labels", "prototype"])
+@pytest.mark.parametrize(
+    "page", ["index", "digest", "raw", "settings", "labels", "interest", "prototype"]
+)
 def test_every_page_says_its_chrome_is_english(page):
     html = PROTOTYPE.read_text() if page == "prototype" else _source(page)
 
@@ -1456,7 +1467,7 @@ def test_the_timezone_example_names_no_region() -> None:
 
 
 REPO = UI_SPEC.parents[2]
-PAGES = ["index", "digest", "raw", "settings", "labels"]
+PAGES = ["index", "digest", "raw", "settings", "labels", "interest"]
 
 
 def _head(html: str) -> str:
@@ -1489,3 +1500,58 @@ def test_the_published_favicon_is_the_websites() -> None:
 
 def test_the_pages_credit_the_project_the_readme_names() -> None:
     assert PROJECT_URL in (REPO / "README.md").read_text()
+
+
+def _section(spec: str, start: str, end: str) -> str:
+    return spec[spec.index(start) : spec.index(end)]
+
+
+def test_the_spec_names_the_interest_graph_component() -> None:
+    components = _section(UI_SPEC.read_text(), "## 4. Components", "### Interaction")
+    assert any(row.startswith("| **interest graph**") for row in components.splitlines())
+
+
+def test_the_spec_places_the_interest_page_and_its_sign_in() -> None:
+    navigation = _section(UI_SPEC.read_text(), "## 5. Navigation", "## 6. Page layouts")
+    assert any("/interest.html" in line and "sign-in" in line for line in navigation.splitlines())
+
+
+def test_the_prototype_draws_the_interest_graph_in_the_spec_tokens() -> None:
+    html = PROTOTYPE.read_text()
+    assert "interest graph" in html
+    graph = re.compile(r"\.graph[\w-]*\s*[{,.:\[]")
+    graph_rules = "\n".join(line for line in html.splitlines() if graph.search(line))
+    for token in ("--accent", "--text-dim", "--text-faint"):
+        assert token in graph_rules
+
+
+def test_the_interest_graph_text_and_fills_reach_their_contrast() -> None:
+    colours = tokens()
+    for ground in ("bg", "bg-elev"):
+        for name in ("accent", "text-dim", "text-faint"):
+            assert _contrast(colours[name], colours[ground]) >= 3
+        assert _contrast(colours["text"], colours[ground]) >= 4.5
+
+
+def _mix_share_at(fill: str, b: float) -> float:
+    """The share of the polarity colour in a node's `color-mix` fill at brightness `b`."""
+    share = re.search(
+        r"var\(--(?:accent|text-dim)\) calc\(([\d.]+)% \+ ([\d.]+)% \* var\(--b\)\)", fill
+    )
+    assert share is not None, fill
+    return float(share.group(1)) + float(share.group(2)) * b
+
+
+@pytest.mark.parametrize("source", ["_components.css.j2", "prototype"])
+@pytest.mark.parametrize("polarity", ["up", "down"])
+def test_an_unheld_node_keeps_its_polarity_and_a_hold_brightens_it(
+    source: str, polarity: str
+) -> None:
+    css = PROTOTYPE.read_text() if source == "prototype" else _render_partial(source)
+    [fill] = [
+        d
+        for d in parse_style_block(f"<style>{css}</style>")[f".graph-node.{polarity}"]
+        if d.startswith("fill:")
+    ]
+
+    assert 0 < _mix_share_at(fill, 0) < _mix_share_at(fill, 1) == 100

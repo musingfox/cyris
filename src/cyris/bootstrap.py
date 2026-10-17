@@ -24,7 +24,7 @@ from cyris.service_layer.ports import ArticleRepository, AskClef, FetchSource, L
 
 @cache
 def _provider_defaults() -> dict:
-    """Per-provider model and threshold defaults; see docs/architecture.md §5."""
+    """Per-provider model defaults; see docs/architecture.md §5."""
     raw = (files("cyris") / "provider_defaults.json").read_text(encoding="utf-8")
     return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
 
@@ -40,7 +40,7 @@ def default_models() -> dict[str, str]:
 
 
 def embedding_defaults(provider: str) -> dict:
-    """The embedding model and its calibrated cutoff for one provider."""
+    """The embedding model one provider defaults to."""
     return _provider_defaults()["embedding"][provider]
 
 
@@ -114,22 +114,6 @@ def build_embedder(cfg: Config) -> Any | None:
     if not (vote.enabled or cfg.tracked_topics):
         return None
     return make_embedder(vote.provider, vote.model)
-
-
-def embedding_threshold(cfg: Config) -> float | None:
-    """The configured cutoff, else the calibration of the model it was measured on.
-
-    None when the configured model is not that model: its cosines run on a scale
-    no one has measured, so borrowing the calibrated model's number would judge
-    them wrongly without saying so.
-    """
-    vote = cfg.app.vote_similarity
-    if vote.threshold is not None:
-        return vote.threshold
-    calibrated = embedding_defaults(vote.provider)
-    if vote.model and vote.model != calibrated["model"]:
-        return None
-    return calibrated["threshold"]
 
 
 def build_worker_domains() -> Callable[[], list[str]] | None:
@@ -301,10 +285,6 @@ class Deps:
     # The model `embedder` embeds with, resolved: a tracked topic set for any
     # other model is skipped.
     embedding_model: str = ""
-    # Travels with `embedder`: the cutoff is a measured property of that model, so
-    # no model-agnostic default exists. None skips vote similarity rather than
-    # quietly judge one model's corpus by another's number.
-    embedding_threshold: float | None = None
     # The reader's areas: where a run's and an articles score's suggestions are counted.
     # None under json, which keeps no areas.
     area_store: Any | None = None
@@ -313,9 +293,14 @@ class Deps:
     # Takes (run_at, period, verdicts) after a vote-similarity pass that embedded;
     # None under json, which keeps no copy.
     record_similarity: Callable[..., None] | None = None
+    # The holds a run honours and records: D1Suppressions. None under json, which keeps none.
+    suppressions: Any | None = None
     # `{(date, period): articles_included}` for the archive's history rows; D1 only,
     # so the json path's rows show no count.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
+    # Reads the interest map's inputs for a run started at the given instant: D1InterestReader.read.
+    # None under json, which keeps no votes or holds to draw from.
+    interest_reader: Callable[[str], Any] | None = None
     # Keeps each issue's final content in D1; None under json, whose pages are the record.
     digest_store: Any | None = None
     # Each publishing run's input URLs, the record a rerun rebuilds from; D1 only.
@@ -376,27 +361,33 @@ def build_deps(
     area_store = None
     record_run = None
     record_similarity = None
+    suppressions = None
     digest_store = None
     digest_input_store = None
     archive_counts: Callable[[], dict[tuple[str, str], int]] = dict
+    interest_reader = None
     if d1 is not None:
         from cyris.adapters.store.archive_meta import D1ArchiveMeta
         from cyris.adapters.store.areas import D1AreaStore
         from cyris.adapters.store.digest_inputs import D1DigestInputStore
         from cyris.adapters.store.digests import D1DigestStore
+        from cyris.adapters.store.interest import D1InterestReader
         from cyris.adapters.store.runs import D1RunLog
         from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
         from cyris.adapters.store.stories import D1StoryStore
+        from cyris.adapters.store.suppressions import D1Suppressions
         from cyris.adapters.store.tags import D1TagStore
 
         tag_store = D1TagStore(d1)
         story_store = D1StoryStore(d1)
         record_run = D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record
         vote = cfg.app.vote_similarity
+        suppressions = D1Suppressions(d1, embedding_model(vote.provider, vote.model))
         record_similarity = D1SimilarityShadow(
             d1, embedding_model(vote.provider, vote.model)
         ).record
         archive_counts = D1ArchiveMeta(d1).article_counts
+        interest_reader = D1InterestReader(d1).read
         digest_store = D1DigestStore(d1)
         digest_input_store = D1DigestInputStore(d1)
         area_store = D1AreaStore(d1)
@@ -483,11 +474,12 @@ def build_deps(
         embedding_model=embedding_model(
             cfg.app.vote_similarity.provider, cfg.app.vote_similarity.model
         ),
-        embedding_threshold=embedding_threshold(cfg),
         area_store=area_store,
         record_run=record_run,
         record_similarity=record_similarity,
+        suppressions=suppressions,
         archive_counts=archive_counts,
+        interest_reader=interest_reader,
         digest_store=digest_store,
         digest_input_store=digest_input_store,
         worker_domains=build_worker_domains(),

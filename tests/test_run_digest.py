@@ -1266,29 +1266,6 @@ async def test_a_finished_digest_is_recorded(tmp_path: Path) -> None:
     assert summary["status"] == "ok"
 
 
-class _UnusedEmbedder:
-    usage = SimpleNamespace(as_dict=lambda: {})
-
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        raise AssertionError("an uncalibrated model must not be embedded with")
-
-
-async def test_an_uncalibrated_embedding_model_records_why_it_skipped(
-    tmp_path: Path, caplog
-) -> None:
-    """Without the reason in the run row, suppression stops with no trace but a log line."""
-    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
-    deps.cfg.app.vote_similarity.enabled = True
-    deps, recorded = _recording(replace(deps, embedder=_UnusedEmbedder(), embedding_threshold=None))
-
-    with caplog.at_level("WARNING", logger="cyris.service_layer.run_digest"):
-        await run_digest(deps, RunOptions())
-
-    [summary] = recorded
-    assert summary["vote_similarity_skipped"] == "no calibrated threshold for this model"
-    assert "no calibrated threshold" in caplog.text
-
-
 def _exploding_store(deps: Deps) -> None:
     def explode(*args, **kwargs):
         raise RuntimeError("the store is gone")
@@ -2514,7 +2491,6 @@ def _voting_deps(
         replace(
             deps,
             embedder=_TitleEmbedder(),
-            embedding_threshold=0.9,
             record_similarity=record_similarity,
         )
     )
@@ -2550,7 +2526,6 @@ async def test_the_similarity_record_gets_one_row_per_judged_candidate(tmp_path:
     ]
     by_url = {v.url: v for v in verdicts}
     assert by_url[_DISLIKED_AGAIN].down_similarity > by_url[_DISLIKED_AGAIN].up_similarity
-    assert summary["suppressed"] == 1
 
 
 async def test_the_digest_is_the_same_with_or_without_the_similarity_record(
@@ -2703,7 +2678,6 @@ def _ranking_deps(
         replace(
             deps,
             embedder=_RankEmbedder(),
-            embedding_threshold=1.0,
             embedding_model="test-embedding-model",
             record_similarity=None,
             ask_clef=ask_clef,
@@ -3112,3 +3086,21 @@ async def test_a_string_token_count_from_clef_never_fails_the_run(tmp_path: Path
     assert summary["preference_source"] == "clef"
     assert summary["clef"]["input_tokens"] is None
     assert len(contents) == 1
+
+
+async def test_vote_similarity_judges_a_model_nobody_calibrated(tmp_path: Path) -> None:
+    deps, _, recorded = _voting_deps(tmp_path, None)
+    deps.cfg.app.vote_similarity.provider = "workers_ai"
+    deps.cfg.app.vote_similarity.model = "some-other-model"
+
+    await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert "vote_similarity_judged" in summary
+    assert "vote_similarity_skipped" not in summary
+
+
+def test_deps_carries_no_cutoff_field() -> None:
+    from dataclasses import fields
+
+    assert "embedding_threshold" not in {f.name for f in fields(Deps)}
