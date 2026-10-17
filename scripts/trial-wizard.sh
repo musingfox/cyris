@@ -279,6 +279,7 @@ access_answer() {
   local file="$1" var="$2" prompt="$3" regex="$4" hidden="${5:-}" input rc=0 current
   current=$(fileval "$file" "$var")
   while true; do
+    rc=0
     printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
     [[ -z "$current" ]] || printf '%s[Enter keeps current]%s ' "$DIM" "$RESET"
     if [[ -n "$hidden" ]]; then read -rs input || rc=$?; printf '\n'
@@ -289,6 +290,7 @@ access_answer() {
     fi
     [[ -n "$input" ]] || input="$current"
     if [[ "$input" =~ $regex ]]; then printf -v "$var" '%s' "$input"; return 0; fi
+    if (( rc != 0 )); then die "No answer for $var."; fi
     if [[ -z "$input" ]]; then warn "$var is empty. Enter it again."
     else warn "$var does not look right. $prompt"; fi
   done
@@ -774,20 +776,31 @@ stage_16() {
 stage_17() {
   stage "Start the first digest"
   ask_match PERIOD "Period, morning or evening:" '^(morning|evening)$'
-  local SESSION reply before rc=0
+  local hdr full code reply before why rc=0
   # The run's own row is the receipt. The Worker's live tail never carries the
   # container's stdout, so the run_summary line never appears there.
   before=$(fileval "$APP_ENV" CLOUDFLARE_API_TOKEN | uv run python scripts/trial_api.py latest-run \
     --account-id "$ACCOUNT_ID" --d1-id "$TRIAL_D1_ID") || die "Could not read digest_runs in $TRIAL_D1_NAME."
-  SESSION=$(fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | shasum -a 256 | cut -d' ' -f1)
   if ! confirm "POST https://$SLUG.$DOMAIN/run?period=$PERIOD now?"; then
     note "skipped"; next; return 0
   fi
-  reply=$(curl -s -X POST --max-time 180 -b "cyris_session=$SESSION" "https://$SLUG.$DOMAIN/run?period=$PERIOD" || true)
+  hdr=$(access_header_file)
+  full=$(curl -s -X POST --max-time 180 -H "@$hdr" -w '\n%{http_code}' \
+    "https://$SLUG.$DOMAIN/run?period=$PERIOD" || true)
+  rm -f "$hdr"
+  code="${full##*$'\n'}"
+  reply="${full%$'\n'*}"
   say "Reply: $reply"
   if grep -q '"started"' <<<"$reply"; then
     printf '  %s✓%s run started; it takes minutes\n' "$GREEN" "$RESET"
   else
+    case "$code" in
+      302) why="Access redirected" ;;
+      401) why="Access refused the token" ;;
+      403) why="Worker refused the JWT" ;;
+      *) why="" ;;
+    esac
+    if [[ -n "$why" ]]; then die "POST /run answered $code: $why."; fi
     warn "No 'started' reply. A cold container may still have started the run; the wait below finds it either way."
   fi
   say "Waiting for a digest_runs row newer than run $before:"

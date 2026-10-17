@@ -60,7 +60,9 @@ case "$*" in
     else echo 503; fi ;;
   *"/settings"*) echo "${FAKE_SETTINGS_CODE:-302}" ;;
   *"/run?period="*)
-    printf '%s\n%s\n' '{"started":"run","at":"2026-10-06T10:50:10Z"}' "${FAKE_RUN_CODE:-200}" ;;
+    body='{"started":"run","at":"2026-10-06T10:50:10Z"}'
+    [[ -n "${FAKE_RUN_BODY+x}" ]] && body="$FAKE_RUN_BODY"
+    printf '%s\n%s\n' "$body" "${FAKE_RUN_CODE:-200}" ;;
   *"pages.dev"*) echo 200 ;;
 esac
 """
@@ -295,6 +297,16 @@ def test_an_access_answer_that_ends_stops_stage_11_naming_it(rig) -> None:
     assert "No answer for CYRIS_ACCESS_AUD." in run.out
 
 
+def test_a_saved_access_answer_that_does_not_match_stops_when_input_ends(rig) -> None:
+    r = rig(_stages(10))
+    (r.repo / f".env.trial-{SLUG}").write_text(
+        f"CLOUDFLARE_API_TOKEN={TOKEN}\nCYRIS_ACCESS_AUD=not a tag\n"
+    )
+    run = r.run(stdin=START + "\nhttps://t.cloudflareaccess.com/\n")
+    assert run.code == 1
+    assert "CYRIS_ACCESS_AUD" in run.out
+
+
 def test_the_service_token_wait_needs_no_keypress_and_shows_the_time(rig) -> None:
     run = rig(_stages(11), FAKE_BUILD_FAIL_FIRST="2").run(stdin=START + "y\n")
     waiting = "waiting for https://t1.example.com/ to answer 200 with the service token: 0m0"
@@ -408,6 +420,53 @@ def test_the_first_digest_waits_for_its_digest_runs_row(rig) -> None:
     assert "--after 4" in wait and "--app-worker cyris-app-t1" in wait
     assert "run 5: status ok" in run.out
     assert " tail " not in run.calls
+
+
+def test_the_first_run_posts_with_the_service_token_and_no_cookie(rig) -> None:
+    run = rig(_stages(16)).run(stdin=START + "morning\ny\n")
+    post = next(ln for ln in run.calls.splitlines() if "/run?period=morning" in ln)
+    assert "access-id=yes access-secret=yes" in post
+    assert " -b " not in post
+    assert "✓ run started" in run.out
+
+
+def test_a_first_run_without_a_started_reply_warns_and_waits(rig) -> None:
+    run = rig(_stages(16), FAKE_RUN_CODE="503", FAKE_RUN_BODY="busy").run(
+        stdin=START + "morning\ny\n"
+    )
+    assert "No 'started' reply" in run.out
+    assert "POST /run answered" not in run.out
+    assert "trial_api.py wait-run" in run.calls
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [
+        ("302", "Access redirected"),
+        ("401", "Access refused the token"),
+        ("403", "Worker refused the JWT"),
+    ],
+)
+def test_a_first_run_refused_at_the_edge_dies_naming_the_status(rig, code, reason) -> None:
+    run = rig(_stages(16), FAKE_RUN_CODE=code, FAKE_RUN_BODY="refused").run(
+        stdin=START + "morning\ny\n"
+    )
+    assert run.code == 1
+    assert f"POST /run answered {code}: {reason}." in run.out
+
+
+def test_the_first_run_keeps_the_secret_out_of_the_transcript_and_argv(rig) -> None:
+    run = rig(_stages(16), FAKE_RUN_CODE="403", FAKE_RUN_BODY="refused").run(
+        stdin=START + "morning\ny\n"
+    )
+    assert "sek-9f3" not in run.out
+    assert "sek-9f3" not in run.calls
+
+
+def test_the_wizard_no_longer_uses_a_session_cookie() -> None:
+    script = (ROOT / "scripts/trial-wizard.sh").read_text()
+    assert "cyris_session" not in script
+    assert "shasum" not in script
 
 
 def test_a_wait_that_times_out_warns_and_goes_on(rig) -> None:
