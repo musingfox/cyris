@@ -105,6 +105,17 @@ def _archive_shortfall(live: set[str], manifest_paths) -> set[str]:
     return {_slash(p) for p in live} - kept
 
 
+def unexpected_live_pages(live: set[str], manifest, drop) -> set[str]:
+    """Live archive pages that `manifest` minus `drop` lacks, leaving out the `drop` pages.
+
+    The one rule for "the live archive would lose a page nobody named": `publish_site`
+    applies it before a deploy, and the prune preflight before it writes anything.
+    """
+    dropped = {_slash(p) for p in drop}
+    kept = {_slash(p) for p in manifest} - dropped
+    return _archive_shortfall(live, kept) - dropped
+
+
 def _issue(path: str) -> str:
     """The `/{date}-{period}` stem a digest or raw page belongs to."""
     return _slash(path).removesuffix(".html").removesuffix("-raw")
@@ -248,7 +259,7 @@ def publish_site(
                 "manifest to compare; deploying as a first publish"
             )
             live = set()
-        missing = _archive_shortfall(live, manifest) - dropped
+        missing = unexpected_live_pages(live, manifest, dropped)
         issues = {_issue(p) for p in missing}
         tolerance = 0 if dropped else ARCHIVE_SHORTFALL_TOLERANCE
         if len(issues) > tolerance:
