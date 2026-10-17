@@ -78,6 +78,32 @@ account permissions:
 Note your account id as well. Workers AI takes a separate token (step 4), needed only
 if you use it.
 
+## 3a. Put Cloudflare Access in front of the Worker
+
+Access is the only sign-in. The Worker answers `403` to every protected path without a
+valid Access JWT, so the Access application comes first: its AUD tag and your team domain
+go into the secrets file in step 4, and a deploy before they are set leaves `/settings`
+answering `403`.
+
+1. Zero Trust → Access → Applications → Add an application → **Self-hosted**. The
+   application domain is the hostname the Worker answers on: `cyris-app.<subdomain>.workers.dev`,
+   or your custom domain. Destinations are `/settings`, `/onboarding`, `/labels`, `/login`, `/run`,
+   `/api/*` and `/static/*` on that hostname. If you set `CYRIS_PRIVATE_ARCHIVE=true`, make the
+   destination the whole hostname instead, so the archive sits behind the same sign-in.
+2. Add two policies to the application. An **Allow** policy with the one-time PIN method and
+   your address, for readers. A **Service Auth** policy for scripts, which needs a service
+   token: Zero Trust → Access → Service Auth → Create Service Token.
+3. Copy the application's **Application Audience (AUD) tag** from its overview into
+   `CYRIS_ACCESS_AUD`. Set `CYRIS_ACCESS_TEAM_DOMAIN` to your team domain as a host without a
+   scheme, such as `yourteam.cloudflareaccess.com`.
+4. Check from a browser you are not logged in with: `/settings` must redirect to the Access
+   login, not show the page.
+
+To revoke a script's access, delete its service token in the Zero Trust dashboard (Access →
+Service Auth). Its two values, `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`, are
+secrets: keep them in your local `.env`, which the CLI reads, and in the repository's GitHub
+Actions secrets when you use the `verify` step of `.github/workflows/deploy.yml`.
+
 ## 4. Write the secrets file
 
 Write the secrets into a file that git ignores. `.gitignore` covers `.env.*`, so
@@ -86,7 +112,7 @@ Write the secrets into a file that git ignores. `.gitignore` covers `.env.*`, so
 ```sh
 # .env.cloud — only the names you are setting; a blank line uploads an empty value
 CYRIS_ACCESS_TEAM_DOMAIN=<your team domain, e.g. yourteam.cloudflareaccess.com>
-CYRIS_ACCESS_AUD=<the Application Audience tag of the Access application>
+CYRIS_ACCESS_AUD=<the Application Audience tag from step 3a>
 CYRIS_STORE_DATABASE_ID=<the UUID from step 1>
 CLOUDFLARE_ACCOUNT_ID=<your account id>
 CLOUDFLARE_API_TOKEN=<the token from step 3>
@@ -94,14 +120,15 @@ CYRIS_PROMOTE_PAGES_PROJECT=<the name from step 2>
 ANTHROPIC_API_KEY=<your key, if you use Anthropic>
 ```
 
-Do not upload a copy of `.env.example` with blanks: an empty `CYRIS_UI_TOKEN` locks you
-out.
+Do not upload a copy of `.env.example` with blanks: an empty `CYRIS_ACCESS_TEAM_DOMAIN`
+answers `403` on every protected path until it is set.
 
-The five required names:
+The six required names:
 
 | Name | What it is |
 |---|---|
-| `CYRIS_UI_TOKEN` | The login token for `/settings` and the vote API. At least 32 characters, or `/login` refuses to start a session |
+| `CYRIS_ACCESS_TEAM_DOMAIN` | Your Access team domain, a host without a scheme (step 3a) |
+| `CYRIS_ACCESS_AUD` | The Application Audience tag of the Access application (step 3a) |
 | `CYRIS_STORE_DATABASE_ID` | The D1 UUID |
 | `CLOUDFLARE_ACCOUNT_ID` | Your account id |
 | `CLOUDFLARE_API_TOKEN` | The D1 + Pages token |
@@ -115,9 +142,8 @@ Optional names, by feature. Add them to the same file now or later:
 | Vote similarity | `CLOUDFLARE_EMBEDDING_API_TOKEN` (Workers AI → Read) for `bge-m3`, or `GEMINI_API_KEY` |
 | Discord links point at this Worker, where votes work | `CYRIS_PROMOTE_CUSTOM_DOMAIN`, a bare hostname: `cyris-app.<subdomain>.workers.dev` on a domainless deploy, or your own hostname |
 | The archive lives somewhere other than `<project>.pages.dev` | `DIGEST_ORIGIN` |
-| The archive behind the login, not public | `CYRIS_PRIVATE_ARCHIVE=true`; Worker-only, the container never sees it |
+| The archive behind Access, not public | `CYRIS_PRIVATE_ARCHIVE=true`; Worker-only, the container never sees it |
 | RSS buffer, newsletter and vote Workers | see [Optional Workers](#optional-workers) |
-| Cloudflare Access | `CYRIS_UI_ACCESS_HOST`, only after [step 4 of the Access setup](#optional-cloudflare-access-on-your-own-domain) |
 
 ## 5. Deploy the Worker
 
@@ -141,9 +167,9 @@ where `/api/vote` does not exist, so readers never see vote buttons.
 
 ## 6. Log in and fill `/settings`
 
-Open `https://cyris-app.<subdomain>.workers.dev/login` and paste `CYRIS_UI_TOKEN`. The
-session cookie lasts 30 days. Login sends you to `/`, the archive, which has nothing to
-serve until the first digest is published, so open `/settings` next.
+Open `https://cyris-app.<subdomain>.workers.dev/settings`. Access asks for your one-time PIN
+first, then sends you back to the page you asked for. The archive has nothing to serve
+until the first digest is published, so `/settings` is where you start.
 
 A new deployment has no source, and none is copied in for you
 ([ADR-0020](decisions/0020-new-deployments-start-from-onboarding.md)). While `sources` is
@@ -190,20 +216,16 @@ source every run ends having fetched nothing, logging `waiting for onboarding`.
 The hourly tick starts the pipeline only on the publish hours, and in the 3 hours after one
 whose run never finished ([operations](operations.md#routine)). The onboarding's last step
 starts the first digest for you (step 6); to start another without waiting, `POST /run`
-with a period. `/settings` has no button for it, so use curl with the session cookie:
+with a period. `/settings` has no button for it, so use curl with the Access service token
+from step 3a:
 
 ```sh
 APP=https://cyris-app.<subdomain>.workers.dev
-CYRIS_UI_TOKEN=<the value from .env.cloud>
-curl -s -c cyris.cookies -d "token=$CYRIS_UI_TOKEN" "$APP/login" -o /dev/null
-curl -s -b cyris.cookies -X POST "$APP/run?period=morning"
-rm cyris.cookies
-```
-
-The cookie is `cyris_session`, holding the SHA-256 hex of the token, so this works too:
-
-```sh
-curl -X POST -b "cyris_session=$(printf %s "$CYRIS_UI_TOKEN" | shasum -a 256 | cut -d' ' -f1)" \
+CYRIS_ACCESS_CLIENT_ID=<the service token's client id>
+CYRIS_ACCESS_CLIENT_SECRET=<the service token's client secret>
+curl -s -X POST \
+  -H "CF-Access-Client-Id: $CYRIS_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CYRIS_ACCESS_CLIENT_SECRET" \
   "$APP/run?period=morning"
 ```
 
@@ -272,33 +294,6 @@ Email-only sources (`type: newsletter` with `email_match`) go into D1 like any o
 source: on `/settings` → Sources, or with `cyris sources push`. On a D1 deployment
 `sources.yaml` alone does nothing.
 
-## Optional: Cloudflare Access on your own domain
-
-A `*.workers.dev` deploy is complete with the token cookie as its only lock. If you own
-a domain on Cloudflare, Access can be a second layer on that domain. Keep it off the
-`workers.dev` hostname, where scripts sign in with the cookie alone (see below). That
-rules out
-[Worker-level Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/),
-which covers every hostname of the Worker, `workers.dev` included; step 2 protects one
-hostname instead. Attaching a domain means routing lives in two places: `wrangler.toml`
-for `workers_dev`, the dashboard for the domain. Follow this order:
-
-1. Attach the custom domain from the dashboard (Workers & Pages → `cyris-app` →
-   Settings → Domains & Routes). The zone must already be active.
-2. Zero Trust → Access → Applications → Add an application → **Self-hosted**. Set the
-   domain to the hostname you attached, policy Action **Allow**, rule **Emails** → your
-   address. Applications deny by default.
-3. Check from a browser you are not logged in with: a request carrying a valid
-   `cyris_session` cookie must still redirect (302) to the Access login.
-4. **Only now** set `CYRIS_UI_ACCESS_HOST` to that hostname. It makes `/api/vote` on
-   that hostname trust Access instead of the cookie, so setting it before step 3
-   proves Access is blocking leaves votes open to anyone.
-
-The Discord digest link picks up this hostname on its own (section 5). Scripts against an Access hostname get a 302 rather than a 401 and need an
-Access service token. Use the `workers.dev` URL, which stays outside Access, for them:
-your own scripts, `curl` in step 7, `cyris doctor --deployment` and the deploy
-workflow's `CYRIS_DEPLOYMENT_URL`.
-
 ## Running the CLI against the deployment
 
 Work with no UI (bulk article changes, `sources push`, `doctor`) runs from a clone,
@@ -315,7 +310,8 @@ CYRIS_HTML_OUTPUT_ENABLED=true
 CYRIS_PROMOTE_PUBLISH_ENABLED=true
 CYRIS_PROMOTE_PAGES_PROJECT=<the project name>
 ANTHROPIC_API_KEY=<the key for the provider stored in D1>
-CYRIS_UI_TOKEN=<only for doctor --deployment>
+CYRIS_ACCESS_CLIENT_ID=<the service token's client id, for doctor --deployment>
+CYRIS_ACCESS_CLIENT_SECRET=<the service token's client secret, for doctor --deployment>
 # Only if you deployed the optional Workers, so doctor checks them too:
 CYRIS_RSS_WORKER_URL=
 CYRIS_NEWSLETTER_WORKER_URL=
@@ -385,8 +381,8 @@ your own repository.
   the archive is empty and pages 404.
 - **Every run ends `publish_failed`**: check that the Pages project name was free (step
   2) and that the token has Pages Edit.
-- **`/login` says the token must be at least 32 characters**: regenerate it with
-  `openssl rand -hex 32` and set it again.
+- **`/settings` answers `403` with a detail that names `CYRIS_ACCESS_TEAM_DOMAIN` or
+  `CYRIS_ACCESS_AUD`**: set the one it names (step 3a), then deploy again.
 - **Container routes fail right after the first deploy**: provisioning takes several
   minutes; wait and check the log.
 - **rss logs `no such table`**: the app has not reached this D1 yet, or rss points at
