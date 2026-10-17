@@ -47,6 +47,14 @@ _WORKER_ONLY = (
 )
 
 
+# Read by the scripts, never by the Worker or a deploy form: a service token that
+# `cyris doctor --deployment` sends to the Access-guarded Worker.
+_SCRIPT_ONLY = (
+    "CYRIS_ACCESS_CLIENT_ID",
+    "CYRIS_ACCESS_CLIENT_SECRET",
+)
+
+
 def _worker_env() -> set[str]:
     js = (ROOT / "workers/app/src/index.js").read_text(encoding="utf-8")
     router = (ROOT / "workers/app/src/router.js").read_text(encoding="utf-8")
@@ -184,7 +192,8 @@ def ungraded_worker_only_names(doc: str) -> list[str]:
         cells = [c.strip() for c in row.split("|")]
         if len(cells) > 3 and cells[2].strip("*").startswith(("B", "C")):
             graded.append(row)
-    return [name for name in _WORKER_ONLY if not any(name in row for row in graded)]
+    names = (*_WORKER_ONLY, *_SCRIPT_ONLY)
+    return [name for name in names if not any(name in row for row in graded)]
 
 
 def test_every_worker_only_name_is_graded() -> None:
@@ -230,3 +239,26 @@ def test_private_archive_description_names_no_cookie_login() -> None:
     description = _bindings()["CYRIS_PRIVATE_ARCHIVE"]
     assert "/login" not in description
     assert "cookie" not in description.lower()
+
+
+def test_each_script_credential_is_graded_on_its_own_row() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access service token secret |")]
+    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_SECRET"]
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access service token id |")]
+    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_ID"]
+
+
+def test_script_credentials_are_commented_and_in_no_binding_or_worker() -> None:
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    for name in _SCRIPT_ONLY:
+        assert f"# {name}=" in text, name
+        assert not re.search(rf"^{name}=", text, re.M), name
+    shipped = (
+        json.dumps(_bindings()),
+        (ROOT / "src/cyris/diagnostics/config_show.json").read_text(encoding="utf-8"),
+        (ROOT / "workers/app/src/index.js").read_text(encoding="utf-8"),
+        (ROOT / "workers/app/src/router.js").read_text(encoding="utf-8"),
+    )
+    for name in _SCRIPT_ONLY:
+        assert not any(name in part for part in shipped), name
