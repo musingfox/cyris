@@ -468,7 +468,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. D1 only: a `json` deployment polls no Worker |
 | Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one stops `cyris run` and polls no feed |
 | Runtime settings | **D1 `settings`**; `cyris.toml` for a `json` deployment | same | Grade D. One home per backend, no value in code, and a missing key stops the run — see §5 |
-| Tracked topics | **D1 `tracked_topics`**; `cyris.toml` `[[tracked_topics]]` for a `json` deployment | same | Grade D, one row per topic: name, description, threshold and the embedding model the threshold was set for. Written by `/settings` (Tracking), read by `load_effective_config` beside `sources`. Not rows of `settings`, whose every key is required: an empty table is a deployment that tracks nothing. A topic's hits are not kept here, or anywhere of their own: they live in the issue's `DigestContent`, which D1 `digests` stores |
+| Tracked topics | **D1 `tracked_topics`**; `cyris.toml` `[[tracked_topics]]` for a `json` deployment | same | Grade D, one row per topic: name, description, threshold and the embedding model the threshold was set for. Written by `/settings` (Tracking), read by `load_effective_config` beside `sources`. Not rows of `settings`: an empty table is a deployment that tracks nothing. A topic's hits are not kept here, or anywhere of their own: they live in the issue's `DigestContent`, which D1 `digests` stores |
 | Areas: name, position, status, merged target, proposal counts | **D1 `areas`** (none for a `json` deployment) | same | Grade D, one row per area, written by `/settings` (Areas). Read by `load_effective_config` beside `tracked_topics`, so every run sees the closed set the model picks from. A `proposed` row carries the counts a suggestion has accumulated; a `dismissed` or `merged` row stays so its name keeps resolving |
 | Area birth threshold | **D1 `area_birth_threshold`** (none for a `json` deployment) | same | Grade D, at most one row, written by `/settings` (Areas). Read only by `/settings`, to mark which proposals meet it. No run reads it, so an unset threshold changes no run |
 | Discord webhook | **D1 `settings`** | same | written by `/settings`; `""` means notifications are off. A `json` deployment keeps it in `cyris.toml [notify]` |
@@ -529,6 +529,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | `/settings` verification time limits: the LLM probe's 30s, the embedding probe's 15s, the Discord probe's 10s | A | `LLM_PROBE_TIMEOUT_SECONDS`, `EMBEDDING_PROBE_TIMEOUT_SECONDS`, `DISCORD_PROBE_TIMEOUT_SECONDS` in `diagnostics/doctor.py`; `triage_server.py` also bounds the area Suggest and Propose model calls with `LLM_PROBE_TIMEOUT_SECONDS` | done 2026-10-02 — a Save is a person waiting, so each bound sits far below the minutes a run allows the same client; reasons in the comments beside the first two. The area calls fit the same 30s: Suggest is one short reply, and Propose is one reply for all sources, the longer of the two. Both fail soft (a Suggest never blocks a save, a Propose writes nothing on timeout), so a slow reply shows the reader a notice and changes no row. A probe past its bound fails with what to do next, and nothing is stored |
 | Vote request timeout on the digest and raw pages | A | `VOTE_TIMEOUT_MS` in `adapters/output/templates/_promote_script.html.j2` | done 2026-10-02 — reason in the comment beside it; a vote that outlasts it is shown to the reader as not landed |
 | Per-provider default model, per-model embedding threshold | A | `src/cyris/provider_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
+| Per-provider default reasoning effort | A | `src/cyris/reasoning_effort_defaults.json` | unchanged — values in the file, reasons in *Provider defaults* below |
 | Runtime-setting registry: each grade-D key's `/settings` category, label, controls, save route and whether a save applies live | A | `src/cyris/settings_fields.json` | unchanged — the one key list (see *Where grade D lives*); `tests/test_settings_fields.py` holds the page to it |
 | `cyris config show` registry: the rows it lists beyond `settings_fields.json` and `B_GRADE_ENV_VARS`, and every label it prints | A | `src/cyris/diagnostics/config_show.json` | done 2026-10-08 — the image ships `src/` only, so `.env.example` cannot be read at runtime; `tests/test_deploy_inputs.py` holds the secret list to it, and each code constant is named as `module:attribute` so the value shown is the one the code runs with |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
@@ -560,9 +561,10 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` keeps today's order and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
 | Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
+| LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline); `cyris.toml [llm_provider]` for a `json` deployment | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |
 | Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 |
 | Embedding threshold | **A** | `cyris.toml`, else the calibration in `provider_defaults.json` when the configured model is the one it was measured on | unchanged — a measured property of the model, not a preference. Any other model has none: the run skips vote similarity, says why in `run_summary` as `vote_similarity_skipped`, and `doctor` fails until `cyris.toml` sets one (2026-10-07) |
-| Tracked topics: name, description, threshold, embedding model | D | **D1 `tracked_topics`**, written by `/settings` (Tracking); `cyris.toml [[tracked_topics]]` for a `json` deployment | done 2026-10-08 — the one optional runtime setting: no topic is a valid deployment, so the list is not in `settings_fields.json`, whose every key is required, and an empty one stops nothing. The threshold is D here while vote similarity's is A, because it measures a different thing: how wide the reader means *their own sentence* to reach, which only they can judge from a hit list (`cyris topic-sim`). It still follows ADR-0006's rule that a cutoff belongs to the model it was measured on: each topic stores that model, has no default threshold, and a run embedding with another model skips it and names it in `run_summary`. The embedder is the one `vote_similarity.provider` and `.model` name, built when a topic exists even with vote similarity off |
+| Tracked topics: name, description, threshold, embedding model | D | **D1 `tracked_topics`**, written by `/settings` (Tracking); `cyris.toml [[tracked_topics]]` for a `json` deployment | done 2026-10-08 — an optional runtime setting: no topic is a valid deployment, so the list is not in `settings_fields.json`, and an empty one stops nothing. The threshold is D here while vote similarity's is A, because it measures a different thing: how wide the reader means *their own sentence* to reach, which only they can judge from a hit list (`cyris topic-sim`). It still follows ADR-0006's rule that a cutoff belongs to the model it was measured on: each topic stores that model, has no default threshold, and a run embedding with another model skips it and names it in `run_summary`. The embedder is the one `vote_similarity.provider` and `.model` name, built when a topic exists even with vote similarity off |
 | Headline slot: the Top story above the area sections | A | structural: `layout_by_area` in `domain/area_layout.py` takes the first of the featured sections, else the first thematic one | unchanged — the shape of the layout, not a preference: one story leads, and it is never repeated in a section. No setting |
 | Section labels: "Other" and Discord's "Digest" | A | `UNPLACED_SECTION_LABEL` in `adapters/output/html_digest.py`, `UNNAMED_SECTION_TITLE` in `adapters/notify.py` | unchanged — reader-facing strings are English and i18n has no framework yet, like "Top story" in the templates. The layout carries only `AreaSection.role` |
 | Lower rows per named area | A | `LOWER_ROWS_PER_AREA` in `domain/area_layout.py`, with its reason beside it | unchanged — the milestone's wall-of-text measure; fixed until L6, and L4 reuses it. `tests/test_area_layout.py` holds the cut to this name |
@@ -581,8 +583,10 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 
 `src/cyris/provider_defaults.json` holds what a provider runs with when the config
 names a provider but no model, plus the similarity cutoff each embedding model is
-calibrated at. The file holds values; the reasons are here, so that changing a number
-means reading why it is that number.
+calibrated at. `src/cyris/reasoning_effort_defaults.json` holds each provider's default
+reasoning level, and the thinking budgets a Gemini 2.5 model takes instead of a level.
+The files hold values; the reasons are here, so that changing a number means reading why
+it is that number.
 
 **`workers_ai` defaults to `@cf/openai/gpt-oss-120b`, not `llama-3.3-70b`.** The main reason
 is output cost: gpt-oss is about 3x cheaper on output (68,182 against 204,805 neurons per M
@@ -598,6 +602,12 @@ grows with the window, because its prompt is bounded by `BATCH_SIZE` in
 `gemini`, under the name the gateway catalog gives it, so switching providers changes the path and
 not the model. It was in the catalog when measured on 2026-09-21: the gateway answered 402 for a
 missing key, where a model it lacks answers 404.
+
+**`openai` defaults to `low` reasoning effort, the other providers to none.** Every cyris call is
+extract-and-summarise rather than a problem to solve, so reasoning is overhead. On Workers AI,
+leaving it unbounded was not merely wasteful: gpt-oss-120b spent a whole output budget thinking
+and returned an empty message. Non-reasoning models ignore it. `gemini`, `ai_gateway` and
+`anthropic` send nothing, which is what they did before the setting existed.
 
 **The two embedding thresholds are 0.53 and 0.68, and they are not interchangeable.** Why
 each is a measured property of its model, graded **A** while the provider and model are D:
@@ -635,14 +645,16 @@ each backend has exactly one home, with nothing overlaid:
   sources from D1 `sources` alone; a `json` deployment reads `cyris.toml` and `sources.yaml` alone.
   Nothing is overlaid, the environment supplies no grade-D value, and no grade-D value lives in
   code: the six table models have no defaults, and a table missing any of its keys is `None`.
-- **A missing key is an error, where it is read.** `run` (including `--if-due`), `articles score`,
+  The one exception is the optional `llm_provider.reasoning_effort`, whose absence means the
+  storable value `default` ([ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md)).
+- **A missing key is an error, where it is read,** except the optional reasoning effort (ADR-0018). `run` (including `--if-due`), `articles score`,
   `vote-sim`, `embed-compare` and `llm-compare` stop before any work and name every missing key;
   `run` and `llm-compare` also stop on an empty source list. The load itself never raises on
   completeness, so the commands that fill an empty D1 — `triage-ui` (`/settings`),
   `settings push`, `sources push|list`, `promote-sync`, `store *` — still start.
 - **A D1 read error propagates.** Nothing falls back to the file.
 - **One key list.** `src/cyris/settings_fields.json` names every key with its `/settings` field —
-  category, label, controls and save route, and whether a save applies live. `GRADE_D_KEYS` (the required set and `WRITABLE_KEYS`),
+  category, label, controls and save route, and whether a save applies live. `GRADE_D_KEYS` and `WRITABLE_KEYS` (every key, the optional reasoning effort of ADR-0018 included), `REQUIRED_KEYS` (those without it),
   the values route's plain keys, and the page's field map (served on `GET /api/settings`) all
   derive from it — every key has a field in one of Model, Digest, Pipeline or
   Notifications; `tests/test_settings_fields.py` holds the page to it. `validate_setting` checks one key through its field's own type, so the page,
@@ -677,7 +689,7 @@ two differences: an empty table is valid, and no command pushes them from a file
 deployment ignores a `cyris.toml`'s `[[tracked_topics]]`.
 
 With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
-409. That deployment edits `cyris.toml` by hand, and `cyris.toml.example` lists every key.
+409. That deployment edits `cyris.toml` by hand, and `cyris.toml.example` lists every required key; the optional `llm_provider.reasoning_effort` is absent and runs at `default`.
 
 The schedule moved with it, and then moved again: the tick is now a Workers Cron Trigger
 (the repo-root `wrangler.toml`) rather than `docker/crontab`, hourly, running
