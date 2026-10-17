@@ -221,6 +221,7 @@ APP_ENV=".env.trial-$SLUG"
 ACCESS_ENV=".env.trial-$SLUG.access"
 PROMOTE_ENV=".env.trial-$SLUG-promote"
 RSS_ENV=".env.trial-$SLUG-rss"
+NEWSLETTER_ENV=".env.trial-$SLUG-newsletter"
 SOURCES_FILE=".env.trial-$SLUG-sources.yaml"
 APP_CFG="wrangler.trial-$SLUG.toml"
 PROMOTE_CFG="workers/promote/wrangler.trial-$SLUG.toml"
@@ -314,6 +315,15 @@ access_header_file() {
   f=$(mktemp)
   printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' \
     "$(fileval "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_ID)" "$(fileval "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_SECRET)" > "$f"
+  printf '%s' "$f"
+}
+
+# bearer_header_file writes the Worker's bearer to a private temp file and prints its path, so
+# the token reaches curl through a file and never through argv.
+bearer_header_file() {
+  local f
+  f=$(mktemp)
+  printf 'Authorization: Bearer %s\n' "$TRIAL_WORKER_TOKEN" > "$f"
   printf '%s' "$f"
 }
 
@@ -741,14 +751,14 @@ YAML
 
 # ── 14 ────────────────────────────────────────────────────────────────────
 stage_14() {
-  stage "The rss Worker"
+  stage "The rss and newsletter Workers"
   TRIAL_WORKER_TOKEN=$(fileval "$RSS_ENV" RSS_TOKEN)
   if [[ -z "$TRIAL_WORKER_TOKEN" ]]; then
     TRIAL_WORKER_TOKEN=$(openssl rand -hex 32)
     printf 'RSS_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$RSS_ENV"
   fi
   grep -qx "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV" || die "$RSS_ENV does not hold the token."
-  local rc=0 code poll feeds want
+  local rc=0 code poll feeds want hdr
   gated rss "Deploy the rss Worker with $RSS_CFG?" \
     bunx wrangler deploy --config "$RSS_CFG" --env-file /dev/null --secrets-file "$RSS_ENV" || rc=$?
   [[ $rc -eq 0 || $rc -eq 2 ]] || die "rss Worker deploy failed."
@@ -768,6 +778,26 @@ stage_14() {
   if [[ "$feeds" == 0 ]] && (( want > 0 )); then die "/poll reports feeds 0, expected $want. Go back to stage 13."; fi
   [[ "$feeds" == "$want" ]] || die "/poll reports feeds '$feeds', the rss sources push had $want."
   printf '  %s✓%s /poll feeds = %s\n' "$GREEN" "$RESET" "$feeds"
+  printf 'NEWSLETTER_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$NEWSLETTER_ENV"
+  [[ "$(fileval "$NEWSLETTER_ENV" NEWSLETTER_TOKEN)" == "$TRIAL_WORKER_TOKEN" ]] || die "$NEWSLETTER_ENV does not hold the token."
+  rc=0
+  gated newsletter "Deploy the newsletter Worker with $NEWSLETTER_CFG?" \
+    bunx wrangler deploy --config "$NEWSLETTER_CFG" --env-file /dev/null --secrets-file "$NEWSLETTER_ENV" || rc=$?
+  [[ $rc -eq 0 || $rc -eq 2 ]] || die "Newsletter Worker deploy failed."
+  if [[ $rc -eq 0 ]]; then
+    TRIAL_NEWSLETTER_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/newsletter.log" | head -1 || true)
+    write_env TRIAL_NEWSLETTER_URL "$TRIAL_NEWSLETTER_URL"
+  fi
+  ask_match TRIAL_NEWSLETTER_URL "Newsletter Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
+  write_env TRIAL_NEWSLETTER_URL "$TRIAL_NEWSLETTER_URL"
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$TRIAL_NEWSLETTER_URL/newsletters" || true)
+  [[ "$code" == 401 ]] || die "$TRIAL_NEWSLETTER_URL/newsletters without the bearer answered $code, not 401."
+  printf '  %s✓%s /newsletters without the bearer → 401\n' "$GREEN" "$RESET"
+  hdr=$(bearer_header_file)
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "@$hdr" "$TRIAL_NEWSLETTER_URL/newsletters" || true)
+  rm -f "$hdr"
+  [[ "$code" == 200 ]] || die "$TRIAL_NEWSLETTER_URL/newsletters with the bearer answered $code, not 200: the secret did not land."
+  printf '  %s✓%s /newsletters with the bearer → 200\n' "$GREEN" "$RESET"
   in_file "$APP_ENV" write_env CYRIS_WORKER_TOKEN "$TRIAL_WORKER_TOKEN"
   in_file "$APP_ENV" write_env CYRIS_RSS_WORKER_URL "$TRIAL_RSS_URL"
   grep -qx "CYRIS_WORKER_TOKEN=$TRIAL_WORKER_TOKEN" "$APP_ENV" || die "CYRIS_WORKER_TOKEN did not land."

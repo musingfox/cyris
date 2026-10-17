@@ -215,9 +215,17 @@ def _deploy_lines() -> list[int]:
     return [i for i in _wrangler_lines() if re.search(r"wrangler deploy\b", lines[i])]
 
 
-def test_the_wizard_deploys_all_three_workers() -> None:
+def test_the_wizard_dry_runs_all_four_configs() -> None:
     lines = _wizard().split("\n")
-    configs = {_option(lines[i], "--config") for i in _deploy_lines()}
+    configs = {_option(lines[i], "--config") for i in _deploy_lines() if "--dry-run" in lines[i]}
+    assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG", "$NEWSLETTER_CFG"}
+
+
+def test_the_wizard_deploys_all_four_workers() -> None:
+    lines = _wizard().split("\n")
+    configs = {
+        _option(lines[i], "--config") for i in _deploy_lines() if "--dry-run" not in lines[i]
+    }
     assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG", "$NEWSLETTER_CFG"}
 
 

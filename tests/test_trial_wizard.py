@@ -61,14 +61,15 @@ esac
 """
 
 FAKE_CURL = r"""#!/bin/bash
-ids=no; secrets=no
+ids=no; secrets=no; bearer=no
 for a in "$@"; do
   if [[ "$a" == @* ]]; then
     grep -q '^CF-Access-Client-Id: ' "${a#@}" && ids=yes
     grep -q '^CF-Access-Client-Secret: ' "${a#@}" && secrets=yes
+    grep -q '^Authorization: Bearer ' "${a#@}" && bearer=yes
   fi
 done
-echo "curl $* access-id=$ids access-secret=$secrets" >> "$CALLS"
+echo "curl $* access-id=$ids access-secret=$secrets bearer=$bearer" >> "$CALLS"
 case "$*" in
   *"/api/build"*)
     n=$(( $(cat "$FAKE_DIR/build" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE_DIR/build"
@@ -77,6 +78,10 @@ case "$*" in
   *"/settings"*) echo "${FAKE_SETTINGS_CODE:-302}" ;;
   *"/stats"*) echo 401 ;;
   *"/poll"*) echo "{\"feeds\":${FAKE_POLL_FEEDS:-0}}" ;;
+  *"/newsletters"*)
+    if [[ $bearer == yes ]]; then echo "${FAKE_NEWSLETTERS_CODE:-200}"
+    elif [[ -n "${FAKE_NEWSLETTERS_OPEN:-}" ]]; then echo 200
+    else echo 401; fi ;;
   *"/run?period="*)
     body='{"started":"run","at":"2026-10-06T10:50:10Z"}'
     [[ -n "${FAKE_RUN_BODY+x}" ]] && body="$FAKE_RUN_BODY"
@@ -94,9 +99,20 @@ exit 0
 FAKE_BUNX = r"""#!/bin/bash
 echo "bunx $*" >> "$CALLS"
 [[ -n "${FAKE_DRY_FAIL:-}" && "$*" == *"--dry-run --config $FAKE_DRY_FAIL "* ]] && exit 1
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  if [[ "${args[i]}" == --secrets-file ]]; then
+    cp "${args[i+1]}" "$FAKE_DIR/snap-$(basename "${args[i+1]}")"
+  fi
+done
 case " $* " in
   *" --dry-run "*) ;;
-  *" deploy "*) echo "https://w-t1.x.workers.dev" ;;
+  *" deploy "*)
+    case "$*" in
+      *"workers/newsletter/"*) echo "https://n-t1.x.workers.dev" ;;
+      *"workers/rss/"*) echo "https://r-t1.x.workers.dev" ;;
+      *) echo "https://w-t1.x.workers.dev" ;;
+    esac ;;
 esac
 """
 
@@ -413,9 +429,12 @@ def test_the_operator_can_replace_what_d1_holds(rig) -> None:
 
 
 RSS_URL = "https://r-t1.x.workers.dev"
-# Declines the rss deploy, keeps the URL, declines the app deploy and reaches stage 17, where
-# "morning" answers the period and "n" declines the post, so a passing poll ends without a hang.
-POLL_PASS_STDIN = START + "n\n" + "\n" * 5 + "morning\nn\n"
+RSS_TOKEN = "rsstok-NOT-FOR-OUTPUT"
+# After the newsletter URL line: the app deploy gate, the three pauses of stages 14-16, then a
+# "morning" for stage 17's period and an "n" that declines its post.
+TAIL = "\n" * 4 + "morning\nn\n"
+# Declines both Worker deploys, keeps the URLs, and reaches stage 17 without a hang.
+POLL_PASS_STDIN = START + "n\n\nn\n\n" + TAIL
 
 
 def test_the_poll_counts_the_rss_sources_only(rig) -> None:
@@ -463,6 +482,78 @@ def test_zero_feeds_with_rss_sources_sends_the_operator_back(rig) -> None:
     ).run(stdin=START + "n\n")
     assert run.code == 1
     assert "Go back to stage 13" in run.out
+
+
+def _seed_rss_token(r: Rig) -> None:
+    (r.repo / f".env.trial-{SLUG}-rss").write_text(f"RSS_TOKEN={RSS_TOKEN}\n")
+
+
+def test_the_newsletter_worker_gets_the_shared_token_and_its_own_config(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
+    snap = (Path(r.env["FAKE_DIR"]) / f"snap-.env.trial-{SLUG}-newsletter").read_text()
+    assert snap == f"NEWSLETTER_TOKEN={RSS_TOKEN}\n"
+    assert (
+        f"bunx wrangler deploy --config workers/newsletter/wrangler.trial-{SLUG}.toml "
+        f"--env-file /dev/null --secrets-file .env.trial-{SLUG}-newsletter"
+    ) in run.calls
+    assert "TRIAL_NEWSLETTER_URL=https://n-t1.x.workers.dev" in run.state.splitlines()
+
+
+def test_the_newsletter_token_stays_out_of_output_and_calls(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
+    for line in run.calls.splitlines():
+        if line.startswith(("bunx", "uv")) or (line.startswith("curl") and "/newsletters" in line):
+            assert RSS_TOKEN not in line
+        assert "secret put" not in line
+    assert RSS_TOKEN not in run.out
+
+
+def test_the_newsletter_probes_send_no_bearer_then_the_bearer(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
+    probes = [ln for ln in run.calls.splitlines() if "/newsletters" in ln]
+    assert len(probes) == 2
+    assert probes[0].endswith("bearer=no")
+    assert probes[1].endswith("bearer=yes")
+    assert "✓ /newsletters without the bearer → 401" in run.out
+    assert "✓ /newsletters with the bearer → 200" in run.out
+
+
+def test_an_open_newsletter_worker_stops_stage_14(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1", FAKE_NEWSLETTERS_OPEN="1")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
+    assert run.code == 1
+    assert "without the bearer answered 200" in run.out
+    assert "CYRIS_NEWSLETTER_WORKER_URL" not in (r.repo / f".env.trial-{SLUG}").read_text()
+    assert "wrangler deploy --config wrangler.trial-t1.toml" not in run.calls
+
+
+def test_a_bearer_the_worker_refuses_says_the_secret_did_not_land(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1", FAKE_NEWSLETTERS_CODE="401")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
+    assert run.code == 1
+    assert "with the bearer answered 401" in run.out
+    assert "did not land" in run.out
+
+
+def test_a_declined_newsletter_deploy_keeps_the_url_and_still_probes(rig) -> None:
+    r = rig(
+        _stages(13),
+        FAKE_POLL_FEEDS="1",
+        state={"TRIAL_NEWSLETTER_URL": "https://n-t1.x.workers.dev"},
+    )
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\nn\n\n" + TAIL)
+    assert "workers/newsletter/wrangler.trial-t1.toml --env-file" not in run.calls
+    assert len([ln for ln in run.calls.splitlines() if "/newsletters" in ln]) == 2
+    assert "TRIAL_NEWSLETTER_URL=https://n-t1.x.workers.dev" in run.state.splitlines()
 
 
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:
