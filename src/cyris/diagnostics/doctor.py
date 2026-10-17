@@ -708,14 +708,7 @@ def _check_digest_link(cfg: Config) -> Check:
     return Check(name, "ok", f"{hosts[0]}, the app Worker's custom domain")
 
 
-# Access stays off *.workers.dev, because scripts sign in there with the cookie
-# alone, which is exactly why it is the hostname to ask: on the custom domain the
-# request meets an Access login this command has no way to pass, and the failure
-# reads as a dead deployment.
-_WORKERS_DEV_HINT = (
-    "Use the deployment's workers.dev hostname — a custom domain sits behind "
-    "Cloudflare Access, which this command cannot log in to."
-)
+_ACCESS_TOKEN_VARS = ("CYRIS_ACCESS_CLIENT_ID", "CYRIS_ACCESS_CLIENT_SECRET")
 
 
 class _EndpointAbsentError(RuntimeError):
@@ -742,7 +735,7 @@ def _git(*args: str) -> str | None:
 
 
 async def _fetch_build_sha(base: str) -> str:
-    """Sign in to the deployment and ask which image it starts.
+    """Ask the deployment which image it starts, through Access with the service token.
 
     Every request wakes the `ui` instance, so this answers on demand rather than
     at the next cron hour — which is what keeps a deploy that never landed
@@ -750,14 +743,12 @@ async def _fetch_build_sha(base: str) -> str:
     """
     import httpx
 
-    token = os.environ["CYRIS_UI_TOKEN"]
+    headers = {
+        "CF-Access-Client-Id": os.environ["CYRIS_ACCESS_CLIENT_ID"],
+        "CF-Access-Client-Secret": os.environ["CYRIS_ACCESS_CLIENT_SECRET"],
+    }
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
-        login = await client.post(f"{base}/login", data={"token": token})
-        if login.status_code != 302:
-            raise RuntimeError(f"/login answered {login.status_code}, not a session")
-        # The cookie the 302 set is in the client's jar; the Worker checks it
-        # before anything reaches the container.
-        build = await client.get(f"{base}/api/build")
+        build = await client.get(f"{base}/api/build", headers=headers)
         if build.status_code == 404:
             raise _EndpointAbsentError(base)
         if build.status_code != 200:
@@ -815,13 +806,15 @@ async def _deployment(url: str) -> tuple[Check, str]:
     """The image verdict, plus the sha it was judged on ("" when none was read)."""
     base = url.rstrip("/")
     # Before any request: a missing token is a fault in this machine's .env, and
-    # answering it with the hostname hint below would send the reader elsewhere.
-    if not os.environ.get("CYRIS_UI_TOKEN"):
+    # answering it with the URL hint below would send the reader elsewhere.
+    missing = [v for v in _ACCESS_TOKEN_VARS if not os.environ.get(v)]
+    if missing:
+        names = " and ".join(missing)
         return Check(
             "deployment image",
             "fail",
-            f"cannot sign in to {base} — CYRIS_UI_TOKEN is not set here",
-            "Put the deployment's UI token in .env as CYRIS_UI_TOKEN.",
+            f"cannot send a service token to {base} — {names} not set here",
+            f"Put the Access service token in .env as {names}.",
         ), ""
     try:
         online = await _fetch_build_sha(base)
@@ -837,7 +830,10 @@ async def _deployment(url: str) -> tuple[Check, str]:
         ), ""
     except Exception as e:  # noqa: BLE001 - every other failure is the same answer: unknown
         return Check(
-            "deployment image", "fail", f"{base} did not answer — {e}", _WORKERS_DEV_HINT
+            "deployment image",
+            "fail",
+            f"{base} did not answer — {e}",
+            f"Check that {base} is the deployment's URL and that this machine can reach it.",
         ), ""
     return _compare_build_sha(base, online), online
 
