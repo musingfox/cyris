@@ -2,6 +2,9 @@
 
 import pytest
 from fakes import RecordingD1, SqliteD1
+from legacy_schema import columns as _columns
+from legacy_schema import old_db as _old_db
+from legacy_schema import recorded as _recorded
 
 from cyris.adapters.store.d1 import SCHEMA_PATH, D1Error, apply_schema
 from cyris.adapters.store.migrations import Requires, Step
@@ -17,12 +20,6 @@ STEP_C = Step("C", ("CREATE TABLE mig_c (x TEXT)",))
 def _tables(db: SqliteD1) -> set[str]:
     rows = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").rows
     return {r["name"] for r in rows}
-
-
-def _recorded(db: SqliteD1) -> list[str]:
-    return [
-        r["id"] for r in db.query("SELECT id FROM schema_migrations ORDER BY applied_at, id").rows
-    ]
 
 
 def test_each_pending_step_runs_once_and_is_recorded_in_order() -> None:
@@ -144,3 +141,85 @@ def test_a_step_without_a_requirement_always_runs() -> None:
     apply_schema(db, steps=(_sentinel_step(None),))
 
     assert "sentinel" in _tables(db)
+
+
+def _insert(db: SqliteD1, url: str, tier: str, **extra) -> None:
+    columns = {"state": "pending", "triaged_at": None, "score": None, **extra}
+    db.query(
+        "INSERT INTO stored_articles (url, published_at, source_name, source_tier, first_seen_at, "
+        "state, triaged_at, score) VALUES (?, ?, 'Source', ?, ?, ?, ?, ?)",
+        [
+            url,
+            "2026-10-01T00:00:00+00:00",
+            tier,
+            "2026-10-01T00:00:00+00:00",
+            columns["state"],
+            columns["triaged_at"],
+            columns["score"],
+        ],
+    )
+
+
+def _lanes(db: SqliteD1) -> dict[str, str]:
+    rows = db.query("SELECT url, source_lane FROM stored_articles").rows
+    return {r["url"]: r["source_lane"] for r in rows}
+
+
+def test_each_old_tier_value_becomes_its_lane() -> None:
+    db = _old_db()
+    _insert(db, "https://example.com/filter", "filter")
+    _insert(db, "https://example.com/summarize", "summarize")
+    _insert(db, "https://example.com/fan", "fan")
+
+    apply_schema(db)
+
+    assert _lanes(db) == {
+        "https://example.com/filter": "skim",
+        "https://example.com/summarize": "read",
+        "https://example.com/fan": "follow",
+    }
+    assert "source_tier" not in _columns(db)
+
+
+def test_the_rewrite_leaves_every_other_column_of_the_row_alone() -> None:
+    db = _old_db()
+    _insert(
+        db,
+        "https://example.com/a",
+        "summarize",
+        state="accepted",
+        triaged_at="2026-10-01T00:00:00Z",
+        score=0.7,
+    )
+    before = db.query("SELECT * FROM stored_articles").rows[0]
+
+    apply_schema(db)
+
+    after = db.query("SELECT * FROM stored_articles").rows[0]
+    assert {k: v for k, v in after.items() if k != "source_lane"} == {
+        k: v for k, v in before.items() if k != "source_tier"
+    }
+
+
+def test_the_store_reads_the_migrated_rows() -> None:
+    from cyris.adapters.store.d1_store import D1ArticleStore
+
+    db = _old_db()
+    for n in range(3):
+        _insert(db, f"https://example.com/{n}", "filter")
+
+    apply_schema(db)
+
+    assert D1ArticleStore(db).count_by_state() == {"pending": 3}
+
+
+def test_an_empty_database_gets_the_lane_column_and_no_rewrite() -> None:
+    db = RecordingD1(with_schema=False)
+    apply_schema(db)
+    fresh = SqliteD1()
+
+    assert _columns(db) == _columns(fresh)
+    assert "0001_tier_to_lane" in [
+        r["id"] for r in db.query("SELECT id FROM schema_migrations").rows
+    ]
+    assert not [s for s in db.statements if "SET source_tier" in s]

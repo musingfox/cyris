@@ -33,7 +33,18 @@ class Step:
     requires: Requires | None = None
 
 
-MIGRATIONS: tuple[Step, ...] = ()
+LANE_STEP = Step(
+    "0001_tier_to_lane",
+    (
+        "UPDATE stored_articles SET source_tier = CASE source_tier "
+        "WHEN 'filter' THEN 'skim' WHEN 'summarize' THEN 'read' WHEN 'fan' THEN 'follow' "
+        "ELSE source_tier END WHERE source_tier IN ('filter', 'summarize', 'fan')",
+        "ALTER TABLE stored_articles RENAME COLUMN source_tier TO source_lane",
+    ),
+    Requires("stored_articles", "source_tier", present=True),
+)
+
+MIGRATIONS: tuple[Step, ...] = (LANE_STEP,)
 
 
 def _holds(client: D1Queryable, requires: Requires) -> bool:

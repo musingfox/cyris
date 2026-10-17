@@ -326,6 +326,11 @@ EXPECTED_ROUTES = {
 # publish_site and the run record.
 EXPECTED_D1 = [
     "schema",
+    # The lane step is pending on a first boot, so the runner reads its precondition
+    # and records it; its statements do not run on a database that never had the column.
+    "SELECT schema_migrations",
+    "PRAGMA table_info",
+    "INSERT OR IGNORE INTO schema_migrations",
     "SELECT settings",
     "SELECT sources",
     # An empty table: the run tracks no topic, so it embeds nothing.
@@ -445,7 +450,7 @@ def test_every_article_row_holds_what_cyris_was_given_and_decided(receipts) -> N
         "author": None,
         "published_at": seed.published_at.isoformat(timespec="microseconds"),
         "source_name": seed.source_name,
-        "source_lane": "summarize",
+        "source_lane": "read",
         "source_tags": '["ai"]',
         "ref_urls": "[]",
         "state": "rejected",

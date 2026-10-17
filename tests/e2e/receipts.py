@@ -59,6 +59,8 @@ def statement_kind(sql: str) -> str:
     """
     if "CREATE TABLE" in sql:
         return "schema"
+    if sql.lstrip().startswith("PRAGMA table_info"):
+        return "PRAGMA table_info"
     if match := _WRITE.search(sql):
         verb, table, column = match.groups()
         return f"{verb} {table}" + (f" SET {column}" if column else "")
