@@ -42,6 +42,12 @@ case "$*" in
   *"trial_api.py latest-run"*) cat > /dev/null; echo "${FAKE_LATEST:-4}" ;;
   *"trial_api.py wait-run"*)
     cat > /dev/null; echo "  run 5: status ok"; exit "${FAKE_WAIT_RC:-0}" ;;
+  *"provision_trial.py render"*)
+    for f in wrangler.trial-t1.toml workers/promote/wrangler.trial-t1.toml \
+      workers/rss/wrangler.trial-t1.toml workers/newsletter/wrangler.trial-t1.toml; do
+      [[ -n "${FAKE_RENDER_SKIP:-}" && "$f" == *"workers/$FAKE_RENDER_SKIP/"* ]] && continue
+      echo rendered > "$f"
+    done ;;
   *"python -c"*) echo 1 ;;
 esac
 """
@@ -78,6 +84,13 @@ esac
 """
 
 FAKE_QUIET = '#!/bin/bash\necho "$(basename "$0") $*" >> "$CALLS"\n'
+
+FAKE_GIT = r"""#!/bin/bash
+echo "git $*" >> "$CALLS"
+if [[ "$1" == check-ignore && -n "${FAKE_UNIGNORED:-}" && "$*" == *"$FAKE_UNIGNORED"* ]]; then
+  exit 1
+fi
+"""
 
 EXAMPLE_CONFIG = """[llm_provider]
 provider = "anthropic"
@@ -164,6 +177,8 @@ def rig(tmp_path: Path):
         (repo / "scripts").mkdir(parents=True)
         shutil.copy(ROOT / "scripts/trial-wizard.sh", repo / "scripts/trial-wizard.sh")
         (repo / "scripts/provision_trial.py").write_text("")
+        for worker in ("promote", "rss", "newsletter"):
+            (repo / "workers" / worker).mkdir(parents=True)
         (repo / "cyris.toml.example").write_text(EXAMPLE_CONFIG)
         (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done, email, state))
         (repo / f".env.trial-{SLUG}").write_text(
@@ -176,7 +191,8 @@ def rig(tmp_path: Path):
         fakes = tmp_path / "bin"
         fakes.mkdir()
         scripts = {"uv": FAKE_UV, "curl": FAKE_CURL, "bunx": FAKE_BUNX}
-        for name in ("git", "gh", "open", "xdg-open", "pbcopy"):
+        scripts["git"] = FAKE_GIT
+        for name in ("gh", "open", "xdg-open", "pbcopy"):
             scripts[name] = FAKE_QUIET
         for name, body in scripts.items():
             (fakes / name).write_text(body)
@@ -223,6 +239,26 @@ def test_a_newsletter_kv_id_that_is_not_hex_is_asked_again(rig) -> None:
     run = r.run(stdin=START + "y\nxyz\n" + "e" * 32 + "\n")
     assert "That does not look right" in run.out
     assert f"TRIAL_NEWSLETTER_KV_ID={'e' * 32}" in run.state.splitlines()
+
+
+def test_the_stage_8_render_passes_the_newsletter_kv_and_writes_four(rig) -> None:
+    r = rig(_stages(7), state={"TRIAL_NEWSLETTER_KV_ID": "d" * 32})
+    run = r.run()
+    assert "provision_trial.py render --slug t1" in run.calls
+    assert f"--kv-id {'c' * 32} --newsletter-kv-id {'d' * 32}" in run.calls
+    assert "four configs written, all gitignored" in run.out
+
+
+def test_a_render_that_skips_the_newsletter_config_dies(rig) -> None:
+    run = rig(_stages(7), FAKE_RENDER_SKIP="newsletter").run()
+    assert run.code == 1
+    assert "workers/newsletter/wrangler.trial-t1.toml was not written." in run.out
+
+
+def test_a_newsletter_config_git_does_not_ignore_dies(rig) -> None:
+    run = rig(_stages(7), FAKE_UNIGNORED="workers/newsletter/wrangler.trial-t1.toml").run()
+    assert run.code == 1
+    assert "workers/newsletter/wrangler.trial-t1.toml is not gitignored." in run.out
 
 
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:

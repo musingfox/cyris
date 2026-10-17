@@ -225,6 +225,7 @@ SOURCES_FILE=".env.trial-$SLUG-sources.yaml"
 APP_CFG="wrangler.trial-$SLUG.toml"
 PROMOTE_CFG="workers/promote/wrangler.trial-$SLUG.toml"
 RSS_CFG="workers/rss/wrangler.trial-$SLUG.toml"
+NEWSLETTER_CFG="workers/newsletter/wrangler.trial-$SLUG.toml"
 LOG_DIR=$(mktemp -d)
 ENV_FILE="$STATE"
 
@@ -571,13 +572,14 @@ stage_7() {
 stage_8() {
   stage "Render the trial's configs"
   show_run render uv run python scripts/provision_trial.py render --slug "$SLUG" --domain "$DOMAIN" \
-    --account-id "$ACCOUNT_ID" --image-digest "$IMAGE_DIGEST" --kv-id "$TRIAL_KV_ID" --d1-id "$TRIAL_D1_ID" \
+    --account-id "$ACCOUNT_ID" --image-digest "$IMAGE_DIGEST" --kv-id "$TRIAL_KV_ID" \
+    --newsletter-kv-id "$TRIAL_NEWSLETTER_KV_ID" --d1-id "$TRIAL_D1_ID" \
     || die "render failed."
-  for f in "$APP_CFG" "$PROMOTE_CFG" "$RSS_CFG"; do
+  for f in "$APP_CFG" "$PROMOTE_CFG" "$RSS_CFG" "$NEWSLETTER_CFG"; do
     [[ -f "$f" ]] || die "$f was not written."
     git check-ignore -q "$f" || die "$f is not gitignored."
   done
-  printf '  %s✓%s three configs written, all gitignored\n' "$GREEN" "$RESET"
+  printf '  %s✓%s four configs written, all gitignored\n' "$GREEN" "$RESET"
   next
 }
 

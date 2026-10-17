@@ -193,6 +193,11 @@ def _wrangler_lines() -> list[int]:
     return [i for i, ln in enumerate(lines) if WRANGLER.search(ln)]
 
 
+def test_the_newsletter_config_path_is_declared_on_one_line() -> None:
+    paths = _paths(script_lines(_wizard()))
+    assert paths["NEWSLETTER_CFG"] == "workers/newsletter/wrangler.trial-$SLUG.toml"
+
+
 def test_the_wizard_calls_wrangler() -> None:
     assert len(_wrangler_lines()) >= 10
 
