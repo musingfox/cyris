@@ -812,9 +812,20 @@ stage_14() {
 # ── 15 ────────────────────────────────────────────────────────────────────
 stage_15() {
   stage "Let the tester receive mail"
-  if [[ -z "$TESTER_EMAIL" ]]; then
-    note "No tester email; skipping."
-  else
+  [[ -n "${TRIAL_NEWSLETTER_URL:-}" ]] || die "No newsletter Worker URL is saved. Stage 14 deploys it: re-run with --from 14."
+  open_url "https://dash.cloudflare.com/$ACCOUNT_ID"
+  step "Email Routing on $DOMAIN: enable it first if the domain does not have it yet."
+  step "Routing rules → Create: custom address $SLUG@$DOMAIN, action Send to a Worker, Worker $TRIAL_NEWSLETTER_WORKER."
+  note "The rule's Worker is $TRIAL_NEWSLETTER_URL, and its newsletters are read from $TRIAL_NEWSLETTER_URL/newsletters."
+  say "Then the tester forwards from Gmail (workers/newsletter/README.md, Gmail forwarding):"
+  step "Tester: Gmail → Settings → Forwarding and POP/IMAP → Add a forwarding address → $SLUG@$DOMAIN."
+  warn "Gmail mails a confirmation to that address. Before stage 17 or the next scheduled run, read it:"
+  step "GET $TRIAL_NEWSLETTER_URL/newsletters with Authorization: Bearer set to the CYRIS_WORKER_TOKEN line of $APP_ENV."
+  step "Send the tester its mail-settings.google.com/mail/vf-… link to open, signed in as that Gmail only."
+  warn "That scheduled run pulls the Worker's unmatched mail and ACKs it, so the confirmation is lost after it."
+  step "Tester: one Gmail filter per newsletter source, From its sender → Forward to $SLUG@$DOMAIN."
+  pause "Rule created, forwarding confirmed and the filters made? Press Enter"
+  if [[ -n "$TESTER_EMAIL" ]]; then
     open_url "https://dash.cloudflare.com/$ACCOUNT_ID"
     step "Email Service → Email Routing → Destination Addresses → add $TESTER_EMAIL."
     step "Ask the tester to open the verification mail before they save Notifications on /settings."

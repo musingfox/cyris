@@ -430,9 +430,9 @@ def test_the_operator_can_replace_what_d1_holds(rig) -> None:
 
 RSS_URL = "https://r-t1.x.workers.dev"
 RSS_TOKEN = "rsstok-NOT-FOR-OUTPUT"
-# After the newsletter URL line: the app deploy gate, the three pauses of stages 14-16, then a
-# "morning" for stage 17's period and an "n" that declines its post.
-TAIL = "\n" * 4 + "morning\nn\n"
+# After the newsletter URL line: the app deploy gate, then the Enters of stages 14-16 (stage 15
+# has two), then a "morning" for stage 17's period and an "n" that declines its post.
+TAIL = "\n" * 5 + "morning\nn\n"
 # Declines both Worker deploys, keeps the URLs, and reaches stage 17 without a hang.
 POLL_PASS_STDIN = START + "n\n\nn\n\n" + TAIL
 
@@ -536,7 +536,7 @@ def test_an_open_newsletter_worker_stops_stage_14(rig) -> None:
     assert "wrangler deploy --config wrangler.trial-t1.toml" not in run.calls
 
 
-APP_YES = "y\n" + "\n" * 3 + "morning\nn\n"
+APP_YES = "y\n" + "\n" * 4 + "morning\nn\n"
 
 
 def test_the_app_secrets_file_gets_the_three_urls_and_token_once_each(rig) -> None:
@@ -937,8 +937,55 @@ def test_declining_the_post_starts_nothing(rig) -> None:
     assert "wait-run" not in run.calls
 
 
+def test_the_routing_notice_names_the_rule_and_the_gmail_read(rig) -> None:
+    run = rig(_stages(14)).run(stdin=START + "\n\n\nmorning\nn\n")
+    for text in (
+        "t1@example.com",
+        "cyris-newsletter-t1",
+        "Email Routing",
+        "https://n-t1.x.workers.dev/newsletters",
+        "Bearer",
+        "ACK",
+    ):
+        assert text in run.out, text
+    assert "Destination Addresses" not in run.out
+    assert run.out.index("Gmail") < run.out.index("Stage 17/18")
+
+
+def test_the_tester_is_told_the_gmail_steps_in_order(rig) -> None:
+    out = rig(_stages(14)).run(stdin=START + "\n\n\nmorning\nn\n").out
+    add = out.index("Add a forwarding address → t1@example.com")
+    read = out.index("GET https://n-t1.x.workers.dev/newsletters")
+    confirm = out.index("mail-settings.google.com/mail/vf-")
+    filt = out.index("Forward to t1@example.com")
+    assert add < read < confirm < filt < out.index("Stage 16/18")
+    assert "workers/newsletter/README.md" in out
+
+
+def test_a_tester_email_adds_the_destination_address_steps(rig) -> None:
+    run = rig(_stages(14), email="tester@example.com").run(stdin=START + "\n\n\n\nmorning\nn\n")
+    assert "Email Routing" in run.out
+    assert "add tester@example.com" in run.out
+
+
+def test_the_routing_notice_never_prints_the_app_token(rig) -> None:
+    r = rig(_stages(14))
+    (r.repo / f".env.trial-{SLUG}").write_text(
+        f"CLOUDFLARE_API_TOKEN={TOKEN}\nCYRIS_WORKER_TOKEN=app-tok-NOT-FOR-OUTPUT\n"
+    )
+    run = r.run(stdin=START + "\n\n\nmorning\nn\n")
+    assert "app-tok-NOT-FOR-OUTPUT" not in run.out
+    assert "app-tok-NOT-FOR-OUTPUT" not in run.calls
+
+
+def test_the_routing_notice_needs_a_saved_newsletter_url(rig) -> None:
+    run = rig(_stages(14), state={"TRIAL_NEWSLETTER_URL": None}).run(stdin=START)
+    assert run.code == 1
+    assert "--from 14" in run.out
+
+
 def test_the_hand_over_copies_no_token_to_the_clipboard(rig) -> None:
-    run = rig(_stages(15)).run(stdin=START + "\nmorning\nn\n")
+    run = rig(_stages(15)).run(stdin=START + "\n\n\nmorning\nn\n")
     assert "pbcopy" not in run.calls
     assert "password manager" not in run.out
     assert "Access one-time PIN" in run.out
