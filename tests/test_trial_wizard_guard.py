@@ -371,6 +371,26 @@ def test_dropping_every_optional_workers_link_is_named() -> None:
         assert_points_not_copies(text, _guide())
 
 
+def test_the_runbook_no_longer_says_a_trial_is_rss_only() -> None:
+    text = _runbook()
+    assert "RSS only" not in text
+    assert "no newsletter Worker" not in text
+
+
+def test_every_env_file_the_wizard_names_is_in_the_runbook() -> None:
+    paths = _paths(script_lines(_wizard()))
+    env_paths = [v for v in paths.values() if v.startswith(".env.trial-")]
+    assert env_paths
+    for value in env_paths:
+        assert value.replace("$SLUG", "<slug>") in _runbook(), value
+
+
+def test_the_runbook_links_adr_0015_and_the_target_exists() -> None:
+    target = "0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md"
+    assert f"decisions/{target}" in _runbook()
+    assert (ROOT / "docs/decisions" / target).is_file(), f"dead ADR target {target}"
+
+
 def test_architecture_points_at_the_trial_tooling() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     for path in (
