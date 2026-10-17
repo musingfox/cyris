@@ -23,6 +23,7 @@ import asyncio
 
 import httpx
 
+from cyris.adapters.gemini_client import OutputBudgetSpentError
 from cyris.service_layer.ports import LLMResponse
 
 _GATEWAY_ROOT = "https://gateway.ai.cloudflare.com/v1"
@@ -139,7 +140,7 @@ class AIGatewayClient:
         candidate = data["candidates"][0]
         parts = candidate.get("content", {}).get("parts")
         if parts is None:
-            raise RuntimeError(
+            raise OutputBudgetSpentError(
                 f"{self.model} returned no output "
                 f"(finishReason {candidate.get('finishReason', 'unknown')}) — "
                 "raise max_tokens if this is a reasoning model"

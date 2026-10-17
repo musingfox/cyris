@@ -1551,3 +1551,37 @@ async def test_a_notify_table_missing_only_the_mail_keys_is_reported_not_raised(
     assert "notify.email_to" in _by_name(checks, "settings").detail
     assert _by_name(checks, "discord").detail == "not set — see settings"
     assert _by_name(checks, "mail").detail == "not set — see settings"
+
+
+async def test_a_probe_that_spent_its_output_budget_thinking_still_passes(monkeypatch) -> None:
+    """The model accepted the request; only the probe's 128 tokens ran out."""
+    from cyris.adapters.gemini_client import OutputBudgetSpentError
+
+    class ThinkingLLM:
+        model = "gemini-3.8-flash"
+
+        async def complete(self, prompt, *, max_tokens):
+            raise OutputBudgetSpentError("gemini-3.8-flash returned no output")
+
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: ThinkingLLM())
+    cfg = LLMProviderConfig(provider="gemini", model="", api_key="key")
+
+    check = await doctor.probe_llm(cfg)
+
+    assert check.status == "ok"
+    assert "accepted the request" in check.detail
+
+
+async def test_a_plain_runtime_error_still_fails_the_probe(monkeypatch) -> None:
+    class BrokenLLM:
+        model = "gemini-3.8-flash"
+
+        async def complete(self, prompt, *, max_tokens):
+            raise RuntimeError("returned no candidates")
+
+    monkeypatch.setattr("cyris.bootstrap.build_llm", lambda _cfg: BrokenLLM())
+    cfg = LLMProviderConfig(provider="gemini", model="", api_key="key")
+
+    check = await doctor.probe_llm(cfg)
+
+    assert check.status == "fail"

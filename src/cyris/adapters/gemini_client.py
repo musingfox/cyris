@@ -31,6 +31,10 @@ class GeminiAPIError(httpx.HTTPStatusError):
         self.message = message
 
 
+class OutputBudgetSpentError(RuntimeError):
+    """The model took the request and spent the whole output budget thinking."""
+
+
 class GeminiClient:
     def __init__(
         self,
@@ -112,7 +116,7 @@ class GeminiClient:
         # raised KeyError('parts'), which named neither the cause nor the fix.
         parts = candidate.get("content", {}).get("parts")
         if parts is None:
-            raise RuntimeError(
+            raise OutputBudgetSpentError(
                 f"{self.model} returned no output "
                 f"(finishReason {candidate.get('finishReason', 'unknown')}) — "
                 "raise max_tokens if this is a reasoning model"

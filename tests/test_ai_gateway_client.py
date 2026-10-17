@@ -264,3 +264,16 @@ async def test_an_author_this_adapter_cannot_parse_is_refused_before_any_request
             await _client("anthropic/claude-sonnet-4.6").complete("Hi.")
 
     assert route.call_count == 0
+
+
+async def test_a_candidate_with_no_parts_raises_the_output_budget_error():
+    from cyris.adapters.gemini_client import OutputBudgetSpentError
+
+    spent = {"candidates": [{"content": {"role": "model"}, "finishReason": "MAX_TOKENS"}]}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=spent))
+        with pytest.raises(OutputBudgetSpentError, match="MAX_TOKENS") as raised:
+            await _client().complete("Hi.")
+
+    assert isinstance(raised.value, RuntimeError)
+    assert route.call_count == 1

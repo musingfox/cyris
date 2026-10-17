@@ -221,3 +221,17 @@ async def test_no_reasoning_effort_sends_no_thinking_config():
     assert route.call_count == 1
     config = json.loads(route.calls[0].request.content)["generationConfig"]
     assert "thinkingConfig" not in config
+
+
+async def test_a_candidate_with_no_parts_raises_the_output_budget_error():
+    from cyris.adapters.gemini_client import OutputBudgetSpentError
+
+    spent = {"candidates": [{"content": {"role": "model"}, "finishReason": "MAX_TOKENS"}]}
+    async with respx.mock:
+        route = respx.post(GENERATE_URL).mock(return_value=httpx.Response(200, json=spent))
+        client = GeminiClient(api_key="k", model="gemini-2.5-flash")
+        with pytest.raises(OutputBudgetSpentError, match="MAX_TOKENS") as raised:
+            await client.complete("hi")
+
+    assert isinstance(raised.value, RuntimeError)
+    assert route.call_count == 1

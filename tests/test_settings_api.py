@@ -1326,3 +1326,102 @@ class TestRefusalsNameTheField:
 
         assert res.status == 400
         assert body == {"ok": False, "error": "'nope.x' is not a setting"}
+
+
+class TestReasoningEffortIsProbed:
+    """A level the model rejects must not reach a run, so Save asks the model first."""
+
+    KEY = "llm_provider.reasoning_effort"
+    STORED = {"llm_provider.provider": "anthropic", "llm_provider.model": "claude-haiku-4-5"}
+
+    @pytest.fixture
+    def probed(self, monkeypatch):
+        """The candidates probe_llm saw; `verdict` holds the Check it answers with."""
+        from cyris.diagnostics.doctor import Check
+
+        seen: list = []
+        verdict = {"check": Check("llm probe", "ok", "answered")}
+
+        async def probe(candidate):
+            seen.append(candidate)
+            return verdict["check"]
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_llm", probe)
+        return seen, verdict
+
+    async def test_a_level_the_model_rejects_is_refused_and_nothing_is_stored(
+        self, settings, probed
+    ):
+        from cyris.diagnostics.doctor import Check
+
+        seen, verdict = probed
+        verdict["check"] = Check(
+            "llm probe",
+            "fail",
+            "claude-haiku-4-5 refused: effort is not supported",
+            "Pick another.",
+        )
+        client = await _client(settings, dict(self.STORED))
+
+        res = await client.post("/api/settings/values", json={"values": {self.KEY: "high"}})
+        body = await res.json()
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["field"] == self.KEY
+        assert "effort is not supported" in body["error"]
+        assert settings.calls == []
+        assert data["values"].get(self.KEY) is None
+        assert [c.reasoning_effort for c in seen] == ["high"]
+
+    async def test_a_level_the_model_accepts_is_stored_after_a_probe_at_that_level(
+        self, settings, probed
+    ):
+        seen, _ = probed
+        client = await _client(settings, dict(self.STORED))
+
+        res = await client.post("/api/settings/values", json={"values": {self.KEY: "high"}})
+        await client.close()
+
+        assert res.status == 200
+        assert settings.stored[self.KEY] == "high"
+        assert [(c.provider, c.model, c.reasoning_effort) for c in seen] == [
+            ("anthropic", "claude-haiku-4-5", "high")
+        ]
+
+    async def test_provider_none_stores_the_level_without_a_probe(self, settings, probed):
+        seen, _ = probed
+        client = await _client(settings, {"llm_provider.provider": "none"})
+
+        res = await client.post("/api/settings/values", json={"values": {self.KEY: "low"}})
+        await client.close()
+
+        assert res.status == 200
+        assert settings.stored[self.KEY] == "low"
+        assert seen == []
+
+    async def test_a_model_switch_is_probed_at_the_stored_level(self, settings, probed):
+        seen, _ = probed
+        client = await _client(settings, {**self.STORED, self.KEY: "high"})
+
+        res = await client.post(
+            "/api/settings", json={"provider": "anthropic", "model": "claude-sonnet-4-6"}
+        )
+        await client.close()
+
+        assert res.status == 200
+        assert [c.reasoning_effort for c in seen] == ["high"]
+
+    async def test_a_diagnosis_is_probed_at_the_stored_level(self, settings, probed, monkeypatch):
+        async def egress():
+            return {}
+
+        monkeypatch.setattr("cyris.diagnostics.doctor.probe_egress", egress)
+        seen, _ = probed
+        client = await _client(settings, {**self.STORED, self.KEY: "low"})
+
+        await client.post("/api/diagnostics/llm", json={"provider": "anthropic", "model": "m"})
+        await client.close()
+
+        assert [c.reasoning_effort for c in seen] == ["low"]

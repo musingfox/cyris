@@ -218,7 +218,7 @@ async def probe_llm(llm_cfg) -> Check:
     should call this before saving, not after.
     """
     from cyris.adapters.ai_gateway_client import AIGatewayError
-    from cyris.adapters.gemini_client import GeminiAPIError
+    from cyris.adapters.gemini_client import GeminiAPIError, OutputBudgetSpentError
     from cyris.bootstrap import build_llm
 
     if llm_cfg.provider == "none":
@@ -284,6 +284,13 @@ async def probe_llm(llm_cfg) -> Check:
             "fail",
             f"{who}: HTTP {e.status}, code={e.code}, message={detail}",
             fix,
+        )
+    except OutputBudgetSpentError:
+        return Check(
+            "llm probe",
+            "ok",
+            f"{llm_cfg.provider} · {llm.model} accepted the request; "
+            "thinking used the probe's output budget",
         )
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
         return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}", refused)
