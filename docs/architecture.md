@@ -604,6 +604,8 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Three Worker URLs (`promote` / `newsletter` / `rss`) | B | `CYRIS_PROMOTE_WORKER_URL`, `CYRIS_NEWSLETTER_WORKER_URL`, `CYRIS_RSS_WORKER_URL` (a value set in the file wins) | done |
 | Access team domain | B | `CYRIS_ACCESS_TEAM_DOMAIN` (Worker-only; the team domain as a host without a scheme; the Worker fetches its signing keys from it and checks each JWT's issuer against it) | done |
 | Access audience | B | `CYRIS_ACCESS_AUD` (Worker-only; the Application Audience tag of the self-hosted Access application that guards the Worker) | done |
+| Access service token id | C | `CYRIS_ACCESS_CLIENT_ID` (script-only; the id scripts send as `CF-Access-Client-Id`; never forwarded to the container) | done |
+| Access service token secret | C | `CYRIS_ACCESS_CLIENT_SECRET` (script-only; the secret scripts send as `CF-Access-Client-Secret`; never forwarded to the container) | done |
 | Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` puts the archive behind the Access sign-in: Access sends a reader without a session to sign in, and the Worker answers 403 to a request that reaches it without a valid JWT; unset = public archive) | done 2026-10-05 — default off, so production's archive stays public; a trial deployment turns it on in its generated config |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
