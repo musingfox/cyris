@@ -1,44 +1,43 @@
 # Source Configuration
-# Each source defines an RSS feed or newsletter with its processing tier.
+# Each source defines an RSS feed or newsletter with its processing lane.
 #
-# Tiers:
-#   filter    - High-volume general news. Most articles discarded; only significant headlines kept.
-#   summarize - High-quality sources. Scored, then summarized or listed by score (docs/sources.md).
-#   fan       - Sources you follow as they are. Passed through: never scored, filtered or summarized.
+# Lanes:
+#   skim   - High-volume general news. Most articles discarded; only significant headlines kept.
+#   read   - High-quality sources. Scored, then summarized or listed by score (docs/sources.md).
+#   follow - Sources you follow as they are. Passed through: never scored, filtered or summarized.
 #
 # Copy this file to sources.yaml and customize with your own feeds.
 # The entries below are a representative sample covering every source shape:
-# summarize/filter tiers, a newsletter matched by email, and a language override
+# read/skim lanes, a newsletter matched by email, and a language override
 # for a non-English source.
 
 defaults:
-  tier: filter
   language: auto  # auto-detect, or force: zh, en, ja
 
 sources:
-  # --- Summarize tier: high-quality, read every issue ---
+  # --- Read lane: high-quality, read every issue ---
 
   - name: "Stratechery"
     url: "https://stratechery.com/feed/"
-    tier: summarize
+    lane: read
     tags: [tech, business-strategy]
 
   - name: "ByteByteGo Newsletter"
     url: "https://blog.bytebytego.com/feed"
-    tier: summarize
+    lane: read
     tags: [programming, system-design]
 
   - name: "報導者"
     url: "https://www.twreporter.org/a/rss2.xml"
-    tier: summarize
+    lane: read
     tags: [news, investigative]
     language: zh
 
-  # --- Filter tier: high-volume, heavy filtering ---
+  # --- Skim lane: high-volume, heavy filtering ---
 
   - name: "TechCrunch"
     url: "https://techcrunch.com/feed/"
-    tier: filter
+    lane: skim
     tags: [tech, startup]
 
   # --- Email-only newsletter (no RSS): ingested via the Cloudflare newsletter Worker ---
@@ -56,5 +55,5 @@ sources:
     type: newsletter
     email_match: "from:newsletter@example.com"
     homepage: "https://newsletter.example.com"
-    tier: summarize
+    lane: read
     tags: [newsletter]

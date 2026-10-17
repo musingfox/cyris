@@ -16,8 +16,8 @@ from cyris.domain.models import (
     DigestContent,
     DigestItem,
     DigestSection,
+    Lane,
     StoredArticle,
-    Tier,
     UsageStats,
 )
 from cyris.domain.selection import digest_urls
@@ -1488,7 +1488,7 @@ def _stored(title, source, state=ArticleState.PENDING, score=None):
         content="",
         published_at=now,
         source_name=source,
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         state=state,
         first_seen_at=now,
         score=score,

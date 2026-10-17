@@ -1,4 +1,4 @@
-"""Tests for summarize-tier processor."""
+"""Tests for read-lane processor."""
 
 import json
 from datetime import UTC
@@ -6,7 +6,7 @@ from datetime import UTC
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Tier, UsageStats
+from cyris.domain.models import Lane, UsageStats
 from cyris.service_layer.degrade import excerpt
 from cyris.service_layer.summarize import _group_by_tags, summarize_articles
 
@@ -35,7 +35,7 @@ class TestGroupByTags:
             content="Content",
             published_at=datetime(2026, 3, 16, tzinfo=UTC),
             source_name="Unknown",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=[],
         )
         groups = _group_by_tags([article])
@@ -222,7 +222,7 @@ class TestSummarizeArticles:
             content="Content",
             published_at=datetime(2026, 8, 14, tzinfo=UTC),
             source_name="Example Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
         llm = FakeLLM(
@@ -281,7 +281,7 @@ class TestSummarizeArticles:
             content="Content",
             published_at=datetime(2026, 8, 14, tzinfo=UTC),
             source_name="Source",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
 
@@ -347,7 +347,7 @@ class TestBuildAttentionSections:
     def test_multi_tag_grouping(self):
         from datetime import datetime
 
-        from cyris.domain.models import Article, Tier
+        from cyris.domain.models import Article, Lane
         from cyris.service_layer.summarize import build_attention_sections
 
         articles = [
@@ -358,7 +358,7 @@ class TestBuildAttentionSections:
                 content="Content 1",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="TechNews",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
                 source_tags=["tech"],
             ),
             Article(
@@ -368,7 +368,7 @@ class TestBuildAttentionSections:
                 content="Content 2",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="TechBlog",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
                 source_tags=["tech"],
             ),
             Article(
@@ -378,7 +378,7 @@ class TestBuildAttentionSections:
                 content="Content 3",
                 published_at=datetime(2026, 4, 10, tzinfo=UTC),
                 source_name="General",
-                source_tier=Tier.SUMMARIZE,
+                source_lane=Lane.READ,
                 source_tags=[],
             ),
         ]
@@ -402,7 +402,7 @@ class TestBuildAttentionSections:
     def test_missing_score(self):
         from datetime import datetime
 
-        from cyris.domain.models import Article, Tier
+        from cyris.domain.models import Article, Lane
         from cyris.service_layer.summarize import build_attention_sections
 
         article = Article(
@@ -412,7 +412,7 @@ class TestBuildAttentionSections:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Source",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tag"],
         )
 
@@ -427,7 +427,7 @@ class TestDigestItemsCarryRefUrls:
         from datetime import datetime
 
         from cyris.domain.models import Article
-        from cyris.service_layer.summarize import build_fan_sections
+        from cyris.service_layer.summarize import build_follow_sections
 
         article = Article(
             id=1,
@@ -436,11 +436,11 @@ class TestDigestItemsCarryRefUrls:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.FAN,
+            source_lane=Lane.FOLLOW,
             ref_urls=["https://r1.com/a"],
         )
 
-        item = build_fan_sections([article])[0].items[0]
+        item = build_follow_sections([article])[0].items[0]
 
         assert item.ref_urls == ["https://r1.com/a"]
         assert item.urls == ["newsletter:abc"]
@@ -458,7 +458,7 @@ class TestDigestItemsCarryRefUrls:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             ref_urls=["https://r1.com/a"],
         )
 
@@ -479,7 +479,7 @@ class TestDigestItemsCarryRefUrls:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             ref_urls=["https://r1.com/a"],
         )
         llm = FakeLLM(
@@ -518,7 +518,7 @@ class TestDigestItemsCarryRefUrls:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             ref_urls=["https://r1.com/a"],
         )
 
@@ -535,7 +535,7 @@ class TestDigestItemsCarryRefUrls:
 
         from cyris.domain.models import Article
         from cyris.service_layer.degrade import excerpt_sections_from_articles
-        from cyris.service_layer.summarize import build_attention_sections, build_fan_sections
+        from cyris.service_layer.summarize import build_attention_sections, build_follow_sections
 
         fan_article = Article(
             id=1,
@@ -544,9 +544,9 @@ class TestDigestItemsCarryRefUrls:
             content="Content",
             published_at=datetime(2026, 4, 10, tzinfo=UTC),
             source_name="Source",
-            source_tier=Tier.FAN,
+            source_lane=Lane.FOLLOW,
         )
-        summarize_article = fan_article.model_copy(update={"source_tier": Tier.SUMMARIZE})
+        summarize_article = fan_article.model_copy(update={"source_lane": Lane.READ})
         llm = FakeLLM(
             json.dumps(
                 {
@@ -561,7 +561,7 @@ class TestDigestItemsCarryRefUrls:
             )
         )
 
-        fan_item = build_fan_sections([fan_article])[0].items[0]
+        fan_item = build_follow_sections([fan_article])[0].items[0]
         attention_item = build_attention_sections([summarize_article])[0].items[0]
         summarized_item = (
             await summarize_articles(

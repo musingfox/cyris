@@ -12,7 +12,7 @@ from cyris.adapters.store.d1 import D1Client, D1Error, chunk_rows
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.bootstrap import build_store
 from cyris.config import Config, StoreConfig
-from cyris.domain.models import Article, ArticleState, StoredArticle, Tier
+from cyris.domain.models import Article, ArticleState, Lane, StoredArticle
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +30,7 @@ def _article(url: str, article_id: int | str = 1) -> Article:
         content="Content",
         published_at=datetime.now(UTC),
         source_name="Source",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
 
 
@@ -85,7 +85,7 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
         author="Author",
         published_at=now,
         source_name="Source",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech", "ai"],
         ref_urls=["https://example.com/ref"],
         state=ArticleState.AWAITING_TRIAGE,
@@ -292,3 +292,30 @@ def test_no_test_patches_d1client_dunder_new() -> None:
     ]
 
     assert offenders == []
+
+
+def test_a_saved_lane_is_stored_as_its_word_in_source_lane() -> None:
+    db = SqliteD1()
+    store = D1ArticleStore(db)
+    article = _article("https://example.com/read")
+    store.save([article.model_copy(update={"source_lane": Lane.READ})])
+
+    rows = db.query("SELECT source_lane FROM stored_articles").rows
+
+    assert [r["source_lane"] for r in rows] == ["read"]
+
+
+def test_stored_articles_has_source_lane_and_no_source_tier() -> None:  # legacy-tier
+    columns = {r["name"] for r in SqliteD1().query("PRAGMA table_info('stored_articles')").rows}
+
+    assert "source_lane" in columns
+    assert "source_tier" not in columns  # legacy-tier
+
+
+def test_a_listed_article_reads_its_lane_back() -> None:
+    store = D1ArticleStore(SqliteD1())
+    store.save([_article("https://example.com/read").model_copy(update={"source_lane": Lane.READ})])
+
+    [listed] = store.list_articles(state=None, limit=10)
+
+    assert listed.source_lane == Lane.READ

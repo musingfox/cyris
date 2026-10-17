@@ -53,7 +53,7 @@ from cyris.adapters.store.feed_health import FeedHealth
 from cyris.config import GRADE_D_KEYS, LLMProviderConfig
 from cyris.diagnostics.doctor import Check as DoctorCheck
 from cyris.domain.areas import Area
-from cyris.domain.models import SourceConfig, Tier, TrackedTopic
+from cyris.domain.models import Lane, SourceConfig, TrackedTopic
 from cyris.entrypoints.triage_server import TriageServer
 
 # Named rather than random so a leak test can look for exactly these strings.
@@ -212,27 +212,29 @@ def _seed_sources() -> dict[str, SourceConfig]:
         SourceConfig(
             name="Simon Willison",
             type="rss",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
             url="https://simonwillison.net/atom/everything/",
             tags=["ai", "tools"],
         ),
         SourceConfig(
             name="Hacker News",
             type="rss",
-            tier=Tier.FILTER,
+            lane=Lane.SKIM,
             url="https://hnrss.org/frontpage?points=200",
             tags=["news", "tech"],
         ),
         SourceConfig(
             name="曼報",
             type="newsletter",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
             email_match="from:manpao@substack.com",
             homepage="https://manpaoreport.com",
             tags=["business"],
         ),
         # Markup as a name: the page must print it, never parse it.
-        SourceConfig(name="<b>x</b>", type="rss", tier=Tier.FAN, url="https://example.test/x.xml"),
+        SourceConfig(
+            name="<b>x</b>", type="rss", lane=Lane.FOLLOW, url="https://example.test/x.xml"
+        ),
     ]
     return {source.name: source for source in listed}
 
@@ -432,7 +434,7 @@ def build_fixture(kind: str) -> Fixture:
             store.sources["Cloudflare Blog"] = SourceConfig(
                 name="Cloudflare Blog",
                 type="rss",
-                tier=Tier.SUMMARIZE,
+                lane=Lane.READ,
                 url="https://blog.cloudflare.com/rss/",
             )
         if kind.startswith("writable-areas"):
@@ -1208,7 +1210,7 @@ CHECKS: list[Check] = [
         act="await sourcesLoaded();",
         script="""
             const heads = $$('[data-tab="sources"] table.src th').map((th) => th.textContent);
-            const wanted = ["Name", "Type", "Tier", "Feed or sender", "Tags"];
+            const wanted = ["Name", "Type", "Lane", "Feed or sender", "Tags"];
             expect(same(heads, wanted), `headers: ${heads}`);
             expect(rowNames().length === 4, `rows: ${rowNames()}`);
             expect(rowNames().includes("<b>x</b>"), `names: ${rowNames()}`);
@@ -1238,16 +1240,16 @@ CHECKS: list[Check] = [
         sabotage="""$(".feed-problem").remove();""",
     ),
     Check(
-        id="sources-tier-plain-pill",
+        id="sources-lane-plain-pill",
         fixture="writable",
         path="/settings#sources",
         act="await sourcesLoaded();",
         script="""
             const pills = $$("table.src .pill");
-            const tiers = pills.map((pill) => pill.textContent);
-            expect(tiers.includes("summarize"), `tiers: ${tiers}`);
+            const lanes = pills.map((pill) => pill.textContent);
+            expect(lanes.includes("read"), `lanes: ${lanes}`);
             const variants = pills.filter((pill) => pill.className !== "pill");
-            expect(!variants.length, `a tier took a variant: ${variants.map((p) => p.className)}`);
+            expect(!variants.length, `a lane took a variant: ${variants.map((p) => p.className)}`);
         """,
         sabotage="""$("table.src .pill").classList.add("score");""",
     ),

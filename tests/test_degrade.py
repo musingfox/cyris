@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.service_layer.degrade import (
     excerpt,
     excerpt_sections_from_articles,
@@ -24,7 +24,7 @@ def _article(aid: int, tag: str = "tech") -> Article:
         content="word " * 100,
         published_at=datetime(2026, 3, 19),
         source_name="Src",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         source_tags=[tag],
     )
 

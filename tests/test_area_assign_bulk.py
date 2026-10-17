@@ -154,7 +154,7 @@ async def test_each_named_source_gets_its_area_and_every_other_field_survives(db
     assert stored["A"].tags == ["x", "y"]
     assert stored["A"].homepage == "https://a.example"
     assert stored["A"].email_match == "a@example.test"
-    assert stored["A"].tier == SourceConfig(name="A").tier
+    assert stored["A"].lane == SourceConfig(name="A").lane
     assert stored["B"].area_id is None
     assert stored["C"].area_id is None
 

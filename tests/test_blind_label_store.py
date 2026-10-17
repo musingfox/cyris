@@ -23,7 +23,7 @@ def put(
     url: str,
     *,
     state: str = "accepted",
-    tier: str = "filter",
+    lane: str = "skim",
     tags: tuple[str, ...] = (),
     seen: str = AFTER,
     reason: str | None = None,
@@ -33,14 +33,14 @@ def put(
 ) -> None:
     db.query(
         "INSERT INTO stored_articles (url, title, content, published_at, source_name, "
-        "source_tier, source_tags, state, first_seen_at, rejection_reason, triaged_at) "
+        "source_lane, source_tags, state, first_seen_at, rejection_reason, triaged_at) "
         "VALUES (?, ?, ?, ?, 'Source', ?, ?, ?, ?, ?, ?)",
         [
             url,
             title or url,
             content,
             seen,
-            tier,
+            lane,
             json.dumps(list(tags)),
             state,
             seen,
@@ -61,7 +61,7 @@ class TestPool:
         put(db, "pending", state="pending")
         put(db, "filtered", state="rejected", reason="filtered")
         put(db, "early", seen=BEFORE)
-        put(db, "summarize", tier="summarize")
+        put(db, "summarize", lane="read")
         put(db, "voted", state="rejected", reason="not_interested", triaged_at=AFTER)
 
         pool = D1BlindLabels(db).pool(SINCE)
@@ -354,3 +354,14 @@ class TestReportReads:
             ("seed-down", "Down", False),
             ("seed-up", "Up", True),
         ]
+
+
+def test_the_pool_draws_only_skim_lane_rows() -> None:
+    db = SqliteD1()
+    put(db, "a", lane="skim")
+    put(db, "b", lane="read")
+    put(db, "c", lane="follow")
+
+    pool = D1BlindLabels(db).pool(SINCE)
+
+    assert [r.url for r in pool] == ["a"]

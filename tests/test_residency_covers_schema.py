@@ -41,3 +41,11 @@ def test_a_new_table_without_a_row_is_named() -> None:
     sql = SCHEMA.read_text() + "\nCREATE TABLE IF NOT EXISTS reading_history (url TEXT);\n"
 
     assert _rows_missing(sql, ARCHITECTURE.read_text()) == ["reading_history"]
+
+
+def test_the_architecture_doc_says_steps_evolve_an_existing_database() -> None:
+    doc = ARCHITECTURE.read_text()
+    section_six = doc.split("## 6.", 1)[1].split("## 7.", 1)[0]
+
+    assert "nothing evolves them" not in doc
+    assert "schema_migrations" in section_six

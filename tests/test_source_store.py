@@ -6,7 +6,7 @@ import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.store.source_store import D1SourceStore
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Lane, SourceConfig
 
 pytestmark = pytest.mark.integration
 
@@ -26,7 +26,7 @@ SOURCES_YAML = """
 sources:
   - name: "From File"
     url: "https://file.test/feed"
-    tier: filter
+    lane: skim
 """
 
 
@@ -45,7 +45,7 @@ def test_round_trips_every_field(store: D1SourceStore) -> None:
         name="曼報",
         url=None,
         type="newsletter",
-        tier=Tier.SUMMARIZE,
+        lane=Lane.READ,
         tags=["newsletter", "tech"],
         language="zh",
         email_match="from:hi@manpao.test",

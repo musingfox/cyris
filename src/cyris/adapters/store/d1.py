@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
+
+from cyris.adapters.store.migrations import MIGRATIONS, Step, apply_steps
 
 logger = logging.getLogger(__name__)
 
@@ -121,13 +124,15 @@ def chunk_rows(rows: list[Any], params_per_row: int) -> list[list[Any]]:
     return [rows[i : i + per_statement] for i in range(0, len(rows), per_statement)]
 
 
-def apply_schema(client: D1Queryable) -> None:
-    """Create this build's tables on a database that does not have them yet.
+def apply_schema(client: D1Queryable, steps: Sequence[Step] | None = None) -> None:
+    """Create this build's tables on a database that does not have them yet, then run
+    the steps in migrations.py that are not recorded there.
 
     A clean Cloudflare account's D1 is empty and nothing else ever builds these
     tables, so the first boot has to. Every statement is `CREATE ... IF NOT
-    EXISTS` and none of them seed a row, so re-applying is a no-op — cheaper
-    than asking the database whether it is needed. Measured 2026-09-04: the REST
-    query endpoint runs the whole file, comments included, in one POST.
+    EXISTS` and none of them seed a row, so re-applying the file is a no-op.
+    Measured 2026-09-04: the REST query endpoint runs the whole file, comments
+    included, in one POST.
     """
     client.query(SCHEMA_PATH.read_text(encoding="utf-8"))
+    apply_steps(client, MIGRATIONS if steps is None else steps)

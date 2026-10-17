@@ -139,7 +139,7 @@ two values are `[newsletter] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN
 
 1. Gmail filter: forward that sender → `cyris@<your-domain>`.
 2. Add a source with `type: newsletter` and `email_match` so cyris assigns its
-   tier and tags. On Cloudflare the source list is D1: add it on `/settings` →
+   lane and tags. On Cloudflare the source list is D1: add it on `/settings` →
    Sources, or put it in `sources.yaml` and run `cyris sources push` (editing
    `sources.yaml` alone does nothing there). A local install reads `sources.yaml`
    directly.
@@ -147,7 +147,7 @@ two values are `[newsletter] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN
    - name: "Example Newsletter"
      type: newsletter
      email_match: "from:author@example.com"
-     tier: summarize
+     lane: read
      tags: [tech, business]
    ```
 Unmatched senders are pulled but skipped (and ACKed, so they don't pile up).

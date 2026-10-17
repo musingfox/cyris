@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Article, Tier, UsageStats
+from cyris.domain.models import Article, Lane, UsageStats
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 
 pytestmark = pytest.mark.unit
@@ -23,7 +23,7 @@ class TestFilterNews:
                 content="Content 1",
                 published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
                 source_name="Reuters",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["international", "news"],
             ),
             Article(
@@ -33,7 +33,7 @@ class TestFilterNews:
                 content="Content 2",
                 published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
                 source_name="TechCrunch",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["tech", "startup"],
             ),
         ]
@@ -53,7 +53,7 @@ class TestFilterNews:
             content="Content",
             published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
             source_name="ProPublica",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["news", "investigative"],
         )
 
@@ -70,7 +70,7 @@ class TestFilterNews:
             content="Content",
             published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
             source_name="News Source",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["NEWS"],
         )
 
@@ -91,7 +91,7 @@ class TestClusterNews:
                 content="A major tech company announced layoffs today affecting 1000 employees.",
                 published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
                 source_name="Reuters",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["tech", "news"],
             ),
             Article(
@@ -101,7 +101,7 @@ class TestClusterNews:
                 content="Following the trend, another tech firm announced workforce reduction.",
                 published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
                 source_name="Bloomberg",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["business", "news"],
             ),
             Article(
@@ -111,7 +111,7 @@ class TestClusterNews:
                 content="An independent story about a new AI model from OpenAI.",
                 published_at=datetime(2026, 3, 31, 12, 0, tzinfo=UTC),
                 source_name="TechCrunch",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["ai", "news"],
             ),
         ]
@@ -164,7 +164,7 @@ class TestClusterNews:
                 content="A",
                 published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
                 source_name="Source A",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
             ),
             Article(
@@ -174,7 +174,7 @@ class TestClusterNews:
                 content="B",
                 published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
                 source_name="Newsletter",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
                 ref_urls=["https://ref.example/one", "https://ref.example/two"],
             ),
@@ -207,7 +207,7 @@ class TestClusterNews:
                 content="A",
                 published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
                 source_name="Newsletter A",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
             ),
             Article(
@@ -217,7 +217,7 @@ class TestClusterNews:
                 content="B",
                 published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
                 source_name="Newsletter B",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
                 ref_urls=["https://ref.example/x"],
             ),
@@ -244,7 +244,7 @@ class TestClusterNews:
                 content="A",
                 published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
                 source_name="Newsletter A",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
                 ref_urls=["https://ref.example/shared", "https://ref.example/only-a"],
             ),
@@ -255,7 +255,7 @@ class TestClusterNews:
                 content="B",
                 published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
                 source_name="Newsletter B",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
                 ref_urls=["https://ref.example/shared", "https://ref.example/only-b"],
             ),
@@ -286,7 +286,7 @@ class TestClusterNews:
                 content="A",
                 published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
                 source_name="Source A",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
             ),
             Article(
@@ -296,7 +296,7 @@ class TestClusterNews:
                 content="B",
                 published_at=datetime(2026, 3, 31, 11, 0, tzinfo=UTC),
                 source_name="Source B",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
                 source_tags=["news"],
             ),
         ]
@@ -515,7 +515,7 @@ def _cna_articles() -> list[Article]:
             content="Content",
             published_at=datetime(2026, 9, 17, 10, 0, tzinfo=UTC),
             source_name="中央社即時新聞 財經新聞",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["news"],
         )
         for n in ("55", "47")

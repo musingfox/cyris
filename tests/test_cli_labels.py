@@ -1,6 +1,8 @@
 """`cyris labels draw|report`: the blind-label sample, drawn from D1 and scored back."""
 
 import json
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -19,8 +21,8 @@ AFTER = "2026-09-19T00:00:00.000000+00:00"
 def put(db, url, *, state="accepted", tags=(), reason=None, triaged_at=None, title=""):
     db.query(
         "INSERT INTO stored_articles (url, title, content, published_at, source_name, "
-        "source_tier, source_tags, state, first_seen_at, rejection_reason, triaged_at) "
-        "VALUES (?, ?, '', ?, 'Source', 'filter', ?, ?, ?, ?, ?)",
+        "source_lane, source_tags, state, first_seen_at, rejection_reason, triaged_at) "
+        "VALUES (?, ?, '', ?, 'Source', 'skim', ?, ?, ?, ?, ?)",
         [url, title or url, AFTER, json.dumps(list(tags)), state, AFTER, reason, triaged_at],
     )
 
@@ -243,3 +245,12 @@ class TestReport:
         assert result.exit_code == 1
         assert "No item is labeled up or down yet" in result.output
         assert embedder.payloads == []
+
+
+def test_the_labels_probe_verdict_words_name_a_lane_not_a_tier() -> None:
+    scripts = str(Path(__file__).resolve().parent.parent / "scripts")
+    sys.path.insert(0, scripts)
+    import labels_probe
+
+    assert "lane" in labels_probe.VERDICT_WORDS
+    assert "tier" not in labels_probe.VERDICT_WORDS

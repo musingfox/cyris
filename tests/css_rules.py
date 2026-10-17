@@ -24,8 +24,8 @@ from cyris.domain.models import (
     DigestContent,
     DigestItem,
     DigestSection,
+    Lane,
     StoredArticle,
-    Tier,
     UsageStats,
 )
 
@@ -610,7 +610,7 @@ def _raw_article(
         content="Receipt fixture article.",
         published_at=timestamp,
         source_name=source,
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
         state=state,
         first_seen_at=timestamp,
         score=score,

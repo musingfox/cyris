@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 from cyris.domain.areas import fold_name
 from cyris.domain.language import detect_language
-from cyris.domain.models import StoredArticle, Tier, UsageStats
+from cyris.domain.models import Lane, StoredArticle, UsageStats
 from cyris.domain.tags import NEWS_TAG, normalize_tags
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import build_scoring_prompt, build_scoring_system_prompt
@@ -47,7 +47,7 @@ def select_scorable(
     """
     scorable = []
     for a in articles:
-        if a.source_tier == Tier.FAN:  # fan tier is never scored
+        if a.source_lane == Lane.FOLLOW:  # follow lane is never scored
             continue
         if NEWS_TAG in a.source_tags:
             continue

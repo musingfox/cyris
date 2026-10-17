@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.service_layer.prompts import (
     CLEF_PREFERENCE,
     FILTER_CRITERIA,
@@ -29,7 +29,7 @@ class TestBuildNewsClusterPrompt:
             content="A" * 600,  # 600 chars, should be truncated at 500
             published_at=datetime(2026, 3, 31, 10, 0, tzinfo=UTC),
             source_name="Reuters",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["news"],
         )
 
@@ -72,7 +72,7 @@ class TestBuildFilterPrompt:
             content="Y" * 1000,
             published_at=datetime(2026, 4, 12, 10, 0, tzinfo=UTC),
             source_name="NewsSource",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["news"],
         )
 
@@ -90,7 +90,7 @@ class TestBuildFilterPrompt:
             content="Z" * 1000,
             published_at=datetime(2026, 4, 12, 10, 0, tzinfo=UTC),
             source_name="ShortNews",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
             source_tags=["short"],
         )
 
@@ -109,7 +109,7 @@ class TestBuildSummarizePrompt:
             content="B" * 2000,  # 2000 chars, should be truncated at 1000
             published_at=datetime(2026, 4, 9, 10, 0, tzinfo=UTC),
             source_name="TechCrunch",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech"],
         )
 
@@ -128,7 +128,7 @@ class TestBuildSummarizePrompt:
             content="C" * 2000,  # 2000 chars, should be truncated at 1500
             published_at=datetime(2026, 4, 9, 10, 0, tzinfo=UTC),
             source_name="ArXiv",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["ai"],
         )
 

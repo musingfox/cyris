@@ -36,7 +36,7 @@ from e2e.receipts import (
 )
 
 from cyris.bootstrap import default_model
-from cyris.domain.models import ArticleState, SourceConfig, StoredArticle, Tier, UsageStats
+from cyris.domain.models import ArticleState, Lane, SourceConfig, StoredArticle, UsageStats
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.prompts import language_wording
 
@@ -49,18 +49,18 @@ MODEL = default_model("gemini")
 # The one active area: every scenario source is filed under it, so every item has one.
 TECH_AREA = {"id": 1, "name": "Tech", "position": 0, "status": "active"}
 DEEP = SourceConfig(
-    name="E2E Deep", url="https://deep.e2e.test/feed", tier=Tier.SUMMARIZE, tags=["ai"], area_id=1
+    name="E2E Deep", url="https://deep.e2e.test/feed", lane=Lane.READ, tags=["ai"], area_id=1
 )
 WIRE = SourceConfig(
-    name="E2E Wire", url="https://wire.e2e.test/feed", tier=Tier.FILTER, tags=["news"], area_id=1
+    name="E2E Wire", url="https://wire.e2e.test/feed", lane=Lane.SKIM, tags=["news"], area_id=1
 )
 BLOG = SourceConfig(
-    name="E2E Blog", url="https://blog.e2e.test/feed", tier=Tier.FILTER, tags=["tech"], area_id=1
+    name="E2E Blog", url="https://blog.e2e.test/feed", lane=Lane.SKIM, tags=["tech"], area_id=1
 )
 LETTERS = SourceConfig(
     name="E2E Letters",
     type="newsletter",
-    tier=Tier.SUMMARIZE,
+    lane=Lane.READ,
     tags=["letters"],
     email_match="from:editor@letters.e2e.test",
     homepage="https://letters.e2e.test",
@@ -193,7 +193,7 @@ def _voted(now: datetime) -> StoredArticle:
         content="The reader voted this one down since.",
         published_at=then,
         source_name=DEEP.name,
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["ai"],
         state=ArticleState.ACCEPTED,
         first_seen_at=then,
@@ -326,6 +326,11 @@ EXPECTED_ROUTES = {
 # publish_site and the run record.
 EXPECTED_D1 = [
     "schema",
+    # The lane step is pending on a first boot, so the runner reads its precondition
+    # and records it; its statements do not run on a database that never had the column.
+    "SELECT schema_migrations",
+    "PRAGMA table_info",
+    "INSERT OR IGNORE INTO schema_migrations",
     "SELECT settings",
     "SELECT sources",
     # An empty table: the run tracks no topic, so it embeds nothing.
@@ -412,7 +417,7 @@ def _expected_row(r: "Receipts", key: str) -> dict:
         "author": author,
         "published_at": published,
         "source_name": source.name,
-        "source_tier": str(source.tier),
+        "source_lane": str(source.lane),
         "source_tags": json.dumps(source.tags),
         "ref_urls": json.dumps(ref_urls),
         "state": state,
@@ -445,7 +450,7 @@ def test_every_article_row_holds_what_cyris_was_given_and_decided(receipts) -> N
         "author": None,
         "published_at": seed.published_at.isoformat(timespec="microseconds"),
         "source_name": seed.source_name,
-        "source_tier": "summarize",
+        "source_lane": "read",
         "source_tags": '["ai"]',
         "ref_urls": "[]",
         "state": "rejected",

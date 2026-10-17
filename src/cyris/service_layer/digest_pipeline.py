@@ -8,10 +8,10 @@ from cyris.domain.models import (
     NO_LLM_MODEL,
     Article,
     DigestContent,
+    Lane,
     ProcessResult,
     SourceConfig,
     StoryRecord,
-    Tier,
     UsageStats,
 )
 from cyris.domain.selection import (
@@ -19,7 +19,7 @@ from cyris.domain.selection import (
     layer_by_score,
     preference_moves,
     select_digest_articles,
-    split_summarize_tier_by_score,
+    split_read_lane_by_score,
 )
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
@@ -27,7 +27,7 @@ from cyris.service_layer.ports import LLMClient
 from cyris.service_layer.schedule import Period
 from cyris.service_layer.summarize import (
     build_attention_sections,
-    build_fan_sections,
+    build_follow_sections,
     summarize_articles,
 )
 from cyris.utils.timezone import now_in_timezone
@@ -88,9 +88,9 @@ class DigestPipeline:
         preference: PreferenceSource | None = None,
         date: str | None = None,
     ) -> ProcessResult:
-        """Process articles through tier-based pipeline.
+        """Process articles through lane-based pipeline.
 
-        Splits articles by tier, delegates to filter/summarize processors,
+        Splits articles by lane, delegates to filter/summarize processors,
         and assembles a complete DigestContent with URL classification.
 
         Args:
@@ -123,16 +123,16 @@ class DigestPipeline:
                 rejected_urls=[],
             )
 
-        filter_tier = [a for a in articles if a.source_tier == Tier.FILTER]
-        summarize_tier = [a for a in articles if a.source_tier == Tier.SUMMARIZE]
-        fan_tier = [a for a in articles if a.source_tier == Tier.FAN]
+        skim_lane = [a for a in articles if a.source_lane == Lane.SKIM]
+        read_lane = [a for a in articles if a.source_lane == Lane.READ]
+        follow_lane = [a for a in articles if a.source_lane == Lane.FOLLOW]
 
         logger.info(
-            "Processing %d articles: %d filter, %d summarize, %d fan",
+            "Processing %d articles: %d skim, %d read, %d follow",
             len(articles),
-            len(filter_tier),
-            len(summarize_tier),
-            len(fan_tier),
+            len(skim_lane),
+            len(read_lane),
+            len(follow_lane),
         )
 
         usage = UsageStats(
@@ -140,11 +140,11 @@ class DigestPipeline:
             fell_back_to_excerpts=self._llm is None,
         )
 
-        # Split filter tier into news and non-news
-        news_articles, non_news_articles = filter_news(filter_tier)
+        # Split skim lane into news and non-news
+        news_articles, non_news_articles = filter_news(skim_lane)
 
         logger.info(
-            "Filter tier split: %d news articles, %d non-news articles",
+            "Skim lane split: %d news articles, %d non-news articles",
             len(news_articles),
             len(non_news_articles),
         )
@@ -158,7 +158,7 @@ class DigestPipeline:
                 self._llm,
                 usage=usage,
                 article_scores=article_scores,
-                # The cluster step is the filter tier's first pass: what it leaves
+                # The cluster step is the skim lane's first pass: what it leaves
                 # unclustered goes on to the filter below, read at the same length.
                 snippet_length=self.filter_snippet_length,
                 output_language=self.output_language,
@@ -178,13 +178,13 @@ class DigestPipeline:
             style_prompt=self.style_prompt,
         )
 
-        # Split summarize tier by score threshold
-        high_score_articles, low_score_articles = split_summarize_tier_by_score(
-            summarize_tier, article_scores, self.summarize_score_threshold
+        # Split read lane by score threshold
+        high_score_articles, low_score_articles = split_read_lane_by_score(
+            read_lane, article_scores, self.summarize_score_threshold
         )
 
         logger.info(
-            "Split summarize tier: %d high-score (AI), %d low-score (attention)",
+            "Split read lane: %d high-score (AI), %d low-score (attention)",
             len(high_score_articles),
             len(low_score_articles),
         )
@@ -203,15 +203,15 @@ class DigestPipeline:
         # Build attention sections for low-score articles
         attention = build_attention_sections(low_score_articles, article_scores)
 
-        # Fan tier: passthrough, grouped by source, never scored/filtered/summarized
-        fan_sections = build_fan_sections(fan_tier)
+        # Follow lane: passthrough, grouped by source, never scored/filtered/summarized
+        follow_sections = build_follow_sections(follow_lane)
 
         total_included = (
             len(filtered)
             + sum(len(s.items) for s in summaries)
             + sum(len(a.items) for a in attention)
             + sum(len(c.items) for c in news_clusters)
-            + sum(len(f.items) for f in fan_sections)
+            + sum(len(f.items) for f in follow_sections)
         )
 
         cost = usage.estimated_cost
@@ -225,7 +225,7 @@ class DigestPipeline:
 
         # Rejected is the filter's verdict, taken before the cap: a headline the cap
         # cuts was not discarded.
-        filter_urls = {a.url for a in filter_tier}
+        filter_urls = {a.url for a in skim_lane}
         accepted_filter_urls = set()
         for item in filtered:
             accepted_filter_urls.update(item.urls)
@@ -269,7 +269,7 @@ class DigestPipeline:
             thematic_summaries=summaries,
             attention_sections=attention,
             filtered_headlines=filtered,
-            fan_sections=fan_sections,
+            fan_sections=follow_sections,
             output_language=self.output_language,
         )
 

@@ -194,7 +194,7 @@ def _article(title: str, score: float | None) -> DigestItem:
 def _topic(
     heading: str, *articles: DigestItem, summary: str | None = "Group summary"
 ) -> DigestSection:
-    """A summarize-tier group; summary=None is the degraded shape, which has no group summary."""
+    """A read-lane group; summary=None is the degraded shape, which has no group summary."""
     return DigestSection(heading=heading, summary=summary, items=list(articles))
 
 

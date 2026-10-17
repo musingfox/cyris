@@ -375,8 +375,8 @@ async def test_a_line_break_in_a_proposed_name_becomes_a_space(db: SqliteD1) -> 
 def _article(db: SqliteD1, url: str, source: str, title: str) -> None:
     seen = datetime.now(UTC).isoformat(timespec="microseconds")
     db.query(
-        "INSERT INTO stored_articles (url, title, published_at, source_name, source_tier, "
-        "first_seen_at) VALUES (?, ?, ?, ?, 'filter', ?)",
+        "INSERT INTO stored_articles (url, title, published_at, source_name, source_lane, "
+        "first_seen_at) VALUES (?, ?, ?, ?, 'skim', ?)",
         [url, title, seen, source, seen],
     )
 

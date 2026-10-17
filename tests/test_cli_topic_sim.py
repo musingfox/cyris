@@ -8,7 +8,7 @@ from fakes import settings_toml
 from typer.testing import CliRunner
 
 from cyris.adapters.store import ArticleStore
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.domain.similarity import normalize
 from cyris.entrypoints.cli import app
 
@@ -41,7 +41,7 @@ def _article(n: int, title: str) -> Article:
         content="c",
         published_at=datetime.now(UTC) - timedelta(hours=2),
         source_name="Src",
-        source_tier=Tier.FILTER,
+        source_lane=Lane.SKIM,
     )
 
 

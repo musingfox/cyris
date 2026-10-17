@@ -14,7 +14,7 @@ from fakes import make_config
 from cyris.adapters.gemini_client import GeminiAPIError
 from cyris.config import Config, LLMProviderConfig
 from cyris.diagnostics import doctor
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Lane, SourceConfig
 
 pytestmark = pytest.mark.integration
 
@@ -40,7 +40,7 @@ def no_network(monkeypatch):
 
 def _config(tmp_path: Path, **app_kwargs) -> Config:
     cfg = make_config(
-        sources={"Feed": SourceConfig(name="Feed", url="https://a.test/feed", tier=Tier.FILTER)},
+        sources={"Feed": SourceConfig(name="Feed", url="https://a.test/feed", lane=Lane.SKIM)},
         **app_kwargs,
     )
     cfg.app.agent_vault.path = tmp_path / "agent-vault"
@@ -916,7 +916,7 @@ async def test_a_config_left_on_the_old_stanza_fails_the_build_check(
 
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(
-        "sources:\n  - name: Origin Feed\n    url: https://origin.test/feed\n    tier: filter\n"
+        "sources:\n  - name: Origin Feed\n    url: https://origin.test/feed\n    lane: skim\n"
     )
     cfg = load_config(config_path=config_path, sources_path=sources_path)
     cfg.app.html_output.enabled = True
@@ -1051,8 +1051,8 @@ class TestFeedHealth:
     def _article(db, source: str, age: timedelta) -> None:
         seen = (datetime.now(UTC) - age).isoformat()
         db.query(
-            "INSERT INTO stored_articles (url, published_at, source_name, source_tier, "
-            "first_seen_at) VALUES (?, ?, ?, 'filter', ?)",
+            "INSERT INTO stored_articles (url, published_at, source_name, source_lane, "
+            "first_seen_at) VALUES (?, ?, ?, 'skim', ?)",
             [f"https://{source}.test/{seen}", seen, source, seen],
         )
 

@@ -644,7 +644,7 @@ class TriageServer:
                     {
                         "name": s.name,
                         "type": s.type,
-                        "tier": s.tier.value,
+                        "lane": s.lane.value,
                         "url": s.url,
                         "email_match": s.email_match,
                         "homepage": s.homepage,

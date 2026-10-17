@@ -11,9 +11,9 @@ from cyris.domain.models import (
     Article,
     DigestContent,
     DigestItem,
+    Lane,
     SourceConfig,
     StoredArticle,
-    Tier,
     UsageStats,
     is_degraded_run,
 )
@@ -30,10 +30,10 @@ class TestArticle:
             content="Article content here",
             published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
             source_name="TechCrunch",
-            source_tier=Tier.FILTER,
+            source_lane=Lane.SKIM,
         )
         assert article.id == 1
-        assert article.source_tier == Tier.FILTER
+        assert article.source_lane == Lane.SKIM
         assert article.source_tags == []
         assert article.author is None
 
@@ -46,7 +46,7 @@ class TestArticle:
             author="Jane Doe",
             published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
             source_name="Stratechery",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             source_tags=["tech", "strategy"],
         )
         assert article.author == "Jane Doe"
@@ -60,7 +60,7 @@ class TestArticle:
                 content="Content",
                 published_at=datetime.now(tz=UTC),
                 source_name="Test",
-                source_tier=Tier.FILTER,
+                source_lane=Lane.SKIM,
             )
 
 
@@ -73,7 +73,7 @@ class TestStoredArticle:
             content="Content",
             published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
             ref_urls=["https://example.com/a"],
         )
 
@@ -89,7 +89,7 @@ class TestStoredArticle:
             content="Content",
             published_at=datetime(2026, 3, 16, 10, 0, tzinfo=UTC),
             source_name="Newsletter",
-            source_tier=Tier.SUMMARIZE,
+            source_lane=Lane.READ,
         )
         old_data = StoredArticle.from_article(article, first_seen_at=datetime.now(UTC)).model_dump()
         old_data.pop("ref_urls", None)
@@ -103,7 +103,7 @@ class TestStoredArticle:
 class TestSourceConfig:
     def test_defaults(self):
         source = SourceConfig(name="Test Source")
-        assert source.tier == Tier.FILTER
+        assert source.lane == Lane.SKIM
         assert source.type == "rss"
         assert source.language == "auto"
         assert source.tags == []
@@ -112,9 +112,9 @@ class TestSourceConfig:
         source = SourceConfig(
             name="Stratechery",
             url="https://stratechery.com/feed/",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
         )
-        assert source.tier == Tier.SUMMARIZE
+        assert source.lane == Lane.READ
         assert source.url == "https://stratechery.com/feed/"
 
 

@@ -318,13 +318,13 @@ store saw them. The RSS Worker read has a bound of its own, the Worker's row cei
 row carries the feed's full content and the Worker holds the whole result in memory. A read that
 fills the ceiling logs a warning, since the window's earliest-buffered rows then stay unstored.
 
-Each source carries a **tier**, which decides how much attention it gets:
+Each source carries a **lane**, which decides how much attention it gets:
 
-| Tier | Treatment |
+| Lane | Treatment |
 |---|---|
-| `filter` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
-| `summarize` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
-| `fan` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
+| `skim` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
+| `read` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
+| `follow` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
 sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
@@ -482,6 +482,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Digest inputs | **D1 `digest_inputs`** | same | One row per issue, keyed `(date, period)`, last write wins: the URLs a publishing run fed the pipeline, in order, as a JSON array. Written by a non-dry run only, before publishing; a dry run and a rerun write nothing. A URL record, not article state: a rerun reads each article by URL as it is now, and votes, vote-similarity seeds, settings, tracked topics, areas and the embedding model are read live too, so a rerun shows their current values. A row whose article `cyris articles clean` deleted drops out of the rerun. An issue recorded before this table has no row, so it cannot be rerun. D1 only: a `json` run keeps no copy |
 | Vote-similarity pool | **D1 `vote_similarity_shadow`** | same | One row per candidate a run judged against the reader's votes, keyed `(run_at, candidate_url)`: the nearest upvoted and downvoted article with each cosine, and the embedding model. `run_at` is the run's `started_at`, which `digest_runs.summary` also carries, and its `vote_similarity_judged` is the run's row count. Raw data with no verdict: the suppression decision and its threshold are not stored. Written by `run_digest` right after `judge_by_votes`, inside its own guard, from the cosines that call already computed, so it costs no embedding call; a run whose similarity pass skipped, and a dry run, write nothing. Nothing reads it yet. D1 only: a `json` run keeps no copy |
 | Blind-label sample | **D1 `blind_labels`** | same | One row per filter candidate drawn for blind labeling by `cyris labels draw`, keyed by the draw's time and the URL: its position on `/labels`, the news split and the pipeline's state frozen at draw time, how many pool rows shared its stratum, the seed, the pool's cutoff, and the reader's answer (`up`, `down` or `skip`) with its time. Not columns of `stored_articles`: a label is written there exactly as a digest vote is, which overwrites the state that put the row in its stratum and leaves a label indistinguishable from a vote, so `cyris labels report` could neither weight the strata nor keep the labels out of the seeds that score them; a skip has no home there at all. One sample at a time: a draw replaces the previous one only with `--replace`, by inserting the new draw whole in one statement before deleting the old, and readers take the latest draw, so a replace that fails part way leaves one whole sample. D1 only: a `json` deployment has none |
+| Applied schema steps | **D1 `schema_migrations`** (none for a `json` deployment) | same | One row per versioned step in `adapters/store/migrations.py`, recorded once it has run, or once its precondition shows it is not needed. Read on every boot to skip the steps already recorded; nothing else reads it |
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
@@ -590,7 +591,7 @@ output tokens). The context window is the other reason, and it still applies to
 `cluster_news`, which sends every news article of a window in one prompt
 (`cluster_news()` in `service_layer/cluster_news.py`): llama's 24k context leaves no headroom
 on a busy window, so clustering fails, every news article falls through to the filter
-unclustered, and the digest loses its news clusters. gpt-oss has 128k. The filter tier no longer
+unclustered, and the digest loses its news clusters. gpt-oss has 128k. The skim lane no longer
 grows with the window, because its prompt is bounded by `BATCH_SIZE` in
 `service_layer/filtering.py`.
 
@@ -804,12 +805,17 @@ deploy button, the app's config sits at the repo root, and three steps stay outs
 share one D1: an RSS Worker provisioned with its own database reads an empty `sources` table,
 polls nothing and logs `sources table is empty`.
 
-**A first boot creates its own tables, and nothing evolves them.** `load_effective_config` applies
-`schema.sql` before the settings read, and the RSS Worker creates its buffer table at both entry
-points. Every statement is `CREATE ... IF NOT EXISTS`, so a new table reaches an existing
-deployment on its next boot, while an `ADD COLUMN` reaches only a fresh database. A first boot then
-stops every run, naming what is missing, until `/settings` or `cyris settings push` holds every
-runtime setting and `sources` holds a source (§5).
+**A first boot creates its own tables, and a versioned step changes the ones that already exist.**
+`load_effective_config` applies `schema.sql` before the settings read, and the RSS Worker creates its
+buffer table at both entry points. Every statement there is `CREATE ... IF NOT EXISTS`, so a new table
+reaches an existing deployment on its next boot, while a column does not. A column reaches an existing
+deployment only as a step in `adapters/store/migrations.py`: after `schema.sql`, each step in
+`MIGRATIONS` whose id is not in `schema_migrations` runs once, in order, and is recorded there. A
+step may name a `Requires(table, column, present)` precondition, and its SQL is skipped when the
+precondition does not hold. `schema.sql` must not index a column a step adds, since it runs first
+([ADR-0016](decisions/0016-version-table-schema-migrations.md) gives the rules). A
+first boot then stops every run, naming what is missing, until `/settings` or `cyris settings push`
+holds every runtime setting and `sources` holds a source (§5).
 
 **Two schedulers is the failure mode this cutover had to avoid.** The local machine and the Container
 run the same pipeline against the same D1 and publish to the same Pages project, where a deployment

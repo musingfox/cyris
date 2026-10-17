@@ -12,7 +12,7 @@ source: multimedia-sources-podcast-youtube
 adr: null
 ---
 
-Summarize-tier media are condensed once, inside the digest run, on the articles
+Read-lane media are condensed once, inside the digest run, on the articles
 that run newly saved — after the store's dedup and before scoring — never in a
 `FetchSource`, never in a Worker, never after scoring.
 
@@ -22,7 +22,7 @@ the article's stored content so the scorer and the summarizer both read it.
 "Newly saved by this run" is the only once-marker; nothing records that a row
 was condensed.
 
-Out of scope: filter- and fan-tier media, which are never condensed; a dry run,
+Out of scope: skim- and follow-lane media, which are never condensed; a dry run,
 which saves nothing and so condenses nothing without a special case; retrying a
 failed condensation, which would need a marker this design does not keep.
 

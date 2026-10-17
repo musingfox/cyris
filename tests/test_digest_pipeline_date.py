@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Article, Tier
+from cyris.domain.models import Article, Lane
 from cyris.service_layer import digest_pipeline
 from cyris.service_layer.digest_pipeline import DigestPipeline
 
@@ -35,7 +35,7 @@ def _article() -> Article:
         content="A launch.",
         published_at=datetime.now(UTC) - timedelta(hours=1),
         source_name="TechSource",
-        source_tier=Tier.SUMMARIZE,
+        source_lane=Lane.READ,
         source_tags=["tech"],
     )
 

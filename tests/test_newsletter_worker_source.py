@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Lane, SourceConfig
 
 pytestmark = pytest.mark.unit
 
@@ -19,7 +19,7 @@ def _source(**kw) -> dict[str, SourceConfig]:
     return {
         "Benedict Evans": SourceConfig(
             name="Benedict Evans",
-            tier=Tier.SUMMARIZE,
+            lane=Lane.READ,
             tags=["tech"],
             email_match="from:list@benedictevans.com",
             **kw,

@@ -1,6 +1,7 @@
 """Tests for configuration loader."""
 
 import logging
+import re
 import tomllib
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pytest
 from fakes import TEST_SETTINGS, make_config, settings_toml
 
 from cyris.config import GRADE_D_KEYS, load_config
-from cyris.domain.models import Tier
+from cyris.domain.models import Lane
 
 pytestmark = pytest.mark.integration
 
@@ -41,8 +42,8 @@ class TestLoadConfig:
 
         # Curated teaching sample covering the main source shapes.
         assert len(cfg.sources) == 5
-        assert cfg.sources["Stratechery"].tier == Tier.SUMMARIZE
-        assert cfg.sources["TechCrunch"].tier == Tier.FILTER
+        assert cfg.sources["Stratechery"].lane == Lane.READ
+        assert cfg.sources["TechCrunch"].lane == Lane.SKIM
         # email-only newsletter shape: no url, matched by From: header
         assert cfg.sources["Some Email Newsletter"].type == "newsletter"
         assert cfg.sources["Some Email Newsletter"].url is None
@@ -107,7 +108,7 @@ class TestLoadConfig:
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
         sources = tmp_path / "sources.yaml"
-        sources.write_text("sources:\n  - name: X\n    url: https://x/feed\n    tier: filter\n")
+        sources.write_text("sources:\n  - name: X\n    url: https://x/feed\n    lane: skim\n")
         cfg = load_config(config_path=config_file, sources_path=sources)
         assert set(cfg.sources) == {"X"}
 
@@ -662,3 +663,23 @@ class TestJsonSettingsFromFileOnly:
     def test_the_webhook_env_var_name_is_gone(self):
         with pytest.raises(ImportError):
             from cyris.config import DISCORD_WEBHOOK_ENV_VAR  # noqa: F401
+
+
+def test_the_trial_wizard_sources_heredoc_loads_its_read_source(tmp_path: Path) -> None:
+    wizard = (Path(__file__).parent.parent / "scripts" / "trial-wizard.sh").read_text()
+    heredoc = re.search(r"<<'YAML'\n(.*?)\nYAML\n", wizard, re.DOTALL)
+    assert heredoc is not None
+    config_file = tmp_path / "cyris.toml"
+    config_file.write_text('[general]\ntimezone = "UTC"\n')
+    sources = tmp_path / "sources.yaml"
+    sources.write_text(heredoc.group(1) + "\n")
+
+    cfg = load_config(config_path=config_file, sources_path=sources)
+
+    assert cfg.sources["Stratechery"].lane == Lane.READ
+
+
+def test_the_example_sources_file_has_no_tier_key() -> None:
+    example = (Path(__file__).parent.parent / "sources.example.yaml").read_text()
+
+    assert not re.search(r"^\s*tier:", example, re.MULTILINE)  # legacy-tier

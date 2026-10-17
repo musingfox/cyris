@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from cyris.adapters.fetch.rss_source import RssSource
-from cyris.domain.models import SourceConfig, Tier
+from cyris.domain.models import Lane, SourceConfig
 
 pytestmark = pytest.mark.unit
 
@@ -47,12 +47,12 @@ async def test_published_at_is_always_tz_aware():
     articles = await source.fetch_articles(
         after=AFTER,
         before=BEFORE,
-        sources={"F": SourceConfig(name="F", url="https://a.test/feed", tier=Tier.SUMMARIZE)},
+        sources={"F": SourceConfig(name="F", url="https://a.test/feed", lane=Lane.READ)},
     )
 
     assert len(articles) == 1
     assert articles[0].published_at.tzinfo is not None
-    assert articles[0].source_tier == Tier.SUMMARIZE
+    assert articles[0].source_lane == Lane.READ
 
 
 @pytest.mark.asyncio

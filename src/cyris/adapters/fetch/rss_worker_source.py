@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from cyris.domain.models import Article, SourceConfig, Tier
+from cyris.domain.models import Article, Lane, SourceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class CloudflareRssSource:
                         author=row.get("author") or None,
                         published_at=row["published_at"],
                         source_name=row.get("source_name", ""),
-                        source_tier=source.tier if source else Tier.FILTER,
+                        source_lane=source.lane if source else Lane.SKIM,
                         source_tags=source.tags if source else [],
                     )
                 )

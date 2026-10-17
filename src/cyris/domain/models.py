@@ -2,21 +2,30 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 NO_LLM_MODEL = "none"
 
 NEWSLETTER_SOURCE_TYPE = "newsletter"
 
 
-class Tier(StrEnum):
-    """Content processing tier determining filtering depth."""
+class Lane(StrEnum):
+    """Content processing lane determining filtering depth."""
 
-    FILTER = "filter"
-    SUMMARIZE = "summarize"
-    FAN = "fan"  # followed groups/newsletters: passthrough, never scored/filtered/summarized
+    SKIM = "skim"
+    READ = "read"
+    FOLLOW = "follow"  # followed groups/newsletters: passthrough, never scored/filtered/summarized
+
+
+# The tier spellings the lane replaced. Accepted on read only, so a partition or D1
+# row written before the rename still loads; nothing writes them again.
+LEGACY_LANE_NAMES: dict[str, Lane] = {
+    "filter": Lane.SKIM,
+    "summarize": Lane.READ,
+    "fan": Lane.FOLLOW,
+}
 
 
 class SourceConfig(BaseModel):
@@ -25,7 +34,7 @@ class SourceConfig(BaseModel):
     name: str
     url: str | None = None
     type: str = "rss"
-    tier: Tier = Tier.FILTER
+    lane: Lane = Lane.SKIM
     tags: list[str] = Field(default_factory=list)
     language: str = "auto"
     email_match: str | None = None
@@ -34,6 +43,14 @@ class SourceConfig(BaseModel):
     homepage: str | None = None
     # The reader's area for this source, an `areas` row id; None until one is chosen.
     area_id: int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_tier(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "tier" in data:
+            moves = ", ".join(f"{old} -> {new}" for old, new in LEGACY_LANE_NAMES.items())
+            raise ValueError(f"`tier` is renamed to `lane`; write the lane instead ({moves})")
+        return data
 
     @property
     def fetchable(self) -> bool:
@@ -73,7 +90,7 @@ class Article(BaseModel):
     author: str | None = None
     published_at: datetime
     source_name: str
-    source_tier: Tier
+    source_lane: Lane
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
     # Not persisted: only the store's save needs it, to tell a newsletter issue's
@@ -112,7 +129,7 @@ class DigestSection(BaseModel):
     description: str | None = None
     items: list[DigestItem] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
-    # One summary the LLM wrote for the whole summarize-tier group, beside each item's
+    # One summary the LLM wrote for the whole read-lane group, beside each item's
     # own. Set only there, and printed only when the group is the Top story.
     summary: str | None = None
     # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
@@ -257,7 +274,7 @@ class StoredArticle(BaseModel):
     author: str | None = None
     published_at: datetime
     source_name: str
-    source_tier: Tier
+    source_lane: Lane
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
 
@@ -268,6 +285,19 @@ class StoredArticle(BaseModel):
     score: float | None = None
     language: str | None = None
     triaged_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_legacy_lane(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "source_tier" in data:  # legacy-tier
+            data["source_lane"] = data.pop("source_tier")  # legacy-tier
+        lane = data.get("source_lane")
+        if isinstance(lane, str):
+            data["source_lane"] = LEGACY_LANE_NAMES.get(lane, lane)
+        return data
 
     @classmethod
     def from_article(cls, article: Article, first_seen_at: datetime) -> "StoredArticle":
@@ -280,7 +310,7 @@ class StoredArticle(BaseModel):
             author=article.author,
             published_at=article.published_at,
             source_name=article.source_name,
-            source_tier=article.source_tier,
+            source_lane=article.source_lane,
             source_tags=article.source_tags,
             ref_urls=article.ref_urls,
             first_seen_at=first_seen_at,
@@ -296,7 +326,7 @@ class StoredArticle(BaseModel):
             author=self.author,
             published_at=self.published_at,
             source_name=self.source_name,
-            source_tier=self.source_tier,
+            source_lane=self.source_lane,
             source_tags=self.source_tags,
             ref_urls=self.ref_urls,
         )
@@ -322,7 +352,7 @@ class StoryRecord(BaseModel):
 
 
 class ProcessResult(BaseModel):
-    """Result of processing articles through tier-based pipeline."""
+    """Result of processing articles through lane-based pipeline."""
 
     content: DigestContent
     accepted_urls: list[str]

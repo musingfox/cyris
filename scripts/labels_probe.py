@@ -173,7 +173,7 @@ def answer_body(label: str, index: int = 0) -> dict:
 
 
 # Words for what the pipeline decided; none may show on the page.
-VERDICT_WORDS = ("accepted", "rejected", "pending", "filtered", "score", "tier", "news")
+VERDICT_WORDS = ("accepted", "rejected", "pending", "filtered", "score", "lane", "news")
 
 _CHECKS: list[Check] = [
     Check(

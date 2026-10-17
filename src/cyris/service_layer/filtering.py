@@ -1,4 +1,4 @@
-"""Filter-tier processor: batch articles through Claude to extract noteworthy headlines."""
+"""Skim-lane processor: batch articles through Claude to extract noteworthy headlines."""
 
 import logging
 
@@ -28,14 +28,14 @@ async def filter_articles(
     output_language: str,
     style_prompt: str,
 ) -> list[DigestItem]:
-    """Send filter-tier articles to Claude for headline extraction, BATCH_SIZE at a time.
+    """Send skim-lane articles to Claude for headline extraction, BATCH_SIZE at a time.
 
     Each batch is judged on its own, one call each. No pass rate is enforced:
     `FILTER_SYSTEM` asks for merit, not a percentage target. A batch whose call fails
     falls back to excerpt headlines while the other batches are still judged.
 
     Args:
-        articles: Filter-tier articles to process.
+        articles: Skim-lane articles to process.
         llm: LLM client.
         usage: Optional UsageStats to accumulate token counts.
 
@@ -47,7 +47,7 @@ async def filter_articles(
 
     # Degraded mode: no LLM → keep the articles as plain excerpts
     if llm is None:
-        logger.warning("No LLM configured; filter tier falls back to excerpt headlines")
+        logger.warning("No LLM configured; skim lane falls back to excerpt headlines")
         if usage is not None:
             usage.fell_back_to_excerpts = True
         return headlines_from_articles(articles, article_scores)

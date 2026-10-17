@@ -46,7 +46,7 @@ guide has so far been verified on one account only.
 
 ## Docs
 
-- [How sources are processed](docs/sources.md): tiers, votes, and what is not supported
+- [How sources are processed](docs/sources.md): lanes, votes, and what is not supported
 - [Operating a deployment](docs/operations.md): updating, rolling back, checking what runs
 - [Hosting and cost](docs/hosting-and-cost.md): what one deployment spends
 - [Architecture](docs/architecture.md): how it is built; read it before changing code
@@ -56,9 +56,9 @@ guide has so far been verified on one account only.
 Planned, not built yet:
 
 - **Podcasts and YouTube channels as sources.** You will add them like any other feed.
-  On a `summarize`-tier source, cyris will read the episode itself instead of its show
+  On a `read`-lane source, cyris will read the episode itself instead of its show
   notes: the transcript a podcast publishes in its feed, or the video through Gemini,
-  which needs a Gemini API key. On other tiers it will tell you a new episode is out. A
+  which needs a Gemini API key. On other lanes it will tell you a new episode is out. A
   setting picks the model or turns this off. A podcast that publishes no transcript will
   be announced but not summarized; reading its audio directly is a later step.
 

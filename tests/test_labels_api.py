@@ -25,8 +25,8 @@ VERDICT_WORDS = ("rejected", "filtered", "0.37", "news", "filter", "pending", "a
 def put(db: SqliteD1, url: str, title: str, content: str = "") -> None:
     db.query(
         "INSERT INTO stored_articles (url, original_id, title, content, published_at, "
-        "source_name, source_tier, source_tags, state, first_seen_at, rejection_reason, score) "
-        "VALUES (?, ?, ?, ?, ?, 'Wire', 'filter', '[\"news\"]', 'rejected', ?, 'filtered', 0.37)",
+        "source_name, source_lane, source_tags, state, first_seen_at, rejection_reason, score) "
+        "VALUES (?, ?, ?, ?, ?, 'Wire', 'skim', '[\"news\"]', 'rejected', ?, 'filtered', 0.37)",
         [url, url, title, content, SEEN, SEEN],
     )
 
