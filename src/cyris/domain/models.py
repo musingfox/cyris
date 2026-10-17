@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 NO_LLM_MODEL = "none"
 
@@ -17,6 +17,15 @@ class Lane(StrEnum):
     SKIM = "skim"
     READ = "read"
     FOLLOW = "follow"  # followed groups/newsletters: passthrough, never scored/filtered/summarized
+
+
+# The tier spellings the lane replaced. Accepted on read only, so a partition or D1
+# row written before the rename still loads; nothing writes them again.
+LEGACY_LANE_NAMES: dict[str, Lane] = {
+    "filter": Lane.SKIM,
+    "summarize": Lane.READ,
+    "fan": Lane.FOLLOW,
+}
 
 
 class SourceConfig(BaseModel):
@@ -268,6 +277,19 @@ class StoredArticle(BaseModel):
     score: float | None = None
     language: str | None = None
     triaged_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_legacy_lane(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "source_tier" in data:  # legacy-tier
+            data["source_lane"] = data.pop("source_tier")  # legacy-tier
+        lane = data.get("source_lane")
+        if isinstance(lane, str):
+            data["source_lane"] = LEGACY_LANE_NAMES.get(lane, lane)
+        return data
 
     @classmethod
     def from_article(cls, article: Article, first_seen_at: datetime) -> "StoredArticle":
