@@ -8,7 +8,10 @@ read — the first D1 touch in every entrypoint — and aborted there.
 from datetime import UTC, datetime
 
 import pytest
-from fakes import SqliteD1, make_config
+from fakes import RecordingD1, SqliteD1, make_config
+from legacy_schema import LEGACY_SCHEMA_SQL, old_db
+from legacy_schema import columns as _columns
+from legacy_schema import recorded as _recorded
 
 from cyris.adapters.store.d1 import D1Error, apply_schema
 from cyris.adapters.store.d1_store import D1ArticleStore
@@ -138,3 +141,123 @@ def test_the_second_boot_keeps_recorded_runs() -> None:
     apply_schema(db)
 
     assert db.query("SELECT COUNT(*) AS n FROM digest_runs").rows[0]["n"] == 1
+
+
+def _d1_env(monkeypatch) -> None:
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    monkeypatch.setenv("CYRIS_STORE_DATABASE_ID", "abc")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+
+
+def _old_db() -> SqliteD1:
+    db = old_db()
+    for n, tier in enumerate(["filter", "summarize", "fan"]):
+        db.query(
+            "INSERT INTO stored_articles (url, published_at, source_name, "
+            "source_tier, first_seen_at) VALUES (?, ?, 'Source', ?, ?)",  # legacy-tier
+            [
+                f"https://example.com/{n}",
+                "2026-10-01T00:00:00+00:00",
+                tier,
+                "2026-10-01T00:00:00+00:00",
+            ],
+        )
+    return db
+
+
+def _boot_via_load_effective_config(monkeypatch, tmp_path, db: SqliteD1):
+    from cyris import bootstrap
+    from cyris.adapters.store import d1 as d1_module
+
+    _d1_env(monkeypatch)
+    monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: db)
+    monkeypatch.setattr(d1_module, "D1Client", lambda **_kwargs: db)
+    return bootstrap.load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
+
+
+def _boot_via_sources_push(monkeypatch, tmp_path, db: SqliteD1) -> None:
+    from typer.testing import CliRunner
+
+    from cyris.entrypoints.cli import app
+
+    _d1_env(monkeypatch)
+    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_kwargs: db)
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(f'[agent_vault]\npath = "{tmp_path / "vault"}"\n')
+    sources_path = tmp_path / "sources.yaml"
+    sources_path.write_text('sources:\n  - name: "Feed"\n    url: "https://a.test/feed"\n')
+
+    result = CliRunner().invoke(
+        app, ["sources", "push", "--config", str(config_path), "--sources", str(sources_path)]
+    )
+
+    assert result.exit_code == 0, result.output
+
+
+def _reference_columns(tmp_path) -> set[str]:
+    db = _old_db()
+    with pytest.MonkeyPatch.context() as patch:
+        _boot_via_load_effective_config(patch, tmp_path, db)
+    return _columns(db)
+
+
+def test_an_old_database_booted_by_load_effective_config_is_migrated(tmp_path, monkeypatch) -> None:
+    db = _old_db()
+
+    _boot_via_load_effective_config(monkeypatch, tmp_path, db)
+
+    assert "source_lane" in _columns(db) and "source_tier" not in _columns(db)  # legacy-tier
+    assert _recorded(db) == ["0001_tier_to_lane"]
+
+
+def test_an_old_database_reached_by_sources_push_is_migrated(tmp_path, monkeypatch) -> None:
+    db = _old_db()
+
+    _boot_via_sources_push(monkeypatch, tmp_path, db)
+
+    assert "source_lane" in _columns(db) and "source_tier" not in _columns(db)  # legacy-tier
+    assert _recorded(db) == ["0001_tier_to_lane"]
+
+
+@pytest.mark.parametrize("path", ["load_effective_config", "sources_push"])
+def test_an_empty_database_ends_in_the_migrated_shape_on_either_path(
+    tmp_path, monkeypatch, path: str
+) -> None:
+    reference = _reference_columns(tmp_path / "ref")
+    db = SqliteD1(with_schema=False)
+
+    if path == "load_effective_config":
+        _boot_via_load_effective_config(monkeypatch, tmp_path, db)
+    else:
+        _boot_via_sources_push(monkeypatch, tmp_path, db)
+
+    assert _columns(db) == reference
+
+
+def test_doctor_reads_the_migrated_old_database_as_ok(tmp_path, monkeypatch) -> None:
+    from unittest.mock import patch
+
+    from cyris.adapters.store.d1_store import D1ArticleStore
+    from cyris.diagnostics import doctor
+
+    db = _old_db()
+    cfg = _boot_via_load_effective_config(monkeypatch, tmp_path, db)
+
+    with patch("cyris.bootstrap.build_store", return_value=D1ArticleStore(db)):
+        check = doctor._check_store(cfg)
+
+    assert check.status == "ok"
+
+
+@pytest.mark.parametrize("starts_as_old_shape", [True, False])
+def test_a_second_apply_writes_nothing(starts_as_old_shape: bool) -> None:
+    db = RecordingD1(with_schema=False)
+    if starts_as_old_shape:
+        db.query(LEGACY_SCHEMA_SQL)
+    apply_schema(db)
+    db.statements.clear()
+
+    apply_schema(db)
+
+    assert db.written_tables() == set()
