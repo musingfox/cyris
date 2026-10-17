@@ -666,57 +666,166 @@ class TestDeploymentProvenance:
         assert check.status == "ok"
         assert "aaaaaaa" in check.detail
 
-    async def test_a_deployment_that_does_not_answer_fails_and_names_the_hostname_to_use(
+    async def test_a_deployment_that_does_not_answer_fails_and_names_its_url(
         self, monkeypatch
     ) -> None:
         async def refuse(_base: str) -> str:
-            raise RuntimeError("/login answered 302, not a session")
+            raise RuntimeError("connection refused")
 
-        monkeypatch.setenv("CYRIS_UI_TOKEN", "t" * 32)
+        self._service_token(monkeypatch)
         monkeypatch.setattr(doctor, "_fetch_build_sha", refuse)
         check = await doctor._check_deployment("https://digest.example.com/")
         assert check.status == "fail"
-        assert "workers.dev" in check.fix
+        assert "did not answer" in check.detail
+        assert "https://digest.example.com" in check.fix
+        assert "workers.dev" not in check.fix
 
-    async def test_the_login_cookie_carries_to_the_build_read(self, monkeypatch) -> None:
-        """The handshake over real HTTP, because the rest of this class stubs it.
+    @staticmethod
+    def _service_token(monkeypatch) -> None:
+        monkeypatch.setenv("CYRIS_ACCESS_CLIENT_ID", "cid")
+        monkeypatch.setenv("CYRIS_ACCESS_CLIENT_SECRET", "sek-9f3")
 
-        `router.js` answers /login with a 302 that sets the session cookie and
-        then checks that cookie on /api/build. The client must not follow the
-        redirect and must still carry the cookie forward — one assumption about
-        httpx's jar that no amount of monkeypatching would catch.
-        """
+    async def test_the_build_read_carries_the_service_token_and_no_sign_in(
+        self, monkeypatch
+    ) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        seen: list[tuple[str, str | None, str | None]] = []
+
+        async def record(request: web.Request, _response: web.StreamResponse) -> None:
+            seen.append(
+                (
+                    request.path,
+                    request.headers.get("CF-Access-Client-Id"),
+                    request.headers.get("CF-Access-Client-Secret"),
+                )
+            )
+
+        async def build(_request: web.Request) -> web.Response:
+            return web.json_response({"git_sha": "f" * 40})
+
+        app = web.Application()
+        app.on_response_prepare.append(record)
+        app.router.add_get("/api/build", build)
+        server = TestServer(app)
+        await server.start_server()
+        try:
+            self._service_token(monkeypatch)
+            sha = await doctor._fetch_build_sha(str(server.make_url("")).rstrip("/"))
+        finally:
+            await server.close()
+        assert sha == "f" * 40
+        assert seen == [("/api/build", "cid", "sek-9f3")]
+
+    @pytest.mark.parametrize(
+        "missing",
+        [
+            ["CYRIS_ACCESS_CLIENT_SECRET"],
+            ["CYRIS_ACCESS_CLIENT_ID"],
+            ["CYRIS_ACCESS_CLIENT_ID", "CYRIS_ACCESS_CLIENT_SECRET"],
+        ],
+    )
+    async def test_an_unset_service_token_variable_is_named_before_any_request(
+        self, monkeypatch, missing: list[str]
+    ) -> None:
         from aiohttp import web
         from aiohttp.test_utils import TestServer
 
         hits: list[str] = []
 
-        async def login(request: web.Request) -> web.Response:
+        async def record(request: web.Request, _response: web.StreamResponse) -> None:
             hits.append(request.path)
-            form = await request.post()
-            if form.get("token") != "s3cret":
-                return web.Response(status=401)
-            return web.Response(
-                status=302, headers={"Location": "/", "Set-Cookie": "cyris_session=ok; Path=/"}
-            )
-
-        async def build(request: web.Request) -> web.Response:
-            hits.append(request.path)
-            if request.cookies.get("cyris_session") != "ok":
-                return web.json_response({"error": "unauthorized"}, status=401)
-            return web.json_response({"git_sha": "f" * 40})
 
         app = web.Application()
-        app.router.add_post("/login", login)
+        app.on_response_prepare.append(record)
+        server = TestServer(app)
+        await server.start_server()
+        try:
+            self._service_token(monkeypatch)
+            for name in missing:
+                monkeypatch.delenv(name)
+            check = await doctor._check_deployment(str(server.make_url("")))
+        finally:
+            await server.close()
+        assert check.status == "fail"
+        for name in missing:
+            assert name in check.fix
+        if "CYRIS_ACCESS_CLIENT_SECRET" not in missing:
+            assert "CYRIS_ACCESS_CLIENT_SECRET" not in check.fix
+        if "CYRIS_ACCESS_CLIENT_ID" not in missing:
+            assert "CYRIS_ACCESS_CLIENT_ID" not in check.fix
+        assert "sek-9f3" not in check.detail + check.fix
+        assert hits == []
+
+    async def test_a_deployment_that_predates_the_endpoint_is_reported_over_the_wire(
+        self, monkeypatch
+    ) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        hits: list[str] = []
+
+        async def record(request: web.Request, _response: web.StreamResponse) -> None:
+            hits.append(request.path)
+
+        app = web.Application()
+        app.on_response_prepare.append(record)
+        server = TestServer(app)
+        await server.start_server()
+        try:
+            self._service_token(monkeypatch)
+            check = await doctor._check_deployment(str(server.make_url("")))
+        finally:
+            await server.close()
+        assert check.status == "fail"
+        assert "predates the endpoint" in check.detail
+        assert hits == ["/api/build"]
+
+    @pytest.mark.parametrize("status", [200, 302, 401, 403, 404, 500])
+    async def test_the_service_token_never_appears_in_any_outcome(
+        self, monkeypatch, caplog, status: int
+    ) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        async def build(_request: web.Request) -> web.Response:
+            if status == 200:
+                return web.json_response({"git_sha": "f" * 40})
+            if status == 302:
+                return web.Response(status=302, headers={"Location": "/elsewhere"})
+            if status == 403:
+                return web.json_response({"error": "forbidden", "detail": "no"}, status=403)
+            return web.Response(status=status)
+
+        app = web.Application()
         app.router.add_get("/api/build", build)
         server = TestServer(app)
         await server.start_server()
         try:
-            monkeypatch.setenv("CYRIS_UI_TOKEN", "s3cret")
-            assert await doctor._fetch_build_sha(str(server.make_url("")).rstrip("/")) == "f" * 40
+            self._service_token(monkeypatch)
+            with caplog.at_level("DEBUG"):
+                check, _sha = await doctor._deployment(str(server.make_url("")))
         finally:
             await server.close()
-        assert hits == ["/login", "/api/build"]
+        assert "sek-9f3" not in check.detail + check.fix
+        assert "sek-9f3" not in caplog.text
+
+    async def test_the_service_token_never_appears_when_the_host_refuses(
+        self, monkeypatch, caplog
+    ) -> None:
+        import socket
+
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        self._service_token(monkeypatch)
+        with caplog.at_level("DEBUG"):
+            check, _sha = await doctor._deployment(f"http://127.0.0.1:{port}")
+        assert check.status == "fail"
+        assert "did not answer" in check.detail
+        assert "sek-9f3" not in check.detail + check.fix
+        assert "sek-9f3" not in caplog.text
 
     async def test_a_deployment_older_than_the_endpoint_is_not_blamed_on_its_hostname(
         self, monkeypatch
@@ -731,26 +840,11 @@ class TestDeploymentProvenance:
         async def absent(_base: str) -> str:
             raise doctor._EndpointAbsentError("https://x.workers.dev")
 
-        monkeypatch.setenv("CYRIS_UI_TOKEN", "t" * 32)
+        self._service_token(monkeypatch)
         monkeypatch.setattr(doctor, "_fetch_build_sha", absent)
         check = await doctor._check_deployment("https://x.workers.dev")
         assert check.status == "fail"
         assert "predates the endpoint" in check.detail
-        assert "workers.dev" not in check.fix
-
-    async def test_a_missing_ui_token_is_named_rather_than_blamed_on_the_hostname(
-        self, monkeypatch
-    ) -> None:
-        """A fault in this machine's .env must not read as a fault in the URL."""
-
-        async def never_called(_base: str) -> str:
-            raise AssertionError("no request should be made without a token")
-
-        monkeypatch.delenv("CYRIS_UI_TOKEN", raising=False)
-        monkeypatch.setattr(doctor, "_fetch_build_sha", never_called)
-        check = await doctor._check_deployment("https://x.workers.dev")
-        assert check.status == "fail"
-        assert "CYRIS_UI_TOKEN" in check.fix
         assert "workers.dev" not in check.fix
 
     async def test_not_passing_a_deployment_skips_rather_than_guessing(
@@ -1046,7 +1140,8 @@ class TestLastRun:
             calls.append(base)
             return "abc1234def"
 
-        monkeypatch.setenv("CYRIS_UI_TOKEN", "t" * 32)
+        monkeypatch.setenv("CYRIS_ACCESS_CLIENT_ID", "cid")
+        monkeypatch.setenv("CYRIS_ACCESS_CLIENT_SECRET", "sek-9f3")
         monkeypatch.setattr(doctor, "_fetch_build_sha", fetch)
         self._with_run(monkeypatch, "abc1234def")
 
