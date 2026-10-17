@@ -2,7 +2,7 @@
 
 A trial is one tester's own cyris on a Cloudflare account you hold: its own app Worker,
 container application, D1 database, KV namespace, Pages project, vote Worker and rss
-Worker, behind a login at `<slug>.<domain>`, with the archive private. On an account of
+Worker, behind Cloudflare Access at `<slug>.<domain>`, with the archive private. On an account of
 its own, it is also the manual, non-button half of the deploy button's clean-account run
 (ADR-0012).
 
@@ -93,7 +93,6 @@ Either works; the first trial (2026-10-06) runs on production's.
   why the app and the Worker share one token.
 - **A new custom domain can take minutes to answer**; the install guide's
   [notes on it](install-cloudflare.md#6-log-in-and-fill-settings) apply.
-- **The login token goes to the tester through a password manager**, never chat or email.
 
 ## After each release
 

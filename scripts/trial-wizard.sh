@@ -748,18 +748,9 @@ stage_15() {
 # ── 16 ────────────────────────────────────────────────────────────────────
 stage_16() {
   stage "Hand over"
-  say "Login: https://$SLUG.$DOMAIN/login"
-  if command -v pbcopy >/dev/null 2>&1; then
-    fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | pbcopy
-    printf '  %s✓%s CYRIS_UI_TOKEN copied to the clipboard\n' "$GREEN" "$RESET"
-  else
-    say "CYRIS_UI_TOKEN is in $APP_ENV."
-  fi
-  step "Put it in a password manager item shared with the tester; never chat or email."
-  step "The tester signs in and walks /onboarding: sources, votes, notifications, then the first issue."
-  pause "Shared? Press Enter"
-  if command -v pbcopy >/dev/null 2>&1 && confirm "Clear the clipboard?"; then printf '' | pbcopy; fi
-  warn "Keep $APP_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
+  say "The tester signs in at https://$SLUG.$DOMAIN/ with the Access one-time PIN."
+  step "The tester walks /onboarding: sources, votes, notifications, then the first issue."
+  warn "Keep $APP_ENV, $ACCESS_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
   next
 }
 
