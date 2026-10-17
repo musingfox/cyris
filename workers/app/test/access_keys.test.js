@@ -24,6 +24,15 @@ describe("AccessKeySet", () => {
     expect(keys.issuer).toBe("https://issuer-case.cloudflareaccess.com");
   });
 
+  it("trims the team domain before it names the issuer", () => {
+    const keys = accessKeys("  trim-case.cloudflareaccess.com ");
+    expect(keys.issuer).toBe("https://trim-case.cloudflareaccess.com");
+  });
+
+  it("returns null for a team domain that names no host, rather than throwing", () => {
+    expect(accessKeys("inner-case .cloudflareaccess.com")).toBeNull();
+  });
+
   it("fetches the certs URL once and resolves the key id from it", async () => {
     const { fetchImpl, calls } = await certsStub("k1");
     const { keySet } = accessKeys("fetch-case.cloudflareaccess.com", { fetchImpl });
