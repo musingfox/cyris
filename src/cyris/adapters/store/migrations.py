@@ -18,12 +18,27 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class Requires:
+    """A column the table must have (`present`) or must lack, before the step runs."""
+
+    table: str
+    column: str
+    present: bool
+
+
+@dataclass(frozen=True)
 class Step:
     id: str
     statements: tuple[str, ...]
+    requires: Requires | None = None
 
 
 MIGRATIONS: tuple[Step, ...] = ()
+
+
+def _holds(client: D1Queryable, requires: Requires) -> bool:
+    names = {row["name"] for row in client.query(f"PRAGMA table_info('{requires.table}')").rows}
+    return bool(names) and (requires.column in names) == requires.present
 
 
 def apply_steps(client: D1Queryable, steps: Sequence[Step]) -> None:
@@ -39,8 +54,16 @@ def apply_steps(client: D1Queryable, steps: Sequence[Step]) -> None:
         if step.id in applied:
             continue
         try:
-            if step.statements:
-                client.query(";\n".join(step.statements))
+            if step.requires is None or _holds(client, step.requires):
+                try:
+                    client.query(";\n".join(step.statements))
+                except Exception:
+                    # The ui and run containers can cold-start together: both see the
+                    # step pending, and the one that loses the race fails on a column
+                    # the winner already renamed. A precondition that no longer holds
+                    # means the step is in place, so record it instead of aborting boot.
+                    if step.requires is None or _holds(client, step.requires):
+                        raise
             client.query("INSERT OR IGNORE INTO schema_migrations (id) VALUES (?)", [step.id])
         except Exception as e:
             raise D1Error(f"migration {step.id} failed: {e}") from e
