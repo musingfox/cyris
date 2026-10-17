@@ -279,6 +279,46 @@ def test_render_optional_score(tmp_path):
     assert 'class="pill score"' not in html
 
 
+def _scored_zero(title: str, score: float | None = 0.0) -> DigestItem:
+    return DigestItem(
+        title=title,
+        summary=f"{title}.",
+        sources=["S"],
+        urls=[f"https://t.test/{title}"],
+        score=score,
+    )
+
+
+# Every place a pill can show: a grouped Top story and its members, a single Top story and
+# the Features beside it, and an area's Features. Each scored 0.0, beside one unscored card.
+SCORED_ZERO_ISSUES = [
+    [
+        DigestSection(heading="G", summary="One.", items=[_scored_zero("A"), _scored_zero("B")]),
+        DigestSection(heading="F", items=[_scored_zero("C"), _scored_zero("U", None)]),
+    ],
+    [
+        DigestSection(heading="H", items=[_scored_zero("L"), _scored_zero("R")]),
+        DigestSection(heading="F", items=[_scored_zero("U", None)]),
+    ],
+]
+
+
+@pytest.mark.parametrize(("featured", "pills"), zip(SCORED_ZERO_ISSUES, [4, 2], strict=True))
+def test_a_score_of_zero_shows_its_pill(tmp_path, featured, pills):
+    content = DigestContent(
+        date="2026-01-01",
+        period="morning",
+        sources_processed=1,
+        articles_received=5,
+        articles_included=5,
+        usage=UsageStats(input_tokens=1, output_tokens=1, api_calls=1, model="m"),
+        featured_articles=featured,
+    )
+    html = HtmlDigestWriter(tmp_path).render(content)
+    assert html.count('<span class="pill score">0.0</span>') == pills
+    assert html.count('class="pill score"') == pills
+
+
 def test_write_creates_file(tmp_path, sample_digest_content):
     """C2 Test 1: write(dry_run=False) creates file and index."""
     writer = HtmlDigestWriter(tmp_path)

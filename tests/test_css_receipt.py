@@ -1062,6 +1062,7 @@ EXPECTED_DIGEST_IDS = {
     *(f"fits-{width}" for width in (360, 880, 1000, 1440)),
     *(f"head-fits-{width}" for width in (721, 740, 760, 800, 880, 1000, 1440)),
     "head-fits-largest-721",
+    "title-whole-360",
     *(f"fits-largest-{width}" for width in (360, 880, 1000, 1440)),
     *(
         f"tap-{name}-375"

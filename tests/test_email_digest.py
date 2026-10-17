@@ -589,3 +589,41 @@ def _over(tint: str, ground: str) -> str:
     base = [int(ground.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
     blended = (round(c * alpha + b * (1 - alpha)) for c, b in zip(rgb, base, strict=True))
     return "#" + "".join(f"{c:02x}" for c in blended)
+
+
+# Every place a pill can show: a grouped Top story and its members, a single Top story and
+# the Features beside it, and an area's Features. Each scored 0.0, beside one unscored card.
+SCORED_ZERO_ISSUES = [
+    [
+        DigestSection(
+            heading="G",
+            summary="One.",
+            items=[
+                _item("A", "https://t.test/a", "S", 0.0),
+                _item("B", "https://t.test/b", "S", 0.0),
+            ],
+        ),
+        DigestSection(
+            heading="F",
+            items=[_item("C", "https://t.test/c", "S", 0.0), _item("U", "https://t.test/u", "S")],
+        ),
+    ],
+    [
+        DigestSection(
+            heading="H",
+            items=[
+                _item("L", "https://t.test/l", "S", 0.0),
+                _item("R", "https://t.test/r", "S", 0.0),
+            ],
+        ),
+        DigestSection(heading="F", items=[_item("U", "https://t.test/u", "S")]),
+    ],
+]
+
+
+@pytest.mark.parametrize(("featured", "pills"), zip(SCORED_ZERO_ISSUES, [4, 2], strict=True))
+def test_a_score_of_zero_shows_its_pill(featured, pills):
+    content = _full().model_copy(update={"featured_articles": featured})
+    html = render_digest_email(content, DIGEST_URL)
+    assert html.count('<span class="pill">0.0</span>') == pills
+    assert html.count('class="pill"') == pills

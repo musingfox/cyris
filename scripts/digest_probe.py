@@ -421,6 +421,22 @@ _CHECKS: list[Check] = [
         )
         for width in HEAD_WIDTHS
     ),
+    # On a phone the fallback-font title fits its column whole at the normal type size;
+    # only the largest sets it wider, and there the masthead clips it (`fits-largest-360`).
+    Check(
+        id="title-whole-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        script="""
+            const range = document.createRange();
+            range.selectNodeContents($(".issue-title"));
+            const over = range.getBoundingClientRect().right
+                - $(".headline-block").getBoundingClientRect().right;
+            expect(over <= 0, `the masthead clips ${over}px off the title`);
+        """,
+        sabotage="""$(".issue-title").style.fontSize = "63px";""",
+    ),
     # A real pointer press on each item kind's first up button: the button is hit, every
     # URL of its group is voted on, and the button is marked. The phone run is caught by
     # a page that drops the mark, the desktop run by a page that sends a credential.

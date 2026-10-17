@@ -15,7 +15,7 @@
 <article class="article-item">
     <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
     <div class="meta">
-        {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+        {% if item.score is not none %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
         <span class="source-tag">{{ item.sources | join(' · ') }}</span>
         {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
         {{ promote_btn(item) }}
@@ -441,7 +441,7 @@
             <section class="section">
                 <div class="section-tag"><span class="label">Top story</span></div>
                 <article class="lead-story" lang="{{ '' if lead_story.passed_through else content_lang }}">
-                    {% if lead_story.score %}<span class="pill score">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
+                    {% if lead_story.score is not none %}<span class="pill score">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
                     <h2{% if not lead_story.grouped %} lang=""{% endif %}>
                         {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
                     </h2>
@@ -460,7 +460,7 @@
                         <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
                         <p class="summary">{{ item.summary }}</p>
                         <div class="meta">
-                            {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+                            {% if item.score is not none %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
                             {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
@@ -508,7 +508,7 @@
                         <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
                         <p class="summary">{{ item.summary }}</p>
                         <div class="meta">
-                            {% if item.score %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+                            {% if item.score is not none %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
                             {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}

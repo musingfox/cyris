@@ -288,7 +288,10 @@ At the top are the site bar and the issue bar. The masthead has the issue title 
 stats card on the right; the stats column is `min(37vw, 320px)` wide and narrows with the page, so the
 wider fallback font before the webfont loads does not run into it. Below 720px it becomes a single
 `minmax(0, 1fr)` column. The masthead is always `overflow-x: clip`, so a title widened by the fallback font
-is clipped on a phone instead of scrolling the whole page sideways.
+is clipped on a phone instead of scrolling the whole page sideways. At 360px the fallback-font title fits
+whole at font size `Default` and `Smaller`; only `Larger` clips its right end, until the webfont loads.
+That is accepted rather than shrinking the issue title role at phone width. The digest probe's
+`title-whole-360` check holds the `Default` case.
 
 The body is the Top story, then Tracking, then one section per active area in /settings order, cards above
 rows (`layout_by_area` places every entry). With no areas, one unnamed section holds
