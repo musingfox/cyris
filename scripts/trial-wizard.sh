@@ -800,10 +800,12 @@ stage_14() {
   printf '  %s✓%s /newsletters with the bearer → 200\n' "$GREEN" "$RESET"
   in_file "$APP_ENV" write_env CYRIS_WORKER_TOKEN "$TRIAL_WORKER_TOKEN"
   in_file "$APP_ENV" write_env CYRIS_RSS_WORKER_URL "$TRIAL_RSS_URL"
+  in_file "$APP_ENV" write_env CYRIS_NEWSLETTER_WORKER_URL "$TRIAL_NEWSLETTER_URL"
   grep -qx "CYRIS_WORKER_TOKEN=$TRIAL_WORKER_TOKEN" "$APP_ENV" || die "CYRIS_WORKER_TOKEN did not land."
   grep -qx "CYRIS_RSS_WORKER_URL=$TRIAL_RSS_URL" "$APP_ENV" || die "CYRIS_RSS_WORKER_URL did not land."
+  grep -qx "CYRIS_NEWSLETTER_WORKER_URL=$TRIAL_NEWSLETTER_URL" "$APP_ENV" || die "CYRIS_NEWSLETTER_WORKER_URL did not land."
   say "Redeploy so the app reads them."
-  deploy_app_and_wait app-rss
+  deploy_app_and_wait app-workers
   next
 }
 

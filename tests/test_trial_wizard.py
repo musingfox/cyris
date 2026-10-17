@@ -530,8 +530,58 @@ def test_an_open_newsletter_worker_stops_stage_14(rig) -> None:
     run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
     assert run.code == 1
     assert "without the bearer answered 200" in run.out
-    assert "CYRIS_NEWSLETTER_WORKER_URL" not in (r.repo / f".env.trial-{SLUG}").read_text()
+    app_env = (r.repo / f".env.trial-{SLUG}").read_text()
+    for key in ("CYRIS_WORKER_TOKEN", "CYRIS_RSS_WORKER_URL", "CYRIS_NEWSLETTER_WORKER_URL"):
+        assert key not in app_env
     assert "wrangler deploy --config wrangler.trial-t1.toml" not in run.calls
+
+
+APP_YES = "y\n" + "\n" * 3 + "morning\nn\n"
+
+
+def test_the_app_secrets_file_gets_the_three_urls_and_token_once_each(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + APP_YES)
+    snap = (Path(r.env["FAKE_DIR"]) / f"snap-.env.trial-{SLUG}").read_text().splitlines()
+    for line in (
+        f"CYRIS_WORKER_TOKEN={RSS_TOKEN}",
+        "CYRIS_RSS_WORKER_URL=https://r-t1.x.workers.dev",
+        "CYRIS_NEWSLETTER_WORKER_URL=https://n-t1.x.workers.dev",
+    ):
+        assert snap.count(line) == 1, line
+    assert "✓ service token → 200 from /api/build" in run.out
+
+
+def test_the_app_is_redeployed_once_after_the_three_lines(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1")
+    _seed_rss_token(r)
+    run = r.run(stdin=START + "y\n\ny\n\n" + APP_YES)
+    calls = run.calls.splitlines()
+    app = [i for i, c in enumerate(calls) if "wrangler deploy --config wrangler.trial-t1.toml" in c]
+    rss = next(i for i, c in enumerate(calls) if "workers/rss/wrangler.trial-t1.toml" in c)
+    newsletter = next(i for i, c in enumerate(calls) if "workers/newsletter/" in c)
+    assert len(app) == 1
+    assert app[0] > rss and app[0] > newsletter
+
+
+def test_a_rerun_from_14_keeps_each_key_once(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1")
+    _seed_rss_token(r)
+    r.run(stdin=START + "y\n\ny\n\n" + APP_YES)
+    r.run("--from", "14", stdin=START + "y\n\ny\n\n" + APP_YES)
+    app_env = (r.repo / f".env.trial-{SLUG}").read_text().splitlines()
+    for key in ("CYRIS_WORKER_TOKEN", "CYRIS_RSS_WORKER_URL", "CYRIS_NEWSLETTER_WORKER_URL"):
+        assert sum(line.startswith(f"{key}=") for line in app_env) == 1, key
+
+
+def test_a_completed_stage_14_is_recorded(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1", state={"TRIAL_RSS_URL": RSS_URL})
+    _seed_rss_token(r)
+    run = r.run(stdin=POLL_PASS_STDIN)
+    assert "14" in next(ln for ln in run.state.splitlines() if ln.startswith("STAGES_DONE=")).split(
+        "="
+    )[1].split(",")
 
 
 def test_a_bearer_the_worker_refuses_says_the_secret_did_not_land(rig) -> None:
