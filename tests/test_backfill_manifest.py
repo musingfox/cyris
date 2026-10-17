@@ -60,8 +60,10 @@ def test_the_manifest_is_replaced_wholesale(tmp_path, fake_d1):
     backfill.main(["--html-dir", str(tmp_path), "--database-id", "x"])
 
     sqls = [sql for sql, _ in fake_d1.queries]
-    assert sqls[0] == "DELETE FROM pages_manifest"
-    assert sqls[1].startswith("INSERT INTO pages_manifest (path, hash, updated_at) VALUES")
+    assert len(sqls) == 3
+    assert sqls[0].startswith("SELECT MAX(updated_at)")
+    assert sqls[1].startswith("INSERT INTO pages_manifest (path, hash, updated_at)")
+    assert sqls[2] == "DELETE FROM pages_manifest WHERE updated_at < ?"
 
 
 def test_an_empty_directory_writes_nothing(tmp_path, fake_d1, capsys):
