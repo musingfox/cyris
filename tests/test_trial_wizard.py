@@ -27,6 +27,7 @@ START = "\n\n"
 FAKE_UV = r"""#!/bin/bash
 echo "uv $*" >> "$CALLS"
 case "$*" in
+  *"cyris doctor"*) cp .env "${0%/*}/../fake/doctor.env" ;;  # env -i hides FAKE_DIR
   *"provision_trial.py names"*)
     printf '%s\n' TRIAL_APP_WORKER=cyris-app-t1 TRIAL_CONTAINER=cyris-app-cyriscontainer-t1 \
       TRIAL_PROMOTE_WORKER=cyris-promote-t1 TRIAL_KV_TITLE=cyris-promote-t1 \
@@ -47,19 +48,29 @@ esac
 """
 
 FAKE_CURL = r"""#!/bin/bash
-echo "curl $*" >> "$CALLS"
-case " $* " in
+ids=no; secrets=no
+for a in "$@"; do
+  if [[ "$a" == @* ]]; then
+    grep -q '^CF-Access-Client-Id: ' "${a#@}" && ids=yes
+    grep -q '^CF-Access-Client-Secret: ' "${a#@}" && secrets=yes
+  fi
+done
+echo "curl $* access-id=$ids access-secret=$secrets" >> "$CALLS"
+case "$*" in
   *"/stats"*) echo "${FAKE_STATS_CODE:-401}" ;;
   *"/poll"*)
     if [[ -n "${FAKE_POLL_REPLY:-}" ]]; then echo "$FAKE_POLL_REPLY"
     else printf '{"feeds":%s}\n' "${FAKE_POLL_FEEDS:-0}"; fi ;;
-  *" -D - "*)
-    n=$(( $(cat "$FAKE_DIR/login" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE_DIR/login"
-    if [[ -z "${FAKE_LOGIN_NEVER:-}" && $n -gt ${FAKE_LOGIN_FAIL_FIRST:-0} ]]; then
-      printf 'HTTP/2 302\r\nlocation: /login?next=%%2F\r\n\r\n'
-    else
-      printf 'HTTP/2 522\r\n\r\n'
-    fi ;;
+  *"/api/build"*)
+    n=$(( $(cat "$FAKE_DIR/build" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE_DIR/build"
+    if [[ -z "${FAKE_BUILD_NEVER:-}" && $n -gt ${FAKE_BUILD_FAIL_FIRST:-0} ]]; then echo 200
+    else echo 503; fi ;;
+  *"/settings"*)
+    out=""; prev=""
+    for a in "$@"; do [[ "$prev" == -o ]] && out="$a"; prev="$a"; done
+    [[ -n "$out" ]] && printf '%s' "${FAKE_SETTINGS_BODY:-}" > "$out"
+    echo "${FAKE_SETTINGS_CODE:-302}" ;;
+  *"pages.dev"*) echo 200 ;;
 esac
 """
 
@@ -159,6 +170,9 @@ def rig(tmp_path: Path):
             f"CLOUDFLARE_API_TOKEN={TOKEN}\nGEMINI_API_KEY=g\nCYRIS_STORE_DATABASE_ID={D1_ID}\n"
         )
         (repo / f".env.trial-{SLUG}-promote").write_text("PROMOTE_TOKEN=p\n")
+        (repo / f".env.trial-{SLUG}.access").write_text(
+            "CYRIS_ACCESS_CLIENT_ID=cid\nCYRIS_ACCESS_CLIENT_SECRET=sek-9f3\n"
+        )
         fakes = tmp_path / "bin"
         fakes.mkdir()
         scripts = {"uv": FAKE_UV, "curl": FAKE_CURL, "bunx": FAKE_BUNX}
@@ -289,22 +303,68 @@ def test_an_access_answer_that_ends_stops_stage_11_naming_it(rig) -> None:
     assert "No answer for CYRIS_ACCESS_AUD." in run.out
 
 
-def test_the_login_wait_needs_no_keypress_and_shows_the_time(rig) -> None:
-    run = rig(_stages(11), FAKE_LOGIN_FAIL_FIRST="2").run(stdin=START + "y\n")
-    waiting = "waiting for https://t1.example.com/ to answer 302 → /login: 0m0"
-    assert run.out.count(waiting) == 2
-    assert "✓ unauthenticated request → 302 /login?next=%2F" in run.out
+def test_the_service_token_wait_needs_no_keypress_and_shows_the_time(rig) -> None:
+    run = rig(_stages(11), FAKE_BUILD_FAIL_FIRST="2").run(stdin=START + "y\n")
+    waiting = "waiting for https://t1.example.com/ to answer 200 with the service token: 0m0"
+    assert run.out.count(waiting) == 3
+    assert "✓ service token → 200 from /api/build" in run.out
     assert "Retry" not in run.out
 
 
-def test_the_login_wait_stops_at_its_limit(rig) -> None:
-    r = rig(_stages(11), FAKE_LOGIN_NEVER="1", TRIAL_WIZARD_LOGIN_WAIT="0")
+def test_the_service_token_wait_stops_at_its_limit(rig) -> None:
+    r = rig(_stages(11), FAKE_BUILD_NEVER="1", TRIAL_WIZARD_LOGIN_WAIT="0")
     run = r.run(stdin=START + "y\n")
     assert run.code == 1
-    # $SECONDS counts whole seconds, so a run that crosses a second boundary reports 1s.
-    assert re.search(r"No 302 → /login after \d+s\.", run.out)
+    assert re.search(r"No 200 from /api/build with the service token after \d+s\.", run.out)
     assert "docs/install-cloudflare.md step 6" in run.out
     assert r.done() == f"STAGES_DONE={_stages(11)}"
+
+
+def test_the_gate_sends_the_service_token_and_no_cookie(rig) -> None:
+    run = rig(_stages(11), FAKE_BUILD_FAIL_FIRST="1").run(stdin=START + "y\n")
+    gate = [ln for ln in run.calls.splitlines() if "/api/build" in ln]
+    assert len(gate) == 2
+    assert all("access-id=yes access-secret=yes" in ln for ln in gate)
+    assert all(" -b " not in ln for ln in run.calls.splitlines())
+    assert "sek-9f3" not in run.calls
+    assert "sek-9f3" not in run.out
+
+
+@pytest.mark.parametrize("code", ["302", "401", "403"])
+def test_an_unauthenticated_settings_answer_passes_receipt_1(rig, code: str) -> None:
+    run = rig(_stages(17), FAKE_SETTINGS_CODE=code).run("receipts")
+    assert f"✓ unauthenticated https://t1.example.com/settings → {code}" in run.out
+
+
+def test_a_403_from_the_worker_itself_fails_receipt_1_naming_access(rig) -> None:
+    body = '{"error":"forbidden","detail":"This page needs a Cloudflare Access sign-in."}'
+    run = rig(_stages(17), FAKE_SETTINGS_CODE="403", FAKE_SETTINGS_BODY=body).run("receipts")
+    assert "403 from the Worker, not Access; Access does not cover it" in run.out
+    assert "✓ unauthenticated https://t1.example.com/settings" not in run.out
+
+
+def test_an_unauthenticated_200_fails_receipt_1_naming_access(rig) -> None:
+    run = rig(_stages(17), FAKE_SETTINGS_CODE="200").run("receipts")
+    assert "Access does not cover it" in run.out
+    assert "Check the Access application's destinations" in run.out
+
+
+def test_receipts_send_the_service_token_and_the_doctor_gets_it(rig) -> None:
+    r = rig(_stages(17))
+    run = r.run("receipts")
+    assert "✓ service token → 200 from /api/build" in run.out
+    doctor = (Path(r.env["FAKE_DIR"]) / "doctor.env").read_text().splitlines()
+    assert "CYRIS_ACCESS_CLIENT_ID=cid" in doctor
+    assert "CYRIS_ACCESS_CLIENT_SECRET=sek-9f3" in doctor
+    assert not any(ln.startswith("CYRIS_UI_TOKEN") for ln in doctor)
+
+
+def test_a_declined_deploy_looks_once_instead_of_waiting(rig) -> None:
+    run = rig(_stages(11), FAKE_BUILD_NEVER="1").run()
+    assert "waiting for" not in run.out
+    assert "does not answer 200 with the service token, and nothing was deployed now." in run.out
+    assert run.calls.count("/api/build") == 1
+    assert "▸ Stage 13/17" in run.out
 
 
 def test_receipts_mode_runs_only_the_receipts(rig) -> None:
@@ -349,14 +409,6 @@ def test_mail_permission_is_checked_only_for_a_tester_with_email(rig, email, fla
     check = next(ln for ln in run.calls.splitlines() if "check-token" in ln)
     assert ("--email" in check) is flag
     assert "--pages-project cyris-app-t1-0123456789abcdef --app-worker cyris-app-t1" in check
-
-
-def test_a_declined_deploy_looks_once_instead_of_waiting(rig) -> None:
-    run = rig(_stages(11), FAKE_LOGIN_NEVER="1").run()
-    assert "waiting for" not in run.out
-    assert "does not answer 302 → /login, and nothing was deployed now." in run.out
-    assert run.calls.count(" -D - ") == 1
-    assert "▸ Stage 13/17" in run.out
 
 
 # Every answer from stage 14 on, in order: the rss deploy declined, the Worker

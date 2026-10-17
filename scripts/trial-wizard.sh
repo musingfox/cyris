@@ -303,24 +303,37 @@ derive_names() {
   eval "$out"
 }
 
-login_redirect() {
-  local h
-  h=$(curl -s -o /dev/null -D - --max-time 30 "https://$SLUG.$DOMAIN/" || true)
-  grep -qiE '^HTTP/[0-9.]+ 302' <<<"$h" && grep -qiE '^location: /login\?next=%2F' <<<"$h"
+# access_header_file writes the service-token headers to a private temp file and prints its
+# path, so the secret reaches curl through a file and never through argv.
+access_header_file() {
+  local f
+  f=$(mktemp)
+  printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' \
+    "$(fileval "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_ID)" "$(fileval "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_SECRET)" > "$f"
+  printf '%s' "$f"
+}
+
+service_token_ok() {
+  local hdr code
+  hdr=$(access_header_file)
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "@$hdr" "https://$SLUG.$DOMAIN/api/build" || true)
+  rm -f "$hdr"
+  [[ "$code" == 200 ]]
 }
 
 # The first trial's new custom domain answered 28 minutes after its deploy.
-wait_login_redirect() {
+wait_service_token() {
   local start=$SECONDS waited
-  until login_redirect; do
+  while true; do
     waited=$((SECONDS - start))
-    ((waited < LOGIN_WAIT_SECONDS)) \
-      || die "No 302 → /login after ${waited}s. See docs/install-cloudflare.md step 6 on a new custom domain."
-    printf '  waiting for https://%s.%s/ to answer 302 → /login: %dm%02ds\n' \
+    printf '  waiting for https://%s.%s/ to answer 200 with the service token: %dm%02ds\n' \
       "$SLUG" "$DOMAIN" $((waited / 60)) $((waited % 60))
+    service_token_ok && break
+    ((waited < LOGIN_WAIT_SECONDS)) \
+      || die "No 200 from /api/build with the service token after ${waited}s. See docs/install-cloudflare.md step 6 on a new custom domain."
     sleep "$LOGIN_WAIT_INTERVAL"
   done
-  printf '  %s✓%s unauthenticated request → 302 /login?next=%%2F\n' "$GREEN" "$RESET"
+  printf '  %s✓%s service token → 200 from /api/build\n' "$GREEN" "$RESET"
 }
 
 deploy_app() {
@@ -334,11 +347,11 @@ deploy_app() {
 # A declined deploy changes nothing, so one look stands in for the long wait.
 deploy_app_and_wait() {
   if deploy_app "$1"; then
-    wait_login_redirect
-  elif login_redirect; then
-    printf '  %s✓%s unauthenticated request → 302 /login?next=%%2F\n' "$GREEN" "$RESET"
+    wait_service_token
+  elif service_token_ok; then
+    printf '  %s✓%s service token → 200 from /api/build\n' "$GREEN" "$RESET"
   else
-    warn "https://$SLUG.$DOMAIN/ does not answer 302 → /login, and nothing was deployed now."
+    warn "https://$SLUG.$DOMAIN/api/build does not answer 200 with the service token, and nothing was deployed now."
   fi
 }
 
@@ -352,10 +365,23 @@ receipts() {
   printf '\n%s  usage_log, last 7 days%s\n' "$BOLD" "$RESET"
   show_run d1-usage bunx wrangler d1 execute "$TRIAL_D1_NAME" --remote --config "$RSS_CFG" --env-file /dev/null \
     --command "SELECT date(logged_at) AS day, count(*) AS runs, sum(api_calls) AS calls, round(sum(cost_usd), 4) AS usd FROM usage_log WHERE logged_at >= date('now', '-7 day') GROUP BY day ORDER BY day" || warn "query failed"
-  printf '\n%s  login redirect%s\n' "$BOLD" "$RESET"
-  if login_redirect; then printf '  %s✓%s 302 → /login\n' "$GREEN" "$RESET"; else warn "no 302 → /login on https://$SLUG.$DOMAIN/"; fi
+  printf '\n%s  Access sign-in%s\n' "$BOLD" "$RESET"
+  local code body
+  body=$(mktemp)
+  code=$(curl -s -o "$body" -w '%{http_code}' --max-time 30 "https://$SLUG.$DOMAIN/settings" || true)
+  # The Worker's own refusal (workers/app/src/router.js) means the request got past Access.
+  if [[ "$code" == 403 ]] && grep -q '"error":"forbidden"' "$body"; then
+    warn "unauthenticated https://$SLUG.$DOMAIN/settings → 403 from the Worker, not Access; Access does not cover it. Check the Access application's destinations."
+  else
+    case "$code" in
+      302|401|403) printf '  %s✓%s unauthenticated https://%s.%s/settings → %s\n' "$GREEN" "$RESET" "$SLUG" "$DOMAIN" "$code" ;;
+      *) warn "unauthenticated https://$SLUG.$DOMAIN/settings → $code; Access does not cover it. Check the Access application's destinations." ;;
+    esac
+  fi
+  rm -f "$body"
+  if service_token_ok; then printf '  %s✓%s service token → 200 from /api/build\n' "$GREEN" "$RESET"
+  else warn "https://$SLUG.$DOMAIN/api/build does not answer 200 with the service token."; fi
   printf '\n%s  production archive still public%s\n' "$BOLD" "$RESET"
-  local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://cyris-digest.pages.dev/ || true)
   if [[ "$code" == 200 ]]; then printf '  %s✓%s https://cyris-digest.pages.dev/ → 200\n' "$GREEN" "$RESET"; else warn "https://cyris-digest.pages.dev/ → $code"; fi
   printf '\n%s  cyris doctor --deployment%s\n' "$BOLD" "$RESET"
@@ -366,7 +392,8 @@ receipts() {
     echo "CYRIS_STORE_BACKEND=d1"
     echo "CYRIS_HTML_OUTPUT_ENABLED=true"
     echo "CYRIS_PROMOTE_PUBLISH_ENABLED=true"
-    grep -E '^(CYRIS_STORE_DATABASE_ID|CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_PROMOTE_PAGES_PROJECT|GEMINI_API_KEY|CYRIS_UI_TOKEN|CYRIS_RSS_WORKER_URL|CYRIS_WORKER_TOKEN|CYRIS_PROMOTE_WORKER_URL|CYRIS_PROMOTE_TOKEN)=' "$APP_ENV"
+    grep -E '^(CYRIS_STORE_DATABASE_ID|CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_PROMOTE_PAGES_PROJECT|GEMINI_API_KEY|CYRIS_RSS_WORKER_URL|CYRIS_WORKER_TOKEN|CYRIS_PROMOTE_WORKER_URL|CYRIS_PROMOTE_TOKEN)=' "$APP_ENV"
+    grep -E '^(CYRIS_ACCESS_CLIENT_ID|CYRIS_ACCESS_CLIENT_SECRET)=' "$ACCESS_ENV"
   } > "$dir/.env"
   (cd "$dir" && env -i HOME="$HOME" PATH="$PATH" uv run --project "$REPO" cyris doctor --deployment "https://$SLUG.$DOMAIN") || warn "doctor exited non-zero; read the lines above"
   rm -r "$dir"
