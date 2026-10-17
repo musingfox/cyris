@@ -9,6 +9,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 import respx
+from aiohttp import web
 from fakes import make_config, seed_d1_settings, settings_toml
 
 from cyris.adapters.gemini_client import GeminiAPIError
@@ -827,6 +828,41 @@ class TestDeploymentProvenance:
         assert "sek-9f3" not in check.detail + check.fix
         assert "sek-9f3" not in caplog.text
 
+    @pytest.mark.parametrize(
+        ("secret", "sent"),
+        [("sek-9f3 ", ["sek-9f3"]), ("sek-9f3\n", ["sek-9f3"]), ("sek-9f3\nx", [])],
+    )
+    async def test_a_pasted_service_token_is_trimmed_and_never_leaked(
+        self, monkeypatch, caplog, secret: str, sent: list[str]
+    ) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        seen: list[str | None] = []
+
+        async def build(request: web.Request) -> web.Response:
+            seen.append(request.headers.get("CF-Access-Client-Secret"))
+            return web.json_response({"git_sha": "f" * 40})
+
+        app = web.Application()
+        app.router.add_get("/api/build", build)
+        server = TestServer(app)
+        await server.start_server()
+        try:
+            self._service_token(monkeypatch)
+            monkeypatch.setenv("CYRIS_ACCESS_CLIENT_SECRET", secret)
+            with caplog.at_level("DEBUG"):
+                check, _sha = await doctor._deployment(str(server.make_url("")))
+        finally:
+            await server.close()
+        assert seen == sent
+        if not sent:
+            assert check.status == "fail"
+            assert "CYRIS_ACCESS_CLIENT_SECRET" in check.fix
+            assert "CYRIS_ACCESS_CLIENT_ID" not in check.fix
+        assert "sek-9f3" not in check.detail + check.fix
+        assert "sek-9f3" not in caplog.text
+
     async def test_a_deployment_older_than_the_endpoint_is_not_blamed_on_its_hostname(
         self, monkeypatch
     ) -> None:
@@ -855,6 +891,106 @@ class TestDeploymentProvenance:
         check = _by_name(checks, "deployment image")
         assert check.status == "skip"
         assert "--deployment" in check.fix
+
+    async def _answer(self, monkeypatch, respond) -> tuple[doctor.Check, list[str]]:
+        """Run the deployment check against a server whose /api/build is `respond`."""
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        hits: list[str] = []
+
+        async def record(request: web.Request, _response: web.StreamResponse) -> None:
+            hits.append(request.path)
+
+        app = web.Application()
+        app.on_response_prepare.append(record)
+        app.router.add_get("/api/build", respond)
+        server = TestServer(app)
+        await server.start_server()
+        try:
+            self._service_token(monkeypatch)
+            check, _sha = await doctor._deployment(str(server.make_url("")))
+        finally:
+            await server.close()
+        return check, hits
+
+    async def test_a_redirect_to_access_login_names_the_service_auth_policy(
+        self, monkeypatch
+    ) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+
+        away_hits: list[str] = []
+
+        async def login_page(request: web.Request) -> web.Response:
+            away_hits.append(request.path)
+            return web.Response(text="login")
+
+        away_app = web.Application()
+        away_app.router.add_route("*", "/{tail:.*}", login_page)
+        away = TestServer(away_app)
+        await away.start_server()
+        try:
+            location = str(away.make_url("/access/login"))
+
+            async def redirect(_request: web.Request) -> web.Response:
+                return web.Response(status=302, headers={"Location": location})
+
+            check, hits = await self._answer(monkeypatch, redirect)
+        finally:
+            await away.close()
+        assert check.status == "fail"
+        assert "Service Auth" in check.fix
+        assert hits == ["/api/build"]
+        assert away_hits == []
+
+    async def test_a_refused_token_says_it_may_be_expired(self, monkeypatch) -> None:
+        async def unauthorised(_request: web.Request) -> web.Response:
+            return web.Response(status=401)
+
+        check, hits = await self._answer(monkeypatch, unauthorised)
+        assert check.status == "fail"
+        assert "refused the service token — Unauthorized" in check.detail
+        assert "refused" in check.fix
+        assert "expired" in check.fix
+        assert hits == ["/api/build"]
+
+    async def test_a_worker_refusal_names_the_settings_and_quotes_its_detail(
+        self, monkeypatch
+    ) -> None:
+        async def forbidden(_request: web.Request) -> web.Response:
+            return web.json_response(
+                {"error": "forbidden", "detail": "CYRIS_ACCESS_AUD is not set"}, status=403
+            )
+
+        check, hits = await self._answer(monkeypatch, forbidden)
+        assert check.status == "fail"
+        for text in ("CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD", "CYRIS_ACCESS_AUD is not set"):
+            assert text in check.fix
+        assert hits == ["/api/build"]
+
+    async def test_a_worker_refusal_with_an_html_body_still_gets_its_fix(self, monkeypatch) -> None:
+        async def forbidden(_request: web.Request) -> web.Response:
+            return web.Response(status=403, text="<html>Forbidden</html>", content_type="text/html")
+
+        check, hits = await self._answer(monkeypatch, forbidden)
+        assert check.status == "fail"
+        assert "CYRIS_ACCESS_AUD" in check.fix
+        assert hits == ["/api/build"]
+
+    async def test_any_other_status_is_reported_by_number(self, monkeypatch) -> None:
+        async def broken(_request: web.Request) -> web.Response:
+            return web.Response(status=500)
+
+        check, hits = await self._answer(monkeypatch, broken)
+        assert check.status == "fail"
+        assert "/api/build answered 500" in check.detail
+        assert "Service Auth" not in check.fix
+        assert hits == ["/api/build"]
+
+    def test_each_refusal_gets_a_different_fix(self) -> None:
+        fixes = {doctor._refusal_fix(status, "") for status in (302, 401, 403)}
+        assert len(fixes) == 3
 
 
 def _discord_transport(responses: list, seen: list) -> httpx.MockTransport:
