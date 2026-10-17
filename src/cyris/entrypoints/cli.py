@@ -1613,7 +1613,7 @@ def settings_push(
 
     from cyris.adapters.notify import mask_discord_webhook_url
     from cyris.adapters.store.settings import D1Settings
-    from cyris.config import GRADE_D_KEYS, validate_setting
+    from cyris.config import GRADE_D_KEYS, REQUIRED_KEYS, validate_setting
 
     # The file itself, not cfg.app: a D1 deployment's load ignores these keys.
     raw = tomllib.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
@@ -1632,8 +1632,9 @@ def settings_push(
     cfg, client = _force_d1_client(config_path, sources_path)
     typer.echo(f"D1 database {cfg.app.store.database_id}")
     settings = D1Settings(client)
+    rows = settings.all()
     in_d1: dict = {}
-    for key, value in settings.all().items():
+    for key, value in rows.items():
         try:
             in_d1[key] = validate_setting(key, value)
         except ValueError:
@@ -1658,6 +1659,8 @@ def settings_push(
         elif key in from_file:
             added[key] = from_file[key]
             typer.echo(f"  {'added':<9}{key} = {shown(key, from_file[key])}")
+        elif key not in REQUIRED_KEYS and key not in rows:
+            typer.echo(f"  {'default':<9}{key} — in neither D1 nor {config_path}")
         else:
             missing += 1
             typer.echo(f"  {'missing':<9}{key} — in neither D1 nor {config_path}")
