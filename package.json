@@ -8,7 +8,8 @@
     "deploy:website": "bun --env-file=.env x wrangler pages deploy --cwd website --branch main"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.3.7"
+    "@cloudflare/containers": "^0.3.7",
+    "jose": "6.2.12"
   },
   "devDependencies": {
     "vitest": "^3.2.4",
