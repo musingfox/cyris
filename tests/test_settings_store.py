@@ -8,6 +8,7 @@ from fakes import SqliteD1, seed_d1_settings, settings_toml
 from cyris.adapters.store.settings import WRITABLE_KEYS, D1Settings
 from cyris.config import (
     GRADE_D_KEYS,
+    REQUIRED_KEYS,
     DigestConfig,
     GeneralConfig,
     LLMProviderConfig,
@@ -58,8 +59,8 @@ def test_several_grade_d_keys_are_stored_in_one_set(settings):
     assert settings.all() == {"routing.score_threshold": 80, "vote_similarity.max_seeds": 50}
 
 
-def test_the_whitelist_is_exactly_the_twenty_five_grade_d_keys():
-    assert len(GRADE_D_KEYS) == 25
+def test_the_whitelist_is_exactly_the_twenty_six_grade_d_keys():
+    assert len(GRADE_D_KEYS) == 26
     assert set(WRITABLE_KEYS) == set(GRADE_D_KEYS)
 
 
@@ -234,7 +235,7 @@ class TestD1SettingsResolveFromD1Only:
 
         cfg = bootstrap.load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 
-        assert cfg.missing_settings == sorted(GRADE_D_KEYS)
+        assert cfg.missing_settings == sorted(REQUIRED_KEYS)
         assert db.query("SELECT name FROM sqlite_master WHERE name = 'settings'").rows
 
     def test_every_row_present_is_nothing_missing(self, d1_deployment):
@@ -243,7 +244,7 @@ class TestD1SettingsResolveFromD1Only:
 
         assert load().missing_settings == []
 
-    @pytest.mark.parametrize("key", GRADE_D_KEYS)
+    @pytest.mark.parametrize("key", REQUIRED_KEYS)
     def test_each_key_d1_lacks_is_missing_though_the_file_sets_it(self, d1_deployment, key):
         db, load = d1_deployment
         seed_d1_settings(db, omit=[key])

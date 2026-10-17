@@ -177,6 +177,15 @@
     ],
     "route": "plain"
   },
+  "llm_provider.reasoning_effort": {
+    "tab": "pipeline",
+    "label": "Reasoning effort",
+    "controls": [
+      "reasoning-effort"
+    ],
+    "route": "plain",
+    "optional": true
+  },
   "notify.discord_webhook_url": {
     "tab": "notifications",
     "label": "Discord webhook",

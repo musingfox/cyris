@@ -84,8 +84,9 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
 
 # Every grade-D setting (docs/architecture.md §5), as `table.field`, with the
 # /settings field that edits it: its category, label, controls and save route.
-# One registry is the required set, the D1 whitelist and the page's fields, so a
-# key cannot be required without a writer or writable without a reader.
+# One registry is the settings set, the D1 whitelist and the page's fields, so a
+# key cannot be required without a writer or writable without a reader. An
+# `"optional": true` entry is the exception to required: see OPTIONAL_SETTINGS.
 SETTINGS_FIELDS: dict[str, dict[str, Any]] = json.loads(
     (files("cyris") / "settings_fields.json").read_text(encoding="utf-8")
 )
@@ -128,10 +129,15 @@ class GeneralConfig(BaseModel):
     digest_window_hours: int = Field(ge=1, le=168)
 
 
+ReasoningEffort = Literal["default", "low", "medium", "high"]
+
+
 class LLMProviderConfig(BaseModel):
     # "none" ⇒ excerpt-only by choice: no client is built and no key is needed.
     provider: Literal["anthropic", "gemini", "openai", "workers_ai", "ai_gateway", "none"]
     model: str  # empty ⇒ the provider's default model (see bootstrap.build_llm)
+    # "default" ⇒ each provider's own behaviour before this setting existed.
+    reasoning_effort: ReasoningEffort = "default"
     api_key: str = ""
     account_id: str = ""  # workers_ai and ai_gateway only: their REST paths are per-account
 
@@ -342,7 +348,8 @@ class RssConfig(WorkerConfig):
 
 class AppConfig(BaseModel):
     # The six tables holding grade-D keys are None until their home holds every
-    # one of those keys: a runtime setting has no value in code.
+    # required one of those keys: a runtime setting has no value in code, except
+    # an optional key, whose field default is a value it can store.
     general: GeneralConfig | None
     notify: NotifyConfig | None
     llm_provider: LLMProviderConfig | None
@@ -365,6 +372,16 @@ _SETTINGS_TABLES: dict[str, type[BaseModel]] = {
     "routing": RoutingConfig,
     "vote_similarity": VoteSimilarityConfig,
 }
+
+# The grade-D keys a home may leave out: the registry marks them and the table
+# field's own default is the value they run on. Every other key is required.
+OPTIONAL_SETTINGS: dict[str, Any] = {
+    key: _SETTINGS_TABLES[table].model_fields[field].default
+    for key, entry in SETTINGS_FIELDS.items()
+    if entry.get("optional")
+    for table, field in [key.split(".", 1)]
+}
+REQUIRED_KEYS: tuple[str, ...] = tuple(key for key in GRADE_D_KEYS if key not in OPTIONAL_SETTINGS)
 
 
 @cache
@@ -421,7 +438,7 @@ class NoSourcesError(ValueError):
 class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
-    # Optional, unlike every grade-D key: an empty list tracks nothing and stops
+    # Optional, unlike every required grade-D key: an empty list tracks nothing and stops
     # nothing. From `[[tracked_topics]]` in cyris.toml, or D1 `tracked_topics`.
     tracked_topics: list[TrackedTopic] = Field(default_factory=list)
     # D1 `areas` only: a json deployment has none, so the list is empty there.
@@ -441,6 +458,14 @@ class Config(BaseModel):
     def present_settings(self) -> dict[str, Any]:
         """The grade-D values this deployment's home holds, by `table.field`."""
         return dict(self.settings_values)
+
+    def defaulted_settings(self) -> dict[str, Any]:
+        """The optional keys the home does not hold, each with the value it runs on."""
+        return {
+            key: default
+            for key, default in OPTIONAL_SETTINGS.items()
+            if key not in self.settings_values and key not in self.missing_settings
+        }
 
     def missing_store_keys(self) -> list[str]:
         """Env vars a D1 store needs and does not have; empty when json or complete."""
@@ -609,7 +634,7 @@ def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
         body = raw_toml.get(table)
         if isinstance(body, dict) and field in body:
             values[key] = validate_setting(key, body[field])
-        else:
+        elif key in REQUIRED_KEYS:
             missing.append(key)
     return values, sorted(missing)
 
@@ -630,7 +655,8 @@ def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]
     missing: list[str] = []
     for key in GRADE_D_KEYS:
         if key not in stored:
-            missing.append(key)
+            if key in REQUIRED_KEYS:
+                missing.append(key)
             continue
         try:
             values[key] = validate_setting(key, stored[key])
@@ -645,7 +671,9 @@ def _with_settings(raw_toml: dict, values: dict[str, Any], missing: list[str]) -
 
     Key level, not table level: `[llm_provider] api_key` and `[vote_similarity]
     threshold` share a table with grade-D keys and still come from the file. A
-    table missing any grade-D key is None, file keys included: it cannot be used.
+    table missing any required grade-D key is None, file keys included: it cannot
+    be used. An absent optional key is left out of `values` and the table's field
+    default fills it.
     """
     merged: dict[str, Any] = {}
     for table, body in raw_toml.items():

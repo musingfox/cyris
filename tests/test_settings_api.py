@@ -379,6 +379,32 @@ class TestPlainValues:
         assert data["values"]["digest.max_featured"] == 3
         assert {"general.timezone", "digest.max_featured"}.isdisjoint(data["missing"])
 
+    async def test_a_reasoning_effort_is_stored(self, settings):
+        key = "llm_provider.reasoning_effort"
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/values", json={"values": {key: "high"}})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body == {"ok": True, "values": {key: "high"}, "note": "Effective next run."}
+        assert settings.calls == [{key: "high"}]
+        assert settings.stored[key] == "high"
+
+    async def test_a_reasoning_effort_outside_the_four_is_refused(self, settings):
+        key = "llm_provider.reasoning_effort"
+        client = await _client(settings)
+
+        res = await client.post("/api/settings/values", json={"values": {key: "xhigh"}})
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 400
+        assert body["field"] == key
+        assert body["error"].startswith("Reasoning effort: ")
+        assert settings.calls == []
+
     async def test_one_invalid_value_stores_nothing(self, settings):
         client = await _client(settings)
 

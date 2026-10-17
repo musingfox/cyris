@@ -12,7 +12,7 @@ import respx
 from fakes import make_config
 
 from cyris.adapters.gemini_client import GeminiAPIError
-from cyris.config import Config, LLMProviderConfig
+from cyris.config import REQUIRED_KEYS, Config, LLMProviderConfig
 from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig, Tier
 
@@ -1304,7 +1304,7 @@ def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> No
 
 def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
     assert doctor._check_settings(_config(tmp_path)) == doctor.Check(
-        "settings", "ok", "all 25 set in cyris.toml"
+        "settings", "ok", "all 26 set in cyris.toml"
     )
 
 
@@ -1312,13 +1312,13 @@ def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
 
-    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 25 set in D1")
+    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 26 set in D1")
 
 
 async def test_a_json_deployment_without_a_file_fails_listing_every_key(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from cyris.config import GRADE_D_KEYS, load_config
+    from cyris.config import load_config
 
     monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
     cfg = load_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
@@ -1327,7 +1327,7 @@ async def test_a_json_deployment_without_a_file_fails_listing_every_key(
 
     settings = _by_name(checks, "settings")
     assert settings.status == "fail"
-    assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(GRADE_D_KEYS))}"
+    assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(REQUIRED_KEYS))}"
     assert settings.fix == "cyris.toml.example lists every key."
     assert _by_name(checks, "config file").detail == "not found"
 

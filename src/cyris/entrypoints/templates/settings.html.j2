@@ -258,6 +258,12 @@
               <p class="small">How much of each article the model reads at each step.</p>
               <details class="more"><summary>More</summary><p class="small">More costs more per call.</p></details>
             </div>
+            <div class="field">
+              <label class="label" for="reasoning-effort">Reasoning effort</label>
+              <select class="select" id="reasoning-effort"><option value="default">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+              <p class="small">How hard the model thinks before it answers.</p>
+              <details class="more"><summary>More</summary><p class="small">Default keeps what each provider did before this setting: low on OpenAI, the model's own level on Gemini, Anthropic and AI Gateway. Workers AI always runs at low. Low, Medium and High send that level to every other provider, so models compare evenly. Gemini 2.5 gets a thinking budget instead. More effort costs more tokens and time. Save checks the level with one call to the current model.</p></details>
+            </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-pipeline" disabled>Save</button>
               <div class="notice" id="pipeline-result" role="status" hidden></div>

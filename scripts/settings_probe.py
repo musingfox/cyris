@@ -347,6 +347,7 @@ _PROBE_VALUES = {
     "general.digest_window_hours": 24,
     "llm_provider.provider": "gemini",
     "llm_provider.model": "",
+    "llm_provider.reasoning_effort": "default",
     "notify.discord_webhook_url": STORED_WEBHOOK,
     "notify.email_to": "",
     "notify.email_from": "",
