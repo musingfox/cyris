@@ -74,8 +74,13 @@ class AIGatewayClient:
         model: str,
         max_retries: int = 2,
         timeout: float = 120.0,
+        *,
+        reasoning_effort: str | None = None,
+        thinking_budget: int | None = None,
     ) -> None:
         self.model = model
+        self._reasoning_effort = reasoning_effort
+        self._thinking_budget = thinking_budget
         self._max_retries = max_retries
         self._url = (
             f"{_GATEWAY_ROOT}/{account_id}/default/google-ai-studio/v1beta/models/"
@@ -109,6 +114,10 @@ class AIGatewayClient:
         }
         if temperature is not None:
             generation_config["temperature"] = temperature
+        if self._thinking_budget is not None:
+            generation_config["thinkingConfig"] = {"thinkingBudget": self._thinking_budget}
+        elif self._reasoning_effort is not None:
+            generation_config["thinkingConfig"] = {"thinkingLevel": self._reasoning_effort.upper()}
         body: dict = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
         if system is not None:
             body["systemInstruction"] = {"parts": [{"text": system}]}
