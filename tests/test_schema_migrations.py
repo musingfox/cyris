@@ -4,12 +4,13 @@ import json
 
 import pytest
 from fakes import RecordingD1, SqliteD1
+from legacy_schema import LEGACY_SCHEMA_SQL
 from legacy_schema import columns as _columns
 from legacy_schema import old_db as _old_db
 from legacy_schema import recorded as _recorded
 
 from cyris.adapters.store.d1 import SCHEMA_PATH, D1Error, apply_schema
-from cyris.adapters.store.migrations import LANE_STEP, Requires, Step
+from cyris.adapters.store.migrations import LANE_STEP, MIGRATIONS, Requires, Step
 
 pytestmark = pytest.mark.integration
 
@@ -329,3 +330,62 @@ def test_the_whole_script_run_before_the_record_is_not_run_twice() -> None:
     assert _final_state(db) == _clean_run_state()
     recorded = [r["id"] for r in db.query("SELECT id FROM schema_migrations").rows]
     assert recorded == ["0001_tier_to_lane"]
+
+
+EXTRA_STEP = Step(
+    "9999_test_add_detail",
+    ("ALTER TABLE usage_log ADD COLUMN detail TEXT",),
+    Requires("usage_log", "detail", present=False),
+)
+
+
+def _usage_log_columns(db: SqliteD1) -> set[str]:
+    return {r["name"] for r in db.query("PRAGMA table_info('usage_log')").rows}
+
+
+def test_a_new_add_column_step_adds_the_column_on_an_empty_database() -> None:
+    db = SqliteD1(with_schema=False)
+    apply_schema(db)
+
+    apply_schema(db, steps=(*MIGRATIONS, EXTRA_STEP))
+
+    assert "detail" in _usage_log_columns(db)
+
+
+def test_a_new_add_column_step_adds_the_column_on_an_old_database() -> None:
+    db = SqliteD1(with_schema=False)
+    db.query(LEGACY_SCHEMA_SQL)
+
+    apply_schema(db, steps=(*MIGRATIONS, EXTRA_STEP))
+
+    assert "detail" in _usage_log_columns(db)
+
+
+def test_running_the_add_column_step_twice_records_it_once() -> None:
+    db = SqliteD1(with_schema=False)
+    apply_schema(db, steps=(*MIGRATIONS, EXTRA_STEP))
+
+    apply_schema(db, steps=(*MIGRATIONS, EXTRA_STEP))
+
+    recorded = db.query("SELECT id FROM schema_migrations WHERE id = '9999_test_add_detail'")
+    assert len(recorded.rows) == 1
+
+
+def test_a_database_that_already_has_the_column_skips_the_step_and_records_it() -> None:
+    db = SqliteD1()
+    db.query("ALTER TABLE usage_log ADD COLUMN detail TEXT")
+
+    apply_schema(db, steps=(EXTRA_STEP,))
+
+    assert _recorded(db) == ["9999_test_add_detail"]
+
+
+def test_the_schema_script_does_not_declare_the_added_column() -> None:
+    assert "detail" not in SCHEMA_PATH.read_text(encoding="utf-8")
+
+
+def test_the_schema_script_does_not_index_the_added_column() -> None:
+    indexes = [
+        line for line in SCHEMA_PATH.read_text(encoding="utf-8").splitlines() if "INDEX" in line
+    ]
+    assert not any("detail" in line for line in indexes)
