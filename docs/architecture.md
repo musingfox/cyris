@@ -492,7 +492,7 @@ The article-store tables and the RSS buffer share one database (`cyris-rss`) on 
 ([ADR-0012](decisions/0012-the-app-deploys-from-the-repo-root.md)). A trial deployment (`scripts/trial-wizard.sh`, which renders its configs with
 `scripts/provision_trial.py`; `docs/trial-deployment.md`) shares nothing: its rss Worker binds the
 trial's own D1, the one its app uses, named like its app Worker. The wizard keeps a trial's inputs,
-ids and progress in `.env.trial-<slug>-wizard` at the repo root, beside the trial's secrets files;
+ids and progress in `.env.trial-<slug>-wizard` at the repo root, beside the trial's secrets files `.env.trial-<slug>` and `.env.trial-<slug>.access`;
 those secrets files are the only copy, since Cloudflare cannot read a secret back.
 
 ### One store, one truth
@@ -538,7 +538,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Container image name | A | `[[containers]] name` in `wrangler.toml`, mirrored by `IMAGE_NAME` in both workflows | done 2026-09-21 — stated rather than derived. A trial config from `scripts/provision_trial.py` renames the container application while its image stays in the tracked repository, so the name differing there is not drift. Left unset, wrangler names the repository after the Worker plus the class (`cyris-app-cyriscontainer`) while the workflows said `cyris-app`, so a local `wrangler deploy` and a CI deploy pushed to two repositories and each pointed the one container application at an image the other had never written — a CI deploy after a local one serves the older code with a green log. `tests/test_deploy_inputs.py` holds all three names to one string |
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Cloudflare account id, for CI | B | GitHub Actions repository **variable** `CLOUDFLARE_ACCOUNT_ID` | done — a variable, not a secret: it is deployer identity, and keeping it readable makes a wrong registry path a visible 404 rather than `***` |
-| Deployment URL, for CI | B | GitHub Actions repository **variable** `CYRIS_DEPLOYMENT_URL` (the app Worker's `workers.dev` URL; the custom domain's Access would stop the check) | done 2026-09-26 — read by `deploy.yml`'s `verify` step only |
+| Deployment URL, for CI | B | GitHub Actions repository **variable** `CYRIS_DEPLOYMENT_URL` (the app Worker's `workers.dev` URL; the verify step signs in with the Access service token) | done 2026-09-26 — read by `deploy.yml`'s `verify` step only |
 | Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; a value set in the file wins) | done |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (a value set in `cyris.toml [promote]` wins) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
@@ -553,7 +553,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` puts the archive behind the Access sign-in, a reader without one gets a 403; unset = public archive) | done 2026-10-05 — default off, so production's archive stays public; a trial deployment turns it on in its generated config |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
-| LLM API keys, four Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — also the Clef vote order's, and AI Gateway Run for the `ai_gateway` provider), one Worker bearer, one vote token | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. `CYRIS_UI_TOKEN` is also a GitHub Actions secret, a copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
+| LLM API keys, four Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — also the Clef vote order's, and AI Gateway Run for the `ai_gateway` provider), one Worker bearer, one vote token | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. The Access service token is also a GitHub Actions secret, the copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
 | RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` for a `json` deployment | done — a table with no fetchable source stops the run; `/settings` refuses to retire the last source, and refuses an RSS source with no feed URL or a newsletter with no `email_match` |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST` to the gateway's `google-ai-studio` endpoint with the model as `google/<model>`; the provider's key is stored in the gateway (BYOK) and the request carries none, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AIG_TOKEN` (AI Gateway Run, sent as `cf-aig-authorization`, never falling back to a Workers AI token, which the gateway refuses); the account is `CLOUDFLARE_ACCOUNT_ID`; and the gateway is `default`, named in the URL. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
@@ -618,7 +618,7 @@ Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blan
 deployment on `ai_gateway` can leave the three LLM API keys blank.
 The Clef vote order (`digest.preference_source = "clef"`) authenticates with
 `CLOUDFLARE_AI_TOKEN` too, else with `CLOUDFLARE_EMBEDDING_API_TOKEN`.
-`CYRIS_UI_TOKEN`, the `/settings` login secret, is checked by the Worker and never forwarded. The
+The Worker checks the Access JWT itself, so no sign-in secret is forwarded to the container. The
 authoritative lists are `SECRETS` in `workers/app/src/index.js` and `.env.example`, which
 `tests/test_deploy_inputs.py` holds in step.
 
@@ -732,8 +732,8 @@ the image is not reproducible — and the platform's own rollback does not move 
 the procedure.
 
 Which image production starts is answered by production itself: the `ui` role serves `/api/build`
-with the baked `CYRIS_GIT_SHA`, and `cyris doctor --deployment <url>` signs in with
-`CYRIS_UI_TOKEN`, reads it and counts how far local HEAD is ahead, warning rather than failing.
+with the baked `CYRIS_GIT_SHA`, and `cyris doctor --deployment <url>` signs in with the
+Access service token (`CYRIS_ACCESS_CLIENT_ID`, `CYRIS_ACCESS_CLIENT_SECRET`), reads it and counts how far local HEAD is ahead, warning rather than failing.
 It also prints the sha, time and status of the last non-preview run from D1 `digest_runs`.
 
 **The container's stdout is the only log, and it is kept for seven days.** `[observability]` in
@@ -746,13 +746,13 @@ retention is a separate decision and does not need a different log: Workers Logp
 another sink) and a Tail Worker can both read this stream later without changing what writes it.
 The failure alert (§3.2) follows this line and the `digest_runs` row, and a cancelled run sends none.
 
-`POST /api/diagnostics/gemini?model=<model>` is a cookie-protected, on-demand Worker-only
+`POST /api/diagnostics/gemini?model=<model>` is an Access-gated, on-demand Worker-only
 probe: it sends a fixed minimal `generateContent` request with the Worker-bound
 `GEMINI_API_KEY`, returns only status, model, latency and a truncated provider error, and writes no
 state. It proves the Worker egress path, not the Container's separate egress path.
 
 `POST /api/diagnostics/llm` with `{"provider", "model"}` is its Container-side counterpart, served
-by `triage_server` behind the same cookie: it runs `probe_llm` for any provider with the key the
+by `triage_server` behind the same Access gate: it runs `probe_llm` for any provider with the key the
 Container holds, adds the Cloudflare trace's `colo`/`loc` for that request, and stores nothing.
 It answers from the `ui` instance; the `run` instance shares its placement constraints but is
 placed on its own, which only its `egress_probe` log line records.
@@ -878,14 +878,9 @@ minutes after the SIGTERM, while the `ui` receipt above is an instance that kept
 day of repeated `stop()` calls.
 `tests/test_entrypoint.py` runs the real script under `dash`, the image's `/bin/sh`.
 
-**Auth is one layer always, two if you own a domain** (`workers/app/`); why each layer, and why
-there is no JWT check, is [ADR-0009](decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md) (superseded — see [ADR-0015](decisions/0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md)). The `CYRIS_UI_TOKEN` cookie decides whether a request carries this deployment's own secret: `/login` sets an HttpOnly cookie holding the token's SHA-256, compared in constant time, and anything without it gets the form or a `401` before a byte reaches the container. Preview URLs stay disabled.
-
-Cloudflare Access is an optional second layer on the hostname named by `CYRIS_UI_ACCESS_HOST` (grade B). It decides *who* — email policy, MFA, audit log — and is a dashboard step. Access stays off `workers.dev`, where scripts sign in with the cookie alone. Forks skip it. Deployments that attach a custom domain from the dashboard set `CYRIS_UI_ACCESS_HOST` to that hostname; `/api/vote` on that host stays Access-only so a reader who already passed Access does not log in a second time. On every other hostname, including the workers.dev URL that `workers_dev = true` may re-enable beside the custom domain, the cookie is required. The archive is public unless `CYRIS_PRIVATE_ARCHIVE` (grade B, Worker-only) is `"true"`: then a reader without the cookie is sent to `/login` before the Worker proxies a byte of Pages, and signs in to the page they asked for.
+**Cloudflare Access is the only sign-in** (`workers/app/`); the reasoning is in [ADR-0015](decisions/0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md), which supersedes ADR-0009. The Worker verifies the `Cf-Access-Jwt-Assertion` header against the team domain's keys, checks its issuer and audience, and answers `403` JSON to any missing or invalid token before a byte reaches the container. The header is the only place it reads a token from. The team domain (`CYRIS_ACCESS_TEAM_DOMAIN`, grade B) is held as a host without a scheme; the audience (`CYRIS_ACCESS_AUD`, grade B) is the application's AUD tag. A signed-in `/login` sends the reader back to the page they came from, with no cookie. Access decides *who*: a self-hosted Access application over the Worker's hostname is a dashboard step. Scripts sign in with an Access service token (`CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`, grade C, script-only), sent as `CF-Access-Client-Id` and `CF-Access-Client-Secret`; revoking it is a Zero Trust dashboard step. Preview URLs stay disabled.
 
 `wrangler.toml` ships with `workers_dev = true` and no `routes`, so a clone deploys unmodified. Custom domains are attached from the dashboard or API, which means the file is then not the sole source of truth for routing; a trial config rendered by `scripts/provision_trial.py` is the other way, its `[[routes]]` attaching the trial's hostname on deploy.
-
-Cyris does not validate `Cf-Access-Jwt-Assertion`.
 
 **The reader-facing surfaces share one hostname, split by path.** The Worker proxies
 `DIGEST_ORIGIN` for anything not on the protected list, at the cost of one Worker request; why the
@@ -893,16 +888,18 @@ digest stays static is [ADR-0010](decisions/0010-the-digest-stays-static-behind-
 
 ```
 /                         digest index  ─┐ public unless CYRIS_PRIVATE_ARCHIVE is "true"
-/2026-08-30-evening.html  one digest    ─┘ (then the cookie too): the Worker proxies Pages
+/2026-08-30-evening.html  one digest    ─┘ (then the same check): the Worker proxies Pages
 /triage*                                   404
-/settings · /labels · /api/* · /static/*   CYRIS_UI_TOKEN cookie; Access too if
-                                           CYRIS_UI_ACCESS_HOST matches this host
+/settings · /labels · /login · /run        Access JWT, else 403 JSON
+/api/* · /static/*
 ```
 
 Votes go through the Worker's same-origin `POST /api/vote`, which attaches `CYRIS_PROMOTE_TOKEN`
 server-side; no page carries the token. The vote buttons render only when a probe of
-`/api/vote` succeeds, so a `pages.dev` reader, where that path is not routed, sees none, and a
-stranger on `*.workers.dev` without the cookie cannot record a human verdict. Why the vote token
+`/api/vote` succeeds. The probe has three outcomes: a signed-in reader gets `200 {"authorized":true}`; a
+reader with no Access session is redirected (302) to the Access login; the Worker answers `403` JSON to a
+request that reaches it without a valid JWT. A `pages.dev` reader, where that path is not routed, sees none,
+and a stranger cannot record a human verdict. Why the vote token
 is kept apart from the other bearers is
 [ADR-0008](decisions/0008-worker-bearers-split-by-published-versus-secret.md).
 
