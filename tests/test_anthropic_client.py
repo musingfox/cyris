@@ -90,3 +90,31 @@ async def test_warns_on_a_refusal(caplog):
     assert route.call_count == 1
     assert response.text == ""
     assert "refused" in caplog.text
+
+
+async def test_sends_output_config_effort_when_built_with_one():
+    client = AnthropicClient(
+        api_key="k", model="claude-sonnet-4-6", max_retries=0, reasoning_effort="medium"
+    )
+    async with respx.mock:
+        route = respx.post(URL).mock(return_value=_ok([_text("{}")]))
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    body = json.loads(route.calls.last.request.content)
+    assert body["output_config"] == {"effort": "medium"}
+    assert body["thinking"] == {"type": "adaptive"}
+
+
+async def test_sends_no_output_config_without_effort():
+    client = AnthropicClient(
+        api_key="k", model="claude-sonnet-4-6", max_retries=0, reasoning_effort=None
+    )
+    async with respx.mock:
+        route = respx.post(URL).mock(return_value=_ok([_text("{}")]))
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    body = json.loads(route.calls.last.request.content)
+    assert "output_config" not in body
+    assert "thinking" not in body

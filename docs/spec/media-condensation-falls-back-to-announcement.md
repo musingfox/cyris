@@ -23,7 +23,7 @@ writes to the store only on success, so a failure leaves the show notes or the
 video description in place — the same stance as `service_layer/degrade.py`,
 where a run with no LLM still lists excerpts.
 
-Out of scope: a missing key still stops the run, as every grade-D key does
+Out of scope: a missing key still stops the run, as every required grade-D key does
 (`docs/architecture.md` §5). Alerting on condensation failures is not this
 entry's concern.
 

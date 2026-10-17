@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fakes import TEST_SETTINGS, make_config, settings_toml
 
-from cyris.config import GRADE_D_KEYS, load_config
+from cyris.config import REQUIRED_KEYS, load_config
 from cyris.domain.models import Tier
 
 pytestmark = pytest.mark.integration
@@ -572,11 +572,9 @@ class TestJsonSettingsFromFileOnly:
         return _load_tmp(tmp_path, config_file)
 
     def test_no_file_means_every_key_is_missing(self, tmp_path):
-        from cyris.config import GRADE_D_KEYS
-
         cfg = self._load(tmp_path, None)
 
-        assert cfg.missing_settings == sorted(GRADE_D_KEYS)
+        assert cfg.missing_settings == sorted(REQUIRED_KEYS)
         assert cfg.present_settings() == {}
         assert cfg.config_file_found is False
 
@@ -621,7 +619,7 @@ class TestJsonSettingsFromFileOnly:
 
         assert cfg.missing_settings == []
 
-    @pytest.mark.parametrize("key", GRADE_D_KEYS)
+    @pytest.mark.parametrize("key", REQUIRED_KEYS)
     def test_each_omitted_key_is_reported_missing(self, tmp_path, monkeypatch, key):
         monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", self.ENV_WEBHOOK)
 

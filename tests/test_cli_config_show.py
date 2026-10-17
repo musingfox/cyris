@@ -70,6 +70,49 @@ def test_a_missing_d1_setting_is_shown_missing_and_still_exits_0(
     assert _rows(result.stdout)["digest.style_prompt"] == ("-", "missing")
 
 
+EFFORT_KEY = "llm_provider.reasoning_effort"
+
+
+def test_an_absent_reasoning_effort_is_listed_as_default_from_code_in_d1(
+    tmp_path: Path, d1: SqliteD1
+) -> None:
+    seed_d1_settings(d1, omit=[EFFORT_KEY])
+
+    result = _show(tmp_path, None)
+
+    assert result.exit_code == 0, result.output
+    assert _rows(result.stdout)[EFFORT_KEY] == ('"default"', "code")
+
+
+def test_an_absent_reasoning_effort_is_listed_as_default_from_code_in_json(
+    tmp_path: Path,
+) -> None:
+    result = _show(tmp_path, settings_toml(omit=[EFFORT_KEY]))
+
+    assert result.exit_code == 0, result.output
+    assert _rows(result.stdout)[EFFORT_KEY] == ('"default"', "code")
+
+
+def test_a_stored_reasoning_effort_is_listed_with_its_home(tmp_path: Path, d1: SqliteD1) -> None:
+    seed_d1_settings(d1, **{EFFORT_KEY: "high"})
+
+    result = _show(tmp_path, None)
+
+    assert result.exit_code == 0, result.output
+    assert _rows(result.stdout)[EFFORT_KEY] == ('"high"', "D1 settings")
+
+
+def test_an_invalid_stored_reasoning_effort_is_listed_missing_and_exits_0(
+    tmp_path: Path, d1: SqliteD1
+) -> None:
+    seed_d1_settings(d1, **{EFFORT_KEY: "xhigh"})
+
+    result = _show(tmp_path, None)
+
+    assert result.exit_code == 0, result.output
+    assert _rows(result.stdout)[EFFORT_KEY] == ("-", "missing")
+
+
 def test_a_json_deployment_takes_settings_from_cyris_toml(tmp_path: Path) -> None:
     result = _show(tmp_path, settings_toml(**{"digest.max_featured": 7}))
 

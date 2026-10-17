@@ -16,6 +16,7 @@ from typing import Annotated
 
 import typer
 
+from cyris.config import ReasoningEffort
 from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
@@ -659,13 +660,14 @@ def embed_compare(
         typer.echo(json.dumps(comparison.log_row(), ensure_ascii=False))
 
 
-def _build_arm(spec: str):
+def _build_arm(spec: str, reasoning_effort: ReasoningEffort):
     """Turn "provider:model" into a labelled LLM client, or explain why it cannot.
 
     Goes through the same `build_llm` the pipeline uses, so an arm picks up its
     key and account id from the environment exactly as a configured provider
     would, and a provider added later costs this command nothing. An empty model
-    means that provider's default.
+    means that provider's default. The arm runs at the configured reasoning effort,
+    so the comparison differs only by model.
     """
     from pydantic import ValidationError
 
@@ -674,7 +676,9 @@ def _build_arm(spec: str):
 
     provider, _, model = spec.partition(":")
     try:
-        arm_cfg = LLMProviderConfig(provider=provider.strip(), model=model.strip())
+        arm_cfg = LLMProviderConfig(
+            provider=provider.strip(), model=model.strip(), reasoning_effort=reasoning_effort
+        )
     except ValidationError as e:
         raise typer.BadParameter(f"--arm {spec!r}: unknown provider {provider.strip()!r}") from e
     if arm_cfg.provider == "none":
@@ -760,7 +764,7 @@ def llm_compare(
     # Built before any LLM call, so a typo in the fourth arm fails now rather than
     # after three digests have been paid for.
     arms = [(f"{cfg.app.llm_provider.provider}:{deps.llm.model}", deps.llm)]
-    arms.extend(_build_arm(spec) for spec in arm)
+    arms.extend(_build_arm(spec, cfg.app.llm_provider.reasoning_effort) for spec in arm)
 
     now = datetime.now(UTC)
     stored = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
@@ -896,10 +900,13 @@ def _llm_from_values(values: dict):
     from cyris.bootstrap import build_llm
     from cyris.config import LLMProviderConfig
 
+    effort_key = "llm_provider.reasoning_effort"
+    effort = {"reasoning_effort": values[effort_key]} if effort_key in values else {}
     try:
         candidate = LLMProviderConfig(
             provider=values.get("llm_provider.provider") or "",
             model=values.get("llm_provider.model") or "",
+            **effort,
         )
     except ValidationError:
         return None
@@ -945,7 +952,7 @@ def triage_ui(
             host=host,
             port=port,
             settings=build_settings(cfg),
-            values=cfg.present_settings(),
+            values={**cfg.present_settings(), **cfg.defaulted_settings()},
             sources=cfg.sources,
             source_store=D1SourceStore(d1) if d1 else None,
             feed_health=D1FeedHealth(d1) if d1 else None,
@@ -1613,7 +1620,7 @@ def settings_push(
 
     from cyris.adapters.notify import mask_discord_webhook_url
     from cyris.adapters.store.settings import D1Settings
-    from cyris.config import GRADE_D_KEYS, validate_setting
+    from cyris.config import GRADE_D_KEYS, REQUIRED_KEYS, validate_setting
 
     # The file itself, not cfg.app: a D1 deployment's load ignores these keys.
     raw = tomllib.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
@@ -1632,8 +1639,9 @@ def settings_push(
     cfg, client = _force_d1_client(config_path, sources_path)
     typer.echo(f"D1 database {cfg.app.store.database_id}")
     settings = D1Settings(client)
+    rows = settings.all()
     in_d1: dict = {}
-    for key, value in settings.all().items():
+    for key, value in rows.items():
         try:
             in_d1[key] = validate_setting(key, value)
         except ValueError:
@@ -1658,6 +1666,8 @@ def settings_push(
         elif key in from_file:
             added[key] = from_file[key]
             typer.echo(f"  {'added':<9}{key} = {shown(key, from_file[key])}")
+        elif key not in REQUIRED_KEYS and key not in rows:
+            typer.echo(f"  {'default':<9}{key} — in neither D1 nor {config_path}")
         else:
             missing += 1
             typer.echo(f"  {'missing':<9}{key} — in neither D1 nor {config_path}")

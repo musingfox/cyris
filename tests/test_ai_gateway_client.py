@@ -132,6 +132,40 @@ async def test_without_a_system_prompt_or_temperature_neither_is_sent():
     }
 
 
+@pytest.mark.parametrize(
+    ("effort", "expected"), [("medium", {"thinkingLevel": "MEDIUM"}), (None, None)]
+)
+async def test_the_thinking_level_is_sent_uppercase_or_not_at_all(effort, expected):
+    client = AIGatewayClient(
+        api_token="test-cf-token", account_id=ACCOUNT, model=MODEL, reasoning_effort=effort
+    )
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(
+            return_value=httpx.Response(200, json=CATALOG_GEMINI_RESPONSE)
+        )
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    config = json.loads(route.calls[0].request.content)["generationConfig"]
+    assert config.get("thinkingConfig") == expected
+    assert ("thinkingConfig" in config) == (expected is not None)
+
+
+async def test_thinking_budget_is_sent_as_a_budget_and_never_with_a_level():
+    client = AIGatewayClient(
+        api_token="test-cf-token", account_id=ACCOUNT, model=MODEL, thinking_budget=8192
+    )
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(
+            return_value=httpx.Response(200, json=CATALOG_GEMINI_RESPONSE)
+        )
+        await client.complete("Hi.")
+
+    assert route.call_count == 1
+    config = json.loads(route.calls[0].request.content)["generationConfig"]
+    assert config["thinkingConfig"] == {"thinkingBudget": 8192}
+
+
 async def test_usage_reaches_the_run_total():
     usage = UsageStats(model=MODEL)
     async with respx.mock:
@@ -230,3 +264,16 @@ async def test_an_author_this_adapter_cannot_parse_is_refused_before_any_request
             await _client("anthropic/claude-sonnet-4.6").complete("Hi.")
 
     assert route.call_count == 0
+
+
+async def test_a_candidate_with_no_parts_raises_the_output_budget_error():
+    from cyris.adapters.gemini_client import OutputBudgetSpentError
+
+    spent = {"candidates": [{"content": {"role": "model"}, "finishReason": "MAX_TOKENS"}]}
+    async with respx.mock:
+        route = respx.post(RUN_URL).mock(return_value=httpx.Response(200, json=spent))
+        with pytest.raises(OutputBudgetSpentError, match="MAX_TOKENS") as raised:
+            await _client().complete("Hi.")
+
+    assert isinstance(raised.value, RuntimeError)
+    assert route.call_count == 1

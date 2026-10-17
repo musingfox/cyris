@@ -13,6 +13,7 @@ _TEST_VALUES: dict[str, Any] = {
     "general.digest_window_hours": 24,
     "llm_provider.provider": "none",
     "llm_provider.model": "",
+    "llm_provider.reasoning_effort": "default",
     # Off: a test that runs the pipeline must never reach a real Discord channel.
     "notify.discord_webhook_url": "",
     "notify.email_to": "",

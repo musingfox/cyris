@@ -13,8 +13,8 @@ pytestmark = pytest.mark.unit
 URL = "https://api.openai.com/v1/chat/completions"
 
 
-def _client(model: str = "gpt-5.6-luna") -> OpenAIClient:
-    return OpenAIClient(api_key="test-openai-key", model=model)
+def _client(model: str = "gpt-5.6-luna", **kwargs) -> OpenAIClient:
+    return OpenAIClient(api_key="test-openai-key", model=model, **kwargs)
 
 
 def _ok(content: str = '{"items": []}', finish: str = "stop") -> httpx.Response:
@@ -70,16 +70,34 @@ async def test_explicit_max_tokens_maps_onto_the_current_parameter():
 
 
 async def test_asks_for_low_reasoning_effort_and_json():
-    """Load-bearing: on Workers AI, unbounded reasoning ate a whole budget and
-    returned an empty message. Same class of model, same precaution."""
     async with respx.mock:
         route = respx.post(URL).mock(return_value=_ok())
-        await _client().complete("Hi.")
+        await _client(reasoning_effort="low").complete("Hi.")
 
     assert route.call_count == 1
     body = json.loads(route.calls[0].request.content)
     assert body["reasoning_effort"] == "low"
     assert body["response_format"] == {"type": "json_object"}
+
+
+async def test_sends_the_reasoning_effort_it_was_built_with():
+    async with respx.mock:
+        route = respx.post(URL).mock(return_value=_ok())
+        await _client(reasoning_effort="high").complete("Hi.")
+
+    assert route.call_count == 1
+    body = json.loads(route.calls[0].request.content)
+    assert body["reasoning_effort"] == "high"
+    assert body["response_format"] == {"type": "json_object"}
+
+
+async def test_sends_no_reasoning_effort_when_built_with_none():
+    async with respx.mock:
+        route = respx.post(URL).mock(return_value=_ok())
+        await _client(reasoning_effort=None).complete("Hi.")
+
+    assert route.call_count == 1
+    assert "reasoning_effort" not in json.loads(route.calls[0].request.content)
 
 
 async def test_warns_when_truncated(caplog):

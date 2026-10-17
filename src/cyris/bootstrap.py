@@ -29,6 +29,34 @@ def _provider_defaults() -> dict:
     return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
 
 
+@cache
+def _reasoning_data() -> dict:
+    raw = (files("cyris") / "reasoning_effort_defaults.json").read_text(encoding="utf-8")
+    return json.loads(raw)
+
+
+def _reasoning_defaults() -> dict[str, str | None]:
+    """Per-provider reasoning level sent when the setting is "default"."""
+    return _reasoning_data()["defaults"]
+
+
+def _reasoning_effort(cfg: LLMProviderConfig) -> str | None:
+    if cfg.reasoning_effort != "default":
+        return cfg.reasoning_effort
+    return _reasoning_defaults()[cfg.provider]
+
+
+def _gemini_effort(cfg: LLMProviderConfig, model: str) -> dict[str, str | int | None]:
+    """The client keywords that carry the effort: a budget on Gemini 2.5, else a level."""
+    effort = _reasoning_effort(cfg)
+    spec = _reasoning_data()["gemini_thinking_budget"]
+    if effort is not None and model.removeprefix("google/").startswith(
+        tuple(spec["model_prefixes"])
+    ):
+        return {"thinking_budget": spec["budgets"][effort]}
+    return {"reasoning_effort": effort}
+
+
 def default_model(provider: str) -> str:
     """The model a provider runs with when the config names no model."""
     return _provider_defaults()["llm_models"][provider]
@@ -57,9 +85,9 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
         return None
     model = cfg.model or default_model(cfg.provider)
     if cfg.provider == "gemini":
-        return GeminiClient(cfg.api_key, model)
+        return GeminiClient(cfg.api_key, model, **_gemini_effort(cfg, model))
     if cfg.provider == "openai":
-        return OpenAIClient(cfg.api_key, model)
+        return OpenAIClient(cfg.api_key, model, reasoning_effort=_reasoning_effort(cfg))
     if cfg.provider == "workers_ai":
         if not cfg.account_id:
             return None  # doctor names the missing CLOUDFLARE_ACCOUNT_ID
@@ -67,8 +95,8 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     if cfg.provider == "ai_gateway":
         if not cfg.account_id:
             return None  # doctor names the missing CLOUDFLARE_ACCOUNT_ID
-        return AIGatewayClient(cfg.api_key, cfg.account_id, model)
-    return AnthropicClient(cfg.api_key, model)
+        return AIGatewayClient(cfg.api_key, cfg.account_id, model, **_gemini_effort(cfg, model))
+    return AnthropicClient(cfg.api_key, model, reasoning_effort=_reasoning_effort(cfg))
 
 
 # The key each embedding provider reads, then anything else its REST path needs.

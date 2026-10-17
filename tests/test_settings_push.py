@@ -37,9 +37,9 @@ def test_an_empty_d1_gets_every_key_from_a_complete_file(tmp_path: Path, d1: Sql
     result, config_path = _push(tmp_path, settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 25
+    assert len(D1Settings(d1).all()) == 26
     assert result.stdout.rstrip().endswith(
-        f"Added 25 of 25 settings from {config_path}; 0 kept; 0 still missing."
+        f"Added 26 of 26 settings from {config_path}; 0 kept; 0 still missing."
     )
 
 
@@ -127,4 +127,48 @@ def test_a_d1_deployments_file_is_still_read(tmp_path: Path, d1: SqliteD1) -> No
     result, _ = _push(tmp_path, '[store]\nbackend = "d1"\n\n' + settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 25
+    assert len(D1Settings(d1).all()) == 26
+
+
+EFFORT = "llm_provider.reasoning_effort"
+
+
+def test_an_effort_in_neither_home_is_reported_as_default_not_missing(
+    tmp_path: Path, d1: SqliteD1
+) -> None:
+    result, config_path = _push(tmp_path, settings_toml(omit=[EFFORT]))
+
+    assert result.exit_code == 0, result.output
+    assert f"  default  {EFFORT} — in neither D1 nor {config_path}" in result.stdout
+    assert result.stdout.rstrip().endswith(
+        f"Added 25 of 26 settings from {config_path}; 0 kept; 0 still missing."
+    )
+    assert EFFORT not in D1Settings(d1).all()
+
+
+def test_an_invalid_d1_effort_with_no_file_value_is_still_missing(
+    tmp_path: Path, d1: SqliteD1
+) -> None:
+    D1Settings(d1).set({EFFORT: "xhigh"})
+
+    result, config_path = _push(tmp_path, settings_toml(omit=[EFFORT]))
+
+    assert result.exit_code == 0, result.output
+    assert f"  missing  {EFFORT} — in neither D1 nor {config_path}" in result.stdout
+    assert "1 still missing." in result.stdout
+
+
+def test_an_effort_in_the_file_is_added_to_d1(tmp_path: Path, d1: SqliteD1) -> None:
+    result, _ = _push(tmp_path, settings_toml(**{EFFORT: "high"}))
+
+    assert result.exit_code == 0, result.output
+    assert f'  added    {EFFORT} = "high"' in result.stdout
+    assert D1Settings(d1).all()[EFFORT] == "high"
+
+
+def test_an_invalid_file_effort_exits_1_and_writes_nothing(tmp_path: Path, d1: SqliteD1) -> None:
+    result, config_path = _push(tmp_path, settings_toml(**{EFFORT: "xhigh"}))
+
+    assert result.exit_code == 1
+    assert f"{config_path}: {EFFORT}: " in result.stderr
+    assert D1Settings(d1).all() == {}

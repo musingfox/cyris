@@ -12,7 +12,7 @@ import pytest
 from fakes import SqliteD1, seed_d1_settings, settings_toml
 from typer.testing import CliRunner
 
-from cyris.config import GRADE_D_KEYS
+from cyris.config import REQUIRED_KEYS
 from cyris.domain.models import SourceConfig
 from cyris.entrypoints.cli import app
 
@@ -148,7 +148,7 @@ def test_the_error_lists_every_key_on_an_empty_d1(tmp_path: Path, d1: SqliteD1) 
     with pytest.raises(IncompleteSettingsError) as caught:
         cfg.require_complete_settings()
     assert str(caught.value) == (
-        f"Missing settings in D1: {', '.join(sorted(GRADE_D_KEYS))}. "
+        f"Missing settings in D1: {', '.join(sorted(REQUIRED_KEYS))}. "
         "Set them on /settings, or run `cyris settings push` to copy them from cyris.toml."
     )
 

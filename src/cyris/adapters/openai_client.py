@@ -30,8 +30,11 @@ class OpenAIClient:
         model: str,
         max_retries: int = 2,
         timeout: float = 180.0,
+        *,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.model = model
+        self._reasoning_effort = reasoning_effort
         self._max_retries = max_retries
         self._client = httpx.AsyncClient(
             headers={"Authorization": f"Bearer {api_key}"},
@@ -57,15 +60,12 @@ class OpenAIClient:
             # Not `max_tokens`: that name is deprecated and is rejected outright by
             # the reasoning models, which is most of what anyone would point this at.
             "max_completion_tokens": max_tokens or _MAX_OUTPUT_TOKENS,
-            # Every cyris call is extract-and-summarise rather than a problem to
-            # solve, so reasoning is overhead. On Workers AI leaving it unbounded
-            # was not merely wasteful: gpt-oss-120b spent a whole output budget
-            # thinking and returned an empty message. Non-reasoning models ignore it.
-            "reasoning_effort": "low",
             # complete_json parses whatever comes back, so this only removes a
             # failure mode (markdown fences, a preamble) rather than enabling one.
             "response_format": {"type": "json_object"},
         }
+        if self._reasoning_effort is not None:
+            body["reasoning_effort"] = self._reasoning_effort
         if temperature is not None:
             body["temperature"] = temperature
 

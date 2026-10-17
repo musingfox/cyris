@@ -1,4 +1,8 @@
-"""No grade-D setting has a value in code: a table missing a key is left unbuilt."""
+"""No grade-D setting has a value in code: a table missing a key is left unbuilt.
+
+The one exception is an optional key (`"optional": true` in the settings registry).
+It is held to a single key whose code default is itself a value it can store.
+"""
 
 import inspect
 from pathlib import Path
@@ -10,6 +14,8 @@ from typer.testing import CliRunner
 
 from cyris.config import (
     GRADE_D_KEYS,
+    OPTIONAL_SETTINGS,
+    REQUIRED_KEYS,
     AppConfig,
     DigestConfig,
     GeneralConfig,
@@ -43,12 +49,22 @@ def _table_values(table: str) -> dict:
 
 
 @pytest.mark.parametrize("key", GRADE_D_KEYS)
-def test_every_runtime_setting_is_required_in_its_table(key):
+def test_every_runtime_setting_is_required_unless_it_is_optional(key):
     table, field = key.split(".", 1)
-    assert TABLES[table].model_fields[field].is_required() is True
+    assert TABLES[table].model_fields[field].is_required() is (key not in OPTIONAL_SETTINGS)
 
 
-@pytest.mark.parametrize("key", GRADE_D_KEYS)
+def test_the_optional_exception_is_one_key_holding_the_default_mode():
+    assert tuple(OPTIONAL_SETTINGS) == ("llm_provider.reasoning_effort",)
+    assert OPTIONAL_SETTINGS["llm_provider.reasoning_effort"] == "default"
+
+
+@pytest.mark.parametrize("key", OPTIONAL_SETTINGS)
+def test_an_optional_keys_default_is_a_value_it_can_store(key):
+    assert validate_setting(key, OPTIONAL_SETTINGS[key]) == OPTIONAL_SETTINGS[key]
+
+
+@pytest.mark.parametrize("key", REQUIRED_KEYS)
 def test_a_table_without_one_setting_does_not_build(key):
     table, field = key.split(".", 1)
     values = _table_values(table)
@@ -98,7 +114,7 @@ def test_an_empty_d1_leaves_every_settings_table_unbuilt(tmp_path, empty_d1):
     cfg = load_effective_config(empty_d1, tmp_path / "sources.yaml")
 
     assert [getattr(cfg.app, table) for table in TABLES] == [None] * len(TABLES)
-    assert cfg.missing_settings == sorted(GRADE_D_KEYS)
+    assert cfg.missing_settings == sorted(REQUIRED_KEYS)
 
 
 def test_commands_on_an_empty_d1_refuse_without_a_traceback(tmp_path, empty_d1, caplog):

@@ -8,7 +8,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 import cyris.entrypoints
 from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS
-from cyris.entrypoints.triage_server import TriageServer, render_settings_page
+from cyris.entrypoints.triage_server import PLAIN_KEYS, TriageServer, render_settings_page
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -30,6 +30,35 @@ def test_the_vote_order_judge_is_a_select_in_the_digest_form() -> None:
     assert select, "no #preference-source in the digest form"
     options = re.findall(r'<option value="([^"]*)">([^<]*)</option>', select[1])
     assert options == [("cosine", "Title similarity"), ("clef", "Clef")]
+
+
+def test_reasoning_effort_is_a_select_in_the_pipeline_form() -> None:
+    page = render_settings_page()
+    form = re.search(r'<form[^>]*id="pipeline-form".*?</form>', page, re.S)
+    assert form, "no pipeline form"
+    select = re.search(r'<select class="select" id="reasoning-effort">(.*?)</select>', form[0])
+    assert select, "no #reasoning-effort in the pipeline form"
+    options = re.findall(r'<option value="([^"]*)">([^<]*)</option>', select[1])
+    assert options == [
+        ("default", "Default"),
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+    ]
+    assert '<label class="label" for="reasoning-effort">Reasoning effort</label>' in form[0]
+
+
+def test_reasoning_effort_is_an_optional_plain_pipeline_field() -> None:
+    key = "llm_provider.reasoning_effort"
+
+    assert SETTINGS_FIELDS[key] == {
+        "tab": "pipeline",
+        "label": "Reasoning effort",
+        "controls": ["reasoning-effort"],
+        "route": "plain",
+        "optional": True,
+    }
+    assert key in PLAIN_KEYS
 
 
 async def test_the_page_reads_its_fields_from_the_api() -> None:

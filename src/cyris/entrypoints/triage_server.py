@@ -338,7 +338,11 @@ class TriageServer:
         provider = (body.get("provider") or "").strip()
         model = (body.get("model") or "").strip()
         try:
-            candidate = LLMProviderConfig(provider=provider, model=model)
+            candidate = LLMProviderConfig(
+                provider=provider,
+                model=model,
+                reasoning_effort=self._values.get("llm_provider.reasoning_effort", "default"),
+            )
         except ValidationError:
             return _refused(f"unknown provider {provider!r}", "llm_provider.provider")
 
@@ -388,7 +392,11 @@ class TriageServer:
         provider = (body.get("provider") or "").strip()
         model = (body.get("model") or "").strip()
         try:
-            candidate = LLMProviderConfig(provider=provider, model=model)
+            candidate = LLMProviderConfig(
+                provider=provider,
+                model=model,
+                reasoning_effort=self._values.get("llm_provider.reasoning_effort", "default"),
+            )
         except ValidationError:
             return web.json_response(
                 {"ok": False, "error": f"unknown provider {provider!r}"}, status=400
@@ -428,7 +436,8 @@ class TriageServer:
 
     async def _handle_post_values(self, request: web.Request) -> web.Response:
         """Store any of the plain settings, all or nothing, each through its own rule."""
-        from cyris.config import validate_setting
+        from cyris.config import LLMProviderConfig, validate_setting
+        from cyris.diagnostics.doctor import probe_llm
 
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
@@ -451,6 +460,22 @@ class TriageServer:
                 validated[key] = validate_setting(key, value)
             except ValueError as e:
                 return _refused(f"{_label(key)}: {e}", key)
+
+        stored_provider = self._values.get("llm_provider.provider")
+        if "llm_provider.reasoning_effort" in validated and stored_provider not in (
+            None,
+            "",
+            "none",
+        ):
+            # A model before Claude 4.6 rejects an effort, and a run would find out.
+            candidate = LLMProviderConfig(
+                provider=stored_provider,
+                model=self._values.get("llm_provider.model") or "",
+                reasoning_effort=validated["llm_provider.reasoning_effort"],
+            )
+            probe = await probe_llm(candidate)
+            if probe.status != "ok":
+                return _refused(_probe_refusal(probe), "llm_provider.reasoning_effort")
 
         if (refused := self._store(validated)) is not None:
             return refused

@@ -19,6 +19,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and an issue Clef cannot fully score keeps the cosine order, recording why as
   `preference_clef_skipped` in the run summary. `cosine` stays the order until
   you choose otherwise.
+- One setting sets how hard every model thinks. **Reasoning effort** (`/settings`,
+  Pipeline) is Default, Low, Medium or High. Default keeps what each provider did
+  before; Low, Medium and High send that level to OpenAI, Gemini, AI Gateway
+  and Anthropic alike, so models compare evenly. Workers AI always runs at low. Save checks the level
+  against the current model.
 
 ### Fixed
 
@@ -59,6 +64,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   under `[digest]` in `cyris.toml`. Set `CLOUDFLARE_AI_TOKEN` or
   `CLOUDFLARE_EMBEDDING_API_TOKEN` before choosing `clef`; without one the run
   keeps the cosine order and says so.
+- `llm_provider.reasoning_effort` needs nothing before deploying. It is the one
+  optional runtime setting (ADR-0018): a deployment that never stores it runs at
+  Default, which sends what it sent before.
 
 ## [0.5.0] — 2026-10-02
 

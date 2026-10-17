@@ -93,7 +93,7 @@ def _check_settings(cfg: Config) -> Check:
                 f"missing in D1: {missing}",
                 "Set them on /settings, or run `cyris settings push`.",
             )
-        return Check("settings", "ok", f"all {len(GRADE_D_KEYS)} set in D1")
+        return Check("settings", "ok", _settings_ok(cfg, "D1"))
     if missing:
         return Check(
             "settings",
@@ -101,7 +101,17 @@ def _check_settings(cfg: Config) -> Check:
             f"missing from cyris.toml: {missing}",
             "cyris.toml.example lists every key.",
         )
-    return Check("settings", "ok", f"all {len(GRADE_D_KEYS)} set in cyris.toml")
+    return Check("settings", "ok", _settings_ok(cfg, "cyris.toml"))
+
+
+def _settings_ok(cfg: Config, home: str) -> str:
+    defaulted = cfg.defaulted_settings()
+    if not defaulted:
+        return f"all {len(GRADE_D_KEYS)} set in {home}"
+    return (
+        f"{len(GRADE_D_KEYS) - len(defaulted)} of {len(GRADE_D_KEYS)} set in {home}; "
+        f"default for {', '.join(sorted(defaulted))}"
+    )
 
 
 def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
@@ -208,7 +218,7 @@ async def probe_llm(llm_cfg) -> Check:
     should call this before saving, not after.
     """
     from cyris.adapters.ai_gateway_client import AIGatewayError
-    from cyris.adapters.gemini_client import GeminiAPIError
+    from cyris.adapters.gemini_client import GeminiAPIError, OutputBudgetSpentError
     from cyris.bootstrap import build_llm
 
     if llm_cfg.provider == "none":
@@ -274,6 +284,13 @@ async def probe_llm(llm_cfg) -> Check:
             "fail",
             f"{who}: HTTP {e.status}, code={e.code}, message={detail}",
             fix,
+        )
+    except OutputBudgetSpentError:
+        return Check(
+            "llm probe",
+            "ok",
+            f"{llm_cfg.provider} · {llm.model} accepted the request; "
+            "thinking used the probe's output budget",
         )
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
         return Check("llm probe", "fail", f"{llm.model} refused: {str(e)[:300]}", refused)

@@ -9,9 +9,12 @@ import signal
 from pathlib import Path
 
 import pytest
+from aiohttp.test_utils import TestClient, TestServer
+from fakes import seed_d1_settings
 from typer.testing import CliRunner
 
 from cyris.entrypoints.cli import app
+from cyris.entrypoints.triage_server import TriageServer
 
 pytestmark = pytest.mark.integration
 
@@ -89,8 +92,10 @@ def test_a_json_ui_role_opens_no_article_store(config: tuple[Path, Path], monkey
     assert kwargs["blind_labels"] is None
 
 
-def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], monkeypatch) -> None:
-    """The page gets what the home holds and nothing more: an empty D1 holds nothing."""
+def test_an_empty_d1_starts_the_page_with_only_the_defaulted_effort(
+    config: tuple[Path, Path], monkeypatch
+) -> None:
+    """The page gets what the home holds and what runs on a default; an empty D1 has the latter."""
     from fakes import SqliteD1
 
     db = SqliteD1()
@@ -104,12 +109,63 @@ def test_an_empty_d1_starts_the_page_with_no_values(config: tuple[Path, Path], m
 
     assert result.exit_code == 0, result.output
     [(_args, kwargs)] = FakeServer.calls
-    assert kwargs["values"] == {}
+    assert kwargs["values"] == {"llm_provider.reasoning_effort": "default"}
     assert kwargs["settings"] is not None
     assert kwargs["feed_health"].read() == {}
     # /labels writes its answers to the articles as votes, so a D1 ui role opens both.
     assert kwargs["blind_labels"].progress() == (0, 0)
     assert kwargs["article_store"].count_by_state() == {}
+
+
+def _page_settings(values: dict) -> dict:
+    """GET /api/settings from the real server (FakeServer replaces the module's name)."""
+
+    async def get() -> dict:
+        client = TestClient(TestServer(TriageServer(values=values)._app))
+        await client.start_server()
+        try:
+            return await (await client.get("/api/settings")).json()
+        finally:
+            await client.close()
+
+    return asyncio.run(get())
+
+
+def test_an_absent_effort_shows_on_the_page_as_default_not_missing(
+    config: tuple[Path, Path], d1
+) -> None:
+    seed_d1_settings(d1, omit=["llm_provider.reasoning_effort"])
+
+    result = _run(config)
+
+    assert result.exit_code == 0, result.output
+    [(_args, kwargs)] = FakeServer.calls
+    assert kwargs["values"]["llm_provider.reasoning_effort"] == "default"
+    data = _page_settings(kwargs["values"])
+    assert "llm_provider.reasoning_effort" not in data["missing"]
+    assert data["values"]["llm_provider.reasoning_effort"] == "default"
+
+
+def test_an_invalid_stored_effort_is_left_out_of_the_page_values(
+    config: tuple[Path, Path], d1
+) -> None:
+    seed_d1_settings(d1, **{"llm_provider.reasoning_effort": "xhigh"})
+
+    result = _run(config)
+
+    assert result.exit_code == 0, result.output
+    [(_args, kwargs)] = FakeServer.calls
+    assert "llm_provider.reasoning_effort" not in kwargs["values"]
+
+
+def test_a_stored_effort_reaches_the_page_as_itself(config: tuple[Path, Path], d1) -> None:
+    seed_d1_settings(d1, **{"llm_provider.reasoning_effort": "high"})
+
+    result = _run(config)
+
+    assert result.exit_code == 0, result.output
+    [(_args, kwargs)] = FakeServer.calls
+    assert kwargs["values"]["llm_provider.reasoning_effort"] == "high"
 
 
 def test_help_describes_the_settings_server() -> None:
