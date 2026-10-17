@@ -1,5 +1,5 @@
 """Source checks on router.js: the route fixture covers its path literals and
-triage_server's, and its secret compares stay constant-time."""
+triage_server's, and the cookie login is gone."""
 
 from __future__ import annotations
 
@@ -145,10 +145,7 @@ def test_workers_dev_false_in_wrangler_fails():
         assert_fork_neutral("workers_dev = false\npreview_urls = false\n")
 
 
-def test_login_and_cookie_compare_via_ct_equal():
+def test_router_has_no_cookie_login():
     text = ROUTER.read_text()
-    assert "const ctEqual" in text
-    assert "=== env.CYRIS_UI_TOKEN" not in text
-    assert "!== env.CYRIS_UI_TOKEN" not in text
-    assert "cookie ===" not in text
-    assert "cookie !==" not in text
+    for name in ("cyris_session", "ctEqual", "LOGIN_PAGE"):
+        assert name not in text, name
