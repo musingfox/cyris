@@ -1,4 +1,4 @@
-"""The shared CSS partials stay the one source of truth for the three digest pages.
+"""The shared CSS partials stay the one source of truth for the digest site's pages.
 
 These assertions are the milestone's invariant, not a snapshot of today's CSS: a
 checked-in golden file would need regenerating on every legitimate edit and would
@@ -28,6 +28,7 @@ from jinja2 import DebugUndefined, Environment, meta
 
 import cyris.entrypoints
 from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.domain.interest_graph import InterestEdge, InterestGraph, InterestNode
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -35,6 +36,7 @@ PAGE_TEMPLATES = {
     "index": "index.html.j2",
     "digest": "digest.html.j2",
     "raw": "raw.html.j2",
+    "interest": "interest.html.j2",
 }
 
 # The partials each page must draw its shared rules from. Declared here rather
@@ -45,6 +47,7 @@ EXPECTED_INCLUDES = {
     "index": ("_tokens.css.j2", "_components.css.j2", "_page.css.j2", "_footer.css.j2"),
     "digest": CSS_PARTIALS,
     "raw": tuple(partial for partial in CSS_PARTIALS if partial != "_masthead.css.j2"),
+    "interest": ("_tokens.css.j2", "_components.css.j2", "_page.css.j2", "_footer.css.j2"),
 }
 
 STYLE_CSS = Path(cyris.entrypoints.__file__).parent / "static" / "style.css"
@@ -63,7 +66,14 @@ def env() -> Environment:
 @pytest.fixture(scope="module")
 def pages() -> dict[str, str]:
     index_html, digest_html, raw_html = receipt_fixtures()
-    return {"index": index_html, "digest": digest_html, "raw": raw_html}
+    graph = InterestGraph(
+        nodes=[InterestNode("agents", 2, 0, "up", 1.0), InterestNode("gpu", 0, 2, "down", 0.5)],
+        edges=[InterestEdge("agents", "gpu")],
+    )
+    interest_html = HtmlDigestWriter("unused-by-these-tests").render_interest(
+        graph, holds_active=True, generated_at="2026-10-17 08:00 UTC", clock_days=7
+    )
+    return {"index": index_html, "digest": digest_html, "raw": raw_html, "interest": interest_html}
 
 
 def _style_text(html: str) -> str:

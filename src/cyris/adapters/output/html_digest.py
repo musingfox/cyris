@@ -9,12 +9,18 @@ from urllib.parse import urlsplit
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from cyris.domain.area_layout import AreaSection, layout_by_area
+from cyris.domain.graph_layout import layout
+from cyris.domain.interest_graph import InterestGraph
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, StoredArticle
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 # The upstream project, not this deployment: a fork's pages still credit it, so no
 # setting changes it (docs/architecture.md §5, grade A).
 PROJECT_URL = "https://cyris.musingfox.com/"
+# The interest map's drawing box. The SVG scales to the page width, so these only set the
+# layout's proportions; a display choice, graded A in docs/architecture.md §5.
+INTEREST_MAP_WIDTH = 480
+INTEREST_MAP_HEIGHT = 360
 # A copy of website/assets/favicon.svg, because the image ships `src/` only.
 FAVICON = Path(__file__).parent / "favicon.svg"
 
@@ -338,6 +344,7 @@ class HtmlDigestWriter:
             latest=latest,
             card=card,
             months=[{"month": month, "issues": issues} for month, issues in months.items()],
+            has_interest="interest.html" in present,
         )
 
     def write_index(self, digest_dir: Path, content: DigestContent | None = None) -> Path:
@@ -397,4 +404,25 @@ class HtmlDigestWriter:
             period=period,
             total=len(articles),
             groups=rendered_groups,
+        )
+
+    def render_interest(
+        self, graph: InterestGraph, *, holds_active: bool, generated_at: str, clock_days: int
+    ) -> str:
+        """The interest page: the graph as a map, and the same figures in a table.
+
+        `holds_active` says whether any suppression is active at all: a hold lights a node only
+        through its downvote's tags, so an unlit map is not proof that nothing is held.
+        """
+        positions = layout(graph, width=INTEREST_MAP_WIDTH, height=INTEREST_MAP_HEIGHT)
+        return self.env.get_template("interest.html.j2").render(
+            graph=graph,
+            positions=positions,
+            width=INTEREST_MAP_WIDTH,
+            height=INTEREST_MAP_HEIGHT,
+            lit=any(node.brightness > 0 for node in graph.nodes),
+            holds_active=holds_active,
+            generated_at=generated_at,
+            clock_days=clock_days,
+            current="interest",
         )

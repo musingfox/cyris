@@ -114,6 +114,12 @@ details.more p { margin-top: var(--s-2); }
 .issue-bar { border-bottom: 1px solid var(--border); background: var(--bg-elev); }
 .issue-bar-inner { max-width: 1240px; margin: 0 auto; padding: var(--s-3) var(--s-4); display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
 .issue-id { display: flex; gap: var(--s-3); align-items: baseline; }
+.graph-map { display: block; width: 100%; height: auto; margin-top: var(--s-6); }
+.graph-edge { stroke: var(--border-strong); stroke-width: 1; }
+.graph-node.up { fill: color-mix(in srgb, var(--accent) calc(50% + 50% * var(--b)), var(--text-faint)); }
+.graph-node.down { fill: color-mix(in srgb, var(--text-dim) calc(50% + 50% * var(--b)), var(--text-faint)); }
+.graph-node.mixed { fill: none; stroke: var(--text-dim); stroke-width: 1.5; }
+.graph-label { fill: var(--text); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); }
 [hidden] { display: none !important; }
 /* Tap area (spec section 4): a target drawn under 44px keeps its size, and this transparent box takes the taps around it. */
 .btn.sm, .brand, .site-nav a, details.more summary { position: relative; }

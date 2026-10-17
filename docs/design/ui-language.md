@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-10-08
+updated: 2026-10-17
 ---
 
 # cyris UI design spec
@@ -191,6 +191,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | Component | Spec |
 |---|---|
 | **site bar** | Full width, sticky, height `--bar-h`, 1px `--border` at the bottom. On the left, the brand square (12px `--accent`, pulse animation) plus `CYRIS`; on the right, links in the label role, `Archive` · `Settings`, spaced `--s-5`. The current page is `--text` with a 1px `--accent` underline. `Settings` reuses the `/api/vote` probe and is hidden when not authorized. When the probe gets the app Worker's own 401, `Sign in` takes its place and links to `/login?next=` plus this page, so signing in returns here; on pages.dev and behind a Cloudflare Access redirect there is no sign-in form to reach, and it stays hidden. On /settings the brand link and `Archive` show only once the probe answers authorized, because a local `cyris triage-ui` serves no archive. At phone width the word `CYRIS` is hidden |
+| **interest graph** | Only on the interest page (§6 *interest*). Each tag is a circle that always shows its vote polarity: its fill is `--accent` for net up and `--text-dim` for net down, at half strength mixed with `--text-faint` when no hold is on it. Brightness, the tag's largest share of suppression time left, adds the other half on top, so a lit node is suppressed now and a dimmer one has less time left. A tied tag is a hollow ring in `--text-dim`. Its label is in `--text`. Edges between tags that co-occur are `--border-strong` hairlines. The page's table gives the same counts, polarity and days left in words, and is the text equivalent of the map |
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em, and still takes taps over 44 × 44 (**tap area**). Pressed (`:active`) lowers opacity to .7 on top of whatever hover state the button already shows, and changes nothing else; .7 stays clear of disabled's .4, so a pressed button never reads as disabled. Disabled is always opacity .4, and a disabled button does not change on hover or press |
@@ -248,6 +249,7 @@ Labels (/labels): reached by its URL alone, behind the same sign-in as Settings;
 - There is no separate triage page. Articles are judged in raw's triage view; the deck was retired on
   2026-09-19 (§8 step 4). `/labels` is not one: it answers a sample drawn to measure the filter, and
   is reached by the URL `docs/operations.md` gives while a sample is being labeled.
+- The interest map (`/interest.html`) is linked from the archive when the site has it, and through the Worker it needs sign-in whatever `CYRIS_PRIVATE_ARCHIVE` is, as the private archive does. Its `pages.dev` copy is not gated, the same exposure a private archive has there.
 - There is no previous or next issue. The use case is reading each day's issue on that day.
 - A back link must point to a path that exists. `/triage` is a 404 in production.
 
@@ -447,6 +449,19 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 - Every notice that reports a save, a retire or a load is a polite live region (`role="status"`), so a
   screen reader reads its result out.
 - The prototype governs the fields' names, help text and `More` text.
+
+### interest
+
+The page head has the label `Interest`, the display title and one small sentence saying what the map shows.
+Below it is the map and its table, in that order, on the archive's width. The small role under the map says what
+the colour and brightness mean: 'Lit = suppressed now; dimmer = less time left; half colour = not suppressed.'
+The data role gives `As of <generated_at>`, so a page left over from a failed render shows its age. The small
+role never says no suppression is active while one is: when holds are active but none lights a tag on the map
+(its downvote has no tag, or its tags fell outside the map), it says 'Suppressions are active, but none is near a
+tag on this map.' instead, and only with no active suppression at all does it say 'No suppression is active.'
+
+- **Empty:** with no voted article that carries a tag, one sentence in the small role, 'No voted article carries a
+  tag yet.', its command `cyris run` in the data role. No box, no accent and no SVG, as the archive's empty state (archive).
 
 ### email
 

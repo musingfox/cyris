@@ -358,6 +358,11 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "INSERT OR REPLACE INTO digests",
     "INSERT OR REPLACE INTO digest_inputs",
+    # The interest map: the voted articles' tags, the active suppressions' tags, then
+    # how many suppressions are active at all.
+    "SELECT stored_articles",
+    "SELECT suppressions",
+    "SELECT suppressions",
     # The archive's file list and counts for the index page, then the manifest the
     # deploy extends, the first-publish receipt, and the manifest of what landed.
     "SELECT pages_manifest",
@@ -683,6 +688,7 @@ def test_pages_receives_every_file_of_the_site_once(receipts) -> None:
         f"/{receipts.slug}.html",
         f"/{receipts.slug}-raw.html",
         "/index.html",
+        "/interest.html",
         "/favicon.svg",
     }
     deployment = only(receipts.records, "pages_deployment_create")

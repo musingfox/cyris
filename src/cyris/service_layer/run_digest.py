@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from cyris.domain.area_layout import cap_lower_layers
 from cyris.domain.areas import AreaCatalog
+from cyris.domain.interest_graph import MAX_INTEREST_NODES, build_graph
 from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
@@ -20,7 +21,7 @@ from cyris.domain.models import (
     is_degraded_run,
 )
 from cyris.domain.selection import count_dead_links, digest_urls
-from cyris.domain.suppression import Suppression, suppression_until
+from cyris.domain.suppression import SUPPRESSION_CLOCK_DAYS, Suppression, suppression_until
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.area_stamp import stamp_areas
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -95,16 +96,58 @@ def _newest(articles: list[StoredArticle], n: int) -> list[StoredArticle]:
     return [a for a in articles if a.url in keep]
 
 
+def _interest_page(deps: "Deps", summary: dict) -> dict[str, str]:
+    """The interest map's page, or nothing when there is no reader or building it fails.
+
+    Its own guard: a map that fails to build costs the issue nothing.
+    """
+    if deps.interest_reader is None:
+        return {}
+    started_at = summary["started_at"]
+    try:
+        inputs = deps.interest_reader(started_at)
+        graph = build_graph(
+            inputs.voted,
+            inputs.clocks,
+            datetime.fromisoformat(started_at),
+            clock_days=SUPPRESSION_CLOCK_DAYS,
+            max_nodes=MAX_INTEREST_NODES,
+        )
+        html = deps.html_writer.render_interest(
+            graph,
+            holds_active=inputs.active_holds > 0,
+            generated_at=started_at,
+            clock_days=SUPPRESSION_CLOCK_DAYS,
+        )
+    except Exception as e:
+        logger.error("Failed to build the interest page: %s", e)
+        summary["interest_page_error"] = str(e)
+        return {}
+    return {"/interest.html": html}
+
+
 def _render_site(
-    deps: "Deps", content, collected, *, raw_page: bool, degraded: bool
+    deps: "Deps",
+    content,
+    collected,
+    *,
+    raw_page: bool,
+    degraded: bool,
+    summary: dict | None = None,
 ) -> dict[str, bytes]:
-    """This run's pages as bytes, keyed by the path Pages will serve them at."""
+    """This run's pages as bytes, keyed by the path Pages will serve them at.
+
+    `summary` is given only on a run that publishes a new issue: a rerun leaves the
+    interest map as the site already has it.
+    """
     writer = deps.html_writer
     page = "/" + writer.digest_filename(content.date, content.period)
     pages = {page: writer.render(content, raw_page=raw_page, degraded=degraded)}
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(content.date, content.period, collected)
+    if summary is not None:
+        pages.update(_interest_page(deps, summary))
     # The archive leads with this run's issue: its title and count come from memory.
     return _with_archive(deps, pages, lead=content)
 
@@ -853,7 +896,12 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 # file list comes from D1. Nothing here touches the filesystem.
                 try:
                     pages = _render_site(
-                        deps, content, collected, raw_page=raw_page, degraded=degraded
+                        deps,
+                        content,
+                        collected,
+                        raw_page=raw_page,
+                        degraded=degraded,
+                        summary=None if rerun else summary,
                     )
                     published = (
                         _publish_verified(deps, pages, slug)

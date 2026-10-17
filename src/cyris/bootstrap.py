@@ -298,6 +298,9 @@ class Deps:
     # `{(date, period): articles_included}` for the archive's history rows; D1 only,
     # so the json path's rows show no count.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
+    # Reads the interest map's inputs for a run started at the given instant: D1InterestReader.read.
+    # None under json, which keeps no votes or holds to draw from.
+    interest_reader: Callable[[str], Any] | None = None
     # Keeps each issue's final content in D1; None under json, whose pages are the record.
     digest_store: Any | None = None
     # Each publishing run's input URLs, the record a rerun rebuilds from; D1 only.
@@ -362,11 +365,13 @@ def build_deps(
     digest_store = None
     digest_input_store = None
     archive_counts: Callable[[], dict[tuple[str, str], int]] = dict
+    interest_reader = None
     if d1 is not None:
         from cyris.adapters.store.archive_meta import D1ArchiveMeta
         from cyris.adapters.store.areas import D1AreaStore
         from cyris.adapters.store.digest_inputs import D1DigestInputStore
         from cyris.adapters.store.digests import D1DigestStore
+        from cyris.adapters.store.interest import D1InterestReader
         from cyris.adapters.store.runs import D1RunLog
         from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
         from cyris.adapters.store.stories import D1StoryStore
@@ -382,6 +387,7 @@ def build_deps(
             d1, embedding_model(vote.provider, vote.model)
         ).record
         archive_counts = D1ArchiveMeta(d1).article_counts
+        interest_reader = D1InterestReader(d1).read
         digest_store = D1DigestStore(d1)
         digest_input_store = D1DigestInputStore(d1)
         area_store = D1AreaStore(d1)
@@ -473,6 +479,7 @@ def build_deps(
         record_similarity=record_similarity,
         suppressions=suppressions,
         archive_counts=archive_counts,
+        interest_reader=interest_reader,
         digest_store=digest_store,
         digest_input_store=digest_input_store,
         worker_domains=build_worker_domains(),
