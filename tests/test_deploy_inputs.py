@@ -184,7 +184,7 @@ def test_every_deploy_path_pushes_to_one_registry_repository() -> None:
     assert len(set(names.values())) == 1, names
 
 
-def ungraded_worker_only_names(doc: str) -> list[str]:
+def ungraded_names(doc: str) -> list[str]:
     """Worker-only names with no row graded B or C in the doc's "Every setting, graded" table."""
     section = doc.split("### Every setting, graded", 1)[1].split("\n### ", 1)[0]
     graded = []
@@ -198,21 +198,21 @@ def ungraded_worker_only_names(doc: str) -> list[str]:
 
 def test_every_worker_only_name_is_graded() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
-    assert ungraded_worker_only_names(doc) == []
+    assert ungraded_names(doc) == []
 
 
 def test_the_grading_guard_names_a_variable_whose_row_is_gone() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     rows = [r for r in doc.splitlines() if not r.startswith("| Private archive |")]
-    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_PRIVATE_ARCHIVE"]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_PRIVATE_ARCHIVE"]
 
 
 def test_each_access_setting_is_graded_on_its_own_row() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     rows = [r for r in doc.splitlines() if not r.startswith("| Access audience |")]
-    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_AUD"]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_AUD"]
     rows = [r for r in doc.splitlines() if not r.startswith("| Access team domain |")]
-    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_TEAM_DOMAIN"]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_TEAM_DOMAIN"]
 
 
 def test_access_settings_are_required_and_in_the_install_block() -> None:
@@ -239,9 +239,9 @@ def test_private_archive_description_names_no_cookie_login() -> None:
 def test_each_script_credential_is_graded_on_its_own_row() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     rows = [r for r in doc.splitlines() if not r.startswith("| Access service token secret |")]
-    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_SECRET"]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_SECRET"]
     rows = [r for r in doc.splitlines() if not r.startswith("| Access service token id |")]
-    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_ID"]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_ID"]
 
 
 def test_script_credentials_are_commented_and_in_no_binding_or_worker() -> None:

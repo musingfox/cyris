@@ -135,59 +135,59 @@ async function accessJwt({
 }
 
 describe("UnauthenticatedWriteSurfaceRejected", () => {
-  it("POST /api/settings with no cookie does not invoke the container", async () => {
+  it("POST /api/settings with no JWT does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/settings"), env(), deps);
     expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
-  it("POST /api/articles/accept with no cookie does not invoke the container", async () => {
+  it("POST /api/articles/accept with no JWT does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/articles/accept"), env(), deps);
     expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
-  it("DELETE /api/sources/demo with no cookie does not invoke the container", async () => {
+  it("DELETE /api/sources/demo with no JWT does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("DELETE", "/api/sources/demo"), env(), deps);
     expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
-  it("POST /api/settings/schedule with no cookie does not invoke the container", async () => {
+  it("POST /api/settings/schedule with no JWT does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/settings/schedule"), env(), deps);
     expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
-  it("POST /api/sources with no cookie does not invoke the container", async () => {
+  it("POST /api/sources with no JWT does not invoke the container", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/api/sources"), env(), deps);
     expect(resp.status).toBe(403);
     expect(deps.container.calls).toHaveLength(0);
   });
 
-  it("POST /api/articles/reject with no cookie is 403", async () => {
+  it("POST /api/articles/reject with no JWT is 403", async () => {
     const resp = await handleRequest(request("POST", "/api/articles/reject"), env(), makeDeps());
     expect(resp.status).toBe(403);
   });
 
-  it("POST /api/articles/undo with no cookie is 403", async () => {
+  it("POST /api/articles/undo with no JWT is 403", async () => {
     const resp = await handleRequest(request("POST", "/api/articles/undo"), env(), makeDeps());
     expect(resp.status).toBe(403);
   });
 
-  it("POST /run with no cookie does not start a run", async () => {
+  it("POST /run with no JWT does not start a run", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(request("POST", "/run"), env(), deps);
     expect(resp.status).toBe(403);
     expect(deps.startRun.calls).toHaveLength(0);
   });
 
-  it("GET /settings with Accept text/html and no cookie is JSON 403", async () => {
+  it("GET /settings with Accept text/html and no JWT is JSON 403", async () => {
     const resp = await handleRequest(
       request("GET", "/settings", { headers: { Accept: "text/html" } }),
       env(),
@@ -197,7 +197,7 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
     expect(resp.headers.get("Content-Type")).toBe("application/json");
   });
 
-  it("GET /labels with a valid cookie reaches the container, not Pages", async () => {
+  it("GET /labels with a valid JWT reaches the container, not Pages", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
       request("GET", "/labels", { jwt: await accessJwt() }),
@@ -209,12 +209,12 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
     expect(deps.fetchImpl.calls).toHaveLength(0);
   });
 
-  it("GET /static/settings.js with no cookie is 403", async () => {
+  it("GET /static/settings.js with no JWT is 403", async () => {
     const resp = await handleRequest(request("GET", "/static/settings.js"), env(), makeDeps());
     expect(resp.status).toBe(403);
   });
 
-  it("GET /api/zzz-undefined with no cookie is 403", async () => {
+  it("GET /api/zzz-undefined with no JWT is 403", async () => {
     const resp = await handleRequest(request("GET", "/api/zzz-undefined"), env(), makeDeps());
     expect(resp.status).toBe(403);
   });
@@ -228,7 +228,7 @@ describe("UnauthenticatedWriteSurfaceRejected", () => {
     expect(resp.status).toBe(403);
   });
 
-  it("GET /api/settings with a valid cookie reaches the container", async () => {
+  it("GET /api/settings with a valid JWT reaches the container", async () => {
     const deps = makeDeps();
     const jwt = await accessJwt();
     await handleRequest(request("GET", "/api/settings", { jwt }), env(), deps);
@@ -288,7 +288,7 @@ describe("ManualRunPeriod", () => {
 });
 
 describe("GeminiProbeIsWorkerLocal", () => {
-  it("POST /api/diagnostics/gemini invokes the Worker probe after cookie authentication", async () => {
+  it("POST /api/diagnostics/gemini invokes the Worker probe after JWT authentication", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
       request("POST", "/api/diagnostics/gemini?model=gemini-3.7-flash", {
@@ -323,8 +323,8 @@ describe("GeminiProbeIsWorkerLocal", () => {
   });
 });
 
-describe("VotePostRequiresCookieOffAccessHost", () => {
-  it("POST /api/vote with no cookie does not call promote", async () => {
+describe("VotePostRequiresJwtOffAccessHost", () => {
+  it("POST /api/vote with no JWT does not call promote", async () => {
     const deps = makeDeps();
     const resp = await handleRequest(
       request("POST", "/api/vote", { body: VOTE_BODY }),
@@ -336,7 +336,7 @@ describe("VotePostRequiresCookieOffAccessHost", () => {
     expect(deps.fetchImpl.calls).toHaveLength(0);
   });
 
-  it("POST /api/vote with a valid cookie forwards the promote bearer", async () => {
+  it("POST /api/vote with a valid JWT forwards the promote bearer", async () => {
     const deps = makeDeps({ fetchStatus: 201, fetchBody: { ok: true } });
     const jwt = await accessJwt();
     const resp = await handleRequest(
@@ -350,7 +350,7 @@ describe("VotePostRequiresCookieOffAccessHost", () => {
     expect(call.init.headers.Authorization).toBe("Bearer promote-tok");
   });
 
-  it("POST /api/vote with a valid cookie but no promote URL is 503", async () => {
+  it("POST /api/vote with a valid JWT but no promote URL is 503", async () => {
     const jwt = await accessJwt();
     const resp = await handleRequest(
       request("POST", "/api/vote", { body: VOTE_BODY, jwt }),
@@ -360,28 +360,28 @@ describe("VotePostRequiresCookieOffAccessHost", () => {
     expect(resp.status).toBe(503);
   });
 
-  it("PUT /api/vote with no cookie on a non-Access host is 401", async () => {
+  it("PUT /api/vote with no JWT on a non-Access host is 403", async () => {
     const resp = await handleRequest(request("PUT", "/api/vote"), env(), makeDeps());
     expect(resp.status).toBe(403);
   });
 });
 
-describe("VoteProbeReflectsCookieOffAccessHost", () => {
-  it("GET /api/vote with no cookie is JSON 403", async () => {
+describe("VoteProbeReflectsJwtOffAccessHost", () => {
+  it("GET /api/vote with no JWT is JSON 403", async () => {
     const resp = await handleRequest(request("GET", "/api/vote"), env(), makeDeps());
     expect(resp.status).toBe(403);
     expect(resp.headers.get("Content-Type")).toBe("application/json");
     expect((await resp.json()).error).toBe("forbidden");
   });
 
-  it("GET /api/vote with a valid cookie is authorized", async () => {
+  it("GET /api/vote with a valid JWT is authorized", async () => {
     const jwt = await accessJwt();
     const resp = await handleRequest(request("GET", "/api/vote", { jwt }), env(), makeDeps());
     expect(resp.status).toBe(200);
     expect(await resp.json()).toEqual({ authorized: true });
   });
 
-  it("HEAD /api/vote with no cookie is 401", async () => {
+  it("HEAD /api/vote with no JWT is 403", async () => {
     const resp = await handleRequest(request("HEAD", "/api/vote"), env(), makeDeps());
     expect(resp.status).toBe(403);
   });
@@ -705,7 +705,7 @@ describe("PrivateArchiveRefusesAnonymousReaders", () => {
     expect(resp.status).toBe(403);
   });
 
-  it("does not let Access stand in for the JWT on the Access host", async () => {
+  it("does not let Access stand in for the JWT", async () => {
     const { resp } = await anonymous(
       "GET",
       "/",
