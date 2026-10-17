@@ -803,6 +803,24 @@ def test_a_declined_deploy_looks_once_instead_of_waiting(rig) -> None:
     assert "▸ Stage 13/18" in run.out
 
 
+def test_the_doctor_gets_the_newsletter_worker_url(rig) -> None:
+    r = rig(_stages(17))
+    (r.repo / f".env.trial-{SLUG}").write_text(
+        f"CLOUDFLARE_API_TOKEN={TOKEN}\nCYRIS_NEWSLETTER_WORKER_URL=https://n-t1.x.workers.dev\n"
+    )
+    r.run("receipts")
+    doctor = (Path(r.env["FAKE_DIR"]) / "doctor.env").read_text().splitlines()
+    assert "CYRIS_NEWSLETTER_WORKER_URL=https://n-t1.x.workers.dev" in doctor
+
+
+def test_the_doctor_gets_no_newsletter_url_when_none_is_saved(rig) -> None:
+    r = rig(_stages(17))
+    (r.repo / f".env.trial-{SLUG}").write_text(f"CLOUDFLARE_API_TOKEN={TOKEN}\n")
+    r.run("receipts")
+    doctor = (Path(r.env["FAKE_DIR"]) / "doctor.env").read_text().splitlines()
+    assert not any(line.startswith("CYRIS_NEWSLETTER_WORKER_URL=") for line in doctor)
+
+
 def test_receipts_mode_runs_only_the_receipts(rig) -> None:
     run = rig(_stages(17)).run("receipts")
     assert "▸ Stage 1/1 · Receipts" in run.out
