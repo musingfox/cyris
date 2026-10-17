@@ -1,4 +1,4 @@
-"""scripts/provision_trial.py: names a trial's resources and renders its three configs."""
+"""scripts/provision_trial.py: names a trial's resources and renders its four configs."""
 
 import re
 import shutil
@@ -19,10 +19,12 @@ NEWSLETTER = "workers/newsletter/wrangler.toml"
 OUT_APP = "wrangler.trial-alice.toml"
 OUT_PROMOTE = "workers/promote/wrangler.trial-alice.toml"
 OUT_RSS = "workers/rss/wrangler.trial-alice.toml"
-OUTPUTS = [OUT_APP, OUT_PROMOTE, OUT_RSS]
+OUT_NEWSLETTER = "workers/newsletter/wrangler.trial-alice.toml"
+OUTPUTS = [OUT_APP, OUT_PROMOTE, OUT_RSS, OUT_NEWSLETTER]
 ACCT = "0123456789abcdef0123456789abcdef"
 DIGEST = "sha256:" + "a" * 64
 KV = "fedcba9876543210fedcba9876543210"
+NL_KV = "1234567890abcdef1234567890abcdef"
 D1 = "11111111-2222-4333-8444-555555555555"
 SUFFIX = "0123456789abcdef"
 RENDER = [
@@ -37,6 +39,8 @@ RENDER = [
     DIGEST,
     "--kv-id",
     KV,
+    "--newsletter-kv-id",
+    NL_KV,
     "--d1-id",
     D1,
 ]
@@ -295,7 +299,7 @@ def test_tracked_wrangler_toml_stays_fork_neutral() -> None:
 def test_render_is_deterministic_and_leaves_templates_alone(tree: Path, tmp_path: Path) -> None:
     templates = {
         rel: (tree / rel).read_bytes()
-        for rel in [APP, PROMOTE, RSS, "scripts/derive-wrangler-config.sh"]
+        for rel in [APP, PROMOTE, RSS, NEWSLETTER, "scripts/derive-wrangler-config.sh"]
     }
     before = set(listing(tree))
     elsewhere = tmp_path / "elsewhere"
@@ -314,6 +318,54 @@ def test_render_is_deterministic_and_leaves_templates_alone(tree: Path, tmp_path
 
 
 # --- promote and rss
+
+
+def test_newsletter_differs_only_on_name_and_kv(tree: Path) -> None:
+    render(tree)
+    got = (tree / OUT_NEWSLETTER).read_text(encoding="utf-8").split("\n")
+    tracked = (ROOT / NEWSLETTER).read_text(encoding="utf-8").split("\n")
+    diff = [(a, b) for a, b in zip(tracked, got, strict=True) if a != b]
+
+    assert len(got) == len(tracked)
+    assert [b for _, b in diff] == [
+        'name = "cyris-newsletter-alice"',
+        f'  {{ binding = "NEWSLETTERS", id = "{NL_KV}" }}',
+    ]
+    newsletter = _toml(tree / OUT_NEWSLETTER)
+    assert newsletter["name"] == "cyris-newsletter-alice"
+    assert newsletter["kv_namespaces"] == [{"binding": "NEWSLETTERS", "id": NL_KV}]
+    assert "eb4ebc842d024684aa4223936ec8e4d1" not in "".join(got)
+
+
+@pytest.mark.parametrize("value", [NL_KV[:31], NL_KV.upper(), "g" * 32])
+def test_bad_newsletter_kv_id_exits_2(tree: Path, value: str) -> None:
+    done = render(tree, newsletter_kv_id=value)
+
+    assert done.returncode == 2
+    assert "--newsletter-kv-id" in done.stderr
+    assert not any((tree / o).exists() for o in OUTPUTS)
+
+
+def test_newsletter_kv_id_equal_to_kv_id_exits_2(tree: Path) -> None:
+    done = render(tree, newsletter_kv_id=KV)
+
+    assert done.returncode == 2
+    assert "--newsletter-kv-id" in done.stderr
+    assert not any((tree / o).exists() for o in OUTPUTS)
+
+
+def test_split_newsletter_kv_line_names_the_template(tree: Path) -> None:
+    _edit(
+        tree,
+        NEWSLETTER,
+        '  { binding = "NEWSLETTERS", id = "eb4ebc842d024684aa4223936ec8e4d1" }',
+        '  { binding = "NEWSLETTERS",\n    id = "eb4ebc842d024684aa4223936ec8e4d1" }',
+    )
+    done = render(tree)
+
+    assert done.returncode == 1
+    assert NEWSLETTER in done.stderr
+    _none_written(tree)
 
 
 def test_promote_differs_only_on_name_and_kv(tree: Path) -> None:
@@ -371,6 +423,19 @@ def test_the_templates_own_database_id_is_refused(tree: Path) -> None:
 
     assert done.returncode == 2
     assert "--d1-id" in done.stderr
+    assert not any((tree / o).exists() for o in OUTPUTS)
+
+
+@pytest.mark.parametrize("template", [PROMOTE, NEWSLETTER])
+@pytest.mark.parametrize("flag", ["kv_id", "newsletter_kv_id"])
+def test_a_templates_own_kv_id_is_refused_for_either_flag(
+    tree: Path, flag: str, template: str
+) -> None:
+    old_id = _toml(ROOT / template)["kv_namespaces"][0]["id"]
+    done = render(tree, **{flag: old_id})
+
+    assert done.returncode == 2
+    assert "--" + flag.replace("_", "-") in done.stderr
     assert not any((tree / o).exists() for o in OUTPUTS)
 
 
@@ -546,7 +611,7 @@ def _ignored(repo: Path, rel: str) -> int:
 
 
 def test_generated_configs_are_ignored_one_call_per_path() -> None:
-    assert [_ignored(ROOT, p) for p in OUTPUTS] == [0, 0, 0]
+    assert [_ignored(ROOT, p) for p in OUTPUTS] == [0, 0, 0, 0]
 
 
 def _repo_with_gitignore(tmp_path: Path, replacement: str | None) -> Path:
@@ -565,10 +630,10 @@ def _repo_with_gitignore(tmp_path: Path, replacement: str | None) -> Path:
 def test_without_the_pattern_every_path_is_unignored(tmp_path: Path) -> None:
     repo = _repo_with_gitignore(tmp_path, None)
 
-    assert [_ignored(repo, p) for p in OUTPUTS] == [1, 1, 1]
+    assert [_ignored(repo, p) for p in OUTPUTS] == [1, 1, 1, 1]
 
 
 def test_a_root_only_pattern_misses_the_worker_directories(tmp_path: Path) -> None:
     repo = _repo_with_gitignore(tmp_path, "/wrangler.trial-*.toml")
 
-    assert [_ignored(repo, p) for p in OUTPUTS] == [0, 1, 1]
+    assert [_ignored(repo, p) for p in OUTPUTS] == [0, 1, 1, 1]
