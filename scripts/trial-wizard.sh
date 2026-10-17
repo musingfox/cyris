@@ -495,7 +495,7 @@ stage_4() {
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage_5() {
-  stage "Create the KV namespace"
+  stage "Create the KV namespaces"
   if [[ -n "${TRIAL_KV_ID:-}" ]]; then
     note "Already created: $TRIAL_KV_ID"
   else
@@ -505,6 +505,16 @@ stage_5() {
     bunx wrangler kv namespace create "$TRIAL_KV_TITLE" --env-file /dev/null || die "kv namespace create failed."
     ask_match TRIAL_KV_ID "Paste the namespace id it printed (32 hex):" '^[0-9a-f]{32}$'
     write_env TRIAL_KV_ID "$TRIAL_KV_ID"
+  fi
+  if [[ -n "${TRIAL_NEWSLETTER_KV_ID:-}" ]]; then
+    note "Already created: $TRIAL_NEWSLETTER_KV_ID"
+  else
+    note "If wrangler offers to add a binding to a config file, answer No. If the name exists, stop."
+    printf '  %s$%s bunx wrangler kv namespace create %s --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_NEWSLETTER_KV_TITLE"
+    confirm "Create KV namespace $TRIAL_NEWSLETTER_KV_TITLE?" || die "Stopped before creating the newsletter KV."
+    bunx wrangler kv namespace create "$TRIAL_NEWSLETTER_KV_TITLE" --env-file /dev/null || die "newsletter kv namespace create failed."
+    ask_match TRIAL_NEWSLETTER_KV_ID "Paste the namespace id it printed (32 hex):" '^[0-9a-f]{32}$'
+    write_env TRIAL_NEWSLETTER_KV_ID "$TRIAL_NEWSLETTER_KV_ID"
   fi
   wrangler_toml_untouched
   next

@@ -88,26 +88,31 @@ output_language = "zh-Hant"
 """
 
 
-def _state(done: str, email: str = "") -> str:
-    return "\n".join(
-        [
-            "DOMAIN=example.com",
-            f"ACCOUNT_ID={ACCOUNT}",
-            f"TESTER_EMAIL={email}",
-            "OUTPUT_LANGUAGE=en",
-            "MAX_ARTICLES=50",
-            "IMAGE_TAG=image/00fa8ab",
-            "IMAGE_DIGEST=sha256:" + "b" * 64,
-            "TRIAL_SUFFIX=0123456789abcdef",
-            f"TRIAL_D1_ID={D1_ID}",
-            "TRIAL_KV_ID=" + "c" * 32,
-            "PAGES_CREATED=yes",
-            "TRIAL_PROMOTE_URL=https://p-t1.x.workers.dev",
-            "SOURCE_COUNT=1",
-            f"STAGES_DONE={done}",
-            "",
-        ]
-    )
+NEWSLETTER_KV = "e" * 32
+
+
+def _state(done: str, email: str = "", state: dict[str, str | None] | None = None) -> str:
+    fields: dict[str, str | None] = {
+        "DOMAIN": "example.com",
+        "ACCOUNT_ID": ACCOUNT,
+        "TESTER_EMAIL": email,
+        "OUTPUT_LANGUAGE": "en",
+        "MAX_ARTICLES": "50",
+        "IMAGE_TAG": "image/00fa8ab",
+        "IMAGE_DIGEST": "sha256:" + "b" * 64,
+        "TRIAL_SUFFIX": "0123456789abcdef",
+        "TRIAL_D1_ID": D1_ID,
+        "TRIAL_KV_ID": "c" * 32,
+        "TRIAL_NEWSLETTER_KV_ID": NEWSLETTER_KV,
+        "PAGES_CREATED": "yes",
+        "TRIAL_PROMOTE_URL": "https://p-t1.x.workers.dev",
+        "TRIAL_NEWSLETTER_URL": "https://n-t1.x.workers.dev",
+        "SOURCE_COUNT": "1",
+        "RSS_SOURCE_COUNT": "1",
+        "STAGES_DONE": done,
+    }
+    fields |= state or {}
+    return "\n".join(f"{k}={v}" for k, v in fields.items() if v is not None) + "\n"
 
 
 def _stages(last: int) -> str:
@@ -152,13 +157,15 @@ class Rig:
 
 @pytest.fixture
 def rig(tmp_path: Path):
-    def make(done: str, email: str = "", **env: str) -> Rig:
+    def make(
+        done: str, email: str = "", state: dict[str, str | None] | None = None, **env: str
+    ) -> Rig:
         repo = tmp_path / "repo"
         (repo / "scripts").mkdir(parents=True)
         shutil.copy(ROOT / "scripts/trial-wizard.sh", repo / "scripts/trial-wizard.sh")
         (repo / "scripts/provision_trial.py").write_text("")
         (repo / "cyris.toml.example").write_text(EXAMPLE_CONFIG)
-        (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done, email))
+        (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done, email, state))
         (repo / f".env.trial-{SLUG}").write_text(
             f"CLOUDFLARE_API_TOKEN={TOKEN}\nGEMINI_API_KEY=g\nCYRIS_STORE_DATABASE_ID={D1_ID}\n"
         )
@@ -188,11 +195,50 @@ def rig(tmp_path: Path):
     return make
 
 
+def test_the_newsletter_kv_is_created_behind_its_own_gate(rig) -> None:
+    r = rig(_stages(4), state={"TRIAL_NEWSLETTER_KV_ID": None})
+    run = r.run(stdin=START + "y\n" + "d" * 32 + "\n")
+    assert "kv namespace create cyris-newsletter-t1 --env-file /dev/null" in run.calls
+    assert "kv namespace create cyris-promote-t1" not in run.calls
+    assert f"TRIAL_NEWSLETTER_KV_ID={'d' * 32}" in run.state.splitlines()
+
+
+def test_a_saved_newsletter_kv_id_creates_nothing(rig) -> None:
+    run = rig(_stages(4)).run()
+    assert "kv namespace create" not in run.calls
+    assert f"Already created: {NEWSLETTER_KV}" in run.out
+
+
+def test_declining_the_newsletter_kv_stops_stage_5(rig) -> None:
+    r = rig(_stages(4), state={"TRIAL_NEWSLETTER_KV_ID": None})
+    run = r.run(stdin=START)
+    assert run.code == 1
+    assert "Stopped before creating the newsletter KV." in run.out
+    assert "TRIAL_NEWSLETTER_KV_ID" not in run.state
+    assert f"STAGES_DONE={_stages(4)}" in run.state.splitlines()
+
+
+def test_a_newsletter_kv_id_that_is_not_hex_is_asked_again(rig) -> None:
+    r = rig(_stages(4), state={"TRIAL_NEWSLETTER_KV_ID": None})
+    run = r.run(stdin=START + "y\nxyz\n" + "e" * 32 + "\n")
+    assert "That does not look right" in run.out
+    assert f"TRIAL_NEWSLETTER_KV_ID={'e' * 32}" in run.state.splitlines()
+
+
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:
     real = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/provision_trial.py"), "names", "--slug", SLUG,
-         "--pages-suffix", "0123456789abcdef"],
-        capture_output=True, text=True, check=True,
+        [
+            sys.executable,
+            str(ROOT / "scripts/provision_trial.py"),
+            "names",
+            "--slug",
+            SLUG,
+            "--pages-suffix",
+            "0123456789abcdef",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
     fake = set(re.findall(r"(TRIAL_[A-Z0-9_]+)=", FAKE_UV))
     assert fake == {line.split("=", 1)[0] for line in real.splitlines()}
