@@ -18,7 +18,7 @@ pytestmark = pytest.mark.integration
 def test_builds_an_arm_from_provider_and_model(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
-    label, llm = _build_arm("anthropic:claude-haiku-4-5")
+    label, llm = _build_arm("anthropic:claude-haiku-4-5", "default")
 
     assert isinstance(llm, AnthropicClient)
     assert label == "anthropic:claude-haiku-4-5"
@@ -27,7 +27,7 @@ def test_builds_an_arm_from_provider_and_model(monkeypatch):
 def test_an_omitted_model_means_the_provider_default(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
-    label, llm = _build_arm("anthropic")
+    label, llm = _build_arm("anthropic", "default")
 
     assert llm.model == "claude-sonnet-4-6"
     assert label == "anthropic:claude-sonnet-4-6"  # the label names what actually ran
@@ -37,21 +37,21 @@ def test_a_workers_ai_arm_picks_up_the_cloudflare_environment(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "t")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "a")
 
-    _, llm = _build_arm("workers_ai:@cf/openai/gpt-oss-120b")
+    _, llm = _build_arm("workers_ai:@cf/openai/gpt-oss-120b", "default")
 
     assert isinstance(llm, WorkersAIClient)
 
 
 def test_an_unknown_provider_is_refused_by_name():
     with pytest.raises(typer.BadParameter, match="unknown provider 'openaii'"):
-        _build_arm("openaii:gpt-5.6-luna")
+        _build_arm("openaii:gpt-5.6-luna", "default")
 
 
 def test_a_missing_key_names_the_variable(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     with pytest.raises(typer.BadParameter, match="ANTHROPIC_API_KEY is empty"):
-        _build_arm("anthropic:claude-haiku-4-5")
+        _build_arm("anthropic:claude-haiku-4-5", "default")
 
 
 def test_workers_ai_with_a_token_but_no_account_says_which_one(monkeypatch):
@@ -60,7 +60,7 @@ def test_workers_ai_with_a_token_but_no_account_says_which_one(monkeypatch):
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
 
     with pytest.raises(typer.BadParameter, match="CLOUDFLARE_ACCOUNT_ID is empty"):
-        _build_arm("workers_ai:@cf/openai/gpt-oss-120b")
+        _build_arm("workers_ai:@cf/openai/gpt-oss-120b", "default")
 
 
 def test_ai_gateway_with_a_token_but_no_account_says_which_one(monkeypatch):
@@ -68,7 +68,7 @@ def test_ai_gateway_with_a_token_but_no_account_says_which_one(monkeypatch):
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
 
     with pytest.raises(typer.BadParameter, match="CLOUDFLARE_ACCOUNT_ID is empty"):
-        _build_arm("ai_gateway:google/gemini-3.8-flash")
+        _build_arm("ai_gateway:google/gemini-3.8-flash", "default")
 
 
 def _deps_attrs(source: str) -> set[str]:
@@ -108,7 +108,7 @@ def test_a_field_that_no_longer_exists_is_named():
 
 def test_a_none_arm_is_refused_as_no_model():
     with pytest.raises(typer.BadParameter, match="none is not a model to compare"):
-        _build_arm("none:")
+        _build_arm("none:", "default")
 
 
 def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):

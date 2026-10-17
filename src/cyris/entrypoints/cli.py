@@ -16,6 +16,7 @@ from typing import Annotated
 
 import typer
 
+from cyris.config import ReasoningEffort
 from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
@@ -659,13 +660,14 @@ def embed_compare(
         typer.echo(json.dumps(comparison.log_row(), ensure_ascii=False))
 
 
-def _build_arm(spec: str):
+def _build_arm(spec: str, reasoning_effort: ReasoningEffort):
     """Turn "provider:model" into a labelled LLM client, or explain why it cannot.
 
     Goes through the same `build_llm` the pipeline uses, so an arm picks up its
     key and account id from the environment exactly as a configured provider
     would, and a provider added later costs this command nothing. An empty model
-    means that provider's default.
+    means that provider's default. The arm runs at the configured reasoning effort,
+    so the comparison differs only by model.
     """
     from pydantic import ValidationError
 
@@ -674,7 +676,9 @@ def _build_arm(spec: str):
 
     provider, _, model = spec.partition(":")
     try:
-        arm_cfg = LLMProviderConfig(provider=provider.strip(), model=model.strip())
+        arm_cfg = LLMProviderConfig(
+            provider=provider.strip(), model=model.strip(), reasoning_effort=reasoning_effort
+        )
     except ValidationError as e:
         raise typer.BadParameter(f"--arm {spec!r}: unknown provider {provider.strip()!r}") from e
     if arm_cfg.provider == "none":
@@ -760,7 +764,7 @@ def llm_compare(
     # Built before any LLM call, so a typo in the fourth arm fails now rather than
     # after three digests have been paid for.
     arms = [(f"{cfg.app.llm_provider.provider}:{deps.llm.model}", deps.llm)]
-    arms.extend(_build_arm(spec) for spec in arm)
+    arms.extend(_build_arm(spec, cfg.app.llm_provider.reasoning_effort) for spec in arm)
 
     now = datetime.now(UTC)
     stored = deps.store.load_by_time_range(start=now - timedelta(hours=hours), end=now)
@@ -896,10 +900,13 @@ def _llm_from_values(values: dict):
     from cyris.bootstrap import build_llm
     from cyris.config import LLMProviderConfig
 
+    effort_key = "llm_provider.reasoning_effort"
+    effort = {"reasoning_effort": values[effort_key]} if effort_key in values else {}
     try:
         candidate = LLMProviderConfig(
             provider=values.get("llm_provider.provider") or "",
             model=values.get("llm_provider.model") or "",
+            **effort,
         )
     except ValidationError:
         return None
