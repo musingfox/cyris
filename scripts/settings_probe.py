@@ -695,16 +695,11 @@ window.fetch = (input, init) =>
 HOLD_SOURCES = answer_get("/api/sources", "new Promise(() => {})")
 
 
-# What the app Worker answers a request whose session cookie has expired, and
-# what the page must then tell the reader.
-SESSION_EXPIRED = (
-    'Promise.resolve(new Response(JSON.stringify({error: "unauthorized"}), '
-    '{status: 401, headers: {"Content-Type": "application/json"}}))'
-)
 SIGN_IN_AGAIN = "Your session has expired. Reload the page to sign in again."
-# What Access answers a reader it does not admit (a redirect the page cannot follow), and
-# what the app Worker's own 403 says when Access is not set up for this deployment.
+# What Access answers a reader whose session has expired, or who it does not admit: a redirect
+# the page cannot follow. Then the app Worker's own 403, when Access is not set up here.
 REDIRECTED = 'Promise.resolve({type: "opaqueredirect", status: 0, ok: false})'
+SESSION_EXPIRED = REDIRECTED
 ACCESS_OFF = (
     'Promise.resolve(new Response(JSON.stringify({error: "forbidden"}), '
     '{status: 403, headers: {"Content-Type": "application/json"}}))'
