@@ -1746,7 +1746,7 @@ def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
     pages = _issue_pages(tmp_path)
 
     for html in (pages["digest"], pages["raw"]):
-        assert html.count("redirect: 'manual'") == 1
+        assert html.count("redirect: 'manual'") == 2
         assert "DIGEST_DATE" in html
 
 
@@ -2651,3 +2651,12 @@ def test_the_interest_page_is_never_an_issue_row_or_counted(tmp_path) -> None:
     assert html.count("2026-10-17") == bare.count("2026-10-17")
     assert "1 issue" in html
     assert "2 issue" not in html
+
+
+def test_the_vote_names_the_access_refusal_and_the_redirect(tmp_path):
+    templates = Path(html_digest.__file__).parent / "templates"
+    script = (templates / "_promote_script.html.j2").read_text()
+
+    assert "accessNotSetUp: 'Access is not set up for this deployment." in script
+    assert "if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;" in script
+    assert "if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;" in script

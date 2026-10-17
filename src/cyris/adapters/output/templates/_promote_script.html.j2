@@ -10,6 +10,7 @@
     const VOTE_TIMEOUT_MS = 10000;
     const VOTE_FAILED = {
         signedOut: 'Your session has ended, so the vote was not taken. Reload the page and sign in again.',
+        accessNotSetUp: 'Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.',
         notConfigured: 'Voting is not set up here: the app Worker has no CYRIS_PROMOTE_WORKER_URL. Set it, then vote again.',
         refused: (status) => `The vote did not go through (HTTP ${status}). Try again; if it keeps failing, check the promote Worker.`,
         unanswered: 'No answer from the server, so the vote may not have been taken. Check your connection, then try again.',
@@ -51,13 +52,11 @@
         if (vote) paint(group, vote);
     }
 
-    // Only the app Worker's own 401 means the reader's sign-in lapsed; a 401 passed
-    // through from the promote Worker is a refused token, which signing in cannot fix.
+    // A 401 here is the promote Worker's refused token, passed through; signing in cannot fix it.
     async function failureOf(resp) {
-        if (resp.status === 401) {
-            const body = await resp.json().catch(() => ({}));
-            if (body.authorized === false) return VOTE_FAILED.signedOut;
-        }
+        // Access answers a reader it does not admit with a redirect the page cannot follow.
+        if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;
+        if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;
         // The app Worker passes the promote Worker's own status through, a 503 included.
         if (resp.status === 503) {
             const body = await resp.json().catch(() => ({}));
@@ -74,6 +73,7 @@
         try {
             const results = await Promise.all(urls.map((u) => fetch('/api/vote', {
                 method: 'POST',
+                redirect: 'manual',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
                 signal: timeoutSignal(VOTE_TIMEOUT_MS),
