@@ -185,13 +185,17 @@ def publish_site(
     manifest_store,
     pages_project: str,
     receipt_store,
+    *,
+    drop: frozenset[str] = frozenset(),
 ) -> bool:
     """Publish without a local archive: this run's files plus the D1 manifest.
 
     The archive is not a directory any more. Cloudflare's asset store already
     holds every byte ever deployed, so all that has to survive between runs is
     path → hash; the bytes of an evicted asset come back from the live site,
-    which serves exactly what it was given.
+    which serves exactly what it was given. `drop` names pages to remove from
+    the site; they leave the deploy and the saved manifest, and do not count
+    toward the shortfall, which then tolerates no other missing issue.
     """
     if not pages_project:
         logger.warning("Pages publish enabled but promote.pages_project is empty")
@@ -201,6 +205,8 @@ def publish_site(
     if client is None:
         return False
 
+    dropped = {_slash(p) for p in drop}
+    new_files = {path: data for path, data in new_files.items() if _slash(path) not in dropped}
     manifest = manifest_store.load()
     owned_at_entry = False
     if not manifest:
@@ -242,9 +248,10 @@ def publish_site(
                 "manifest to compare; deploying as a first publish"
             )
             live = set()
-        missing = _archive_shortfall(live, manifest)
+        missing = _archive_shortfall(live, manifest) - dropped
         issues = {_issue(p) for p in missing}
-        if len(issues) > ARCHIVE_SHORTFALL_TOLERANCE:
+        tolerance = 0 if dropped else ARCHIVE_SHORTFALL_TOLERANCE
+        if len(issues) > tolerance:
             # The names, not just the count: five filenames tell an operator
             # whether this is the wrong `database_id` or a prune they meant.
             logger.error(
@@ -256,11 +263,12 @@ def publish_site(
             )
             return False
     updated: dict[str, str] = {}
+    kept = {path: h for path, h in manifest.items() if _slash(path) not in dropped}
 
     def deploy() -> DeploymentRecord:
         nonlocal updated
         record, updated = client.deploy_manifest(
-            new_files, manifest, recover=lambda path: _fetch_live(pages_project, path)
+            new_files, kept, recover=lambda path: _fetch_live(pages_project, path)
         )
         return record
 

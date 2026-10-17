@@ -791,7 +791,8 @@ production branch, or it lands on a preview URL. The first publish creates the P
   is a digest page and its `-raw.html` page under one `{date}-{period}` stem, so a raw page is
   in the signal and counts with its digest. A receipt skips only the Cloudflare deployments
   probe, never this check. Zero dated anchors on the live index passes; an unreadable index
-  fails closed. A deliberate prune of more than one issue has no in-band path.
+  fails closed. A deliberate prune of more than one issue goes through `publish_site`'s `drop` set, run by
+  `scripts/prune_archive.py`; see docs/operations.md.
 - **Recovery reads the live site.** The live `index.html` lists every digest, so fetching each
   page and re-running `asset_hash` rebuilds path → hash exactly; that is what the backfill script
   does. The archive also reads `usage_log` for its rows' article counts, and a failed read drops

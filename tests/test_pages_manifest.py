@@ -1294,6 +1294,96 @@ def test_publish_refuses_two_issues_missing_their_digest_and_raw_pages(monkeypat
     assert deployed == []
 
 
+def test_a_drop_set_removes_its_pages_from_the_deploy_and_the_saved_manifest(monkeypatch, manifest):
+    live = ["/A.html", "/A-raw.html", "/B.html", "/B-raw.html", "/C.html"]
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    manifest.save({**{p: "h" for p in live}, "/index.html": "i"})
+    drop = frozenset({"/A.html", "/A-raw.html", "/B.html", "/B-raw.html"})
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", manifest, "proj", _Receipt(), drop=drop
+    )
+
+    assert ok is True
+    handed = deployed[0][1]
+    assert set(handed) == {"/C.html", "/index.html"}
+    assert set(manifest.load()) == {"/C.html", "/index.html", "/new.html"}
+
+
+def test_a_dropped_issue_does_not_hide_another_missing_issue(monkeypatch, caplog):
+    issues = {x: f"/2026-09-0{n}-morning" for n, x in enumerate("XYZW", start=1)}
+    live = [p for stem in issues.values() for p in (f"{stem}.html", f"{stem}-raw.html")]
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({f"{issues['W']}.html": "h", f"{issues['W']}-raw.html": "r"})
+    drop = frozenset({f"{issues['X']}.html", f"{issues['X']}-raw.html"})
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site(
+            {"/new.html": b"x"}, "slug", store, "proj", _Receipt(), drop=drop
+        )
+
+    assert ok is False
+    assert deployed == []
+    assert issues["Y"] in caplog.text or issues["Z"] in caplog.text
+    assert issues["X"] not in caplog.text
+
+
+def test_a_drop_set_tolerates_no_unnamed_missing_issue(monkeypatch, caplog):
+    issues = {x: f"/2026-09-0{n}-morning" for n, x in enumerate("XYZ", start=1)}
+    live = [f"{stem}.html" for stem in issues.values()]
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    store = _Store({f"{issues['X']}.html": "h", f"{issues['Y']}.html": "h"})
+    drop = frozenset({f"{issues['X']}.html"})
+
+    with caplog.at_level("ERROR"):
+        ok = publish_mod.publish_site(
+            {"/new.html": b"x"}, "slug", store, "proj", _Receipt(), drop=drop
+        )
+
+    assert ok is False
+    assert deployed == []
+    assert issues["Z"] in caplog.text
+
+
+def test_a_drop_path_without_its_leading_slash_is_the_same_page(monkeypatch, manifest):
+    live = ["/A.html", "/A-raw.html", "/B.html", "/B-raw.html", "/C.html"]
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    manifest.save({**{p: "h" for p in live}, "/index.html": "i"})
+    drop = frozenset({"A.html", "A-raw.html", "B.html", "B-raw.html"})
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x"}, "slug", manifest, "proj", _Receipt(), drop=drop
+    )
+
+    assert ok is True
+    assert set(deployed[0][1]) == {"/C.html", "/index.html"}
+    assert set(manifest.load()) == {"/C.html", "/index.html", "/new.html"}
+
+
+def test_a_dropped_page_is_not_handed_to_the_deploy_as_a_new_file(monkeypatch, manifest):
+    live = ["/A.html", "/B.html", "/C.html"]
+    deployed = []
+    _publish_env(monkeypatch, live_paths=live, deployed=deployed)
+    manifest.save({**{p: "h" for p in live}, "/index.html": "i"})
+
+    ok = publish_mod.publish_site(
+        {"/new.html": b"x", "/A.html": b"y"},
+        "slug",
+        manifest,
+        "proj",
+        _Receipt(),
+        drop=frozenset({"/A.html"}),
+    )
+
+    assert ok is True
+    assert set(deployed[0][0]) == {"/new.html"}
+    assert "/A.html" not in manifest.load()
+
+
 def test_publish_deploys_when_the_live_index_has_no_anchors(monkeypatch):
     deployed = []
     _publish_env(monkeypatch, live_paths=(), deployed=deployed)
