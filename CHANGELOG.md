@@ -20,6 +20,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `preference_clef_skipped` in the run summary. `cosine` stays the order until
   you choose otherwise.
 
+### Removed
+
+- The `CYRIS_UI_TOKEN` sign-in is gone: no token secret, no login form and no
+  `cyris_session` cookie. Cloudflare Access is the only sign-in, and the Worker
+  checks each Access JWT and answers `403` to a protected request without a valid
+  one. Scripts sign in with an Access service token, `CYRIS_ACCESS_CLIENT_ID` and
+  `CYRIS_ACCESS_CLIENT_SECRET`, in place of the token.
+
 ### Fixed
 
 - An entry a feed lists late now reaches the next digest. The RSS Worker selected
@@ -59,6 +67,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   under `[digest]` in `cyris.toml`. Set `CLOUDFLARE_AI_TOKEN` or
   `CLOUDFLARE_EMBEDDING_API_TOKEN` before choosing `clef`; without one the run
   keeps the cosine order and says so.
+- Before deploying, create the Cloudflare Access application over the Worker's protected paths,
+  set a Service Auth token, and set the Worker settings `CYRIS_ACCESS_TEAM_DOMAIN` and
+  `CYRIS_ACCESS_AUD`. Until both are set, every protected path answers `403`. Put the
+  token in `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET` (`.env` and the GitHub
+  Actions secrets) and drop `CYRIS_UI_TOKEN`.
 
 ## [0.5.0] — 2026-10-02
 

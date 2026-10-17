@@ -99,7 +99,7 @@ The wizard writes these at the repo root, all gitignored:
 ## What stays by hand
 
 - Creating the Access application for `<slug>.<domain>` in stage 11, with its two
-  policies and a service token; a wildcard policy would give the tester a second login.
+  policies and a service token.
 - The tester's own `/settings`: the Discord webhook, mail, anything else.
 - The vote round trip: the tester votes, you run `cyris promote-sync` against the trial,
   and the article's `triaged_at` is set in the trial's D1.
