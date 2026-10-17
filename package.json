@@ -17,8 +17,11 @@
   },
   "cloudflare": {
     "bindings": {
-      "CYRIS_UI_TOKEN": {
-        "description": "**Required.** The only lock on the settings page and the vote API. Generate with `openssl rand -hex 32` — `/login` refuses a secret shorter than 32 characters."
+      "CYRIS_ACCESS_TEAM_DOMAIN": {
+        "description": "**Required.** Your Cloudflare Access team domain as a host without a scheme, e.g. `yourteam.cloudflareaccess.com`. The Worker fetches the team's signing keys from it and checks each sign-in's issuer against it."
+      },
+      "CYRIS_ACCESS_AUD": {
+        "description": "**Required.** The Application Audience (AUD) tag of the self-hosted Access application that guards this Worker, shown on the application's overview page in Zero Trust."
       },
       "DIGEST_ORIGIN": {
         "description": "Optional. The Pages origin this Worker proxies the public archive from, e.g. `https://your-project.pages.dev`. Set it only when the archive lives somewhere other than `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev` — a custom domain, say. Unset with no project named either, `/` answers 503."
@@ -45,7 +48,7 @@
         "description": "Alternative to `ANTHROPIC_API_KEY`; pick `openai` on `/settings` to use it — [OpenAI](https://platform.openai.com/api-keys)."
       },
       "CYRIS_PRIVATE_ARCHIVE": {
-        "description": "Optional. Set to `true` to put the archive behind the same login as `/settings`; a reader without a session is sent to `/login`. Leave blank for a public archive."
+        "description": "Optional. Set to `true` to put the archive behind the same Cloudflare Access sign-in as `/settings`; a reader without one gets a 403. Leave blank for a public archive."
       },
       "CYRIS_WORKER_TOKEN": {
         "description": "Optional. The one bearer the rss and newsletter Workers accept. Set it here and in those Workers; leave blank to poll feeds directly at digest time."

@@ -85,7 +85,8 @@ Write the secrets into a file that git ignores. `.gitignore` covers `.env.*`, so
 
 ```sh
 # .env.cloud — only the names you are setting; a blank line uploads an empty value
-CYRIS_UI_TOKEN=<openssl rand -hex 32>
+CYRIS_ACCESS_TEAM_DOMAIN=<your team domain, e.g. yourteam.cloudflareaccess.com>
+CYRIS_ACCESS_AUD=<the Application Audience tag of the Access application>
 CYRIS_STORE_DATABASE_ID=<the UUID from step 1>
 CLOUDFLARE_ACCOUNT_ID=<your account id>
 CLOUDFLARE_API_TOKEN=<the token from step 3>

@@ -40,8 +40,8 @@ def _bindings() -> dict[str, str]:
 
 
 _WORKER_ONLY = (
-    "CYRIS_UI_TOKEN",
-    "CYRIS_UI_ACCESS_HOST",
+    "CYRIS_ACCESS_TEAM_DOMAIN",
+    "CYRIS_ACCESS_AUD",
     "DIGEST_ORIGIN",
     "CYRIS_PRIVATE_ARCHIVE",
 )
@@ -62,8 +62,7 @@ def test_env_example_and_deploy_form_name_the_same_variables() -> None:
 def test_config_show_lists_every_name_the_container_can_read() -> None:
     """`cyris config show` cannot read `.env.example`, which the image does not ship.
 
-    A Worker-only name never reaches the container, so it is left out; `CYRIS_UI_TOKEN`
-    is shown anyway, because `cyris doctor --deployment` reads it from a local `.env`.
+    A Worker-only name never reaches the container, so it is left out.
     """
     assert _env_example() - set(_WORKER_ONLY) - set(SECRETS) - set(IDENTITY.values()) == set()
     assert set(SECRETS) <= _env_example()
@@ -197,3 +196,37 @@ def test_the_grading_guard_names_a_variable_whose_row_is_gone() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     rows = [r for r in doc.splitlines() if not r.startswith("| Private archive |")]
     assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_PRIVATE_ARCHIVE"]
+
+
+def test_each_access_setting_is_graded_on_its_own_row() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access audience |")]
+    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_AUD"]
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access team domain |")]
+    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_ACCESS_TEAM_DOMAIN"]
+
+
+def test_access_settings_are_required_and_in_the_install_block() -> None:
+    bindings = _bindings()
+    for name in ("CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"):
+        assert bindings[name].startswith("**Required.**"), name
+    guide = (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
+    block = re.search(r"# \.env\.cloud(.*?)```", guide, re.S)
+    assert block, "the .env.cloud secrets file is gone from docs/install-cloudflare.md"
+    names = set(re.findall(r"^([A-Z][A-Z0-9_]+)=", block.group(1), re.M))
+    assert {"CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"} <= names
+
+
+def test_example_asks_for_the_access_settings_and_not_the_retired_token() -> None:
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    assert {"CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"} <= _env_example()
+    assert "CYRIS_UI_TOKEN" not in text
+    config_show = ROOT / "src/cyris/diagnostics/config_show.json"
+    secrets = json.loads(config_show.read_text(encoding="utf-8"))
+    assert "CYRIS_UI_TOKEN" not in secrets["secrets"]
+
+
+def test_private_archive_description_names_no_cookie_login() -> None:
+    description = _bindings()["CYRIS_PRIVATE_ARCHIVE"]
+    assert "/login" not in description
+    assert "cookie" not in description.lower()
