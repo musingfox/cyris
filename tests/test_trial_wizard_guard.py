@@ -24,7 +24,13 @@ WIZARD = ROOT / "scripts/trial-wizard.sh"
 RUNBOOK = ROOT / "docs/trial-deployment.md"
 GUIDE = ROOT / "docs/install-cloudflare.md"
 SECRETS_PATH_SLUG = "alice"
-TOKENS = ("TRIAL_WORKER_TOKEN", "TRIAL_PROMOTE_TOKEN", "CLOUDFLARE_API_TOKEN", "GEMINI_API_KEY")
+TOKENS = (
+    "TRIAL_WORKER_TOKEN",
+    "TRIAL_PROMOTE_TOKEN",
+    "CLOUDFLARE_API_TOKEN",
+    "GEMINI_API_KEY",
+    "CYRIS_ACCESS_CLIENT_SECRET",
+)
 PRINTERS = ("echo", "say", "note", "warn", "step")
 REQUIRED_ANCHORS = (
     "4-write-the-secrets-file",
@@ -294,6 +300,7 @@ def test_a_secrets_file_git_would_track_is_refused() -> None:
         'echo "$TRIAL_WORKER_TOKEN"',
         'say "token: $CLOUDFLARE_API_TOKEN"',
         "printf '%s\\n' \"$TRIAL_PROMOTE_TOKEN\"",
+        'echo "$CYRIS_ACCESS_CLIENT_SECRET"',
         "printf '%s\\n' \"$CLOUDFLARE_API_TOKEN\" | tee x.log",
         'grep -x "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV"',
     ],

@@ -7,6 +7,7 @@ stage that would wait for a key reads end-of-file instead: a "no" at every y/N g
 
 import re
 import shutil
+import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,8 +156,7 @@ def rig(tmp_path: Path):
         (repo / "cyris.toml.example").write_text(EXAMPLE_CONFIG)
         (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done, email))
         (repo / f".env.trial-{SLUG}").write_text(
-            f"CLOUDFLARE_API_TOKEN={TOKEN}\nGEMINI_API_KEY=g\nCYRIS_UI_TOKEN=u\n"
-            f"CYRIS_STORE_DATABASE_ID={D1_ID}\n"
+            f"CLOUDFLARE_API_TOKEN={TOKEN}\nGEMINI_API_KEY=g\nCYRIS_STORE_DATABASE_ID={D1_ID}\n"
         )
         (repo / f".env.trial-{SLUG}-promote").write_text("PROMOTE_TOKEN=p\n")
         fakes = tmp_path / "bin"
@@ -220,6 +220,73 @@ def test_a_bad_mode_prints_the_usage(rig, args: tuple[str, ...]) -> None:
     run = rig(_stages(14)).run(*args)
     assert run.code == 1
     assert "Usage: bash scripts/trial-wizard.sh <slug> [receipts | --from N]" in run.out
+
+
+ACCESS_ANSWERS = "https://t.cloudflareaccess.com/\naud1\ncid\nsek-9f3\n"
+
+
+def test_the_access_answers_land_in_the_app_file_without_a_ui_token(rig) -> None:
+    r = rig(_stages(10))
+    r.run(stdin=START + "\n" + ACCESS_ANSWERS)
+    lines = (r.repo / f".env.trial-{SLUG}").read_text().splitlines()
+    assert "CYRIS_ACCESS_TEAM_DOMAIN=t.cloudflareaccess.com" in lines
+    assert "CYRIS_ACCESS_AUD=aud1" in lines
+    text = "\n".join(lines)
+    assert "CYRIS_ACCESS_CLIENT_SECRET" not in text
+    assert "UI_TOKEN" not in text
+
+
+def test_the_service_token_pair_is_kept_in_a_mode_600_ignored_file(rig) -> None:
+    r = rig(_stages(10))
+    r.run(stdin=START + "\n" + ACCESS_ANSWERS)
+    path = r.repo / f".env.trial-{SLUG}.access"
+    lines = path.read_text().splitlines()
+    assert "CYRIS_ACCESS_CLIENT_ID=cid" in lines
+    assert "CYRIS_ACCESS_CLIENT_SECRET=sek-9f3" in lines
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert subprocess.run(["git", "check-ignore", "-q", path.name], cwd=ROOT).returncode == 0
+
+
+def test_the_access_secret_is_not_printed_nor_passed_on_argv(rig) -> None:
+    r = rig(_stages(10))
+    run = r.run(stdin=START + "\n" + ACCESS_ANSWERS)
+    assert "sek-9f3" not in run.out
+    assert "sek-9f3" not in run.calls
+    assert "cid" not in (r.repo / f".env.trial-{SLUG}").read_text()
+
+
+def test_an_empty_access_answer_asks_again_naming_it(rig) -> None:
+    r = rig(_stages(10))
+    run = r.run(stdin=START + "\n\n" + ACCESS_ANSWERS)
+    assert "CYRIS_ACCESS_TEAM_DOMAIN is empty" in run.out
+    app = (r.repo / f".env.trial-{SLUG}").read_text()
+    assert "CYRIS_ACCESS_TEAM_DOMAIN=t.cloudflareaccess.com" in app
+
+
+def test_a_team_domain_that_is_not_a_host_asks_again_with_the_example(rig) -> None:
+    r = rig(_stages(10))
+    run = r.run(stdin=START + "\nno such host\n" + ACCESS_ANSWERS)
+    assert "CYRIS_ACCESS_TEAM_DOMAIN does not look right" in run.out
+    assert "yourteam.cloudflareaccess.com" in run.out
+    app = (r.repo / f".env.trial-{SLUG}").read_text()
+    assert "CYRIS_ACCESS_TEAM_DOMAIN=t.cloudflareaccess.com" in app
+
+
+def test_enter_keeps_the_access_values_already_saved(rig) -> None:
+    r = rig(_stages(10))
+    (r.repo / f".env.trial-{SLUG}.access").write_text(
+        "CYRIS_ACCESS_CLIENT_ID=saved-id\nCYRIS_ACCESS_CLIENT_SECRET=saved-sek\n"
+    )
+    r.run(stdin=START + "\n" + "https://t.cloudflareaccess.com/\naud1\n\n\n")
+    lines = (r.repo / f".env.trial-{SLUG}.access").read_text().splitlines()
+    assert "CYRIS_ACCESS_CLIENT_ID=saved-id" in lines
+    assert "CYRIS_ACCESS_CLIENT_SECRET=saved-sek" in lines
+
+
+def test_an_access_answer_that_ends_stops_stage_11_naming_it(rig) -> None:
+    run = rig(_stages(10)).run(stdin=START + "\nhttps://t.cloudflareaccess.com/\n")
+    assert run.code == 1
+    assert "No answer for CYRIS_ACCESS_AUD." in run.out
 
 
 def test_the_login_wait_needs_no_keypress_and_shows_the_time(rig) -> None:

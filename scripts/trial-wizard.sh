@@ -218,6 +218,7 @@ LOGIN_WAIT_INTERVAL="${TRIAL_WIZARD_LOGIN_INTERVAL:-30}"
 
 STATE=".env.trial-$SLUG-wizard"
 APP_ENV=".env.trial-$SLUG"
+ACCESS_ENV=".env.trial-$SLUG.access"
 PROMOTE_ENV=".env.trial-$SLUG-promote"
 RSS_ENV=".env.trial-$SLUG-rss"
 APP_CFG="wrangler.trial-$SLUG.toml"
@@ -267,6 +268,28 @@ ask_match() {
     ask "$1" "$2"
     [[ "${!1}" =~ $3 ]] && return 0
     warn "That does not look right (expected $3). Try again."
+  done
+}
+
+# access_answer FILE VAR "prompt" REGEX [hidden] asks until the answer matches REGEX; Enter keeps
+# the value already saved in FILE. Input that ends keeps that value, or stops the stage naming
+# VAR when nothing is saved, so a closed stdin cannot loop.
+access_answer() {
+  local file="$1" var="$2" prompt="$3" regex="$4" hidden="${5:-}" input rc=0 current
+  current=$(fileval "$file" "$var")
+  while true; do
+    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+    [[ -z "$current" ]] || printf '%s[Enter keeps current]%s ' "$DIM" "$RESET"
+    if [[ -n "$hidden" ]]; then read -rs input || rc=$?; printf '\n'
+    else read -r input || rc=$?; fi
+    if (( rc != 0 )); then
+      [[ -n "$current" ]] || die "No answer for $var."
+      input="$current"
+    fi
+    [[ -n "$input" ]] || input="$current"
+    if [[ "$input" =~ $regex ]]; then printf -v "$var" '%s' "$input"; return 0; fi
+    if [[ -z "$input" ]]; then warn "$var is empty. Enter it again."
+    else warn "$var does not look right. $prompt"; fi
   done
 }
 
@@ -365,11 +388,9 @@ fi
 
 # ── 1 ─────────────────────────────────────────────────────────────────────
 stage_1() {
-  stage "Before you start: Access policy and the wrangler login"
+  stage "Before you start: the wrangler login"
   say "A wildcard Access policy on the trial's domain would give the tester a second login."
-  open_url "https://one.dash.cloudflare.com/"
-  step "Zero Trust → Access → Applications: check no policy covers <slug>.<domain> (e.g. *.<domain>)."
-  pause "Checked, no policy covers it? Press Enter"
+  say "Stage 11 has you create the trial's Access application, its policies and a service token."
   say "Log wrangler in as the account the trial belongs to."
   if confirm "Log wrangler in now? (No if it already is, as that account)"; then
     bunx wrangler login --env-file /dev/null || die "Login did not finish."
@@ -565,14 +586,31 @@ stage_10() {
 
 # ── 11 ────────────────────────────────────────────────────────────────────
 stage_11() {
-  stage "Write the app's secrets file"
-  [[ -n "$(fileval "$APP_ENV" CYRIS_UI_TOKEN)" ]] || in_file "$APP_ENV" write_env CYRIS_UI_TOKEN "$(openssl rand -hex 32)"
+  stage "Access application and the app's secrets file"
+  say "Cloudflare Access is the trial's only sign-in. Create it now, for $SLUG.$DOMAIN:"
+  open_url "https://one.dash.cloudflare.com/"
+  step "Access → Applications → Add an application → Self-hosted, on $SLUG.$DOMAIN."
+  step "Two policies: Allow for the tester's email, and Service Auth for the service token."
+  step "Access → Service Auth → Service Tokens → Create: keep its Client ID and Client Secret."
+  note "The secret is shown once. The wizard does not print it; it goes to $ACCESS_ENV."
+  pause "Created the application, both policies and the token? Press Enter"
+  access_answer "$APP_ENV" CYRIS_ACCESS_TEAM_DOMAIN "Team domain, e.g. yourteam.cloudflareaccess.com:" \
+    '^(https?://)?[a-z0-9-]+\.cloudflareaccess\.com/?$'
+  CYRIS_ACCESS_TEAM_DOMAIN="${CYRIS_ACCESS_TEAM_DOMAIN#*://}"
+  CYRIS_ACCESS_TEAM_DOMAIN="${CYRIS_ACCESS_TEAM_DOMAIN%/}"
+  access_answer "$APP_ENV" CYRIS_ACCESS_AUD "Application Audience (AUD) tag:" '^[^[:space:]]+$'
+  access_answer "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_ID "Service token Client ID:" '^[^[:space:]]+$'
+  access_answer "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_SECRET "Service token Client Secret (hidden):" '^[^[:space:]]+$' hidden
+  in_file "$APP_ENV" write_env CYRIS_ACCESS_TEAM_DOMAIN "$CYRIS_ACCESS_TEAM_DOMAIN"
+  in_file "$APP_ENV" write_env CYRIS_ACCESS_AUD "$CYRIS_ACCESS_AUD"
+  in_file "$ACCESS_ENV" write_env CYRIS_ACCESS_CLIENT_ID "$CYRIS_ACCESS_CLIENT_ID"
+  in_file "$ACCESS_ENV" write_env CYRIS_ACCESS_CLIENT_SECRET "$CYRIS_ACCESS_CLIENT_SECRET"
   in_file "$APP_ENV" write_env CYRIS_STORE_DATABASE_ID "$TRIAL_D1_ID"
   in_file "$APP_ENV" write_env CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
   in_file "$APP_ENV" write_env CYRIS_PROMOTE_PAGES_PROJECT "$TRIAL_PAGES_PROJECT"
   in_file "$APP_ENV" write_env CYRIS_PROMOTE_WORKER_URL "$TRIAL_PROMOTE_URL"
   in_file "$APP_ENV" write_env CYRIS_PROMOTE_TOKEN "$(fileval "$PROMOTE_ENV" PROMOTE_TOKEN)"
-  for k in CYRIS_UI_TOKEN CLOUDFLARE_API_TOKEN GEMINI_API_KEY CYRIS_PROMOTE_TOKEN; do
+  for k in CLOUDFLARE_API_TOKEN GEMINI_API_KEY CYRIS_PROMOTE_TOKEN CYRIS_ACCESS_TEAM_DOMAIN CYRIS_ACCESS_AUD; do
     [[ -n "$(fileval "$APP_ENV" "$k")" ]] || die "$k is empty in $APP_ENV."
   done
   grep -qx "CYRIS_STORE_DATABASE_ID=$TRIAL_D1_ID" "$APP_ENV" || die "CYRIS_STORE_DATABASE_ID mismatch in $APP_ENV."
