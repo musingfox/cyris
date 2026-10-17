@@ -984,6 +984,19 @@ def test_the_routing_notice_needs_a_saved_newsletter_url(rig) -> None:
     assert "--from 14" in run.out
 
 
+def test_the_hand_over_keeps_the_newsletter_secrets_file(rig) -> None:
+    run = rig(_stages(15)).run(stdin=START + "\n\n\nmorning\nn\n")
+    keep = next(ln for ln in run.out.splitlines() if "Keep " in ln)
+    for name in (
+        f".env.trial-{SLUG}",
+        f".env.trial-{SLUG}.access",
+        f".env.trial-{SLUG}-promote",
+        f".env.trial-{SLUG}-rss",
+        f".env.trial-{SLUG}-newsletter",
+    ):
+        assert name in keep, name
+
+
 def test_the_hand_over_copies_no_token_to_the_clipboard(rig) -> None:
     run = rig(_stages(15)).run(stdin=START + "\n\n\nmorning\nn\n")
     assert "pbcopy" not in run.calls

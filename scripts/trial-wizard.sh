@@ -840,7 +840,7 @@ stage_16() {
   stage "Hand over"
   say "The tester signs in at https://$SLUG.$DOMAIN/ with the Access one-time PIN."
   step "The tester finishes /settings: Discord webhook, mail sender/recipient, anything else."
-  warn "Keep $APP_ENV, $ACCESS_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
+  warn "Keep $APP_ENV, $ACCESS_ENV, $PROMOTE_ENV, $RSS_ENV and $NEWSLETTER_ENV: Cloudflare cannot read secrets back."
   next
 }
 
