@@ -1,0 +1,13 @@
+{
+  "_comment": "defaults: what each provider sent before llm_provider.reasoning_effort existed: a level string, or null for send nothing. workers_ai is absent because its client is fixed at low. gemini_thinking_budget: a Gemini model whose id starts with one of model_prefixes takes thinkingBudget instead of thinkingLevel, with these token budgets per level. Source: https://ai.google.dev/gemini-api/docs/openai (section Thinking). The reasons are in docs/architecture.md section 5 and ADR-0018.",
+  "defaults": {
+    "anthropic": null,
+    "gemini": null,
+    "openai": "low",
+    "ai_gateway": null
+  },
+  "gemini_thinking_budget": {
+    "model_prefixes": ["gemini-2.5"],
+    "budgets": { "low": 1024, "medium": 8192, "high": 24576 }
+  }
+}
