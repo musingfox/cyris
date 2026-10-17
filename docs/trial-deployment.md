@@ -1,8 +1,8 @@
 # Running a trial deployment
 
 A trial is one tester's own cyris on a Cloudflare account you hold: its own app Worker,
-container application, D1 database, KV namespace, Pages project, vote Worker and rss
-Worker, behind Cloudflare Access at `<slug>.<domain>`, with the archive private. On an account of
+container application, D1 database, two KV namespaces, Pages project, vote Worker, rss
+Worker and newsletter Worker, behind Cloudflare Access at `<slug>.<domain>`, with the archive private. On an account of
 its own, it is also the manual, non-button half of the deploy button's clean-account run
 (ADR-0012).
 
@@ -46,7 +46,7 @@ Either works; the first trial (2026-10-06) runs on production's.
 
 - **Every wrangler deploy names a `wrangler.trial-<slug>.toml`.** The trial runs from the
   same checkout as production, so one `wrangler deploy` without the trial's own config
-  redeploys production's Worker. `scripts/provision_trial.py` renders the three trial
+  redeploys production's Worker. `scripts/provision_trial.py` renders the four trial
   configs, gitignored, and guarantees no trial name equals a production one.
 - **Every wrangler call carries `--env-file /dev/null`.** Without it wrangler reads this
   checkout's `.env` and may send production's stale token instead of your login (see
@@ -77,12 +77,17 @@ Either works; the first trial (2026-10-06) runs on production's.
   [running the CLI](install-cloudflare.md#running-the-cli-against-the-deployment) for why
   the files are named the way they are. Its first line names the database it wrote to,
   and the wizard stops unless that is the trial's.
-- **The tester's sources are RSS only.** A trial has no newsletter Worker, so an
-  email-only source would be silently absent.
-- **The rss Worker comes after the first boot**, and the app is pointed at it only after
-  it answers `401` without the bearer and its first poll counts every pushed source. See
+- **A newsletter source needs `email_match`**, the sender to match, not the trial's
+  address. [docs/sources.md](sources.md) and the newsletter Worker's README
+  (`workers/newsletter/README.md`) say how a source is matched.
+- **The rss Worker and the newsletter Worker come after the first boot**, and the app is
+  pointed at them only after each answers `401` without the bearer and the rss Worker's
+  first poll counts every pushed source. The two Workers share the rss Worker's token. See
   [Optional Workers](install-cloudflare.md#optional-workers) for why the order matters and
-  why the app and the Worker share one token.
+  why the app and the Workers share one token.
+- **Access is the trial's only sign-in.** Stage 11 creates the application, its two
+  policies and the service token, and the Worker checks Access's JWT. The reason is in
+  [ADR-0015](decisions/0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md).
 - **A new custom domain can take minutes to answer**; the install guide's
   [notes on it](install-cloudflare.md#6-log-in-and-fill-settings) apply.
 
@@ -90,8 +95,8 @@ Either works; the first trial (2026-10-06) runs on production's.
 
 The wizard writes these at the repo root, all gitignored:
 
-- `.env.trial-<slug>`, `.env.trial-<slug>-promote` and `.env.trial-<slug>-rss` hold the
-  secrets. Cloudflare cannot read them back, so losing one means rotating it.
+- `.env.trial-<slug>`, `.env.trial-<slug>-promote`, `.env.trial-<slug>-rss` and
+  `.env.trial-<slug>-newsletter` hold the secrets. Cloudflare cannot read them back, so losing one means rotating it.
 - `.env.trial-<slug>.access` holds the service token the scripts sign in with (mode 600).
 - `.env.trial-<slug>-wizard` holds the inputs, the ids and the image the trial runs.
 - `.env.trial-<slug>-sources.yaml` holds the tester's sources.
@@ -100,9 +105,23 @@ The wizard writes these at the repo root, all gitignored:
 
 - Creating the Access application for `<slug>.<domain>` in stage 11, with its two
   policies and a service token.
+- The Email Routing rule from `<slug>@<domain>` to the trial's newsletter Worker in stage
+  15, enabling Email Routing for the domain first if it is not on yet.
+- The tester's Gmail forwarding, which stage 15 walks through:
+  [workers/newsletter/README.md](../workers/newsletter/README.md#gmail-forwarding-per-newsletter)
+  has the steps. The tester adds `<slug>@<domain>` as a forwarding address. Gmail's
+  confirmation lands in the newsletter Worker's queue, and you read it with
+  `GET /newsletters` and the bearer before stage 17 or the next scheduled run, because that
+  run ACKs unmatched mail away. Then the tester adds one filter per newsletter sender.
 - The tester's own `/settings`: the Discord webhook, mail, anything else.
 - The vote round trip: the tester votes, you run `cyris promote-sync` against the trial,
   and the article's `triaged_at` is set in the trial's D1.
+
+A trial started before the newsletter Worker existed re-runs from stage 5, with `--from 5`,
+to create its newsletter KV namespace. On that re-run stage 13 finds the sources already in
+the trial's D1, which may hold the tester's own `/settings` edits. It shows them beside the
+names in the sources file and keeps D1 as it is unless you confirm replacing it. `trial1` was wired by hand before then and is left as
+it is, with no migration path.
 
 ## Spend controls
 

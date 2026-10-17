@@ -15,7 +15,7 @@ would drop the comments the templates carry.
 Usage:
   provision_trial.py names  --slug S --pages-suffix HEX16
   provision_trial.py render --slug S --domain D --account-id ID --image-digest sha256:HEX
-                            --kv-id ID --d1-id UUID
+                            --kv-id ID --newsletter-kv-id ID --d1-id UUID
 """
 
 import argparse
@@ -31,6 +31,7 @@ DERIVE = ROOT / "scripts/derive-wrangler-config.sh"
 APP = "wrangler.toml"
 PROMOTE = "workers/promote/wrangler.toml"
 RSS = "workers/rss/wrangler.toml"
+NEWSLETTER = "workers/newsletter/wrangler.toml"
 
 _LABEL = r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
 _DOMAIN = rf"^{_LABEL}(\.{_LABEL})+$"
@@ -92,6 +93,7 @@ def _template_names() -> dict[str, str]:
         "container": _get(APP, app, "containers", 0, "name"),
         "promote": _get(PROMOTE, _load(PROMOTE), "name"),
         "rss": _get(RSS, _load(RSS), "name"),
+        "newsletter": _get(NEWSLETTER, _load(NEWSLETTER), "name"),
     }
 
 
@@ -190,6 +192,30 @@ def _render_promote(args, n: dict[str, str], t: dict[str, str]) -> str:
     return text
 
 
+def _render_newsletter(args, n: dict[str, str], t: dict[str, str]) -> str:
+    text = _read(NEWSLETTER)
+    old_id = _get(NEWSLETTER, _load(NEWSLETTER), "kv_namespaces", 0, "id")
+    newsletter_name = t["newsletter"]
+    text = _replace_line(
+        text, NEWSLETTER, f'name = "{n["newsletter"]}"', f'name = "{newsletter_name}"'
+    )
+    text = _replace_line(
+        text,
+        NEWSLETTER,
+        f'  {{ binding = "NEWSLETTERS", id = "{old_id}" }}',
+        f'  {{ binding = "NEWSLETTERS", id = "{args.newsletter_kv_id}" }}',
+    )
+    got = tomllib.loads(text)
+    _expect(NEWSLETTER, "name", got.get("name"), newsletter_name)
+    _expect(
+        NEWSLETTER,
+        "kv_namespaces",
+        got.get("kv_namespaces"),
+        [{"binding": "NEWSLETTERS", "id": args.newsletter_kv_id}],
+    )
+    return text
+
+
 def _render_rss(args, n: dict[str, str], t: dict[str, str]) -> str:
     text = _read(RSS)
     d1 = _rss_d1()
@@ -219,6 +245,7 @@ def _names(slug: str, n: dict[str, str]) -> dict[str, str]:
         "promote": f"{n['promote']}-{slug}",
         "d1": f"{n['root']}-{slug}",
         "rss": f"{n['rss']}-{slug}",
+        "newsletter": f"{n['newsletter']}-{slug}",
     }
 
 
@@ -232,6 +259,8 @@ def cmd_names(args) -> int:
     print(f"TRIAL_D1_NAME={t['d1']}")
     print(f"TRIAL_PAGES_PROJECT={n['root']}-{args.slug}-{args.pages_suffix}")
     print(f"TRIAL_RSS_WORKER={t['rss']}")
+    print(f"TRIAL_NEWSLETTER_WORKER={t['newsletter']}")
+    print(f"TRIAL_NEWSLETTER_KV_TITLE={t['newsletter']}")
     return 0
 
 
@@ -239,11 +268,22 @@ def cmd_render(args, parser) -> int:
     n = _template_names()
     if args.d1_id == _rss_d1()["database_id"]:
         parser.error("argument --d1-id: that is the template's database id, not a trial's own")
+    template_kv_ids = {
+        _get(rel, _load(rel), "kv_namespaces", 0, "id") for rel in (PROMOTE, NEWSLETTER)
+    }
+    for flag, value in (("--kv-id", args.kv_id), ("--newsletter-kv-id", args.newsletter_kv_id)):
+        if value in template_kv_ids:
+            parser.error(
+                f"argument {flag}: that is a template's KV namespace id, not a trial's own"
+            )
+    if args.newsletter_kv_id == args.kv_id:
+        parser.error("argument --newsletter-kv-id: must differ from --kv-id")
     t = _names(args.slug, n)
     outputs = {
         f"wrangler.trial-{args.slug}.toml": _render_app(args, n, t),
         f"workers/promote/wrangler.trial-{args.slug}.toml": _render_promote(args, n, t),
         f"workers/rss/wrangler.trial-{args.slug}.toml": _render_rss(args, n, t),
+        f"workers/newsletter/wrangler.trial-{args.slug}.toml": _render_newsletter(args, n, t),
     }
     for rel, text in outputs.items():
         (ROOT / rel).write_text(text, encoding="utf-8")
@@ -273,6 +313,11 @@ def build_parser() -> argparse.ArgumentParser:
                 type=_pattern(r"sha256:[0-9a-f]{64}", "sha256:<64 lowercase hex>"),
             )
             p.add_argument("--kv-id", required=True, type=_pattern(r"[0-9a-f]{32}", "32 hex"))
+            p.add_argument(
+                "--newsletter-kv-id",
+                required=True,
+                type=_pattern(r"[0-9a-f]{32}", "32 lowercase hex"),
+            )
             p.add_argument(
                 "--d1-id",
                 required=True,

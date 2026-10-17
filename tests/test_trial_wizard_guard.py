@@ -193,6 +193,11 @@ def _wrangler_lines() -> list[int]:
     return [i for i, ln in enumerate(lines) if WRANGLER.search(ln)]
 
 
+def test_the_newsletter_config_path_is_declared_on_one_line() -> None:
+    paths = _paths(script_lines(_wizard()))
+    assert paths["NEWSLETTER_CFG"] == "workers/newsletter/wrangler.trial-$SLUG.toml"
+
+
 def test_the_wizard_calls_wrangler() -> None:
     assert len(_wrangler_lines()) >= 10
 
@@ -210,10 +215,18 @@ def _deploy_lines() -> list[int]:
     return [i for i in _wrangler_lines() if re.search(r"wrangler deploy\b", lines[i])]
 
 
-def test_the_wizard_deploys_all_three_workers() -> None:
+def test_the_wizard_dry_runs_all_four_configs() -> None:
     lines = _wizard().split("\n")
-    configs = {_option(lines[i], "--config") for i in _deploy_lines()}
-    assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG"}
+    configs = {_option(lines[i], "--config") for i in _deploy_lines() if "--dry-run" in lines[i]}
+    assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG", "$NEWSLETTER_CFG"}
+
+
+def test_the_wizard_deploys_all_four_workers() -> None:
+    lines = _wizard().split("\n")
+    configs = {
+        _option(lines[i], "--config") for i in _deploy_lines() if "--dry-run" not in lines[i]
+    }
+    assert configs == {"$APP_CFG", "$PROMOTE_CFG", "$RSS_CFG", "$NEWSLETTER_CFG"}
 
 
 @pytest.mark.parametrize("index", _deploy_lines())
@@ -356,6 +369,26 @@ def test_dropping_every_optional_workers_link_is_named() -> None:
     text = re.sub(r"install-cloudflare\.md#optional-workers", "install-cloudflare.md", _runbook())
     with pytest.raises(AssertionError, match="optional-workers"):
         assert_points_not_copies(text, _guide())
+
+
+def test_the_runbook_no_longer_says_a_trial_is_rss_only() -> None:
+    text = _runbook()
+    assert "RSS only" not in text
+    assert "no newsletter Worker" not in text
+
+
+def test_every_env_file_the_wizard_names_is_in_the_runbook() -> None:
+    paths = _paths(script_lines(_wizard()))
+    env_paths = [v for v in paths.values() if v.startswith(".env.trial-")]
+    assert env_paths
+    for value in env_paths:
+        assert value.replace("$SLUG", "<slug>") in _runbook(), value
+
+
+def test_the_runbook_links_adr_0015_and_the_target_exists() -> None:
+    target = "0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md"
+    assert f"decisions/{target}" in _runbook()
+    assert (ROOT / "docs/decisions" / target).is_file(), f"dead ADR target {target}"
 
 
 def test_architecture_points_at_the_trial_tooling() -> None:

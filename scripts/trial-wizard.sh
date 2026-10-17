@@ -221,10 +221,12 @@ APP_ENV=".env.trial-$SLUG"
 ACCESS_ENV=".env.trial-$SLUG.access"
 PROMOTE_ENV=".env.trial-$SLUG-promote"
 RSS_ENV=".env.trial-$SLUG-rss"
+NEWSLETTER_ENV=".env.trial-$SLUG-newsletter"
 SOURCES_FILE=".env.trial-$SLUG-sources.yaml"
 APP_CFG="wrangler.trial-$SLUG.toml"
 PROMOTE_CFG="workers/promote/wrangler.trial-$SLUG.toml"
 RSS_CFG="workers/rss/wrangler.trial-$SLUG.toml"
+NEWSLETTER_CFG="workers/newsletter/wrangler.trial-$SLUG.toml"
 LOG_DIR=$(mktemp -d)
 ENV_FILE="$STATE"
 
@@ -316,6 +318,15 @@ access_header_file() {
   printf '%s' "$f"
 }
 
+# bearer_header_file writes the Worker's bearer to a private temp file and prints its path, so
+# the token reaches curl through a file and never through argv.
+bearer_header_file() {
+  local f
+  f=$(mktemp)
+  printf 'Authorization: Bearer %s\n' "$TRIAL_WORKER_TOKEN" > "$f"
+  printf '%s' "$f"
+}
+
 service_token_ok() {
   local hdr code
   hdr=$(access_header_file)
@@ -388,7 +399,7 @@ receipts() {
     echo "CYRIS_STORE_BACKEND=d1"
     echo "CYRIS_HTML_OUTPUT_ENABLED=true"
     echo "CYRIS_PROMOTE_PUBLISH_ENABLED=true"
-    grep -E '^(CYRIS_STORE_DATABASE_ID|CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_PROMOTE_PAGES_PROJECT|GEMINI_API_KEY|CYRIS_RSS_WORKER_URL|CYRIS_WORKER_TOKEN|CYRIS_PROMOTE_WORKER_URL|CYRIS_PROMOTE_TOKEN)=' "$APP_ENV"
+    grep -E '^(CYRIS_STORE_DATABASE_ID|CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_PROMOTE_PAGES_PROJECT|GEMINI_API_KEY|CYRIS_RSS_WORKER_URL|CYRIS_NEWSLETTER_WORKER_URL|CYRIS_WORKER_TOKEN|CYRIS_PROMOTE_WORKER_URL|CYRIS_PROMOTE_TOKEN)=' "$APP_ENV"
     grep -E '^(CYRIS_ACCESS_CLIENT_ID|CYRIS_ACCESS_CLIENT_SECRET)=' "$ACCESS_ENV"
   } > "$dir/.env"
   (cd "$dir" && env -i HOME="$HOME" PATH="$PATH" uv run --project "$REPO" cyris doctor --deployment "https://$SLUG.$DOMAIN") || warn "doctor exited non-zero; read the lines above"
@@ -495,7 +506,7 @@ stage_4() {
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage_5() {
-  stage "Create the KV namespace"
+  stage "Create the KV namespaces"
   if [[ -n "${TRIAL_KV_ID:-}" ]]; then
     note "Already created: $TRIAL_KV_ID"
   else
@@ -505,6 +516,16 @@ stage_5() {
     bunx wrangler kv namespace create "$TRIAL_KV_TITLE" --env-file /dev/null || die "kv namespace create failed."
     ask_match TRIAL_KV_ID "Paste the namespace id it printed (32 hex):" '^[0-9a-f]{32}$'
     write_env TRIAL_KV_ID "$TRIAL_KV_ID"
+  fi
+  if [[ -n "${TRIAL_NEWSLETTER_KV_ID:-}" ]]; then
+    note "Already created: $TRIAL_NEWSLETTER_KV_ID"
+  else
+    note "If wrangler offers to add a binding to a config file, answer No. If the name exists, stop."
+    printf '  %s$%s bunx wrangler kv namespace create %s --env-file /dev/null\n' "$DIM" "$RESET" "$TRIAL_NEWSLETTER_KV_TITLE"
+    confirm "Create KV namespace $TRIAL_NEWSLETTER_KV_TITLE?" || die "Stopped before creating the newsletter KV."
+    bunx wrangler kv namespace create "$TRIAL_NEWSLETTER_KV_TITLE" --env-file /dev/null || die "newsletter kv namespace create failed."
+    ask_match TRIAL_NEWSLETTER_KV_ID "Paste the namespace id it printed (32 hex):" '^[0-9a-f]{32}$'
+    write_env TRIAL_NEWSLETTER_KV_ID "$TRIAL_NEWSLETTER_KV_ID"
   fi
   wrangler_toml_untouched
   next
@@ -561,24 +582,27 @@ stage_7() {
 stage_8() {
   stage "Render the trial's configs"
   show_run render uv run python scripts/provision_trial.py render --slug "$SLUG" --domain "$DOMAIN" \
-    --account-id "$ACCOUNT_ID" --image-digest "$IMAGE_DIGEST" --kv-id "$TRIAL_KV_ID" --d1-id "$TRIAL_D1_ID" \
+    --account-id "$ACCOUNT_ID" --image-digest "$IMAGE_DIGEST" --kv-id "$TRIAL_KV_ID" \
+    --newsletter-kv-id "$TRIAL_NEWSLETTER_KV_ID" --d1-id "$TRIAL_D1_ID" \
     || die "render failed."
-  for f in "$APP_CFG" "$PROMOTE_CFG" "$RSS_CFG"; do
+  for f in "$APP_CFG" "$PROMOTE_CFG" "$RSS_CFG" "$NEWSLETTER_CFG"; do
     [[ -f "$f" ]] || die "$f was not written."
     git check-ignore -q "$f" || die "$f is not gitignored."
   done
-  printf '  %s✓%s three configs written, all gitignored\n' "$GREEN" "$RESET"
+  printf '  %s✓%s four configs written, all gitignored\n' "$GREEN" "$RESET"
   next
 }
 
 # ── 9 ─────────────────────────────────────────────────────────────────────
 stage_9() {
-  stage "Dry-run all three configs"
+  stage "Dry-run all four configs"
   (cd workers/rss && bun install --frozen-lockfile) || die "bun install in workers/rss failed."
+  (cd workers/newsletter && bun install --frozen-lockfile) || die "bun install in workers/newsletter failed."
   show_run dry-app bunx wrangler deploy --dry-run --config "$APP_CFG" --env-file /dev/null || die "App dry run failed."
   show_run dry-promote bunx wrangler deploy --dry-run --config "$PROMOTE_CFG" --env-file /dev/null || die "Vote Worker dry run failed."
   show_run dry-rss bunx wrangler deploy --dry-run --config "$RSS_CFG" --env-file /dev/null || die "rss Worker dry run failed."
-  printf '\n  %s✓%s all three dry runs passed\n' "$GREEN" "$RESET"
+  show_run dry-newsletter bunx wrangler deploy --dry-run --config "$NEWSLETTER_CFG" --env-file /dev/null || die "Newsletter Worker dry run failed."
+  printf '\n  %s✓%s all four dry runs passed\n' "$GREEN" "$RESET"
   next
 }
 
@@ -668,16 +692,18 @@ sources:
     tags: [tech, business-strategy]
 YAML
   fi
-  say "Replace the example with the tester's feeds: RSS only, never type: newsletter."
+  say "Replace the example with the tester's feeds: RSS or newsletter sources."
+  say 'A newsletter source needs email_match, the sender to match, not <slug>@<domain>.'
   say "Tiers are explained in docs/sources.md. Keep to the source limit you agreed."
   say "File: $REPO/$SOURCES_FILE"
   if confirm "Open it in ${EDITOR:-vi} now?"; then ${EDITOR:-vi} "$SOURCES_FILE"; fi
   pause "Saved the tester's feeds? Press Enter"
-  grep -qE 'type:[[:space:]]*"?newsletter' "$SOURCES_FILE" && die "$SOURCES_FILE has a newsletter source; a trial has no newsletter Worker."
-  SOURCE_COUNT=$(uv run python -c 'import sys, yaml; print(len(yaml.safe_load(open(sys.argv[1]))["sources"]))' "$SOURCES_FILE") \
+  counts=$(uv run python -c 'import sys, yaml; s = yaml.safe_load(open(sys.argv[1]))["sources"]; print(len(s), sum(1 for x in s if x.get("type", "rss") == "rss"))' "$SOURCES_FILE") \
     || die "$SOURCES_FILE is not valid YAML with a sources list."
+  read -r SOURCE_COUNT RSS_SOURCE_COUNT <<<"$counts"
   write_env SOURCE_COUNT "$SOURCE_COUNT"
-  say "$SOURCE_COUNT source(s)."
+  write_env RSS_SOURCE_COUNT "$RSS_SOURCE_COUNT"
+  say "$SOURCE_COUNT source(s), $RSS_SOURCE_COUNT for the rss Worker."
   local TRIAL_DIR
   TRIAL_DIR=$(mktemp -d)
   grep -E '^(CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_STORE_DATABASE_ID|CYRIS_PROMOTE_PAGES_PROJECT)=' "$APP_ENV" > "$TRIAL_DIR/.env"
@@ -695,6 +721,28 @@ YAML
   head -1 "$TRIAL_DIR/settings-push.log" | grep -qx "D1 database $TRIAL_D1_ID" \
     || die "settings push wrote to a database other than $TRIAL_D1_ID. Stop and check."
   printf '  %s✓%s settings push went to %s\n' "$GREEN" "$RESET" "$TRIAL_D1_ID"
+  # A re-run must not silently replace what the tester changed on /settings: sources push
+  # makes D1 match the file exactly, removals included.
+  local d1_sources
+  d1_sources=$(env -i HOME="$HOME" PATH="$PATH" uv run cyris sources list --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml") \
+    || die "sources list failed."
+  if grep -qE '^[0-9]+ sources in D1\.$' <<<"$d1_sources"; then
+    warn "The trial's D1 already has sources; the tester may have changed them on /settings."
+    printf '%s\n' "$d1_sources" | sed 's/^/    /'
+    diff -u --label "names in D1" --label "names in $SOURCES_FILE" \
+      <(grep -E '^[a-z]+ +[a-z]+ ' <<<"$d1_sources" | sed -E 's/^[a-z]+ +[a-z]+ +//; s/ — .*$//' | sort) \
+      <(uv run python -c 'import sys, yaml; print("\n".join(sorted(s["name"] for s in yaml.safe_load(open(sys.argv[1]))["sources"])))' "$SOURCES_FILE") \
+      | sed 's/^/    /' || true
+    if ! confirm "Replace D1's sources with $SOURCES_FILE?"; then
+      SOURCE_COUNT=$(grep -oE '^[0-9]+ sources in D1\.$' <<<"$d1_sources" | grep -oE '^[0-9]+')
+      RSS_SOURCE_COUNT=$(awk '$2 == "rss"' <<<"$d1_sources" | wc -l | tr -d ' ')
+      write_env SOURCE_COUNT "$SOURCE_COUNT"
+      write_env RSS_SOURCE_COUNT "$RSS_SOURCE_COUNT"
+      say "Kept the $SOURCE_COUNT source(s) in D1."
+      rm -r "$TRIAL_DIR"
+      return 0
+    fi
+  fi
   env -i HOME="$HOME" PATH="$PATH" uv run cyris sources push --config "$TRIAL_DIR/settings.toml" --sources "$TRIAL_DIR/sources.yaml" \
     || die "sources push failed."
   rm -r "$TRIAL_DIR"
@@ -703,14 +751,14 @@ YAML
 
 # ── 14 ────────────────────────────────────────────────────────────────────
 stage_14() {
-  stage "The rss Worker"
+  stage "The rss and newsletter Workers"
   TRIAL_WORKER_TOKEN=$(fileval "$RSS_ENV" RSS_TOKEN)
   if [[ -z "$TRIAL_WORKER_TOKEN" ]]; then
     TRIAL_WORKER_TOKEN=$(openssl rand -hex 32)
     printf 'RSS_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$RSS_ENV"
   fi
   grep -qx "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV" || die "$RSS_ENV does not hold the token."
-  local rc=0 code poll feeds
+  local rc=0 code poll feeds want hdr
   gated rss "Deploy the rss Worker with $RSS_CFG?" \
     bunx wrangler deploy --config "$RSS_CFG" --env-file /dev/null --secrets-file "$RSS_ENV" || rc=$?
   [[ $rc -eq 0 || $rc -eq 2 ]] || die "rss Worker deploy failed."
@@ -726,24 +774,58 @@ stage_14() {
   poll=$(curl -s -X POST --max-time 120 -H "Authorization: Bearer $TRIAL_WORKER_TOKEN" "$TRIAL_RSS_URL/poll" || true)
   say "/poll: $poll"
   feeds=$(grep -oE '"feeds":[0-9]+' <<<"$poll" | cut -d: -f2 || true)
-  [[ "$feeds" == 0 ]] && die "/poll reports feeds 0: the first boot pushed no RSS source. Go back to stage 13."
-  [[ "$feeds" == "$SOURCE_COUNT" ]] || die "/poll reports feeds '$feeds', sources push had $SOURCE_COUNT."
+  want=${RSS_SOURCE_COUNT:-$SOURCE_COUNT}
+  if [[ "$feeds" == 0 ]] && (( want > 0 )); then die "/poll reports feeds 0, expected $want. Go back to stage 13."; fi
+  [[ "$feeds" == "$want" ]] || die "/poll reports feeds '$feeds', the rss sources push had $want."
   printf '  %s✓%s /poll feeds = %s\n' "$GREEN" "$RESET" "$feeds"
+  printf 'NEWSLETTER_TOKEN=%s\n' "$TRIAL_WORKER_TOKEN" > "$NEWSLETTER_ENV"
+  [[ "$(fileval "$NEWSLETTER_ENV" NEWSLETTER_TOKEN)" == "$TRIAL_WORKER_TOKEN" ]] || die "$NEWSLETTER_ENV does not hold the token."
+  rc=0
+  gated newsletter "Deploy the newsletter Worker with $NEWSLETTER_CFG?" \
+    bunx wrangler deploy --config "$NEWSLETTER_CFG" --env-file /dev/null --secrets-file "$NEWSLETTER_ENV" || rc=$?
+  [[ $rc -eq 0 || $rc -eq 2 ]] || die "Newsletter Worker deploy failed."
+  if [[ $rc -eq 0 ]]; then
+    TRIAL_NEWSLETTER_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/newsletter.log" | head -1 || true)
+    write_env TRIAL_NEWSLETTER_URL "$TRIAL_NEWSLETTER_URL"
+  fi
+  ask_match TRIAL_NEWSLETTER_URL "Newsletter Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
+  write_env TRIAL_NEWSLETTER_URL "$TRIAL_NEWSLETTER_URL"
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$TRIAL_NEWSLETTER_URL/newsletters" || true)
+  [[ "$code" == 401 ]] || die "$TRIAL_NEWSLETTER_URL/newsletters without the bearer answered $code, not 401."
+  printf '  %s✓%s /newsletters without the bearer → 401\n' "$GREEN" "$RESET"
+  hdr=$(bearer_header_file)
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "@$hdr" "$TRIAL_NEWSLETTER_URL/newsletters" || true)
+  rm -f "$hdr"
+  [[ "$code" == 200 ]] || die "$TRIAL_NEWSLETTER_URL/newsletters with the bearer answered $code, not 200: the secret did not land."
+  printf '  %s✓%s /newsletters with the bearer → 200\n' "$GREEN" "$RESET"
   in_file "$APP_ENV" write_env CYRIS_WORKER_TOKEN "$TRIAL_WORKER_TOKEN"
   in_file "$APP_ENV" write_env CYRIS_RSS_WORKER_URL "$TRIAL_RSS_URL"
+  in_file "$APP_ENV" write_env CYRIS_NEWSLETTER_WORKER_URL "$TRIAL_NEWSLETTER_URL"
   grep -qx "CYRIS_WORKER_TOKEN=$TRIAL_WORKER_TOKEN" "$APP_ENV" || die "CYRIS_WORKER_TOKEN did not land."
   grep -qx "CYRIS_RSS_WORKER_URL=$TRIAL_RSS_URL" "$APP_ENV" || die "CYRIS_RSS_WORKER_URL did not land."
+  grep -qx "CYRIS_NEWSLETTER_WORKER_URL=$TRIAL_NEWSLETTER_URL" "$APP_ENV" || die "CYRIS_NEWSLETTER_WORKER_URL did not land."
   say "Redeploy so the app reads them."
-  deploy_app_and_wait app-rss
+  deploy_app_and_wait app-workers
   next
 }
 
 # ── 15 ────────────────────────────────────────────────────────────────────
 stage_15() {
   stage "Let the tester receive mail"
-  if [[ -z "$TESTER_EMAIL" ]]; then
-    note "No tester email; skipping."
-  else
+  [[ -n "${TRIAL_NEWSLETTER_URL:-}" ]] || die "No newsletter Worker URL is saved. Stage 14 deploys it: re-run with --from 14."
+  open_url "https://dash.cloudflare.com/$ACCOUNT_ID"
+  step "Email Routing on $DOMAIN: enable it first if the domain does not have it yet."
+  step "Routing rules → Create: custom address $SLUG@$DOMAIN, action Send to a Worker, Worker $TRIAL_NEWSLETTER_WORKER."
+  note "The rule's Worker is $TRIAL_NEWSLETTER_URL, and its newsletters are read from $TRIAL_NEWSLETTER_URL/newsletters."
+  say "Then the tester forwards from Gmail (workers/newsletter/README.md, Gmail forwarding):"
+  step "Tester: Gmail → Settings → Forwarding and POP/IMAP → Add a forwarding address → $SLUG@$DOMAIN."
+  warn "Gmail mails a confirmation to that address. Before stage 17 or the next scheduled run, read it:"
+  step "GET $TRIAL_NEWSLETTER_URL/newsletters with Authorization: Bearer set to the CYRIS_WORKER_TOKEN line of $APP_ENV."
+  step "Send the tester its mail-settings.google.com/mail/vf-… link to open, signed in as that Gmail only."
+  warn "That scheduled run pulls the Worker's unmatched mail and ACKs it, so the confirmation is lost after it."
+  step "Tester: one Gmail filter per newsletter source, From its sender → Forward to $SLUG@$DOMAIN."
+  pause "Rule created, forwarding confirmed and the filters made? Press Enter"
+  if [[ -n "$TESTER_EMAIL" ]]; then
     open_url "https://dash.cloudflare.com/$ACCOUNT_ID"
     step "Email Service → Email Routing → Destination Addresses → add $TESTER_EMAIL."
     step "Ask the tester to open the verification mail before they save Notifications on /settings."
@@ -758,7 +840,7 @@ stage_16() {
   stage "Hand over"
   say "The tester signs in at https://$SLUG.$DOMAIN/ with the Access one-time PIN."
   step "The tester finishes /settings: Discord webhook, mail sender/recipient, anything else."
-  warn "Keep $APP_ENV, $ACCESS_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
+  warn "Keep $APP_ENV, $ACCESS_ENV, $PROMOTE_ENV, $RSS_ENV and $NEWSLETTER_ENV: Cloudflare cannot read secrets back."
   next
 }
 
