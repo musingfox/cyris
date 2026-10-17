@@ -1076,3 +1076,40 @@ describe("AccessGate", () => {
     expect(deps.probeGemini.calls).toHaveLength(0);
   });
 });
+
+describe("LoginRedirect", () => {
+  const signedIn = async (method, path) =>
+    handleRequest(request(method, path, { jwt: await accessJwt() }), env(), makeDeps());
+
+  it("GET /login sends a signed-in reader to the page they came from", async () => {
+    const resp = await signedIn("GET", "/login?next=%2F2026-10-17.html");
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get("Location")).toBe("/2026-10-17.html");
+  });
+
+  it("POST /login sends a signed-in reader to the page they came from", async () => {
+    const resp = await signedIn("POST", "/login?next=%2Fsettings");
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get("Location")).toBe("/settings");
+  });
+
+  it("falls back to / for an off-origin next", async () => {
+    for (const next of ["//evil.example", "https://evil.example"]) {
+      const resp = await signedIn("GET", "/login?next=" + encodeURIComponent(next));
+      expect(resp.headers.get("Location"), next).toBe("/");
+    }
+  });
+
+  it("sends / with no next, sets no cookie and reaches no container", async () => {
+    const deps = makeDeps();
+    const resp = await handleRequest(
+      request("GET", "/login", { jwt: await accessJwt() }),
+      env(),
+      deps,
+    );
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get("Location")).toBe("/");
+    expect(resp.headers.get("Set-Cookie")).toBeNull();
+    expect(deps.container.calls).toHaveLength(0);
+  });
+});
