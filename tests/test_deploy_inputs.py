@@ -40,10 +40,18 @@ def _bindings() -> dict[str, str]:
 
 
 _WORKER_ONLY = (
-    "CYRIS_UI_TOKEN",
-    "CYRIS_UI_ACCESS_HOST",
+    "CYRIS_ACCESS_TEAM_DOMAIN",
+    "CYRIS_ACCESS_AUD",
     "DIGEST_ORIGIN",
     "CYRIS_PRIVATE_ARCHIVE",
+)
+
+
+# Read by the scripts, never by the Worker or a deploy form: a service token that
+# `cyris doctor --deployment` sends to the Access-guarded Worker.
+_SCRIPT_ONLY = (
+    "CYRIS_ACCESS_CLIENT_ID",
+    "CYRIS_ACCESS_CLIENT_SECRET",
 )
 
 
@@ -62,8 +70,7 @@ def test_env_example_and_deploy_form_name_the_same_variables() -> None:
 def test_config_show_lists_every_name_the_container_can_read() -> None:
     """`cyris config show` cannot read `.env.example`, which the image does not ship.
 
-    A Worker-only name never reaches the container, so it is left out; `CYRIS_UI_TOKEN`
-    is shown anyway, because `cyris doctor --deployment` reads it from a local `.env`.
+    A Worker-only name never reaches the container, so it is left out.
     """
     assert _env_example() - set(_WORKER_ONLY) - set(SECRETS) - set(IDENTITY.values()) == set()
     assert set(SECRETS) <= _env_example()
@@ -177,7 +184,7 @@ def test_every_deploy_path_pushes_to_one_registry_repository() -> None:
     assert len(set(names.values())) == 1, names
 
 
-def ungraded_worker_only_names(doc: str) -> list[str]:
+def ungraded_names(doc: str) -> list[str]:
     """Worker-only names with no row graded B or C in the doc's "Every setting, graded" table."""
     section = doc.split("### Every setting, graded", 1)[1].split("\n### ", 1)[0]
     graded = []
@@ -185,15 +192,68 @@ def ungraded_worker_only_names(doc: str) -> list[str]:
         cells = [c.strip() for c in row.split("|")]
         if len(cells) > 3 and cells[2].strip("*").startswith(("B", "C")):
             graded.append(row)
-    return [name for name in _WORKER_ONLY if not any(name in row for row in graded)]
+    names = (*_WORKER_ONLY, *_SCRIPT_ONLY)
+    return [name for name in names if not any(name in row for row in graded)]
 
 
 def test_every_worker_only_name_is_graded() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
-    assert ungraded_worker_only_names(doc) == []
+    assert ungraded_names(doc) == []
 
 
 def test_the_grading_guard_names_a_variable_whose_row_is_gone() -> None:
     doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
     rows = [r for r in doc.splitlines() if not r.startswith("| Private archive |")]
-    assert ungraded_worker_only_names("\n".join(rows)) == ["CYRIS_PRIVATE_ARCHIVE"]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_PRIVATE_ARCHIVE"]
+
+
+def test_each_access_setting_is_graded_on_its_own_row() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access audience |")]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_AUD"]
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access team domain |")]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_TEAM_DOMAIN"]
+
+
+def test_access_settings_are_required_and_in_the_install_block() -> None:
+    bindings = _bindings()
+    for name in ("CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"):
+        assert bindings[name].startswith("**Required.**"), name
+    guide = (ROOT / "docs/install-cloudflare.md").read_text(encoding="utf-8")
+    block = re.search(r"# \.env\.cloud(.*?)```", guide, re.S)
+    assert block, "the .env.cloud secrets file is gone from docs/install-cloudflare.md"
+    names = set(re.findall(r"^([A-Z][A-Z0-9_]+)=", block.group(1), re.M))
+    assert {"CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"} <= names
+
+
+def test_example_asks_for_the_access_settings() -> None:
+    assert {"CYRIS_ACCESS_TEAM_DOMAIN", "CYRIS_ACCESS_AUD"} <= _env_example()
+
+
+def test_private_archive_description_names_no_cookie_login() -> None:
+    description = _bindings()["CYRIS_PRIVATE_ARCHIVE"]
+    assert "/login" not in description
+    assert "cookie" not in description.lower()
+
+
+def test_each_script_credential_is_graded_on_its_own_row() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access service token secret |")]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_SECRET"]
+    rows = [r for r in doc.splitlines() if not r.startswith("| Access service token id |")]
+    assert ungraded_names("\n".join(rows)) == ["CYRIS_ACCESS_CLIENT_ID"]
+
+
+def test_script_credentials_are_commented_and_in_no_binding_or_worker() -> None:
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    for name in _SCRIPT_ONLY:
+        assert f"# {name}=" in text, name
+        assert not re.search(rf"^{name}=", text, re.M), name
+    shipped = (
+        json.dumps(_bindings()),
+        (ROOT / "src/cyris/diagnostics/config_show.json").read_text(encoding="utf-8"),
+        (ROOT / "workers/app/src/index.js").read_text(encoding="utf-8"),
+        (ROOT / "workers/app/src/router.js").read_text(encoding="utf-8"),
+    )
+    for name in _SCRIPT_ONLY:
+        assert not any(name in part for part in shipped), name

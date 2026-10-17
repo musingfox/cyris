@@ -695,13 +695,19 @@ window.fetch = (input, init) =>
 HOLD_SOURCES = answer_get("/api/sources", "new Promise(() => {})")
 
 
-# What the app Worker answers a request whose session cookie has expired, and
-# what the page must then tell the reader.
-SESSION_EXPIRED = (
-    'Promise.resolve(new Response(JSON.stringify({error: "unauthorized"}), '
-    '{status: 401, headers: {"Content-Type": "application/json"}}))'
-)
 SIGN_IN_AGAIN = "Your session has expired. Reload the page to sign in again."
+# What Access answers a reader whose session has expired, or who it does not admit: a redirect
+# the page cannot follow. Then the app Worker's own 403, when Access is not set up here.
+REDIRECTED = 'Promise.resolve({type: "opaqueredirect", status: 0, ok: false})'
+SESSION_EXPIRED = REDIRECTED
+ACCESS_OFF = (
+    'Promise.resolve(new Response(JSON.stringify({error: "forbidden"}), '
+    '{status: 403, headers: {"Content-Type": "application/json"}}))'
+)
+ACCESS_NOT_SET_UP = (
+    "Access is not set up for this deployment. Ask the operator to finish the Cloudflare "
+    "Access setup, then reload the page."
+)
 
 # What the app Worker's /api/vote answers a signed-in reader; this server has no such route.
 SIGNED_IN = (
@@ -1894,6 +1900,29 @@ CHECKS: list[Check] = [
             expect(live.length === 0, `enabled: ${{live}}`);
         """,
         sabotage="""noticeOf("digest").textContent = "Could not load settings: TypeError: x";""",
+    ),
+    *(
+        Check(
+            id=f"settings-{name}-on-load",
+            fixture="writable",
+            path="/settings",
+            preload=answer_get("/api/settings", answer),
+            act="""
+                await waitFor(
+                  () => $$("form.tab .actions-line .notice.err").length === 4, "4 notices");
+            """,
+            script=f"""
+                const tabs = ["model", "digest", "pipeline", "notifications"];
+                const wrong = tabs.filter((t) => !noticeOf(t).classList.contains("err")
+                  || noticeOf(t).textContent !== {json.dumps(text)});
+                expect(wrong.length === 0, `wrong: ${{wrong}}`);
+            """,
+            sabotage="""noticeOf("digest").textContent = "Could not load settings: x";""",
+        )
+        for name, answer, text in (
+            ("redirected", REDIRECTED, SIGN_IN_AGAIN),
+            ("access-off", ACCESS_OFF, ACCESS_NOT_SET_UP),
+        )
     ),
     Check(
         id="sources-session-expired",

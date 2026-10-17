@@ -45,7 +45,7 @@ deployment holds a Cloudflare token of its own, so anything that token can do, f
 |---|---|
 | Create the D1 database and paste its UUID as `CYRIS_STORE_DATABASE_ID` | The container reaches D1 over REST, not through a binding. A `[[d1_databases]]` binding would make the deploy create a database whose id nothing can read at runtime, a trick that still ends in a paste |
 | Create the Pages project | Deploy buttons support Workers only. Since 2026-09-06 the first publish creates the project itself over the REST API it deploys with |
-| Attach a domain, then Cloudflare Access | Neither is in the provisioning list, and Access stays off `workers.dev` ([ADR-0009](0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md)) |
+| Attach a domain, then Cloudflare Access | Neither is in the provisioning list, and Access stays off `workers.dev` ([ADR-0009](0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md); superseded — see [ADR-0015](0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md)) |
 
 None of these breaks the acceptance condition, because an id pasted into a secret field is not a
 code edit.
