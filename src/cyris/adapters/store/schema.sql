@@ -282,3 +282,11 @@ CREATE TABLE IF NOT EXISTS blind_labels (
   labeled_at     TEXT,
   PRIMARY KEY (drawn_at, url)
 );
+
+-- Which versioned steps (adapters/store/migrations.py) this database has run.
+-- One row per step id, written once; an id here that the code does not know is
+-- left alone.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id         TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
