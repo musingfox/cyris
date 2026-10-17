@@ -44,6 +44,14 @@ class SourceConfig(BaseModel):
     # The reader's area for this source, an `areas` row id; None until one is chosen.
     area_id: int | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_tier(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "tier" in data:
+            moves = ", ".join(f"{old} -> {new}" for old, new in LEGACY_LANE_NAMES.items())
+            raise ValueError(f"`tier` is renamed to `lane`; write the lane instead ({moves})")
+        return data
+
     @property
     def fetchable(self) -> bool:
         """Whether a fetcher reads this source: a feed by its URL, mail by its sender."""

@@ -8,7 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from cyris.adapters.store.article_store import ArticleStore
-from cyris.domain.models import Article, Lane, StoredArticle
+from cyris.config import load_config
+from cyris.domain.models import Article, Lane, SourceConfig, StoredArticle
 
 pytestmark = pytest.mark.unit
 
@@ -86,3 +87,44 @@ def test_an_old_spelling_under_the_new_key_is_also_accepted() -> None:
 def test_an_unknown_legacy_value_is_rejected() -> None:
     with pytest.raises(ValidationError):
         StoredArticle.model_validate(_row("https://example.com/a", source_tier="bogus"))
+
+
+def test_a_source_still_saying_tier_is_refused_with_the_rename() -> None:
+    with pytest.raises(ValidationError, match="renamed to `lane`") as e:
+        SourceConfig.model_validate({"name": "a", "tier": "summarize"})
+
+    assert "summarize -> read" in str(e.value)
+
+
+def test_a_source_with_a_bad_lane_names_the_three_lanes() -> None:
+    with pytest.raises(ValidationError, match="'skim', 'read' or 'follow'"):
+        SourceConfig.model_validate({"name": "a", "lane": "filter"})
+
+
+def test_a_yaml_source_still_saying_tier_fails_the_load(tmp_path: Path) -> None:
+    config_file = tmp_path / "cyris.toml"
+    config_file.write_text('[general]\ntimezone = "UTC"\n')
+    sources = tmp_path / "sources.yaml"
+    sources.write_text("sources:\n  - name: Foo\n    url: https://foo/feed\n    tier: summarize\n")
+
+    with pytest.raises(ValidationError, match="renamed to `lane`"):
+        load_config(config_path=config_file, sources_path=sources)
+
+
+def test_a_defaults_tier_key_is_ignored_and_sources_take_lane(tmp_path: Path) -> None:
+    config_file = tmp_path / "cyris.toml"
+    config_file.write_text('[general]\ntimezone = "UTC"\n')
+    sources = tmp_path / "sources.yaml"
+    sources.write_text(
+        "defaults:\n  tier: filter\n"
+        "sources:\n  - name: Foo\n    url: https://foo/feed\n    lane: read\n"
+    )
+
+    cfg = load_config(config_path=config_file, sources_path=sources)
+
+    assert cfg.sources["Foo"].lane == Lane.READ
+
+
+def test_a_source_with_both_tier_and_lane_is_still_refused() -> None:
+    with pytest.raises(ValidationError, match="renamed to `lane`"):
+        SourceConfig.model_validate({"name": "a", "tier": "x", "lane": "read"})
