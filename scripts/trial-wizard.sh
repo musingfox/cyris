@@ -278,6 +278,7 @@ access_answer() {
   local file="$1" var="$2" prompt="$3" regex="$4" hidden="${5:-}" input rc=0 current
   current=$(fileval "$file" "$var")
   while true; do
+    rc=0
     printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
     [[ -z "$current" ]] || printf '%s[Enter keeps current]%s ' "$DIM" "$RESET"
     if [[ -n "$hidden" ]]; then read -rs input || rc=$?; printf '\n'
@@ -288,6 +289,7 @@ access_answer() {
     fi
     [[ -n "$input" ]] || input="$current"
     if [[ "$input" =~ $regex ]]; then printf -v "$var" '%s' "$input"; return 0; fi
+    if (( rc != 0 )); then die "No answer for $var."; fi
     if [[ -z "$input" ]]; then warn "$var is empty. Enter it again."
     else warn "$var does not look right. $prompt"; fi
   done

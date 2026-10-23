@@ -303,6 +303,16 @@ def test_an_access_answer_that_ends_stops_stage_11_naming_it(rig) -> None:
     assert "No answer for CYRIS_ACCESS_AUD." in run.out
 
 
+def test_a_saved_access_answer_that_does_not_match_stops_when_input_ends(rig) -> None:
+    r = rig(_stages(10))
+    (r.repo / f".env.trial-{SLUG}").write_text(
+        f"CLOUDFLARE_API_TOKEN={TOKEN}\nCYRIS_ACCESS_AUD=not a tag\n"
+    )
+    run = r.run(stdin=START + "\nhttps://t.cloudflareaccess.com/\n")
+    assert run.code == 1
+    assert "CYRIS_ACCESS_AUD" in run.out
+
+
 def test_the_service_token_wait_needs_no_keypress_and_shows_the_time(rig) -> None:
     run = rig(_stages(11), FAKE_BUILD_FAIL_FIRST="2").run(stdin=START + "y\n")
     waiting = "waiting for https://t1.example.com/ to answer 200 with the service token: 0m0"
@@ -409,6 +419,12 @@ def test_mail_permission_is_checked_only_for_a_tester_with_email(rig, email, fla
     check = next(ln for ln in run.calls.splitlines() if "check-token" in ln)
     assert ("--email" in check) is flag
     assert "--pages-project cyris-app-t1-0123456789abcdef --app-worker cyris-app-t1" in check
+
+
+def test_the_wizard_no_longer_uses_a_session_cookie() -> None:
+    script = (ROOT / "scripts/trial-wizard.sh").read_text()
+    assert "cyris_session" not in script
+    assert "shasum" not in script
 
 
 # Every answer from stage 14 on, in order: the rss deploy declined, the Worker
