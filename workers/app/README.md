@@ -43,8 +43,9 @@ Cloudflare Access is the only sign-in. Why this shape:
 (supersedes [ADR-0009](../../docs/decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md)).
 
 1. **Access decides who.** A self-hosted Access application covers the protected paths
-   (`/settings`, `/labels`, `/login`, `/run`, `/api/*`, `/static/*`) on every hostname the
-   Worker answers; with `CYRIS_PRIVATE_ARCHIVE` set to `"true"`, it covers the whole hostname.
+   (`/settings`, `/onboarding`, `/labels`, `/interest`, `/login`, `/run`, `/api/*`,
+   `/static/*`) on every hostname the Worker answers, a Preview's `*.<host>` included; with
+   `CYRIS_PRIVATE_ARCHIVE` set to `"true"`, it covers the whole hostname.
    The public archive is not an Access destination.
 2. **The Worker checks the JWT.** On each protected path, and on every path when the archive is
    private, the Worker verifies the `Cf-Access-Jwt-Assertion` header with jose against the team

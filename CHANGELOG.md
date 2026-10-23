@@ -99,6 +99,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `CYRIS_ACCESS_AUD`. Until both are set, every protected path answers `403`. Put the
   token in `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET` (`.env` and the GitHub
   Actions secrets) and drop `CYRIS_UI_TOKEN`.
+  A Preview such as `staging` sets the same two Worker settings as its own Preview
+  secrets, and the application names `*.<host>`, the Preview-only domain, as a destination.
 
 ## [0.5.0] — 2026-10-02
 
