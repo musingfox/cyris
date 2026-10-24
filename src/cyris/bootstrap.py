@@ -510,7 +510,7 @@ def build_deps(
                     pages_project=cfg.app.promote.pages_project,
                     receipt_store=D1PagesDeployReceipt(d1),
                 )
-                page_serves = partial(_serves, pages_project=cfg.app.promote.pages_project)
+                page_serves = partial(_serves, cfg.app.promote.pages_project)
                 site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
             else:
                 publish = partial(

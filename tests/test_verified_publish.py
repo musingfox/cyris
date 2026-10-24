@@ -155,3 +155,22 @@ def test_the_page_check_is_bound_only_where_publishing_is_on(
     cfg.app.promote.publish_enabled = False
 
     assert bootstrap.build_deps(cfg).page_serves is None
+
+
+@respx.mock
+def test_the_bound_page_check_takes_the_path_and_bytes_the_run_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_sleep
+) -> None:
+    monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: SqliteD1())
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
+    cfg.app.store.backend = "d1"
+    cfg.app.store.database_id = "db"
+    cfg.app.store.account_id = "acct"
+    cfg.app.store.api_token = "tok"
+    cfg.app.html_output.enabled = True
+    cfg.app.promote.publish_enabled = True
+    cfg.app.promote.pages_project = PROJECT
+    route = respx.get(URL).mock(return_value=httpx.Response(200, content=EXPECTED))
+
+    assert bootstrap.build_deps(cfg).page_serves(PATH, EXPECTED) is True
+    assert route.call_count == 1
