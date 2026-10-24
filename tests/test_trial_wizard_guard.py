@@ -24,7 +24,13 @@ WIZARD = ROOT / "scripts/trial-wizard.sh"
 RUNBOOK = ROOT / "docs/trial-deployment.md"
 GUIDE = ROOT / "docs/install-cloudflare.md"
 SECRETS_PATH_SLUG = "alice"
-TOKENS = ("TRIAL_WORKER_TOKEN", "TRIAL_PROMOTE_TOKEN", "CLOUDFLARE_API_TOKEN", "GEMINI_API_KEY")
+TOKENS = (
+    "TRIAL_WORKER_TOKEN",
+    "TRIAL_PROMOTE_TOKEN",
+    "CLOUDFLARE_API_TOKEN",
+    "GEMINI_API_KEY",
+    "CYRIS_ACCESS_CLIENT_SECRET",
+)
 PRINTERS = ("echo", "say", "note", "warn", "step")
 REQUIRED_ANCHORS = (
     "4-write-the-secrets-file",
@@ -240,7 +246,7 @@ TRIAL_DEPLOY = 'bunx wrangler deploy --config "$APP_CFG" --env-file /dev/null'
         ("node_modules/.bin/wrangler deploy --env-file /dev/null", "b"),
         ("bunx wrangler deploy --config wrangler.toml --env-file /dev/null", "b"),
         ("bunx wrangler deploy --config workers/rss/wrangler.toml --env-file /dev/null", "b"),
-        ("./node_modules/.bin/wrangler secret put CYRIS_UI_TOKEN --env-file /dev/null", "c"),
+        ("./node_modules/.bin/wrangler secret put CYRIS_WORKER_TOKEN --env-file /dev/null", "c"),
         (f"{TRIAL_DEPLOY}; bunx wrangler deploy --env-file /dev/null", "b"),
         (f"{TRIAL_DEPLOY} && bunx wrangler d1 list", "a"),
         ("WHO=$(bunx wrangler whoami 2>&1 || true)", "a"),
@@ -274,7 +280,7 @@ def test_a_push_outside_the_trial_directory_is_refused() -> None:
         ),
         ('  - name: "Stratechery"', "k"),
         (
-            'curl -s -X POST -b "cyris_session=$SESSION" "https://$SLUG.$DOMAIN/run?period=$PERIOD"',
+            'curl -s -X POST -H "@$hdr" "https://$SLUG.$DOMAIN/run?period=$PERIOD"',
             "l",
         ),
     ],
@@ -294,6 +300,7 @@ def test_a_secrets_file_git_would_track_is_refused() -> None:
         'echo "$TRIAL_WORKER_TOKEN"',
         'say "token: $CLOUDFLARE_API_TOKEN"',
         "printf '%s\\n' \"$TRIAL_PROMOTE_TOKEN\"",
+        'echo "$CYRIS_ACCESS_CLIENT_SECRET"',
         "printf '%s\\n' \"$CLOUDFLARE_API_TOKEN\" | tee x.log",
         'grep -x "RSS_TOKEN=$TRIAL_WORKER_TOKEN" "$RSS_ENV"',
     ],
@@ -327,7 +334,9 @@ def assert_points_not_copies(runbook: str, guide: str) -> None:
     for anchor in REQUIRED_ANCHORS:
         assert anchor in linked, f"the runbook does not link {anchor}"
     for ln in _code_lines(runbook):
-        assert not re.match(r"(export\s+)?CYRIS_UI_TOKEN=", ln), f"copied secret line: {ln}"
+        assert not re.match(r"(export\s+)?CYRIS_[A-Z_]*(TOKEN|SECRET)=", ln), (
+            f"copied secret line: {ln}"
+        )
         assert not WRANGLER.search(ln), f"a wrangler step the wizard owns: {ln}"
 
 
@@ -349,9 +358,15 @@ def test_a_dead_install_guide_anchor_is_named() -> None:
         assert_points_not_copies(dead, _guide())
 
 
-def test_a_copied_ui_token_line_is_refused() -> None:
-    text = _runbook() + "\n```sh\nCYRIS_UI_TOKEN=abc\n```\n"
-    with pytest.raises(AssertionError, match="CYRIS_UI_TOKEN"):
+def test_a_copied_worker_token_line_is_refused() -> None:
+    text = _runbook() + "\n```sh\nCYRIS_WORKER_TOKEN=abc\n```\n"
+    with pytest.raises(AssertionError, match="CYRIS_WORKER_TOKEN"):
+        assert_points_not_copies(text, _guide())
+
+
+def test_a_copied_access_secret_line_is_refused() -> None:
+    text = _runbook() + "\n```sh\nCYRIS_ACCESS_CLIENT_SECRET=abc\n```\n"
+    with pytest.raises(AssertionError, match="CYRIS_ACCESS_CLIENT_SECRET"):
         assert_points_not_copies(text, _guide())
 
 

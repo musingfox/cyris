@@ -40,12 +40,15 @@ from css_computed import find_browser
 from cyris.entrypoints.triage_server import STATIC_DIR, render_labels_page
 
 PAGE = "/labels"
+ACCESS_LOGIN = "https://access.example.test/cdn-cgi/access/login"
 
 KINDS = (
     "sample",
     "sample-largest",
     "answer-fails",
     "signed-out",
+    "redirected",
+    "access-off",
     "all-answered",
     "no-sample",
 )
@@ -79,8 +82,9 @@ def build_fixture(kind: str) -> LabelsFixture:
 
     `sample` deals the three `ITEMS` and takes every answer, and `sample-largest`
     does too on the page at the largest type size; `answer-fails` deals them but
-    refuses every answer with D1's 500; `signed-out` refuses every answer with
-    the app Worker's own 401; `all-answered` has every item answered, and
+    refuses every answer with D1's 500; `signed-out` and `redirected` refuse every answer
+    with an Access redirect to another origin, as a lapsed session gets; `access-off` with
+    the Worker's own 403; `all-answered` has every item answered, and
     `no-sample` has none drawn.
     """
     if kind not in KINDS:
@@ -106,8 +110,10 @@ def build_fixture(kind: str) -> LabelsFixture:
         fixture.posts.append(await request.json())
         if kind == "answer-fails":
             return web.json_response({"ok": False, "error": "D1 is unreachable"}, status=500)
-        if kind == "signed-out":
-            return web.json_response({"error": "unauthorized"}, status=401)
+        if kind in ("signed-out", "redirected"):
+            raise web.HTTPFound(ACCESS_LOGIN)
+        if kind == "access-off":
+            return web.json_response({"error": "forbidden"}, status=403)
         progress["answered"] += 1
         return web.json_response({"ok": True, **_deck(progress["answered"], total)})
 
@@ -314,6 +320,8 @@ _CHECKS: list[Check] = [
         for name, fixture, reason in (
             ("says-why", "answer-fails", "HTTP 500): D1 is unreachable"),
             ("says-sign-in-again", "signed-out", "sign in again"),
+            ("says-sign-in-again-after-redirect", "redirected", "sign in again"),
+            ("says-access-not-set-up", "access-off", "Access is not set up"),
         )
     ),
     *(

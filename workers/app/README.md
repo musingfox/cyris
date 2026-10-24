@@ -25,43 +25,40 @@ One image, started in one of two roles:
 
 Every other path is the archive: the Worker proxies it from
 `https://<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, or from `DIGEST_ORIGIN` when set. It is
-public unless `CYRIS_PRIVATE_ARCHIVE` is `"true"`, which sends a reader without a session
-to `/login` first.
+public unless `CYRIS_PRIVATE_ARCHIVE` is `"true"`, which answers a request without a valid
+Access sign-in with `403`.
 Every HTML page it serves (the archive, each issue, `/settings`) gets the D1 type size
 as `<style>html:root{--type-scale:X}</style>`, read over REST at most once a minute
 per isolate; `pages.dev` direct stays at 1.
 
 The Worker forwards its secrets into the container's environment, except
-`CYRIS_UI_TOKEN`, `DIGEST_ORIGIN`, `CYRIS_UI_ACCESS_HOST` and `CYRIS_PRIVATE_ARCHIVE`,
+`CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `DIGEST_ORIGIN` and `CYRIS_PRIVATE_ARCHIVE`,
 which only the Worker reads (`src/index.js`). An unset or empty one is left out rather than passed as the
 string `undefined`.
 
 ## Auth
 
-One layer always, a second if you own a domain. Why this shape:
-[ADR-0009](../../docs/decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md).
+Cloudflare Access is the only sign-in. Why this shape:
+[ADR-0015](../../docs/decisions/0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md)
+(supersedes [ADR-0009](../../docs/decisions/0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md)).
 
-1. **The `CYRIS_UI_TOKEN` secret**, checked in `src/router.js` before anything reaches
-   the container. `/login` takes the token and sets an HttpOnly cookie,
-   `cyris_session`, holding its SHA-256, compared in constant time. A request without
-   the cookie gets the login form (browser) or `401` (anything else). A sign-in returns
-   to the page that asked for it, the form's `next`; only a path on the same origin is
-   followed, and anything else returns to `/`. `/login` refuses
-   to start a session if the secret is shorter than 32 characters. Revocation is
-   rotating `CYRIS_UI_TOKEN`; every outstanding cookie dies at once.
-2. **Cloudflare Access**, optional, on a hostname you own. It stays off `workers.dev`,
-   where scripts sign in with the cookie alone. With `CYRIS_UI_ACCESS_HOST` set to
-   that hostname, `/api/vote` on it trusts Access instead of the cookie, so a reader
-   who already passed Access does not log in again. On every other hostname the cookie is required. The setup order
-   matters; it is in the
-   [install guide](../../docs/install-cloudflare.md#optional-cloudflare-access-on-your-own-domain).
+1. **Access decides who.** A self-hosted Access application covers the protected paths
+   (`/settings`, `/onboarding`, `/labels`, `/interest`, `/login`, `/run`, `/api/*`,
+   `/static/*`) on every hostname the Worker answers, a Preview's `*.<host>` included; with
+   `CYRIS_PRIVATE_ARCHIVE` set to `"true"`, it covers the whole hostname.
+   The public archive is not an Access destination.
+2. **The Worker checks the JWT.** On each protected path, and on every path when the archive is
+   private, the Worker verifies the `Cf-Access-Jwt-Assertion` header with jose against the team
+   domain's signing keys, checks its issuer and its audience, and answers before a byte reaches
+   the container. A request without a valid JWT gets `403` with a JSON body,
+   `{"error":"forbidden","detail":"..."}`, whatever its method or `Accept` header. The
+   detail names the missing setting when one is unset.
+3. **Two Worker settings.** `CYRIS_ACCESS_TEAM_DOMAIN` is the team domain as a host without a
+   scheme, such as `yourteam.cloudflareaccess.com`. `CYRIS_ACCESS_AUD` is the Application
+   Audience (AUD) tag of the Access application. With either unset, every protected path and
+   the private archive answer `403`; nothing falls through to the container. Set both as in the
+   [install guide](../../docs/install-cloudflare.md#3a-put-cloudflare-access-in-front-of-the-worker).
 
-A fork on `*.workers.dev` is a complete install with the cookie alone. Cyris does not
-validate the Access JWT itself.
-
-Protected paths are `/settings`, `/labels`, `/login`, `/run`, `/api/*` and `/static/*`; with
-`CYRIS_PRIVATE_ARCHIVE` set to `"true"`, every other path needs the cookie too. Behind
-Access they 302 to `cloudflareaccess.com` rather than 401, so a script against an
-Access hostname needs an Access service token. `cyris doctor --deployment` and the
-deploy workflow's `verify` step log in and read `/api/build` with no Access service
-token, so both take the `workers.dev` URL.
+A script signs in with an Access service token, sent as `CF-Access-Client-Id` and
+`CF-Access-Client-Secret`. `cyris doctor --deployment` and the deploy workflow's `verify` step
+send it and read `/api/build`, at whichever hostname the Worker answers on.

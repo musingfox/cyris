@@ -52,11 +52,14 @@ DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{DATE}-{PERIOD}-raw.html"
 
+ACCESS_LOGIN = "https://access.example.test/cdn-cgi/access/login"
+
 KINDS = (
     "signed-in",
     "signed-in-largest",
     "signed-in-smallest",
     "signed-out",
+    "worker-refused",
     "no-worker",
     "vote-fails",
     "fails-once",
@@ -120,13 +123,14 @@ def build_fixture(kind: str) -> VoteFixture:
 
     `signed-in` answers the probe and takes votes, and `signed-in-largest` and
     `signed-in-smallest` do too on the page served at the largest and the
-    smallest type size; `signed-out` refuses the
-    probe; `no-worker` has no route at all, as on bare pages.dev; `vote-fails`
+    smallest type size; `signed-out` answers the probe with an Access redirect
+    to another origin; `worker-refused` answers it with the Worker's own 403;
+    `no-worker` has no route at all, as on bare pages.dev; `vote-fails`
     signs in but refuses every vote; `fails-once` refuses only the first vote;
     `slow-vote` takes every vote, each only after `SLOW_VOTE_S`. The rest sign in
-    and refuse every vote as the app Worker would: `vote-signed-out` with its own
-    401 for a lapsed session, `vote-unconfigured` with its 503 for a missing
-    promote Worker URL; `promote-503` with a 503 the promote Worker sent, which
+    and refuse every vote as the app Worker would: `vote-signed-out` with an Access
+    redirect to another origin for a lapsed session, `vote-unconfigured` with its 503 for a
+    missing promote Worker URL; `promote-503` with a 503 the promote Worker sent, which
     the app Worker passes through; `vote-hangs` answers only after `HANG_VOTE_S`.
     """
     if kind not in KINDS:
@@ -144,7 +148,9 @@ def build_fixture(kind: str) -> VoteFixture:
 
     async def probe(_: web.Request) -> web.Response:
         if kind == "signed-out":
-            return web.json_response({"authorized": False}, status=401)
+            raise web.HTTPFound(ACCESS_LOGIN)
+        if kind == "worker-refused":
+            return web.json_response({"error": "forbidden"}, status=403)
         return web.json_response({"authorized": True})
 
     async def vote(request: web.Request) -> web.Response:
@@ -155,7 +161,7 @@ def build_fixture(kind: str) -> VoteFixture:
         if kind == "vote-hangs":
             await asyncio.sleep(HANG_VOTE_S)
         if kind == "vote-signed-out":
-            return web.json_response({"authorized": False, "error": "unauthorized"}, status=401)
+            raise web.HTTPFound(ACCESS_LOGIN)
         if kind == "vote-unconfigured":
             return web.json_response({"error": "promote worker not configured"}, status=503)
         if kind == "promote-503":
@@ -568,7 +574,7 @@ _CHECKS: list[Check] = [
             """,
             sabotage="""$("#raw-views").hidden = false;""",
         )
-        for kind in ("signed-out", "no-worker")
+        for kind in ("signed-out", "no-worker", "worker-refused")
     ),
     Check(
         id="gate-signed-in",
@@ -601,7 +607,7 @@ _CHECKS: list[Check] = [
             script="""expect(!visible($(".signin-link")), "Sign in shows");""",
             sabotage="""$(".signin-link").hidden = false;""",
         )
-        for kind in ("signed-in", "no-worker")
+        for kind in ("signed-in", "worker-refused", "no-worker")
     ),
     Check(
         id="default-list",

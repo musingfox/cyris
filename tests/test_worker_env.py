@@ -49,7 +49,8 @@ def test_worker_still_names_every_secret():
         assert name in text, f"{name} must still appear in {WORKER_JS}"
 
 
-def test_worker_names_access_host_and_digest_origin():
+def test_worker_names_access_settings_and_digest_origin():
     text = WORKER_JS.read_text() + ROUTER_JS.read_text()
-    assert "CYRIS_UI_ACCESS_HOST" in text
+    assert "CYRIS_ACCESS_TEAM_DOMAIN" in text
+    assert "CYRIS_ACCESS_AUD" in text
     assert "DIGEST_ORIGIN" in text

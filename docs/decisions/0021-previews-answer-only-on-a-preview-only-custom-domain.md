@@ -6,6 +6,12 @@ decision-makers: ""
 
 # Previews answer only on a Preview-only custom domain, and `preview_urls` stays off
 
+> Superseded in part by [ADR-0015](0015-cloudflare-access-is-the-only-sign-in-and-the-worker-checks-its-jwt.md)
+> (2026-10-23). The bullet "No Access on the Preview hostnames", and the token cookie it guards
+> each door with, are history: Access is the only sign-in, so the Preview hostnames are an
+> Access destination and each Preview sets its own Access team domain and AUD. The Preview-only
+> custom domain and `preview_urls = false` still stand.
+
 ## Context and Problem Statement
 
 The owner wants a Preview of the app Worker, named `staging`, to try a checkout on before

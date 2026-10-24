@@ -425,9 +425,24 @@ $("model-form").addEventListener("submit", async (e) => {
   show(failed ? "err" : "ok", lines.join("\n"), "model-result");
 });
 
-// The app Worker answers 401 once the session cookie has expired. Reloading
-// /settings then serves the sign-in form, which returns here.
+// Access answers a reader it does not admit with a redirect the page cannot follow
+// (opaqueredirect). Reloading /settings then serves the sign-in again.
 const SESSION_EXPIRED = new Error("Your session has expired. Reload the page to sign in again.");
+// The app Worker answers 403 when Cloudflare Access has not been configured here.
+const ACCESS_NOT_SET_UP = new Error("Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.");
+const REFUSALS = [SESSION_EXPIRED, ACCESS_NOT_SET_UP];
+
+function refusalOf(res) {
+  if (res.type === "opaqueredirect") return SESSION_EXPIRED;
+  if (res.status === 403) return ACCESS_NOT_SET_UP;
+  return null;
+}
+
+async function parseAnswer(res) {
+  const refusal = refusalOf(res);
+  if (refusal) throw refusal;
+  return res.json();
+}
 
 // Rejects with what the reader needs: the server's own explanation when it
 // gives one, otherwise what happened and what to do next.
@@ -438,11 +453,13 @@ async function post(url, body, method = "POST") {
       method,
       headers: {"Content-Type": "application/json"},
       body: body ? JSON.stringify(body) : undefined,
+      redirect: "manual",
     });
   } catch (err) {
     throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
   }
-  if (res.status === 401) throw SESSION_EXPIRED;
+  const refusal = refusalOf(res);
+  if (refusal) throw refusal;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
   const err = new Error(data.error || `cyris answered ${res.status} without saying why. ` +
@@ -967,8 +984,8 @@ async function saveSource(ed, button) {
 }
 
 const loadSources = () =>
-  fetch("/api/sources")
-    .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
+  fetch("/api/sources", {redirect: "manual"})
+    .then(parseAnswer)
     .then(loaded)
     .catch((e) => {
       $("src-body").querySelector("[data-loading]")?.remove();
@@ -976,7 +993,7 @@ const loadSources = () =>
       sourcesLoaded = false;
       sourcesFailed = true;
       renderAreas();
-      show("err", e === SESSION_EXPIRED ? e.message
+      show("err", REFUSALS.includes(e) ? e.message
         : `Could not load sources: ${e}. Reload the page to try again.`, "sources-notice");
     });
 
@@ -1377,7 +1394,7 @@ async function saveAssignments() {
     if (landed) {
       show("err", `${err.message} — ${landed.length} of ${Object.keys(assignments).length} sources assigned${
         names.length ? `; ${listJoin(names)} ${verb} active` : ""}. Save again for the rest.`, "assign-result");
-    } else if (err.status === undefined && err !== SESSION_EXPIRED) {
+    } else if (err.status === undefined && !REFUSALS.includes(err)) {
       show("err", "Could not confirm the save; showing what is stored.", "assign-result");
     } else {
       show("err", err.message, "assign-result");
@@ -1399,8 +1416,8 @@ $("assign-body").addEventListener("change", (e) => {
 });
 
 const loadAreas = () =>
-  fetch("/api/areas")
-    .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
+  fetch("/api/areas", {redirect: "manual"})
+    .then(parseAnswer)
     .then((d) => {
       if (!d.areas) throw new Error(d.error);
       areas = d.areas;
@@ -1427,7 +1444,7 @@ const loadAreas = () =>
       areasFailed = true;
       syncSourceArea?.();
       $("propose-areas").disabled = true;
-      show("err", e === SESSION_EXPIRED ? e.message
+      show("err", REFUSALS.includes(e) ? e.message
         : `Could not load areas: ${e.message || e}. Reload the page to try again.`, "areas-notice");
       renderAreas();
       renderThreshold();
@@ -1650,8 +1667,8 @@ $("add-topic").addEventListener("click", () => {
 });
 
 const loadTopics = () =>
-  fetch("/api/topics")
-    .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
+  fetch("/api/topics", {redirect: "manual"})
+    .then(parseAnswer)
     .then((d) => {
       topics = d.topics;
       topicsWritable = d.writable;
@@ -1663,18 +1680,18 @@ const loadTopics = () =>
     .catch((e) => {
       $("topic-body").querySelector("[data-loading]")?.remove();
       $("add-topic").disabled = true;
-      show("err", e === SESSION_EXPIRED ? e.message
+      show("err", REFUSALS.includes(e) ? e.message
         : `Could not load topics: ${e}. Reload the page to try again.`, "topics-notice");
     });
 
 loadTopics();
 
-fetch("/api/settings")
-  .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
+fetch("/api/settings", {redirect: "manual"})
+  .then(parseAnswer)
   .then((d) => { state = d; render(); })
   .catch((e) => {
     // Every Save stays disabled: tracking only starts once the values are known.
-    const text = e === SESSION_EXPIRED ? e.message
+    const text = REFUSALS.includes(e) ? e.message
       : `Could not load settings: ${e}. Reload the page to try again.`;
     SETTINGS_NOTICES.forEach((id) => show("err", text, id));
   })

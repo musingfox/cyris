@@ -7,6 +7,7 @@ those specs as violated whenever something here changes.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -163,28 +164,94 @@ def test_the_deploy_fails_unless_production_reports_the_deployed_image() -> None
     assert steps["deploy"][0] < index
     assert verify["env"]["DIGEST"] == "${{ steps.resolve.outputs.digest }}"
     assert "CYRIS_GIT_SHA" in run
-    assert "/login" in run and "/api/build" in run
+    assert "/login" not in run and "/api/build" in run
     assert "exit 1" in run
 
 
-def test_the_ui_token_reaches_only_the_verify_step() -> None:
-    """The login token grants all of /settings; no other step's code should see it."""
-    steps = _deploy_steps()
+def _secret_on_argv(run: str) -> list[str]:
+    """Lines that hand the service-token secret to an external command's argv.
 
-    holders = [sid for sid, (_, s) in steps.items() if "secrets.CYRIS_UI_TOKEN" in yaml.dump(s)]
-    assert holders == ["verify"]
-    assert steps["verify"][1]["env"]["CYRIS_DEPLOYMENT_URL"] == "${{ vars.CYRIS_DEPLOYMENT_URL }}"
+    Continuation lines are joined first. A printf piped into `curl --config -` and a
+    shell test (`if [ -z ... ]`) keep the value off every process's argument list.
+    """
+    joined = re.sub(r"\\\n\s*", " ", run)
+    flagged = []
+    for line in joined.splitlines():
+        if not re.search(r"\$\{?CYRIS_ACCESS_CLIENT_SECRET\b", line):
+            continue
+        stripped = line.strip()
+        if re.search(r"\bprintf\b.*\|\s*curl\b.*--config -", stripped):
+            continue
+        if stripped.startswith("if "):
+            continue
+        flagged.append(line)
+    return flagged
 
 
-def test_the_session_cookie_is_masked_and_the_token_stays_off_the_command_line() -> None:
-    """The cookie is sha256(token), a credential GitHub does not know to mask."""
+def test_the_verify_step_asks_the_build_endpoint_through_access() -> None:
     run = _deploy_steps()["verify"][1]["run"]
 
-    assert "::add-mask::" in run and "sha256sum" in run
-    assert run.index("::add-mask::") < run.index("/login")
-    assert "token@-" in run
-    assert "token=$CYRIS_UI_TOKEN" not in run
-    assert " -v " not in run and "--verbose" not in run
+    assert "/api/build" in run
+    assert "CF-Access-Client-Id" in run
+    assert "CF-Access-Client-Secret" in run
+    assert "/login" not in run
+
+
+def test_the_verify_step_names_the_layer_that_refused_the_token() -> None:
+    run = _deploy_steps()["verify"][1]["run"]
+
+    assert (
+        '401) echo "attempt $attempt: HTTP 401, Access refused the service token '
+        '(expired, or no Service Auth policy allows it)" ;;'
+    ) in run
+    assert (
+        '403) echo "attempt $attempt: HTTP 403, the app Worker refused the Access JWT; '
+        'check CYRIS_ACCESS_TEAM_DOMAIN and CYRIS_ACCESS_AUD" ;;'
+    ) in run
+
+
+def test_the_access_token_reaches_only_the_verify_step() -> None:
+    """The service token authorises the deployed app; no other step's code should see it."""
+    steps = _deploy_steps()
+
+    holders = [
+        sid for sid, (_, s) in steps.items() if "secrets.CYRIS_ACCESS_CLIENT_" in yaml.dump(s)
+    ]
+    env = steps["verify"][1]["env"]
+    assert holders == ["verify"]
+    assert env["CYRIS_ACCESS_CLIENT_ID"] == "${{ secrets.CYRIS_ACCESS_CLIENT_ID }}"
+    assert env["CYRIS_ACCESS_CLIENT_SECRET"] == "${{ secrets.CYRIS_ACCESS_CLIENT_SECRET }}"
+    assert env["CYRIS_DEPLOYMENT_URL"] == "${{ vars.CYRIS_DEPLOYMENT_URL }}"
+
+
+def test_the_service_token_never_reaches_a_command_line() -> None:
+    """A header argument shows in the process list and the log; a config file on stdin does not."""
+    run = _deploy_steps()["verify"][1]["run"]
+
+    assert _secret_on_argv(run) == []
+
+
+def test_the_argv_check_flags_the_secret_as_a_header_argument() -> None:
+    """Red fixture for the argv check: a -H argument must be flagged."""
+    fixture = (
+        "curl -sS -H 'CF-Access-Client-Secret: $CYRIS_ACCESS_CLIENT_SECRET' \"$base/api/build\"\n"
+    )
+
+    assert _secret_on_argv(fixture) != []
+
+
+def test_the_verify_step_never_echoes_headers_or_follows_redirects() -> None:
+    """-v echoes the headers; -L would follow a redirect to another host with them attached."""
+    run = _deploy_steps()["verify"][1]["run"]
+
+    assert not any(flag in run for flag in (" -v ", "--verbose", " -L", "--location"))
+
+
+def test_no_digest_of_the_token_is_masked() -> None:
+    """A sha256 of a token is a credential GitHub does not know to mask, so none is derived."""
+    run = _deploy_steps()["verify"][1]["run"]
+
+    assert "::add-mask::" not in run and "sha256sum" not in run
 
 
 def test_the_first_ask_waits_out_a_warm_instance() -> None:

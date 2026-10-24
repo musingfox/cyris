@@ -2,7 +2,7 @@
 
 A trial is one tester's own cyris on a Cloudflare account you hold: its own app Worker,
 container application, D1 database, KV namespace, Pages project, vote Worker and rss
-Worker, behind a login at `<slug>.<domain>`, with the archive private. On an account of
+Worker, behind Cloudflare Access at `<slug>.<domain>`, with the archive private. On an account of
 its own, it is also the manual, non-button half of the deploy button's clean-account run
 (ADR-0012).
 
@@ -35,7 +35,7 @@ Either works; the first trial (2026-10-06) runs on production's.
   Paid plan, since a container needs one.
 - **Production's account** needs no second plan. Check three things before you start:
   - No Zero Trust Access policy covers `<slug>.<domain>`, a wildcard such as
-    `*.<domain>` included. The wizard opens the page and waits for you in stage 1.
+    `*.<domain>` included. Stage 11 has you create the trial's own Access application.
   - No resource name the wizard prints in stage 3 equals a production name.
     `scripts/provision_trial.py` derives them so, and this is the receipt.
   - The trial token carries only the permissions listed below. Cloudflare grants them
@@ -93,7 +93,6 @@ Either works; the first trial (2026-10-06) runs on production's.
   why the app and the Worker share one token.
 - **A new custom domain can take minutes to answer**; the install guide's
   [notes on it](install-cloudflare.md#6-log-in-and-fill-settings) apply.
-- **The login token goes to the tester through a password manager**, never chat or email.
 
 ## After each release
 
@@ -119,13 +118,14 @@ The wizard writes these at the repo root, all gitignored:
 
 - `.env.trial-<slug>`, `.env.trial-<slug>-promote` and `.env.trial-<slug>-rss` hold the
   secrets. Cloudflare cannot read them back, so losing one means rotating it.
+- `.env.trial-<slug>.access` holds the service token the scripts sign in with (mode 600).
 - `.env.trial-<slug>-wizard` holds the inputs, the ids, the image the trial runs and the
   commit its rss and vote Workers were last deployed from.
 
 ## What stays by hand
 
-- Checking Zero Trust → Access for a policy covering `<slug>.<domain>`; a wildcard
-  policy would give the tester a second login. The wizard opens the page and waits.
+- Creating the Access application for `<slug>.<domain>` in stage 11, with its two
+  policies and a service token.
 - The tester's own `/onboarding`: sources, votes, notifications and the first issue; then
   `/settings` for anything else.
 - The vote round trip: the tester votes, you run `cyris promote-sync` against the trial,

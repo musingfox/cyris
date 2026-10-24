@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -725,14 +727,13 @@ def _check_digest_link(cfg: Config) -> Check:
     return Check(name, "ok", f"{hosts[0]}, the app Worker's custom domain")
 
 
-# Access stays off *.workers.dev, because scripts sign in there with the cookie
-# alone, which is exactly why it is the hostname to ask: on the custom domain the
-# request meets an Access login this command has no way to pass, and the failure
-# reads as a dead deployment.
-_WORKERS_DEV_HINT = (
-    "Use the deployment's workers.dev hostname — a custom domain sits behind "
-    "Cloudflare Access, which this command cannot log in to."
-)
+_ACCESS_TOKEN_VARS = ("CYRIS_ACCESS_CLIENT_ID", "CYRIS_ACCESS_CLIENT_SECRET")
+_HEADER_VALUE = re.compile(r"[\x20-\x7e]+")
+
+
+def _access_token(name: str) -> str:
+    """The service-token value as sent: a pasted trailing space or newline is not part of it."""
+    return os.environ.get(name, "").strip()
 
 
 class _EndpointAbsentError(RuntimeError):
@@ -743,6 +744,47 @@ class _EndpointAbsentError(RuntimeError):
     which is itself a date for it. Observed on 2026-09-15 against the image
     production had been running since 2026-09-14.
     """
+
+
+class _ServiceTokenRefusedError(RuntimeError):
+    """Access or the Worker turned the service token away before the container.
+
+    Each status names a different layer, so each gets its own fix. The redirect
+    is never followed: its Location belongs to Access, not to this deployment.
+    """
+
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(f"/api/build answered {status}")
+        self.status = status
+        self.detail = detail
+
+
+def _refusal_detail(response: httpx.Response) -> str:
+    """The Worker's JSON `detail`, when the refusal carries one; "" otherwise."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return detail if isinstance(detail, str) else ""
+
+
+def _refusal_fix(status: int, detail: str) -> str:
+    if status == 302:
+        return (
+            "Access redirected the request to its login page: the service token is "
+            "missing, or no Service Auth policy allows it on this application."
+        )
+    if status == 401:
+        return (
+            "Access refused the token: it is expired, or it does not match the Access "
+            "application. Issue a new service token and update .env."
+        )
+    suffix = f" The Worker said: {detail}" if detail else ""
+    return (
+        "The Worker refused the Access JWT. Check CYRIS_ACCESS_TEAM_DOMAIN and "
+        f"CYRIS_ACCESS_AUD on the deployment against the Access application.{suffix}"
+    )
 
 
 def _git(*args: str) -> str | None:
@@ -759,7 +801,7 @@ def _git(*args: str) -> str | None:
 
 
 async def _fetch_build_sha(base: str) -> str:
-    """Sign in to the deployment and ask which image it starts.
+    """Ask the deployment which image it starts, through Access with the service token.
 
     Every request wakes the `ui` instance, so this answers on demand rather than
     at the next cron hour — which is what keeps a deploy that never landed
@@ -767,16 +809,16 @@ async def _fetch_build_sha(base: str) -> str:
     """
     import httpx
 
-    token = os.environ["CYRIS_UI_TOKEN"]
+    headers = {
+        "CF-Access-Client-Id": _access_token("CYRIS_ACCESS_CLIENT_ID"),
+        "CF-Access-Client-Secret": _access_token("CYRIS_ACCESS_CLIENT_SECRET"),
+    }
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
-        login = await client.post(f"{base}/login", data={"token": token})
-        if login.status_code != 302:
-            raise RuntimeError(f"/login answered {login.status_code}, not a session")
-        # The cookie the 302 set is in the client's jar; the Worker checks it
-        # before anything reaches the container.
-        build = await client.get(f"{base}/api/build")
+        build = await client.get(f"{base}/api/build", headers=headers)
         if build.status_code == 404:
             raise _EndpointAbsentError(base)
+        if build.status_code in (302, 401, 403):
+            raise _ServiceTokenRefusedError(build.status_code, _refusal_detail(build))
         if build.status_code != 200:
             raise RuntimeError(f"/api/build answered {build.status_code}")
         return str(build.json().get("git_sha", "")).strip()
@@ -832,29 +874,59 @@ async def _deployment(url: str) -> tuple[Check, str]:
     """The image verdict, plus the sha it was judged on ("" when none was read)."""
     base = url.rstrip("/")
     # Before any request: a missing token is a fault in this machine's .env, and
-    # answering it with the hostname hint below would send the reader elsewhere.
-    if not os.environ.get("CYRIS_UI_TOKEN"):
+    # answering it with the URL hint below would send the reader elsewhere.
+    missing = [v for v in _ACCESS_TOKEN_VARS if not _access_token(v)]
+    if missing:
+        names = " and ".join(missing)
         return Check(
             "deployment image",
             "fail",
-            f"cannot sign in to {base} — CYRIS_UI_TOKEN is not set here",
-            "Put the deployment's UI token in .env as CYRIS_UI_TOKEN.",
+            f"cannot send a service token to {base} — {names} not set here",
+            f"Put the Access service token in .env as {names}.",
+        ), ""
+    # Named by variable only: the value is what is wrong, and it must not be echoed.
+    invalid = [v for v in _ACCESS_TOKEN_VARS if not _HEADER_VALUE.fullmatch(_access_token(v))]
+    if invalid:
+        names = " and ".join(invalid)
+        return Check(
+            "deployment image",
+            "fail",
+            f"cannot send a service token to {base} — {names} is not a single line of text",
+            f"Copy the Access service token into .env again as {names}, on one line.",
         ), ""
     try:
         online = await _fetch_build_sha(base)
     except _EndpointAbsentError:
-        # The hostname hint below would be a wrong cause: this deployment signed
-        # us in, so the host is right and the image is simply older than the
-        # endpoint. Say that, since it is the closest thing to a date it has.
+        # The URL hint below would be a wrong cause: this deployment answered us,
+        # so the host is right and the image is simply older than the endpoint.
+        # Say that, since it is the closest thing to a date it has.
         return Check(
             "deployment image",
             "fail",
             f"{base} signed in but serves no /api/build — that image predates the endpoint",
             "Deploy a build that carries it; until then production cannot name its commit.",
         ), ""
+    except _ServiceTokenRefusedError as e:
+        return Check(
+            "deployment image",
+            "fail",
+            f"{base} refused the service token — {HTTPStatus(e.status).phrase}",
+            _refusal_fix(e.status, e.detail),
+        ), ""
+    except httpx.LocalProtocolError:
+        # Its message can carry the header value it refused, so it is never shown.
+        return Check(
+            "deployment image",
+            "fail",
+            f"{base} did not answer — the request could not be sent",
+            "Check CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET in .env.",
+        ), ""
     except Exception as e:  # noqa: BLE001 - every other failure is the same answer: unknown
         return Check(
-            "deployment image", "fail", f"{base} did not answer — {e}", _WORKERS_DEV_HINT
+            "deployment image",
+            "fail",
+            f"{base} did not answer — {e}",
+            f"Check that {base} is the deployment's URL and that this machine can reach it.",
         ), ""
     return _compare_build_sha(base, online), online
 

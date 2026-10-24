@@ -8,6 +8,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import httpx
 import pytest
 from trial_tree import DIGEST, SLUG, load, make_tree
 
@@ -20,6 +21,7 @@ NEW = "sha256:" + "b" * 64
 PROVISIONED = "1" * 40
 MESSAGE = f"This commit has an image. commit={COMMIT} digest={NEW}"
 APP_CONFIG = f"wrangler.trial-{SLUG}.toml"
+ACCESS = {"CF-Access-Client-Id": "cid", "CF-Access-Client-Secret": "sek-SECRET"}
 RSS_CONFIG = f"workers/rss/wrangler.trial-{SLUG}.toml"
 PROMOTE_CONFIG = f"workers/promote/wrangler.trial-{SLUG}.toml"
 
@@ -57,7 +59,9 @@ class FakeRunner:
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
     t = make_tree(tmp_path, "deploy_trial")
-    (t / f".env.trial-{SLUG}").write_text("CYRIS_UI_TOKEN=ui-SECRET\n", encoding="utf-8")
+    (t / f".env.trial-{SLUG}.access").write_text(
+        "CYRIS_ACCESS_CLIENT_ID=cid\nCYRIS_ACCESS_CLIENT_SECRET=sek-SECRET\n", encoding="utf-8"
+    )
     return t
 
 
@@ -69,8 +73,8 @@ def deploy(tree: Path, monkeypatch):
 def _main(deploy, runner, *args, online=COMMIT):
     said, slept, asked = [], [], []
 
-    def fetch(base, token):
-        asked.append((base, token))
+    def fetch(base, headers):
+        asked.append((base, headers))
         return online
 
     code = deploy.main(
@@ -126,7 +130,7 @@ def test_a_deploy_renders_the_new_digest_deploys_and_checks_the_build(deploy, tr
         ["bunx", "wrangler", "deploy", "--config", APP_CONFIG, "--env-file", "/dev/null",
          "--containers-rollout", "immediate"],
     ]  # fmt: skip
-    assert asked == [(f"https://{SLUG}.example.com", "ui-SECRET")]
+    assert asked == [(f"https://{SLUG}.example.com", ACCESS)]
     assert slept == [deploy.WAIT_SECONDS]
     state = (tree / f".env.trial-{SLUG}-wizard").read_text()
     assert "IMAGE_TAG=image/2056593\n" in state and f"IMAGE_DIGEST={NEW}\n" in state
@@ -156,7 +160,7 @@ def test_a_build_answer_that_is_not_json_is_a_failed_attempt(deploy) -> None:
     answers = iter([ValueError("Expecting value: line 1 column 1"), COMMIT])
     slept: list[float] = []
 
-    def fetch(base, token):
+    def fetch(base, headers):
         answer = next(answers)
         if isinstance(answer, Exception):
             raise answer
@@ -314,12 +318,37 @@ def test_a_failed_app_deploy_puts_the_old_config_back(deploy, tree: Path) -> Non
     assert (tree / f".env.trial-{SLUG}-wizard").read_text() == state
 
 
-def test_no_ui_token_stops_before_any_deploy(deploy, tree: Path, capsys) -> None:
-    (tree / f".env.trial-{SLUG}").write_text("GEMINI_API_KEY=x\n")
+def test_no_service_token_stops_before_any_deploy(deploy, tree: Path, capsys) -> None:
+    (tree / f".env.trial-{SLUG}.access").write_text("CYRIS_ACCESS_CLIENT_ID=cid\n")
     runner = FakeRunner()
 
     code, *_ = _main(deploy, runner)
 
     assert code == 1
-    assert "CYRIS_UI_TOKEN" in capsys.readouterr().err
+    assert "CYRIS_ACCESS_CLIENT_SECRET" in capsys.readouterr().err
     assert runner.deploys() == []
+
+
+def test_the_build_is_asked_through_access_with_no_login(deploy) -> None:
+    seen: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"git_sha": COMMIT})
+
+    client = httpx.Client(transport=httpx.MockTransport(answer))
+    sha = deploy.fetch_build_sha("https://t.example.com", ACCESS, client)
+
+    assert sha == COMMIT
+    assert [str(r.url) for r in seen] == ["https://t.example.com/api/build"]
+    assert seen[0].headers["CF-Access-Client-Id"] == "cid"
+    assert seen[0].headers["CF-Access-Client-Secret"] == "sek-SECRET"
+
+
+def test_an_access_redirect_is_a_failed_ask(deploy) -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(302, headers={"Location": "/x"}))
+    )
+
+    with pytest.raises(deploy.DeployError, match="answered 302"):
+        deploy.fetch_build_sha("https://t.example.com", ACCESS, client)

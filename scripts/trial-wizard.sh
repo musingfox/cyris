@@ -218,6 +218,7 @@ LOGIN_WAIT_INTERVAL="${TRIAL_WIZARD_LOGIN_INTERVAL:-30}"
 
 STATE=".env.trial-$SLUG-wizard"
 APP_ENV=".env.trial-$SLUG"
+ACCESS_ENV=".env.trial-$SLUG.access"
 PROMOTE_ENV=".env.trial-$SLUG-promote"
 RSS_ENV=".env.trial-$SLUG-rss"
 APP_CFG="wrangler.trial-$SLUG.toml"
@@ -270,6 +271,30 @@ ask_match() {
   done
 }
 
+# access_answer FILE VAR "prompt" REGEX [hidden] asks until the answer matches REGEX; Enter keeps
+# the value already saved in FILE. Input that ends keeps that value, or stops the stage naming
+# VAR when nothing is saved, so a closed stdin cannot loop.
+access_answer() {
+  local file="$1" var="$2" prompt="$3" regex="$4" hidden="${5:-}" input rc=0 current
+  current=$(fileval "$file" "$var")
+  while true; do
+    rc=0
+    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+    [[ -z "$current" ]] || printf '%s[Enter keeps current]%s ' "$DIM" "$RESET"
+    if [[ -n "$hidden" ]]; then read -rs input || rc=$?; printf '\n'
+    else read -r input || rc=$?; fi
+    if (( rc != 0 )); then
+      [[ -n "$current" ]] || die "No answer for $var."
+      input="$current"
+    fi
+    [[ -n "$input" ]] || input="$current"
+    if [[ "$input" =~ $regex ]]; then printf -v "$var" '%s' "$input"; return 0; fi
+    if (( rc != 0 )); then die "No answer for $var."; fi
+    if [[ -z "$input" ]]; then warn "$var is empty. Enter it again."
+    else warn "$var does not look right. $prompt"; fi
+  done
+}
+
 wrangler_toml_untouched() {
   [[ -z "$(git status --porcelain wrangler.toml)" ]] || die "wrangler.toml changed. Restore it (git checkout wrangler.toml) before going on."
 }
@@ -280,24 +305,37 @@ derive_names() {
   eval "$out"
 }
 
-login_redirect() {
-  local h
-  h=$(curl -s -o /dev/null -D - --max-time 30 "https://$SLUG.$DOMAIN/" || true)
-  grep -qiE '^HTTP/[0-9.]+ 302' <<<"$h" && grep -qiE '^location: /login\?next=%2F' <<<"$h"
+# access_header_file writes the service-token headers to a private temp file and prints its
+# path, so the secret reaches curl through a file and never through argv.
+access_header_file() {
+  local f
+  f=$(mktemp)
+  printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' \
+    "$(fileval "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_ID)" "$(fileval "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_SECRET)" > "$f"
+  printf '%s' "$f"
+}
+
+service_token_ok() {
+  local hdr code
+  hdr=$(access_header_file)
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "@$hdr" "https://$SLUG.$DOMAIN/api/build" || true)
+  rm -f "$hdr"
+  [[ "$code" == 200 ]]
 }
 
 # The first trial's new custom domain answered 28 minutes after its deploy.
-wait_login_redirect() {
+wait_service_token() {
   local start=$SECONDS waited
-  until login_redirect; do
+  while true; do
     waited=$((SECONDS - start))
-    ((waited < LOGIN_WAIT_SECONDS)) \
-      || die "No 302 → /login after ${waited}s. See docs/install-cloudflare.md step 6 on a new custom domain."
-    printf '  waiting for https://%s.%s/ to answer 302 → /login: %dm%02ds\n' \
+    printf '  waiting for https://%s.%s/ to answer 200 with the service token: %dm%02ds\n' \
       "$SLUG" "$DOMAIN" $((waited / 60)) $((waited % 60))
+    service_token_ok && break
+    ((waited < LOGIN_WAIT_SECONDS)) \
+      || die "No 200 from /api/build with the service token after ${waited}s. See docs/install-cloudflare.md step 6 on a new custom domain."
     sleep "$LOGIN_WAIT_INTERVAL"
   done
-  printf '  %s✓%s unauthenticated request → 302 /login?next=%%2F\n' "$GREEN" "$RESET"
+  printf '  %s✓%s service token → 200 from /api/build\n' "$GREEN" "$RESET"
 }
 
 deploy_app() {
@@ -311,11 +349,11 @@ deploy_app() {
 # A declined deploy changes nothing, so one look stands in for the long wait.
 deploy_app_and_wait() {
   if deploy_app "$1"; then
-    wait_login_redirect
-  elif login_redirect; then
-    printf '  %s✓%s unauthenticated request → 302 /login?next=%%2F\n' "$GREEN" "$RESET"
+    wait_service_token
+  elif service_token_ok; then
+    printf '  %s✓%s service token → 200 from /api/build\n' "$GREEN" "$RESET"
   else
-    warn "https://$SLUG.$DOMAIN/ does not answer 302 → /login, and nothing was deployed now."
+    warn "https://$SLUG.$DOMAIN/api/build does not answer 200 with the service token, and nothing was deployed now."
   fi
 }
 
@@ -329,10 +367,23 @@ receipts() {
   printf '\n%s  usage_log, last 7 days%s\n' "$BOLD" "$RESET"
   show_run d1-usage bunx wrangler d1 execute "$TRIAL_D1_NAME" --remote --config "$RSS_CFG" --env-file /dev/null \
     --command "SELECT date(logged_at) AS day, count(*) AS runs, sum(api_calls) AS calls, round(sum(cost_usd), 4) AS usd FROM usage_log WHERE logged_at >= date('now', '-7 day') GROUP BY day ORDER BY day" || warn "query failed"
-  printf '\n%s  login redirect%s\n' "$BOLD" "$RESET"
-  if login_redirect; then printf '  %s✓%s 302 → /login\n' "$GREEN" "$RESET"; else warn "no 302 → /login on https://$SLUG.$DOMAIN/"; fi
+  printf '\n%s  Access sign-in%s\n' "$BOLD" "$RESET"
+  local code body
+  body=$(mktemp)
+  code=$(curl -s -o "$body" -w '%{http_code}' --max-time 30 "https://$SLUG.$DOMAIN/settings" || true)
+  # The Worker's own refusal (workers/app/src/router.js) means the request got past Access.
+  if [[ "$code" == 403 ]] && grep -q '"error":"forbidden"' "$body"; then
+    warn "unauthenticated https://$SLUG.$DOMAIN/settings → 403 from the Worker, not Access; Access does not cover it. Check the Access application's destinations."
+  else
+    case "$code" in
+      302|401|403) printf '  %s✓%s unauthenticated https://%s.%s/settings → %s\n' "$GREEN" "$RESET" "$SLUG" "$DOMAIN" "$code" ;;
+      *) warn "unauthenticated https://$SLUG.$DOMAIN/settings → $code; Access does not cover it. Check the Access application's destinations." ;;
+    esac
+  fi
+  rm -f "$body"
+  if service_token_ok; then printf '  %s✓%s service token → 200 from /api/build\n' "$GREEN" "$RESET"
+  else warn "https://$SLUG.$DOMAIN/api/build does not answer 200 with the service token."; fi
   printf '\n%s  production archive still public%s\n' "$BOLD" "$RESET"
-  local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://cyris-digest.pages.dev/ || true)
   if [[ "$code" == 200 ]]; then printf '  %s✓%s https://cyris-digest.pages.dev/ → 200\n' "$GREEN" "$RESET"; else warn "https://cyris-digest.pages.dev/ → $code"; fi
   printf '\n%s  cyris doctor --deployment%s\n' "$BOLD" "$RESET"
@@ -343,7 +394,8 @@ receipts() {
     echo "CYRIS_STORE_BACKEND=d1"
     echo "CYRIS_HTML_OUTPUT_ENABLED=true"
     echo "CYRIS_PROMOTE_PUBLISH_ENABLED=true"
-    grep -E '^(CYRIS_STORE_DATABASE_ID|CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_PROMOTE_PAGES_PROJECT|GEMINI_API_KEY|CYRIS_UI_TOKEN|CYRIS_RSS_WORKER_URL|CYRIS_WORKER_TOKEN|CYRIS_PROMOTE_WORKER_URL|CYRIS_PROMOTE_TOKEN)=' "$APP_ENV"
+    grep -E '^(CYRIS_STORE_DATABASE_ID|CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_PROMOTE_PAGES_PROJECT|GEMINI_API_KEY|CYRIS_RSS_WORKER_URL|CYRIS_WORKER_TOKEN|CYRIS_PROMOTE_WORKER_URL|CYRIS_PROMOTE_TOKEN)=' "$APP_ENV"
+    grep -E '^(CYRIS_ACCESS_CLIENT_ID|CYRIS_ACCESS_CLIENT_SECRET)=' "$ACCESS_ENV"
   } > "$dir/.env"
   (cd "$dir" && env -i HOME="$HOME" PATH="$PATH" uv run --project "$REPO" cyris doctor --deployment "https://$SLUG.$DOMAIN") || warn "doctor exited non-zero; read the lines above"
   rm -r "$dir"
@@ -365,11 +417,8 @@ fi
 
 # ── 1 ─────────────────────────────────────────────────────────────────────
 stage_1() {
-  stage "Before you start: Access policy and the wrangler login"
-  say "A wildcard Access policy on the trial's domain would give the tester a second login."
-  open_url "https://one.dash.cloudflare.com/"
-  step "Zero Trust → Access → Applications: check no policy covers <slug>.<domain> (e.g. *.<domain>)."
-  pause "Checked, no policy covers it? Press Enter"
+  stage "Before you start: the wrangler login"
+  say "Stage 11 has you create the trial's Access application, its policies and a service token."
   say "Log wrangler in as the account the trial belongs to."
   if confirm "Log wrangler in now? (No if it already is, as that account)"; then
     bunx wrangler login --env-file /dev/null || die "Login did not finish."
@@ -565,14 +614,31 @@ stage_10() {
 
 # ── 11 ────────────────────────────────────────────────────────────────────
 stage_11() {
-  stage "Write the app's secrets file"
-  [[ -n "$(fileval "$APP_ENV" CYRIS_UI_TOKEN)" ]] || in_file "$APP_ENV" write_env CYRIS_UI_TOKEN "$(openssl rand -hex 32)"
+  stage "Access application and the app's secrets file"
+  say "Cloudflare Access is the trial's only sign-in. Create it now, for $SLUG.$DOMAIN:"
+  open_url "https://one.dash.cloudflare.com/"
+  step "Access → Applications → Add an application → Self-hosted, on $SLUG.$DOMAIN."
+  step "Two policies: Allow for the tester's email, and Service Auth for the service token."
+  step "Access → Service Auth → Service Tokens → Create: keep its Client ID and Client Secret."
+  note "The secret is shown once. The wizard does not print it; it goes to $ACCESS_ENV."
+  pause "Created the application, both policies and the token? Press Enter"
+  access_answer "$APP_ENV" CYRIS_ACCESS_TEAM_DOMAIN "Team domain, e.g. yourteam.cloudflareaccess.com:" \
+    '^(https?://)?[a-z0-9-]+\.cloudflareaccess\.com/?$'
+  CYRIS_ACCESS_TEAM_DOMAIN="${CYRIS_ACCESS_TEAM_DOMAIN#*://}"
+  CYRIS_ACCESS_TEAM_DOMAIN="${CYRIS_ACCESS_TEAM_DOMAIN%/}"
+  access_answer "$APP_ENV" CYRIS_ACCESS_AUD "Application Audience (AUD) tag:" '^[^[:space:]]+$'
+  access_answer "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_ID "Service token Client ID:" '^[^[:space:]]+$'
+  access_answer "$ACCESS_ENV" CYRIS_ACCESS_CLIENT_SECRET "Service token Client Secret (hidden):" '^[^[:space:]]+$' hidden
+  in_file "$APP_ENV" write_env CYRIS_ACCESS_TEAM_DOMAIN "$CYRIS_ACCESS_TEAM_DOMAIN"
+  in_file "$APP_ENV" write_env CYRIS_ACCESS_AUD "$CYRIS_ACCESS_AUD"
+  in_file "$ACCESS_ENV" write_env CYRIS_ACCESS_CLIENT_ID "$CYRIS_ACCESS_CLIENT_ID"
+  in_file "$ACCESS_ENV" write_env CYRIS_ACCESS_CLIENT_SECRET "$CYRIS_ACCESS_CLIENT_SECRET"
   in_file "$APP_ENV" write_env CYRIS_STORE_DATABASE_ID "$TRIAL_D1_ID"
   in_file "$APP_ENV" write_env CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
   in_file "$APP_ENV" write_env CYRIS_PROMOTE_PAGES_PROJECT "$TRIAL_PAGES_PROJECT"
   in_file "$APP_ENV" write_env CYRIS_PROMOTE_WORKER_URL "$TRIAL_PROMOTE_URL"
   in_file "$APP_ENV" write_env CYRIS_PROMOTE_TOKEN "$(fileval "$PROMOTE_ENV" PROMOTE_TOKEN)"
-  for k in CYRIS_UI_TOKEN CLOUDFLARE_API_TOKEN GEMINI_API_KEY CYRIS_PROMOTE_TOKEN; do
+  for k in CLOUDFLARE_API_TOKEN GEMINI_API_KEY CYRIS_PROMOTE_TOKEN CYRIS_ACCESS_TEAM_DOMAIN CYRIS_ACCESS_AUD; do
     [[ -n "$(fileval "$APP_ENV" "$k")" ]] || die "$k is empty in $APP_ENV."
   done
   grep -qx "CYRIS_STORE_DATABASE_ID=$TRIAL_D1_ID" "$APP_ENV" || die "CYRIS_STORE_DATABASE_ID mismatch in $APP_ENV."
@@ -681,18 +747,9 @@ stage_15() {
 # ── 16 ────────────────────────────────────────────────────────────────────
 stage_16() {
   stage "Hand over"
-  say "Login: https://$SLUG.$DOMAIN/login"
-  if command -v pbcopy >/dev/null 2>&1; then
-    fileval "$APP_ENV" CYRIS_UI_TOKEN | tr -d '\n' | pbcopy
-    printf '  %s✓%s CYRIS_UI_TOKEN copied to the clipboard\n' "$GREEN" "$RESET"
-  else
-    say "CYRIS_UI_TOKEN is in $APP_ENV."
-  fi
-  step "Put it in a password manager item shared with the tester; never chat or email."
-  step "The tester signs in and walks /onboarding: sources, votes, notifications, then the first issue."
-  pause "Shared? Press Enter"
-  if command -v pbcopy >/dev/null 2>&1 && confirm "Clear the clipboard?"; then printf '' | pbcopy; fi
-  warn "Keep $APP_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
+  say "The tester signs in at https://$SLUG.$DOMAIN/ with the Access one-time PIN."
+  step "The tester walks /onboarding: sources, votes, notifications, then the first issue."
+  warn "Keep $APP_ENV, $ACCESS_ENV, $PROMOTE_ENV and $RSS_ENV: Cloudflare cannot read secrets back."
   next
 }
 

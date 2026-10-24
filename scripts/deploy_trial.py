@@ -21,8 +21,9 @@ PROMOTE_WORKER_COMMIT) and moves only when that Worker deploys, so a skipped or
 failed Worker deploy is offered again next time; before the first run it is the
 commit IMAGE_TAG names, the one the wizard provisioned with.
 
-After the deploy it waits, signs in to https://<slug>.<domain> with the
-trial's CYRIS_UI_TOKEN and fails unless /api/build names this commit. The wait is
+After the deploy it waits, asks https://<slug>.<domain>/api/build through Access
+with the service token in `.env.trial-<slug>.access`, and fails unless it names
+this commit. The wait is
 deploy.yml's: a warm instance keeps answering from the image it started with.
 
 --dry-run resolves the image, renders the config and runs `wrangler deploy
@@ -47,6 +48,11 @@ ROOT = provision_trial.ROOT
 WAIT_SECONDS = 360
 ATTEMPTS = 2
 REQUEST_TIMEOUT = 120
+# The service token's two values, as the trial wizard saves them, and the header each goes in.
+ACCESS_HEADERS = {
+    "CYRIS_ACCESS_CLIENT_ID": "CF-Access-Client-Id",
+    "CYRIS_ACCESS_CLIENT_SECRET": "CF-Access-Client-Secret",
+}
 WORKER_DIRS = {"rss": "workers/rss", "promote": "workers/promote"}
 STATE_KEYS = ("DOMAIN", "ACCOUNT_ID", "TRIAL_KV_ID", "TRIAL_D1_ID")
 BASELINE_KEYS = {"rss": "RSS_WORKER_COMMIT", "promote": "PROMOTE_WORKER_COMMIT"}
@@ -104,13 +110,10 @@ def write_state(slug: str, values: dict[str, str]) -> None:
     path.write_text("\n".join([*kept, *(f"{k}={v}" for k, v in values.items())]) + "\n")
 
 
-def fetch_build_sha(base: str, token: str, client: httpx.Client | None = None) -> str:
-    """Sign in to the trial and ask which commit its image was built from."""
+def fetch_build_sha(base: str, headers: dict[str, str], client: httpx.Client | None = None) -> str:
+    """Ask the trial through Access, with its service token, which commit its image is from."""
     with client or httpx.Client(timeout=REQUEST_TIMEOUT, follow_redirects=False) as c:
-        login = c.post(f"{base}/login", data={"token": token})
-        if login.status_code != 302:
-            raise DeployError(f"{base}/login answered {login.status_code}, not a session")
-        build = c.get(f"{base}/api/build")
+        build = c.get(f"{base}/api/build", headers=headers)
         if build.status_code != 200:
             raise DeployError(f"{base}/api/build answered {build.status_code}")
         return str(build.json().get("git_sha", "")).strip()
@@ -226,18 +229,20 @@ class Deploy:
         self.say("$ " + " ".join(cmd))
         self.sh(cmd)
 
-    def token(self) -> str:
-        token = provision_trial.env_file(f".env.trial-{self.slug}").get("CYRIS_UI_TOKEN")
-        if not token:
-            raise DeployError(f".env.trial-{self.slug} holds no CYRIS_UI_TOKEN to sign in with")
-        return token
+    def access_headers(self) -> dict[str, str]:
+        name = f".env.trial-{self.slug}.access"
+        values = provision_trial.env_file(name)
+        missing = [var for var in ACCESS_HEADERS if not values.get(var)]
+        if missing:
+            raise DeployError(f"{name} holds no {' or '.join(missing)} to sign in with")
+        return {header: values[var] for var, header in ACCESS_HEADERS.items()}
 
     def verify(
         self,
         commit: str,
         base: str,
-        token: str,
-        fetch: Callable[[str, str], str],
+        headers: dict[str, str],
+        fetch: Callable[[str, dict[str, str]], str],
         sleep: Callable[[float], None],
     ) -> None:
         online = ""
@@ -245,7 +250,7 @@ class Deploy:
             self.say(f"waiting {self.args.wait}s for the rollout (attempt {attempt}/{ATTEMPTS})")
             sleep(self.args.wait)
             try:
-                online = fetch(base, token)
+                online = fetch(base, headers)
             # ValueError: a 200 whose body is not JSON, such as a page served while rolling.
             except (DeployError, httpx.HTTPError, ValueError) as exc:
                 self.say(f"  {exc}")
@@ -292,7 +297,7 @@ def main(
     argv: list[str] | None = None,
     run: Runner | None = None,
     say: Callable[[str], None] = print,
-    fetch: Callable[[str, str], str] = fetch_build_sha,
+    fetch: Callable[[str, dict[str, str]], str] = fetch_build_sha,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     args = build_parser().parse_args(argv)
@@ -304,7 +309,7 @@ def main(
         step = Deploy(args, run or _runner(wrangler_env(args.slug)), say)
         commit = step.commit()
         # Read before anything deploys, so a deploy that cannot be checked never starts.
-        token = "" if args.dry_run else step.token()
+        headers = {} if args.dry_run else step.access_headers()
         digest = step.digest(commit)
         say(f"{image_tag(commit)}: {commit} -> {digest}")
         state = provision_trial.wizard_state(args.slug)
@@ -345,7 +350,7 @@ def main(
             say("Dry run: nothing was deployed, and the configs and wizard state are unchanged.")
             return 0
         host = configs["app"]["routes"][0]["pattern"]
-        step.verify(commit, f"https://{host}", token, fetch, sleep)
+        step.verify(commit, f"https://{host}", headers, fetch, sleep)
         say(f"https://{host} serves {commit}: the trial runs this release.")
         return 0
     except (DeployError, provision_trial.ProductionNameError, provision_trial.DriftError) as exc:
