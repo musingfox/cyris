@@ -214,7 +214,8 @@ class TestStoreBackendFromEnv:
     def test_invalid_backend_raises(self, monkeypatch):
         from pydantic import ValidationError
 
-        monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
+        # "sqlite" is the third, local backend now; the invalid one stays fake.
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "postgres")
         with pytest.raises(ValidationError, match="backend"):
             make_config()
 

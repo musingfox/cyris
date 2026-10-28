@@ -113,6 +113,15 @@
     "route": "plain",
     "live": true
   },
+  "digest.theme": {
+    "tab": "theme",
+    "label": "Theme",
+    "controls": [
+      "page-theme"
+    ],
+    "route": "plain",
+    "optional": true
+  },
   "digest.rank_by_preference": {
     "tab": "digest",
     "label": "Order by your votes",

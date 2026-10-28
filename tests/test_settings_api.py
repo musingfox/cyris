@@ -255,7 +255,9 @@ class TestEveryKeyReported:
         await client.close()
 
         by_name = {p["name"]: p for p in data["embedding_providers"]}
-        assert set(by_name) == {"workers_ai", "gemini"}
+        assert set(by_name) == {"workers_ai", "gemini", "openai_compatible"}
+        # The compatible pair's key is optional, so it is choosable either way.
+        assert by_name["openai_compatible"]["configured"] is True
         assert by_name["workers_ai"]["configured"] is True
         assert by_name["workers_ai"]["default_model"] == "@cf/baai/bge-m3"
         assert by_name["workers_ai"]["env_var"] == "CLOUDFLARE_EMBEDDING_API_TOKEN"
@@ -609,7 +611,7 @@ class TestVoteSimilarity:
 
         calls: list[tuple] = []
 
-        async def fake(provider, model):
+        async def fake(provider, model, base_url=""):
             calls.append((provider, model))
             return fake.result
 
@@ -681,7 +683,9 @@ class TestVoteSimilarity:
         await client.close()
 
         assert res.status == 400
-        assert body["error"] == "Embedding provider: Input should be 'workers_ai' or 'gemini'"
+        assert body["error"] == (
+            "Embedding provider: Input should be 'workers_ai', 'gemini' or 'openai_compatible'"
+        )
         assert body["field"] == "vote_similarity.provider"
         assert probe.calls == []
         assert settings.calls == []
@@ -1294,7 +1298,7 @@ class TestRefusalsNameTheField:
     ):
         from cyris.diagnostics.doctor import Check
 
-        async def refuse(provider, model):
+        async def refuse(provider, model, base_url=""):
             return Check("embedding probe", "fail", "refused", "Do this next.")
 
         monkeypatch.setattr("cyris.entrypoints.triage_server.probe_embedder", refuse)

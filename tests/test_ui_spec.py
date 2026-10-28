@@ -601,6 +601,7 @@ def test_the_onboarding_script_keeps_the_scroll_and_dialog_rules() -> None:
 SETTINGS_HASHES = [
     "#model",
     "#digest",
+    "#theme",
     "#pipeline",
     "#notifications",
     "#sources",

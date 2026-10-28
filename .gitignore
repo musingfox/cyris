@@ -88,3 +88,6 @@ wrangler.preview-*.toml
 
 # launch film workspace (product-launch-motion skill); renders and voice files stay out of the public repo
 launch-video/
+
+# A private running log of this fork; the CHANGELOG is the record.
+release_note.md

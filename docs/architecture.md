@@ -434,8 +434,8 @@ and the run continues. Topic tags emitted by scoring and by news clustering land
 `tags`/`article_tags` (`D1TagStore`), and each run's pre-truncation story membership — which
 articles the clustering step grouped, including members the output cap dropped — replaces its
 (date, period) window in `stories`/`story_members` (`D1StoryStore`). Both stores are direct
-injections built only when D1 is configured; with `backend = "json"` they are absent and the run
-skips the writes.
+injections built only when a SQL store is configured (`d1` or `sqlite`); with `backend = "json"`
+they are absent and the run skips the writes.
 
 A publishing run also saves the URLs it fed the pipeline to `digest_inputs`, which is the record a
 rerun rebuilds from. `cyris regenerate` has two forms over a stored issue: a re-render to a file, with
@@ -507,8 +507,8 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry |
 | Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. D1 only: a `json` deployment polls no Worker |
-| Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |
-| Runtime settings | **D1 `settings`**; `cyris.toml` for a `json` deployment | same | Grade D. One home per backend, no value in code, and a missing key stops the run — see §5 |
+| Source definitions | **the SQL store's `sources` table (D1 or `agent-vault/cyris.db`)**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |
+| Runtime settings | **the SQL store's `settings` table (D1 or `agent-vault/cyris.db`)**; `cyris.toml` for a `json` deployment | same | Grade D. One home per backend, no value in code, and a missing key stops the run — see §5 |
 | Tracked topics | **D1 `tracked_topics`**; `cyris.toml` `[[tracked_topics]]` for a `json` deployment | same | Grade D, one row per topic: name, description, threshold and the embedding model the threshold was set for. Written by `/settings` (Tracking), read by `load_effective_config` beside `sources`. Not rows of `settings`: an empty table is a deployment that tracks nothing. A topic's hits are not kept here, or anywhere of their own: they live in the issue's `DigestContent`, which D1 `digests` stores |
 | Areas: name, position, status, merged target, proposal counts | **D1 `areas`** (none for a `json` deployment) | same | Grade D, one row per area, written by `/settings` (Areas). Read by `load_effective_config` beside `tracked_topics`, so every run sees the closed set the model picks from. A `proposed` row carries the counts a suggestion has accumulated; a `dismissed` or `merged` row stays so its name keeps resolving |
 | Area birth threshold | **D1 `area_birth_threshold`** (none for a `json` deployment) | same | Grade D, at most one row, written by `/settings` (Areas). Read only by `/settings`, to mark which proposals meet it. No run reads it, so an unset threshold changes no run |
@@ -601,7 +601,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Cloudflare account id, for CI | B | GitHub Actions repository **variable** `CLOUDFLARE_ACCOUNT_ID` | done — a variable, not a secret: it is deployer identity, and keeping it readable makes a wrong registry path a visible 404 rather than `***` |
 | Deployment URL, for CI | B | GitHub Actions repository **variable** `CYRIS_DEPLOYMENT_URL` (the app Worker's `workers.dev` URL; the verify step signs in with the Access service token) | done 2026-09-26 — read by `deploy.yml`'s `verify` step only |
-| Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`; a value set in the file wins) | done |
+| Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`/`sqlite`; a value set in the file wins) | done |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (a value set in `cyris.toml [promote]` wins) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
 | HTML digest render / Pages publish | B | `CYRIS_HTML_OUTPUT_ENABLED`, `CYRIS_PROMOTE_PUBLISH_ENABLED` | done |
@@ -787,13 +787,15 @@ each backend has exactly one home, with nothing overlaid:
   missing, because D1 is fixed through `/settings`, which has to start; an invalid `cyris.toml`
   value fails the load, because the file is fixed in an editor.
 
-One key is also read outside a run: the app Worker reads `digest.type_scale` over REST to size
-every page it serves, and there a missing or invalid row, or any failed read, means 1 rather than an
+Two keys are also read outside a run: the app Worker reads `digest.type_scale` and `digest.theme`
+over REST (the theme beside it as `theme.js`, its sibling) to size and skin
+every page it serves — `triage-ui` and `cyris serve` inject both per read locally — and there a
+missing or invalid row, or any failed read, means the default rather than an
 error — a page view is not a run and must never fail on a setting. A `json` deployment has no Worker
 read, so its pages stay at 1.
 
-`cyris doctor` fails its `settings` check naming each missing key, warns on `sources` while the D1
-table is empty (waiting for onboarding), and on a `d1` deployment fails `file settings` when `cyris.toml` still sets a grade-D key
+`cyris doctor` fails its `settings` check naming each missing key, warns on `sources` while a SQL
+store's table is empty (waiting for onboarding), and on a `d1` or `sqlite` deployment fails `file settings` when `cyris.toml` still sets a grade-D key
 the deployment ignores. `cyris settings push` copies the keys D1 lacks from a `cyris.toml`, never
 overwrites a row, and prints the database id it bound to first.
 

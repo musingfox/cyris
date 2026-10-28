@@ -5,8 +5,8 @@ feature quietly finding a new home for state. A new `write_text` is how that
 starts, so the set of files allowed to make one is pinned here rather than
 rediscovered by the next audit.
 
-The four backend fallbacks are the same shape: a backend the cloud path does not
-use, and under `[store] backend = "d1"` none of them runs. The fifth is the CLI's
+The five backend fallbacks are the same shape: a backend the cloud path does not
+use, and under `[store] backend = "d1"` none of them runs. The sixth is the CLI's
 `--output` file, which an operator names on purpose and which holds a preview or a
 regenerated page, never state.
 """
@@ -25,6 +25,7 @@ ALLOWED = {
     "adapters/output/html_digest.py",  # agent-vault/html/, the no-D1 fallback
     "adapters/output/usage_log.py",  # usage.jsonl, the no-D1 fallback
     "adapters/store/article_store.py",  # the json store backend
+    "adapters/store/sqlite.py",  # the sqlite store backend: one DB file
     "diagnostics/doctor.py",  # the vault writability probe, skipped under D1
     "entrypoints/cli.py",  # the file `--output` names: a preview or a regenerated page
 }
@@ -65,7 +66,7 @@ def _writes_to_disk(source: str) -> bool:
 
 def test_only_the_documented_fallbacks_write_to_local_disk() -> None:
     writers = {
-        str(path.relative_to(SRC))
+        path.relative_to(SRC).as_posix()
         for path in sorted(SRC.rglob("*.py"))
         if _writes_to_disk(path.read_text())
     }

@@ -58,7 +58,9 @@ def _with(directory: Path, threshold: float | None) -> Path:
 def test_only_config_and_doctor_read_the_threshold() -> None:
     pattern = re.compile(r"vote\.threshold|vote_similarity\.threshold")
     hit_files = {
-        str(path.relative_to(SRC)) for path in SRC.rglob("*.py") if pattern.search(path.read_text())
+        path.relative_to(SRC).as_posix()
+        for path in SRC.rglob("*.py")
+        if pattern.search(path.read_text())
     }
 
     assert hit_files <= {"config.py", "diagnostics/doctor.py"}
@@ -123,7 +125,7 @@ async def test_one_window_suppresses_the_same_url_whatever_the_leftover_threshol
 
 def test_no_source_names_the_deleted_constants() -> None:
     hits = [
-        str(path.relative_to(SRC))
+        path.relative_to(SRC).as_posix()
         for path in SRC.rglob("*")
         if path.is_file()
         and path.suffix in {".py", ".json", ".sql"}

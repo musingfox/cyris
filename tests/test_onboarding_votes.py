@@ -294,5 +294,5 @@ class TestVoteSimilarity:
             status, _ = await _call(deployment.server._handle_post_vote, body)
 
         assert status == 200
-        probe.assert_awaited_once_with("workers_ai", "")
+        probe.assert_awaited_once_with("workers_ai", "", "")
         assert deployment.settings.all() == {**STORED, "vote_similarity.enabled": True}

@@ -95,6 +95,7 @@
       <nav class="settings-nav" aria-label="Settings sections">
         <a class="label" href="#model" data-tab="model">Model <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#digest" data-tab="digest">Digest <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#theme" data-tab="theme">Theme <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
@@ -119,6 +120,8 @@
               <label class="label" for="model-input">Model</label>
               <input class="input" id="model-input" type="text" autocomplete="off">
               <p class="small" id="model-hint"></p>
+              <button class="btn secondary sm" type="button" id="test-model" disabled>Test this model</button>
+              <div class="notice" id="test-model-result" role="status" hidden></div>
             </div>
             <div class="field">
               <span class="label" id="embedding-provider-label">Embedding provider</span>
@@ -129,7 +132,11 @@
               <label class="label" for="embedding-model-input">Embedding model</label>
               <input class="input" id="embedding-model-input" type="text" autocomplete="off">
               <p class="small">Checked with one real call when vote similarity is on.</p>
+              <button class="btn secondary sm" type="button" id="test-embedding" disabled>Test this embedder</button>
+              <div class="notice" id="test-embedding-result" role="status" hidden></div>
             </div>
+
+
             <div class="field">
               <label class="label" for="vote-enabled">Vote similarity</label>
               <select class="select" id="vote-enabled"><option value="false">Off</option><option value="true">On</option></select>
@@ -215,6 +222,34 @@
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
               <div class="notice" id="digest-result" role="status" hidden></div>
+            </div>
+          </div>
+        </form>
+
+        <form class="tab" data-tab="theme" id="theme-form" novalidate hidden>
+          <div class="tab-head">
+            <h2 class="heading">Theme</h2>
+            <p class="small">The palette the pages are drawn in. Picking one switches this page at once; Save stores it for the digest pages, where every read carries it.</p>
+            <p class="small" data-loading>Loading settings…</p>
+            <div class="notice err" id="theme-missing" hidden></div>
+          </div>
+          <div class="form">
+            <div class="field">
+              <label class="label" for="page-theme">Palette</label>
+              <select class="select" id="page-theme">
+                <option value="default">Default — the dark spec palette</option>
+                <option value="light">Light</option>
+                <option value="one_dark">One Dark</option>
+                <option value="catppuccin">Catppuccin</option>
+                <option value="nord">Nord</option>
+                <option value="tokyo_night">Tokyo Night</option>
+                <option value="github_dark">GitHub Dark</option>
+              </select>
+              <p class="small">Colour keeps its two meanings in every palette: the accent what you voted up, the warn what you voted down, everything else neutral.</p>
+            </div>
+            <div class="actions-line">
+              <button class="btn primary" type="submit" id="save-theme" disabled>Save</button>
+              <div class="notice" id="theme-result" role="status" hidden></div>
             </div>
           </div>
         </form>
@@ -314,6 +349,8 @@
             <div class="actions-line">
               <div class="notice" id="sources-notice" role="status" hidden></div>
               <button class="btn primary" type="button" id="add-source" disabled>+ Add source</button>
+              <button class="btn secondary" type="button" id="import-opml" hidden>Import OPML…</button>
+              <input type="file" id="opml-file" accept=".opml,.xml,application/xml,text/xml" hidden>
             </div>
           </div>
           <div class="table-wrap">

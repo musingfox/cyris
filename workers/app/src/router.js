@@ -11,6 +11,7 @@
 
 import { jwtVerify } from "jose";
 import { typeScaleStyle } from "./type_scale.js";
+import { themeStyle } from "./theme.js";
 
 const INTEREST_PATHS = ["/interest", "/interest.html", "/interest/"];
 
@@ -171,9 +172,14 @@ const VALIDATORS = ["If-None-Match", "If-Modified-Since"];
 // Access sends the JWT as a header and keeps it in the CF_Authorization cookie; a static archive needs no cookie.
 const ACCESS_CREDENTIALS = ["Cf-Access-Jwt-Assertion", "Cookie"];
 
-function sized(response, scale, deps) {
-  if (scale === 1 || !isHtml(response)) return response;
-  const injected = deps.injectStyle(response, typeScaleStyle(scale));
+// Two live reader preferences, one injection: the type size and the theme,
+// read from settings as the reader saves them (ADR-0013). A page untouched by
+// either passes as it came; anything injected drops the validators, because a
+// browser holding the Pages ETag would revalidate to a 304 of the old body.
+function sized(response, scale, theme, deps) {
+  const style = themeStyle(theme);
+  if ((scale === 1 && !style) || !isHtml(response)) return response;
+  const injected = deps.injectStyle(response, typeScaleStyle(scale) + style);
   const headers = new Headers(injected.headers);
   for (const name of ["ETag", "Last-Modified", "Content-Length"]) headers.delete(name);
   return new Response(injected.body, {
@@ -250,12 +256,13 @@ export async function handleRequest(request, env, deps) {
     }
     const readsPage = request.method === "GET" || request.method === "HEAD";
     const scale = readsPage ? await deps.typeScale.current() : 1;
+    const theme = readsPage ? await deps.theme.current() : "default";
     // The archive origin is configurable, so it never sees the reader's Access credentials.
     const headers = new Headers(request.headers);
     for (const name of ACCESS_CREDENTIALS) headers.delete(name);
-    if (scale !== 1) for (const name of VALIDATORS) headers.delete(name);
+    if (scale !== 1 || theme !== "default") for (const name of VALIDATORS) headers.delete(name);
     const proxied = new Request(origin + url.pathname + url.search, new Request(request, { headers }));
-    return sized(await deps.fetchImpl(proxied), scale, deps);
+    return sized(await deps.fetchImpl(proxied), scale, theme, deps);
   }
 
   // Access has already signed the reader in, so /login only sends them back where they came from.
@@ -293,7 +300,8 @@ export async function handleRequest(request, env, deps) {
   // The reader who saved a new size sees it on the next page, not a minute later.
   if (request.method === "POST" && url.pathname === "/api/settings/values" && response.ok) {
     deps.typeScale.forget();
+    deps.theme.forget();
   }
   if (!isHtml(response)) return response;
-  return sized(response, await deps.typeScale.current(), deps);
+  return sized(response, await deps.typeScale.current(), await deps.theme.current(), deps);
 }

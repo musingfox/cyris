@@ -5,6 +5,7 @@
     "default": "default (provider_defaults.json)",
     "file": "cyris.toml",
     "d1": "D1 settings",
+    "sqlite": "SQLite settings",
     "dotenv": ".env",
     "environment": "environment",
     "missing": "missing",
@@ -58,6 +59,12 @@
     "CLOUDFLARE_AI_TOKEN",
     "CLOUDFLARE_AIG_TOKEN",
     "CYRIS_WORKER_TOKEN",
-    "CYRIS_PROMOTE_TOKEN"
+    "CYRIS_PROMOTE_TOKEN",
+    "OPENAI_COMPATIBLE_API_KEY",
+    "OPENAI_COMPATIBLE_EMBEDDING_API_KEY",
+    "OPENAI_COMPATIBLE_BASE_URL",
+    "OPENAI_COMPATIBLE_MODEL",
+    "OPENAI_COMPATIBLE_EMBEDDING_BASE_URL",
+    "OPENAI_COMPATIBLE_EMBEDDING_MODEL"
   ]
 }

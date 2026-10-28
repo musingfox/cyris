@@ -54,8 +54,13 @@ def test_every_runtime_setting_is_required_unless_it_is_optional(key):
     assert TABLES[table].model_fields[field].is_required() is (key not in OPTIONAL_SETTINGS)
 
 
-def test_the_optional_exception_is_one_key_holding_the_default_mode():
-    assert tuple(OPTIONAL_SETTINGS) == ("llm_provider.reasoning_effort",)
+def test_the_optional_exception_is_the_keys_holding_their_own_defaults():
+    # The one key holding the default mode, plus the theme, whose field
+    # default is a value a settings home can store.
+    assert tuple(OPTIONAL_SETTINGS) == (
+        "digest.theme",
+        "llm_provider.reasoning_effort",
+    )
     assert OPTIONAL_SETTINGS["llm_provider.reasoning_effort"] == "default"
 
 

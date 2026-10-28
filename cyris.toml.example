@@ -30,10 +30,16 @@ email_from = ""                         # an address on one of the account's Ema
 # Account -> AI Gateway -> Run. The provider's key is stored in the AI Gateway named
 # default, and the model is written google/<model>, e.g. "google/gemini-3.8-flash"),
 # or "none" for plain excerpts with no model and no key (set model = "").
+# or "openai_compatible" for any endpoint answering OpenAI's chat-completions
+# shape. It is configured by its own environment names — OPENAI_COMPATIBLE_
+# BASE_URL, _MODEL and _API_KEY (the key optional: a LAN or localhost endpoint
+# may answer with none) — so /settings stores the choice alone, and the lines
+# below serve a [store] backend = "json" deployment that prefers the file.
 # workers_ai keeps everything on one Cloudflare account, but it is not yet a
 # drop-in: run `cyris llm-compare` and read both digests before switching.
 provider = "anthropic"
 model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider = "gemini"
+base_url = ""                         # json deployments only; env OPENAI_COMPATIBLE_BASE_URL overrules an empty one
 
 [digest]
 max_articles_per_digest = 400           # a run scores and digests the window's newest N, across all sources
@@ -46,6 +52,8 @@ filter_snippet_length = 500             # characters read when clustering news a
 output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
 style_prompt = ""                       # optional: your tone/focus, injected into the prompts
 type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
+theme = "default"                     # page palette: default, light, one_dark, catppuccin, nord,
+                                       # tokyo_night or github_dark; baked into the next issue
 rank_by_preference = true               # order headlines and Features by your votes; needs [vote_similarity]
 preference_source = "cosine"            # who judges that order: cosine (title similarity) or clef (needs a Workers AI token)
 
@@ -54,12 +62,17 @@ path = "./agent-vault"
 
 [store]
 # Where the article store and the usage log live.
-#   "json" — partition files under [agent_vault] path. No setup, but a dead
-#            machine takes the store with it.
-#   "d1"   — Cloudflare D1. The tables are created on the first boot that reaches
-#            the database, so an empty one needs no setup step. Coming from the
-#            JSON store, copy it over with `cyris store migrate` and compare the
-#            two with `cyris store diff` before switching.
+#   "json"   — partition files under [agent_vault] path. No setup, but a dead
+#              machine takes the store with it.
+#   "sqlite" — the Cloudflare deployment's tables in one file,
+#              [agent_vault] path / cyris.db: the votes, the writable /settings,
+#              the wizard and the archive triage-ui serves. Seed it once with
+#              `cyris settings push` + `cyris sources push`; from then on the
+#              database is where the settings and the source list live.
+#   "d1"     — Cloudflare D1. The tables are created on the first boot that reaches
+#              the database, so an empty one needs no setup step. Coming from the
+#              JSON store, copy it over with `cyris store migrate` and compare the
+#              two with `cyris store diff` before switching.
 backend = "json"                        # or CYRIS_STORE_BACKEND
 database_id = ""                        # or CYRIS_STORE_DATABASE_ID
 # account_id via env: CLOUDFLARE_ACCOUNT_ID
@@ -81,6 +94,7 @@ worker_url = ""                         # or CYRIS_PROMOTE_WORKER_URL
 publish_enabled = false                 # or CYRIS_PROMOTE_PUBLISH_ENABLED
 pages_project = ""                      # or CYRIS_PROMOTE_PAGES_PROJECT
 custom_domain = ""                      # or CYRIS_PROMOTE_CUSTOM_DOMAIN
+local_origin = ""                       # the triage-ui origin a local digest links to, e.g. http://127.0.0.1:8766 (or CYRIS_PROMOTE_LOCAL_ORIGIN)
 # Token via env: CYRIS_PROMOTE_TOKEN — deliberately not CYRIS_WORKER_TOKEN.
 # It stays server-side: readers vote through the app Worker's POST /api/vote,
 # which attaches the token and forwards the vote to the promote Worker.
@@ -98,7 +112,11 @@ worker_url = ""                         # or CYRIS_NEWSLETTER_WORKER_URL
 enabled = false
 provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
                           # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
+                          # "openai_compatible" answers POST {base}/embeddings
+                          # (vote base_url below; OPENAI_COMPATIBLE_EMBEDDING_API_KEY, optional and
+# its own account from the LLM's).
 model = ""                # "" uses the provider's default model
+base_url = ""             # json deployments only; env OPENAI_COMPATIBLE_EMBEDDING_BASE_URL overrules
 max_seeds = 200           # recent votes on each side a run compares against
 # A `threshold` key here is ignored (ADR-0017): each run suppresses the outliers of its
 # own window, so there is no cutoff to set and none to carry across providers.
@@ -116,9 +134,10 @@ max_seeds = 200           # recent votes on each side a run compares against
 # model = "@cf/baai/bge-m3"
 
 [rss]
-# Cloudflare feed-buffer Worker (see workers/rss/): polls feeds hourly into D1 so
-# the 24h window sees more than a feed snapshot holds. Leave empty and the
-# pipeline polls feeds directly at digest time instead — simpler, but it only
-# sees each feed's current snapshot, which for busy feeds is 2-4h, not 24.
+# Feed buffer, the fix for a feed publishing only its current snapshot (2-4h of a
+# busy feed): the Worker below, or the same table polled on this machine by
+# `cyris buffer` with local_buffer = true (needs the sqlite or d1 store — leave
+# either off and the pipeline polls feeds directly at digest time instead).
 worker_url = ""                         # or CYRIS_RSS_WORKER_URL
+local_buffer = false                    # or CYRIS_RSS_LOCAL_BUFFER
 # Token via env: CYRIS_WORKER_TOKEN

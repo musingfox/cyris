@@ -60,13 +60,16 @@ logger = logging.getLogger(__name__)
 B_GRADE_ENV_VARS: dict[str, str] = {
     "store.backend": "CYRIS_STORE_BACKEND",
     "store.database_id": "CYRIS_STORE_DATABASE_ID",
+    "store.sqlite_path": "CYRIS_STORE_SQLITE_PATH",
     "html_output.enabled": "CYRIS_HTML_OUTPUT_ENABLED",
     "promote.publish_enabled": "CYRIS_PROMOTE_PUBLISH_ENABLED",
     "promote.pages_project": "CYRIS_PROMOTE_PAGES_PROJECT",
     "promote.custom_domain": "CYRIS_PROMOTE_CUSTOM_DOMAIN",
+    "promote.local_origin": "CYRIS_PROMOTE_LOCAL_ORIGIN",
     "promote.worker_url": "CYRIS_PROMOTE_WORKER_URL",
     "newsletter.worker_url": "CYRIS_NEWSLETTER_WORKER_URL",
     "rss.worker_url": "CYRIS_RSS_WORKER_URL",
+    "rss.local_buffer": "CYRIS_RSS_LOCAL_BUFFER",
 }
 
 
@@ -135,12 +138,20 @@ ReasoningEffort = Literal["default", "low", "medium", "high"]
 
 class LLMProviderConfig(BaseModel):
     # "none" ⇒ excerpt-only by choice: no client is built and no key is needed.
-    provider: Literal["anthropic", "gemini", "openai", "workers_ai", "ai_gateway", "none"]
+    # "openai_compatible" ⇒ any endpoint that answers OpenAI's chat-completions
+    # shape: the base URL and the model name are both the reader's to fill.
+    provider: Literal[
+        "anthropic", "gemini", "openai", "workers_ai", "ai_gateway", "openai_compatible", "none"
+    ]
     model: str  # empty ⇒ the provider's default model (see bootstrap.build_llm)
     # "default" ⇒ each provider's own behaviour before this setting existed.
     reasoning_effort: ReasoningEffort = "default"
     api_key: str = ""
     account_id: str = ""  # workers_ai and ai_gateway only: their REST paths are per-account
+    # The openai_compatible endpoint's base URL, like http://host:8000/v1. Empty
+    # for the providers with an address of their own; an openai_compatible
+    # choice without one builds no client, and doctor names it.
+    base_url: str = ""
 
     @property
     def chooses_no_llm(self) -> bool:
@@ -154,6 +165,9 @@ class LLMProviderConfig(BaseModel):
             "workers_ai": "CLOUDFLARE_AI_TOKEN",
             # The gateway's own Run permission, not Workers AI: the embedding token is 401 there.
             "ai_gateway": "CLOUDFLARE_AIG_TOKEN",
+            # Optional on purpose: a LAN or localhost endpoint may answer with
+            # no Authorization header at all.
+            "openai_compatible": "OPENAI_COMPATIBLE_API_KEY",
             "none": "",
         }.get(self.provider, "ANTHROPIC_API_KEY")
 
@@ -161,6 +175,14 @@ class LLMProviderConfig(BaseModel):
     def inject_api_key(self) -> "LLMProviderConfig":
         if self.provider == "none":
             return self
+        # The compatible provider is env-configured like its siblings: the key,
+        # the endpoint's address and the model all come from the environment,
+        # each staying empty when unset. UI choices store the provider alone.
+        if self.provider == "openai_compatible":
+            if not self.base_url:
+                self.base_url = os.environ.get("OPENAI_COMPATIBLE_BASE_URL", "")
+            if not self.model:
+                self.model = os.environ.get("OPENAI_COMPATIBLE_MODEL", "")
         if not self.api_key:
             self.api_key = os.environ.get(self.api_key_env_var, "")
         if self.provider in ("workers_ai", "ai_gateway"):
@@ -194,6 +216,13 @@ class DigestConfig(BaseModel):
     # Every page's --type-scale. The app Worker reads it and injects it into each
     # HTML page it serves (workers/app/src/type_scale.js holds the same steps).
     type_scale: Literal[0.875, 1, 1.125]
+
+    # The palette every page a run renders carries. "default" is the tokens as
+    # written (docs/design/ui-language.md §2); adapters/output/themes.py holds
+    # each other one, and the settings page lists them in its order.
+    theme: Literal[
+        "default", "light", "one_dark", "catppuccin", "nord", "tokyo_night", "github_dark"
+    ] = "default"
     # Order the headlines and Features by vote similarity's preference before the
     # issue cap cuts them; false keeps the model's order. See docs/architecture.md §3.2.
     rank_by_preference: bool
@@ -217,12 +246,16 @@ class StoreConfig(BaseModel):
 
     `json` is local partition files under the agent vault. `d1` puts the article
     store and the usage log in Cloudflare D1, so a dead local machine loses
-    nothing. Both read the same data model; run them side by side and diff with
-    `cyris store-diff` before switching.
+    nothing. `sqlite` is D1's own SQL and schema in one file under the agent
+    vault - the local deployment that keeps the Cloudflare features (settings,
+    votes, tracked topics), which `json` has nowhere to write. All three read the
+    same data model; run two side by side and diff them before switching.
     """
 
-    backend: Literal["json", "d1"] = "json"
+    backend: Literal["json", "d1", "sqlite"] = "json"
     database_id: str = ""
+    # `sqlite` only; empty means `<agent_vault.path>/cyris.db`.
+    sqlite_path: str = ""
     account_id: str = ""
     api_token: str = ""
 
@@ -234,6 +267,7 @@ class StoreConfig(BaseModel):
             {
                 "backend": B_GRADE_ENV_VARS["store.backend"],
                 "database_id": B_GRADE_ENV_VARS["store.database_id"],
+                "sqlite_path": B_GRADE_ENV_VARS["store.sqlite_path"],
             },
         )
 
@@ -247,7 +281,27 @@ class StoreConfig(BaseModel):
 
     @property
     def is_d1(self) -> bool:
+        """Cloudflare D1: the backend whose credentials and tooling are remote."""
         return self.backend == "d1"
+
+    @property
+    def is_sql(self) -> bool:
+        """A store answers SQL: D1 or the local file. Same tables, same queries."""
+        return self.backend in ("d1", "sqlite")
+
+    @property
+    def settings_home(self) -> str:
+        """Where runtime settings live, for messages: a table here, a file otherwise."""
+        if self.is_sql:
+            return "D1" if self.is_d1 else "the SQLite store"
+        return "cyris.toml"
+
+    @property
+    def sources_home(self) -> str:
+        """Where the source list lives, for messages."""
+        if self.is_sql:
+            return "D1" if self.is_d1 else "the SQLite store"
+        return "sources.yaml"
 
 
 class HtmlOutputConfig(BaseModel):
@@ -296,6 +350,9 @@ class PromoteConfig(WorkerConfig):
     publish_enabled: bool = False
     pages_project: str = ""
     custom_domain: str = ""  # Custom domain for operator/self links (e.g., digest.example.com)
+    # Nothing publishes a local run's pages, so a notification links them here
+    # instead - the `cyris triage-ui` origin that serves the output directory.
+    local_origin: str = ""  # e.g. http://127.0.0.1:8766
 
     @model_validator(mode="before")
     @classmethod
@@ -306,6 +363,7 @@ class PromoteConfig(WorkerConfig):
                 "publish_enabled": B_GRADE_ENV_VARS["promote.publish_enabled"],
                 "pages_project": B_GRADE_ENV_VARS["promote.pages_project"],
                 "custom_domain": B_GRADE_ENV_VARS["promote.custom_domain"],
+                "local_origin": B_GRADE_ENV_VARS["promote.local_origin"],
                 "worker_url": B_GRADE_ENV_VARS["promote.worker_url"],
             },
         )
@@ -332,7 +390,22 @@ class VoteSimilarityConfig(BaseModel):
     """
 
     enabled: bool
-    provider: Literal["workers_ai", "gemini"]
+    provider: Literal["workers_ai", "gemini", "openai_compatible"]
+    # The openai_compatible endpoint's base URL, like http://host:8000/v1; the
+    # embedding call is OpenAI's POST {base}/embeddings. Env-configured like the
+    # LLM's: UI choices store the provider alone, the environment names the
+    # endpoint, the model and the key.
+    base_url: str = ""
+
+    @model_validator(mode="after")
+    def inject_from_env(self) -> "VoteSimilarityConfig":
+        if self.provider == "openai_compatible":
+            if not self.base_url:
+                self.base_url = os.environ.get("OPENAI_COMPATIBLE_EMBEDDING_BASE_URL", "")
+            if not self.model:
+                self.model = os.environ.get("OPENAI_COMPATIBLE_EMBEDDING_MODEL", "")
+        return self
+
     # Ignored since ADR-0017. Still parsed so a cyris.toml that sets it loads; doctor
     # warns that it is ignored.
     threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -341,12 +414,25 @@ class VoteSimilarityConfig(BaseModel):
 
 
 class RssConfig(WorkerConfig):
-    """Cloudflare RSS Worker — the hourly feed buffer the pipeline reads from."""
+    """Cloudflare RSS Worker — the hourly feed buffer the pipeline reads from.
+
+    `local_buffer` is the same buffer without the Worker: `cyris buffer`, run on a
+    timer, polls feeds into the SQLite store's `feed_buffer`, and a run reads its
+    window instead of polling at digest time.
+    """
+
+    local_buffer: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def inject_b_grade(cls, data: object) -> object:
-        return _fill_from_env(data, {"worker_url": B_GRADE_ENV_VARS["rss.worker_url"]})
+        return _fill_from_env(
+            data,
+            {
+                "worker_url": B_GRADE_ENV_VARS["rss.worker_url"],
+                "local_buffer": B_GRADE_ENV_VARS["rss.local_buffer"],
+            },
+        )
 
 
 class AppConfig(BaseModel):
@@ -483,10 +569,10 @@ class Config(BaseModel):
         if not self.missing_settings:
             return
         keys = ", ".join(self.missing_settings)
-        if self.app.store.is_d1:
+        if self.app.store.is_sql:
             raise IncompleteSettingsError(
-                f"Missing settings in D1: {keys}. Set them on /settings, or run "
-                "`cyris settings push` to copy them from cyris.toml."
+                f"Missing settings in {self.app.store.settings_home}: {keys}. Set them on "
+                "/settings, or run `cyris settings push` to copy them from cyris.toml."
             )
         raise IncompleteSettingsError(
             f"Missing from cyris.toml: {keys}. cyris.toml.example lists every key."
@@ -505,7 +591,7 @@ class Config(BaseModel):
         """Why a run with no source does nothing, and where a source comes from."""
         where = (
             "Add one on /settings, or run `cyris sources push`."
-            if self.app.store.is_d1
+            if self.app.store.is_sql
             else "Add feeds to sources.yaml."
         )
         return f"No sources yet, so this run has nothing to fetch: waiting for onboarding. {where}"
@@ -518,7 +604,7 @@ class Config(BaseModel):
         """
         if not self.sources or any(s.fetchable for s in self.sources.values()):
             return
-        home = "D1" if self.app.store.is_d1 else "sources.yaml"
+        home = self.app.store.sources_home
         names = ", ".join(sorted(self.sources))
         raise NoSourcesError(
             f"No fetchable sources in {home}: {names}. An RSS source needs a feed URL, "

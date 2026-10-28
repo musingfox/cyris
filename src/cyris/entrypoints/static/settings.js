@@ -2,8 +2,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 let state = null;
 
-const TABS = ["model", "digest", "pipeline", "notifications", "sources", "areas", "tracking"];
-const SETTINGS_NOTICES = ["model-result", "digest-result", "pipeline-result", "notify-result"];
+const TABS = ["model", "digest", "theme", "pipeline", "notifications", "sources", "areas", "tracking"];
+const SETTINGS_NOTICES = ["model-result", "digest-result", "theme-result", "pipeline-result", "notify-result"];
 
 // The category lives in the hash, not the path: the Worker guards /settings by
 // exact match, and a hash never leaves the browser.
@@ -55,6 +55,11 @@ function refresh(form) {
   const blocked = form.dataset.tab === "model" && partChanged(form, LLM_PART) && !chosen();
   const pending = clean.has(form) && unsavedIn(form).length > 0;
   saveButton(form).disabled = !(dirty || pending) || blocked || saving.has(form);
+  // The Test buttons need their pair chosen; unsaved edits are what they test.
+  if (form.dataset.tab === "model") {
+    $("test-model").disabled = !chosen();
+    $("test-embedding").disabled = !document.querySelector("input[name=embedding-provider]:checked");
+  }
   navLink(form).classList.toggle("dirty", dirty);
 }
 
@@ -193,6 +198,7 @@ function render() {
              ${p.configured ? "" : "disabled"}>
       <span class="name">${p.name === "none" ? "None — plain excerpts" : esc(p.name)}</span>
       ${p.name === "none" ? `<span class="label">No key needed</span>`
+        : p.name === "openai_compatible" ? `<span class="label">Key optional</span>`
         : p.configured ? `<span class="label">Key ready</span>`
         : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
     </label>`).join("");
@@ -206,7 +212,8 @@ function render() {
       <input type="radio" name="embedding-provider" value="${esc(p.name)}"
              ${p.name === values["vote_similarity.provider"] ? "checked" : ""}>
       <span class="name">${esc(p.name)}</span>
-      ${p.configured
+      ${p.name === "openai_compatible" ? `<span class="label">Key optional</span>`
+        : p.configured
         ? `<span class="label">Key ready</span>`
         : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
     </label>`).join("");
@@ -232,6 +239,8 @@ function render() {
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
   }
+  // The theme the page itself runs on: whichever the store already holds.
+  applyTheme(values["digest.theme"] || "default");
   $("email-to").value = values["notify.email_to"] ?? "";
   $("email-from").value = values["notify.email_from"] ?? "";
   showNotifyState();
@@ -259,17 +268,28 @@ function updateHint() {
   const none = p && p.name === "none";
   $("model-input").disabled = !!none;
   if (none) $("model-input").value = "";
-  $("model-input").dataset.placeholder = p && !none ? `Empty uses ${p.default_model}` : "";
+  const compat = p && p.name === "openai_compatible";
+  $("model-input").disabled = !!none || !!compat;
+  if (compat) $("model-input").value = "";
+  $("model-input").dataset.placeholder = p && !none && !compat && p.default_model
+    ? `Empty uses ${p.default_model}` : "";
   applyPlaceholder($("model-input"));
   $("model-hint").textContent = !p ? "Pick a provider whose key is present."
     : none ? "No model is called: digests list plain excerpts."
+    : compat
+    ? `The endpoint and the model come from the environment: ${p.env_base_url ? "" : "OPENAI_COMPATIBLE_BASE_URL, "
+        }OPENAI_COMPATIBLE_MODEL${p.env_model ? "" : " (unset)"}${p.env_base_url ? "" : "; the key OPENAI_COMPATIBLE_API_KEY (optional)"}.`
     : "Saving makes one real call to the provider first, so a typo is rejected here.";
 }
 
 function updateEmbeddingHint() {
   const el = document.querySelector("input[name=embedding-provider]:checked");
   const p = el && state.embedding_providers.find((x) => x.name === el.value);
-  $("embedding-model-input").dataset.placeholder = p ? `Empty uses ${p.default_model}` : "";
+  const compat = p && p.name === "openai_compatible";
+  $("embedding-model-input").disabled = !!compat;
+  if (compat) $("embedding-model-input").value = "";
+  $("embedding-model-input").dataset.placeholder = p && !compat && p.default_model
+    ? `Empty uses ${p.default_model}` : "";
   applyPlaceholder($("embedding-model-input"));
 }
 
@@ -293,6 +313,21 @@ function updateDependencies() {
   $("clef-needs").hidden = !!state.clef_ready;
   describe($("preference-source"), "clef-needs", !state.clef_ready);
 }
+
+// The theme the page itself runs on: the reader picks, the page changes at
+// once, and Save stores the same id for the digest pages. One style element
+// holds the override; the default theme is no override at all.
+function applyTheme(id) {
+  const style = document.getElementById("theme-preview") || (() => {
+    const el = document.createElement("style");
+    el.id = "theme-preview";
+    document.head.appendChild(el);
+    return el;
+  })();
+  style.textContent = ((state?.themes || []).find((t) => t.id === id) || {}).css || "";
+}
+applyTheme((state && state.values["digest.theme"]) || "default");
+$("page-theme").addEventListener("change", () => applyTheme($("page-theme").value));
 
 $("vote-enabled").addEventListener("change", () => { if (state) updateDependencies(); });
 
@@ -385,7 +420,10 @@ $("model-form").addEventListener("submit", async (e) => {
     show("busy", "Checking with the provider…", "model-result");
     try {
       if (!p) throw new Error("Pick a provider first.");
-      const data = await post("/api/settings", {provider: p.name, model: sent["model-input"].trim()});
+      const data = await post("/api/settings", {
+        provider: p.name,
+        model: sent["model-input"].trim(),
+      });
       state.values["llm_provider.provider"] = data.provider;
       state.values["llm_provider.model"] = data.model;
       markSet(keysSavedBy("llm"));
@@ -424,6 +462,43 @@ $("model-form").addEventListener("submit", async (e) => {
   markClean(form, stored);
   show(failed ? "err" : "ok", lines.join("\n"), "model-result");
 });
+
+// The Test buttons: one real call per provider pair, storing nothing — a base
+// URL and a model can be tried before committing to them. The same probes a
+// Save makes, through the routes that leave the settings alone.
+// A test's answer lands beside its own button — under the pair it tested —
+// never in the save line, whose notices are about what was stored.
+$("test-model").addEventListener("click", async () => {
+  const p = chosen();
+  if (!p) return;
+  show("busy", `Testing ${p.name}…`, "test-model-result");
+  try {
+    const data = await post("/api/diagnostics/llm", {
+      provider: p.name,
+      model: $("model-input").value.trim(),
+    });
+    show("ok", `${data.detail} Egress: ${data.egress ?? "unknown"}. Nothing saved.`, "test-model-result");
+  } catch (err) {
+    show("err", `${err.message} Nothing saved.`, "test-model-result");
+  }
+});
+
+$("test-embedding").addEventListener("click", async () => {
+  const el = document.querySelector("input[name=embedding-provider]:checked");
+  if (!el) return;
+  show("busy", `Testing ${el.value}…`, "test-embedding-result");
+  try {
+    const data = await post("/api/diagnostics/embedding", {
+      provider: el.value,
+      model: $("embedding-model-input").value.trim(),
+    });
+    show("ok", `${data.detail} Nothing saved.`, "test-embedding-result");
+  } catch (err) {
+    show("err", `${err.message} Nothing saved.`, "test-embedding-result");
+  }
+});
+
+
 
 // Access answers a reader it does not admit with a redirect the page cannot follow
 // (opaqueredirect). Reloading /settings then serves the sign-in again.
@@ -580,6 +655,22 @@ $("pipeline-form").addEventListener("submit", async (e) => {
   saving.delete(form);
   markClean(form, stored);
   if (plain) show(plain.ok ? "ok" : "err", plain.line, "pipeline-result");
+});
+
+// The Theme form is the Pipeline form's one-field shape: one plain value, one
+// notice line, nothing else to save.
+$("theme-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = $("theme-form");
+  const stored = {...clean.get(form)};
+  saving.add(form);
+  refresh(form);
+  unrefuse(form);
+  show("busy", "Saving…", "theme-result");
+  const plain = await savePlain(form, stored);
+  saving.delete(form);
+  markClean(form, stored);
+  if (plain) show(plain.ok ? "ok" : "err", plain.line, "theme-result");
 });
 
 // The Notifications form saves in two parts too: the webhook and the mail addresses.
@@ -848,6 +939,7 @@ function loaded(d) {
   reconcilePicks();
   renderAreas();
   $("add-source").disabled = !d.writable;
+  $("import-opml").hidden = !d.writable;
   if (!d.writable) show("err", NO_SOURCE_TABLE, "sources-notice");
   // No source publishes no issue, so the category is marked like a missing
   // setting; unlike one, the next run waits instead of stopping.
@@ -882,6 +974,70 @@ $("src-body").addEventListener("click", (e) => {
 $("add-source").addEventListener("click", () => {
   openName = "";
   renderSources();
+});
+
+// Import OPML: one file of feeds, its folder structure flattened to a name and
+// url each, deduplicated against the table and itself, then one POST per feed
+// the same route `Add source` uses — the skim lane, editable per row after.
+const opmlOutlines = (doc) =>
+  [...doc.querySelectorAll("outline[xmlUrl]")]
+    .map((o) => ({
+      name: (o.getAttribute("title") || o.getAttribute("text") || o.getAttribute("xmlUrl") || "").trim(),
+      url: o.getAttribute("xmlUrl").trim(),
+    }))
+    .filter((f) => f.name && f.url);
+
+// Distinct from every name the table holds and every name this file already
+// gave — a duplicate would silently overwrite, which an import must not do.
+const distinctName = (name, taken) => {
+  if (!taken.has(name)) return name;
+  let n = 2, candidate;
+  do candidate = `${name} (${n++})`;
+  while (taken.has(candidate));
+  return candidate;
+};
+
+$("import-opml").addEventListener("click", () => $("opml-file").click());
+
+$("opml-file").addEventListener("change", async () => {
+  const file = $("opml-file").files[0];
+  $("opml-file").value = "";  // a re-pick of the same file must fire change again
+  if (!file) return;
+  let feeds;
+  try {
+    const doc = new DOMParser().parseFromString(await file.text(), "text/xml");
+    if (doc.querySelector("parsererror")) throw new Error("the file is not valid XML");
+    feeds = opmlOutlines(doc);
+  } catch (err) {
+    show("err", `Could not read the OPML: ${err.message}`, "sources-notice");
+    return;
+  }
+  if (!feeds.length) {
+    show("err", "No feeds in that file: an outline needs an xmlUrl to be one.", "sources-notice");
+    return;
+  }
+  const taken = new Set(sources.map((s) => s.name));
+  feeds = feeds.map((f) => {
+    f.name = distinctName(f.name, taken);
+    taken.add(f.name);
+    return f;
+  });
+  const failures = [];
+  for (let i = 0; i < feeds.length; i++) {
+    show("busy", `Importing ${i + 1}/${feeds.length}: ${feeds[i].name}…`, "sources-notice");
+    try {
+      await post("/api/sources", feeds[i]);
+    } catch (err) {
+      if (err === SESSION_EXPIRED) { show("err", err.message, "sources-notice"); return; }
+      failures.push(`${feeds[i].name}: ${err.message}`);
+    }
+  }
+  openName = null;
+  await loadSources();
+  const note = failures.length
+    ? `${feeds.length - failures.length} of ${feeds.length} imported. Not imported:\n${failures.slice(0, 5).join("\n")}${failures.length > 5 ? `\n…and ${failures.length - 5} more` : ""}`
+    : `${feeds.length} imported. Each row sits in the skim lane; open one to change its lane, or retire it.`;
+  show(failures.length ? "err" : "ok", note, "sources-notice");
 });
 
 $("src-body").addEventListener("keydown", (e) => {

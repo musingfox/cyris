@@ -71,6 +71,18 @@ function makeDeps({
     },
   };
 
+  const theme = {
+    reads: 0,
+    async current() {
+      theme.reads += 1;
+      return "default";
+    },
+    forget() {
+      theme.forgets += 1;
+    },
+  };
+  theme.forgets = 0;
+
   // What HTMLRewriter does in workerd, which Node lacks: `html` goes last in <head>.
   const injectStyle = (response, html) => {
     injectStyle.calls.push(html);
@@ -102,6 +114,7 @@ function makeDeps({
     probeGemini,
     fetchImpl,
     typeScale,
+    theme,
     injectStyle,
   };
 }

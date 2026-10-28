@@ -9,6 +9,7 @@ import { Lifecycle } from "./container.js";
 import { handleRequest } from "./router.js";
 import { planTick, readTimeZone } from "./schedule.js";
 import { createTypeScale } from "./type_scale.js";
+import { createTheme } from "./theme.js";
 
 // Every secret the pipeline reads from the environment. The provider is a
 // runtime setting in D1, so every LLM key rides along — passing only the
@@ -24,6 +25,12 @@ const SECRETS = {
   ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
   GEMINI_API_KEY: env.GEMINI_API_KEY,
   OPENAI_API_KEY: env.OPENAI_API_KEY,
+  OPENAI_COMPATIBLE_API_KEY: env.OPENAI_COMPATIBLE_API_KEY,
+  OPENAI_COMPATIBLE_EMBEDDING_API_KEY: env.OPENAI_COMPATIBLE_EMBEDDING_API_KEY,
+  OPENAI_COMPATIBLE_BASE_URL: env.OPENAI_COMPATIBLE_BASE_URL,
+  OPENAI_COMPATIBLE_MODEL: env.OPENAI_COMPATIBLE_MODEL,
+  OPENAI_COMPATIBLE_EMBEDDING_BASE_URL: env.OPENAI_COMPATIBLE_EMBEDDING_BASE_URL,
+  OPENAI_COMPATIBLE_EMBEDDING_MODEL: env.OPENAI_COMPATIBLE_EMBEDDING_MODEL,
   CLOUDFLARE_AI_TOKEN: env.CLOUDFLARE_AI_TOKEN,
   CLOUDFLARE_AIG_TOKEN: env.CLOUDFLARE_AIG_TOKEN,
 };
@@ -40,6 +47,9 @@ const DEPLOYMENT = {
   CYRIS_PROMOTE_WORKER_URL: env.CYRIS_PROMOTE_WORKER_URL,
   CYRIS_NEWSLETTER_WORKER_URL: env.CYRIS_NEWSLETTER_WORKER_URL,
   CYRIS_RSS_WORKER_URL: env.CYRIS_RSS_WORKER_URL,
+  CYRIS_STORE_SQLITE_PATH: env.CYRIS_STORE_SQLITE_PATH,
+  CYRIS_PROMOTE_LOCAL_ORIGIN: env.CYRIS_PROMOTE_LOCAL_ORIGIN,
+  CYRIS_RSS_LOCAL_BUFFER: env.CYRIS_RSS_LOCAL_BUFFER,
   // From [vars] in wrangler.toml, not from the deployer.
   CYRIS_APP_WORKER_NAME: env.CYRIS_APP_WORKER_NAME,
 };
@@ -155,6 +165,8 @@ export class CyrisContainer extends DurableObject {
 
 // Module scope, so one reader per isolate: its memo is what bounds the REST calls.
 const typeScale = createTypeScale({ env, fetchImpl: (input, init) => fetch(input, init) });
+// The theme rides the same memo shape: one reader per isolate, one rest call per TTL.
+const theme = createTheme({ env, fetchImpl: (input, init) => fetch(input, init) });
 
 const injectStyle = (response, html) =>
   new HTMLRewriter()
@@ -187,6 +199,7 @@ export default {
       fetchImpl: (input, init) => fetch(input, init),
       accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
       typeScale,
+      theme,
       injectStyle,
     });
   },

@@ -203,3 +203,79 @@ class WorkersAIEmbedder:
             self.usage.neurons = (self.usage.neurons or 0.0) + float(meta.get("neurons") or 0.0)
             return result["data"]
         raise RuntimeError(f"Workers AI rate-limited after {MAX_RETRIES} retries")
+
+
+class OpenAICompatibleEmbedder:
+    """Embeds text through any endpoint answering OpenAI's POST {base}/embeddings.
+
+    The third provider, for a reader pointing vote similarity and tracked topics
+    at an endpoint of their own — a LAN or localhost service included, which is
+    why the key is optional. Vectors are normalised like its siblings', so the
+    cosine in vote similarity compares the same scale across providers. The
+    similarity cutoff comes with the model (ADR-0006), so `cyris vote-sim`
+    still previews it before it suppresses anything.
+    """
+
+    BATCH_SIZE = 100  # the polite ceiling its siblings use; embeddings count 3000/min on OpenAI
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        # The one address that is the reader's: kept as given, trailing slash and
+        # all, with the path appended — servers differ on whether /v1 belongs in
+        # it and the error body names the path that 404'd.
+        self._url = f"{base_url.rstrip('/')}/embeddings"
+        self.usage = _Usage()
+        self.usage.input_tokens = 0
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return a unit-length vector per input."""
+        unique = list(dict.fromkeys(texts))
+        if not unique:
+            return []
+        logger.info("Embedding %d text(s)", len(unique))
+        vectors: dict[str, list[float]] = {}
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
+            for start in range(0, len(unique), self.BATCH_SIZE):
+                batch = unique[start : start + self.BATCH_SIZE]
+                for text, vector in zip(batch, await self._post_batch(http, batch), strict=True):
+                    vectors[text] = normalize(vector)
+                self.usage.embedded += len(batch)
+        return [vectors[t] for t in texts]
+
+    async def _post_batch(self, http: httpx.AsyncClient, batch: list[str]) -> list[list[float]]:
+        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else None
+        for attempt in range(MAX_RETRIES):
+            started = time.monotonic()
+            response = await http.post(
+                self._url,
+                headers=headers,
+                json={"model": self._model, "input": batch},
+            )
+            self.usage.api_seconds += time.monotonic() - started
+            self.usage.requests += 1
+            if response.status_code == 429:
+                wait = 3 * 2**attempt
+                logger.warning("Embedding endpoint rate-limited, retrying in %ds", wait)
+                await asyncio.sleep(wait)
+                continue
+            # The reason a batch was refused — a wrong path, an unknown model —
+            # is in the body, and raise_for_status() would discard it.
+            if response.status_code >= 400:
+                raise RuntimeError(
+                    f"{self._url} answered {response.status_code}: {response.text[:200]}"
+                )
+            body = response.json()
+            # OpenAI's shape reports usage per batch; kept when present, for the
+            # same reason Workers AI's neurons are: cost is a real comparison.
+            usage = body.get("usage") or {}
+            self.usage.input_tokens = (self.usage.input_tokens or 0) + int(
+                usage.get("prompt_tokens") or 0
+            )
+            return [item["embedding"] for item in body["data"]]
+        raise RuntimeError(f"Embedding endpoint rate-limited after {MAX_RETRIES} retries")

@@ -4,6 +4,7 @@
     "anthropic": null,
     "gemini": null,
     "openai": "low",
+    "openai_compatible": null,
     "ai_gateway": null
   },
   "gemini_thinking_budget": {

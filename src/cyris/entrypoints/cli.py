@@ -276,11 +276,14 @@ def run(
     # a shell reports for the signal.
     async def _run() -> RunReport:
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGTERM, asyncio.current_task().cancel)
+        with contextlib.suppress(NotImplementedError):
+            # Windows has no loop signal handlers, and nothing sends SIGTERM there.
+            loop.add_signal_handler(signal.SIGTERM, asyncio.current_task().cancel)
         try:
             return await run_digest(deps, options)
         finally:
-            loop.remove_signal_handler(signal.SIGTERM)
+            with contextlib.suppress(NotImplementedError):
+                loop.remove_signal_handler(signal.SIGTERM)
 
     try:
         report = asyncio.run(_run())
@@ -295,6 +298,38 @@ def run(
         return
     if report.rendered:
         typer.echo(report.rendered)
+
+
+@app.command("buffer")
+def buffer(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Poll every feed into the local buffer a run then reads (`[rss] local_buffer`)."""
+    _setup_logging(verbose)
+
+    from cyris.bootstrap import build_feed_buffer, load_effective_config
+
+    try:
+        cfg = load_effective_config(config_path, sources_path)
+        cfg.require_sources()
+        feed_buffer = build_feed_buffer(cfg)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+    if not (cfg.app.rss.local_buffer or cfg.app.store.is_d1):
+        typer.echo(
+            "Nothing reads this buffer: set [rss] local_buffer = true, or the run "
+            "polls feeds at digest time.",
+            err=True,
+        )
+    written, pruned = asyncio.run(feed_buffer.poll(cfg.sources, datetime.now(UTC)))
+    typer.echo(f"{written} new entries, {pruned} pruned, {len(cfg.sources)} feeds")
 
 
 @app.command("regenerate")
@@ -344,8 +379,13 @@ def regenerate(
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
-    if cfg.app.store.backend != "d1":
-        typer.echo(f"The store backend is {cfg.app.store.backend}; regenerate needs d1", err=True)
+    if not cfg.app.store.is_sql:
+        # The stored page and the recorded inputs both live in the SQL store;
+        # the json backend never wrote either.
+        typer.echo(
+            f"The store backend is {cfg.app.store.backend}; regenerate needs an SQL store",
+            err=True,
+        )
         raise typer.Exit(1)
     if not cfg.app.html_output.enabled:
         typer.echo("HTML output is disabled; regenerate needs [html_output] enabled", err=True)
@@ -551,7 +591,9 @@ def topic_sim(
         raise typer.Exit(1)
 
     ranked = asyncio.run(
-        rank_titles(make_embedder(vote.provider, vote.model), description, candidates)
+        rank_titles(
+            make_embedder(vote.provider, vote.model, vote.base_url), description, candidates
+        )
     )
     typer.echo(f"\n{len(ranked)} title(s) over {hours}h, by cosine to the description ({model})\n")
     cut_shown = threshold is None
@@ -935,6 +977,40 @@ def _llm_from_values(values: dict):
     return build_llm(candidate)
 
 
+def _local_run_starter(config_path: Path, sources_path: Path):
+    """Start `cyris run` on this host, one at a time: the Worker's `run` instance.
+
+    The app Worker starts a container per run and its lifecycle keeps one alive;
+    locally that is a child process, and the check for a live one is the same
+    promise — two runs at once would store over each other's issue.
+    """
+    import subprocess
+
+    running: list[subprocess.Popen] = []
+
+    def start(period: str | None, date: str | None) -> dict[str, str]:
+        if running and running[0].poll() is None:
+            raise RuntimeError("a run is already going; wait for it to finish")
+        argv = [
+            sys.executable,
+            "-m",
+            "cyris",
+            "run",
+            "--config",
+            str(config_path),
+            "--sources",
+            str(sources_path),
+        ]
+        argv += ["--if-due"] if period is None else ["--period", period]
+        if date is not None:
+            argv += ["--date", date]
+        running[:] = [subprocess.Popen(argv)]
+        logger.info("Started run: %s", " ".join(argv))
+        return {"started": "run", "at": datetime.now(UTC).isoformat()}
+
+    return start
+
+
 @app.command("triage-ui")
 def triage_ui(
     port: Annotated[int, typer.Option(help="Server port")] = 8766,
@@ -999,11 +1075,14 @@ def triage_ui(
             digest_store=D1DigestStore(d1) if d1 else None,
             run_log=D1RunLog(d1, "") if d1 else None,
             interest_reader=D1InterestReader(d1).read if d1 else None,
+            start_run=_local_run_starter(config_path, sources_path),
+            archive_dir=cfg.app.html_output.output_dir,
         )
         await server.start()
         typer.echo(f"Settings:  http://{host}:{port}/settings")
         typer.echo(f"Labels:    http://{host}:{port}/labels")
         typer.echo(f"Interest:  http://{host}:{port}/interest")
+        typer.echo(f"Archive:   http://{host}:{port}/")
         typer.echo("Press Ctrl+C to stop")
 
         # In the Container this process is PID 1, and Linux drops signals that
@@ -1028,6 +1107,88 @@ def triage_ui(
         finally:
             await server.stop()
             logger.info("triage-ui: stopped")
+
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        typer.echo("Shutting down")
+
+
+@app.command("serve")
+def serve(
+    host: Annotated[str, typer.Option(help="Interface to listen on")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Server port")] = 8767,
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Serve the digest pages over HTTP: the archive, each issue, its raw page."""
+    _setup_logging(verbose)
+
+    from cyris.bootstrap import load_effective_config
+    from cyris.entrypoints.serve import run_serve
+
+    try:
+        cfg = load_effective_config(config_path, sources_path)
+        output_dir = cfg.app.html_output.output_dir
+        if not Path(output_dir).is_dir():
+            raise ValueError(f"[html_output] output_dir is not a directory: {output_dir}")
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+    typer.echo(f"Archive:   http://{host}:{port}/")
+
+    # The pages follow `digest.theme` live. A json deployment's home is
+    # cyris.toml, fixed until the next start; the D1 store is read with the
+    # Worker's own pause — its REST rate limit is shared with the pipeline and
+    # Pages; a local sqlite file answers per request, and a save shows at the
+    # very next view.
+    if cfg.app.store.is_sql:
+        import time
+
+        from cyris.adapters.store.settings import D1Settings
+        from cyris.bootstrap import build_d1_client
+
+        settings = D1Settings(build_d1_client(cfg))
+        ttl = 60 if cfg.app.store.is_d1 else 0
+        held: dict[str, object] = {}
+
+        def reader() -> str:
+            now = time.monotonic()
+            if held and now - float(held["read"]) < ttl:
+                return str(held["theme"])
+            theme = settings.all().get("digest.theme") or "default"
+            held.clear()
+            held.update(read=now, theme=theme)
+            return theme
+
+    else:
+        start_theme = cfg.app.digest.theme if cfg.app.digest else "default"
+
+        def reader() -> str:  # noqa: F811 — one reader per deployment kind
+            return start_theme
+
+    # As triage-ui's: stopped by SIGTERM or Ctrl+C, which a supervisor and a
+    # shell each need to end a server that otherwise holds the port open.
+    async def _run() -> None:
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def on_signal(sig: signal.Signals) -> None:
+            logger.info("serve: %s, stopping", sig.name)
+            stop.set()
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            with contextlib.suppress(NotImplementedError):  # Windows has no loop handlers
+                loop.add_signal_handler(sig, on_signal, sig)
+        try:
+            await run_serve(host, port, output_dir, stop, theme=reader)
+        finally:
+            logger.info("serve: stopped")
 
     try:
         asyncio.run(_run())
@@ -1473,7 +1634,7 @@ def labels_report(
 
     vote = cfg.app.vote_similarity
     votes = labels.human_votes()
-    embedder = make_embedder(vote.provider, vote.model)
+    embedder = make_embedder(vote.provider, vote.model, vote.base_url)
     scores = asyncio.run(preference_scores(embedder, {r.url: r.title for r in rows}, votes))
     scored = [r for r in rows if r.url in scores]
     values = [scores[r.url] for r in scored]
@@ -1527,13 +1688,14 @@ def _newest_by_url(articles: list) -> dict:
 
 
 def _force_d1_client(config_path: Path, sources_path: Path):
-    """Return (cfg, D1 client) for the commands that talk to D1 whatever the backend.
+    """Return (cfg, SQL client) for the commands that talk to the store's tables.
 
     `store migrate` and `sources push` are how an empty D1 is filled for the
     first time, and they run while `[store] backend` is still json — so
     `load_effective_config` built no client and created no tables. Overriding
     the backend here is what makes the schema apply on this path too; without
-    it the first INSERT dies with `no such table`.
+    it the first INSERT dies with `no such table`. A `sqlite` deployment has a
+    client already, and this returns it untouched.
     """
     from cyris.adapters.store.d1 import D1Error, apply_schema
     from cyris.bootstrap import build_d1_client, load_effective_config
@@ -1550,6 +1712,11 @@ def _force_d1_client(config_path: Path, sources_path: Path):
         raise typer.Exit(1) from e
 
     already_applied = cfg.app.store.is_d1  # load_effective_config built a client
+    if cfg.app.store.is_sql:
+        # sqlite: `load_effective_config` built the client and applied the schema
+        # already. Forcing it to "d1" here would ask for D1 credentials the
+        # deployment does not have.
+        return cfg, build_d1_client(cfg)
     cfg.app.store.backend = "d1"
     # After the override, so it asks the same question `build_d1_client` will —
     # the old check omitted CLOUDFLARE_ACCOUNT_ID and let it raise past the try.
@@ -1682,7 +1849,12 @@ def settings_push(
             raise typer.Exit(1) from e
 
     cfg, client = _force_d1_client(config_path, sources_path)
-    typer.echo(f"D1 database {cfg.app.store.database_id}")
+    if cfg.app.store.is_d1:
+        typer.echo(f"D1 database {cfg.app.store.database_id}")
+    else:
+        from cyris.bootstrap import sqlite_path
+
+        typer.echo(f"SQLite store {sqlite_path(cfg)}")
     settings = D1Settings(client)
     rows = settings.all()
     in_d1: dict = {}
@@ -1788,3 +1960,105 @@ def sources_list(
     for source in sources.values():
         typer.echo(f"{source.lane.value:<10} {source.type:<11} {source.name} — {source.url or '—'}")
     typer.echo(f"\n{len(sources)} sources in D1.")
+
+
+schedule_app = typer.Typer(help="Schedule runs on this host")
+app.add_typer(schedule_app, name="schedule")
+
+
+@schedule_app.command("install-systemd")
+def schedule_install_systemd(
+    repo: Annotated[Path, typer.Option("--repo", help="The clone to run from")] = Path("."),
+    dest: Annotated[
+        Path | None,
+        typer.Option("--dest", help="Write the units here instead of installing them"),
+    ] = None,
+    buffer: Annotated[
+        bool, typer.Option("--buffer", help="Also poll feeds hourly into [rss] local_buffer")
+    ] = False,
+) -> None:
+    """Install the hourly tick, and optionally the hourly feed poll, as user units.
+
+    The Cron Trigger is the Cloudflare deployment's clock: `run --if-due` every
+    hour, which does nothing outside the two digest hours. These units are the
+    same tick on this host, with the repository as the working directory so the
+    default `cyris.toml` and `sources.yaml` are the ones it reads.
+    """
+    import subprocess
+
+    repo = repo.resolve()
+    python = sys.executable
+    units: dict[str, str] = {
+        "cyris-run.service": (
+            "[Unit]\n"
+            "Description=cyris digest tick (a run only on a digest hour)\n"
+            "Wants=network-online.target\n"
+            "After=network-online.target\n"
+            "\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            f"WorkingDirectory={repo}\n"
+            f"ExecStart={python} -m cyris run --if-due\n"
+        ),
+        "cyris-run.timer": (
+            "[Unit]\n"
+            "Description=cyris digest tick, hourly\n"
+            "\n"
+            "[Timer]\n"
+            "OnCalendar=*-*-* *:02:00\n"
+            "Persistent=true\n"
+            "\n"
+            "[Install]\n"
+            "WantedBy=timers.target\n"
+        ),
+    }
+    if buffer:
+        # The poll runs first so the tick's run finds this hour's items; the
+        # buffer is a window, not a queue, so two minutes early is enough.
+        units["cyris-buffer.service"] = (
+            "[Unit]\n"
+            "Description=cyris feed buffer poll\n"
+            "Wants=network-online.target\n"
+            "After=network-online.target\n"
+            "\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            f"WorkingDirectory={repo}\n"
+            f"ExecStart={python} -m cyris buffer\n"
+        )
+        units["cyris-buffer.timer"] = (
+            "[Unit]\n"
+            "Description=cyris feed buffer poll, hourly\n"
+            "\n"
+            "[Timer]\n"
+            "OnCalendar=*-*-* *:00:00\n"
+            "Persistent=true\n"
+            "\n"
+            "[Install]\n"
+            "WantedBy=timers.target\n"
+        )
+
+    target = dest or Path.home() / ".config" / "systemd" / "user"
+    target.mkdir(parents=True, exist_ok=True)
+    for name, text in units.items():
+        (target / name).write_text(text, encoding="utf-8")
+        typer.echo(f"Wrote {target / name}")
+    if dest is not None:
+        return
+
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+    for name in ("cyris-run.timer", "cyris-buffer.timer"):
+        if name in units:
+            subprocess.run(["systemctl", "--user", "enable", "--now", name], check=True)
+    linger = subprocess.run(
+        ["loginctl", "show-user", os.environ.get("USER", ""), "-p", "Linger"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    if linger != "Linger=yes":
+        typer.echo(
+            "\nThe timers stop when you log out: run `loginctl enable-linger` once "
+            "to keep them going."
+        )
+    typer.echo("\nScheduled. `systemctl --user list-timers cyris-*` shows the next ticks.")

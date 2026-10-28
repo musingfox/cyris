@@ -128,6 +128,7 @@ _VALUES = {
     "digest.output_language": "zh-Hant",
     "digest.style_prompt": "",
     "digest.type_scale": 1,
+    "digest.theme": "default",
     "digest.rank_by_preference": False,
     "digest.preference_source": "cosine",
     "routing.score_threshold": 70,

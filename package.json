@@ -46,6 +46,9 @@
       "OPENAI_API_KEY": {
         "description": "Alternative to `ANTHROPIC_API_KEY`; pick `openai` on `/settings` to use it — [OpenAI](https://platform.openai.com/api-keys)."
       },
+      "OPENAI_COMPATIBLE_API_KEY": {
+        "description": "For the `openai_compatible` providers on `/settings`; optional — a LAN or localhost endpoint may answer with none."
+      },
       "CYRIS_PRIVATE_ARCHIVE": {
         "description": "Optional. Set to `true` to put the archive behind the same Cloudflare Access sign-in as `/settings`; a reader without one gets a 403. Leave blank for a public archive."
       },
@@ -75,6 +78,30 @@
       },
       "CLOUDFLARE_AIG_TOKEN": {
         "description": "Optional. An `Account > AI Gateway > Run` token for the `ai_gateway` LLM provider, sent as `cf-aig-authorization`. It has no fallback: the Workers AI tokens are refused by the gateway."
+      },
+      "CYRIS_STORE_SQLITE_PATH": {
+        "description": "Only when the app runs against `[store] backend = \"sqlite\"` (locally or in a container): where the SQLite file lives. Leave empty on the Cloudflare track."
+      },
+      "CYRIS_RSS_LOCAL_BUFFER": {
+        "description": "`true` to have the container's hourly tick fill the local feed buffer (`cyris buffer`), the local counterpart of the RSS Worker. Leave empty on the Cloudflare track."
+      },
+      "CYRIS_PROMOTE_LOCAL_ORIGIN": {
+        "description": "With no Pages project: the origin a local digest links notifications to, such as `http://<host>:8767` (`cyris serve`). Leave empty on the Cloudflare track."
+      },
+      "OPENAI_COMPATIBLE_EMBEDDING_API_KEY": {
+        "description": "For the `openai_compatible` embedding provider on `/settings`; optional, and separately from the LLM's key."
+      },
+      "OPENAI_COMPATIBLE_BASE_URL": {
+        "description": "The openai_compatible LLM endpoint, e.g. https://proxy.example/v1. For the provider choice on `/settings`."
+      },
+      "OPENAI_COMPATIBLE_MODEL": {
+        "description": "The openai_compatible LLM's model name; `/settings` stores only the provider choice."
+      },
+      "OPENAI_COMPATIBLE_EMBEDDING_BASE_URL": {
+        "description": "The openai_compatible embedding endpoint (POST {base}/embeddings)."
+      },
+      "OPENAI_COMPATIBLE_EMBEDDING_MODEL": {
+        "description": "The openai_compatible embedder's model name."
       }
     }
   }

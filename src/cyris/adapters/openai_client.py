@@ -32,14 +32,25 @@ class OpenAIClient:
         timeout: float = 180.0,
         *,
         reasoning_effort: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         self.model = model
         self._reasoning_effort = reasoning_effort
         self._max_retries = max_retries
+        # An empty key points at an endpoint of one's own (LAN or localhost),
+        # which may answer with no Authorization header to carry at all.
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         self._client = httpx.AsyncClient(
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers=headers,
             timeout=timeout,
         )
+        # The OpenAI-compatible choice: the reader names the /v1 level, and the
+        # one path this adapter speaks is appended — the same shape the official
+        # address ends in, so anything that serves it serves this.
+        if base_url:
+            self._url = f"{base_url.rstrip('/')}/chat/completions"
+        else:
+            self._url = _URL
 
     async def complete(
         self,
@@ -70,7 +81,7 @@ class OpenAIClient:
             body["temperature"] = temperature
 
         for attempt in range(self._max_retries + 1):
-            response = await self._client.post(_URL, json=body)
+            response = await self._client.post(self._url, json=body)
             if response.status_code not in _RETRYABLE_STATUS or attempt == self._max_retries:
                 break
             await asyncio.sleep(attempt + 1)

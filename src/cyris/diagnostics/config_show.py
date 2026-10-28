@@ -111,7 +111,10 @@ def _secrets(cfg: Config) -> list[Row]:
 
 
 def _runtime(cfg: Config) -> list[Row]:
-    home = SOURCES["d1"] if cfg.app.store.is_d1 else SOURCES["file"]
+    if cfg.app.store.is_sql:
+        home = SOURCES["d1" if cfg.app.store.is_d1 else "sqlite"]
+    else:
+        home = SOURCES["file"]
     values = cfg.present_settings()
     defaulted = cfg.defaulted_settings()
     rows = []

@@ -50,8 +50,8 @@ def _writable(path: Path) -> bool:
 
 
 def _check_sources(cfg: Config) -> Check:
-    if cfg.app.store.is_d1:
-        home, fix = "D1", "Add one on /settings, or run `cyris sources push`."
+    if cfg.app.store.is_sql:
+        home, fix = cfg.app.store.sources_home, "Add one on /settings, or run `cyris sources push`."
     else:
         home, fix = "sources.yaml", "Add feeds to sources.yaml (see sources.example.yaml)."
     if cfg.awaiting_onboarding():
@@ -76,7 +76,7 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
     if cfg.config_file_found:
         where = str(config_path) if config_path is not None else "cyris.toml"
         return Check("config file", "ok", where)
-    if cfg.app.store.is_d1:
+    if cfg.app.store.is_sql:
         return Check("config file", "ok", "not found — running from the environment")
     return Check(
         "config file",
@@ -89,15 +89,16 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
 def _check_settings(cfg: Config) -> Check:
     """Every runtime setting is in this deployment's one home, or the run stops."""
     missing = ", ".join(cfg.missing_settings)
-    if cfg.app.store.is_d1:
+    if cfg.app.store.is_sql:
+        home = cfg.app.store.settings_home
         if missing:
             return Check(
                 "settings",
                 "fail",
-                f"missing in D1: {missing}",
+                f"missing in {home}: {missing}",
                 "Set them on /settings, or run `cyris settings push`.",
             )
-        return Check("settings", "ok", _settings_ok(cfg, "D1"))
+        return Check("settings", "ok", _settings_ok(cfg, home))
     if missing:
         return Check(
             "settings",
@@ -119,12 +120,12 @@ def _settings_ok(cfg: Config, home: str) -> str:
 
 
 def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
-    """Runtime settings a D1 deployment's cyris.toml still sets, and so ignores.
+    """Runtime settings a SQL deployment's cyris.toml still sets, and so ignores.
 
     A value the deployment does not read, sitting where a reader would edit it,
     is the 2026-08-25 failure: the edit takes, and nothing changes.
     """
-    if not cfg.app.store.is_d1 or config_path is None or not config_path.exists():
+    if not cfg.app.store.is_sql or config_path is None or not config_path.exists():
         return []
     import tomllib
 
@@ -137,12 +138,14 @@ def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
     ]
     if not ignored:
         return [Check("file settings", "ok", "cyris.toml sets no runtime settings")]
+    where = "D1" if cfg.app.store.is_d1 else "the SQLite store"
     return [
         Check(
             "file settings",
             "fail",
-            f"this deployment reads these from D1 and ignores cyris.toml's {', '.join(ignored)}",
-            "Delete them from cyris.toml. If D1 lacks any, run `cyris settings push` first.",
+            f"this deployment reads these from {where} and ignores "
+            f"cyris.toml's {', '.join(ignored)}",
+            f"Delete them from cyris.toml. If {where} lacks any, run `cyris settings push` first.",
         )
     ]
 
@@ -155,12 +158,19 @@ def _check_llm(cfg: Config) -> Check:
         return Check("llm provider", "skip", "not set — see settings")
     if llm.provider == "none":
         return Check("llm provider", "ok", "none — digests list plain excerpts, by choice")
-    if not llm.api_key:
+    if llm.provider == "openai_compatible" and not llm.base_url:
+        return Check(
+            "llm provider",
+            "fail",
+            "provider is openai_compatible but OPENAI_COMPATIBLE_BASE_URL is empty",
+            "Set OPENAI_COMPATIBLE_BASE_URL (and OPENAI_COMPATIBLE_MODEL) on this deployment.",
+        )
+    if not llm.api_key and llm.provider != "openai_compatible":
         hint = f"Put {llm.api_key_env_var} in .env."
         if llm.provider == "workers_ai":
             hint += " CLOUDFLARE_EMBEDDING_API_TOKEN also works: the same Workers AI "
             hint += "permission covers text models."
-        where = "on /settings" if cfg.app.store.is_d1 else "in [llm_provider]"
+        where = "on /settings" if cfg.app.store.is_sql else "in [llm_provider]"
         hint += f' Or set the provider to "none" {where} for plain-excerpt digests.'
         return Check(
             "llm provider",
@@ -226,6 +236,18 @@ async def probe_llm(llm_cfg) -> Check:
         return Check("llm probe", "skip", "none — no model to call")
     llm = build_llm(llm_cfg)
     if llm is None:
+        if llm_cfg.provider == "openai_compatible":
+            # Its key is optional, so an unbuilt client is one of the two the
+            # reader fills: the address, or the model it serves.
+            missing = (
+                "OPENAI_COMPATIBLE_BASE_URL" if not llm_cfg.base_url else "OPENAI_COMPATIBLE_MODEL"
+            )
+            return Check(
+                "llm probe",
+                "fail",
+                f"openai_compatible could not be built — {missing} is empty",
+                f"Set {missing} on this deployment, then save again.",
+            )
         return Check(
             "llm probe",
             "fail",
@@ -319,7 +341,7 @@ def _provider_message(response: httpx.Response) -> str:
     return response.text[:300]
 
 
-async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) -> Check:
+async def probe_embedder(provider: str, model: str, base_url: str = "") -> Check:
     """Ask the embedding provider whether this model answers, with one real call.
 
     What `probe_llm` is for the LLM: a model id typo passes every static check.
@@ -332,7 +354,12 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
 
     model = model or embedding_defaults(provider)["model"]
     env = EMBEDDING_ENV[provider]
-    unset = [name for name in env if not os.environ.get(name)]
+    # The compatible embedder's key is optional, like the LLM's.
+    unset = [
+        name
+        for name in env
+        if not os.environ.get(name) and not (provider == "openai_compatible" and name == env[0])
+    ]
     if unset:
         return Check(
             "embedding probe",
@@ -340,8 +367,18 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
             f"{unset[0]} is not set",
             f"Set {unset[0]} on this deployment, or save with vote similarity off.",
         )
-    key = os.environ[env[0]]
-    embedder = make_embedder(provider, model)
+    key = os.environ.get(env[0], "")
+    try:
+        embedder = make_embedder(provider, model, base_url)
+    except ValueError as e:
+        # The compatible embedder without its address: the one refusal that
+        # is this factory's own, naming exactly the environment name.
+        return Check(
+            "embedding probe",
+            "fail",
+            str(e),
+            "Set OPENAI_COMPATIBLE_EMBEDDING_BASE_URL, then save again.",
+        )
     fix = (
         "Check the embedding model name, or leave it empty to use the provider's default. "
         "Then save again, or save with vote similarity off."
@@ -524,7 +561,7 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
         resolved = type(build_store(cfg)).__name__
     except Exception:  # noqa: BLE001 - reported by _check_store, with its detail
         return checks
-    expected = "D1ArticleStore" if cfg.app.store.is_d1 else "ArticleStore"
+    expected = "D1ArticleStore" if cfg.app.store.is_sql else "ArticleStore"
     checks.append(
         Check(
             "store wiring",
@@ -540,31 +577,35 @@ def _check_store(cfg: Config) -> Check:
     from cyris.bootstrap import build_store
 
     backend = cfg.app.store.backend
+    sql = cfg.app.store.is_sql
     try:
         counts = build_store(cfg).count_by_state()
     except Exception as e:  # noqa: BLE001 - any failure here is the answer
-        return Check(
-            f"article store ({backend})",
-            "fail",
-            str(e),
-            "Check [store] and CLOUDFLARE_API_TOKEN." if cfg.app.store.is_d1 else "",
-        )
+        if cfg.app.store.is_d1:
+            fix = "Check [store] and CLOUDFLARE_API_TOKEN."
+        elif sql:
+            fix = "Check [store] sqlite_path and that its directory is writable."
+        else:
+            fix = ""
+        return Check(f"article store ({backend})", "fail", str(e), fix)
     total = sum(counts.values())
     summary = ", ".join(f"{state} {n}" for state, n in sorted(counts.items())) or "empty"
-    if not total and cfg.app.store.is_d1:
+    if not total and sql:
         # The tables are created on the way in, so an empty store no longer
-        # distinguishes a first boot from a `database_id` pointing at the wrong
-        # database — and the run after this one would write there, orphaning the
-        # real store. All this check observes is the row count, so that is all it
-        # says: a store emptied by `articles clean` is also legitimately empty,
-        # and telling it its tables are new would send it to change the one
-        # setting that causes the orphaning.
+        # distinguishes a first boot from a `database_id` (or `sqlite_path`)
+        # pointing at the wrong database — and the run after this one would
+        # write there, orphaning the real store. All this check observes is the
+        # row count, so that is all it says: a store emptied by
+        # `articles clean` is also legitimately empty, and telling it its tables
+        # are new would send it to change the one setting that causes the
+        # orphaning.
         return Check(
             f"article store ({backend})",
             "warn",
             "0 articles — nothing in this database",
-            "Expected on a first deploy. Otherwise check [store] database_id "
-            "before the next run writes here.",
+            "Expected on a first run. Otherwise check "
+            + ("[store] database_id" if cfg.app.store.is_d1 else "[store] sqlite_path")
+            + " before the next run writes here.",
         )
     return Check(f"article store ({backend})", "ok", f"{total} articles — {summary}")
 
@@ -620,14 +661,58 @@ async def _check_workers(cfg: Config) -> list[Check]:
                 "" if alive else "Check the Worker is deployed and CYRIS_WORKER_TOKEN matches it.",
             )
         )
+    elif cfg.app.rss.local_buffer and cfg.app.store.is_sql:
+        from cyris import bootstrap
+        from cyris.adapters.fetch.feed_buffer import STATUS
+
+        try:
+            row = bootstrap.build_d1_client(cfg).query(STATUS).rows[0]
+        except Exception as e:  # noqa: BLE001 - a missing table is the answer
+            checks.append(
+                Check("rss buffer", "warn", f"local feed_buffer — {e}", "Run `cyris buffer`.")
+            )
+        else:
+            if row["rows"]:
+                checks.append(
+                    Check(
+                        "rss buffer",
+                        "ok",
+                        f"local feed_buffer: {row['rows']} entries, newest {row['newest']}",
+                    )
+                )
+            else:
+                checks.append(
+                    Check(
+                        "rss buffer",
+                        "warn",
+                        "local feed_buffer is empty",
+                        "Run `cyris buffer` hourly (a run reads it, it does not poll).",
+                    )
+                )
     else:
+        if cfg.app.store.is_d1:
+            fix = (
+                "A digest-time poll only sees each feed's current snapshot: measured, "
+                "it found 95 of the 179 articles the buffer held. Deploy workers/rss/."
+            )
+        elif cfg.app.store.is_sql:
+            fix = (
+                "A digest-time poll only sees each feed's current snapshot: measured, "
+                "it found 95 of the 179 articles the buffer held. Set "
+                "`[rss] local_buffer = true` and run `cyris buffer` hourly."
+            )
+        else:
+            fix = (
+                "A digest-time poll only sees each feed's current snapshot: measured, "
+                "it found 95 of the 179 articles the buffer held; the `sqlite` store "
+                "has the local buffer to close it, and `json` this poll."
+            )
         checks.append(
             Check(
                 "rss buffer",
                 "warn",
                 "not configured — feeds are polled directly at digest time",
-                "A digest-time poll only sees each feed's current snapshot: measured, "
-                "it found 95 of the 179 articles the buffer held. Deploy workers/rss/.",
+                fix,
             )
         )
 

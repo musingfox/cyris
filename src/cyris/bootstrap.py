@@ -81,6 +81,23 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
     """
     if cfg.provider == "none":
         return None
+    # The one provider whose address is the reader's: no base_url builds
+    # nothing, its key is optional, and only a real call says whether the
+    # endpoint answers the chat-completions shape.
+    if cfg.provider == "openai_compatible":
+        if not cfg.base_url:
+            return None  # doctor names the missing base_url
+        model = cfg.model or default_model(cfg.provider)
+        # "" is the honest default for a reader-named endpoint; a blank model
+        # would ask it for a model it cannot guess.
+        if not model:
+            return None  # doctor names the missing model
+        return OpenAIClient(
+            cfg.api_key,
+            model,
+            base_url=cfg.base_url,
+            reasoning_effort=_reasoning_effort(cfg),
+        )
     if not cfg.provider or not cfg.api_key:
         return None
     model = cfg.model or default_model(cfg.provider)
@@ -106,6 +123,12 @@ def build_llm(cfg: LLMProviderConfig) -> LLMClient | None:
 EMBEDDING_ENV: dict[str, tuple[str, ...]] = {
     "workers_ai": ("CLOUDFLARE_EMBEDDING_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"),
     "gemini": ("GEMINI_API_KEY",),
+    # The compatible embedder's key: deliberately its own name, so the same
+    # reader can point the LLM and the embedder at different accounts, and
+    # optional on both — a LAN or localhost endpoint may answer with no
+    # Authorization header at all. A row here is what puts the provider on the
+    # settings page's embedding list.
+    "openai_compatible": ("OPENAI_COMPATIBLE_EMBEDDING_API_KEY",),
 }
 
 
@@ -114,10 +137,21 @@ def embedding_model(provider: str, model: str) -> str:
     return model or embedding_defaults(provider)["model"]
 
 
-def make_embedder(provider: str, model: str) -> Any:
+def make_embedder(provider: str, model: str, base_url: str = "") -> Any:
     """The embedder for `provider`, keyed from the environment; "" is its default model."""
     model = embedding_model(provider, model)
     env = [os.environ.get(name, "") for name in EMBEDDING_ENV[provider]]
+    if provider == "openai_compatible":
+        from cyris.adapters.embedding import OpenAICompatibleEmbedder
+
+        # The address is the reader's, and only a deliberate probe names a
+        # missing one — the ValueError is this factory's contract for that;
+        # the model comes from the defaults row when the setting left it empty.
+        if not base_url:
+            raise ValueError(
+                "the openai_compatible embedder needs OPENAI_COMPATIBLE_EMBEDDING_BASE_URL"
+            )
+        return OpenAICompatibleEmbedder(api_key=env[0], model=model, base_url=base_url)
     if provider == "gemini":
         from cyris.adapters.embedding import GeminiEmbedder
 
@@ -141,7 +175,7 @@ def build_embedder(cfg: Config) -> Any | None:
     vote = cfg.app.vote_similarity
     if not (vote.enabled or cfg.tracked_topics):
         return None
-    return make_embedder(vote.provider, vote.model)
+    return make_embedder(vote.provider, vote.model, vote.base_url)
 
 
 def build_worker_domains() -> Callable[[], list[str]] | None:
@@ -219,8 +253,21 @@ def build_ask_clef() -> AskClef | None:
     return ClefClient(token, account_id).ask
 
 
+def sqlite_path(cfg: Config) -> Path:
+    """The SQLite file `[store] backend = "sqlite"` reads and writes."""
+    return Path(cfg.app.store.sqlite_path or cfg.app.agent_vault.path / "cyris.db")
+
+
 def build_d1_client(cfg: Config) -> Any | None:
-    """The D1 connection, or None when `[store] backend` is still json."""
+    """The SQL store client for `[store] backend`, or None when it is json.
+
+    Named for D1 because every store above it is a `D1*Store`: the local file is
+    the same SQL behind the same seam, so it answers with the same shapes.
+    """
+    if cfg.app.store.backend == "sqlite":
+        from cyris.adapters.store.sqlite import SqliteClient
+
+        return SqliteClient(sqlite_path(cfg))
     if not cfg.app.store.is_d1:
         return None
 
@@ -254,10 +301,11 @@ def build_settings(cfg: Config, d1: Any | None = None) -> Any | None:
 def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     """The config a run actually uses, with grade-D settings from one home.
 
-    A json deployment reads them from cyris.toml; a D1 deployment from the D1
-    `settings` table alone, whatever the file says. Every entrypoint goes through
-    here, because a host run and a container run resolving settings differently
-    is the failure this exists to prevent — so a D1 read error propagates.
+    A json deployment reads them from cyris.toml; a SQL deployment - D1 or the
+    local SQLite file - from its `settings` table alone, whatever the file says.
+    Every entrypoint goes through here, because a host run and a container run
+    resolving settings differently is the failure this exists to prevent — so a
+    D1 read error propagates.
     """
     from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.d1 import apply_schema
@@ -269,7 +317,7 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     # Grade-D keys from nowhere yet: this pass only has to know the store, and
     # must not fail on file values a D1 deployment is about to ignore.
     cfg = resolve_config(raw, d1_settings={})
-    if not cfg.app.store.is_d1:
+    if not cfg.app.store.is_sql:
         return resolve_config(raw)
 
     d1 = build_d1_client(cfg)
@@ -287,7 +335,7 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
 
 
 def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
-    """The article store, JSON files or D1 depending on `[store] backend`."""
+    """The article store, JSON files or SQL depending on `[store] backend`."""
     d1 = d1 or build_d1_client(cfg)
     if d1 is None:
         return ArticleStore(cfg.app.agent_vault.path)
@@ -374,7 +422,7 @@ def build_promotion_sync(
 
 
 def build_rss_source(cfg: Config) -> FetchSource:
-    """The run's RSS edge: the Worker's hourly D1 buffer, else direct polling.
+    """The run's RSS edge: the Worker's hourly D1 buffer, the local one, else direct polling.
 
     Direct polling is the fallback — correct only for feeds whose snapshot
     outlives the window (measured: a digest-time poll missed 141 of 317
@@ -384,10 +432,27 @@ def build_rss_source(cfg: Config) -> FetchSource:
         from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 
         return CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token)
+    if cfg.app.rss.local_buffer and cfg.app.store.is_sql:
+        from cyris.adapters.fetch.feed_buffer import BufferedRssSource
+
+        return BufferedRssSource(build_d1_client(cfg))
 
     from cyris.adapters.fetch.rss_source import RssSource
 
     return RssSource()
+
+
+def build_feed_buffer(cfg: Config) -> Any:
+    """The local buffer's writer, for `cyris buffer`. Raises when nothing can buffer."""
+    from cyris.adapters.fetch.feed_buffer import FeedBuffer
+
+    client = build_d1_client(cfg)
+    if client is None:
+        raise ValueError(
+            "A local feed buffer lives in the SQL store: set [store] backend = "
+            '"sqlite" (or "d1") and [rss] local_buffer = true.'
+        )
+    return FeedBuffer(client)
 
 
 def build_onboarding_articles(cfg: Config) -> Any:
@@ -398,9 +463,15 @@ def build_onboarding_articles(cfg: Config) -> Any:
     first, since the feeds were picked a moment ago and the cron may be an hour off.
     """
     from cyris.adapters.fetch.onboarding_cards import OnboardingArticles
+    from cyris.adapters.fetch.rss_source import RssSource
     from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 
-    source = build_rss_source(cfg)
+    if cfg.app.rss.local_buffer and cfg.app.store.is_sql:
+        # A card is read the moment the reader pastes it, and the hourly buffer
+        # poll has not seen that feed yet: read it directly, once.
+        source: FetchSource = RssSource()
+    else:
+        source = build_rss_source(cfg)
     poll = source.poll if isinstance(source, CloudflareRssSource) else None
     return OnboardingArticles(source, poll=poll)
 

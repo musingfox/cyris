@@ -28,6 +28,7 @@ _TEST_VALUES: dict[str, Any] = {
     "digest.output_language": "zh-Hant",
     "digest.style_prompt": "",
     "digest.type_scale": 1,
+    "digest.theme": "default",
     # Off: the model's order, which every test not about the vote order asserts.
     "digest.rank_by_preference": False,
     "digest.preference_source": "cosine",

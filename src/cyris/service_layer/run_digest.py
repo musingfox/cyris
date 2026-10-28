@@ -938,6 +938,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                         digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
                 else:
                     publish_failed = True
+            elif cfg.app.promote.local_origin and report.html_path is not None:
+                # Nothing publishes these pages, so the link a notification carries
+                # is the server that serves the output directory: `cyris triage-ui`.
+                report.slug = slug
+                digest_url = f"{cfg.app.promote.local_origin.rstrip('/')}/{slug}"
 
     if not options.dry_run and not rerun:
         if not notify.discord_webhook_url:

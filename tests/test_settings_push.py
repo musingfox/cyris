@@ -37,9 +37,9 @@ def test_an_empty_d1_gets_every_key_from_a_complete_file(tmp_path: Path, d1: Sql
     result, config_path = _push(tmp_path, settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 27
+    assert len(D1Settings(d1).all()) == 28
     assert result.stdout.rstrip().endswith(
-        f"Added 27 of 27 settings from {config_path}; 0 kept; 0 still missing."
+        f"Added 28 of 28 settings from {config_path}; 0 kept; 0 still missing."
     )
 
 
@@ -127,7 +127,7 @@ def test_a_d1_deployments_file_is_still_read(tmp_path: Path, d1: SqliteD1) -> No
     result, _ = _push(tmp_path, '[store]\nbackend = "d1"\n\n' + settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 27
+    assert len(D1Settings(d1).all()) == 28
 
 
 EFFORT = "llm_provider.reasoning_effort"
@@ -141,7 +141,7 @@ def test_an_effort_in_neither_home_is_reported_as_default_not_missing(
     assert result.exit_code == 0, result.output
     assert f"  default  {EFFORT} — in neither D1 nor {config_path}" in result.stdout
     assert result.stdout.rstrip().endswith(
-        f"Added 26 of 27 settings from {config_path}; 0 kept; 0 still missing."
+        f"Added 27 of 28 settings from {config_path}; 0 kept; 0 still missing."
     )
     assert EFFORT not in D1Settings(d1).all()
 

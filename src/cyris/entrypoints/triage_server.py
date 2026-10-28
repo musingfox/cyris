@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -149,6 +150,15 @@ ONBOARDING_EXIT_MARK = ("from", "onboarding")
 # Interested and is written accepted, "down" is Not interested, rejected.
 VOTES = ("up", "down")
 
+# What a digest page can post to `POST /api/vote`. The promote Worker takes the
+# same three, and a "deep" from a page published before 2026-08-08 still arrives.
+DIGEST_VOTES = ("up", "down", "deep")
+
+# A page the local server serves out of the HTML output directory: an issue, its
+# raw form, or the index. Everything else there is not a route.
+PAGE_NAME = re.compile(r"^(?:\d{4}-\d{2}-\d{2}-(?:morning|evening)(?:-raw)?|index)$")
+PERIODS = ("morning", "evening")
+
 
 def _onboarding_catalog() -> dict[str, Any]:
     raw = (files("cyris") / "onboarding_feeds.json").read_text(encoding="utf-8")
@@ -208,6 +218,8 @@ class TriageServer:
         digest_store=None,
         run_log=None,
         interest_reader=None,
+        start_run=None,
+        archive_dir=None,
         clock=None,
     ) -> None:
         self._host = host
@@ -258,6 +270,12 @@ class TriageServer:
         # D1's voted tags and live holds, which the interest map is drawn from on each
         # request (`D1InterestReader.read`); absent on a `backend = "json"` deployment.
         self._interest_reader = interest_reader
+        # `(period, date) -> {"started", "at"}`, starting this host's own run: the
+        # app Worker starts a container instead. Absent where nothing starts runs.
+        self._start_run = start_run
+        # Where `[html_output]` writes: the pages a run publishes, served here so a
+        # local deployment has the archive the app Worker gets from Pages.
+        self._archive_dir = Path(archive_dir) if archive_dir else None
         # The time the first issue's key is picked at; a probe pins it.
         self._clock = clock or (lambda: datetime.now(UTC))
         self._settings_page = render_settings_page()
@@ -268,6 +286,7 @@ class TriageServer:
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/diagnostics/llm", self._handle_diagnose_llm)
+        self._app.router.add_post("/api/diagnostics/embedding", self._handle_diagnose_embedding)
         self._app.router.add_post("/api/settings/schedule", self._handle_post_schedule)
         self._app.router.add_post("/api/settings/values", self._handle_post_values)
         self._app.router.add_post("/api/settings/vote-similarity", self._handle_post_vote)
@@ -297,6 +316,10 @@ class TriageServer:
         self._app.router.add_put(r"/api/areas/{id:\d+}", self._handle_rename_area)
         self._app.router.add_get("/api/labels", self._handle_get_labels)
         self._app.router.add_post("/api/labels", self._handle_post_label)
+        # The digest's own two routes, which the app Worker fronts on Cloudflare.
+        self._app.router.add_get("/api/vote", self._handle_get_vote)
+        self._app.router.add_post("/api/vote", self._handle_post_digest_vote)
+        self._app.router.add_post("/run", self._handle_post_run)
         self._app.router.add_get("/settings", self._handle_settings_page)
         self._app.router.add_get("/onboarding", self._handle_onboarding_page)
         self._app.router.add_get("/labels", self._handle_labels_page)
@@ -305,6 +328,13 @@ class TriageServer:
         # A local `cyris triage-ui` has no Pages behind it.
         self._app.router.add_get("/favicon.svg", self._handle_favicon)
         self._app.router.add_static("/static", STATIC_DIR)
+        # Last: a published page's short URL, the shape Pages resolves, and the
+        # index at /. Nothing else in the output directory is a route.
+        # Every method, but only pages answered: a GET-less write to a page's URL
+        # must stay the 404 it was before these routes existed, not a 405 that
+        # names the one method the directory answers.
+        self._app.router.add_route("*", "/", self._handle_archive_page)
+        self._app.router.add_route("*", r"/{name:.+}", self._handle_archive_page)
         self._app.on_response_prepare.append(_revalidate_static)
         self._runner: web.AppRunner | None = None
 
@@ -323,16 +353,161 @@ class TriageServer:
         """
         return web.json_response({"git_sha": os.environ.get("CYRIS_GIT_SHA", "")})
 
+    async def _handle_get_vote(self, request: web.Request) -> web.Response:
+        """The digest's capability probe: does this deployment take votes?
+
+        The app Worker answers this after checking Access, and the digest hides
+        its vote buttons and gated links on anything but `{"authorized": true}`.
+        Here the answer is the store's: a vote needs rows to write to, and a
+        `backend = "json"` deployment has none of those tables.
+        """
+        if self._article_store is None:
+            return web.json_response({"error": "no article store to vote into"}, status=503)
+        return web.json_response({"authorized": True})
+
+    async def _handle_post_digest_vote(self, request: web.Request) -> web.Response:
+        """A digest vote, applied to the store now.
+
+        The Cloudflare path parks the vote in the promote Worker's KV and the
+        next run's `promote-sync` applies it; locally there is no hop worth
+        keeping, so this writes what `sync_promotions` would: `down` rejects,
+        anything else accepts, and every voted row is stamped `triaged_at` — the
+        press was a person's. A URL the store no longer holds is logged and
+        answered `ok`, the way the Worker acks a vote for a cleaned article.
+        """
+        from cyris.adapters.promotions import record_votes
+
+        if self._article_store is None:
+            return web.json_response(
+                {"error": 'votes need the SQL store: set [store] backend = "sqlite"'},
+                status=503,
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        url = body.get("url") if isinstance(body, dict) else None
+        vote = body.get("vote", "up") if isinstance(body, dict) else None
+        if not isinstance(url, str) or not url:
+            return web.json_response({"ok": False, "error": "missing url"}, status=400)
+        if vote not in DIGEST_VOTES:
+            return web.json_response({"ok": False, "error": "bad vote"}, status=400)
+
+        if not self._article_store.get_by_urls([url]):
+            logger.warning("Voted URL not in store: %s", url)
+            return web.json_response({"ok": True})
+
+        record_votes(
+            self._article_store,
+            accepted=[] if vote == "down" else [url],
+            rejected=[url] if vote == "down" else [],
+            at=datetime.now(UTC),
+        )
+        logger.info("Digest vote: %s %s", vote, url)
+        return web.json_response({"ok": True})
+
+    async def _handle_post_run(self, request: web.Request) -> web.Response:
+        """Start a run, as the app Worker's `POST /run?period=&date=` does.
+
+        The Worker starts its `run` container; this server asks the host it
+        already is to start the same command, so the wizard's first issue and a
+        manual run work with no Cloudflare in front. `date` is checked to be a
+        real day only: the Worker also refuses a date that is not today or
+        yesterday in the deployment's time zone, because a published issue must
+        not be stored over — a local caller starts its own run and may say so.
+        """
+        if self._start_run is None:
+            return web.json_response({"error": "this deployment starts no run"}, status=503)
+        period = request.query.get("period")
+        date = request.query.get("date")
+        if period is None and date is not None:
+            return web.json_response({"error": "date needs a period"}, status=400)
+        if period is not None and period not in PERIODS:
+            return web.json_response(
+                {"error": f"period must be one of {', '.join(PERIODS)}"}, status=400
+            )
+        if date is not None:
+            try:
+                datetime.strptime(date, "%Y-%m-%d")
+            except ValueError:
+                return web.json_response(
+                    {"error": "date must be a real YYYY-MM-DD date"}, status=400
+                )
+        try:
+            started = await asyncio.to_thread(self._start_run, period, date)
+        except RuntimeError as e:
+            return web.json_response({"error": str(e)}, status=409)
+        return web.json_response(started)
+
+    async def _handle_archive_page(self, request: web.Request) -> web.StreamResponse:
+        """A page `[html_output]` wrote: `/`, `/index.html` and an issue's short URL.
+
+        Pages resolves `/2026-10-28-morning` to that file on Cloudflare; a local
+        deployment has no Pages, so the same URL is answered from the output
+        directory, and the pages' `index.html` links resolve against it.
+        """
+        # Pages are read; a write to a page's URL stays the 404 it always was.
+        if request.method not in ("GET", "HEAD"):
+            raise web.HTTPNotFound()
+        name = request.match_info.get("name", "index.html")
+        stem = name.removesuffix(".html") or "index"
+        if not PAGE_NAME.match(stem) or self._archive_dir is None:
+            raise web.HTTPNotFound()
+        path = self._archive_dir / f"{stem}.html"
+        if not path.is_file():
+            raise web.HTTPNotFound()
+        # Same live override as the interest page: the file is read out and
+        # tagged when a palette is set, streamed untouched when the tokens are
+        # the theme.
+        from cyris.adapters.output.themes import theme_style
+
+        if theme_style(self._values.get("digest.theme") or "default"):
+            return web.Response(
+                text=self._injected(path.read_text(encoding="utf-8")),
+                content_type="text/html",
+                # A cached copy keeps the old palette through a theme save,
+                # which is the one thing a switch must not show.
+                headers={"Cache-Control": "no-cache"},
+            )
+        return web.FileResponse(path, headers={"Cache-Control": "no-cache"})
+
+    def _admin_page(self, page: str) -> web.Response:
+        """A cached admin page served in the saved theme, never re-served from a cache.
+
+        Server-side injection is what keeps the first paint honest: the page
+        arrives already themed, so no default-then-switch flash. The digest
+        pages get the same override, so every surface a reader sees carries
+        one palette without a run in between.
+        """
+        return web.Response(
+            text=self._injected(page),
+            content_type="text/html",
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    def _injected(self, page: str) -> str:
+        """A page with the deployment's theme override before its `</head>`.
+
+        Live, not baked: per request, from the values this server keeps, so a
+        save on the Theme page reaches the next page view. "" for the default
+        theme — the tokens as written are that palette, and nothing overrides.
+        """
+        from cyris.adapters.output.themes import theme_style
+
+        style = theme_style(self._values.get("digest.theme") or "default")
+        return page.replace("</head>", f"<style>{style}</style>\n</head>", 1) if style else page
+
     async def _handle_get_settings(self, request: web.Request) -> web.Response:
         """Every runtime setting and which are missing, and what this machine could switch to."""
         from cyris.adapters.notify import mask_discord_webhook_url
+        from cyris.adapters.output.themes import THEMES, theme_style
         from cyris.bootstrap import (
             EMBEDDING_ENV,
             clef_credentials,
             default_models,
             embedding_defaults,
         )
-        from cyris.config import GRADE_D_KEYS, LLMProviderConfig
+        from cyris.config import GRADE_D_KEYS, LLMProviderConfig, VoteSimilarityConfig
         from cyris.service_layer.prompts import _language_names
 
         values = {key: self._values.get(key) for key in GRADE_D_KEYS}
@@ -345,7 +520,11 @@ class TriageServer:
             # Constructing it is what resolves the key from the environment, so
             # `configured` reflects what a run would actually find, not a guess.
             probe_cfg = LLMProviderConfig(provider=name, model="")
-            ready = bool(probe_cfg.api_key) and (
+            # The compatible provider's key is optional — a LAN or localhost
+            # endpoint may answer with none — so it is choosable either way;
+            # its base_url is part of the save, not the environment.
+            ready = name == "openai_compatible" or bool(probe_cfg.api_key)
+            ready = ready and (
                 bool(probe_cfg.account_id) if name in ("workers_ai", "ai_gateway") else True
             )
             providers.append(
@@ -353,21 +532,33 @@ class TriageServer:
                     "name": name,
                     "env_var": probe_cfg.api_key_env_var,
                     "default_model": models[name],
+                    # The compatible provider is configured by its own three
+                    # environment names, so the page shows what they hold
+                    # instead of asking for fields it cannot save.
+                    "env_model": probe_cfg.model,
+                    "env_base_url": probe_cfg.base_url,
                     "configured": ready,
                 }
             )
         # Not from provider_defaults.json: "none" has no model, and anything read
         # from that file is treated as a provider that has one.
         providers.append({"name": "none", "env_var": "", "default_model": "", "configured": True})
-        embedding_providers = [
-            {
-                "name": name,
-                "env_var": env[0],
-                "default_model": embedding_defaults(name)["model"],
-                "configured": all(os.environ.get(var) for var in env),
-            }
-            for name, env in EMBEDDING_ENV.items()
-        ]
+        embedding_providers = []
+        for name, env in EMBEDDING_ENV.items():
+            # Constructing one is what resolves the compatible pair's
+            # environment: the page shows what the names hold, not fields.
+            vote_cfg = VoteSimilarityConfig(enabled=False, provider=name, model="", max_seeds=1)
+            embedding_providers.append(
+                {
+                    "name": name,
+                    "env_var": env[0],
+                    "default_model": embedding_defaults(name)["model"],
+                    "env_model": vote_cfg.model,
+                    "env_base_url": vote_cfg.base_url,
+                    "configured": name == "openai_compatible"
+                    or all(os.environ.get(var) for var in env),
+                }
+            )
         return web.json_response(
             {
                 "values": values,
@@ -378,6 +569,12 @@ class TriageServer:
                 "embedding_providers": embedding_providers,
                 # Whether a run could call Clef; the page disables it as a judge if not.
                 "clef_ready": clef_credentials() is not None,
+                # The theme select switches the page under the reader as it
+                # picks, so the styles travel with the names (themes.py's own).
+                "themes": [
+                    {"id": value, "label": label, "css": theme_style(value)}
+                    for value, label in THEMES
+                ],
                 # Each tag with the name languages.json gives it, in the file's order:
                 # the pages offer them as a select's options.
                 "languages": [
@@ -508,6 +705,35 @@ class TriageServer:
             status=200 if ok else 502,
         )
 
+    async def _handle_diagnose_embedding(self, request: web.Request) -> web.Response:
+        """Probe an embedder choice without storing it — the Test button's backend.
+
+        The same probe the enable-switch makes; separate so a base_url and a
+        model can be tried against an endpoint before committing to them.
+        """
+        from cyris.bootstrap import EMBEDDING_ENV
+        from cyris.config import VoteSimilarityConfig
+        from cyris.diagnostics import doctor
+
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        provider = (body.get("provider") or "").strip()
+        if provider not in EMBEDDING_ENV:
+            return web.json_response(
+                {"ok": False, "error": f"unknown embedder {provider!r}"}, status=400
+            )
+        # The model and the address come from the embedding environment, the
+        # way a run reads them; the page sends the provider choice alone.
+        candidate = VoteSimilarityConfig(enabled=True, provider=provider, model="", max_seeds=1)
+        probe = await doctor.probe_embedder(candidate.provider, candidate.model, candidate.base_url)
+        ok = probe.status == "ok"
+        return web.json_response(
+            {"ok": ok, "provider": provider, "model": candidate.model, "detail": probe.detail},
+            status=200 if ok else 502,
+        )
+
     async def _handle_post_schedule(self, request: web.Request) -> web.Response:
         """Set the two digest hours. The cron tick is hourly and reads this."""
         from cyris.service_layer.schedule import validate_schedule
@@ -586,7 +812,7 @@ class TriageServer:
         be able to complete its settings.
         """
         from cyris.bootstrap import EMBEDDING_ENV
-        from cyris.config import validate_setting
+        from cyris.config import VoteSimilarityConfig, validate_setting
 
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
@@ -604,11 +830,28 @@ class TriageServer:
 
         if values["vote_similarity.enabled"]:
             provider = values["vote_similarity.provider"]
-            probe = await probe_embedder(provider, values["vote_similarity.model"])
+            # Constructing the row fills the compatible pair's address and
+            # model from the environment — the same place a run reads them.
+            candidate = VoteSimilarityConfig(
+                enabled=True,
+                provider=provider,
+                model=values["vote_similarity.model"],
+                max_seeds=values["vote_similarity.max_seeds"],
+            )
+            probe = await probe_embedder(provider, candidate.model, candidate.base_url)
             if probe.status != "ok":
-                # A missing key is the provider's to fix, the way the page marks it.
-                keyed = all(os.environ.get(var) for var in EMBEDDING_ENV[provider])
-                field = "vote_similarity.model" if keyed else "vote_similarity.provider"
+                # A missing key is the provider's to fix, the way the page marks it;
+                # the compatible one's key is optional, so its failures name the
+                # address or the model, whichever its own words point at.
+                if provider == "openai_compatible":
+                    field = (
+                        "vote_similarity.base_url"
+                        if "base_url" in probe.detail
+                        else "vote_similarity.model"
+                    )
+                else:
+                    keyed = all(os.environ.get(var) for var in EMBEDDING_ENV[provider])
+                    field = "vote_similarity.model" if keyed else "vote_similarity.provider"
                 return _refused(_probe_refusal(probe), field)
             detail = probe.detail
         else:
@@ -1790,8 +2033,8 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-    async def _handle_labels_page(self, request: web.Request) -> web.Response:
-        return web.Response(text=self._labels_page, content_type="text/html")
+    async def _handle_labels_page(self, request: web.Response) -> web.Response:
+        return self._admin_page(self._labels_page)
 
     def _awaiting_onboarding(self) -> bool:
         """Whether this deployment is waiting for onboarding: a writable, empty source table.
@@ -1812,7 +2055,7 @@ class TriageServer:
         key, value = ONBOARDING_EXIT_MARK
         if self._awaiting_onboarding() and request.query.get(key) != value:
             raise web.HTTPFound(ONBOARDING_PATH)
-        return web.Response(text=self._settings_page, content_type="text/html")
+        return self._admin_page(self._settings_page)
 
     async def _handle_onboarding_page(self, request: web.Request) -> web.Response:
         """The wizard, on any deployment with a writable source table.
@@ -1823,7 +2066,7 @@ class TriageServer:
         """
         if self._source_store is None:
             raise web.HTTPFound("/settings")
-        return web.Response(text=self._onboarding_page, content_type="text/html")
+        return self._admin_page(self._onboarding_page)
 
     async def _handle_interest_page(self, request: web.Request) -> web.Response:
         """The interest map, drawn from D1 as it is now."""
@@ -1842,7 +2085,12 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             logger.error("Failed to render the interest map: %s", e)
             return web.Response(text=f"Could not draw the interest map: {e}", status=500)
-        return web.Response(text=page, content_type="text/html")
+        return web.Response(
+            text=self._injected(page),
+            content_type="text/html",
+            # The interest map is drawn per request; a cached copy is stale votes.
+            headers={"Cache-Control": "no-cache"},
+        )
 
     async def _handle_favicon(self, request: web.Request) -> web.Response:
         return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")

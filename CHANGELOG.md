@@ -4,9 +4,27 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
-
 ### Added
 
+
+- **A local install can now be the full deployment.** `[store] backend = "sqlite"`
+  runs the same tables the D1 deployment runs, in one file under the vault:
+  `/settings` writes, `/onboarding` runs its wizard, votes from the digest pages land
+  in the store, `/labels` and `/interest` work, and `cyris triage-ui` serves the
+  archive over HTTP at `/` and `/<date>-<period>` — with `POST /run` starting a run
+  and `[promote] local_origin` giving notifications a digest link to it. A feed
+  buffer arrives with it: `[rss] local_buffer = true` plus hourly `cyris buffer`
+  (scheduled, on Linux, by `cyris schedule install-systemd`) fills the same table
+  the RSS Worker fills on Cloudflare, so a run reads the window instead of polling
+  a snapshot. Seed the store once with `cyris settings push` and
+  `cyris sources push`; from then on the database is where the settings and the
+
+- **`cyris serve` gives the digest a read-only URL.** For a deployment with no
+  Pages project — `--host <interface> --port 8767` serves the archive, each
+  issue and its raw page straight out of the HTML output directory, re-reading
+  each page per request, and nothing else: no settings, no votes answered, and
+  the vote probe among the 404s is what keeps the digest's buttons hidden.
+  Both local backends and the container image run it as-is.
 - **A new deployment is set up by a wizard.** While its source list is empty,
   `/settings` opens `/onboarding`: six steps, of which this release fills three —
   the output language and timezone, the publish hours, and the notifications.
@@ -15,14 +33,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that pick sources from a list, take your first votes and build the first issue
   say `Coming next` until they land. A deployment that already has a source, and
   one on the `json` backend, go straight to `/settings` as before.
-- Your votes can order each issue. With **Order by your votes** on (`/settings`,
-  Digest) and vote similarity on, the headlines and Features closest to what you
-  voted up come first, and when an issue is full the headline closer to an
-  upvote takes the last slot. Nothing is dropped: a headline the issue leaves out
-  stays for the next one. Off keeps the model's order.
-- The vote order can be asked of Clef. With `digest.preference_source` set to
-  `clef`, Cloudflare's Clef model scores each headline and Feature the issue
-  kept from its five nearest upvoted and downvoted titles, and that score
+- **The digest has a theme.** `digest.theme`, on its own **Theme** page of
+  `/settings`: picking one of `default`, `light`, `one_dark`, `catppuccin`,
+  `nord`, `tokyo_night` or `github_dark` re-skins the settings page at once —
+  the preview is the point of the choose — and Save stores the palette, which
+  is injected on read — never baked — by every surface that serves a page: the
+  app Worker (a `theme.js` sibling of `type_scale.js`, ADR-0013's own TTL shape),
+  `triage-ui`'s archive and interest pages, and `cyris serve`. Published issues
+  restyle at the next view, so a save needs no run. `cyris regenerate` also
+  takes the sqlite store now, not only D1.
+- **Both the LLM and the embedder take an `openai_compatible` provider.** On the
+  Model page: a Base URL field each (`llm_provider.base_url`,
+  `vote_similarity.base_url`), the model of the reader's choosing, keys that are
+  optional and separate (`OPENAI_COMPATIBLE_API_KEY` for the LLM,
+  `OPENAI_COMPATIBLE_EMBEDDING_API_KEY` for the embedder — a LAN or localhost
+  endpoint may answer with none), and a **Test** button per pair that makes one real call and stores
+  nothing — the LLM's through the existing `/api/diagnostics/llm`, the embedder's
+- **Both the LLM and the embedder take an `openai_compatible` provider.** On
+  the Model page it is a choice only: the endpoint, the model and the key come
+  from their own environment names (`OPENAI_COMPATIBLE_BASE_URL`/`_MODEL`/
+  `_API_KEY` for the LLM, an `OPENAI_COMPATIBLE_EMBEDDING_*` set of the same
+  three for the embedder — keys optional, a LAN or localhost endpoint may
+  answer with none), the hint shows what they resolve to, and a **Test**
+  button per pair makes one real call and stores nothing — the LLM's through
+  the existing `/api/diagnostics/llm`, the embedder's through the new
+  `/api/diagnostics/embedding`. A missing name is refused naming exactly it,
+  never silently unbuilt.
   replaces the cosine difference in the order. Nothing is dropped or stamped,
   and an issue Clef cannot fully score keeps the cosine order, recording why as
   `preference_clef_skipped` in the run summary. `cosine` stays the order until
