@@ -157,9 +157,9 @@ class NewsParagraph(BaseModel):
     # True when the text is the units' own excerpt rather than a model's paragraph, so
     # the page cannot tag it with the output language.
     passed_through: bool = False
-    # The digest items the units stood for when the issue counted them
-    # (`articles_included`): a cluster is one however many reports it holds, a cosine
-    # group one per headline. Unset, each unit is one.
+    # Legacy, read by nothing: the digest items the units stood for when an issue
+    # stored with paragraphs counted them, a cluster as one; `articles_included` now
+    # counts the page's article URLs.
     items: int | None = None
 
     @model_validator(mode="after")

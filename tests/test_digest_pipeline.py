@@ -194,6 +194,43 @@ class TestDigestPipeline:
         assert result.story_records[0].urls == ["https://news.example/1", "https://news.example/2"]
         assert result.story_records[1].urls == ["https://news.example/3"]
 
+    async def test_the_issue_counts_every_article_the_page_shows_a_topic_of_two_as_two(
+        self, sample_sources, tmp_path
+    ):
+        news = [
+            Article(
+                id=i,
+                title=f"News {i}",
+                url=f"https://news.example/{i}",
+                content="News content",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Wire",
+                source_lane=Lane.SKIM,
+                source_tags=["news"],
+            )
+            for i in (1, 2, 3)
+        ]
+        pipeline = DigestPipeline(
+            FakeLLM(
+                '{"clusters": ['
+                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
+            ),
+            **pipeline_settings(),
+        )
+
+        result = await pipeline.process(
+            news, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        html = HtmlDigestWriter(tmp_path).render(result.content)
+        on_page = {
+            url for group in re.findall(r"data-urls='([^']*)'", html) for url in json.loads(group)
+        }
+        assert len(result.content.news_clusters[0].items[0].urls) == 2
+        assert result.content.articles_included == len(on_page) == 3
+        assert on_page == digest_urls(result.content)
+
     async def test_rendered_story_id_matches_persisted_record(self, sample_sources, tmp_path):
         """Seam: the id the digest renders is the id the story store persists."""
         news = [

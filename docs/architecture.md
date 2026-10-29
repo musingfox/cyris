@@ -393,7 +393,11 @@ articles reach `[routing] score_threshold`, and then it carries every article of
 the group summary covers them all. Every other article is one Features card under its own summary,
 highest score first. That is the stored issue's shape, which the mail and Discord draw through the
 area skeleton. **There is no output cap** (ADR-0023): every article the run kept is in the issue and
-on the page, and only the intake cap `max_articles_per_digest` (above) bounds an issue.
+on the page, and only the intake cap `max_articles_per_digest` (above) bounds an issue. The
+issue's `articles_included` is the number of article URLs it shows, `len(digest_urls(content))`, set
+once the order is final: a topic of three reports counts three, and a Tracking hit counts none. The
+stats card, the archive, the mail, Discord's Kept line and `usage_log` all read it; an issue stored
+before 2026-10-29 keeps the count it was saved with, a cluster counting one.
 
 **The page draws three layers** (`layer_by_lane` in `domain/layers.py`, ADR-0023), decided by lane
 and by member count in this issue alone, never by a score or an area: every `read` or `follow`

@@ -218,14 +218,6 @@ class DigestPipeline:
 
         _stamp_tags([*summaries, *attention], article_tags or {})
 
-        total_included = (
-            len(filtered)
-            + sum(len(s.items) for s in summaries)
-            + sum(len(a.items) for a in attention)
-            + sum(len(c.items) for c in news_clusters)
-            + sum(len(f.items) for f in follow_sections)
-        )
-
         cost = usage.estimated_cost
         logger.info(
             "API usage: %d calls, %d input + %d output tokens, %s",
@@ -272,7 +264,7 @@ class DigestPipeline:
             period=period,
             sources_processed=len(source_names),
             articles_received=len(articles),
-            articles_included=total_included,
+            articles_included=0,
             usage=usage,
             news_clusters=news_clusters,
             thematic_summaries=summaries,
@@ -303,6 +295,8 @@ class DigestPipeline:
         # Accepted means shown in this issue. What the summarizer left out of every
         # section stays pending for the next run in the window.
         accepted_urls = list(digest_urls(content))
+        # Counted as the page shows them: a topic of three reports is three articles.
+        content.articles_included = len(accepted_urls)
 
         return ProcessResult(
             content=content,

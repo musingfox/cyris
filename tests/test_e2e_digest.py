@@ -485,7 +485,7 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "digest_date": receipts.date,
         "period": "morning",
         "articles_received": 13,
-        "articles_included": 11,
+        "articles_included": 12,
         "model": MODEL,
         "api_calls": 5,
         "input_tokens": 5000,
@@ -511,7 +511,7 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "status": "ok",
         "fetched": 13,
         "received": 13,
-        "included": 11,
+        "included": 12,
         "degraded": True,
     }
     assert summary["digest_url"] == receipts.digest_url
@@ -520,7 +520,7 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
     (issue,) = run.rows("SELECT * FROM digests")
     content = json.loads(issue["content"])
     assert (issue["date"], issue["period"], issue["raw_page"]) == (receipts.date, "morning", 1)
-    assert (content["articles_received"], content["articles_included"]) == (13, 11)
+    assert (content["articles_received"], content["articles_included"]) == (13, 12)
 
     members = sorted([URL["n1"], URL["n2"]])
     story_id = (
@@ -891,8 +891,8 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     for key in WATER:
         assert f"({URL[key]})" in tech["description"], key
     assert f"({receipts.digest_url})" in stats["description"]
-    # 4 sources, 13 articles received, 11 items kept: the cluster is one item.
-    for count in ("**4**", "**13**", "**11**"):
+    # 4 sources, 13 articles received, 12 kept: the topic of two counts as two.
+    for count in ("**4**", "**13**", "**12**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
     assert stats["title"].split()[0] == "Morning"
