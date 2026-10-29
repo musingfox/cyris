@@ -642,6 +642,26 @@ _CHECKS: list[Check] = [
             " grid-template-columns: repeat(2, 300px) !important; }"
         ),
     ),
+    # A water row with no summary and no tags is one line, shorter than the 44px tap
+    # area its 24px vote buttons keep, so a short row must still be 44px tall or a tap
+    # between two rows votes on the neighbour.
+    Check(
+        id="water-row-holds-tap-area-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act=(
+            "await signedIn();"
+            " $$('.headline-item .summary, .headline-item .tags').forEach((e) => e.remove());"
+        ),
+        script="""
+            const rows = $$(".headline-item").map((row) => row.getBoundingClientRect().height);
+            expect(rows.length >= 2, "fewer than two water rows");
+            const short = rows.filter((h) => h < 44);
+            expect(!short.length, `rows of ${short.join(", ")}px are shorter than the tap area`);
+        """,
+        sabotage=restyle(".headline-item { min-height: 0 !important; }"),
+    ),
     # Above the breakpoint the title sits beside the stats card, and in the fallback
     # font the probe renders, it must still stop short of it.
     *(

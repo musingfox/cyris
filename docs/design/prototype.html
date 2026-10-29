@@ -265,7 +265,7 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .article-item .summary { margin-bottom: var(--s-3); }
 .headlines-compact { border: 1px solid var(--border); background: var(--bg-elev); padding: var(--s-1) 0; }
 .headline-item {
-  display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-2) var(--s-5);
+  display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-2) var(--s-5); min-height: 44px;
   font-size: calc(14px * var(--type-scale)); line-height: 1.5; border-bottom: 1px dashed var(--border);
   transition: background-color var(--t-fast);
 }
@@ -293,6 +293,9 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .raw-row a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .raw-row .score { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-dim); text-align: right; }
 .votes { display: inline-flex; gap: var(--s-1); margin-left: var(--s-2); }
+/* The vote button: a quiet 24px square in the meta row, bordered only on hover or once voted. */
+.votes > .btn.sm { justify-content: center; min-width: var(--s-6); height: var(--s-6); padding: 0; border-color: transparent; background: transparent; }
+.votes > .btn.sm:where(:not(:disabled, .done, .error)):hover { border-color: var(--border-strong); background: var(--surface-2); }
 /* The pair splits its gap at the midpoint; each takes the rest of its 44px outward. */
 .votes > .btn.sm:first-child::after { left: auto; right: calc(-1px - var(--s-1) / 2); width: 44px; }
 .votes > .btn.sm:last-child::after { left: calc(-1px - var(--s-1) / 2); right: auto; width: 44px; }

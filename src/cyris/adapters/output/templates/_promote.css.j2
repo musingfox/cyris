@@ -1,6 +1,11 @@
         /* The ↑/↓ glyphs fall back to the generic monospace: Google Fonts serves no
            unicode-range covering U+2191-2193 for Geist Mono. Fine, and the same thing
            the ↗ link marks already do — unlike emoji they still take `color` below. */
+        /* A vote sits quietly in its meta row (spec section 4, vote button): a 24px square
+           with no fill or border until hovered, so it reads beside 12px meta text rather
+           than over it. Before .done and .error, which draw the voted state's border. */
+        .vote-group > .promote-btn { justify-content: center; min-width: var(--s-6); height: var(--s-6); padding: 0; border-color: transparent; background: transparent; }
+        .vote-group > .promote-btn:where(:not(:disabled, .done, .error)):hover { border-color: var(--border-strong); background: var(--surface-2); }
         .promote-btn.done { color: var(--accent); border-color: var(--accent); }
         .promote-btn.error { color: var(--warn); border-color: var(--warn); background: var(--warn-tint); }
         .promote-btn.done:hover { color: var(--accent); }
