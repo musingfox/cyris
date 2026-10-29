@@ -600,7 +600,7 @@ EXPECTED_IDS = {
     "source-notice-outside-filter",
     "settings-load-failure",
     "sources-load-failure",
-    "digest-posts-featured-only",
+    "digest-posts-values-only",
     "digest-posts-hours-only",
     "digest-partial-failure",
     "retire-arms",

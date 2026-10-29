@@ -1565,7 +1565,7 @@ def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> No
 
 def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
     assert doctor._check_settings(_config(tmp_path)) == doctor.Check(
-        "settings", "ok", "all 27 set in cyris.toml"
+        "settings", "ok", "all 24 set in cyris.toml"
     )
 
 
@@ -1573,7 +1573,7 @@ def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
 
-    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 27 set in D1")
+    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 24 set in D1")
 
 
 def test_a_d1_home_without_the_effort_passes_naming_its_default(tmp_path: Path, d1) -> None:
@@ -1581,7 +1581,7 @@ def test_a_d1_home_without_the_effort_passes_naming_its_default(tmp_path: Path, 
     cfg = load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 
     assert doctor._check_settings(cfg) == doctor.Check(
-        "settings", "ok", "26 of 27 set in D1; default for llm_provider.reasoning_effort"
+        "settings", "ok", "23 of 24 set in D1; default for llm_provider.reasoning_effort"
     )
 
 
@@ -1590,7 +1590,7 @@ def test_a_json_home_without_the_effort_passes_naming_its_default(tmp_path: Path
     cfg = load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
 
     assert doctor._check_settings(cfg) == doctor.Check(
-        "settings", "ok", "26 of 27 set in cyris.toml; default for llm_provider.reasoning_effort"
+        "settings", "ok", "23 of 24 set in cyris.toml; default for llm_provider.reasoning_effort"
     )
 
 
@@ -1677,11 +1677,15 @@ def test_several_ignored_keys_are_named_in_order(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text('[llm_provider]\nprovider = "gemini"\n\n[digest]\nmax_featured = 3\n')
+    config_path.write_text(
+        '[llm_provider]\nprovider = "gemini"\n\n[digest]\nmax_articles_per_digest = 3\n'
+    )
 
     [check] = doctor._check_file_settings(cfg, config_path)
 
-    assert check.detail.endswith("cyris.toml's [digest] max_featured, [llm_provider] provider")
+    assert check.detail.endswith(
+        "cyris.toml's [digest] max_articles_per_digest, [llm_provider] provider"
+    )
 
 
 async def test_a_json_deployment_has_no_file_settings_check(tmp_path: Path) -> None:

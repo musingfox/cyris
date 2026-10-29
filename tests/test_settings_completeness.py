@@ -77,13 +77,13 @@ def test_run_names_the_key_cyris_toml_lacks(
     monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
 
     result = runner.invoke(
-        app, ["run", *_paths(tmp_path, settings_toml(omit=["digest.max_featured"]))]
+        app, ["run", *_paths(tmp_path, settings_toml(omit=["digest.max_articles_per_digest"]))]
     )
 
     assert result.exit_code == 1
     assert (
-        "Missing from cyris.toml: digest.max_featured. cyris.toml.example lists every key."
-        in caplog.text
+        "Missing from cyris.toml: digest.max_articles_per_digest. "
+        "cyris.toml.example lists every key." in caplog.text
     )
     assert built == []
 

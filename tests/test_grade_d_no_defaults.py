@@ -140,11 +140,11 @@ def test_commands_on_an_empty_d1_refuse_without_a_traceback(tmp_path, empty_d1, 
 
 
 def test_make_config_overrides_one_value_and_keeps_the_rest():
-    cfg = make_config(digest={"max_featured": 3})
+    cfg = make_config(digest={"max_articles_per_digest": 3})
 
-    assert cfg.app.digest.max_featured == 3
+    assert cfg.app.digest.max_articles_per_digest == 3
     for key, value in TEST_SETTINGS.items():
-        if key == "digest.max_featured":
+        if key == "digest.max_articles_per_digest":
             continue
         table, field = key.split(".", 1)
         assert getattr(getattr(cfg.app, table), field) == value, key
@@ -152,7 +152,7 @@ def test_make_config_overrides_one_value_and_keeps_the_rest():
 
 
 def test_one_setting_validates_while_its_siblings_are_required():
-    assert validate_setting("digest.max_featured", 3) == 3
+    assert validate_setting("digest.max_articles_per_digest", 3) == 3
 
 
 def test_the_example_config_builds_every_settings_table():

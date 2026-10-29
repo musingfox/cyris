@@ -19,9 +19,6 @@ _TEST_VALUES: dict[str, Any] = {
     "notify.email_to": "",
     "notify.email_from": "",
     "digest.max_articles_per_digest": 200,
-    "digest.max_articles_per_digest_output": 15,
-    "digest.max_featured": 5,
-    "digest.units_per_paragraph": 5,
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,
     "digest.filter_snippet_length": 500,
@@ -78,7 +75,7 @@ def settings_toml(*, omit: Iterable[str] = (), **overrides: Any) -> str:
 def make_config(*, sources: dict | None = None, **table_overrides: Any):
     """A complete Config built from TEST_SETTINGS.
 
-    A dict override is merged into that table (`digest={"max_featured": 3}`); a
+    A dict override is merged into that table (`digest={"max_articles_per_digest": 3}`); a
     model instance replaces it (`store=StoreConfig(...)`).
     """
     from cyris.config import AppConfig, Config

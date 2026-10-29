@@ -146,8 +146,9 @@ class DigestSection(BaseModel):
 class NewsParagraph(BaseModel):
     """One paragraph of the remaining news, and the units it cites.
 
-    Each unit is one story, merged into one item with every member article's links
-    and sources (`domain.news_units.merge_unit`); a unit is cited by one paragraph only.
+    No run writes one any more; issues stored while one did still carry them, and
+    `domain.layers` draws them. Each unit is one story, merged into one item with every
+    member article's links and sources; a unit is cited by one paragraph only.
     """
 
     text: str

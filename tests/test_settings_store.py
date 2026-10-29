@@ -59,8 +59,8 @@ def test_several_grade_d_keys_are_stored_in_one_set(settings):
     assert settings.all() == {"routing.score_threshold": 80, "vote_similarity.max_seeds": 50}
 
 
-def test_the_whitelist_is_exactly_the_twenty_seven_grade_d_keys():
-    assert len(GRADE_D_KEYS) == 27
+def test_the_whitelist_is_exactly_the_twenty_four_grade_d_keys():
+    assert len(GRADE_D_KEYS) == 24
     assert set(WRITABLE_KEYS) == set(GRADE_D_KEYS)
 
 
@@ -188,21 +188,21 @@ class TestD1SettingsResolveFromD1Only:
 
     def test_an_undecodable_row_is_missing_and_logged(self, d1_deployment, caplog):
         db, load = d1_deployment
-        _row(db, "digest.max_featured", '"not json')
+        _row(db, "digest.max_articles_per_digest", '"not json')
 
         with caplog.at_level(logging.WARNING):
             cfg = load()
 
-        assert "digest.max_featured" in cfg.missing_settings
-        assert any("digest.max_featured" in r.getMessage() for r in caplog.records)
+        assert "digest.max_articles_per_digest" in cfg.missing_settings
+        assert any("digest.max_articles_per_digest" in r.getMessage() for r in caplog.records)
 
     def test_a_row_the_rule_refuses_is_missing(self, d1_deployment):
         db, load = d1_deployment
-        _row(db, "digest.max_featured", "0")
+        _row(db, "digest.max_articles_per_digest", "0")
 
         cfg = load()
 
-        assert "digest.max_featured" in cfg.missing_settings
+        assert "digest.max_articles_per_digest" in cfg.missing_settings
 
     def test_a_null_provider_is_missing_not_none(self, d1_deployment):
         db, load = d1_deployment

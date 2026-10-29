@@ -114,10 +114,10 @@ def test_an_invalid_stored_reasoning_effort_is_listed_missing_and_exits_0(
 
 
 def test_a_json_deployment_takes_settings_from_cyris_toml(tmp_path: Path) -> None:
-    result = _show(tmp_path, settings_toml(**{"digest.max_featured": 7}))
+    result = _show(tmp_path, settings_toml(**{"digest.max_articles_per_digest": 7}))
 
     assert result.exit_code == 0, result.output
-    assert _rows(result.stdout)["digest.max_featured"] == ("7", "cyris.toml")
+    assert _rows(result.stdout)["digest.max_articles_per_digest"] == ("7", "cyris.toml")
 
 
 def test_every_grade_d_and_grade_b_key_gets_a_row(tmp_path: Path) -> None:
@@ -249,7 +249,9 @@ def test_the_output_has_no_terminal_escapes_and_aligned_columns(tmp_path: Path) 
     header = next(line for line in result.stdout.splitlines() if line.startswith("KEY"))
     source_column = header.index("SOURCE")
     row = next(
-        line for line in result.stdout.splitlines() if line.startswith("digest.max_featured")
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("digest.max_articles_per_digest")
     )
     assert row.index("cyris.toml") == source_column
 

@@ -243,7 +243,9 @@ class TestEveryKeyReported:
         assert {"digest.style_prompt", "notify.email_to", "notify.email_from"} <= set(
             data["may_be_empty"]
         )
-        assert {"general.timezone", "digest.max_featured"}.isdisjoint(data["may_be_empty"])
+        assert {"general.timezone", "digest.max_articles_per_digest"}.isdisjoint(
+            data["may_be_empty"]
+        )
 
     async def test_embedding_readiness_follows_the_environment(self, settings, monkeypatch):
         monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")
@@ -347,22 +349,24 @@ class TestScheduleApi:
         assert settings.stored == {}
 
 
-class TestFeaturedCap:
-    """`max_featured` is grade D — a reader preference with a writer, not a constant."""
+class TestIntakeCap:
+    """`max_articles_per_digest` is grade D: a setting with a writer, not a constant."""
 
     async def test_the_page_reports_the_cap_a_run_would_use(self, settings):
-        client = await _client(settings, {"digest.max_featured": 3})
+        client = await _client(settings, {"digest.max_articles_per_digest": 3})
 
         data = await (await client.get("/api/settings")).json()
         await client.close()
 
-        assert data["values"]["digest.max_featured"] == 3
+        assert data["values"]["digest.max_articles_per_digest"] == 3
 
     async def test_a_cap_of_zero_is_refused(self, settings):
-        """A featured section of none is an empty band, not a preference."""
+        """A run that may read no article is no setting, so zero is refused."""
         client = await _client(settings)
 
-        res = await client.post("/api/settings/values", json={"values": {"digest.max_featured": 0}})
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.max_articles_per_digest": 0}}
+        )
         await client.close()
 
         assert res.status == 400
@@ -371,7 +375,7 @@ class TestFeaturedCap:
     async def test_the_old_digest_route_is_gone(self, settings):
         client = await _client(settings)
 
-        res = await client.post("/api/settings/digest", json={"max_featured": 8})
+        res = await client.post("/api/settings/digest", json={"max_articles_per_digest": 8})
         await client.close()
 
         assert res.status == 404
@@ -382,12 +386,14 @@ class TestFeaturedCap:
         from cyris.adapters.store.settings import WRITABLE_KEYS
         from cyris.config import RawConfig, resolve_config
 
-        assert "digest.max_featured" in WRITABLE_KEYS
+        assert "digest.max_articles_per_digest" in WRITABLE_KEYS
 
         raw = RawConfig(toml={}, sources={}, config_file_found=False)
-        cfg = resolve_config(raw, d1_settings={**TEST_SETTINGS, "digest.max_featured": 9})
+        cfg = resolve_config(
+            raw, d1_settings={**TEST_SETTINGS, "digest.max_articles_per_digest": 9}
+        )
 
-        assert cfg.app.digest.max_featured == 9
+        assert cfg.app.digest.max_articles_per_digest == 9
 
 
 class TestPlainValues:
@@ -396,7 +402,9 @@ class TestPlainValues:
 
         res = await client.post(
             "/api/settings/values",
-            json={"values": {"general.timezone": "Europe/Berlin", "digest.max_featured": 3}},
+            json={
+                "values": {"general.timezone": "Europe/Berlin", "digest.max_articles_per_digest": 3}
+            },
         )
         body = await res.json()
         data = await (await client.get("/api/settings")).json()
@@ -405,13 +413,15 @@ class TestPlainValues:
         assert res.status == 200
         assert body == {
             "ok": True,
-            "values": {"general.timezone": "Europe/Berlin", "digest.max_featured": 3},
+            "values": {"general.timezone": "Europe/Berlin", "digest.max_articles_per_digest": 3},
             "note": "Effective next run.",
         }
-        assert settings.calls == [{"general.timezone": "Europe/Berlin", "digest.max_featured": 3}]
+        assert settings.calls == [
+            {"general.timezone": "Europe/Berlin", "digest.max_articles_per_digest": 3}
+        ]
         assert data["values"]["general.timezone"] == "Europe/Berlin"
-        assert data["values"]["digest.max_featured"] == 3
-        assert {"general.timezone", "digest.max_featured"}.isdisjoint(data["missing"])
+        assert data["values"]["digest.max_articles_per_digest"] == 3
+        assert {"general.timezone", "digest.max_articles_per_digest"}.isdisjoint(data["missing"])
 
     async def test_a_reasoning_effort_is_stored(self, settings):
         key = "llm_provider.reasoning_effort"
@@ -444,7 +454,7 @@ class TestPlainValues:
 
         res = await client.post(
             "/api/settings/values",
-            json={"values": {"digest.max_featured": 3, "routing.score_threshold": 150}},
+            json={"values": {"digest.max_articles_per_digest": 3, "routing.score_threshold": 150}},
         )
         body = await res.json()
         await client.close()
@@ -526,9 +536,9 @@ class TestPlainValues:
         ("values", "note"),
         [
             ({"digest.type_scale": 1.125}, "Pages show it within a minute."),
-            ({"digest.max_featured": 3}, "Effective next run."),
+            ({"digest.max_articles_per_digest": 3}, "Effective next run."),
             (
-                {"digest.type_scale": 1, "digest.max_featured": 3},
+                {"digest.type_scale": 1, "digest.max_articles_per_digest": 3},
                 "Type size: pages show it within a minute. The rest: effective next run.",
             ),
         ],
@@ -579,7 +589,9 @@ class TestPlainValues:
     async def test_without_a_settings_store_the_page_refuses_to_save(self):
         client = await _client(None)
 
-        res = await client.post("/api/settings/values", json={"values": {"digest.max_featured": 3}})
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.max_articles_per_digest": 3}}
+        )
         await client.close()
 
         assert res.status == 409
@@ -591,7 +603,9 @@ class TestPlainValues:
 
         client = await _client(Boom())
 
-        res = await client.post("/api/settings/values", json={"values": {"digest.max_featured": 3}})
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.max_articles_per_digest": 3}}
+        )
         body = await res.json()
         await client.close()
 
