@@ -1,8 +1,14 @@
 ---
-status: accepted
+status: superseded by [ADR-0023](0023-votes-go-on-topics-and-the-digest-has-three-layers.md)
 date: 2026-10-27
 decision-makers: ""
 ---
+
+> **SUPERSEDED**: This ADR has been superseded by [ADR-0023: Votes go on topics, and the digest
+> has three layers](0023-votes-go-on-topics-and-the-digest-has-three-layers.md) (2026-10-29). The
+> vote on each unit and the unit order below are replaced by a vote on a topic. The code still
+> runs this ADR until the tickets in
+> [digest-pebble-sand-water.md](../milestones/digest-pebble-sand-water.md) replace it.
 
 # The preference order extends to news units
 

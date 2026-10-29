@@ -1,10 +1,12 @@
 ---
-status: accepted
+status: superseded
 delivered:
 depends: [value-by-clicks-and-rank]
 ---
 
 # 重構資訊流：單位是主題，骨架是領域
+
+**2026-10-29 被 [digest-pebble-sand-water.md](digest-pebble-sand-water.md) 與 [ADR-0023](../decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md) 取代。** 新的設計以 pebble、sand、water 三層取代領域骨架（L1、L3），以 sand 與 water 取代合成段落（L4），取消卡片掛接與論點對照（L2），拿掉輸出截尾，票改投在跨期的題目上。已上線的 L1 與 L4 程式留到新里程碑的 `retire-area-skeleton` 再拆。lane 改名（Lr）、filter 分批（Lb）與模型評比（Lm）不在新設計的推翻表裡。以下內容是當時的決定，保留作為歷史。
 
 2026-10-11 經五層設計討論定案，起點是「tier 分層還有沒有必要」。結論是有，但 tier 的角色改了：它決定一篇文章預設以什麼形式出現，逐篇的值決定它排哪裡、上不上。這份文件只管版面和分類；逐篇的值、點開紀錄、拿掉 `rejected` 的工作留在 `value-by-clicks-and-rank.md`，這裡的階段依賴那邊的收據。
 
