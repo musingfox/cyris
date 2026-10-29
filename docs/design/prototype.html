@@ -234,17 +234,11 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
   font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
   text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim);
 }
-.digest .meta.ruled { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px dashed var(--border-strong); }
 .digest .meta a { color: var(--accent); text-decoration: none; }
 .orig { display: inline-flex; justify-content: center; min-width: 44px; position: relative; }
 .orig::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
 .source-tag { color: var(--text-dim); }
 .summary { font-size: calc(18px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); max-width: var(--measure-wide); }
-.lead { border: 1px solid var(--border); background: linear-gradient(180deg, var(--surface), var(--bg-elev)); padding: var(--s-8) var(--s-12); position: relative; }
-.lead::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
-.lead h2 { font-weight: 600; font-size: calc(clamp(28px, 4vw, 46px) * var(--type-scale)); line-height: 1.1; letter-spacing: -.025em; margin: var(--s-3) 0 var(--s-5); }
-.lead h2 a { text-decoration: none; transition: color var(--t-fast); }
-.lead h2 a:hover { color: var(--accent); }
 .item-title { font-weight: 600; font-size: calc(18px * var(--type-scale)); line-height: 1.3; }
 .item-title.lg { font-size: calc(19px * var(--type-scale)); }
 .item-title a { text-decoration: none; transition: color var(--t-fast); }
@@ -258,14 +252,6 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .news-cluster { border-left: 2px solid var(--border-strong); padding: var(--s-4) 0 var(--s-4) var(--s-5); margin-bottom: var(--s-5); transition: border-color var(--t-fast); }
 .news-cluster:hover { border-left-color: var(--accent); }
 .news-cluster h3, .news-cluster .summary { margin-bottom: var(--s-2); }
-/* A news paragraph is a cluster without its heading; each cited unit is one meta row. */
-.news-paragraph {
-  border-left: 2px solid var(--border-strong);
-  padding: var(--s-4) 0 var(--s-4) var(--s-5);
-  margin-bottom: var(--s-5);
-}
-.news-paragraph .summary { margin-bottom: var(--s-2); }
-.citations { display: flex; flex-direction: column; gap: var(--s-3); }
 .thematic-block { margin-bottom: var(--s-8); }
 .thematic-block h3 { display: flex; align-items: baseline; gap: var(--s-3); margin-bottom: var(--s-4); }
 .thematic-block h3::before { content: "▸"; color: var(--accent); font-size: calc(12px * var(--type-scale)); }
@@ -292,6 +278,10 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .src-fold > summary::after { content: " ▾"; }
 .src-fold[open] > summary::after { content: " ▴"; }
 .src-list { display: block; padding-top: var(--s-1); }
+.src-member { display: block; }
+/* An item's tags take their own row, so however many there are the votes stay
+   on the meta row beside the fold or the source. */
+.tags { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 
 /* ---- raw ---- */
 .raw-row { grid-template-columns: 96px 56px 1fr auto; align-items: baseline; }
@@ -486,7 +476,6 @@ table.src td.areas-pos-cell { width: 1%; }
   .archive-row .small, .archive-row .actions { grid-column: 1 / -1; }
   .digest-head { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
   .section { margin-bottom: var(--s-12); }
-  .lead { padding: var(--s-6) var(--s-5); }
   .raw-row { grid-template-columns: 96px 1fr auto; row-gap: var(--s-1); }
   .raw-row .score { text-align: left; }
   .raw-row a { grid-column: 1 / -1; }
@@ -604,59 +593,37 @@ table.src td.areas-pos-cell { width: 1%; }
       <aside class="stats">
         <div><span class="label">Sources</span><span class="v">31</span></div>
         <div><span class="label">Received</span><span class="v">214</span></div>
-        <div><span class="label">Included</span><span class="v hl">22</span></div>
+        <div><span class="label">Included</span><span class="v hl">12</span></div>
       </aside>
     </div>
-    <section class="section">
-      <div class="section-tag"><span class="label">Top story</span></div>
-      <article class="lead" lang="zh-Hant">
-        <span class="pill score">0.83</span>
-        <h2>本地模型的工具呼叫</h2>
-        <p class="summary">兩篇都在測小模型能不能可靠地呼叫工具：一篇比較輸出格式的約束方式，一篇記錄把重試交給呼叫端之後失敗率怎麼變。兩者的結論一致：格式約束解決了大半的解析錯誤，剩下的失敗多半來自模型選錯工具，重試救不回來。</p>
-        <article class="article-item">
-          <h3 class="item-title lg" lang=""><a href="#digest">用 JSON schema 約束小模型的工具呼叫</a></h3>
-          <div class="meta">
-            <span class="pill score">0.83</span>
-            <span class="source-tag">Simon Willison</span>
-            <a class="orig" href="#digest">↗</a>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-        </article>
-        <article class="article-item">
-          <h3 class="item-title lg" lang=""><a href="#digest">工具呼叫失敗時，誰負責重試</a></h3>
-          <div class="meta">
-            <span class="pill score">0.82</span>
-            <span class="source-tag">Simon Willison</span>
-            <a class="orig" href="#digest">↗</a>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-        </article>
-      </article>
-    </section>
-
     <section class="section">
       <h2 class="section-tag"><span class="label">Tracking</span></h2>
       <div class="thematic-block" lang="">
         <h3 class="item-title lg">Anthropic</h3>
         <article class="article-item">
           <h4 class="item-title"><a href="#digest">那家做 Constitutional AI 的公司發表新模型</a></h4>
-          <div class="meta">
-            <span class="source-tag">iThome</span>
-            <a class="orig" href="#digest">↗</a>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
         </article>
       </div>
     </section>
 
     <section class="section">
-      <h2 class="section-tag"><span class="label">Engineering</span></h2>
+      <h2 class="section-tag"><span class="label">Stories</span></h2>
       <div class="featured-grid" lang="zh-Hant">
+        <article class="featured-item">
+          <h3 class="item-title lg" lang=""><a href="#digest">Cloudflare Containers 進入 GA，冷啟動降到兩秒內</a></h3>
+          <p class="summary">容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。按秒計費加上 Worker 前門，「每小時醒來一次」的部署不再需要常駐主機。</p>
+          <div class="tags"><span class="pill" lang="">Cloudflare</span><span class="pill" lang="">containers</span></div>
+          <div class="meta">
+            <span class="source-tag">blog.cloudflare.com</span>
+            <a class="orig" href="#digest">↗</a>
+            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
+          </div>
+        </article>
         <article class="featured-item">
           <h3 class="item-title lg" lang=""><a href="#digest">SQLite 的 WAL2 模式合進主線</a></h3>
           <p class="summary">兩個 WAL 檔輪替寫入，checkpoint 不再擋住寫入者。長時間跑寫入的服務終於不用自己排程 checkpoint。</p>
+          <div class="tags"><span class="pill" lang="">SQLite</span></div>
           <div class="meta">
-            <span class="pill score">0.88</span>
             <span class="source-tag">sqlite.org</span>
             <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
@@ -665,19 +632,9 @@ table.src td.areas-pos-cell { width: 1%; }
         <article class="featured-item">
           <h3 class="item-title lg" lang=""><a href="#digest">用 embedding 找重複新聞，門檻怎麼定</a></h3>
           <p class="summary">作者拿三個月的標記資料比較 cosine 門檻，發現不同模型的分數分布差很多，同一個數字不能跨 provider 共用。</p>
+          <div class="tags"><span class="pill" lang="">embeddings</span><span class="pill" lang="">AI</span></div>
           <div class="meta">
-            <span class="pill score">0.85</span>
             <span class="source-tag">Simon Willison</span>
-            <a class="orig" href="#digest">↗</a>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-        </article>
-        <article class="featured-item">
-          <h3 class="item-title lg" lang=""><a href="#digest">Cloudflare Containers 進入 GA，冷啟動降到兩秒內</a></h3>
-          <p class="summary">容器現在可以綁定 Durable Object 的生命週期，閒置自動休眠。按秒計費加上 Worker 前門，「每小時醒來一次」的部署不再需要常駐主機。</p>
-          <div class="meta">
-            <span class="pill score">0.94</span>
-            <span class="source-tag">blog.cloudflare.com</span>
             <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
           </div>
@@ -685,71 +642,55 @@ table.src td.areas-pos-cell { width: 1%; }
         <article class="featured-item">
           <h3 class="item-title lg" lang=""><a href="#digest">Python 3.14 的 free-threaded build 效能實測</a></h3>
           <p class="summary">單執行緒慢了約一成，四核以上的 CPU 密集工作開始回本。C 擴充套件的相容性仍是主要障礙。</p>
+          <div class="tags"><span class="pill" lang="">Python</span></div>
           <div class="meta">
-            <span class="pill score">0.81</span>
             <span class="source-tag">LWN.net</span>
             <a class="orig" href="#digest">↗</a>
             <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
           </div>
         </article>
       </div>
-      <div class="thematic-block" lang="">
-        <h3 class="item-title lg">本地優先軟體</h3>
-        <article class="article-item">
-          <h4 class="item-title"><a href="#digest">CRDT 同步在離線編輯器裡的三個坑</a></h4>
-          <p class="summary">時鐘漂移、刪除墓碑的膨脹，以及權限變更無法事後撤回。作者各給了一個已上線的解法。</p>
-          <div class="meta">
-            <span class="source-tag">Ink &amp; Switch</span>
-            <a class="orig" href="#digest">↗</a>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-        </article>
+    </section>
+
+    <section class="section">
+      <h2 class="section-tag"><span class="label">Topics</span></h2>
+      <div class="news-cluster" lang="zh-Hant">
+        <h3 class="item-title lg">歐盟 AI 法案第二階段生效</h3>
+        <p class="summary">通用模型提供者要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</p>
+        <div class="tags"><span class="pill" lang="">EU</span><span class="pill" lang="">AI</span></div>
+        <div class="meta">
+          <details class="src-fold"><summary lang="en">3 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">EU AI Act obligations for general-purpose models take effect</a> <span class="source-tag">Reuters</span></span><span class="src-member"><a href="#digest">What the AI Act's second phase asks of model makers</a> <span class="source-tag">The Verge</span></span><span class="src-member"><a href="#digest">Commission publishes the training-data summary template</a> <span class="source-tag">Euractiv</span></span></span></details>
+          <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
+        </div>
       </div>
-      <div class="news-paragraph" lang="zh-Hant">
-        <p class="summary">Bun 1.3 內建了 Postgres 驅動，連線池與 prepared statement 改由 runtime 管理；另一頭，Pages 的直接上傳 API 開始限制單次部署最多兩萬個檔案，超過要分批或改用 Workers 靜態資源。</p>
-        <div class="citations">
-          <div class="meta">
-            <span class="src-links"><a href="#digest">Bun Blog</a> · <a href="#digest">The Register</a></span>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-          <div class="meta">
-            <span class="src-links"><a href="#digest">Cloudflare Changelog</a></span>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
+      <div class="news-cluster" lang="zh-Hant">
+        <h3 class="item-title lg">Bun 1.3 內建 Postgres 驅動</h3>
+        <p class="summary">連線池與 prepared statement 改由 runtime 管理。</p>
+        <div class="tags"><span class="pill" lang="">Bun</span></div>
+        <div class="meta">
+          <details class="src-fold"><summary lang="en">2 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">Bun 1.3</a> <span class="source-tag">Bun Blog</span></span><span class="src-member"><a href="#digest">Bun ships a built-in Postgres client</a> <span class="source-tag">The Register</span></span></span></details>
+          <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
       </div>
     </section>
 
     <section class="section">
-      <h2 class="section-tag"><span class="label">Policy</span></h2>
-      <div class="news-paragraph" lang="zh-Hant">
-        <p class="summary">歐盟 AI 法案第二階段從本月生效，通用模型提供者要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</p>
-        <div class="citations">
-          <div class="meta">
-            <details class="src-fold"><summary lang="en">3 sources</summary><span class="src-list"><a href="#digest">Reuters</a> · <a href="#digest">The Verge</a> · <a href="#digest">Euractiv</a></span></details>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
+      <h2 class="section-tag"><span class="label">Headlines</span></h2>
+      <div class="headlines-compact" lang="zh-Hant">
+        <div class="headline-item">
+          <span class="idx">001</span>
+          <div class="text"><a href="#digest">台積電兩奈米試產良率過六成</a><p class="summary">量產時程維持明年下半年。</p></div>
+          <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2 class="section-tag"><span class="label">Other</span></h2>
-      <div class="news-paragraph" lang="zh-Hant">
-        <p class="summary">台積電的兩奈米試產良率已過六成，量產時程維持明年下半年。Firefox 下一版起所有網址先試 HTTPS，GitHub Actions 則新增了免費的 arm64 runner。</p>
-        <div class="citations">
-          <div class="meta">
-            <span class="src-links"><a href="#digest">DigiTimes</a></span>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-          <div class="meta">
-            <span class="src-links"><a href="#digest">Mozilla Blog</a></span>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
-          <div class="meta">
-            <span class="src-links"><a href="#digest">GitHub Changelog</a></span>
-            <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
-          </div>
+        <div class="headline-item">
+          <span class="idx">002</span>
+          <div class="text"><a href="#digest">Firefox 下一版起所有網址先試 HTTPS</a><p class="summary">連不上才退回 HTTP，並顯示警告。</p></div>
+          <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
+        </div>
+        <div class="headline-item">
+          <span class="idx">003</span>
+          <div class="text"><a href="#digest">GitHub Actions 新增免費的 arm64 runner</a><p class="summary">公開 repo 可直接使用，私有 repo 依方案計費。</p></div>
+          <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
       </div>
     </section>
@@ -1242,7 +1183,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             <div class="field">
               <label class="label" for="rank-by-preference">Order by your votes</label>
               <select class="select" id="rank-by-preference" disabled><option value="false" selected>Off</option><option value="true">On</option></select>
-              <p class="small">Put the headlines and Features closest to what you voted up first. Headlines a full issue leaves out stay for the next one.</p>
+              <p class="small">Put the headlines and Features closest to what you voted up first. The order only moves items; nothing is left out for it.</p>
               <p class="small" id="rank-needs">Needs vote similarity on, under Model.</p>
             </div>
             <div class="field">

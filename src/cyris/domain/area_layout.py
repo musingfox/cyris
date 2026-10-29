@@ -1,7 +1,8 @@
 """The reader's layout of an issue: one read-only view over the stored content, by area.
 
-`layout_by_area` places each card, group, cluster, paragraph and row under its area. It is the
-only placement rule, so the page and the quota (`cap_lower_layers`) cannot disagree.
+`layout_by_area` places each card, group, cluster, paragraph and row under its area. The mail,
+its text and Discord lay an issue out by it; the page lays it out in three layers instead
+(`domain.layers`, ADR-0023).
 """
 
 from collections import defaultdict
@@ -35,18 +36,6 @@ class AreaSection:
     clusters: tuple[DigestSection, ...] = ()
     paragraphs: tuple[NewsParagraph, ...] = ()
     rows: tuple[LowerRow, ...] = ()
-
-    @property
-    def lower(self) -> tuple[NewsParagraph | DigestSection | LowerRow, ...]:
-        """The lower layer in page order, the entries a quota counts.
-
-        The read lane's radar rows come before the news paragraphs, as the issue cap
-        never lets news crowd out the read lane. An issue from before the paragraphs
-        keeps its own order: clusters, then radar and headline rows.
-        """
-        radar = tuple(r for r in self.rows if r.kind == "radar")
-        wire = tuple(r for r in self.rows if r.kind == "wire")
-        return (*self.clusters, *radar, *self.paragraphs, *wire)
 
 
 @dataclass(frozen=True)
@@ -135,102 +124,4 @@ def layout_by_area(content: DigestContent) -> AreaLayout:
         headline=headline,
         tracking=tuple(content.tracked_topics),
         sections=tuple(sections),
-    )
-
-
-# Each named area shows at most this many lower entries, a news paragraph counting as
-# one. Milestone L4's measure: a 15-paragraph area reads as a wall of text; 5 is the
-# reader's pick (N7, 2026-10-15). Fixed until L6.
-LOWER_ROWS_PER_AREA = 5
-
-
-def cap_lower_layers(
-    content: DigestContent, rows_per_area: int = LOWER_ROWS_PER_AREA
-) -> DigestContent:
-    """A copy with each named area's lower layer cut to its first `rows_per_area` rows.
-
-    The cut uses the layout's own placement and row order, so `layout_by_area` of the
-    result shows no area past the cap. Entries under no named area are never cut.
-    """
-    if rows_per_area < 0:
-        raise ValueError(f"rows_per_area must be >= 0, got {rows_per_area}")
-    removed: set[int] = set()
-    removed_articles = 0
-    for section in layout_by_area(content).sections:
-        if section.role != "named":
-            continue
-        for entry in section.lower[rows_per_area:]:
-            removed.add(_id_of(entry))
-            removed_articles += _items_of(entry)
-    return _without(content, removed, removed_articles)
-
-
-def cap_unplaced_news(content: DigestContent, max_items: int) -> DigestContent:
-    """A copy whose news outside every named area is cut from its tail to the issue cap.
-
-    News is not counted by the issue cap and only a named area's quota cuts it, so news
-    in the unnamed section, under "Other", or in an issue the stamp never reached would
-    run unbounded. Here it shares the cap with the read lane, by the owner's decision of
-    2026-10-27: unplaced news entries are dropped, last first, while the read lane's
-    items and the unplaced news together count more than `max_items`. News in a named
-    area and the follow lane take no slot.
-    """
-    unplaced = [
-        entry
-        for section in layout_by_area(content).sections
-        if section.role != "named"
-        for entry in section.lower
-        if not (isinstance(entry, LowerRow) and entry.kind == "radar")
-    ]
-    read_lane = sum(
-        len(section.items)
-        for section in (
-            *content.featured_articles,
-            *content.thematic_summaries,
-            *content.attention_sections,
-        )
-    )
-    over = read_lane + sum(_items_of(entry) for entry in unplaced) - max_items
-    removed: set[int] = set()
-    removed_articles = 0
-    for entry in reversed(unplaced):
-        if removed_articles >= over:
-            break
-        removed.add(_id_of(entry))
-        removed_articles += _items_of(entry)
-    return _without(content, removed, removed_articles)
-
-
-def _id_of(entry: "NewsParagraph | DigestSection | LowerRow") -> int:
-    """The id `_without` finds an entry by: a row's item, else the entry itself."""
-    return id(entry.item) if isinstance(entry, LowerRow) else id(entry)
-
-
-def _items_of(entry: "NewsParagraph | DigestSection | LowerRow") -> int:
-    """The digest items an entry counted for in `articles_included`."""
-    if isinstance(entry, LowerRow):
-        return 1
-    if isinstance(entry, NewsParagraph):
-        return entry.items or 0
-    return len(entry.items)
-
-
-def _without(content: DigestContent, removed: set[int], removed_articles: int) -> DigestContent:
-    """A copy without the lower entries whose ids are in `removed`."""
-    if not removed:
-        return content.model_copy()
-
-    attention = []
-    for section in content.attention_sections:
-        items = [item for item in section.items if id(item) not in removed]
-        if items:
-            attention.append(section.model_copy(update={"items": items}))
-    return content.model_copy(
-        update={
-            "news_clusters": [s for s in content.news_clusters if id(s) not in removed],
-            "news_paragraphs": [p for p in content.news_paragraphs if id(p) not in removed],
-            "attention_sections": attention,
-            "filtered_headlines": [i for i in content.filtered_headlines if id(i) not in removed],
-            "articles_included": content.articles_included - removed_articles,
-        }
     )

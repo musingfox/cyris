@@ -9,10 +9,8 @@ import pytest
 from fakes import FakeLLM, SqliteD1
 from test_run_digest import FakeSource, make_deps
 
-from cyris.adapters.store.areas import D1AreaStore
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
-from cyris.domain.areas import Area
 from cyris.domain.models import Article, Lane
 from cyris.service_layer.run_digest import RunOptions, run_digest
 from cyris.utils.timezone import now_in_timezone
@@ -33,20 +31,15 @@ def _article(i: int, *, hours: int = 1, lane: Lane = Lane.READ) -> Article:
     )
 
 
-def _scores(articles: list[Article], **extra) -> str:
+def _scores(articles: list[Article]) -> str:
     return json.dumps(
-        {
-            "scores": [
-                {"id": a.id, "score": 10, "language": "en", "tags": ["s"], **extra}
-                for a in articles
-            ]
-        }
+        {"scores": [{"id": a.id, "score": 10, "language": "en", "tags": ["s"]} for a in articles]}
     )
 
 
-def _deps(tmp_path: Path, articles: list[Article], *, areas=(), replies=None):
-    deps, _ = make_deps(tmp_path, FakeLLM(replies or [_scores(articles)]), FakeSource(articles))
-    deps.cfg.areas = list(areas)
+def _deps(tmp_path: Path, articles: list[Article]):
+    deps, _ = make_deps(tmp_path, FakeLLM([_scores(articles)]), FakeSource(articles))
+    deps.cfg.areas = []
     deps.cfg.sources = {}
     return deps
 
@@ -86,36 +79,6 @@ async def test_a_filter_rejected_article_is_recorded(tmp_path: Path) -> None:
     await run_digest(deps, RunOptions())
 
     assert articles[0].url in store.load(_today(deps), "morning")
-
-
-async def test_every_article_the_layer_cap_cuts_from_the_page_is_recorded(tmp_path: Path) -> None:
-    from test_run_areas import _radar_articles
-
-    articles = _radar_articles(6)
-    deps = _deps(
-        tmp_path,
-        articles,
-        areas=[
-            Area(
-                id=1,
-                name="Tech",
-                position=0,
-                status="active",
-                merged_into=None,
-                proposal_articles=0,
-                proposal_issues=0,
-                last_proposed_run=None,
-            )
-        ],
-        replies=[_scores(articles, area="Tech")],
-    )
-    deps, store, summaries = _recording(deps)
-    deps = replace(deps, area_store=D1AreaStore(SqliteD1()))
-
-    await run_digest(deps, RunOptions())
-
-    assert summaries[-1]["area_quota_cut"] == 1
-    assert store.load(_today(deps), "morning") == [a.url for a in articles]
 
 
 async def test_a_dry_run_records_nothing(tmp_path: Path) -> None:

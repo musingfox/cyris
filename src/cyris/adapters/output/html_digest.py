@@ -8,10 +8,11 @@ from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from cyris.domain.area_layout import AreaSection, layout_by_area
+from cyris.domain.area_layout import AreaSection
 from cyris.domain.areas import UNPLACED_SECTION_LABEL
 from cyris.domain.graph_layout import layout
 from cyris.domain.interest_graph import InterestGraph
+from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import (
     DigestContent,
     DigestItem,
@@ -194,9 +195,7 @@ class HtmlDigestWriter:
             # template unescaped — feed-controlled titles and URLs went out raw.
             autoescape=select_autoescape(["html", "xml"], default=True),
         )
-        self.env.filters["hostname"] = _hostname
         self.env.filters["plural"] = _plural
-        self.env.filters["section_label"] = section_label
         self.env.globals["project_url"] = PROJECT_URL
 
     @staticmethod
@@ -222,9 +221,6 @@ class HtmlDigestWriter:
         """
         template = self.env.get_template("digest.html.j2")
 
-        layout = layout_by_area(content)
-        headline = _stories(layout.headline) if layout.headline else []
-
         return template.render(
             date=content.date,
             period=content.period,
@@ -233,10 +229,7 @@ class HtmlDigestWriter:
             articles_included=content.articles_included,
             triage_pending_count=content.triage_pending_count,
             usage=content.usage,
-            lead_story=headline[0] if headline else None,
-            headline_rest=headline[1:],
-            tracked_topics=layout.tracking,
-            sections=layout.sections,
+            layers=layer_by_lane(content),
             raw_page=raw_page,
             degraded=degraded,
             content_lang=_html_lang(content.output_language),

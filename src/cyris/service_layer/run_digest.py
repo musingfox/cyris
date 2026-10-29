@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from cyris.domain.area_layout import cap_lower_layers, cap_unplaced_news
 from cyris.domain.areas import AreaCatalog
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -25,7 +24,6 @@ from cyris.domain.triage import RejectReason
 from cyris.service_layer.area_stamp import stamp_areas
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
-from cyris.service_layer.news_paragraphs import write_news_paragraphs
 from cyris.service_layer.schedule import PERIOD_ORDER, Period, is_latest_issue
 from cyris.service_layer.scoring import AreaPick, score_in_batches, select_scorable
 from cyris.service_layer.vote_order import VoteOrder
@@ -681,12 +679,10 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     # Process all articles through digest pipeline
     digest_pipeline = DigestPipeline(
         deps.llm,
-        max_digest_output=cfg.app.digest.max_articles_per_digest_output,
         summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
         filter_snippet_length=cfg.app.digest.filter_snippet_length,
         summarize_score_threshold=cfg.app.routing.summarize_score_threshold,
         featured_threshold=cfg.app.routing.score_threshold,
-        max_featured=cfg.app.digest.max_featured,
         output_language=cfg.app.digest.output_language,
         style_prompt=cfg.app.digest.style_prompt,
     )
@@ -706,6 +702,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         summary["preference_rank_skipped"] = order.receipt.skipped
     else:
         summary["preference_rank_moved_features"] = result.preference_moves["features"]
+        summary["preference_rank_moved_units"] = result.preference_moves["news"]
     summary.update(order.receipt.as_summary())
     # A view, not a verdict: no hit changes its article's state or the issue's counts.
     content.tracked_topics = tracked_sections
@@ -722,11 +719,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         except Exception as e:
             logger.warning("Failed to persist story membership: %s", e)
 
-    # In memory: the saved row and the page carry the stamp, and no other store does.
-    # The paragraphs and the quota cut follow the stamp, so the counts and the
-    # accepted set below read the content the page shows.
-    summary["area_quota_cut"] = 0
-    stamped = False
+    # In memory: the saved row carries the stamp, and so do the mail and Discord, which
+    # still lay the issue out by area; no other store does.
     try:
         catalog = AreaCatalog(cfg.areas)
         stamp = stamp_areas(
@@ -737,49 +731,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         )
         content.area_order = catalog.names()
         summary["area_stamp"] = stamp.model_dump()
-        stamped = True
     except Exception as e:
         logger.error("Stamping areas failed: %s", type(e).__name__)
-
-    # Every unit of an area is written before the quota cuts any (milestone L4).
-    try:
-        content, paragraphs = await write_news_paragraphs(
-            content,
-            deps.llm,
-            embedder=deps.embedder,
-            embedding_model=deps.embedding_model,
-            known_vectors=similarity.candidate_vectors if similarity else {},
-            titles={a.url: a.title for a in digest_articles},
-            preference=result.preference,
-            units_per_paragraph=cfg.app.digest.units_per_paragraph,
-            output_language=cfg.app.digest.output_language,
-            style_prompt=cfg.app.digest.style_prompt,
-            usage=content.usage,
-        )
-    except Exception as e:
-        logger.error("Writing news paragraphs failed: %s", type(e).__name__)
-        summary["news_paragraphs_error"] = type(e).__name__
-    else:
-        summary["news_paragraphs"] = paragraphs.as_summary()
-        if result.preference_moves is not None:
-            summary["preference_rank_moved_units"] = paragraphs.moved
-        if paragraphs.embedded and deps.embedder is not None:
-            summary["embedding"] = deps.embedder.usage.as_dict()
-
-    if stamped:
-        before_cut = content.articles_included
-        try:
-            content = cap_lower_layers(content)
-        except Exception as e:
-            logger.error("Capping area rows failed: %s", type(e).__name__)
-        summary["area_quota_cut"] = before_cut - content.articles_included
-    # News no named area's quota reaches still meets the issue cap, stamp or no stamp.
-    before_cut = content.articles_included
-    try:
-        content = cap_unplaced_news(content, cfg.app.digest.max_articles_per_digest_output)
-    except Exception as e:
-        logger.error("Capping unplaced news failed: %s", type(e).__name__)
-    summary["unplaced_news_cut"] = before_cut - content.articles_included
 
     content.synthetic_url_count = sum(1 for a in digest_articles if a.url.startswith("newsletter:"))
     if content.synthetic_url_count:

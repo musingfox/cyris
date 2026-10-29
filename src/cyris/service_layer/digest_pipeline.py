@@ -17,8 +17,8 @@ from cyris.domain.models import (
 from cyris.domain.selection import (
     digest_urls,
     layer_by_score,
+    order_by_preference,
     preference_moves,
-    select_digest_articles,
     split_read_lane_by_score,
 )
 from cyris.service_layer.cluster_news import cluster_news, filter_news
@@ -58,22 +58,18 @@ class DigestPipeline:
         self,
         llm: LLMClient,
         *,
-        max_digest_output: int,
         summarize_snippet_length: int,
         filter_snippet_length: int,
         summarize_score_threshold: int,
         featured_threshold: int,
-        max_featured: int,
         output_language: str,
         style_prompt: str,
     ) -> None:
         self._llm = llm
-        self.max_digest_output = max_digest_output
         self.summarize_snippet_length = summarize_snippet_length
         self.filter_snippet_length = filter_snippet_length
         self.summarize_score_threshold = summarize_score_threshold
         self.featured_threshold = featured_threshold
-        self.max_featured = max_featured
         self.output_language = output_language
         self.style_prompt = style_prompt
 
@@ -99,8 +95,8 @@ class DigestPipeline:
             period: Digest period ("morning" or "evening").
             timezone: IANA timezone for date formatting.
             preference: Scores the articles this issue kept, by URL, to order the
-                Features before the cap and, later, the news units; None keeps the
-                model's order.
+                Features, the news clusters and the headlines; None keeps the order
+                of the score and the model.
             date: The issue's date, YYYY-MM-DD; None means today in `timezone`.
 
         Returns:
@@ -224,8 +220,7 @@ class DigestPipeline:
             f"~${cost:.4f}" if cost is not None else f"cost unknown for {usage.model}",
         )
 
-        # Rejected is the filter's verdict, taken before the cap: a headline the cap
-        # cuts was not discarded.
+        # Rejected is the filter's verdict: what it kept is shown.
         filter_urls = {a.url for a in skim_lane}
         accepted_filter_urls = set()
         for item in filtered:
@@ -243,8 +238,6 @@ class DigestPipeline:
             if section.tags
         }
 
-        # Captured before select_digest_articles truncates the content: the
-        # records carry every cluster's full membership, not what survived the cap.
         # The section takes the same id the record persists — computed once, so the
         # rendered data-story-id and the D1 row can never drift apart.
         story_records = []
@@ -274,10 +267,7 @@ class DigestPipeline:
             output_language=self.output_language,
         )
 
-        # Laid out before the cap, so the cap takes by score and sees the Top story's group.
-        laid_out = layer_by_score(
-            content, featured_threshold=self.featured_threshold, max_featured=self.max_featured
-        )
+        laid_out = layer_by_score(content, featured_threshold=self.featured_threshold)
         scores = None
         if preference is not None:
             by_url = {a.url: a for a in articles}
@@ -286,22 +276,17 @@ class DigestPipeline:
                 for entry in (
                     *laid_out.filtered_headlines,
                     *(item for section in laid_out.featured_articles[1:] for item in section.items),
-                    # Every member, not one per cluster: a news unit is ordered by its
-                    # best-scoring member, and which that is is not known yet.
+                    # Every member, not one per cluster: a cluster is ordered by its
+                    # best member's preference, and which that is is not known yet.
                     *(item for section in laid_out.news_clusters for item in section.items),
                 )
                 for url in entry.urls
             )
             scores = await preference([by_url[u] for u in kept_urls if u in by_url])
-        content = select_digest_articles(
-            laid_out, max_items=self.max_digest_output, preference=scores
-        )
-        moves = None
-        if scores is not None:
-            unranked = select_digest_articles(laid_out, max_items=self.max_digest_output)
-            moves = preference_moves(unranked, content)
-        # Accepted means shown in this issue. What the cap cut, or the summarizer
-        # left out of every section, stays pending for the next run in the window.
+        content = order_by_preference(laid_out, scores)
+        moves = None if scores is None else preference_moves(laid_out, content)
+        # Accepted means shown in this issue. What the summarizer left out of every
+        # section stays pending for the next run in the window.
         accepted_urls = list(digest_urls(content))
 
         return ProcessResult(
@@ -311,5 +296,4 @@ class DigestPipeline:
             url_to_tags=url_to_tags,
             story_records=story_records,
             preference_moves=moves,
-            preference=dict(scores) if scores is not None else None,
         )

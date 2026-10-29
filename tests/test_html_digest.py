@@ -1,6 +1,5 @@
 """Tests for HTML digest rendering."""
 
-import html as html_lib
 import json
 import re
 from datetime import UTC, datetime
@@ -115,8 +114,10 @@ def test_render_empty_sections(tmp_path):
 
 
 SECTION_LABELS = (
-    "Top story",
     "Tracking",
+    "Stories",
+    "Topics",
+    "Headlines",
 )
 
 EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
@@ -203,9 +204,8 @@ def test_each_section_names_itself_once(label):
 
 
 def test_each_body_section_is_headed_by_its_tag_alone():
-    # The receipt has no area order, so its one area section is unnamed: only Tracking is tagged.
     digest = receipt_fixtures()[1]
-    assert digest.count('<h2 class="section-tag"><span class="label">') == 1
+    assert digest.count('<h2 class="section-tag"><span class="label">') == len(SECTION_LABELS)
     assert 'class="id"' not in digest
     assert "section-heading" not in digest
 
@@ -232,17 +232,15 @@ def test_every_body_title_carries_the_title_class_and_block_titles_the_large_one
     main = digest[digest.index("<main>") : digest.index("</main>")]
     h3s = re.findall(r"<h3\b[^>]*>", main)
     h4s = re.findall(r"<h4\b[^>]*>", main)
-    # In page order: the Top story's extra card, the tracked topic, the area's featured
-    # card, the Following block and the cluster. Radar items are rows and carry no heading.
+    # In page order: the tracked topic, the five pebble cards (two features, the thematic
+    # one, the radar item and the followed one) and the sand block. Water rows carry none.
     assert h3s == [
-        '<h3 class="item-title lg" lang="">',
         '<h3 class="item-title lg">',
-        '<h3 class="item-title lg" lang="">',
-        '<h3 class="item-title lg">',
+        *['<h3 class="item-title lg" lang="">'] * 5,
         '<h3 class="item-title lg">',
     ]
-    # The tracked hit and the Following article.
-    assert h4s == ['<h4 class="item-title">'] * 2
+    # The tracked hit.
+    assert h4s == ['<h4 class="item-title">']
 
 
 def test_render_optional_score(tmp_path):
@@ -279,46 +277,6 @@ def test_render_optional_score(tmp_path):
     assert "No Score Article" in html
     # Should not display score when None
     assert 'class="pill score"' not in html
-
-
-def _scored_zero(title: str, score: float | None = 0.0) -> DigestItem:
-    return DigestItem(
-        title=title,
-        summary=f"{title}.",
-        sources=["S"],
-        urls=[f"https://t.test/{title}"],
-        score=score,
-    )
-
-
-# Every place a pill can show: a grouped Top story and its members, a single Top story and
-# the Features beside it, and an area's Features. Each scored 0.0, beside one unscored card.
-SCORED_ZERO_ISSUES = [
-    [
-        DigestSection(heading="G", summary="One.", items=[_scored_zero("A"), _scored_zero("B")]),
-        DigestSection(heading="F", items=[_scored_zero("C"), _scored_zero("U", None)]),
-    ],
-    [
-        DigestSection(heading="H", items=[_scored_zero("L"), _scored_zero("R")]),
-        DigestSection(heading="F", items=[_scored_zero("U", None)]),
-    ],
-]
-
-
-@pytest.mark.parametrize(("featured", "pills"), zip(SCORED_ZERO_ISSUES, [4, 2], strict=True))
-def test_a_score_of_zero_shows_its_pill(tmp_path, featured, pills):
-    content = DigestContent(
-        date="2026-01-01",
-        period="morning",
-        sources_processed=1,
-        articles_received=5,
-        articles_included=5,
-        usage=UsageStats(input_tokens=1, output_tokens=1, api_calls=1, model="m"),
-        featured_articles=featured,
-    )
-    html = HtmlDigestWriter(tmp_path).render(content)
-    assert html.count('<span class="pill score">0.0</span>') == pills
-    assert html.count('class="pill score"') == pills
 
 
 def test_write_creates_file(tmp_path, sample_digest_content):
@@ -630,20 +588,6 @@ def _card_for(tmp_path, content: DigestContent | None) -> str:
     return _card(HtmlDigestWriter(tmp_path).render_index(names, content=content))
 
 
-def _lead_card(html: str) -> str:
-    """A digest's lead card, from its opening tag to its close."""
-    return html[html.index('<article class="lead-story"') :].split("</article>", 1)[0]
-
-
-def _lead_card_of(tmp_path, **extra) -> str:
-    """The lead card of a digest whose one feature is Lead, linked to https://a.test."""
-    lead = DigestItem(title="Lead", summary="s", sources=["S"], urls=["https://a.test"], **extra)
-    content = _content(
-        "2026-04-15", "evening", featured_articles=[DigestSection(heading="F", items=[lead])]
-    )
-    return _lead_card(HtmlDigestWriter(tmp_path).render(content))
-
-
 def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
     content = _content(
         "2026-04-15",
@@ -655,28 +599,7 @@ def test_the_card_carries_the_story_the_digest_leads_with(tmp_path):
     )
 
     assert '<h2 lang="">Cloudflare Containers GA</h2>' in _card_for(tmp_path, content)
-    assert "Cloudflare Containers GA" in _lead_card(HtmlDigestWriter(tmp_path).render(content))
-
-
-def test_the_top_story_tag_sits_directly_above_the_lead_card():
-    digest = receipt_fixtures()[1]
-    between = digest.split("Top story</span></div>", 1)[1].split('<article class="lead-story"')[0]
-    assert between.strip() == ""
-
-
-def test_the_lead_score_pill_sits_above_its_title(tmp_path):
-    card = _lead_card_of(tmp_path, score=8.5)
-    assert '<span class="pill score">8.5</span>' in card
-    assert card.index('class="pill score"') < card.index("<h2")
-    assert "Score:" not in card
-    assert "Source:" not in card
-
-
-def test_the_lead_links_its_article_once_through_its_title(tmp_path):
-    card = _lead_card_of(tmp_path)
-    assert card.count('href="https://a.test"') == 1
-    title = r'<h2 lang="">\s*<a href="https://a.test" target="_blank" rel="noopener">Lead</a>'
-    assert re.search(title, card)
+    assert "Cloudflare Containers GA" in _body(HtmlDigestWriter(tmp_path).render(content))
 
 
 def test_without_features_the_card_leads_with_the_first_thematic_story(tmp_path):
@@ -734,18 +657,6 @@ def _feature_main(tmp_path, section: DigestSection) -> str:
     return _main_of(tmp_path, DigestSection(heading="L", items=_items("Lead")), section)
 
 
-def test_a_group_after_the_lead_is_drawn_as_one_card_per_article(tmp_path):
-    section = _group()
-    section.items = [
-        item.model_copy(update={"summary": f"{item.title} on its own"}) for item in section.items
-    ]
-    main = _feature_main(tmp_path, section)
-    assert "Shared summary" not in main
-    assert "Group heading" not in main
-    assert main.count('class="featured-item"') == 2
-    assert "Alpha on its own" in main and "Beta on its own" in main
-
-
 def test_each_article_in_a_group_keeps_its_own_link_and_vote(tmp_path):
     main = _main_of(tmp_path, _group())
     for title, url in (("Alpha", "https://a.test/1"), ("Beta", "https://b.test/2")):
@@ -767,14 +678,6 @@ def test_a_one_article_group_renders_as_its_article(tmp_path):
     main = _feature_main(tmp_path, section)
     assert '<a href="https://example.test/Only/0" target="_blank" rel="noopener">Only</a>' in main
     assert "Group heading" not in main
-
-
-def test_a_group_lead_lists_its_articles_one_level_below_its_title(tmp_path):
-    main = _main_of(tmp_path, _group())
-    assert main.count("Shared summary") == 1
-    assert re.search(r"<h2>\s*Group heading\s*</h2>", main)
-    assert re.search(r'<h3 class="item-title lg" lang=""><a href="https://a.test/1"', main)
-    assert _main_text(f"<main>{main}</main>").levels[:3] == [2, 3, 3]
 
 
 def test_a_group_lead_gives_the_card_its_heading(tmp_path):
@@ -1232,58 +1135,6 @@ def test_a_wire_row_shows_its_summary_below_its_title_and_before_its_votes(tmp_p
     assert 'class="summary"' not in without
 
 
-def test_promote_buttons_on_every_section(tmp_path):
-    """Every rendered item is votable, and a cluster's vote carries all its articles."""
-    item = lambda n: DigestItem(  # noqa: E731
-        title=f"Item {n}", summary="s", sources=["Src"], urls=[f"https://x.com/{n}"]
-    )
-    content = DigestContent(
-        date="2026-04-15",
-        period="evening",
-        sources_processed=1,
-        articles_received=1,
-        articles_included=1,
-        usage=UsageStats(),
-        featured_articles=[DigestSection(heading="Top", items=[item(1), item(2)])],
-        news_clusters=[
-            DigestSection(
-                heading="Tech",
-                items=[
-                    DigestItem(
-                        title="Cluster",
-                        summary="s",
-                        sources=["A", "B"],
-                        urls=["https://na.com", "https://nb.com"],
-                    )
-                ],
-            )
-        ],
-        fan_sections=[DigestSection(heading="Fan", items=[item(3)])],
-        thematic_summaries=[DigestSection(heading="Theme", items=[item(4)])],
-        attention_sections=[DigestSection(heading="Watch", items=[item(5)])],
-        filtered_headlines=[item(6)],
-    )
-
-    writer = HtmlDigestWriter(tmp_path)
-    html = writer.render(content)
-
-    # lead + featured + cluster + fan + thematic + attention + headline
-    assert html.count('class="vote-group"') == 7
-    assert 'data-urls=\'["https://na.com", "https://nb.com"]\'' in html
-    # The deep-read queue is gone: Obsidian Clipper covers saving, cyris only filters.
-    # The wire value is what a published page would send back, so that is what is
-    # asserted; the button's old label is a string this codebase no longer holds.
-    assert 'data-vote="deep"' not in html
-    # Every article in the cluster stays individually openable, and the links stay one
-    # flex item of the meta row rather than splitting apart at its gap.
-    assert (
-        '<span class="src-links"><a href="https://na.com" target="_blank" rel="noopener">A</a>'
-        ' · <a href="https://nb.com" target="_blank" rel="noopener">B</a></span>'
-    ) in html
-    # Two sources is not a mess; folding it would cost a tap for nothing.
-    assert "<details" not in html
-
-
 def _cluster_digest(n_sources: int) -> DigestContent:
     return DigestContent(
         date="2026-04-15",
@@ -1306,17 +1157,6 @@ def _cluster_digest(n_sources: int) -> DigestContent:
             )
         ],
     )
-
-
-def test_a_crowded_cluster_folds_its_sources(tmp_path):
-    """Five source links wrap into a mess on a phone, so they collapse behind a tap."""
-    html = HtmlDigestWriter(tmp_path).render(_cluster_digest(5))
-
-    assert '<details class="src-fold">' in html
-    assert '<summary lang="en">5 sources</summary>' in html
-    # Folded, not dropped — every link is still in the markup and still reachable.
-    for i in range(5):
-        assert f'<a href="https://n{i}.com" target="_blank" rel="noopener">S{i}</a>' in html
 
 
 def test_vote_buttons_use_arrows_not_emoji(tmp_path):
@@ -1377,7 +1217,7 @@ def test_fan_item_links_to_newsletter_references_but_votes_on_store_url(tmp_path
     html = HtmlDigestWriter(tmp_path).render(content)
 
     assert '<a href="https://r1.com/a" target="_blank" rel="noopener">Newsletter item</a>' in html
-    assert '<a href="https://r2.com/b" target="_blank" rel="noopener">r2.com</a>' in html
+    assert "r2.com" not in html
     assert "data-urls='[\"newsletter:abc\"]'" in html
     assert "data-urls='[&#34;https://r1.com/a&#34;" not in html
 
@@ -1462,16 +1302,6 @@ def test_fan_item_without_references_keeps_its_store_url(tmp_path):
     assert (
         '<a href="https://mailchi.mp/x" target="_blank" rel="noopener">Mailchimp item</a>' in html
     )
-
-
-def test_news_cluster_without_references_keeps_existing_source_markup(tmp_path):
-    """RSS cluster source links keep their existing source labels and order."""
-    html = HtmlDigestWriter(tmp_path).render(_cluster_digest(2))
-
-    assert (
-        '<a href="https://n0.com" target="_blank" rel="noopener">S0</a> · '
-        '<a href="https://n1.com" target="_blank" rel="noopener">S1</a>'
-    ) in html
 
 
 def test_fan_item_with_one_reference_keeps_existing_source_markup(tmp_path):
@@ -2234,15 +2064,18 @@ WRITTEN_TEXT = [
 ]
 TITLE_TEXT = ["Lead", "Second"]
 PASSED_THROUGH_TEXT = [
-    "Fan heading",
     "Fan",
+    "Radar",
+    "Radar summary.",
     "Fan summary.",
 ]
 DIGEST_CHROME_TEXT = [
-    "Top story",
+    "Stories",
+    "Topics",
+    "Headlines",
     "Sources",
     "Included",
-    "3 sources",
+    "3 articles",
 ]
 
 
@@ -2275,14 +2108,6 @@ def _grouped_lead(output_language: str) -> DigestContent:
         group.model_copy(update={"heading": "Group heading", "summary": "Group summary."})
     ]
     return content
-
-
-def test_a_grouped_top_story_keeps_its_heading_and_leaves_its_titles_unknown(tmp_path):
-    langs = text_langs(HtmlDigestWriter(tmp_path).render(_grouped_lead("ja")))
-
-    written = ["Group heading", "Group summary."]
-    assert _langs_of(langs, written) == dict.fromkeys(written, "ja")
-    assert _langs_of(langs, TITLE_TEXT) == dict.fromkeys(TITLE_TEXT, "")
 
 
 def test_untranslated_sections_leave_their_language_unknown(tmp_path):
@@ -2336,7 +2161,7 @@ def test_a_plain_language_name_leaves_the_content_language_unknown(tmp_path):
 
     assert "Traditional Chinese" not in html
     assert _langs_of(langs, WRITTEN_TEXT) == dict.fromkeys(WRITTEN_TEXT, "")
-    assert langs["Top story"] == "en"
+    assert langs["Stories"] == "en"
 
 
 def _archive_langs(tmp_path, content: DigestContent) -> tuple[str, dict[str, str | None]]:
@@ -2391,16 +2216,6 @@ _HIT = DigestItem(
 )
 
 
-def test_each_tracked_topic_lists_its_hits_between_the_top_story_and_the_areas(tmp_path):
-    html = _tracked_issue(tmp_path, [DigestSection(heading="Anthropic", items=[_HIT])])
-    texts = _main_text(html).texts
-
-    assert texts.index("Top story") < texts.index("Tracking") < texts.index("Cluster heading")
-    assert texts.index("Tracking") < texts.index("Anthropic") < texts.index(_HIT.title)
-    assert '<a href="https://wire.test/hit" target="_blank"' in html
-    assert '<span class="vote-group" data-urls=\'["https://wire.test/hit"]\'' in html
-
-
 def test_a_tracked_topic_and_its_hits_leave_their_language_unknown(tmp_path):
     langs = text_langs(_tracked_issue(tmp_path, [DigestSection(heading="Anthropic", items=[_HIT])]))
 
@@ -2415,7 +2230,7 @@ def test_an_issue_with_no_hit_has_no_tracking_section(tmp_path):
     assert html == HtmlDigestWriter(tmp_path).render(_every_section("ja"))
 
 
-# ---- the page is one section per area, in the reader's order ---------------------
+# ---- the page is three layers, pebble, sand and water ---------------------------
 
 
 def _area_item(title: str, area: str | None = None, url: str | None = None) -> DigestItem:
@@ -2475,62 +2290,11 @@ def _markers(html: str) -> list[str]:
     return _MARKER.findall(_body(html))
 
 
-def test_the_page_marks_the_top_story_then_each_area_then_other():
-    html = HtmlDigestWriter(Path("/unused")).render(_areas_issue(["Tech", "Health"]))
-
-    assert _markers(html) == ["Top story", "Tech", "Health", "Other"]
-    for old in ("Features", "In Focus", "On the Radar", "The Wire", "Following"):
-        assert old not in _markers(html)
-
-
-def test_tracking_sits_between_the_top_story_and_the_areas(tmp_path):
-    content = _areas_issue(["Tech", "Health"])
-    content.tracked_topics = [DigestSection(heading="Anthropic", items=[_area_item("Hit")])]
-    html = HtmlDigestWriter(tmp_path).render(content)
-
-    assert _markers(html) == ["Top story", "Tracking", "Tech", "Health", "Other"]
-
-
-def test_an_issue_without_an_area_order_is_one_unnamed_section(tmp_path):
-    html = HtmlDigestWriter(tmp_path).render(_areas_issue([]))
-
-    assert _markers(html) == ["Top story"]
-    for title in ("Tech feature", "Tech radar", "Tech wire", "Unplaced wire", "Health fan"):
-        assert title in html
-    assert html.count('class="headline-item"') == 3
-
-
-def test_a_legacy_issue_with_area_names_renders_every_entry_in_one_unnamed_section(tmp_path):
-    html = HtmlDigestWriter(tmp_path).render(
-        _areas_issue([], filtered_headlines=[_area_item("Tech wire", "Tech")])
-    )
-
-    assert _markers(html) == ["Top story"]
-    assert "Tech wire" in html
-
-
-def test_a_page_with_no_top_story_still_draws_its_areas(tmp_path):
-    content = _areas_issue(["Tech", "Health"], featured_articles=[], thematic_summaries=[])
-    html = HtmlDigestWriter(tmp_path).render(content)
-
-    assert _markers(html) == ["Tech", "Health", "Other"]
-    assert "Top story" not in _markers(html)
-
-
 def test_a_page_with_nothing_in_it_draws_no_marker_and_keeps_its_note(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(_issue(0))
 
     assert EMPTY_SENTENCE in _body(html)
     assert 'class="section-tag"' not in _body(html)
-
-
-def test_an_area_name_is_escaped(tmp_path):
-    name = "<script>x</script>"
-    content = _areas_issue([name], filtered_headlines=[_area_item("Named wire", name)])
-    html = HtmlDigestWriter(tmp_path).render(content)
-
-    assert "<script>x</script>" not in html
-    assert "&lt;script&gt;x&lt;/script&gt;" in html
 
 
 def test_a_cluster_keeps_its_story_id_and_every_url_is_shown_and_voted_once(tmp_path):
@@ -2601,91 +2365,6 @@ class _Dom(HTMLParser):
         self._open[-1].text += data
 
 
-def test_a_radar_row_is_untranslated_and_a_wire_row_keeps_the_page_language(tmp_path):
-    content = _content(
-        "2026-04-15",
-        "morning",
-        output_language="en",
-        area_order=["Tech"],
-        attention_sections=[
-            DigestSection(
-                heading="Radar",
-                items=[
-                    DigestItem(
-                        title="Radar item",
-                        summary="A summary.",
-                        sources=["R"],
-                        urls=["https://r.test/1"],
-                        area="Tech",
-                    )
-                ],
-            )
-        ],
-        filtered_headlines=[
-            DigestItem(
-                title="Wire item",
-                summary="Wire summary.",
-                sources=["W"],
-                urls=["https://w.test/1"],
-                area="Tech",
-            )
-        ],
-    )
-
-    html = HtmlDigestWriter(tmp_path).render(content)
-    radar, wire = _Dom(html).root.find_all(lambda n: "headline-item" in n.classes)
-
-    assert radar.attrs["lang"] == ""
-    assert "lang" not in wire.attrs
-    assert wire.parent.attrs["lang"] == "en"
-
-
-def test_a_headline_without_a_group_summary_keeps_every_story_in_the_top_story(tmp_path):
-    headline = DigestSection(
-        heading="Top",
-        summary=None,
-        items=[
-            DigestItem(
-                title=title,
-                summary=f"{title} summary.",
-                sources=["S"],
-                urls=[f"https://h.test/{title}"],
-            )
-            for title in ("X1", "X2", "X3")
-        ],
-    )
-    feature = DigestSection(
-        heading="Feature",
-        items=[
-            DigestItem(
-                title="Tech feature",
-                summary="F.",
-                sources=["S"],
-                urls=["https://h.test/f"],
-                area="Tech",
-            )
-        ],
-    )
-    content = _content(
-        "2026-04-15",
-        "morning",
-        area_order=["Tech"],
-        featured_articles=[headline, feature],
-    )
-
-    dom = _Dom(HtmlDigestWriter(tmp_path).render(content))
-    lead = dom.root.find_all(lambda n: "lead-story" in n.classes)[0]
-    top = lead.parent
-    assert top.tag == "section"
-    cards = top.find_all(lambda n: "featured-item" in n.classes)
-    assert [card.find_all(lambda n: n.tag == "h3")[0].text_content() for card in cards] == [
-        "X2",
-        "X3",
-    ]
-    assert "X1" in lead.text_content()
-    assert top.find_all(lambda n: n.tag == "h2" and "section-tag" in n.classes) == []
-
-
 def test_the_archive_links_the_interest_map_for_a_signed_in_reader_only(tmp_path) -> None:
     html = HtmlDigestWriter(tmp_path).render_index(["2026-10-17-morning.html"])
 
@@ -2735,33 +2414,280 @@ def _paragraph_issue():
     )
 
 
-def _paragraph_rows(html: str) -> list[str]:
-    """The meta rows of the issue's one news paragraph, in page order."""
-    block = html[html.index('<div class="news-paragraph"') : html.index("</section>")]
-    return re.findall(r'<div class="meta">(.*?)</div>', block, re.DOTALL)
-
-
-def test_a_news_paragraph_is_its_text_then_one_row_per_cited_unit() -> None:
+def test_a_legacy_paragraph_issue_renders_its_units_as_sand_and_water() -> None:
     html = HtmlDigestWriter(Path("/tmp/html-test")).render(_paragraph_issue())
-    assert '<p class="summary">A quake struck; a letter followed.</p>' in html
-    pair, letter = _paragraph_rows(html)
-    assert '<a href="https://a.test/quake" target="_blank" rel="noopener">Wire A</a>' in pair
-    assert '<a href="https://b.test/quake" target="_blank" rel="noopener">Wire B</a>' in pair
-    # The synthetic URL is a label only.
-    assert "Letters" in letter and 'href="newsletter:abc"' not in letter
-    assert 'class="headline-item"' not in html
+    dom = _Dom(html).root
+
+    (sand,) = dom.find_all(lambda n: "news-cluster" in n.classes)
+    (water,) = dom.find_all(lambda n: "headline-item" in n.classes)
+    assert "Quake" in sand.text_content()
+    assert "A quake struck; a letter followed." in sand.text_content()
+    assert _vote_urls(sand) == [["https://a.test/quake", "https://b.test/quake"]]
+    # The synthetic URL is a label only, and still carries the unit's vote.
+    assert "Letter" in water.text_content() and 'href="newsletter:abc"' not in html
+    assert _vote_urls(water) == [["newsletter:abc"]]
 
 
-def test_a_vote_on_a_cited_unit_is_cast_for_every_member_url() -> None:
-    """N4 (a): one vote group per unit, over all its store URLs, as a cluster's is."""
-    html = HtmlDigestWriter(Path("/tmp/html-test")).render(_paragraph_issue())
-    rows = _paragraph_rows(html)
-    voted = [
-        json.loads(html_lib.unescape(u)) for u in re.findall(r"data-urls='([^']*)'", "".join(rows))
+# Every token a source name or a host could leak as: each article's source and its host.
+_WIRE_SOURCES = ("SRC-WIRE-A", "SRC-WIRE-B", "SRC-WIRE-C", "SRC-LONE", "SRC-HEADLINE")
+_WIRE_HOSTS = ("wire-a.example.test", "wire-b.example.test", "wire-c.example.test")
+
+
+def _member(n: str, source: str, host: str) -> DigestItem:
+    return DigestItem(
+        title=f"Report {n}",
+        summary=f"Excerpt {n}",
+        sources=[source],
+        urls=[f"https://{host}/{n}"],
+        score=7.5,
+        passed_through=True,
+    )
+
+
+def _three_layer_issue() -> DigestContent:
+    """Two pebbles, a three-article topic, a one-article topic, a headline and a tracked hit."""
+    members = [
+        _member(n, source, host)
+        for n, source, host in zip("abc", _WIRE_SOURCES, _WIRE_HOSTS, strict=False)
     ]
-    assert voted == [["https://a.test/quake", "https://b.test/quake"], ["newsletter:abc"]]
-    for row in rows:
-        # One group per row, and the votes are the row's last element (ui-language.md §6).
-        assert row.count('class="vote-group"') == 1
-        assert row.rstrip().endswith("</span>")
-        assert row.rstrip().rindex('class="vote-group"') > row.rfind("</a>")
+    topic = DigestSection(
+        heading="Three reports of one event",
+        story_id="2026-10-29-morning-abc",
+        tags=["Anthropic"],
+        members=members,
+        items=[
+            DigestItem(
+                title="Three reports of one event",
+                summary="The model's cluster summary.",
+                sources=[m.sources[0] for m in members],
+                urls=[m.urls[0] for m in members],
+                score=7.5,
+            )
+        ],
+    )
+    lone = DigestItem(
+        title="One report",
+        summary="Its summary.",
+        sources=["SRC-LONE"],
+        urls=["https://lone.example.test/1"],
+        score=6.0,
+    )
+    return DigestContent(
+        date="2026-10-29",
+        period="morning",
+        sources_processed=4,
+        articles_received=8,
+        articles_included=8,
+        featured_articles=[
+            DigestSection(
+                heading="Read",
+                items=[
+                    DigestItem(
+                        title="A long read",
+                        summary="Why it matters.",
+                        sources=["SRC-PEBBLE"],
+                        urls=["https://pebble.example.test/read"],
+                        score=9.1,
+                    )
+                ],
+            )
+        ],
+        fan_sections=[
+            DigestSection(
+                heading="SRC-FAN",
+                items=[
+                    DigestItem(
+                        title="A followed post",
+                        summary="",
+                        sources=["SRC-FAN"],
+                        urls=["https://fan.example.test/post"],
+                    )
+                ],
+            )
+        ],
+        news_clusters=[
+            topic,
+            DigestSection(
+                heading="One report",
+                story_id="2026-10-29-morning-lone",
+                items=[lone],
+                members=[lone.model_copy(update={"passed_through": True})],
+            ),
+        ],
+        filtered_headlines=[
+            DigestItem(
+                title="A headline",
+                summary="The filter's sentence.",
+                sources=["SRC-HEADLINE"],
+                urls=["https://headline.example.test/1"],
+                score=5.0,
+            )
+        ],
+        tracked_topics=[
+            DigestSection(
+                heading="Tracked topic",
+                items=[
+                    DigestItem(
+                        title="A tracked hit",
+                        summary="",
+                        sources=["SRC-TRACKED"],
+                        urls=["https://tracked.example.test/hit"],
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def _three_layer_dom() -> tuple[str, _Node]:
+    html = HtmlDigestWriter(Path("/tmp/html-test")).render(_three_layer_issue())
+    return html, _Dom(html).root
+
+
+def _by_class(root: _Node, name: str) -> list[_Node]:
+    return root.find_all(lambda n: name in n.classes)
+
+
+def _vote_urls(node: _Node) -> list[list[str]]:
+    return [json.loads(g.attrs["data-urls"]) for g in _by_class(node, "vote-group")]
+
+
+def test_every_pebble_sand_and_water_item_has_exactly_one_vote_group() -> None:
+    _, root = _three_layer_dom()
+
+    pebbles = _by_class(root, "featured-item")
+    sand = _by_class(root, "news-cluster")
+    water = _by_class(root, "headline-item")
+    assert (len(pebbles), len(sand), len(water)) == (2, 1, 2)
+    for item in (*pebbles, *sand, *water):
+        assert len(_by_class(item, "vote-group")) == 1, item.text_content()
+    assert len(_by_class(root, "vote-group")) == 5
+
+
+def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None:
+    html, root = _three_layer_dom()
+
+    (tracking,) = [
+        s
+        for s in root.find_all(lambda n: n.tag == "section")
+        if "Tracking" in s.text_content() and "A tracked hit" in s.text_content()
+    ]
+    assert _by_class(tracking, "vote-group") == []
+    assert _by_class(tracking, "meta") == []
+    assert '<a href="https://tracked.example.test/hit" target="_blank"' in html
+    assert "SRC-TRACKED" not in html
+    assert _markers(html) == ["Tracking", "Stories", "Topics", "Headlines"]
+
+
+def test_a_sand_vote_is_cast_for_every_member_url_under_its_story_id() -> None:
+    _, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    (group,) = _by_class(sand, "vote-group")
+    assert json.loads(group.attrs["data-urls"]) == [
+        f"https://{host}/{n}" for n, host in zip("abc", _WIRE_HOSTS, strict=True)
+    ]
+    assert group.attrs["data-story-id"] == "2026-10-29-morning-abc"
+    # The fold holds the articles, and no vote of its own.
+    (fold,) = sand.find_all(lambda n: n.tag == "details")
+    assert _by_class(fold, "vote-group") == []
+
+
+def test_a_one_article_topic_is_a_row_that_keeps_its_story_id() -> None:
+    _, root = _three_layer_dom()
+
+    lone, headline = _by_class(root, "headline-item")
+    (group,) = _by_class(lone, "vote-group")
+    assert group.attrs["data-story-id"] == "2026-10-29-morning-lone"
+    assert "data-story-id" not in _by_class(headline, "vote-group")[0].attrs
+
+
+def test_the_sand_fold_lists_each_member_title_as_its_link_with_its_source() -> None:
+    _, root = _three_layer_dom()
+
+    (fold,) = _by_class(root, "src-fold")
+    assert fold.find_all(lambda n: n.tag == "summary")[0].text_content() == "3 articles"
+    links = [(a.text_content(), a.attrs["href"]) for a in fold.find_all(lambda n: n.tag == "a")]
+    assert links == [
+        (f"Report {n}", f"https://{host}/{n}") for n, host in zip("abc", _WIRE_HOSTS, strict=True)
+    ]
+    assert [s.text_content() for s in _by_class(fold, "source-tag")] == list(_WIRE_SOURCES[:3])
+
+
+def test_the_sand_line_is_its_first_members_excerpt_and_says_it_is_untranslated() -> None:
+    html, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    (line,) = [p for p in sand.children if "summary" in p.classes]
+    assert (line.text_content(), line.attrs["lang"]) == ("Excerpt a", "")
+    assert "The model's cluster summary." not in html
+
+
+def test_no_source_name_or_host_shows_outside_the_sand_fold_but_a_pebbles_source() -> None:
+    html, _ = _three_layer_dom()
+    main = _body(html)
+    outside = re.sub(r"<details.*?</details>", "", main, flags=re.DOTALL)
+    # Hosts are allowed inside an href or a vote's data, never as text.
+    text = re.sub(r"<[^>]*>", " ", outside)
+
+    for token in (*_WIRE_SOURCES, *_WIRE_HOSTS, "lone.example.test", "headline.example.test"):
+        assert token not in text, token
+    for source in ("SRC-PEBBLE", "SRC-FAN"):
+        assert f'<span class="source-tag">{source}</span>' in outside
+
+
+def test_no_item_shows_a_score_pill() -> None:
+    html, _ = _three_layer_dom()
+
+    assert "pill score" not in _body(html)
+    for score in ("9.1", "7.5", "6.0", "5.0"):
+        assert score not in re.sub(r"<[^>]*>", " ", _body(html))
+
+
+def test_a_topic_shows_its_tags_on_their_own_row_above_its_vote() -> None:
+    _, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    (tags,) = _by_class(sand, "tags")
+    (meta,) = _by_class(sand, "meta")
+    assert [p.text_content() for p in _by_class(tags, "pill")] == ["Anthropic"]
+    assert not _by_class(meta, "pill")
+    assert tags.parent is meta.parent
+
+
+def test_a_low_score_read_item_is_an_untranslated_pebble_and_a_wire_row_keeps_the_language(
+    tmp_path,
+):
+    content = _content(
+        "2026-04-15",
+        "morning",
+        output_language="en",
+        attention_sections=[DigestSection(heading="Radar", items=_items("Radar item"))],
+        filtered_headlines=_items("Wire item"),
+    )
+
+    root = _Dom(HtmlDigestWriter(tmp_path).render(content)).root
+
+    (radar,) = _by_class(root, "featured-item")
+    (wire,) = _by_class(root, "headline-item")
+    assert "Radar item" in radar.text_content() and radar.attrs["lang"] == ""
+    assert "lang" not in wire.attrs
+    assert wire.parent.attrs["lang"] == "en"
+
+
+def test_a_legacy_cluster_stored_without_members_renders_as_sand_and_votes_on_its_urls(tmp_path):
+    content = _areas_issue(["Tech", "Health"])
+    root = _Dom(HtmlDigestWriter(tmp_path).render(content)).root
+
+    (sand,) = _by_class(root, "news-cluster")
+    assert "Health cluster" in sand.text_content()
+    assert "Cluster summary." in sand.text_content()
+    assert _vote_urls(sand) == [["https://a.test/health", "https://b.test/health"]]
+    (fold,) = sand.find_all(lambda n: n.tag == "details")
+    assert [a.text_content() for a in fold.find_all(lambda n: n.tag == "a")] == ["A", "B"]
+
+
+def test_the_page_names_no_area(tmp_path):
+    html = HtmlDigestWriter(tmp_path).render(_areas_issue(["Tech", "Health"]))
+
+    assert _markers(html) == ["Stories", "Topics", "Headlines"]

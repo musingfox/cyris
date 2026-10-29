@@ -849,7 +849,10 @@ def _between(text: str, start: str, end: str) -> str:
 
 
 class TestEverySurfaceShowsTheSameLayout:
-    """Page, mail (HTML and text) and Discord: one group summary on top, one card per feature."""
+    """Mail (HTML and text) and Discord: one group summary on top, one card per feature.
+
+    The page left this layout for its three layers (ADR-0023); `test_layers.py` holds it.
+    """
 
     def test_discord(self):
         embeds = {e["title"]: e["description"] for e in build_discord_embeds(_laid_out_issue())}
@@ -862,15 +865,6 @@ class TestEverySurfaceShowsTheSameLayout:
         assert "[Gamma](https://example.com/Gamma)" in embeds["Digest"]
         assert "Gamma on its own" in embeds["Digest"]
         assert "Group summary" not in embeds["Digest"]
-
-    def test_page(self, tmp_path):
-        from cyris.adapters.output.html_digest import HtmlDigestWriter
-
-        html = HtmlDigestWriter(tmp_path).render(_laid_out_issue())
-        top = _between(html, "Top story", 'class="featured-grid"')
-        features = _between(html, 'class="featured-grid"', "</main>")
-        assert top.count("Group summary") == 1 and "Alpha" in top and "Beta" in top
-        assert "Gamma on its own" in features and "Group summary" not in features
 
     def test_mail_html(self):
         from cyris.adapters.output.email_digest import render_digest_email
@@ -890,14 +884,11 @@ class TestEverySurfaceShowsTheSameLayout:
         assert "Lead topic" in top and "Alpha" in top and "Beta" in top
         assert "Gamma" in features and "Alpha" not in features
 
-    def test_three_top_story_entries_sit_in_the_top_story_on_every_surface(self, tmp_path):
+    def test_three_top_story_entries_sit_in_the_top_story_on_every_surface(self):
         from cyris.adapters.mail import build_digest_mail
         from cyris.adapters.output.email_digest import render_digest_email
-        from cyris.adapters.output.html_digest import HtmlDigestWriter
 
         issue = _headline_issue()
-        page = HtmlDigestWriter(tmp_path).render(issue)
-        page_top = _between(page, '<span class="label">Top story</span>', "</section>")
         mail = render_digest_email(issue, "https://digest.example/2026-04-10")
         mail_top = _between(mail, "Top story</h2>", "</section>")
         _, text = build_digest_mail(issue)
@@ -905,7 +896,7 @@ class TestEverySurfaceShowsTheSameLayout:
         embeds = {e["title"]: e["description"] for e in build_discord_embeds(issue)}
 
         for title in ("X1", "X2", "X3"):
-            assert f">{title}<" in page_top and f">{title}<" in mail_top
+            assert f">{title}<" in mail_top
             assert f"\n{title}\n" in text_top or f"— https://example.com/{title}\n" in text_top
             assert f"[{title}](https://example.com/{title})" in embeds["⭐ Top story"]
         assert "Tech Card" not in embeds["⭐ Top story"]

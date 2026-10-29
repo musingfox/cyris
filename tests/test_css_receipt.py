@@ -1069,14 +1069,7 @@ EXPECTED_DIGEST_IDS = {
     *(f"votes-beside-meta-{width}" for width in (360, 880, 1000, 1440)),
     *(
         f"vote-click-{kind}-{width}"
-        for kind in (
-            "lead-story",
-            "featured-item",
-            "news-cluster",
-            "news-paragraph",
-            "article-item",
-            "headline-item",
-        )
+        for kind in ("featured-item", "news-cluster", "headline-item")
         for width in (360, 1440)
     ),
     "vote-failure-says-why",
@@ -1103,19 +1096,8 @@ EXPECTED_DIGEST_IDS = {
         for name in ("votes", "votes-apart", "original", "original-clear")
     ),
 }
-# The Top story as a group: its members' ↗ and votes, and the page width around them.
-EXPECTED_DIGEST_IDS |= {
-    *(f"grouped-lead-fits-{width}" for width in (360, 880, 1000, 1440)),
-    *(f"grouped-lead-fits-largest-{width}" for width in (360, 880, 1000, 1440)),
-    *(
-        f"grouped-lead-tap-{name}-375"
-        for name in ("votes", "votes-apart", "original", "original-clear", "site-bar")
-    ),
-    *(
-        f"grouped-lead-tap-smallest-{name}-375"
-        for name in ("votes", "votes-apart", "original", "original-clear")
-    ),
-}
+# The three layers: once signed in, each pebble, sand block and water row shows one vote.
+EXPECTED_DIGEST_IDS |= {f"votes-shown-once-authorized-{width}" for width in (360, 1440)}
 
 # The Wire's summaries: drawn below each title, and wrapping inside the row on a phone.
 EXPECTED_DIGEST_IDS |= {
@@ -1160,35 +1142,24 @@ def _placed_in(html: str, what: str) -> set[str]:
 
 def test_the_digest_probe_page_shows_a_vote_group_in_every_item_kind():
     items = {selector.lstrip(".") for selector in digest_probe.ITEM_SELECTORS}
-    assert len(items) == 6
+    assert len(items) == 3
     assert items <= _placed_in(digest_probe.render_page(), "vote-group")
     # KINDS names the fixtures; the page-side list of item selectors is another name.
     assert "KINDS" not in digest_probe.DIGEST_PRELUDE
 
 
-def test_the_digest_probe_grouped_page_leads_with_two_articles_each_with_its_link():
-    page = digest_probe.render_page(grouped_lead=True)
-    lead = page[
-        page.index('class="lead-story"') : page.index(
-            "</section>", page.index('class="lead-story"')
-        )
-    ]
-    assert lead.count('class="article-item"') == 2
-    assert lead.count('class="orig"') == 2
-    single = digest_probe.render_page()
-    assert 'class="article-item"' not in single[: single.index('class="lead-story"')]
-
-
 def test_the_digest_probe_wire_has_a_long_summary_a_short_one_and_none():
-    summaries = [item.summary for item in digest_probe.content().filtered_headlines]
+    summaries = [w.item.summary for w in digest_probe.layer_by_lane(digest_probe.content()).water]
     assert [bool(summary) for summary in summaries] == digest_probe.WIRE_SUMMARIES
     assert digest_probe.WIRE_SUMMARIES == [True, True, False]
     assert len(summaries[0]) > 3 * len(summaries[1])
     assert summaries[0] in digest_probe.render_page()
 
 
-def test_the_digest_probe_page_folds_a_cluster_and_a_headline():
-    assert {"news-cluster", "headline-item"} <= _placed_in(digest_probe.render_page(), "src-fold")
+def test_the_digest_probe_page_folds_each_topic_and_no_headline():
+    folded = _placed_in(digest_probe.render_page(), "src-fold")
+    assert "news-cluster" in folded
+    assert "headline-item" not in folded
 
 
 async def test_the_digest_probe_fixture_serves_an_archive_with_small_buttons():

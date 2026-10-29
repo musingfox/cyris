@@ -1,31 +1,11 @@
 {% macro promote_btn(item, story_id=None) -%}
 {% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}' lang="en"><button class="btn sm secondary promote-btn" data-vote="up" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>{% endif %}
 {%- endmacro -%}
-{#- Sources of a news cluster: one link per article, so a busy topic renders five of
-    them and wraps into a mess on a phone. Fold past two behind a native <details>.
-    Unfolded, they stay in one span, or the flex meta row would gap them apart. -#}
-{% macro source_links(item) -%}
-{%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
-{%- for url in urls %}{% set label = url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url %}{% if url.startswith('http') %}<a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
+{% macro title_link(item) -%}
+{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}
 {%- endmacro -%}
-{#- The Top story's group, under its one summary. Each article keeps its own link, score and
-    vote: unlike a news cluster's reports of one event, these are different articles. -#}
-{% macro story_members(story) -%}
-{% for item in story.members %}
-<article class="article-item">
-    <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
-    <div class="meta">
-        {% if item.score is not none %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-        <span class="source-tag">{{ item.sources | join(' · ') }}</span>
-        {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
-        {{ promote_btn(item) }}
-    </div>
-</article>
-{% endfor %}
-{%- endmacro -%}
-{% macro source_list(item) -%}
-{%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
-{% if urls | length > 2 %}<details class="src-fold"><summary lang="en">{{ urls | length }} sources</summary><span class="src-list">{{ source_links(item) }}</span></details>{% else %}<span class="src-links">{{ source_links(item) }}</span>{% endif %}
+{% macro tag_pills(tags) -%}
+{% if tags %}<div class="tags">{% for tag in tags %}<span class="pill" lang="">{{ tag }}</span>{% endfor %}</div>{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="en">
@@ -417,6 +397,11 @@
         .src-fold > summary::after { content: ' ▾'; }
         .src-fold[open] > summary::after { content: ' ▴'; }
         .src-list { display: block; padding-top: var(--s-1); }
+        .src-member { display: block; }
+
+        /* An item's tags take their own row, so however many there are the votes stay
+           on the meta row beside the fold or the source. */
+        .tags { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
     </style>
 </head>
 <body>
@@ -456,59 +441,20 @@
             {% if not articles_included %}
             <p class="small issue-note">Nothing is in this issue: this run judged the {{ articles_received }} articles it received and kept none.{% if raw_page %} <a href="{{ date }}-{{ period }}-raw.html">All articles</a> lists each one with its verdict.{% endif %}</p>
             {% endif %}
-            {% if lead_story %}
-            <section class="section">
-                <div class="section-tag"><span class="label">Top story</span></div>
-                <article class="lead-story" lang="{{ '' if lead_story.passed_through else content_lang }}">
-                    {% if lead_story.score is not none %}<span class="pill score">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
-                    <h2{% if not lead_story.grouped %} lang=""{% endif %}>
-                        {% if lead_story.link %}<a href="{{ lead_story.link }}" target="_blank" rel="noopener">{{ lead_story.title }}</a>{% else %}{{ lead_story.title }}{% endif %}
-                    </h2>
-                    <p class="summary">{{ lead_story.summary }}</p>
-                    {% if lead_story.grouped %}{{ story_members(lead_story) }}{% else %}
-                    <div class="meta ruled">
-                        <span class="source-tag">{{ lead_story.sources | join(' · ') }}</span>
-                        {{ promote_btn(lead_story) }}
-                    </div>
-                    {% endif %}
-                </article>
-                {% if headline_rest %}
-                <div class="featured-grid" lang="{{ content_lang }}">
-                    {% for item in headline_rest %}
-                    <article class="featured-item"{% if item.passed_through %} lang=""{% endif %}>
-                        <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
-                        <p class="summary">{{ item.summary }}</p>
-                        <div class="meta">
-                            {% if item.score is not none %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
-                            {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
-                            {{ promote_btn(item) }}
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </section>
-            {% endif %}
-
-            {#- Whitespace-trimmed both ends, so an issue with no hit renders byte for byte
-                as it did before tracking existed. The topic name and the titles are the
-                reader's and the sources' own text, so the block's language is unknown. -#}
-            {%- if tracked_topics %}
+            {#- Above the layers because a topic is something the reader asked to see. Its
+                hits are links only: a hit is a view of the run's candidates, not an item of
+                the issue, so it carries no vote. Trimmed both ends, so an issue with no hit
+                renders byte for byte as it did before tracking existed. -#}
+            {%- if layers.tracking %}
 
             <section class="section">
                 <h2 class="section-tag"><span class="label">Tracking</span></h2>
-                {% for topic in tracked_topics %}
+                {% for topic in layers.tracking %}
                 <div class="thematic-block" lang="">
                     <h3 class="item-title lg">{{ topic.heading }}</h3>
                     {% for item in topic.items %}
                     <article class="article-item">
-                        <h4 class="item-title">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
-                        <div class="meta">
-                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>
-                            {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
-                            {{ promote_btn(item) }}
-                        </div>
+                        <h4 class="item-title">{{ title_link(item) }}</h4>
                     </article>
                     {% endfor %}
                 </div>
@@ -516,84 +462,64 @@
             </section>
             {%- endif %}
 
-            {% for sec in sections %}
+            {#- Pebble: one card per read or follow article, the one place a source is named. -#}
+            {%- if layers.pebbles %}
+
             <section class="section">
-                {% set label = sec|section_label %}
-                {% if label %}<h2 class="section-tag"><span class="label">{{ label }}</span></h2>{% endif %}
-                {% if sec.features %}
+                <h2 class="section-tag"><span class="label">Stories</span></h2>
                 <div class="featured-grid" lang="{{ content_lang }}">
-                    {% for feature in sec.features %}{% for item in feature.items %}
-                    <article class="featured-item"{% if item.passed_through %} lang=""{% endif %}>
-                        <h3 class="item-title lg" lang="">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h3>
-                        <p class="summary">{{ item.summary }}</p>
+                    {% for pebble in layers.pebbles %}{% set item = pebble.item %}
+                    <article class="featured-item"{% if pebble.untranslated %} lang=""{% endif %}>
+                        <h3 class="item-title lg" lang="">{{ title_link(item) }}</h3>
+                        {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
+                        {{ tag_pills(item.tags) }}
                         <div class="meta">
-                            {% if item.score is not none %}<span class="pill score">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
                             {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
                     </article>
-                    {% endfor %}{% endfor %}
-                </div>
-                {% endif %}
-                {% for sec_fan in sec.following %}
-                <div class="thematic-block" lang="">
-                    <h3 class="item-title lg">{{ sec_fan.heading }}</h3>
-                    {% for item in sec_fan.items %}
-                    <article class="article-item">
-                        <h4 class="item-title">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</h4>
-                        {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
-                        <div class="meta">
-                            <span class="source-tag">{{ item.sources | join(' · ') }}</span>{% if item.ref_urls | length > 1 %} {{ source_list(item) }}{% endif %}
-                            {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
-                            {{ promote_btn(item) }}
-                        </div>
-                    </article>
                     {% endfor %}
                 </div>
-                {% endfor %}
-                {% for cluster in sec.clusters %}
+            </section>
+            {%- endif %}
+
+            {#- Sand: one block per topic of two or more articles, with one vote over all of
+                them. Its articles and their sources stay folded until the reader opens them. -#}
+            {%- if layers.sand %}
+
+            <section class="section">
+                <h2 class="section-tag"><span class="label">Topics</span></h2>
+                {% for sand in layers.sand %}
                 <div class="news-cluster" lang="{{ content_lang }}">
-                    <h3 class="item-title lg">{{ cluster.heading }}</h3>
-                    {% for item in cluster.items %}
-                    <div class="summary">{{ item.summary }}</div>
-                    {#- The vote is on the topic, so one group per cluster; the links stay per article.
-                        sources and urls are appended in lockstep by cluster_news, hence the shared index. -#}
+                    <h3 class="item-title lg">{{ sand.heading }}</h3>
+                    {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
+                    {{ tag_pills(sand.tags) }}
                     <div class="meta">
-                        {{ source_list(item) }}
-                        {{ promote_btn(item, cluster.story_id) }}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-                {% if sec.rows %}
-                <div class="headlines-compact" lang="{{ content_lang }}">
-                    {% for row in sec.rows %}{% set item = row.item %}
-                    <div class="headline-item"{% if row.untranslated %} lang=""{% endif %}>
-                        <span class="idx">{{ "%03d" | format(loop.index) }}</span>
-                        <div class="text">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</div>
-                        {% if item.ref_urls | length > 1 %}{{ source_list(item) }}{% endif %}
-                        {{ promote_btn(item) }}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                {% for paragraph in sec.paragraphs %}
-                <div class="news-paragraph"{% if paragraph.passed_through %} lang=""{% else %} lang="{{ content_lang }}"{% endif %}>
-                    <p class="summary">{{ paragraph.text }}</p>
-                    {#- One row per cited unit, its votes over every member URL, as a cluster's are. -#}
-                    <div class="citations">
-                    {% for unit in paragraph.units %}
-                    <div class="meta">
-                        {{ source_list(unit) }}
-                        {{ promote_btn(unit) }}
-                    </div>
-                    {% endfor %}
+                        <details class="src-fold"><summary lang="en">{{ sand.members | length | plural('article') }}</summary><span class="src-list" lang="">{% for member in sand.members %}<span class="src-member">{{ title_link(member) }}{% if member.sources %} <span class="source-tag">{{ member.sources | join(' · ') }}</span>{% endif %}</span>{% endfor %}</span></details>
+                        {{ promote_btn(sand.vote, sand.story_id) }}
                     </div>
                 </div>
                 {% endfor %}
             </section>
-            {% endfor %}
+            {%- endif %}
+
+            {#- Water: one row per topic of one article and per headline. -#}
+            {%- if layers.water %}
+
+            <section class="section">
+                <h2 class="section-tag"><span class="label">Headlines</span></h2>
+                <div class="headlines-compact" lang="{{ content_lang }}">
+                    {% for water in layers.water %}{% set item = water.item %}
+                    <div class="headline-item"{% if water.untranslated %} lang=""{% endif %}>
+                        <span class="idx">{{ "%03d" | format(loop.index) }}</span>
+                        <div class="text">{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}{{ tag_pills(water.tags) }}</div>
+                        {{ promote_btn(item, water.story_id) }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {%- endif %}
         </main>
 
         <footer class="footer">

@@ -10,8 +10,8 @@ Each source declares a lane, in `sources.yaml` on a local install or on `/settin
 | `follow` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
 
 An article moves `pending → accepted / rejected / awaiting_triage`. A run accepts only
-what its issue shows; an article the per-issue cap cut stays pending, and the next run
-in the window considers it again. A 👍/👎 on the
+what its issue shows; an article the summarizer left out of every section stays
+pending, and the next run in the window considers it again. A 👍/👎 on the
 digest or the raw page, and `cyris articles accept|reject`, all stamp `triaged_at`, and
 that stamp is what vote similarity later treats as a human decision.
 

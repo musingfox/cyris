@@ -7,7 +7,7 @@ import re
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.area_layout import cap_lower_layers, layout_by_area
+from cyris.domain.area_layout import layout_by_area
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, UsageStats
 from cyris.domain.news_units import UNITS_PER_BATCH
 from cyris.domain.selection import digest_urls
@@ -408,14 +408,11 @@ def _paragraph_titles(content: DigestContent) -> list[list[str]]:
 
 
 @pytest.mark.parametrize("skip_first", [False, True], ids=["model-reorders", "model-skips"])
-async def test_a_liked_unit_survives_the_quota_whatever_order_the_model_writes(skip_first) -> None:
+async def test_a_liked_unit_leads_whatever_order_the_model_writes(skip_first) -> None:
     content, preference = _eight_with_h7_liked()
     out, _ = await _write(content, Reversing(skip_first), preference=preference)
 
     assert _paragraph_titles(out) == [[f"T-h{n}"] for n in (7, 0, 1, 2, 3, 4, 5, 6)]
-    capped = cap_lower_layers(out)
-    assert "https://news.test/h7" in digest_urls(capped)
-    assert "https://news.test/h6" not in digest_urls(capped)
 
 
 async def test_with_no_votes_the_paragraphs_keep_the_incoming_unit_order() -> None:

@@ -6,9 +6,9 @@ decides from that record and from the fake D1's sqlite file afterwards, never fr
 the exit code alone (docs/spec/e2e-asserts-what-the-fakes-received.md).
 
 One run carries all five scripted LLM cases, each paired with the receipt it must
-change: a grouped Top story, an excerpt in place of a missing summary, the cap
-leaving an article pending, a newsletter through the email parser, and ids the
-model rewrote. `TestSelfChecks` proves the checks can fail.
+change: a grouped Top story drawn as one card per article, an excerpt in place of a
+missing summary, an issue that cuts nothing it kept, a newsletter through the email
+parser, and ids the model rewrote. `TestSelfChecks` proves the checks can fail.
 """
 
 import copy
@@ -145,10 +145,8 @@ FILTER_PICKS = {
     "n4": "N4 in one line.",
     "n5": "N5 in one line.",
 }
-# The news units in the order the paragraph prompt lists them: the cluster, then the
-# filter's picks.
-NEWS_UNITS = (("n1", "n2"), ("f1",), ("n3",), ("n4",), ("n5",))
-PARAGRAPH_TEXT = "News paragraph {}."
+# The filter's picks in the model's order, each a row of its own.
+WATER = tuple(FILTER_PICKS)
 LLM = {
     # A model that echoes each position zero-padded, as a string: "00", "01", ...
     "rewrite_id": "{:02d}",
@@ -162,7 +160,6 @@ LLM = {
     },
     # l1 has none: the model left that Features article out of `summaries`.
     "own_summaries": {TITLE[k]: text for k, text in OWN_SUMMARIES.items()},
-    "paragraph_text": PARAGRAPH_TEXT,
 }
 SETTINGS = harness.settings(
     **{
@@ -179,19 +176,14 @@ SETTINGS = harness.settings(
         # the one Feature.
         "routing.score_threshold": 80,
         "routing.summarize_score_threshold": 50,
-        "digest.max_featured": 5,
-        "digest.units_per_paragraph": 5,
-        # 4 Top story + 1 Feature + 1 On the Radar: the read lane fits the cap, which
-        # leaves news to the area quota.
-        "digest.max_articles_per_digest_output": 8,
     }
 )
-# Tech's lower layer is l2's radar row and one paragraph per news unit, six entries:
-# the quota of five cuts n5's paragraph, the last.
-CUT = "n5"
-SHOWN = {"a1", "a2", "b1", "b2", "l1", "l2", "n1", "n2", "f1", "n3", "n4"}
+# Every article the filter kept is shown: nothing after it cuts the issue.
+SHOWN = set(URL) - {"f2"}
 TOP_STORY = ("a1", "a2", "b1", "b2")
 FEATURES = ("l1",)
+# The pebbles in page order: the Top story's articles, the Feature, then the radar letter.
+PEBBLES = (*TOP_STORY, *FEATURES, "l2")
 SOURCE_OF = {key: a["source"] for key, a in ARTICLES.items()} | {
     "l1": LETTERS.name,
     "l2": LETTERS.name,
@@ -328,7 +320,7 @@ EXPECTED_ROUTES = {
     "workers_domains": 1,
     "email_send": 1,
     "discord_webhook": 1,
-    "gemini_generate": 6,
+    "gemini_generate": 5,
     "workers_ai_clef": 0,
     "rss_articles": 1,
     "newsletter_list": 1,
@@ -493,11 +485,11 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "digest_date": receipts.date,
         "period": "morning",
         "articles_received": 13,
-        "articles_included": 10,
+        "articles_included": 11,
         "model": MODEL,
-        "api_calls": 6,
-        "input_tokens": 6000,
-        "output_tokens": 3000,
+        "api_calls": 5,
+        "input_tokens": 5000,
+        "output_tokens": 2500,
         "cost_usd": round(usage.estimated_cost, 6),
     }
 
@@ -519,16 +511,16 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "status": "ok",
         "fetched": 13,
         "received": 13,
-        "included": 10,
+        "included": 11,
         "degraded": True,
     }
     assert summary["digest_url"] == receipts.digest_url
-    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 6)
+    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 5)
 
     (issue,) = run.rows("SELECT * FROM digests")
     content = json.loads(issue["content"])
     assert (issue["date"], issue["period"], issue["raw_page"]) == (receipts.date, "morning", 1)
-    assert (content["articles_received"], content["articles_included"]) == (13, 10)
+    assert (content["articles_received"], content["articles_included"]) == (13, 11)
 
     members = sorted([URL["n1"], URL["n2"]])
     story_id = (
@@ -564,9 +556,8 @@ def test_every_saved_item_takes_the_area_of_its_source(receipts) -> None:
     items = _digest_items(json.loads(issue["content"]))
     summary = json.loads(receipts.runs[0]["summary"])
     assert items and all(item["area"] == TECH_AREA["name"] for item in items)
-    # The stamp runs before the area quota, so it also counted the one unit the quota cut,
-    # and before the paragraphs, so it counted the two members of the cluster they replace.
-    assert summary["area_stamp"] == {"picked": 0, "source": len(items) + 3, "none": 0}
+    # The cluster's members are saved items too, so the stamp counted them with the rest.
+    assert summary["area_stamp"] == {"picked": 0, "source": len(items), "none": 0}
 
 
 def test_the_settings_and_sources_are_read_and_never_written(receipts) -> None:
@@ -666,7 +657,7 @@ def _llm_calls(records: list[dict]) -> list[tuple[str, list[str]]]:
 def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) -> None:
     calls = by_route(receipts.records, "gemini_generate")
     kinds = [c["llm"]["kind"] for c in calls]
-    assert kinds == ["scoring", "cluster", "filter", "summarize", "summarize", "paragraph"]
+    assert kinds == ["scoring", "cluster", "filter", "summarize", "summarize"]
     # Sorted, not sets: an article listed twice must show. The order within a prompt
     # is the store's, which no setting decides.
     given = [sorted(titles) for _, titles in _llm_calls(receipts.records)]
@@ -674,13 +665,6 @@ def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) ->
         sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "l2", "f1", "f2")),
         sorted(TITLE[k] for k in ("n1", "n2", "n3", "n4", "n5")),
         sorted(TITLE[k] for k in ("f1", "f2", "n3", "n4", "n5")),
-    ]
-    # One paragraph call for Tech's five news units: the cluster by its heading, then
-    # each pick by its title.
-    (paragraph,) = [titles for kind, titles in _llm_calls(receipts.records) if kind == "paragraph"]
-    assert [t.split(": ")[0] for t in paragraph] == [
-        CLUSTER["heading"],
-        *(TITLE[k] for (k,) in NEWS_UNITS[1:]),
     ]
     # One call per topic group, in the order the store returns the window.
     assert sorted(given[3:5]) == sorted(
@@ -760,15 +744,20 @@ def test_the_run_writes_nothing_beside_its_config(receipts) -> None:
 # ---- scripted case 1: two high scorers on one topic are one Top story --------
 
 
+def _pebbles(r: Receipts) -> dict[str, Node]:
+    """The page's pebble cards, keyed by the link of each one's title."""
+    return {c.one("h3").hrefs()[0]: c for c in r.page().find_all("article", "featured-item")}
+
+
 def check_grouped_top_story(r: Receipts) -> None:
-    lead = r.page().one("article", "lead-story")
-    heading = lead.one("h2")
-    assert "lang" not in heading.attrs  # a group's heading is the model's, in its language
-    assert heading.text() == TOP_GROUP["heading"]
-    assert lead.one("p", "summary").text() == TOP_GROUP["summary"]
-    members = lead.find_all("article", "article-item")
-    assert [m.one("h3").text() for m in members] == [TITLE[k] for k in TOP_STORY]
-    assert {h for m in members for h in m.hrefs()} == {URL[k] for k in TOP_STORY}
+    # The page draws the group as one card per article, each with its own vote.
+    cards = list(_pebbles(r).values())[: len(TOP_STORY)]
+    assert [c.one("h3").text() for c in cards] == [TITLE[k] for k in TOP_STORY]
+    assert [json.loads(c.one("span", "vote-group").attrs["data-urls"]) for c in cards] == [
+        [URL[k]] for k in TOP_STORY
+    ]
+    assert [c.one("p", "summary").text() for c in cards] == [OWN_SUMMARIES[k] for k in TOP_STORY]
+    # The mail and Discord still lay the issue out by area, the group under its heading.
 
     top = r.discord()["embeds"][0]["description"]
     assert TOP_GROUP["heading"] in top
@@ -788,8 +777,8 @@ def test_two_high_scorers_on_one_topic_reach_the_page_as_one_top_story(receipts)
 
 
 def check_missing_summary_degrades(r: Receipts) -> None:
-    cards = {c.one("h3").hrefs()[0]: c for c in r.page().find_all("article", "featured-item")}
-    assert list(cards) == [URL[k] for k in FEATURES]
+    cards = _pebbles(r)
+    assert list(cards) == [URL[k] for k in PEBBLES if k != "l2"] + [LETTERS.homepage]
     fallback = cards[URL["l1"]]
     assert fallback.attrs.get("lang") == ""  # an excerpt is in the article's own language
     assert fallback.one("p", "summary").text() == LETTER_TEXT["l1"]
@@ -809,15 +798,14 @@ def test_a_missing_summary_shows_the_excerpt_and_flags_the_run_degraded(receipts
     check_missing_summary_degrades(receipts)
 
 
-# ---- scripted case 3: the per-issue cap leaves what it cut pending -----------
+# ---- scripted case 3: the issue cuts nothing the filter kept ------------------
 
 
-def check_cap_leaves_cut_pending(r: Receipts) -> None:
+def check_nothing_kept_is_cut(r: Receipts) -> None:
     state = {key: r.articles[URL[key]] for key in URL}
     assert {k for k, row in state.items() if row["state"] == "accepted"} == SHOWN
     assert {k for k in SHOWN if state[k]["digest_date"] == r.date} == SHOWN
-    assert state[CUT]["state"] == "pending"
-    assert state[CUT]["digest_date"] is None
+    assert not [k for k, row in state.items() if row["state"] == "pending"]
     assert (state["f2"]["state"], state["f2"]["rejection_reason"]) == ("rejected", "filtered")
 
     updates = [
@@ -829,15 +817,17 @@ def check_cap_leaves_cut_pending(r: Receipts) -> None:
         ("accepted", r.date, None, {URL[k] for k in SHOWN}),
         ("rejected", r.date, "filtered", {URL["f2"]}),
     ]
-    page = r.page()
-    shown_links = set(page.hrefs())
-    assert URL[CUT] not in shown_links
-    # l2's only link is the homepage; its synthetic URL is not one.
-    assert {URL[k] for k in SHOWN - {"l2"}} <= shown_links
+    # Each accepted article is voted on from the page, l2 by its synthetic URL too.
+    voted = {
+        url
+        for g in r.page().find_all("span", "vote-group")
+        for url in json.loads(g.attrs["data-urls"])
+    }
+    assert voted == {URL[k] for k in SHOWN}
 
 
-def test_an_article_the_cap_cut_stays_pending_while_every_shown_one_is_accepted(receipts) -> None:
-    check_cap_leaves_cut_pending(receipts)
+def test_every_article_the_filter_kept_is_on_the_page_and_accepted(receipts) -> None:
+    check_nothing_kept_is_cut(receipts)
 
 
 # ---- scripted case 4: a queued newsletter through the real email parser ------
@@ -850,14 +840,13 @@ def check_newsletter_reaches_the_digest(r: Receipts) -> None:
     assert json_body(ack) == {"ids": LETTER_ITEM_IDS}
     assert LETTER_URL in r.articles, "the letter was stored without its canonical link"
     assert r.articles[LETTER_URL]["state"] == "accepted"
-    card = next(c for c in r.page().find_all("article", "featured-item") if LETTER_URL in c.hrefs())
-    assert card.one("h3").text() == LETTER_TITLE
-    assert LETTERS.name in card.text()
-    # The unlinked letter is listed as a row, its reader link the letters' homepage.
-    rows = [
-        row for row in r.page().find_all("div", "headline-item") if UNLINKED_TITLE in row.text()
-    ]
-    assert [row.hrefs() for row in rows] == [[LETTERS.homepage]]
+    cards = _pebbles(r)
+    assert cards[LETTER_URL].one("h3").text() == LETTER_TITLE
+    assert LETTERS.name in cards[LETTER_URL].text()
+    # The unlinked letter is a card too, its reader link the letters' homepage.
+    unlinked = cards[LETTERS.homepage]
+    assert unlinked.one("h3").text() == UNLINKED_TITLE
+    assert set(unlinked.hrefs()) == {LETTERS.homepage}
 
 
 def test_a_queued_newsletter_reaches_the_digest_through_the_email_parser(receipts) -> None:
@@ -869,22 +858,19 @@ def test_a_queued_newsletter_reaches_the_digest_through_the_email_parser(receipt
 
 def check_rewritten_ids_match(r: Receipts) -> None:
     page = r.page()
-    assert page.find_all("div", "news-cluster") == []
-    paragraphs = page.find_all("div", "news-paragraph")
-    assert [p.one("p", "summary").text() for p in paragraphs] == [
-        PARAGRAPH_TEXT.format(i) for i in range(len(NEWS_UNITS) - 1)
-    ]
-    assert [set(p.hrefs()) for p in paragraphs] == [
-        {URL[k] for k in unit} for unit in NEWS_UNITS[:-1]
-    ]
-    # A vote on a cited unit is cast for every member URL: the cluster unit votes on n1 and n2.
-    assert [
-        [json.loads(g.attrs["data-urls"]) for g in p.find_all("span", "vote-group")]
-        for p in paragraphs
-    ] == [[[URL[k] for k in unit]] for unit in NEWS_UNITS[:-1]]
-    # The only row left is the read lane's unlinked letter: no news is a row.
+    # The cluster of two is one sand block: one vote on both members, its fold their links.
+    (sand,) = page.find_all("div", "news-cluster")
+    assert sand.one("h3").text() == CLUSTER["heading"]
+    vote = sand.one("span", "vote-group")
+    assert json.loads(vote.attrs["data-urls"]) == [URL["n1"], URL["n2"]]
+    assert vote.attrs["data-story-id"].startswith(f"{r.date}-morning-")
+    assert sand.one("details", "src-fold").hrefs() == [URL["n1"], URL["n2"]]
+    # Each pick the filter kept is one water row, in the model's order, voted on alone.
     rows = page.find_all("div", "headline-item")
-    assert [UNLINKED_TITLE in row.text() for row in rows] == [True]
+    assert [row.hrefs() for row in rows] == [[URL[k]] for k in WATER]
+    assert [json.loads(row.one("span", "vote-group").attrs["data-urls"]) for row in rows] == [
+        [URL[k]] for k in WATER
+    ]
 
 
 def test_ids_the_model_rewrote_still_match_by_position(receipts) -> None:
@@ -901,12 +887,12 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     assert UNLINKED_TITLE in tech["description"]
     for key in FEATURES:
         assert f"[{TITLE[key]}]({URL[key]})" in tech["description"], key
-    assert PARAGRAPH_TEXT.format(0) in tech["description"]
-    assert f"({URL['f1']})" in tech["description"]
-    assert URL[CUT] not in tech["description"]
+    assert CLUSTER["heading"] in tech["description"]
+    for key in WATER:
+        assert f"({URL[key]})" in tech["description"], key
     assert f"({receipts.digest_url})" in stats["description"]
-    # 4 sources, 13 articles received, 10 items kept: the cluster is one item, n5 is cut.
-    for count in ("**4**", "**13**", "**10**"):
+    # 4 sources, 13 articles received, 11 items kept: the cluster is one item.
+    for count in ("**4**", "**13**", "**11**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
     assert stats["title"].split()[0] == "Morning"
@@ -917,11 +903,9 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     assert (words[0], words[-1]) == ("Morning", receipts.date)
     assert receipts.digest_url in mail["text"]
     assert receipts.digest_url in parse_html(mail["html"]).hrefs()
-    for key in SHOWN - {k for unit in NEWS_UNITS for k in unit}:
+    for key in SHOWN - {"n1", "n2"}:
         assert TITLE[key] in mail["text"], key
-    for unit in NEWS_UNITS[:-1]:
-        assert all(URL[k] in mail["text"] for k in unit), unit
-    assert URL[CUT] not in mail["text"]
+    assert CLUSTER["heading"] in mail["text"]
 
 
 # ---- a full issue: Discord takes it within its 6000-character embed total --------
@@ -989,7 +973,7 @@ class TestSelfChecks:
                 check_grouped_top_story,
                 lambda r: r.site.update(
                     {f"/{r.slug}.html": r.site[f"/{r.slug}.html"].replace(
-                        TOP_GROUP["heading"].encode(), b"another heading"
+                        TITLE["a2"].encode(), b"another title"
                     )}
                 ),
                 id="top-story",
@@ -1000,9 +984,9 @@ class TestSelfChecks:
                 id="degraded",
             ),
             pytest.param(
-                check_cap_leaves_cut_pending,
-                lambda r: r.articles[URL[CUT]].update(state="accepted"),
-                id="cap",
+                check_nothing_kept_is_cut,
+                lambda r: r.articles[URL["n5"]].update(state="pending"),
+                id="nothing-cut",
             ),
             pytest.param(
                 check_newsletter_reaches_the_digest,

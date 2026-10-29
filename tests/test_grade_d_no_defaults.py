@@ -162,7 +162,6 @@ def test_the_example_config_builds_every_settings_table():
 
 
 def _grade_d_parameters():
-    from cyris.domain import selection
     from cyris.service_layer import (
         cluster_news,
         digest_pipeline,
@@ -176,7 +175,6 @@ def _grade_d_parameters():
 
     pipeline = digest_pipeline.DigestPipeline
     return [
-        (pipeline.__init__, "max_digest_output"),
         (pipeline.__init__, "summarize_snippet_length"),
         (pipeline.__init__, "filter_snippet_length"),
         (pipeline.__init__, "summarize_score_threshold"),
@@ -201,7 +199,6 @@ def _grade_d_parameters():
         (prompts.build_filter_system_prompt, "style_prompt"),
         (prompts.build_summarize_system_prompt, "style_prompt"),
         (prompts.build_news_cluster_system_prompt, "style_prompt"),
-        (selection.select_digest_articles, "max_items"),
     ]
 
 

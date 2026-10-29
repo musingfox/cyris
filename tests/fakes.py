@@ -47,12 +47,10 @@ TEST_SETTINGS: dict[str, Any] = {key: _TEST_VALUES[key] for key in GRADE_D_KEYS}
 def pipeline_settings(**overrides: Any) -> dict[str, Any]:
     """DigestPipeline's setting keywords, taken from TEST_SETTINGS."""
     return {
-        "max_digest_output": TEST_SETTINGS["digest.max_articles_per_digest_output"],
         "summarize_snippet_length": TEST_SETTINGS["digest.summarize_snippet_length"],
         "filter_snippet_length": TEST_SETTINGS["digest.filter_snippet_length"],
         "summarize_score_threshold": TEST_SETTINGS["routing.summarize_score_threshold"],
         "featured_threshold": TEST_SETTINGS["routing.score_threshold"],
-        "max_featured": TEST_SETTINGS["digest.max_featured"],
         "output_language": TEST_SETTINGS["digest.output_language"],
         "style_prompt": TEST_SETTINGS["digest.style_prompt"],
         **overrides,

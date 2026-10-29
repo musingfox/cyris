@@ -1,4 +1,4 @@
-"""Article selection with priority fill for digest output."""
+"""Article selection for digest output: the read lane's layers and the order inside them."""
 
 import logging
 from collections.abc import Mapping
@@ -60,9 +60,7 @@ def _single(item: DigestItem) -> DigestSection:
     return DigestSection(heading=item.title, items=[item])
 
 
-def layer_by_score(
-    content: DigestContent, *, featured_threshold: float, max_featured: int
-) -> DigestContent:
+def layer_by_score(content: DigestContent, *, featured_threshold: float) -> DigestContent:
     """Lay the read lane out as the Top story and Features.
 
     `featured_articles[0]` is the Top story. It is a group, with its group summary,
@@ -70,8 +68,8 @@ def layer_by_score(
     `featured_threshold`; of several such groups, the one holding the best article
     leads, and it keeps every article of its group, since the group summary covers
     them all. With no such group it is the highest-scoring article. Every other article
-    becomes a one-article section, highest score first, and at most `max_featured` of
-    them are kept: the rest leave the issue. `thematic_summaries` ends empty.
+    becomes a one-article section, highest score first, and none is left out.
+    `thematic_summaries` ends empty.
 
     A section with no group summary never groups: that is the degraded shape, whose
     items each carry their own excerpt.
@@ -98,14 +96,13 @@ def layer_by_score(
     singles = sorted(unique, key=_by_score, reverse=True)
     if lead is None and singles:
         lead = _single(singles.pop(0))
-    featured = [lead, *(_single(i) for i in singles[:max_featured])] if lead else []
+    featured = [lead, *(_single(i) for i in singles)] if lead else []
 
     logger.info(
-        "Layered a %d-article Top story and %d Features (threshold=%.1f); %d past max_featured",
+        "Layered a %d-article Top story and %d Features (threshold=%.1f)",
         len(lead.items) if lead else 0,
         max(0, len(featured) - 1),
         featured_threshold,
-        max(0, len(singles) - max_featured),
     )
 
     return content.model_copy(update={"featured_articles": featured, "thematic_summaries": []})
@@ -145,130 +142,44 @@ def rank_by_preference[Ranked: (DigestItem, DigestSection)](
 
 
 def preference_moves(baseline: DigestContent, ranked: DigestContent) -> dict[str, int]:
-    """How many Features positions name other articles than `baseline`'s.
+    """How many Features positions, and how many news positions, name other articles.
 
-    The news is ordered later, unit by unit, by the paragraph step (ADR-0022).
+    The news is the clusters and the filter's headlines, each list counted on its own.
     """
-    pairs = zip_longest(
-        (_urls(e) for e in baseline.featured_articles[1:]),
-        (_urls(e) for e in ranked.featured_articles[1:]),
-    )
-    return {"features": sum(a != b for a, b in pairs)}
+
+    def moved(before: list, after: list) -> int:
+        pairs = zip_longest((_urls(e) for e in before), (_urls(e) for e in after))
+        return sum(a != b for a, b in pairs)
+
+    return {
+        "features": moved(baseline.featured_articles[1:], ranked.featured_articles[1:]),
+        "news": moved(baseline.news_clusters, ranked.news_clusters)
+        + moved(baseline.filtered_headlines, ranked.filtered_headlines),
+    }
 
 
-def _cap_featured(
-    featured: list[DigestSection], max_items: int, preference: Mapping[str, float]
-) -> list[DigestSection]:
-    """The Top story whole, or its best article in its slot, then Features by preference.
-
-    Features of equal or no preference keep their score order.
-    """
-    if not featured or max_items <= 0:
-        return []
-    lead, *features = featured
-    if len(lead.items) > max_items:
-        lead = _single(max(lead.items, key=_by_score))
-    features = sorted(features, key=lambda s: max(_by_score(i) for i in s.items), reverse=True)
-    features = rank_by_preference(features, preference)
-    return [lead, *_truncate_sections(features, max_items - len(lead.items))]
-
-
-def _count_section_items(sections: list[DigestSection]) -> int:
-    return sum(len(s.items) for s in sections)
-
-
-def _truncate_sections(sections: list[DigestSection], max_items: int) -> list[DigestSection]:
-    """Truncate a list of sections to fit within max_items total."""
-    result = []
-    remaining = max_items
-    for section in sections:
-        if remaining <= 0:
-            break
-        if len(section.items) <= remaining:
-            result.append(section)
-            remaining -= len(section.items)
-        else:
-            truncated = section.model_copy(update={"items": section.items[:remaining]})
-            result.append(truncated)
-            remaining = 0
-    return result
-
-
-def select_digest_articles(
-    content: DigestContent, *, max_items: int, preference: Mapping[str, float] | None = None
+def order_by_preference(
+    content: DigestContent, preference: Mapping[str, float] | None = None
 ) -> DigestContent:
-    """Apply priority fill to limit the issue's read-lane articles.
+    """A copy whose Features, news clusters and headlines follow the reader's vote preference.
 
-    Priority order: featured_articles → thematic_summaries → attention_sections. Each
-    category fills completely before the next gets remaining slots. Featured
-    articles are laid out first (`layer_by_score`), so the cap never splits the Top
-    story's group. The news (`news_clusters`, `filtered_headlines`) passes whole and
-    in the model's order: it is written into paragraphs after the areas are stamped,
-    ordered there by unit, and cut by each area's quota (ADR-0022).
-
-    Args:
-        content: Full processed digest content.
-        max_items: Cap on the read lane's articles.
-        preference: Article URL to the reader's vote preference. When given, the
-            Features are ordered by it before the cap cuts them; the Top story is
-            never moved.
-
-    Returns:
-        New DigestContent with limited items.
+    Nothing is left out: the issue has no output cap (ADR-0023), only the intake cap
+    `max_articles_per_digest` bounds it. The Top story is never moved. The Features, by
+    score, and the news clusters and headlines, in the model's order, are each ordered
+    by their best article's preference; an entry with no judged article keeps its slot.
+    With no preference the Features are by score and the news in the model's order.
     """
     preference = preference or {}
-    selected_featured = _cap_featured(content.featured_articles, max_items, preference)
-    remaining = max_items - _count_section_items(selected_featured)
-
-    # Priority 1: thematic summaries
-    summary_count = _count_section_items(content.thematic_summaries)
-    if summary_count <= remaining:
-        selected_summaries = list(content.thematic_summaries)
-        remaining -= summary_count
-    else:
-        selected_summaries = _truncate_sections(content.thematic_summaries, remaining)
-        remaining = 0
-
-    # Priority 2: attention sections
-    attention_count = _count_section_items(content.attention_sections)
-    if remaining == 0:
-        selected_attention = []
-    elif attention_count <= remaining:
-        selected_attention = list(content.attention_sections)
-        remaining -= attention_count
-    else:
-        selected_attention = _truncate_sections(content.attention_sections, remaining)
-        remaining = 0
-
-    selected_clusters = list(content.news_clusters)
-    selected_headlines = list(content.filtered_headlines)
-    total_selected = (
-        _count_section_items(selected_featured)
-        + _count_section_items(selected_clusters)
-        + _count_section_items(selected_summaries)
-        + _count_section_items(selected_attention)
-        + len(selected_headlines)
-        + _count_section_items(content.fan_sections)  # fan passthrough, never capped
-    )
-
-    logger.info(
-        "Selected %d/%d articles: %d clusters, %d summaries, %d attention, %d headlines",
-        total_selected,
-        content.articles_included,
-        _count_section_items(selected_clusters),
-        _count_section_items(selected_summaries),
-        _count_section_items(selected_attention),
-        len(selected_headlines),
-    )
-
+    featured = list(content.featured_articles)
+    if featured:
+        lead, *features = featured
+        features.sort(key=lambda s: max(_by_score(i) for i in s.items), reverse=True)
+        featured = [lead, *rank_by_preference(features, preference)]
     return content.model_copy(
         update={
-            "featured_articles": selected_featured,
-            "news_clusters": selected_clusters,
-            "thematic_summaries": selected_summaries,
-            "attention_sections": selected_attention,
-            "filtered_headlines": selected_headlines,
-            "articles_included": total_selected,
+            "featured_articles": featured,
+            "news_clusters": rank_by_preference(list(content.news_clusters), preference),
+            "filtered_headlines": rank_by_preference(list(content.filtered_headlines), preference),
         }
     )
 
@@ -291,7 +202,13 @@ def _iter_digest_items(content: DigestContent) -> list[DigestItem]:
 
 def count_dead_links(content: DigestContent) -> int:
     """Count digest items with no clickable http(s) URL in urls or ref_urls."""
-    return sum(1 for item in _iter_digest_items(content) if item.link is None)
+    # A sand fold links each member, so one live member must not hide a dead one behind
+    # the merged item's link.
+    folded = [s for s in content.news_clusters if len(s.members) >= 2]
+    shown = [member for s in folded for member in s.members]
+    hidden = {id(item) for s in folded for item in s.items}
+    shown += [item for item in _iter_digest_items(content) if id(item) not in hidden]
+    return sum(1 for item in shown if item.link is None)
 
 
 def digest_urls(content: DigestContent) -> set[str]:
