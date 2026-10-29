@@ -194,18 +194,17 @@ async def test_a_run_processes_the_windows_newest_articles_across_sources(
 
 
 @pytest.mark.parametrize(
-    ("overrides", "grouped", "features"),
+    ("overrides", "cards"),
     [
-        ({}, True, 0),
-        ({"routing": {"score_threshold": 95}}, False, 2),
-        ({"routing": {"score_threshold": 95}, "digest": {"max_featured": 1}}, False, 1),
+        ({}, 3),
+        ({"routing": {"score_threshold": 95}}, 3),
     ],
-    ids=["grouped", "no-group", "one-feature"],
+    ids=["grouped", "no-group"],
 )
 async def test_the_run_lays_out_the_page_from_the_configured_settings(
-    tmp_path: Path, overrides: dict, grouped: bool, features: int
+    tmp_path: Path, overrides: dict, cards: int
 ) -> None:
-    """`routing.score_threshold` and `digest.max_featured` reach the published page."""
+    """Every read article reaches the published page as its own card, grouped or not."""
     articles = [
         Article(
             id=n,
@@ -251,8 +250,8 @@ async def test_the_run_lays_out_the_page_from_the_configured_settings(
     report = await run_digest(deps, RunOptions(period="morning"))
 
     page = report.html_path.read_text()
-    assert ("The group summary." in page) is grouped
-    assert page.count('class="featured-item"') == features
+    assert "The group summary." not in page
+    assert page.count('class="featured-item"') == cards
 
 
 async def test_run_digest_no_articles(tmp_path: Path) -> None:
@@ -293,6 +292,53 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
     assert report.status == "ok"
     assert report.rendered is not None
     assert deps.store.get_by_urls(["https://example.com/cloud"])[0].state == ArticleState.PENDING
+
+
+async def test_a_dry_run_shows_the_scoring_tags_on_the_pebble_and_stores_none(
+    tmp_path: Path,
+) -> None:
+    article = Article(
+        id=3,
+        title="Chip export rules",
+        url="https://example.com/chips",
+        content="New export rules for chips.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_lane=Lane.READ,
+        source_tags=["tech"],
+    )
+    scores = [{"id": 3, "score": 80, "language": "en", "tags": ["Chips", "Export Rules"]}]
+    section = {
+        "heading": "Trade",
+        "summary": "Chips.",
+        "summaries": {"0": "The rules, briefly."},
+        "article_ids": [0],
+    }
+    llm = FakeLLM([json.dumps({"scores": scores}), json.dumps({"sections": [section]})])
+    deps, _ = make_deps(tmp_path, llm, FakeSource([article]))
+    deps.store.save([article])
+
+    class RecordingTagStore:
+        def __init__(self) -> None:
+            self.saved: list[dict] = []
+
+        def save(self, url_to_tags) -> None:
+            self.saved.append(dict(url_to_tags))
+
+    tag_store = RecordingTagStore()
+    deps = replace(deps, tag_store=tag_store)
+
+    report = await run_digest(deps, RunOptions(dry_run=True))
+
+    assert report.rendered is not None
+    card = report.rendered[report.rendered.index('<article class="featured-item"') :]
+    card = card[: card.index("</article>")]
+    assert "Chip export rules" in card
+    assert re.findall(r'<span class="pill" lang="">([^<]*)</span>', card) == [
+        "chips",
+        "export rules",
+    ]
+    assert tag_store.saved == []
 
 
 async def test_publish_outcome_reaches_discord(
@@ -639,68 +685,6 @@ async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None
     raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
     assert "Fresh This Run" in raw
     assert "Judged Last Run" not in raw
-
-
-async def test_an_article_the_cap_cut_stays_pending_and_listed_as_pending(
-    tmp_path: Path,
-) -> None:
-    shown, cut = (
-        Article(
-            id=i,
-            title=title,
-            url=f"https://example.com/{i}",
-            content="Body.",
-            published_at=datetime.now(UTC) - timedelta(hours=1),
-            source_name="TechSource",
-            source_lane=Lane.READ,
-            source_tags=["tech"],
-        )
-        for i, title in ((1, "Shown In The Issue"), (2, "Cut By The Cap"))
-    )
-    llm = FakeLLM(
-        [
-            json.dumps(
-                {
-                    "scores": [
-                        {"id": 1, "score": 85, "language": "en"},
-                        {"id": 2, "score": 85, "language": "en"},
-                    ]
-                }
-            ),
-            json.dumps(
-                {
-                    "sections": [
-                        {
-                            "heading": "Theme",
-                            "summary": "Summary.",
-                            "articles": [
-                                {"id": "0", "title": shown.title, "source": "TechSource"},
-                                {"id": "1", "title": cut.title, "source": "TechSource"},
-                            ],
-                        }
-                    ]
-                }
-            ),
-        ]
-    )
-    deps, _ = make_deps(tmp_path, llm, FakeSource([shown, cut]))
-    deps = replace(
-        deps,
-        cfg=make_config(
-            agent_vault=deps.cfg.app.agent_vault, digest={"max_articles_per_digest_output": 1}
-        ),
-    )
-
-    report = await run_digest(deps, RunOptions())
-
-    assert report.status == "ok"
-    states = {a.url: a.state for a in deps.store.get_by_urls([shown.url, cut.url])}
-    assert states == {shown.url: ArticleState.ACCEPTED, cut.url: ArticleState.PENDING}
-    raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
-    row = re.search(
-        r'<span class="state (\w+)">\w+</span>(?:(?!raw-row).)*Cut By The Cap', raw, re.S
-    )
-    assert row is not None and row.group(1) == "pending"
 
 
 async def test_the_local_archive_links_this_runs_raw_page(tmp_path: Path) -> None:
@@ -2703,7 +2687,7 @@ def _ranking_deps(
     kept: tuple[str, ...] = _KEPT,
     log_usage=None,
 ) -> tuple[Deps, list, list[dict]]:
-    """Headlines the model keeps, disliked first, and the issue has room for one."""
+    """Headlines the model keeps, disliked first."""
     candidates = [
         _headline_article(1, "Leans disliked", _LEANS_DISLIKED),
         _headline_article(2, "Leans liked", _LEANS_LIKED),
@@ -2717,7 +2701,6 @@ def _ranking_deps(
     llm = FakeLLM([json.dumps({"scores": []}), json.dumps({"selected": selected})])
     contents: list = []
     deps, _ = make_deps(tmp_path, llm, FakeSource(candidates), discord_contents=contents)
-    deps.cfg.app.digest.max_articles_per_digest_output = 1
     deps.cfg.app.digest.rank_by_preference = rank
     deps.cfg.app.digest.preference_source = source
     deps.cfg.app.vote_similarity.enabled = similarity
@@ -2747,22 +2730,21 @@ def _ranking_deps(
 
 
 def _headlines(content: DigestContent) -> list[str]:
-    """The news units in page order: the order the vote preference decides."""
-    return [unit.title for p in content.news_paragraphs for unit in p.units]
+    """The headlines in page order: the order the vote preference decides."""
+    return [item.title for item in content.filtered_headlines]
 
 
-async def test_the_headline_closer_to_an_upvote_takes_the_last_slot(tmp_path: Path) -> None:
+async def test_the_headline_closer_to_an_upvote_leads_and_none_is_left_out(tmp_path: Path) -> None:
     on, on_contents, on_recorded = _ranking_deps(tmp_path / "on", rank=True)
     off, off_contents, off_recorded = _ranking_deps(tmp_path / "off", rank=False)
 
     await run_digest(on, RunOptions())
     await run_digest(off, RunOptions())
 
-    # No area is set, so the issue cap of one bounds the unplaced news.
-    assert _headlines(on_contents[0]) == ["Leans liked"]
-    assert _headlines(off_contents[0]) == ["Leans disliked"]
+    assert _headlines(on_contents[0]) == ["Leans liked", "Clef pick", "Leans disliked"]
+    assert _headlines(off_contents[0]) == list(_KEPT)
     [on_summary], [off_summary] = on_recorded, off_recorded
-    assert on_summary["unplaced_news_cut"] == len(_KEPT) - 1
+    assert "unplaced_news_cut" not in on_summary
     assert on_summary["preference_rank_applied"] is True
     assert on_summary["preference_rank_moved_units"] == 3
     assert on_summary["preference_rank_moved_features"] == 0
@@ -2786,15 +2768,12 @@ async def test_the_vote_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Pa
     assert rejected == {u for u, a in off_rows.items() if a.state == ArticleState.REJECTED}
     assert rejected == {_OFF_TOPIC}
     assert [a.triaged_at for a in (*on_rows.values(), *off_rows.values())] == [None] * 6
-    # Which headline the cap shows is exactly what the order decides; the other waits.
-    assert (on_rows[_LEANS_LIKED].state, on_rows[_LEANS_DISLIKED].state) == (
-        ArticleState.ACCEPTED,
-        ArticleState.PENDING,
-    )
-    assert (off_rows[_LEANS_LIKED].state, off_rows[_LEANS_DISLIKED].state) == (
-        ArticleState.PENDING,
-        ArticleState.ACCEPTED,
-    )
+    # The order moves a headline, never out of the issue: both are shown either way.
+    for rows in (on_rows, off_rows):
+        assert (rows[_LEANS_LIKED].state, rows[_LEANS_DISLIKED].state) == (
+            ArticleState.ACCEPTED,
+            ArticleState.ACCEPTED,
+        )
 
 
 @pytest.mark.parametrize(
@@ -2910,9 +2889,8 @@ async def test_the_clef_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Pa
     assert rejected == {u for u, a in off_rows.items() if a.state == ArticleState.REJECTED}
     assert rejected == {_OFF_TOPIC}
     assert [a.triaged_at for a in (*on_rows.values(), *off_rows.values())] == [None] * 8
-    assert on_rows[_CLEF_PICK].state == ArticleState.ACCEPTED
-    assert on_rows[_LEANS_DISLIKED].state == ArticleState.PENDING
-    assert on_rows[_LEANS_LIKED].state == ArticleState.PENDING
+    for url in (_CLEF_PICK, _LEANS_DISLIKED, _LEANS_LIKED):
+        assert on_rows[url].state == off_rows[url].state == ArticleState.ACCEPTED
 
 
 async def test_clef_spend_stays_out_of_the_llm_usage(tmp_path: Path) -> None:

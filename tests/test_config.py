@@ -509,7 +509,6 @@ class TestValidateSetting:
         [
             ("general.timezone", "Mars/Base", "Mars/Base"),
             ("general.digest_schedule", ["08:30", "20:00"], "whole hour"),
-            ("digest.max_featured", 0, None),
             ("digest.max_articles_per_digest", 0, None),
             ("digest.filter_snippet_length", 0, None),
             ("routing.score_threshold", 101, None),
@@ -603,10 +602,10 @@ class TestJsonSettingsFromFileOnly:
         assert cfg.app.digest is None
         assert cfg.missing_settings == ["digest.preference_source"]
 
-    def test_a_file_with_one_key_leaves_the_other_twenty_five_missing(self, tmp_path):
+    def test_a_file_with_one_key_leaves_the_other_twenty_two_missing(self, tmp_path):
         cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
 
-        assert len(cfg.missing_settings) == 25
+        assert len(cfg.missing_settings) == 22
         assert "general.timezone" not in cfg.missing_settings
         assert cfg.present_settings() == {"general.timezone": "UTC"}
 

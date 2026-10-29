@@ -16,12 +16,10 @@ pytestmark = pytest.mark.unit
 def _pipeline() -> DigestPipeline:
     return DigestPipeline(
         FakeLLM("{}"),
-        max_digest_output=10,
         summarize_snippet_length=200,
         filter_snippet_length=200,
         summarize_score_threshold=0,
         featured_threshold=0,
-        max_featured=3,
         output_language="en",
         style_prompt="",
     )

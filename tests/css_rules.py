@@ -129,6 +129,9 @@ COMPONENT_SELECTORS = frozenset(
         ".graph-node.down",
         ".graph-node.mixed",
         ".graph-label",
+        ".read-progress",
+        ".read-progress span",
+        ".read-progress i",
         "[hidden]",
         ".btn.sm, .brand, .site-nav a, details.more summary",
         ".btn.sm::after, .brand::after, .site-nav a::after",
@@ -657,11 +660,29 @@ def receipt_fixtures() -> tuple[str, str, str]:
                 ],
             )
         ],
+        # A topic of two reports is a sand block; a topic of one is a water row.
         news_clusters=[
             DigestSection(
                 heading="Tech Industry",
+                items=[
+                    DigestItem(
+                        title="Tech Industry",
+                        summary="Tech Industry summary.",
+                        sources=["News A", "News B"],
+                        urls=["https://news.test/a", "https://news.test/b"],
+                    )
+                ],
+                members=[
+                    _item("Report A", "https://news.test/a", "News A"),
+                    _item("Report B", "https://news.test/b", "News B"),
+                ],
+                tags=["chips"],
+                story_id="2026-01-02-morning-tech",
+            ),
+            DigestSection(
+                heading="Lone report",
                 items=[_item("Cluster", "https://news.test/cluster", "News A")],
-            )
+            ),
         ],
         thematic_summaries=[
             DigestSection(

@@ -112,6 +112,9 @@ class DigestItem(BaseModel):
     passed_through: bool = False
     # The reader's area for this item, by name: stamped after the pipeline, never by it.
     area: str | None = None
+    # The tags scoring gave the article this run, shown on its card; only read-lane items
+    # carry them, and an article scored in an earlier run carries none.
+    tags: list[str] = Field(default_factory=list)
 
     @property
     def link(self) -> str | None:
@@ -135,13 +138,18 @@ class DigestSection(BaseModel):
     # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
     # news clusters; None everywhere else and on digests rendered before stories.
     story_id: str | None = None
+    # A news cluster's articles, one item each, beside the one merged item in `items`
+    # that carries the cluster's vote. Empty everywhere else and on clusters stored
+    # before it, whose members are only the merged item's URLs.
+    members: list[DigestItem] = Field(default_factory=list)
 
 
 class NewsParagraph(BaseModel):
     """One paragraph of the remaining news, and the units it cites.
 
-    Each unit is one story, merged into one item with every member article's links
-    and sources (`domain.news_units.merge_unit`); a unit is cited by one paragraph only.
+    No run writes one any more; issues stored while one did still carry them, and
+    `domain.layers` draws them. Each unit is one story, merged into one item with every
+    member article's links and sources; a unit is cited by one paragraph only.
     """
 
     text: str
@@ -149,9 +157,9 @@ class NewsParagraph(BaseModel):
     # True when the text is the units' own excerpt rather than a model's paragraph, so
     # the page cannot tag it with the output language.
     passed_through: bool = False
-    # The digest items the units stood for when the issue counted them
-    # (`articles_included`): a cluster is one however many reports it holds, a cosine
-    # group one per headline. Unset, each unit is one.
+    # Legacy, read by nothing: the digest items the units stood for when an issue
+    # stored with paragraphs counted them, a cluster as one; `articles_included` now
+    # counts the page's article URLs.
     items: int | None = None
 
     @model_validator(mode="after")
@@ -267,8 +275,8 @@ class DigestContent(BaseModel):
     attention_sections: list[DigestSection] = Field(default_factory=list)
     filtered_headlines: list[DigestItem] = Field(default_factory=list)
     fan_sections: list[DigestSection] = Field(default_factory=list)
-    # The remaining news, written as paragraphs after the areas are stamped. It replaces
-    # `news_clusters` and `filtered_headlines`, which an issue from before it still holds.
+    # The news as paragraphs, from a step no run calls any more: an issue stored while it
+    # ran holds these in place of `news_clusters` and `filtered_headlines`.
     news_paragraphs: list[NewsParagraph] = Field(default_factory=list)
     # One section per tracked topic with a hit this run, headed by the topic's name.
     # Outside the issue's cap and its article count: a hit changes no article's state.
@@ -386,11 +394,8 @@ class ProcessResult(BaseModel):
     rejected_urls: list[str]
     url_to_tags: dict[str, list[str]] = Field(default_factory=dict)
     story_records: list[StoryRecord] = Field(default_factory=list)
-    # Features positions the vote preference changed; None when none was given.
+    # Features and news positions the vote preference changed; None when none was given.
     preference_moves: dict[str, int] | None = None
-    # The vote preference by article URL, for the paragraph step's unit order; None
-    # when none was given or it could not be computed.
-    preference: dict[str, float] | None = None
 
 
 class TriageFeedbackData(BaseModel):

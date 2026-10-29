@@ -71,7 +71,7 @@ def test_incomplete_settings_on_a_digest_hour_alert_every_channel(
 ) -> None:
     seed_d1_settings(
         d1,
-        omit=["digest.max_featured"],
+        omit=["digest.max_articles_per_digest"],
         **{
             "notify.discord_webhook_url": WEBHOOK,
             "notify.email_to": "reader@a.test",
@@ -87,7 +87,7 @@ def test_incomplete_settings_on_a_digest_hour_alert_every_channel(
     [(webhook, subject, text)] = alerts["discord"]
     assert webhook == WEBHOOK
     assert subject == "Digest run could not start: morning, 2026-09-19 08:05 Asia/Taipei"
-    assert "digest.max_featured" in text
+    assert "digest.max_articles_per_digest" in text
     [(to, sender, mail_subject, mail_text)] = alerts["mail"]
     assert (to, sender, mail_subject, mail_text) == ("reader@a.test", "cyris@a.test", subject, text)
 
@@ -95,7 +95,9 @@ def test_incomplete_settings_on_a_digest_hour_alert_every_channel(
 def test_incomplete_settings_off_the_hour_alert_nobody(
     tmp_path: Path, d1: SqliteD1, alerts, monkeypatch
 ) -> None:
-    seed_d1_settings(d1, omit=["digest.max_featured"], **{"notify.discord_webhook_url": WEBHOOK})
+    seed_d1_settings(
+        d1, omit=["digest.max_articles_per_digest"], **{"notify.discord_webhook_url": WEBHOOK}
+    )
     _one_source(d1)
     _at_hour(monkeypatch, 11)
 
@@ -162,7 +164,9 @@ def test_a_failed_alert_leaves_the_exit_code(
         raise OSError("Discord unreachable")
 
     monkeypatch.setattr("cyris.adapters.notify.send_discord_alert", broken)
-    seed_d1_settings(d1, omit=["digest.max_featured"], **{"notify.discord_webhook_url": WEBHOOK})
+    seed_d1_settings(
+        d1, omit=["digest.max_articles_per_digest"], **{"notify.discord_webhook_url": WEBHOOK}
+    )
     _one_source(d1)
     _at_hour(monkeypatch, 8)
 

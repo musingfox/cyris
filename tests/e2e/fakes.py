@@ -77,7 +77,6 @@ PROMPT_KINDS = (
     ("filter", '"selected"'),
     ("cluster", '"clusters"'),
     ("summarize", '"sections"'),
-    ("paragraph", '"paragraphs"'),
 )
 _PROMPT_LINE = re.compile(r"^\[([^\]]+)\] (.*)$")
 _SOURCED_TITLE = re.compile(r"^\((.*?)\) (.*)$")
@@ -501,8 +500,8 @@ def _llm_answer(kind, prompt, articles, rules):
     """A schema-valid answer built from the article positions the prompt names.
 
     `rules` is the test's script: a score per title, the clusters and the filter's
-    picks by title, the summaries per title and per topic group, the news paragraph's
-    text, and the format the model "rewrites" a position into before echoing it.
+    picks by title, the summaries per title and per topic group, and the format the
+    model "rewrites" a position into before echoing it.
     """
     rewrite = rules["rewrite_id"].format
     titles = [title for _, _, title in articles]
@@ -543,17 +542,6 @@ def _llm_answer(kind, prompt, articles, rules):
                 for t in picks
             ],
             "rejected_count": len(titles) - len(picks),
-        }
-    if kind == "paragraph":
-        # One paragraph per unit the batch lists, its text naming the unit's position.
-        return {
-            "paragraphs": [
-                {
-                    "text": rules["paragraph_text"].format(int(article_id)),
-                    "units": [rewrite(int(article_id))],
-                }
-                for article_id, _, _ in articles
-            ]
         }
     tag = prompt.splitlines()[0].split(":", 1)[1].strip()
     group = rules["groups"][tag]

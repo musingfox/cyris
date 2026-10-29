@@ -43,7 +43,7 @@ flowchart TB
 
     subgraph CORE["Core · service_layer + domain"]
         RUN["run_digest orchestrator"]
-        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · news_paragraphs · vote_similarity · vote_order · tracking"]
+        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity · vote_order · tracking"]
         DOM["domain (pure): selection · models · similarity"]
         RUN --> UC
         RUN --> DOM
@@ -343,8 +343,8 @@ Each source carries a **lane**, which decides how much attention it gets:
 | Lane | Treatment |
 |---|---|
 | `skim` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
-| `read` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. The summarized ones become the Top story and Features (below). |
-| `follow` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through. |
+| `read` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. Every one is a pebble on the page (below). |
+| `follow` | Passthrough. Never scored, filtered, or summarized — followed groups and newsletters go straight through, each a pebble on the page. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
 sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
@@ -371,9 +371,9 @@ names and returns each article's pick; a name the model suggests because no acti
 counted on a proposed `areas` row for the reader to confirm, and never changes the scores. After the digest is built, each item gets the name of its first article's pick or else its
 source's area (`service_layer/area_stamp.py`), before the digest row is saved.
 
-**The area skeleton** is a read-only view over the stored issue, `layout_by_area` in `domain/area_layout.py`. It places each card, group, cluster, row and news paragraph under its area, sections in the issue's `area_order` (frozen at the stamp). The Top story stands above the sections and tracked topics sit outside them. An issue with no area order gets one unnamed section; entries no active area claims close the issue under one fixed label. `cap_lower_layers` cuts each named area's lower layer with the same placement, and the run applies it after the stamp and the news paragraphs and before the accepted set, so an article is accepted only when the page shows it; a cut article stays pending. The lower layer counts the read lane's radar rows first, then the news paragraphs, so news never crowds out the read lane.
+**The area skeleton** is a read-only view over the stored issue, `layout_by_area` in `domain/area_layout.py`, and it lays out the HTML and plain-text mail and the Discord embeds only: the web page bypasses it and draws three layers (below). It places each card, group, cluster and row, and a stored issue's news paragraphs, under its area, sections in the issue's `area_order` (frozen at the stamp). The Top story stands above the sections and tracked topics sit outside them. An issue with no area order gets one unnamed section; entries no active area claims close the issue under one fixed label. No area is cut to a quota: every entry the issue holds is placed.
 
-**News paragraphs** (`service_layer/news_paragraphs.py`) run right after the stamp. Every news cluster and every headline the filter kept is a *unit*: a cluster is one unit, and headlines are grouped by title cosine, greedily (`group_by_cosine`, `domain/news_units.py`). Grouping runs only on an embedding model with a measured cosine (`GROUPING_COSINE`, §5); on any other model, with no embedder, or when embedding fails, each headline is its own unit and `run_summary.news_paragraphs.grouping` says why. The step builds no embedder of its own: it uses the one `build_embedder` makes for vote similarity or a tracked topic, so a deployment with vote similarity off and no tracked topic, or one embedding with a model other than `gemini-embedding-001`, gets the LLM's clusters as units and every other headline alone. That is a documented limit, not a fallback to fix; production embeds with `gemini-embedding-001` with vote similarity on. A cluster is never merged with a cosine group that tells the same story. A title vote similarity already embedded is reused, and the rest are embedded once. Each area's units are ordered by the vote order (below) and written in batches of `UNITS_PER_BATCH` (40) units, one LLM call each, so an issue makes at most the sum over areas of ceil(units / 40) paragraph calls. The prompt asks for about `digest.units_per_paragraph` units per paragraph and for the units each paragraph cites. A unit the model leaves uncited, and every unit of a call that fails or of a run with no LLM, gets a paragraph of its own (its summary, else its title), so before the quota every unit in an area is cited exactly once. The paragraphs then stand in the units' order, each where its best-ranked unit stands, whatever order the model wrote them in, so the quota cuts the paragraphs of the lowest-ranked units. Each paragraph records the digest items its units counted for (`NewsParagraph.items`: a cluster is one, a cosine group one per headline), which is what a cut subtracts from `articles_included`. The paragraphs replace the issue's news clusters and headline rows in `DigestContent.news_paragraphs`; an issue stored before L4 keeps its clusters and rows. The filter still decides which headlines are kept and which are `rejected`; the paragraph step changes no article's state. `run_summary.news_paragraphs` records the units, paragraphs, calls, uncited units and failed batches, per area and in total.
+**News paragraphs** are no longer written (ADR-0023): the page draws each news cluster and kept headline itself, so a run makes no paragraph call. An issue stored while the paragraph step ran (ADR-0022) keeps its `DigestContent.news_paragraphs`; the page draws each cited unit as sand at two URLs or more and as water otherwise, with the paragraph's text on its first unit, and the mail and Discord draw the paragraphs as they did.
 
 **Topic tracking** runs right after it, over the candidates vote similarity left
 (`service_layer/tracking.py`). Each tracked topic (§4, §5) is a name, one sentence the reader wrote,
@@ -384,43 +384,53 @@ is reused, and the rest are embedded once, so `run_summary`'s `embedding` is the
 embedding spend either way. A topic set for a model other than the run's is skipped, never judged,
 and `run_summary`'s `tracking` names it beside each judged topic's hit count. The hits are the
 issue's `DigestContent.tracked_topics` and nothing else: no store of their own, outside the issue's
-cap and its article count, and no article's state changes for being one. A hit the cap cut stays
-pending, so the next run in the window can list it again.
+article count, and no article's state changes for being one. A hit the issue does not show in a
+layer stays pending, so the next run in the window can list it again.
 
 The summarize call writes a summary for each group and one for each article. `layer_by_score`
-then lays them out inside `DigestPipeline`, before the issue's article cap
-(`[digest] max_articles_per_digest_output`), which counts the read lane only: news passes it whole
-and is cut by the area quota instead. News no named area holds, in the unnamed section, under "Other" or in an issue the stamp never reached, meets no quota, so `cap_unplaced_news` cuts it from its tail until the read lane and that news together count no more than the cap (news in a named area and the follow lane take no slot; the owner's decision, ADR-0022), and `run_summary.unplaced_news_cut` records how many: the Top story is a
-group only when two or more of its articles reach `[routing] score_threshold`, and then it
-carries every article of that group, since the group summary covers them all. Every other
-article is one Features card under its own summary, highest score first, at most
-`[digest] max_featured` of them. An article past either limit is left out of the issue and stays
-pending. The cap takes the Top story whole, or its best article in its slot, before anything else.
+then lays them out inside `DigestPipeline`: the Top story is a group only when two or more of its
+articles reach `[routing] score_threshold`, and then it carries every article of that group, since
+the group summary covers them all. Every other article is one Features card under its own summary,
+highest score first. That is the stored issue's shape, which the mail and Discord draw through the
+area skeleton. **There is no output cap** (ADR-0023): every article the run kept is in the issue and
+on the page, and only the intake cap `max_articles_per_digest` (above) bounds an issue. The
+issue's `articles_included` is the number of article URLs it shows, `len(digest_urls(content))`, set
+once the order is final: a topic of three reports counts three, and a Tracking hit counts none. The
+stats card, the archive, the mail, Discord's Kept line and `usage_log` all read it; an issue stored
+before 2026-10-29 keeps the count it was saved with, a cluster counting one.
+
+**The page draws three layers** (`layer_by_lane` in `domain/layers.py`, ADR-0023), decided by lane
+and by member count in this issue alone, never by a score or an area: every `read` or `follow`
+article is a pebble, its own card, the Top story's group split into its articles; a news cluster of
+two or more articles is sand, one block whose members stay folded; a cluster of one article, or a
+headline the filter kept, is water, a row. Tracking comes first, then pebbles, sand and water. Each
+item carries exactly one vote group: a pebble's and a water row's vote is for its article, and a
+sand block's is for every member URL, posted once per URL as a cluster's vote was, until
+topic-store-and-votes moves the vote onto a topic id. A cluster is a stand-in for the topic it will
+become: this issue's `cluster_news` groups, never across issues, and sand's line is its first
+member's excerpt until sand-what-happened writes one.
 
 **The vote order** (`[digest] rank_by_preference`). When it is on and vote similarity judged this
 run's candidates, a candidate's preference is its cosine to the nearest upvote minus its cosine to
-the nearest downvote, a side with no seed counting 0. `select_digest_articles` orders the Features by it,
-after their score sort, before the issue cap. The news paragraph step orders each area's units by
-it before batching and before the area quota (ADR-0022, which carries ADR-0019's rule to the
-units), so of two units competing for the area's last paragraph the one closer to an upvote is
-shown. An item of several articles takes its best article's preference, and so does a unit, over
-every member it holds; equal preferences keep the incoming order, and an entry none of whose
-articles was judged keeps its slot. A unit's own members keep their order, the Top story never
-moves, and which Features `max_featured` keeps is still the score's choice. The order rejects
-nothing and stamps no `triaged_at`: what it changes is which article the cap or the quota shows,
-accepted, and which it cuts, left pending. Off, or with vote similarity off or skipped, the issue
-keeps the model's order. `run_summary` records which: `preference_rank_applied`, the reason in
-`preference_rank_skipped`, and `preference_rank_moved_features` and `_units`, the positions that
-differ from the order without it. A paragraph shows one vote control per cited unit, and a vote
-on it is cast for every member URL of that unit, as a cluster's vote was (milestone question N4,
-answered 2026-10-27).
+the nearest downvote, a side with no seed counting 0. `order_by_preference` (`domain/selection.py`)
+orders the Features, after their score sort, the news clusters and the kept headlines, each list by
+its entries' best article's preference; every member of a cluster is scored, since which is best is
+not known before. Equal preferences keep the incoming order, an entry none of whose articles was
+judged keeps its slot, and the Top story never moves. On the page, water lists the one-article
+clusters first and the kept headlines after them, each part in that order: the two come from
+separate model calls and are ranked apart, a stand-in until topic-store-and-votes gives topics one
+order. The order rejects nothing and stamps no `triaged_at`, and with no cap it changes only where
+an item stands, never whether it is shown. Off, or with vote similarity off or skipped, the issue
+keeps the score's and the model's order. `run_summary` records which: `preference_rank_applied`,
+the reason in `preference_rank_skipped`, and `preference_rank_moved_features` and `_units`, the
+Features positions and the cluster and headline positions that differ from the order without it.
 
 **Who scores them** (`digest.preference_source`, `cosine` or `clef`). `cosine` is the order above.
 `clef` replaces the cosine difference with Clef's probability that the reader upvotes the item,
 asked once per kept item, the Features the issue kept and every news article the filter kept or
 the clustering grouped, and no other candidate, so a run makes tens of calls, not one per candidate. Each question carries the article's title, source and
 first `digest.scoring_snippet_length` characters (the snippet scoring reads), and the titles, never the text, of its five nearest upvotes and five nearest
-downvotes. The filter is untouched, the cap and the pending-left-over rule apply as before, and no `triaged_at` is
+downvotes. The filter is untouched, and no `triaged_at` is
 stamped. The whole issue falls back to the cosine order when Clef cannot score every asked item:
 no `CLOUDFLARE_AI_TOKEN` (or `CLOUDFLARE_EMBEDDING_API_TOKEN`) with `CLOUDFLARE_ACCOUNT_ID`, no kept
 item with a nearest vote, a failed call, a question left unanswered, or the pass passing 60 seconds. A half-Clef order would mix
@@ -431,8 +441,8 @@ and input tokens it spent. That spend stays out of the LLM `usage`.
 
 Two analytics facts are persisted beside the digest, both fail-soft — a write failure is logged
 and the run continues. Topic tags emitted by scoring and by news clustering land normalized in D1
-`tags`/`article_tags` (`D1TagStore`), and each run's pre-truncation story membership — which
-articles the clustering step grouped, including members the output cap dropped — replaces its
+`tags`/`article_tags` (`D1TagStore`), and each run's story membership — which
+articles the clustering step grouped — replaces its
 (date, period) window in `stories`/`story_members` (`D1StoryStore`). Both stores are direct
 injections built only when D1 is configured; with `backend = "json"` they are absent and the run
 skips the writes.
@@ -452,7 +462,7 @@ prints `Wrote PATH`, and sends nothing, writes no `usage_log` row and changes no
 `digest_runs`.
 
 Output is the HTML digest and a companion raw page listing what this run judged plus whatever is
-still pending — uncapped, so what the digest dropped stays visible; rows an earlier run in the
+still pending — uncapped, so what the digest left out stays visible; rows an earlier run in the
 overlapping 24h window already judged are left off, since they were on that run's raw page — both
 deployed to Cloudflare
 Pages, followed by a notification to Discord and, when a recipient is set, by mail. An issue
@@ -621,20 +631,21 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
 | LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST` to the gateway's `google-ai-studio` endpoint with the model as `google/<model>`; the provider's key is stored in the gateway (BYOK) and the request carries none, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AIG_TOKEN` (AI Gateway Run, sent as `cf-aig-authorization`, never falling back to a Workers AI token, which the gateway refuses); the account is `CLOUDFLARE_ACCOUNT_ID`; and the gateway is `default`, named in the URL. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
-| Featured cap (`max_featured`) | D | **D1 `settings`**, written by `/settings`; `cyris.toml [digest]` for a `json` deployment | done — a reader preference: how many Features cards an issue shows is not a number this codebase can measure, and `featured_threshold` beside it was already D |
+| ~~Featured cap (`digest.max_featured`)~~ | — | — | **deleted** 2026-10-29: the page draws every read and follow article as a pebble, so no number of Features cards is chosen (ADR-0023). A stored D1 row is ignored |
 | Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
 | Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` keeps today's order and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
-| Score thresholds, digest caps, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
+| Score thresholds, the intake cap `digest.max_articles_per_digest`, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
 | LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline); `cyris.toml [llm_provider]` for a `json` deployment | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |
 | Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 |
 | Tracked topics: name, description, threshold, embedding model | D | **D1 `tracked_topics`**, written by `/settings` (Tracking); `cyris.toml [[tracked_topics]]` for a `json` deployment | done 2026-10-08 — an optional runtime setting: no topic is a valid deployment, so the list is not in `settings_fields.json`, and an empty one stops nothing. It is the only per-model cosine threshold left, and it is D because it measures how wide the reader means *their own sentence* to reach, which only they can judge from a hit list (`cyris topic-sim`). It keeps ADR-0006's rule that a cutoff belongs to the model it was measured on, because ADR-0017 relaxed that rule only for vote similarity: each topic stores that model, has no default threshold, and a run embedding with another model skips it and names it in `run_summary`. The embedder is the one `vote_similarity.provider` and `.model` name, built when a topic exists even with vote similarity off |
-| Headline slot: the Top story above the area sections | A | structural: `layout_by_area` in `domain/area_layout.py` takes the first of the featured sections, else the first thematic one | unchanged — the shape of the layout, not a preference: one story leads, and it is never repeated in a section. No setting |
+| Headline slot: the Top story above the area sections | A | structural: `layout_by_area` in `domain/area_layout.py` takes the first of the featured sections, else the first thematic one | unchanged — the shape of the mail's and Discord's layout, not a preference: one story leads, and it is never repeated in a section. The page has no Top story since 2026-10-29: it splits the group into pebbles (ADR-0023). No setting |
 | Section labels: "Other" and Discord's "Digest" | A | `UNPLACED_SECTION_LABEL` in `domain/areas.py`, `UNNAMED_SECTION_TITLE` in `adapters/notify.py` | unchanged — reader-facing strings are English and i18n has no framework yet, like "Top story" in the templates. The layout carries only `AreaSection.role`; the label sits in `domain/` because no area may take "Other" (`is_unplaced_label`): `/settings` refuses it as a rename and will not confirm a proposal stored under it, and a proposal or a run's suggestion by that name is not stored (2026-10-28) |
-| Lower rows per named area | A | `LOWER_ROWS_PER_AREA` in `domain/area_layout.py`, with its reason beside it | unchanged — the milestone's wall-of-text measure; fixed until L6. Since L4 a news paragraph counts as one entry, after the read lane's radar rows. `tests/test_area_layout.py` holds the cut to this name |
-| News grouping cosine: 0.70 on `gemini-embedding-001`, greedy | A | `GROUPING_COSINE` in `domain/news_units.py` | added 2026-10-27 — the value the milestone's MVP grouped headlines at. It is per model, as ADR-0006 requires of a cosine: a model with no entry groups nothing and `run_summary` says so. `tests/test_news_units.py` holds the value to this row |
-| News units per paragraph call: 40 | A | `UNITS_PER_BATCH` in `domain/news_units.py` | added 2026-10-27 — the batch the MVP wrote with; it bounds an issue's paragraph calls to the sum over areas of ceil(units / 40). `tests/test_news_units.py` holds the value to this row |
-| News per paragraph | D | **D1 `settings`** as `digest.units_per_paragraph` (1 to 40), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | added 2026-10-27 — required, default 5 in `cyris.toml.example`. A reader preference between a denser paragraph and one closer to a list; the MVP showed each model writes its own grain (Gemini about 5 units, Haiku about 2.5, GPT about 1), and about 5 is the only grain it recorded as readable. The prompt names it as a target, so a model may still write fewer or more |
+| ~~Lower rows per named area (`LOWER_ROWS_PER_AREA`)~~ | — | — | **deleted** 2026-10-29 with `cap_lower_layers` and `cap_unplaced_news`: the issue has no output cap (ADR-0023) |
+| ~~News grouping cosine (`GROUPING_COSINE`)~~ | — | — | **deleted** 2026-10-29 with `domain/news_units.py`: no run groups headlines into paragraph units |
+| ~~News units per paragraph call (`UNITS_PER_BATCH`)~~ | — | — | **deleted** 2026-10-29 with `domain/news_units.py`: no run writes news paragraphs |
+| ~~News per paragraph (`digest.units_per_paragraph`)~~ | — | — | **deleted** 2026-10-29 with the paragraph step. A stored D1 row is ignored |
+| ~~Issue cap (`digest.max_articles_per_digest_output`)~~ | — | — | **deleted** 2026-10-29 with `cap_unplaced_news`: the issue has no output cap, and only the intake cap `digest.max_articles_per_digest` bounds it (ADR-0023). A stored D1 row is ignored |
 | Area birth threshold: articles and issues a proposal must reach | D | **D1 `area_birth_threshold`**, written by `/settings` (Areas) | Grade D, no default: until a reader sets it, no proposal is marked as meeting it. Read only by `/settings`, so the number changes no run, only the mark beside a proposal. The area list and this threshold have no `json` home, by the human's choice on 2026-10-12: a proposal needs writes from `/settings`, and `cyris.toml` is read-only to the app, so a `cyris.toml` mirror could only be read and never changed |
 | Discord webhook | D | **D1 `settings`**, written by `/settings`; `cyris.toml [notify]` for a `json` deployment | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the grade-C variables counted below; those are API tokens, which stay C. `""` means off: `/settings` stores it only through a confirmed Turn off, and an empty paste is refused. No environment variable supplies it |
 | Mail recipient + sender | D | **D1 `settings`** as `notify.email_to` and `.email_from`, written by `/settings` (Notifications); `cyris.toml [notify]` for a `json` deployment | done 2026-09-27, a prototype beside Discord — the channel-address rule the webhook set. The container sends through Cloudflare Email Service's REST API (`POST /accounts/{id}/email/sending/send`, Email Sending: Edit on `CLOUDFLARE_API_TOKEN`), no Worker in between. The recipient must be a verified Email Routing destination address, which is free on every plan and needs no onboarded sending domain; the sender must sit on a routing domain. `/settings` stores the pair only after a test message is delivered or queued, and an empty recipient turns mail off without a send. No environment variable supplies either |

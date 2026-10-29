@@ -19,9 +19,6 @@ _TEST_VALUES: dict[str, Any] = {
     "notify.email_to": "",
     "notify.email_from": "",
     "digest.max_articles_per_digest": 200,
-    "digest.max_articles_per_digest_output": 15,
-    "digest.max_featured": 5,
-    "digest.units_per_paragraph": 5,
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,
     "digest.filter_snippet_length": 500,
@@ -47,12 +44,10 @@ TEST_SETTINGS: dict[str, Any] = {key: _TEST_VALUES[key] for key in GRADE_D_KEYS}
 def pipeline_settings(**overrides: Any) -> dict[str, Any]:
     """DigestPipeline's setting keywords, taken from TEST_SETTINGS."""
     return {
-        "max_digest_output": TEST_SETTINGS["digest.max_articles_per_digest_output"],
         "summarize_snippet_length": TEST_SETTINGS["digest.summarize_snippet_length"],
         "filter_snippet_length": TEST_SETTINGS["digest.filter_snippet_length"],
         "summarize_score_threshold": TEST_SETTINGS["routing.summarize_score_threshold"],
         "featured_threshold": TEST_SETTINGS["routing.score_threshold"],
-        "max_featured": TEST_SETTINGS["digest.max_featured"],
         "output_language": TEST_SETTINGS["digest.output_language"],
         "style_prompt": TEST_SETTINGS["digest.style_prompt"],
         **overrides,
@@ -80,7 +75,7 @@ def settings_toml(*, omit: Iterable[str] = (), **overrides: Any) -> str:
 def make_config(*, sources: dict | None = None, **table_overrides: Any):
     """A complete Config built from TEST_SETTINGS.
 
-    A dict override is merged into that table (`digest={"max_featured": 3}`); a
+    A dict override is merged into that table (`digest={"max_articles_per_digest": 3}`); a
     model instance replaces it (`store=StoreConfig(...)`).
     """
     from cyris.config import AppConfig, Config

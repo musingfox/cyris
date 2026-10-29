@@ -20,7 +20,6 @@ from cyris.config import SETTINGS_FIELDS
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
 from cyris.domain.areas import Area, AreaCatalog, is_unplaced_label, meets_birth_threshold
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
-from cyris.domain.news_units import UNITS_PER_BATCH
 from cyris.service_layer import area_llm
 
 logger = logging.getLogger(__name__)
@@ -125,7 +124,7 @@ def _render_page(template: str, **context: object) -> str:
 
 
 def render_settings_page() -> str:
-    return _render_page("settings.html.j2", units_per_batch=UNITS_PER_BATCH)
+    return _render_page("settings.html.j2")
 
 
 def render_labels_page() -> str:

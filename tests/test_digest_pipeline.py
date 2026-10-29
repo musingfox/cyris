@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -10,7 +11,7 @@ from fakes import TEST_SETTINGS, FakeLLM, pipeline_settings
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import Article, DigestItem, DigestSection, Lane
-from cyris.domain.selection import split_read_lane_by_score
+from cyris.domain.selection import digest_urls, split_read_lane_by_score
 from cyris.service_layer.digest_pipeline import DigestPipeline
 
 pytestmark = pytest.mark.integration
@@ -153,7 +154,7 @@ class TestDigestPipeline:
         assert result.content.articles_included == 2
 
     async def test_story_records_name_every_cluster_with_its_full_membership(self, sample_sources):
-        """Story records carry every cluster's full URL list; the issue cap cuts no news."""
+        """Story records carry every cluster's full URL list."""
         news = [
             Article(
                 id=i,
@@ -173,14 +174,13 @@ class TestDigestPipeline:
                 '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
                 '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
             ),
-            **pipeline_settings(max_digest_output=1),
+            **pipeline_settings(),
         )
 
         result = await pipeline.process(
             news, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
         )
 
-        # The news is outside the issue cap: an area's quota cuts it, after the stamp.
         assert len(result.content.news_clusters) == 2
         # The records name both stories with their full memberships, under
         # content-derived ids a re-run of the same window would reproduce.
@@ -193,6 +193,43 @@ class TestDigestPipeline:
         ]
         assert result.story_records[0].urls == ["https://news.example/1", "https://news.example/2"]
         assert result.story_records[1].urls == ["https://news.example/3"]
+
+    async def test_the_issue_counts_every_article_the_page_shows_a_topic_of_two_as_two(
+        self, sample_sources, tmp_path
+    ):
+        news = [
+            Article(
+                id=i,
+                title=f"News {i}",
+                url=f"https://news.example/{i}",
+                content="News content",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Wire",
+                source_lane=Lane.SKIM,
+                source_tags=["news"],
+            )
+            for i in (1, 2, 3)
+        ]
+        pipeline = DigestPipeline(
+            FakeLLM(
+                '{"clusters": ['
+                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
+            ),
+            **pipeline_settings(),
+        )
+
+        result = await pipeline.process(
+            news, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        html = HtmlDigestWriter(tmp_path).render(result.content)
+        on_page = {
+            url for group in re.findall(r"data-urls='([^']*)'", html) for url in json.loads(group)
+        }
+        assert len(result.content.news_clusters[0].items[0].urls) == 2
+        assert result.content.articles_included == len(on_page) == 3
+        assert on_page == digest_urls(result.content)
 
     async def test_rendered_story_id_matches_persisted_record(self, sample_sources, tmp_path):
         """Seam: the id the digest renders is the id the story store persists."""
@@ -267,11 +304,11 @@ def _item(article: Article) -> DigestItem:
     )
 
 
-class TestVerdictsFollowTheCappedDigest:
+class TestVerdictsFollowTheDigest:
     """Accepted means shown in this issue; what the issue left out stays pending."""
 
-    async def _process(self, articles, sample_sources, *, headlines, sections, cap):
-        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings(max_digest_output=cap))
+    async def _process(self, articles, sample_sources, *, headlines, sections):
+        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings())
         with (
             patch(
                 "cyris.service_layer.digest_pipeline.filter_articles",
@@ -288,7 +325,7 @@ class TestVerdictsFollowTheCappedDigest:
                 articles, sample_sources, timezone=TEST_SETTINGS["general.timezone"]
             )
 
-    async def test_the_issue_cap_cuts_no_headline_and_the_filters_verdict_stands(
+    async def test_every_headline_the_filter_kept_is_accepted_and_its_verdict_stands(
         self, sample_sources
     ):
         kept, also_kept, discarded = (_article(i, Lane.SKIM, "TechCrunch") for i in (1, 2, 3))
@@ -298,27 +335,35 @@ class TestVerdictsFollowTheCappedDigest:
             sample_sources,
             headlines=[_item(kept), _item(also_kept)],
             sections=[],
-            cap=1,
         )
 
         assert sorted(result.accepted_urls) == sorted([kept.url, also_kept.url])
         assert result.rejected_urls == [discarded.url]
 
-    async def test_a_summary_item_the_cap_cut_is_neither_accepted_nor_rejected(
-        self, sample_sources
+    async def test_no_output_cap_leaves_a_summarized_or_filtered_article_out(
+        self, sample_sources, tmp_path
     ):
-        shown, cut = (_article(i, Lane.READ, "Stratechery") for i in (1, 2))
+        read = [_article(i, Lane.READ, "Stratechery") for i in range(1, 31)]
+        skim = [_article(i, Lane.SKIM, "TechCrunch") for i in range(31, 71)]
 
         result = await self._process(
-            [shown, cut],
+            [*read, *skim],
             sample_sources,
-            headlines=[],
-            sections=[DigestSection(heading="Theme", items=[_item(shown), _item(cut)])],
-            cap=1,
+            headlines=[_item(a) for a in skim],
+            sections=[DigestSection(heading="Theme", items=[_item(a) for a in read])],
         )
 
-        assert result.accepted_urls == [shown.url]
+        assert sorted(result.accepted_urls) == sorted(a.url for a in [*read, *skim])
+        assert result.content.articles_included == 70
+        assert len(result.content.featured_articles) == 30
         assert result.rejected_urls == []
+        # The page votes on every URL the issue kept, each once.
+        html = HtmlDigestWriter(tmp_path).render(result.content)
+        voted = [
+            url for group in re.findall(r"data-urls='([^']*)'", html) for url in json.loads(group)
+        ]
+        assert sorted(voted) == sorted(digest_urls(result.content))
+        assert len(voted) == 70
 
     async def test_a_summarize_article_no_section_names_is_neither_accepted_nor_rejected(
         self, sample_sources
@@ -330,7 +375,6 @@ class TestVerdictsFollowTheCappedDigest:
             sample_sources,
             headlines=[],
             sections=[DigestSection(heading="Theme", items=[_item(named)])],
-            cap=15,
         )
 
         assert result.accepted_urls == [named.url]
@@ -546,68 +590,17 @@ async def _page(sample_sources, tmp_path, **settings) -> str:
 
 
 class TestTheLayeringSettingsReachThePage:
-    async def test_the_featured_score_decides_whether_the_top_story_is_a_group(
-        self, sample_sources, tmp_path
+    @pytest.mark.parametrize("featured_threshold", [70, 85], ids=["grouped", "single"])
+    async def test_every_essay_is_its_own_card_whether_or_not_the_top_story_groups(
+        self, sample_sources, tmp_path, featured_threshold
     ):
-        grouped = await _page(sample_sources, tmp_path, featured_threshold=70)
-        single = await _page(sample_sources, tmp_path, featured_threshold=85)
-
-        assert grouped.count("The group summary.") == 1
-        assert "Topic heading" in grouped
-        assert 'class="featured-item"' not in grouped
-        assert "Essay 2" in grouped
-        assert "Essay 2 on its own." not in grouped
-
-        assert "The group summary." not in single
-        assert "Topic heading" not in single
-        assert single.count('class="featured-item"') == 2
-        for n in range(3):
-            assert f"Essay {n} on its own." in single
-
-    async def test_max_featured_decides_how_many_features_the_page_shows(
-        self, sample_sources, tmp_path
-    ):
-        one = await _page(sample_sources, tmp_path, featured_threshold=95, max_featured=1)
-        two = await _page(sample_sources, tmp_path, featured_threshold=95, max_featured=2)
-
-        assert one.count('class="featured-item"') == 1
-        assert "Essay 2" not in one
-        assert two.count('class="featured-item"') == 2
-        assert "Essay 2 on its own." in two
-
-    async def test_the_cap_runs_after_layering_and_keeps_the_group_whole(
-        self, sample_sources, tmp_path
-    ):
-        page = await _page(sample_sources, tmp_path, featured_threshold=70, max_digest_output=1)
+        page = await _page(sample_sources, tmp_path, featured_threshold=featured_threshold)
 
         assert "The group summary." not in page
-        assert "Essay 0 on its own." in page
-        assert "Essay 1" not in page and "Essay 2" not in page
-
-
-@pytest.mark.parametrize(
-    ("settings", "shown"),
-    [
-        ({"featured_threshold": 95, "max_featured": 1}, {0, 1}),
-        ({"featured_threshold": 70, "max_digest_output": 1}, {0}),
-    ],
-    ids=["past-max-featured", "group-replaced-by-its-best"],
-)
-async def test_an_article_layering_or_the_cap_leaves_out_stays_pending(
-    sample_sources, settings, shown
-):
-    articles, scores, llm = _scored_topic()
-    pipeline = DigestPipeline(llm, **pipeline_settings(summarize_score_threshold=0, **settings))
-
-    result = await pipeline.process(
-        articles,
-        sample_sources,
-        timezone=TEST_SETTINGS["general.timezone"],
-        article_scores=scores,
-    )
-
-    assert set(result.accepted_urls) == {f"https://essays.example/{n}" for n in shown}
-    assert result.rejected_urls == []
+        assert "Topic heading" not in page
+        assert page.count('class="featured-item"') == 3
+        for n in range(3):
+            assert f"Essay {n} on its own." in page
 
 
 def _scored_item(article: Article, score: float, title: str | None = None) -> DigestItem:
@@ -722,8 +715,8 @@ class TestKeptItemsReachThePreference:
         assert result.preference_moves is None
 
 
-class TestThePreferenceLeavesTheNewsForTheParagraphs:
-    """The news keeps the model's order here; the paragraph step orders its units."""
+class TestThePreferenceOrdersTheNews:
+    """The news clusters and headlines follow the vote preference, as the Features do."""
 
     async def _headlines(self, sample_sources, scores):
         h1, h2 = (_article(i, Lane.SKIM, "TechCrunch") for i in (1, 2))
@@ -731,7 +724,7 @@ class TestThePreferenceLeavesTheNewsForTheParagraphs:
         async def preference(_kept):
             return scores
 
-        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings(max_digest_output=1))
+        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings())
         with patch(
             "cyris.service_layer.digest_pipeline.filter_articles",
             new_callable=AsyncMock,
@@ -745,29 +738,25 @@ class TestThePreferenceLeavesTheNewsForTheParagraphs:
             )
         return h1, h2, result
 
-    async def test_the_scores_are_handed_on_and_the_headlines_keep_their_order(
-        self, sample_sources
-    ):
+    async def test_the_headlines_follow_the_scores_and_the_moves_count_them(self, sample_sources):
         h1, h2 = (f"https://example.com/{i}" for i in (1, 2))
         _, _, scored = await self._headlines(sample_sources, {h1: 0.1, h2: 0.9})
 
-        assert [i.title for i in scored.content.filtered_headlines] == ["Article 1", "Article 2"]
-        assert scored.preference == {h1: 0.1, h2: 0.9}
-        assert scored.preference_moves == {"features": 0}
+        assert [i.title for i in scored.content.filtered_headlines] == ["Article 2", "Article 1"]
+        assert scored.preference_moves == {"features": 0, "news": 2}
 
-    async def test_no_scores_hand_on_none(self, sample_sources):
+    async def test_no_scores_move_nothing_and_report_none(self, sample_sources):
         _, _, result = await self._headlines(sample_sources, None)
 
-        assert result.preference is None
+        assert [i.title for i in result.content.filtered_headlines] == ["Article 1", "Article 2"]
         assert result.preference_moves is None
 
     async def test_an_empty_mapping_still_reports(self, sample_sources):
         _, _, result = await self._headlines(sample_sources, {})
 
-        assert result.preference == {}
-        assert result.preference_moves == {"features": 0}
+        assert result.preference_moves == {"features": 0, "news": 0}
 
-    async def test_every_cluster_passes_in_the_models_order(self, sample_sources):
+    async def test_a_cluster_follows_its_best_members_score(self, sample_sources):
         wires = [
             _article(i, Lane.SKIM, "Wire").model_copy(update={"source_tags": ["news"]})
             for i in (1, 2, 3, 4)
@@ -780,7 +769,7 @@ class TestThePreferenceLeavesTheNewsForTheParagraphs:
         async def preference(_kept):
             return {"https://example.com/1": -0.2, "https://example.com/4": 0.6}
 
-        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings(max_digest_output=2))
+        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings())
         with (
             patch(
                 "cyris.service_layer.digest_pipeline.filter_articles",
@@ -800,4 +789,4 @@ class TestThePreferenceLeavesTheNewsForTheParagraphs:
                 preference=preference,
             )
 
-        assert [s.heading for s in result.content.news_clusters] == ["quiet", "voted"]
+        assert [s.heading for s in result.content.news_clusters] == ["voted", "quiet"]

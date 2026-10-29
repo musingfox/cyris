@@ -72,7 +72,7 @@ async def test_the_page_reads_its_fields_from_the_api() -> None:
 
 def test_the_script_types_no_key_list_of_its_own() -> None:
     # A key named in a list literal is a second registry the page could drift from.
-    # An index such as values["digest.max_featured"] reads a value; it is no list.
+    # An index such as values["digest.max_articles_per_digest"] reads a value; it is no list.
     listed = re.findall(r'(?<![\w\])])\[\s*"[a-z_]+\.[a-z_]+"', SETTINGS_JS.read_text())
     mapped = re.findall(r'^\s*"[a-z_-]+": "[a-z_]+\.[a-z_]+",$', SETTINGS_JS.read_text(), re.M)
     keyed = re.findall(r'^\s*"[a-z_]+\.[a-z_]+": \{', SETTINGS_JS.read_text(), re.M)

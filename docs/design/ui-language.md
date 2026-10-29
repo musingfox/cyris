@@ -42,14 +42,14 @@ page added later.
    `lang` (WCAG 3.1.1, 3.1.2). Every page's `<html lang>` is `en`, the language of its labels. A block of
    digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`, and
    an English control inside it (a vote group, a sources fold) carries `lang="en"`. An article's own
-   title inside such a block, which is a Top story or Features card title and each title under a
-   grouped Top story, is the source's text and carries `lang=""`; a group's heading, the summaries,
-   the news paragraphs and the Wire's titles, which the model writes in the output language, keep
-   its tag. The archive
+   title inside such a block, which is a pebble's title, is the source's text and carries `lang=""`;
+   a topic's heading, the summaries and the headline rows' titles, which the model writes in the
+   output language, keep its tag. The archive
    headline card's title follows its lead, so a group's heading keeps the tag and a single article's
    title carries `lang=""`. Text passed through
-   untranslated, which is Following, the radar rows, Tracking and every raw row, carries `lang=""`, HTML's unknown
-   language: no reliable tag for it exists. So does a Top story, Features card or Wire row that holds the
+   untranslated, which is the follow lane's and the low-score read rows' pebbles, Tracking, a sand
+   block's member list and every raw row, carries `lang=""`, HTML's unknown
+   language: no reliable tag for it exists. So does a pebble, sand line or headline row that holds the
    article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
    it; the step that writes that fallback marks the item, so the page and the mail tag those items by
    what wrote them, not by their section. A value that is not a BCP 47 tag, such as a plain language
@@ -194,10 +194,11 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 |---|---|
 | **site bar** | Full width, sticky, height `--bar-h`, 1px `--border` at the bottom. On the left, the brand square (12px `--accent`, pulse animation) plus `CYRIS`; on the right, links in the label role, `Archive` · `Settings`, spaced `--s-5`. The current page is `--text` with a 1px `--accent` underline. `Settings` reuses the `/api/vote` probe and is hidden when not authorized. `Sign in` shows in its place only on an Access redirect, linking to `/login?next=` plus this page, so signing in returns here; every other probe outcome hides it, the app Worker's own 403 and a failed probe included. On /settings the brand link and `Archive` show only once the probe answers authorized, because a local `cyris triage-ui` serves no archive. At phone width the word `CYRIS` is hidden |
 | **interest graph** | Only on the interest page (§6 *interest*). Each tag is a circle that always shows its vote polarity: its fill is `--accent` for net up and `--text-dim` for net down, at half strength mixed with `--text-faint` when no hold is on it. Brightness, the tag's largest share of suppression time left, adds the other half on top, so a lit node is suppressed now and a dimmer one has less time left. A tied tag is a hollow ring in `--text-dim`. Its label is in `--text`. Edges between tags that co-occur are `--border-strong` hairlines. The page's table gives the same counts, polarity and days left in words, and is the text equivalent of the map |
+| **reading progress** | Only on the digest. A 3px strip fixed along the bottom edge of the site bar, inside its box, so it covers none of its links and nothing the bar does not already cover; it takes no pointer events and is hidden from assistive technology. One segment per section of the issue, as wide as that section's share of the page and `--s-1` apart; each is `--border-strong` and fills with `--accent` as far as the bottom of the window has passed through it. It moves only with the scroll, with no transition. Without script it is not drawn |
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em, and still takes taps over 44 × 44 (**tap area**). Pressed (`:active`) lowers opacity to .7 on top of whatever hover state the button already shows, and changes nothing else; .7 stays clear of disabled's .4, so a pressed button never reads as disabled. Disabled is always opacity .4, and a disabled button does not change on hover or press |
-| **tap area** | Every tap target takes taps over at least 44 × 44px, at every width, and a tap lands on exactly one target. A target drawn smaller keeps its drawn size and gets the rest from a transparent `::after`, `position: absolute`, `inset: min(0px, calc((100% - 44px) / 2))`, centred on it: the small button, the site bar's links, and the brand link, which is the 12px mark alone at phone width. Hit areas never cover each other or another target's drawn box, with one exception: the archive's `Digest` link takes taps over its whole headline card or row, and the `All articles` button sits on top of that area because it is positioned and follows `Digest` in the markup. The ↑ and ↓ votes keep their `--s-1` gap and split it at its midpoint, each taking the rest of its 44px outward, and the vote group sits `--s-2` further from what comes before it, so that outward part clears its neighbour: the arrow glyphs fall back to whatever monospace the reader has, so a gap wide enough for two centred areas would hold only for one font's width. The digest's ↗ original link is a 44px-wide box with its glyph centred, because a centred area would reach 18px over the source names and votes on either side. A settings fold's summary takes `--s-1` above it, half the field gap so the control above keeps its taps, and the rest below. A settings tab is itself at least 44px high, because its tab bar scrolls at phone width and clips anything drawn outside it. A cluster's `N sources` fold is exempt: a 44px area would cover the source links it unfolds. Text links inside a title or a line of text are exempt, as WCAG 2.5.8 exempts inline targets. The page probes' `tap-*` checks measure every target here at 375px, and the digest probe's `archive-*` checks test the `Digest` exception at 375 and 1440px |
+| **tap area** | Every tap target takes taps over at least 44 × 44px, at every width, and a tap lands on exactly one target. A target drawn smaller keeps its drawn size and gets the rest from a transparent `::after`, `position: absolute`, `inset: min(0px, calc((100% - 44px) / 2))`, centred on it: the small button, the site bar's links, and the brand link, which is the 12px mark alone at phone width. Hit areas never cover each other or another target's drawn box, with one exception: the archive's `Digest` link takes taps over its whole headline card or row, and the `All articles` button sits on top of that area because it is positioned and follows `Digest` in the markup. The ↑ and ↓ votes keep their `--s-1` gap and split it at its midpoint, each taking the rest of its 44px outward, and the vote group sits `--s-2` further from what comes before it, so that outward part clears its neighbour: the arrow glyphs fall back to whatever monospace the reader has, so a gap wide enough for two centred areas would hold only for one font's width. The digest's ↗ original link is a 44px-wide box with its glyph centred, because a centred area would reach 18px over the source names and votes on either side. A settings fold's summary takes `--s-1` above it, half the field gap so the control above keeps its taps, and the rest below. A settings tab is itself at least 44px high, because its tab bar scrolls at phone width and clips anything drawn outside it. A sand block's `N articles` fold is exempt: a 44px area would cover the source links it unfolds. Text links inside a title or a line of text are exempt, as WCAG 2.5.8 exempts inline targets. The page probes' `tap-*` checks measure every target here at 375px, and the digest probe's `archive-*` checks test the `Digest` exception at 375 and 1440px |
 | **input / select** | Height 48px, `--s-4` left and right, `--bg-elev` background, 1px `--border-strong` border, `--r-control`, Geist 16px. On focus the border turns `--accent`, even on a field that failed validation; on failed validation the border turns `--warn`, with a notice below. Disabled is opacity .4, as a disabled button is |
 | **multi-line input** | `<textarea class="input">`, reusing the input's background, border, radius, font size, and its focus and failed-validation rules; its height comes from `rows`, with `--s-3` padding top and bottom, and it resizes vertically only |
 | **field** | From top to bottom: the field name in the label role, the control, and help in the small role, spaced `--s-2`. Help is always in view and is one or two short sentences: it keeps the facts a reader decides by and leaves the background to the docs, so it is never folded away. A field whose setting does nothing until another holds a value has a **dependency**: while it is unmet, the control is disabled, and one line in the small role below the help says what it waits for, such as `Needs vote similarity on, under Model.` That line is the control's description (`aria-describedby`, beside any refusal notice), since a disabled control leaves the tab order and a screen reader would otherwise never hear why. The page reads the dependency from the values it holds, the other field's unsaved value included, and the line goes and the control returns the moment that field changes, with no reload. A dependency of one option, such as Clef's token, disables that option alone and leaves the rest of the select in reach. A required setting is never locked out of being stored: a disabled control with no stored value shows the value a run takes while the dependency is unmet, such as `Off`, and its category's `Save` stores it, as a detected timezone is stored (§6 *settings*). It replaced help folded under `More` on 2026-10-20: readers took `More` for finer settings and found an explanation |
@@ -300,63 +301,60 @@ whole at font size `Default` and `Smaller`; only `Larger` clips its right end, u
 That is accepted rather than shrinking the issue title role at phone width. The digest probe's
 `title-whole-360` check holds the `Default` case.
 
-The body is the Top story, then Tracking, then one section per active area in /settings order, cards above
-rows and rows above news paragraphs (`layout_by_area` places every entry). With no areas, one unnamed section holds
-them all. Unclaimed entries close the body as "Other". Empty sections are left out, and Discord follows the
-same order, titling the unnamed section "Digest". Each section is one `<section class="section">`, and its name is printed once, only by the opening
-section marker (§4), with no number and no repeated large section title. The section marker is an `h2`; Top
-story is the exception and uses a `div`, because the lead card's title is itself that section's `h2`.
+The body is four sections in a fixed order: Tracking, then the three layers of ADR-0023, Stories
+(pebble), Topics (sand) and Headlines (water). `domain.layers.layer_by_lane` decides each item's layer by
+its lane and its member count in this issue alone, never by a score or an area: every `read` or `follow`
+article is a pebble, a news topic of two or more articles is sand, and a topic of one article or a kept
+headline is water. Areas do not divide the page; the mail and Discord still lay the issue out by area
+(§6 *email*). Nothing the run kept is cut from the page: there is no output cap. Empty sections are left
+out. Each section is one `<section class="section">`, and its name is printed once, by its section marker
+(§4), an `h2`, with no number and no repeated large section title.
 
-- **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers and the
-  lead title; `h3` is the titles of features, news groups and topic blocks; `h4` is the articles inside a
-  topic block. `h3` and `h4` are both the title role (§3), with the class
-  `.item-title`: `h3` adds `.lg` for 19px, and `h4` uses 18px. A row has no heading element.
-- **News is paragraphs that cite their articles.** An issue's news is one `.news-paragraph` per
-  paragraph, after the area's rows: a left rule like a news group's, the paragraph as a `p.summary` in
-  the body role (§3), then one `.meta` row per cited unit: a link per article in the unit, each
-  labelled with its source (a unit that carries reference links lists those by host instead),
-  folded into `<details>` with the summary text `N sources` past two as a news group's are, and the
-  unit's vote buttons last. One vote is cast for every article in the unit, as a news group's is.
-  An article with no web link is its label alone. The rows sit in one `.citations` column `--s-3`
-  apart, so one row's 44px tap areas do not cover the next row's buttons. A paragraph that holds a unit's own summary or
-  title because the model did not write it carries `lang=""` (§1). An issue stored before the
-  paragraphs keeps its news groups and Wire rows as described below.
-- **A row is its title and the filter's one sentence.** Each row is a number, the title link and,
-  below the title, the one-sentence summary the filter wrote for that article, in the small role (§3)
-  under a title in `--text`; the source fold and the votes follow, the votes last. The summary takes
-  `overflow-wrap: anywhere`: an unbroken run such as a URL breaks inside it rather than widen a row
-  whose title column is narrow on a phone. A row with no summary is only the number and the title link. When the filter ran without an LLM, by choice under provider
-  `none` or because the configured one could not be used, the sentence is the article's plain excerpt,
-  as a Features card the model wrote no summary for shows its excerpt, and the row carries `lang=""`
-  (§1).
-- **Only the Top story may be a group.** When two or more articles on one topic score at least
-  `routing.score_threshold`, the lead card takes the group's heading as its title and prints the group's
-  summary once. Each article of the group follows as an `.article-item` whose title is `h3 .lg`, one level
-  below the card title, with its own title link and meta row, so each keeps its own score and vote: they
-  are different articles, unlike a news group's reports of one event. A member scoring below the
-  threshold stays in the group, because the group's summary covers it. With no such group, the lead is
-  the highest-scoring single article.
-- **A Features card is one article.** It prints that article's own summary, never a group's; an article
-  the model wrote no summary for shows its excerpt, and the issue counts as degraded. Cards follow score,
-  highest first, and `digest.max_featured` is how many there are at most; an article past it is left out
-  of the issue, as one past the issue's article limit is, and stays on `All articles`. A card's summary is
-  two or three sentences; the Top story's group summary is three to five.
-- **The issue's article limit keeps a group whole.** The limit is applied after the Top story and Features are laid
-  out: it takes the Top story first, whole, then Features by score. A group that does not fit is replaced
-  in its slot by its best article.
-- **Tracking lists each tracked topic that has a hit this issue.** A topic is a block like Following's:
-  its name as the `h3`, then each hit as an `.article-item` whose `h4` is the article's own title link,
-  nearest first, with a meta row of its source, the original link and the votes, and no summary. A
-  topic with no hit is left out, and so is the whole section when none has one. Hits sit outside the
-  issue's article limit and its article count, because a hit is a view of the run's candidates, not a
-  verdict on them. It follows the Top story because a topic is something the reader asked to see.
-- **Every item has a meta row below it.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the
-  label role; it holds the source and the original link in that order (a feature has a score pill in
-  front), and the small vote buttons are always last. Only the lead card's meta row adds `.ruled`, which
-  puts a dashed line above it. A news group with more than two sources folds them into `<details>`, with
-  the summary text `N sources`.
-- **Feature cards share one fluid column rule:**
-  `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`, with no column count set at any width. The Features
+- **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers; `h3` is
+  a pebble's title, a sand block's heading and a tracked topic's name; `h4` is a Tracking hit. `h3` and
+  `h4` are both the title role (§3), with the class `.item-title`: `h3` adds `.lg` for 19px, and `h4`
+  uses 18px. A water row has no heading element.
+- **Tracking lists each tracked topic that has a hit this issue, as links only.** A topic is a
+  `.thematic-block`: its name as the `h3`, then each hit as an `.article-item` whose `h4` is the
+  article's own title link, nearest first, with no summary, no meta row and no vote. A topic with no
+  hit is left out, and so is the whole section when none has one. Hits sit outside the issue's article
+  count, because a hit is a view of the run's candidates, not a verdict on them. It opens the body
+  because a topic is something the reader asked to see.
+- **A pebble is one article's card.** `.featured-item`, in the `.featured-grid`: its title link, its
+  own summary (an article the model wrote no summary for shows its excerpt, and the issue counts as
+  degraded), its tags, then its meta row. Stories are the read lane's summarized articles in the
+  content's order, then the read lane's low-score rows by score, then the follow lane.
+- **A sand block is one topic of two or more articles.** `.news-cluster`: the topic's heading, one
+  line saying what happened, its tags, then a meta row holding the fold and the votes. The fold is a
+  `<details class="src-fold">` whose summary is `N articles` and which unfolds each member's title
+  link with its source name. The line is a stand-in until the sand-what-happened ticket: the first
+  member's excerpt of up to 80 characters.
+- **A water row is one article: its title and the filter's one sentence.** A topic of one article is
+  the exception: its row takes the cluster's heading and summary in place of the title and the
+  filter's sentence. Each row is a number, the
+  title link and, below the title, the one-sentence summary the filter wrote for that article, in the
+  small role (§3) under a title in `--text`; its tags follow, and the votes come last. The summary
+  takes `overflow-wrap: anywhere`: an unbroken run such as a URL breaks inside it rather than widen a
+  row whose title column is narrow on a phone. A row with no summary is only the number and the title
+  link. When the filter ran without an LLM, by choice under provider `none` or because the configured
+  one could not be used, the sentence is the article's plain excerpt, and the row carries `lang=""`
+  (§1). Topics of one article come first, then the kept headlines, each part in the vote order: a
+  stand-in until topic-store-and-votes gives the two one shared order.
+- **Tags take their own row.** An item's tags are pills (§4) in a `.tags` row above its meta row, so
+  however many there are, the votes stay where the meta row puts them. A pebble's tags are the ones
+  scoring returned for its article this run; an article scored in an earlier run shows none.
+- **The meta row.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the label role. A
+  pebble's holds its source name, the original link and the vote group, in that order. A sand block's
+  holds the fold and the vote group. A water row has no meta row; its vote group ends the row. Sand
+  and water show no source, host or score outside the fold, and the fold is the only place a sand
+  member's source is named. No item shows a score pill.
+- **Every item has exactly one vote group.** A pebble's and a water row's vote is for its article; a
+  sand block's one vote is for every member's URL, and its group carries the topic's story id as
+  `data-story-id`. The vote group
+  stays hidden until the `/api/vote` probe answers authorized, so a reader who cannot vote never sees
+  a button that would fail.
+- **Pebble cards share one fluid column rule:**
+  `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`, with no column count set at any width. The Stories
   grid lines are drawn on each card's right and bottom edges, so when the last row is not full, the empty
   cells are the page background, not a solid block of border colour.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
@@ -428,7 +426,7 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 | hash | Category | Contents |
 |---|---|---|
 | `#model` | Model | LLM provider (a choice list, showing on the right whether the key is ready, with a last option `None — plain excerpts` meaning no LLM is called and only original excerpts are shown), model, a real call to verify before saving; embedding provider and model, the vote similarity switch, the number of votes compared against |
-| `#digest` | Digest | The two publishing periods, the time zone (a select, below), the number of Features cards, the news per paragraph (a number from 1 to `UNITS_PER_BATCH`, the units one paragraph call is given), the article limit per issue, which counts the read lane and any news outside every named area, never a named area's news or the follow lane, the output language (a select, below), the style prompt (multi-line input), the font size (a select: Smaller 0.875 / Default 1 / Larger 1.125; shows `Not set` when unset), the vote order (a select: Off / On), which depends on vote similarity being on (§4 *field*), and who judges it (a select: Title similarity / Clef), whose Clef option depends on a Workers AI token, which `GET /api/settings` reports as `clef_ready` |
+| `#digest` | Digest | The two publishing periods, the time zone (a select, below), the output language (a select, below), the style prompt (multi-line input), the font size (a select: Smaller 0.875 / Default 1 / Larger 1.125; shows `Not set` when unset), the vote order (a select: Off / On), which depends on vote similarity being on (§4 *field*), and who judges it (a select: Title similarity / Clef), whose Clef option depends on a Workers AI token, which `GET /api/settings` reports as `clef_ready` |
 | `#pipeline` | Pipeline | The hours to look back, the article limit per pass, the two score thresholds, one for grouping the Top story and one for summarizing, how many characters each of the three steps reads, the reasoning effort (a select: Default / Low / Medium / High) |
 | `#notifications` | Notifications | Discord webhook, with a stored value shown masked; a danger `Turn off` uses the destructive confirm, and after it the field is cleared and `Notifications are off.` is shown; then Email to and Email from, shown in full, where an empty Email to means no mail and Save sends a test message before storing the pair |
 | `#sources` | Sources | A type filter (All / RSS / Newsletter) and `Add source`; table columns are name, type, lane, feed or sender, and tags; an RSS source that `cyris doctor` would warn about (the feed health thresholds in `docs/architecture.md` §5) shows one line under its name, in the small role coloured `--warn` because a failing feed is an error (§1), saying why, such as `3 failures in a row · HTTP 503` or `no article in 30 days`, and a healthy one shows nothing; clicking a row, or pressing Enter or Space on it, expands it for editing in place, with focus on the Name field, and `Cancel` puts focus back on the row, or on `Add source` for a new one; a save or retire that fails puts focus back on its button, and a retire that lands puts it on `Add source`; the form shows only the fields that type needs; its `Area` select holds `None` and the active areas, a stored area that is not active or whose list has not loaded shows as `Area N (not active)` or `Area N (list not loaded)` so that a save keeps it, and the select is disabled until the area list loads; `Suggest` selects the area the model suggests, marked by a `Suggested` tag beside the select until the reader changes or saves, or says `No suggestion` beside it when there is none; while no area is active `Suggest` is disabled with the title `Confirm an area first`, and while it asks, `Suggest` reads `Suggesting…` and the select is disabled; `Retire` uses the destructive confirm, and retires the last source like any other: a table with none is a deployment waiting for onboarding |
@@ -638,10 +636,12 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   `@media (prefers-color-scheme: dark)` the §2 colours replace it, and the head declares
   `color-scheme: light dark` so Apple Mail does not re-tint either. Gmail ignores the media query and
   inverts the light message itself, which stays legible; an inverted dark one would not.
-- **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections keep the page's order, with "Other"
-  last. Tracking is not in the mail yet; the page is where it is read. The lead is the headline card's
+- **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections follow the issue's area
+  order (`layout_by_area`), with "Other" last; the page's three layers (§6 *digest*) do not reach the
+  mail, which draws news clusters and Wire rows as an issue held them before the paragraphs. Tracking is not in the mail yet; the page is where it is read. The lead is the headline card's
   square panel; every other item is separated by a `--border` hairline.
-- **A news paragraph is its text and its links.** In the HTML part it is the paragraph in the body role
+- **Legacy: a news paragraph is its text and its links.** Only an issue stored while the
+  paragraph step ran holds paragraphs; no run writes them now. In the HTML part it is the paragraph in the body role
   and a line of source links below it, after the area's rows, with no fold; in the plain-text part it
   is the paragraph, then one indented `source — link` line per cited article.
 - **A Wire row keeps its sentence.** Its summary follows its title as on the page, in the small role in

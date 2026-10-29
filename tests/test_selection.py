@@ -1,15 +1,14 @@
-"""Tests for digest article selection with priority fill."""
+"""Tests for digest article selection: the read lane's layers and the order inside them."""
 
 import pytest
 
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 from cyris.domain.selection import (
-    _truncate_sections,
     count_dead_links,
     layer_by_score,
+    order_by_preference,
     preference_moves,
     rank_by_preference,
-    select_digest_articles,
 )
 
 pytestmark = pytest.mark.unit
@@ -46,89 +45,6 @@ def _base_content(**kwargs) -> DigestContent:
     return DigestContent(**defaults)
 
 
-class TestSelectDigestArticles:
-    def test_empty_content(self):
-        content = _base_content(articles_included=0)
-        result = select_digest_articles(content, max_items=15)
-
-        assert result.articles_included == 0
-        assert result.news_clusters == []
-        assert result.thematic_summaries == []
-        assert result.filtered_headlines == []
-
-    def test_under_cap_keeps_all(self):
-        content = _base_content(
-            news_clusters=_make_sections([2, 1], "news"),
-            thematic_summaries=_make_sections([2, 2], "theme"),
-            attention_sections=_make_sections([1], "attention"),
-            filtered_headlines=_make_items(3, "headline"),
-            articles_included=11,
-        )
-        result = select_digest_articles(content, max_items=15)
-
-        assert len(result.news_clusters) == 2
-        assert len(result.thematic_summaries) == 2
-        assert len(result.attention_sections) == 1
-        assert len(result.filtered_headlines) == 3
-        assert result.articles_included == 11
-
-    def test_the_news_passes_whole_beside_the_capped_read_lane(self):
-        """The cap is the read lane's; the news is cut later, by each area's quota."""
-        content = _base_content(
-            news_clusters=_make_sections([5, 5], "news"),
-            thematic_summaries=_make_sections([3], "theme"),
-            attention_sections=_make_sections([2], "attention"),
-            filtered_headlines=_make_items(5, "headline"),
-            articles_included=20,
-        )
-        result = select_digest_articles(content, max_items=4)
-
-        assert sum(len(s.items) for s in result.thematic_summaries) == 3
-        assert sum(len(s.items) for s in result.attention_sections) == 1
-        assert result.news_clusters == content.news_clusters
-        assert result.filtered_headlines == content.filtered_headlines
-        assert result.articles_included == 19
-
-    def test_a_heavy_news_day_never_crowds_out_the_summaries(self):
-        content = _base_content(
-            news_clusters=_make_sections([10, 10], "news"),
-            thematic_summaries=_make_sections([5], "theme"),
-            filtered_headlines=_make_items(5, "headline"),
-            articles_included=30,
-        )
-        result = select_digest_articles(content, max_items=15)
-
-        assert sum(len(s.items) for s in result.thematic_summaries) == 5
-        assert sum(len(s.items) for s in result.news_clusters) == 20
-        assert len(result.filtered_headlines) == 5
-        assert result.articles_included == 30
-
-    def test_section_truncation(self):
-        """A section with more items than remaining slots gets truncated."""
-        content = _base_content(
-            news_clusters=[],
-            thematic_summaries=_make_sections([10], "theme"),
-            articles_included=10,
-        )
-        result = select_digest_articles(content, max_items=7)
-
-        assert len(result.thematic_summaries) == 1
-        assert len(result.thematic_summaries[0].items) == 7
-
-    def test_preserves_metadata(self):
-        content = _base_content(
-            news_clusters=_make_sections([2], "news"),
-            filtered_headlines=_make_items(3, "headline"),
-            articles_included=5,
-        )
-        result = select_digest_articles(content, max_items=15)
-
-        assert result.date == "2026-04-01"
-        assert result.period == "morning"
-        assert result.sources_processed == 5
-        assert result.articles_received == 50
-
-
 def _article(title: str, score: float | None) -> DigestItem:
     """One summarized article, carrying its own summary as the summarize step now writes it."""
     return DigestItem(
@@ -147,9 +63,9 @@ def _topic(
     return DigestSection(heading=heading, summary=summary, items=list(articles))
 
 
-def _layer(*sections: DigestSection, threshold: float = 70, max_featured: int = 5) -> DigestContent:
+def _layer(*sections: DigestSection, threshold: float = 70) -> DigestContent:
     content = _base_content(thematic_summaries=list(sections))
-    return layer_by_score(content, featured_threshold=threshold, max_featured=max_featured)
+    return layer_by_score(content, featured_threshold=threshold)
 
 
 def _titles(section: DigestSection) -> list[str]:
@@ -244,13 +160,10 @@ class TestLayerByScore:
 
         assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"], ["none"]]
 
-    def test_max_featured_caps_the_cards_and_leaves_the_rest_out(self):
-        result = _layer(
-            *(_topic(f"T{n}", _article(f"a{n}", 90 - n)) for n in range(5)),
-            max_featured=2,
-        )
+    def test_every_article_past_the_lead_is_a_feature_and_none_is_left_out(self):
+        result = _layer(*(_topic(f"T{n}", _article(f"a{n}", 90 - n)) for n in range(12)))
 
-        assert [_titles(s) for s in result.featured_articles] == [["a0"], ["a1"], ["a2"]]
+        assert [_titles(s) for s in result.featured_articles] == [[f"a{n}"] for n in range(12)]
         assert result.thematic_summaries == []
 
     def test_unscored_articles_never_count_toward_a_group(self):
@@ -281,56 +194,6 @@ class TestLayerByScore:
         assert result.thematic_summaries == []
 
 
-class TestTheCapKeepsTheLeadWhole:
-    def _capped(self, *sections: DigestSection, max_items: int, **kwargs) -> DigestContent:
-        content = _layer(*sections, **kwargs).model_copy(
-            update={"news_clusters": _make_sections([2], "news")}
-        )
-        return select_digest_articles(content, max_items=max_items)
-
-    def test_a_group_that_fits_goes_in_whole(self):
-        result = self._capped(
-            _topic("Topic", _article("a", 90), _article("b", 80)),
-            _topic("Solo", _article("solo", 99)),
-            max_items=3,
-        )
-
-        assert [_titles(s) for s in result.featured_articles] == [["a", "b"], ["solo"]]
-        assert result.articles_included == 5
-
-    def test_a_group_that_does_not_fit_is_replaced_by_its_best_article(self):
-        result = self._capped(
-            _topic("Topic", _article("a", 90), _article("b", 85), _article("c", 80)),
-            _topic("Solo", _article("solo", 70)),
-            max_items=2,
-        )
-
-        lead, *features = result.featured_articles
-        assert _titles(lead) == ["a"]
-        assert lead.summary is None
-        assert lead.items[0].summary == "a on its own"
-        assert [_titles(s) for s in features] == [["solo"]]
-        assert result.articles_included == 4
-
-    def test_the_cap_takes_features_by_score(self):
-        content = _base_content(
-            featured_articles=[
-                DigestSection(heading=t, items=[_article(t, s)])
-                for t, s in (("lead", 99), ("low", 60), ("high", 90), ("mid", 75))
-            ]
-        )
-
-        result = select_digest_articles(content, max_items=3)
-
-        assert [_titles(s) for s in result.featured_articles] == [["lead"], ["high"], ["mid"]]
-
-    def test_a_full_cap_leaves_the_news_whole(self):
-        result = self._capped(_topic("Topic", _article("a", 90), _article("b", 80)), max_items=2)
-
-        assert [_titles(s) for s in result.featured_articles] == [["a", "b"]]
-        assert sum(len(s.items) for s in result.news_clusters) == 2
-
-
 def _headline(name: str, *urls: str) -> DigestItem:
     return DigestItem(
         title=name,
@@ -344,24 +207,55 @@ def _names(items) -> list[str]:
     return [getattr(i, "title", None) or i.heading for i in items]
 
 
-class TestRankByPreference:
-    """The reader's votes order the cap and Features; the LLM's order breaks every tie."""
+class TestOrderByPreference:
+    """The reader's votes order each layer and cut nothing; the LLM's order breaks every tie."""
 
-    def test_the_headlines_and_clusters_keep_the_models_order_whatever_the_votes(self):
-        """The news is ordered unit by unit by the paragraph step (ADR-0022), not here."""
+    def test_an_issue_of_any_size_keeps_every_entry_and_its_count(self):
         content = _base_content(
-            news_clusters=_make_sections([1, 1], "news"),
-            filtered_headlines=[_headline("disliked"), _headline("liked")],
+            featured_articles=_make_sections([3, *[1] * 20], "feature"),
+            news_clusters=_make_sections([10, 10, 1], "news"),
+            attention_sections=_make_sections([9], "attention"),
+            fan_sections=_make_sections([6], "fan"),
+            filtered_headlines=_make_items(40, "headline"),
+            articles_included=99,
+        )
+
+        assert order_by_preference(content) == content
+        assert order_by_preference(content, {"https://example.com/headline-39": 1.0}).model_dump(
+            exclude={"filtered_headlines"}
+        ) == content.model_dump(exclude={"filtered_headlines"})
+
+    def test_an_empty_issue_stays_empty(self):
+        content = _base_content(articles_included=0)
+
+        assert order_by_preference(content) == content
+
+    def test_the_headlines_and_clusters_follow_the_votes(self):
+        content = _base_content(
+            news_clusters=_make_sections([1, 2], "news"),
+            filtered_headlines=[_headline("disliked"), _headline("unjudged"), _headline("liked")],
         )
         preference = {
             "https://example.com/disliked": -0.2,
             "https://example.com/liked": 0.3,
-            "https://example.com/news-1-0": 0.9,
+            "https://example.com/news-0-0": 0.1,
+            "https://example.com/news-1-1": 0.9,
         }
 
-        result = select_digest_articles(content, max_items=1, preference=preference)
+        result = order_by_preference(content, preference)
 
-        assert _names(result.filtered_headlines) == ["disliked", "liked"]
+        assert _names(result.filtered_headlines) == ["liked", "unjudged", "disliked"]
+        assert _names(result.news_clusters) == ["news-1", "news-0"]
+
+    def test_without_votes_the_news_keeps_the_models_order(self):
+        content = _base_content(
+            news_clusters=_make_sections([1, 1], "news"),
+            filtered_headlines=[_headline("b"), _headline("a")],
+        )
+
+        result = order_by_preference(content, None)
+
+        assert _names(result.filtered_headlines) == ["b", "a"]
         assert _names(result.news_clusters) == ["news-0", "news-1"]
 
     def test_equal_scores_keep_the_llms_order(self):
@@ -403,7 +297,7 @@ class TestRankByPreference:
             "https://example.com/low": 0.2,
         }
 
-        result = select_digest_articles(content, max_items=10, preference=preference)
+        result = order_by_preference(content, preference)
 
         assert _names(result.featured_articles) == ["lead", "low", "mid", "high"]
 
@@ -416,7 +310,7 @@ class TestRankByPreference:
         )
         preference = {"https://example.com/low": 0.1, "https://example.com/high": 0.1}
 
-        result = select_digest_articles(content, max_items=10, preference=preference)
+        result = order_by_preference(content, preference)
 
         assert _names(result.featured_articles) == ["lead", "high", "low"]
 
@@ -430,52 +324,24 @@ class TestRankByPreference:
         preference = {f"https://example.com/{n}": 0.0 for n in ("high", "mid")}
         preference |= {"https://example.com/low": 0.5}
 
-        baseline = select_digest_articles(content, max_items=6)
-        ranked = select_digest_articles(content, max_items=6, preference=preference)
+        ranked = order_by_preference(content, preference)
 
         assert _names(ranked.featured_articles) == ["lead", "low", "high", "mid"]
-        assert preference_moves(baseline, ranked) == {"features": 3}
-        assert preference_moves(baseline, baseline) == {"features": 0}
+        assert preference_moves(content, ranked) == {"features": 3, "news": 0}
+        assert preference_moves(content, content) == {"features": 0, "news": 0}
 
-
-class TestSelectDigestArticlesWithAttention:
-    def test_attention_fills_after_thematic(self):
+    def test_the_moves_count_the_news_positions_that_changed(self):
         content = _base_content(
-            news_clusters=_make_sections([2], "news"),
-            thematic_summaries=_make_sections([3], "theme"),
-            attention_sections=_make_sections([5], "attention"),
-            filtered_headlines=_make_items(10, "headline"),
-            articles_included=20,
+            news_clusters=_make_sections([1, 1], "news"),
+            filtered_headlines=[_headline("a"), _headline("b"), _headline("c")],
         )
-        result = select_digest_articles(content, max_items=6)
+        preference = {f"https://example.com/{n}": 0.0 for n in ("news-0-0", "a", "b")}
+        preference |= {"https://example.com/news-1-0": 0.5, "https://example.com/c": 0.5}
 
-        assert sum(len(s.items) for s in result.thematic_summaries) == 3
-        assert sum(len(s.items) for s in result.attention_sections) == 3
-        assert sum(len(s.items) for s in result.news_clusters) == 2
-        assert len(result.filtered_headlines) == 10
-        assert result.articles_included == 18
+        ranked = order_by_preference(content, preference)
 
-    def test_no_attention_sections(self):
-        content = _base_content(
-            thematic_summaries=_make_sections([5], "theme"),
-            attention_sections=[],
-            articles_included=5,
-        )
-        result = select_digest_articles(content, max_items=15)
-
-        assert sum(len(s.items) for s in result.thematic_summaries) == 5
-        assert result.attention_sections == []
-        assert result.articles_included == 5
-
-    def test_only_attention_sections(self):
-        content = _base_content(
-            attention_sections=_make_sections([5, 3], "attention"),
-            articles_included=8,
-        )
-        result = select_digest_articles(content, max_items=6)
-
-        assert sum(len(s.items) for s in result.attention_sections) == 6
-        assert result.articles_included == 6
+        # Both clusters swap; c takes a's slot, a b's and b c's.
+        assert preference_moves(content, ranked) == {"features": 0, "news": 5}
 
 
 def _dead_item(title: str = "dead") -> DigestItem:
@@ -525,17 +391,18 @@ def test_count_dead_links_ref_urls_are_clickable():
     assert count_dead_links(content) == 0
 
 
+def test_count_dead_links_counts_each_sand_member_the_fold_shows():
+    dead = _dead_item()
+    live = DigestItem(title="live", summary="", sources=["a"], urls=["https://a.com/1"])
+    merged = DigestItem(
+        title="topic", summary="", sources=["n", "a"], urls=[*dead.urls, *live.urls]
+    )
+    content = _base_content(
+        news_clusters=[DigestSection(heading="topic", items=[merged], members=[dead, live])],
+    )
+    assert count_dead_links(content) == 1
+
+
 def test_count_dead_links_empty_content():
     content = _base_content(articles_included=0)
     assert count_dead_links(content) == 0
-
-
-def test_truncation_preserves_story_id():
-    """T3: a truncated section keeps its story_id."""
-    section = DigestSection(heading="Tech", items=_make_items(3), story_id="X")
-
-    result = _truncate_sections([section], max_items=1)
-
-    assert len(result) == 1
-    assert result[0].story_id == "X"
-    assert len(result[0].items) == 1

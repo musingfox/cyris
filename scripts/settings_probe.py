@@ -355,9 +355,6 @@ _PROBE_VALUES = {
     "notify.email_to": "",
     "notify.email_from": "",
     "digest.max_articles_per_digest": 200,
-    "digest.max_articles_per_digest_output": 15,
-    "digest.max_featured": 5,
-    "digest.units_per_paragraph": 5,
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,
     "digest.filter_snippet_length": 500,
@@ -623,9 +620,9 @@ def _last_call(wanted: dict) -> Callable[[Fixture], str | None]:
 NEW_WEBHOOK = "https://discord.com/api/webhooks/9/NEWTOKEN"
 NEW_WEBHOOK_MASKED = mask_discord_webhook_url(NEW_WEBHOOK)
 
-SAVE_FEATURED_7 = """
+SAVE_STYLE = """
 await settingsLoaded();
-setValue($("#max-featured"), "7");
+setValue($("#style-prompt"), "Short");
 saveOf("digest").click();
 await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled, "the save");
 """
@@ -806,7 +803,7 @@ BUSY = {
     "digest": (
         "/settings#digest",
         "/api/settings/values",
-        """setValue($("#max-featured"), "7");""",
+        """setValue($("#style-prompt"), "Short");""",
         "digest",
         "Saving…",
     ),
@@ -853,8 +850,8 @@ IN_FLIGHT = {
     ),
     "digest": (
         "/api/settings/values",
-        """setValue($("#max-featured"), "7");""",
-        """setValue($("#max-featured"), "8");""",
+        """setValue($("#style-prompt"), "Short");""",
+        """setValue($("#style-prompt"), "Shorter");""",
     ),
     "notifications": (
         "/api/settings/notify",
@@ -1196,7 +1193,7 @@ CHECKS: list[Check] = [
         path="/settings#digest",
         act="""
             await settingsLoaded();
-            setValue($("#max-featured"), "7");
+            setValue($("#style-prompt"), "Short");
         """,
         script="""
             expect(!saveOf("digest").disabled, "the digest Save is disabled");
@@ -1213,8 +1210,8 @@ CHECKS: list[Check] = [
         path="/settings#digest",
         act="""
             await settingsLoaded();
-            setValue($("#max-featured"), "7");
-            setValue($("#max-featured"), "5");
+            setValue($("#style-prompt"), "Short");
+            setValue($("#style-prompt"), "x");
         """,
         script="""
             expect(saveOf("digest").disabled, "the digest Save is enabled");
@@ -1631,16 +1628,16 @@ CHECKS: list[Check] = [
         id="notice-ok-beside-save",
         fixture="writable",
         path="/settings#digest",
-        act=SAVE_FEATURED_7,
+        act=SAVE_STYLE,
         script="""
             const notice = noticeOf("digest");
             expect(!notice.classList.contains("err"), `an error: ${notice.textContent}`);
-            expect(notice.textContent.includes("Features cards: 7."), notice.textContent);
+            expect(notice.textContent.includes("Style: Short."), notice.textContent);
             expect(notice.textContent.includes("Effective next run."), notice.textContent);
             expect(saveOf("digest").disabled, "the digest Save is still enabled");
         """,
         sabotage="""noticeOf("digest").classList.add("err");""",
-        receipt=_last_call({"digest.max_featured": 7}),
+        receipt=_last_call({"digest.style_prompt": "Short"}),
     ),
     Check(
         id="notice-err-beside-save",
@@ -1732,7 +1729,7 @@ CHECKS: list[Check] = [
         id="notice-hides-on-edit",
         fixture="writable",
         path="/settings#digest",
-        act=SAVE_FEATURED_7 + """setValue($("#max-featured"), "8");""",
+        act=SAVE_STYLE + """setValue($("#style-prompt"), "Shorter");""",
         script="""expect(!visible(noticeOf("digest")), "the old result is still shown");""",
         sabotage="""noticeOf("digest").hidden = false;""",
     ),
@@ -2037,15 +2034,15 @@ CHECKS: list[Check] = [
         sabotage="""$("#add-source").disabled = false;""",
     ),
     Check(
-        id="digest-posts-featured-only",
+        id="digest-posts-values-only",
         fixture="writable",
         path="/settings#digest",
-        act=SAVE_FEATURED_7,
+        act=SAVE_STYLE,
         script="",
         sabotage_preload=also_post(
             "/api/settings/values", "/api/settings/schedule", {"times": ["08:00", "20:00"]}
         ),
-        receipt=_calls([{"digest.max_featured": 7}]),
+        receipt=_calls([{"digest.style_prompt": "Short"}]),
     ),
     Check(
         id="digest-posts-hours-only",
@@ -2059,7 +2056,9 @@ CHECKS: list[Check] = [
         """,
         script="",
         sabotage_preload=also_post(
-            "/api/settings/schedule", "/api/settings/values", {"values": {"digest.max_featured": 5}}
+            "/api/settings/schedule",
+            "/api/settings/values",
+            {"values": {"digest.style_prompt": "x"}},
         ),
         receipt=_calls([{"general.digest_schedule": ["09:00", "20:00"]}]),
     ),
@@ -2070,7 +2069,7 @@ CHECKS: list[Check] = [
         act="""
             await settingsLoaded();
             setValue($("#morning"), "25");
-            setValue($("#max-featured"), "7");
+            setValue($("#style-prompt"), "Short");
             saveOf("digest").click();
             await waitFor(() => settled(noticeOf("digest")), "the save");
         """,
@@ -2079,14 +2078,14 @@ CHECKS: list[Check] = [
             expect(notice.classList.contains("err"), `not an error: ${notice.textContent}`);
             expect(lines.length === 2 && lines[0].startsWith("Digest hours not saved: ")
               && lines[0].length > "Digest hours not saved: ".length, `lines: ${lines}`);
-            expect(lines[1].startsWith("Features cards: 7."), `lines: ${lines}`);
+            expect(lines[1].startsWith("Style: Short."), `lines: ${lines}`);
             expect(!saveOf("digest").disabled, "the digest Save was disabled");
             expect($("#morning").value === "25", `morning: ${$("#morning").value}`);
-            setValue($("#max-featured"), "5");
+            setValue($("#style-prompt"), "x");
             expect(navOf("digest").classList.contains("dirty"), "the failed hours look saved");
         """,
         sabotage="""noticeOf("digest").classList.remove("err");""",
-        receipt=_calls([{"digest.max_featured": 7}]),
+        receipt=_calls([{"digest.style_prompt": "Short"}]),
     ),
     *(
         Check(
@@ -2334,7 +2333,7 @@ CHECKS: list[Check] = [
             swatch.remove();
         """,
         script="""
-            const field = $("#max-featured");
+            const field = $("#style-prompt");
             expect(field.getAttribute("aria-invalid") === "true", "the field is not marked");
             expect(field.value === "" && field.placeholder === "Not set",
               `field: ${field.value} / ${field.placeholder}`);
@@ -2351,7 +2350,7 @@ CHECKS: list[Check] = [
             const checked = $$("input[name=provider]:checked").map((input) => input.value);
             expect(checked.length === 0, `checked: ${checked}`);
         """,
-        sabotage="""$("#max-featured").removeAttribute("aria-invalid");""",
+        sabotage="""$("#style-prompt").removeAttribute("aria-invalid");""",
     ),
     Check(
         id="missing-clears-on-save",
@@ -2406,11 +2405,11 @@ CHECKS: list[Check] = [
         id="missing-focus-visible",
         fixture="writable",
         path="/settings#digest",
-        setup=_unset("digest.max_featured"),
+        setup=_unset("digest.style_prompt"),
         focused=True,
         act="""
             await providersLoaded();
-            $("#max-featured").focus();
+            $("#style-prompt").focus();
             // The border colour transitions; read it once that has settled.
             await sleep(400);
             const swatch = document.createElement("i");
@@ -2420,7 +2419,7 @@ CHECKS: list[Check] = [
             swatch.remove();
         """,
         script="""
-            const field = $("#max-featured");
+            const field = $("#style-prompt");
             expect(document.activeElement === field, "the field is not focused");
             expect(field.getAttribute("aria-invalid") === "true", "the field is not marked");
             const border = getComputedStyle(field).borderTopColor;
@@ -2481,7 +2480,7 @@ CHECKS: list[Check] = [
         setup=_holding(UNLISTED),
         act="""
             await settingsLoaded();
-            setValue($("#max-featured"), "7");
+            setValue($("#style-prompt"), "Short");
             saveOf("digest").click();
             await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
@@ -2494,7 +2493,7 @@ CHECKS: list[Check] = [
         sabotage_preload=rewrite_post(
             "/api/settings/values", 'body.values["digest.output_language"] = "en";'
         ),
-        receipt=_calls([{"digest.max_featured": 7}]),
+        receipt=_calls([{"digest.style_prompt": "Short"}]),
     ),
     Check(
         id="digest-timezone-lists-the-browsers-zones-and-utc",
@@ -2657,7 +2656,7 @@ window.fetch = async (input, init) => {
               `notice: ${text}`);
         """,
         sabotage_preload=rewrite_post(
-            "/api/settings/values", 'body.values["digest.max_featured"] = 5;'
+            "/api/settings/values", 'body.values["digest.style_prompt"] = "x";'
         ),
         receipt=_calls([{"general.timezone": "Europe/Berlin", "digest.output_language": "en"}]),
     ),
@@ -3305,7 +3304,7 @@ document.addEventListener("click", (event) => {
               ctx.notices[tab] = visible(notice) && notice.classList.contains("err")
                 && notice.textContent.includes("Edit cyris.toml instead.");
             }
-            setValue($("#max-featured"), "9");
+            setValue($("#style-prompt"), "Shortest");
         """,
         script="""
             const unexplained = Object.keys(ctx.notices).filter((tab) => !ctx.notices[tab]);
@@ -5300,7 +5299,7 @@ const choice = (name) => $(`input[name=provider][value="${name}"]`).closest("lab
 const providersLoaded = () => waitFor(() => $$("input[name=provider]").length, "providers");
 const saveOf = (tab) => $(`form.tab[data-tab="${tab}"] button[type="submit"]`);
 const navOf = (tab) => $(`.settings-nav a[data-tab="${tab}"]`);
-const settingsLoaded = () => waitFor(() => $("#max-featured").value, "settings");
+const settingsLoaded = () => waitFor(() => $("#window-hours").value, "settings");
 const rowNames = () => $$("tr.src-row").map((row) => $("td", row).textContent);
 const sourcesLoaded = () => waitFor(() => $$("tr.src-row").length, "source rows");
 // The list answered, empty or not.

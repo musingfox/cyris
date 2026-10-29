@@ -37,9 +37,6 @@ model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider 
 
 [digest]
 max_articles_per_digest = 400           # a run scores and digests the window's newest N, across all sources
-max_articles_per_digest_output = 15     # cap shown in the digest note
-max_featured = 5                        # Features cards per issue; /settings can change it
-units_per_paragraph = 5                 # news stories each news paragraph aims to cover (1 to 40)
 scoring_snippet_length = 1000           # characters of each article the scorer reads
 summarize_snippet_length = 1000         # characters read when summarizing
 filter_snippet_length = 500             # characters read when clustering news and extracting headlines

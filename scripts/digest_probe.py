@@ -4,7 +4,7 @@
 pytest holds the digest's markup and CSS, but not where a browser puts things:
 whether each kind of item keeps its ↑ and ↓ side by side, on the row of the
 meta before them. This runs those checks against the page `render` writes for
-a digest holding every kind of item, served in-process next to a stand-in for
+a digest holding every layer, pebble, sand and water, served in-process next to a stand-in for
 the app Worker's `/api/vote`, whose every vote request is kept as a receipt.
 
 Every check carries a sabotage that breaks the thing it reads. `--self-test`
@@ -45,12 +45,11 @@ from cdp_probe import (
 from css_computed import find_browser
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.domain.area_layout import layout_by_area
+from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import (
     DigestContent,
     DigestItem,
     DigestSection,
-    NewsParagraph,
     UsageStats,
 )
 
@@ -60,27 +59,19 @@ PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 ARCHIVE = "/index.html"
 
 KINDS = ("signed-in", "signed-in-largest", "signed-in-smallest", "vote-fails")
-# The same three type sizes, each serving the page whose Top story is a group.
-GROUPED_KINDS = {kind: f"grouped-lead{kind.removeprefix('signed-in')}" for kind in KINDS[:3]}
-KINDS += tuple(GROUPED_KINDS.values())
 
-# Every element a vote group sits in, one per promote_btn call site.
+# Every element a vote group sits in, one per layer: a pebble card, a sand block, a water row.
 ITEM_SELECTORS = (
-    ".lead-story",
     ".featured-item",
     ".news-cluster",
-    ".news-paragraph",
-    ".article-item",
     ".headline-item",
 )
 
 # The prose blocks the fixture draws as wide as the container, where an uncapped one
 # would run the full page width.
 PROSE_SELECTORS = (
-    ".lead-story .summary",
+    ".featured-item .summary",
     ".news-cluster .summary",
-    ".news-paragraph .summary",
-    ".article-item .summary",
     ".headline-item .summary",
 )
 
@@ -113,28 +104,25 @@ def _item(slug: str, title: str, sources: list[str], **extra) -> DigestItem:
     return DigestItem(title=title, summary=summary, sources=sources, urls=urls, **extra)
 
 
-def content(grouped_lead: bool = False) -> DigestContent:
-    """A digest with every item kind, a folded cluster and a folded headline.
+def _members(slug: str, sources: list[str]) -> list[DigestItem]:
+    """A cluster's articles, as `cluster_news` keeps them: each its own title and excerpt."""
+    return [
+        _item(f"{slug}-{n}", f"Report {n} of the {slug} topic", [source], passed_through=True)
+        for n, source in enumerate(sources)
+    ]
 
-    `grouped_lead` makes the Top story a group of two articles under one summary, each
-    drawn with its own ↗ and votes, the shape production leads with when two articles
-    on one topic reach the featured score.
-    """
+
+def content() -> DigestContent:
+    """A digest with every layer: pebble cards, sand blocks with their folds, water rows."""
     features = [_item("lead", "The lead story of the issue", ["Lead Source"], score=8.5)]
     features += [
         _item(f"feature-{n}", f"Feature story {n}", [f"Source {n}"], score=8.0 - n / 10)
         for n in range(1, 6)
     ]
     featured = [DigestSection(heading="Top", items=features)]
-    if grouped_lead:
-        members = [
-            _item(f"lead-{n}", f"Grouped lead article {n}", [f"Lead Source {n}"], score=8.6 - n)
-            for n in (1, 2)
-        ]
-        featured = [
-            DigestSection(heading="A grouped lead", summary="One summary.", items=members),
-            *(DigestSection(heading=i.title, items=[i]) for i in features[1:]),
-        ]
+    busy = _item("busy", "Busy", ["Wire A", "Wire B", "Wire C"])
+    busy_members = _members("busy", busy.sources)
+    busy.urls = [m.urls[0] for m in busy_members]
     return DigestContent(
         date=DATE,
         period=PERIOD,
@@ -143,11 +131,14 @@ def content(grouped_lead: bool = False) -> DigestContent:
         articles_included=20,
         usage=UsageStats(input_tokens=1000, output_tokens=500, api_calls=3, model="probe"),
         featured_articles=featured,
-        # The busy cluster comes first: a click on the first cluster votes on three URLs.
+        # The busy topic comes first: a click on the first sand block votes on three URLs.
+        # The quiet one was stored before members, so its fold is built from its links.
         news_clusters=[
             DigestSection(
                 heading="A busy topic",
-                items=[_item("busy", "Busy", ["Wire A", "Wire B", "Wire C"])],
+                items=[busy],
+                members=busy_members,
+                tags=["Anthropic", "AI"],
                 story_id=f"{DATE}-{PERIOD}-0",
             ),
             DigestSection(
@@ -156,17 +147,7 @@ def content(grouped_lead: bool = False) -> DigestContent:
                 story_id=f"{DATE}-{PERIOD}-1",
             ),
         ],
-        # A paragraph citing a busy unit first: a click on its first votes on three URLs.
-        news_paragraphs=[
-            NewsParagraph(
-                text="Three wires reported one event; a fourth reported another.",
-                units=[
-                    _item("unit-busy", "Busy unit", ["Wire F", "Wire G", "Wire H"]),
-                    _item("unit-quiet", "Quiet unit", ["Wire I"]),
-                ],
-            )
-        ],
-        # Between the Top story and the first area on the page: the first `.article-item`.
+        # Above the pebbles, links only: no vote group sits in Tracking.
         tracked_topics=[
             DigestSection(
                 heading="A tracked topic",
@@ -179,7 +160,7 @@ def content(grouped_lead: bool = False) -> DigestContent:
                 items=[_item(f"fan-{n}", f"Followed story {n}", ["Fan"]) for n in range(1, 3)],
             )
         ],
-        # Five radar items: with no area order they are the first rows of the one unnamed section.
+        # Five low-score read items: each is a pebble card, after the Features.
         attention_sections=[
             DigestSection(
                 heading="Worth watching",
@@ -187,8 +168,8 @@ def content(grouped_lead: bool = False) -> DigestContent:
                 items=[_item(f"radar-{n}", f"Radar item {n}", ["Blog"]) for n in range(1, 6)],
             )
         ],
-        # Three Wire rows: one with a sentence as long as the filter writes, one with a short one
-        # and a folded source list, and one the filter wrote no summary for.
+        # Three water rows: one with a sentence as long as the filter writes, one with a short
+        # one, and one the filter wrote no summary for.
         filtered_headlines=[
             _item("wire-1", "Headline one", ["Wire"], summary=LONG_WIRE_SUMMARY),
             _item(
@@ -203,9 +184,9 @@ def content(grouped_lead: bool = False) -> DigestContent:
     )
 
 
-def render_page(grouped_lead: bool = False) -> str:
+def render_page() -> str:
     with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render(content(grouped_lead))
+        return HtmlDigestWriter(Path(unused)).render(content())
 
 
 def render_archive() -> str:
@@ -223,12 +204,10 @@ def build_fixture(kind: str) -> VoteFixture:
     Every kind answers the probe signed in; `signed-in` takes every vote,
     `signed-in-largest` and `signed-in-smallest` do too on the page served at
     the largest and the smallest type size, and `vote-fails` refuses every vote.
-    Each `grouped-lead` kind is its `signed-in` twin on the page whose Top story is a group.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
-    grouped = kind.startswith("grouped-lead")
-    page, archive = render_page(grouped), render_archive()
+    page, archive = render_page(), render_archive()
     if kind.endswith("-largest"):
         page = at_largest_type_scale(page)
     if kind.endswith("-smallest"):
@@ -260,16 +239,12 @@ def build_fixture(kind: str) -> VoteFixture:
 
 
 def first_vote_urls() -> dict[str, list[str]]:
-    """What the first vote group of each item kind sends a vote for."""
-    digest = content()
-    features = [item for section in digest.featured_articles for item in section.items]
+    """What the first vote group of each layer sends a vote for."""
+    layers = layer_by_lane(content())
     return {
-        ".lead-story": features[0].urls,
-        ".featured-item": features[1].urls,
-        ".news-cluster": digest.news_clusters[0].items[0].urls,
-        ".news-paragraph": digest.news_paragraphs[0].units[0].urls,
-        ".article-item": digest.tracked_topics[0].items[0].urls,
-        ".headline-item": layout_by_area(digest).sections[0].rows[0].item.urls,
+        ".featured-item": layers.pebbles[0].item.urls,
+        ".news-cluster": layers.sand[0].vote.urls,
+        ".headline-item": layers.water[0].item.urls,
     }
 
 
@@ -362,6 +337,35 @@ const besideMeta = (group) => {
 
 
 _CHECKS: list[Check] = [
+    # Signed in, every pebble, sand block and water row shows its one vote group with both
+    # buttons drawn, and Tracking shows none. The stylesheet hides them all until the
+    # probe's {"authorized": true} lifts that gate; a gate left down is the sabotage.
+    *(
+        Check(
+            id=f"votes-shown-once-authorized-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            script="""
+                const items = ITEM_SELECTORS.flatMap((selector) => $$(selector));
+                await waitFor(() => $$(".vote-group").filter(visible).length === items.length,
+                  `${items.length} vote groups shown`);
+                const problems = items.flatMap((item) => {
+                  const shown = $$(".vote-group", item).filter(visible);
+                  const drawn = $$(".promote-btn", item).filter((b) => {
+                    const r = b.getBoundingClientRect();
+                    return visible(b) && r.width > 0 && r.height > 0;
+                  });
+                  return shown.length === 1 && drawn.length === 2
+                    ? [] : [`${item.className}: ${shown.length} groups, ${drawn.length} buttons`];
+                });
+                expect(!problems.length, problems.join("; "));
+                expect(!$$(".thematic-block .vote-group").length, "Tracking carries a vote");
+            """,
+            sabotage=restyle(".vote-group { display: none !important; }"),
+        )
+        for width in (360, 1440)
+    ),
     *(
         Check(
             id=f"votes-one-row-{width}",
@@ -423,6 +427,95 @@ _CHECKS: list[Check] = [
             sabotage=f"""$(".container").style.minWidth = "{width + 300}px";""",
         )
         for width in WIDTHS
+    ),
+    # The reading progress bar has one segment per section, and its fill grows as the
+    # reader scrolls down. A fill pinned at nothing is the sabotage.
+    *(
+        Check(
+            id=f"progress-moves-on-scroll-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script="""
+                const segments = $$(".read-progress span");
+                const sections = $$("main > .section");
+                expect(segments.length === sections.length,
+                  `${segments.length} segments for ${sections.length} sections`);
+                const filled = () => $$(".read-progress i")
+                  .reduce((sum, fill) => sum + fill.getBoundingClientRect().width, 0);
+                const settle = () => new Promise((done) =>
+                  requestAnimationFrame(() => requestAnimationFrame(done)));
+                window.scrollTo({top: 0, behavior: "instant"});
+                await settle();
+                const before = filled();
+                const half = document.documentElement.scrollHeight / 2;
+                window.scrollTo({top: half, behavior: "instant"});
+                await settle();
+                const after = filled();
+                expect(after > before + 1, `the fill went from ${before}px to ${after}px`);
+            """,
+            sabotage=restyle(".read-progress i { width: 0 !important; }"),
+        )
+        for width in (360, 1440)
+    ),
+    # On a phone the bar adds no sideways scroll, and it sits inside the site bar's box,
+    # clear of its links, so it covers nothing the sticky bar does not already cover:
+    # not the site bar's links and not a vote button scrolled beneath it.
+    Check(
+        id="progress-fits-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            await waitFor(() => $(".read-progress"), "the reading progress bar");
+            const problem = overflow("360");
+            expect(!problem, problem);
+            const bar = $(".read-progress").getBoundingClientRect();
+            expect(bar.right <= document.documentElement.clientWidth,
+              `the bar ends at ${bar.right}px`);
+        """,
+        # Absolute, not fixed: a fixed box never widens the page's scroll width.
+        sabotage=restyle(
+            ".read-progress { position: absolute !important; width: 130vw !important; }"
+        ),
+    ),
+    Check(
+        id="progress-inside-site-bar-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            const settle = () => new Promise((done) =>
+              requestAnimationFrame(() => requestAnimationFrame(done)));
+            const overlaps = (a, b) => a.left < b.right && b.left < a.right
+              && a.top < b.bottom && b.top < a.bottom;
+            const problems = [];
+            for (const top of [0, document.documentElement.scrollHeight / 2]) {
+              window.scrollTo({top, behavior: "instant"});
+              await settle();
+              const bar = $(".read-progress").getBoundingClientRect();
+              const site = $(".site-bar").getBoundingClientRect();
+              if (bar.top < site.top || bar.bottom > site.bottom || bar.height <= 0)
+                problems.push(`at ${top}: bar ${bar.top}-${bar.bottom}, `
+                  + `site bar ${site.top}-${site.bottom}`);
+              for (const link of $$(".brand, .site-nav a").filter(visible))
+                if (overlaps(bar, link.getBoundingClientRect()))
+                  problems.push(`at ${top}: covers ${link.textContent.trim() || "the brand"}`);
+              // The bar takes no pointer events, so this reads what lies beneath it: the
+              // site bar there, never a vote button or anything else of the page.
+              const y = (bar.top + bar.bottom) / 2;
+              for (let x = 1; x < bar.right; x += 10) {
+                const under = document.elementFromPoint(x, y);
+                if (under && !under.closest(".site-bar"))
+                  problems.push(`at ${top}: covers ${under.className || under.tagName} at x=${x}`);
+              }
+            }
+            expect(!problems.length, problems.join("; "));
+        """,
+        sabotage=restyle(".read-progress { top: calc(var(--bar-h) + 40vh) !important; }"),
     ),
     # Above the breakpoint the title sits beside the stats card, and in the fallback
     # font the probe renders, it must still stop short of it.
@@ -617,9 +710,9 @@ _CHECKS += [
         ),
     )
 ]
-# Each Wire row with a summary draws it on its own line below the title, and a row
+# Each water row with a summary draws it on its own line below the title, and a row
 # without one draws none; `WIRE_SUMMARIES` says which rows the fixture gave one.
-WIRE_SUMMARIES = [bool(item.summary) for item in content().filtered_headlines]
+WIRE_SUMMARIES = [bool(water.item.summary) for water in layer_by_lane(content()).water]
 EXPECT_WIRE_SUMMARIES = f"""
 const rows = $$(".headline-item");
 const wanted = {json.dumps(WIRE_SUMMARIES)};
@@ -711,30 +804,6 @@ _CHECKS += [
     for check in _CHECKS
     if check.id in {f"fits-{width}" for width in WIDTHS}
     or check.id == f"head-fits-{TIGHTEST_HEAD_WIDTH}"
-]
-
-# The checks a grouped Top story could break: its members' ↗ and votes in tap areas, and
-# its extra rows in the page width. Each twin first asserts the group is on the page, so
-# a fixture that lost it cannot pass as the single lead; its sabotage is its twin's.
-GROUPED_TWINS = (
-    *(f"fits-{width}" for width in WIDTHS),
-    *(f"fits-largest-{width}" for width in WIDTHS),
-    *(f"tap-{name}-{TAP_WIDTH}" for name in ("votes", "votes-apart", "original", "original-clear")),
-    f"tap-site-bar-{TAP_WIDTH}",
-    *(f"tap-smallest-{name}-{TAP_WIDTH}" for name in SMALLEST_TAP_TWINS),
-)
-EXPECT_GROUPED_LEAD = """expect($$(".lead-story .article-item .vote-group").length >= 2,
-    "the Top story is not a group of two articles");
-"""
-_CHECKS += [
-    dataclasses.replace(
-        check,
-        id=f"grouped-lead-{check.id}",
-        fixture=GROUPED_KINDS[check.fixture],
-        script=EXPECT_GROUPED_LEAD + check.script,
-    )
-    for check in _CHECKS
-    if check.id in GROUPED_TWINS
 ]
 
 CHECKS = [dataclasses.replace(check, preload=FORGET_VOTES + check.preload) for check in _CHECKS]

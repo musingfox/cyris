@@ -21,8 +21,8 @@ list, hashes and per-file metadata it uploads, the Discord embeds, the mail's re
 subject and both bodies, and each LLM call's model, prompt kind and the article positions
 it names. D1 is held by effect: the ordered list of statement kinds the run sent, and
 every column of every row cyris wrote, read back from the fake's sqlite file. Each scripted LLM case is paired with the receipt it must
-change, such as two high scorers reaching the uploaded page as one grouped Top story, or
-an article the per-issue cap cut staying `pending` in the fake D1.
+change, such as a grouped Top story reaching the uploaded page as one card per article,
+or an issue that cuts nothing it kept leaving no article `pending` in the fake D1.
 
 Out of scope: wording the code does not own. A test compares prompt and page prose only
 where cyris put a value into it, and never compares D1 SQL text, so rewording a prompt or

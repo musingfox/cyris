@@ -405,26 +405,17 @@ async def _run_radar(tmp_path: Path, articles: list[Article], *, areas=(), filte
     return report, content, states, summaries
 
 
-async def test_the_accepted_set_is_the_shown_set_after_the_quota(tmp_path: Path) -> None:
+async def test_a_named_area_cuts_nothing_and_every_shown_article_is_accepted(
+    tmp_path: Path,
+) -> None:
     articles = _radar_articles(7)
 
     _, content, states, summaries = await _run_radar(tmp_path, articles, areas=[_active(1, "Tech")])
 
-    urls = [a.url for a in articles]
     accepted = {u for u, s in states.items() if s == ArticleState.ACCEPTED}
-    assert accepted == digest_urls(content) == set(urls[:5])
-    assert {u for u, s in states.items() if s == ArticleState.PENDING} == set(urls[5:])
-    assert summaries[-1]["area_quota_cut"] == 2
-    assert content.articles_included == len(digest_urls(content)) == 5
-
-
-async def test_a_cut_article_with_a_synthetic_url_is_not_a_dead_link(tmp_path: Path) -> None:
-    articles = _radar_articles(7, synthetic_last=True)
-
-    _, content, _, _ = await _run_radar(tmp_path, articles, areas=[_active(1, "Tech")])
-
-    assert content.dead_link_count == 0
-    assert content.synthetic_url_count == 1
+    assert accepted == digest_urls(content) == {a.url for a in articles}
+    assert "area_quota_cut" not in summaries[-1]
+    assert content.articles_included == len(digest_urls(content)) == 7
 
 
 async def test_a_failed_stamp_cuts_nothing_and_accepts_every_shown_article(
@@ -438,28 +429,9 @@ async def test_a_failed_stamp_cuts_nothing_and_accepts_every_shown_article(
 
     _, content, states, summaries = await _run_radar(tmp_path, articles, areas=[_active(1, "Tech")])
 
-    assert summaries[-1]["area_quota_cut"] == 0
     assert content.articles_included == 7
     assert set(states.values()) == {ArticleState.ACCEPTED}
     assert digest_urls(content) == {a.url for a in articles}
-
-
-async def test_a_failed_cap_keeps_every_shown_article_and_logs_its_own_failure(
-    tmp_path: Path, monkeypatch, caplog
-) -> None:
-    def fail(*args, **kwargs):
-        raise RuntimeError("cap broke")
-
-    monkeypatch.setattr("cyris.service_layer.run_digest.cap_lower_layers", fail)
-    articles = _radar_articles(7)
-
-    _, content, states, summaries = await _run_radar(tmp_path, articles, areas=[_active(1, "Tech")])
-
-    assert summaries[-1]["area_quota_cut"] == 0
-    assert set(states.values()) == {ArticleState.ACCEPTED}
-    assert digest_urls(content) == {a.url for a in articles}
-    assert "Capping area rows failed" in caplog.text
-    assert "Stamping areas failed" not in caplog.text
 
 
 async def test_a_json_run_accepts_and_shows_every_article(tmp_path: Path) -> None:
@@ -471,7 +443,7 @@ async def test_a_json_run_accepts_and_shows_every_article(tmp_path: Path) -> Non
     assert digest_urls(content) == {a.url for a in articles}
 
 
-async def test_a_filter_rejected_article_stays_rejected_past_the_quota(tmp_path: Path) -> None:
+async def test_a_filter_rejected_article_stays_rejected_in_a_named_area(tmp_path: Path) -> None:
     articles = _radar_articles(7)
     rejected = Article(
         id=8,

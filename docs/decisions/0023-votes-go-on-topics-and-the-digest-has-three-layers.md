@@ -67,7 +67,9 @@ Every `read` or `follow` article is its own pebble, even when its topic has othe
 `read` articles of one topic are two pebbles, and a topic's `skim` articles form its sand or water
 beside them. A pebble links to the sand or water of its topic, and every vote among them goes to
 the one topic id. A continuing topic with one `skim` article in this issue is water. A low-scoring
-`read` article is still a pebble.
+`read` article is still a pebble. A pebble shows its source name, because a `follow` source or a
+newsletter is why the reader subscribed and a synthetic `newsletter:` URL has no link; sand and
+water name a source only inside the fold (owner, 2026-10-29).
 
 **A vote is on a topic id.** Every layer has one vote group, and it writes to the topic, even
 where the topic has one article. The id carries across issues, and each vote's weight halves
@@ -150,7 +152,6 @@ the plan.
   change.
 * The filter's batching and criteria: whether batches run in order and pass new topic names on,
   and changing "drop follow-ups with no new information" to "keep every article of a topic".
-* Whether a pebble shows its source name.
 * Whether Clef stays at all. Only "Clef does not spread topic votes" is decided; Clef as a
   preference source is exclusive with the order above for now.
 * How a topic vector is computed, if embeddings remain a safety net: the member mean pulls large
@@ -175,8 +176,9 @@ the plan.
   `experiments/split_merge.py`).
 * Bad, because a page with no output cap grows with intake; only `max_articles_per_digest`
   bounds it.
-* Neutral, because the area skeleton, the news paragraphs and the output caps stay in the code
-  until the tickets that retire them land; until then new issues still run ADR-0022.
+* Neutral, because the area skeleton stays in the code for the mail and Discord until the
+  tickets that retire it land. In #138 the web page stopped using it, and the news paragraphs
+  and the output caps were removed.
 
 ### Confirmation
 

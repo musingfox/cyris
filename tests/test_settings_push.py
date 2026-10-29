@@ -37,9 +37,9 @@ def test_an_empty_d1_gets_every_key_from_a_complete_file(tmp_path: Path, d1: Sql
     result, config_path = _push(tmp_path, settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 27
+    assert len(D1Settings(d1).all()) == 24
     assert result.stdout.rstrip().endswith(
-        f"Added 27 of 27 settings from {config_path}; 0 kept; 0 still missing."
+        f"Added 24 of 24 settings from {config_path}; 0 kept; 0 still missing."
     )
 
 
@@ -54,24 +54,24 @@ def test_a_row_d1_holds_is_kept_whatever_the_file_says(tmp_path: Path, d1: Sqlit
 
 
 def test_an_invalid_file_value_writes_nothing(tmp_path: Path, d1: SqliteD1) -> None:
-    result, config_path = _push(tmp_path, settings_toml(**{"digest.max_featured": 0}))
+    result, config_path = _push(tmp_path, settings_toml(**{"digest.max_articles_per_digest": 0}))
 
     assert result.exit_code == 1
-    assert f"{config_path}: digest.max_featured: " in result.stderr
+    assert f"{config_path}: digest.max_articles_per_digest: " in result.stderr
     assert D1Settings(d1).all() == {}
 
 
 def test_an_undecodable_row_is_replaced_from_the_file(tmp_path: Path, d1: SqliteD1) -> None:
     d1.query(
         "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
-        ["digest.max_featured", '"not json', "2026-09-19T00:00:00+00:00"],
+        ["digest.max_articles_per_digest", '"not json', "2026-09-19T00:00:00+00:00"],
     )
 
     result, _ = _push(tmp_path, settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert D1Settings(d1).all()["digest.max_featured"] == 5
-    assert "  added    digest.max_featured = 5" in result.stdout
+    assert D1Settings(d1).all()["digest.max_articles_per_digest"] == 200
+    assert "  added    digest.max_articles_per_digest = 200" in result.stdout
 
 
 def test_a_key_in_neither_home_is_reported_missing(tmp_path: Path, d1: SqliteD1) -> None:
@@ -127,7 +127,7 @@ def test_a_d1_deployments_file_is_still_read(tmp_path: Path, d1: SqliteD1) -> No
     result, _ = _push(tmp_path, '[store]\nbackend = "d1"\n\n' + settings_toml())
 
     assert result.exit_code == 0, result.output
-    assert len(D1Settings(d1).all()) == 27
+    assert len(D1Settings(d1).all()) == 24
 
 
 EFFORT = "llm_provider.reasoning_effort"
@@ -141,7 +141,7 @@ def test_an_effort_in_neither_home_is_reported_as_default_not_missing(
     assert result.exit_code == 0, result.output
     assert f"  default  {EFFORT} — in neither D1 nor {config_path}" in result.stdout
     assert result.stdout.rstrip().endswith(
-        f"Added 26 of 27 settings from {config_path}; 0 kept; 0 still missing."
+        f"Added 23 of 24 settings from {config_path}; 0 kept; 0 still missing."
     )
     assert EFFORT not in D1Settings(d1).all()
 
