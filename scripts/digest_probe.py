@@ -428,6 +428,95 @@ _CHECKS: list[Check] = [
         )
         for width in WIDTHS
     ),
+    # The reading progress bar has one segment per section, and its fill grows as the
+    # reader scrolls down. A fill pinned at nothing is the sabotage.
+    *(
+        Check(
+            id=f"progress-moves-on-scroll-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script="""
+                const segments = $$(".read-progress span");
+                const sections = $$("main > .section");
+                expect(segments.length === sections.length,
+                  `${segments.length} segments for ${sections.length} sections`);
+                const filled = () => $$(".read-progress i")
+                  .reduce((sum, fill) => sum + fill.getBoundingClientRect().width, 0);
+                const settle = () => new Promise((done) =>
+                  requestAnimationFrame(() => requestAnimationFrame(done)));
+                window.scrollTo({top: 0, behavior: "instant"});
+                await settle();
+                const before = filled();
+                const half = document.documentElement.scrollHeight / 2;
+                window.scrollTo({top: half, behavior: "instant"});
+                await settle();
+                const after = filled();
+                expect(after > before + 1, `the fill went from ${before}px to ${after}px`);
+            """,
+            sabotage=restyle(".read-progress i { width: 0 !important; }"),
+        )
+        for width in (360, 1440)
+    ),
+    # On a phone the bar adds no sideways scroll, and it sits inside the site bar's box,
+    # clear of its links, so it covers nothing the sticky bar does not already cover:
+    # not the site bar's links and not a vote button scrolled beneath it.
+    Check(
+        id="progress-fits-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            await waitFor(() => $(".read-progress"), "the reading progress bar");
+            const problem = overflow("360");
+            expect(!problem, problem);
+            const bar = $(".read-progress").getBoundingClientRect();
+            expect(bar.right <= document.documentElement.clientWidth,
+              `the bar ends at ${bar.right}px`);
+        """,
+        # Absolute, not fixed: a fixed box never widens the page's scroll width.
+        sabotage=restyle(
+            ".read-progress { position: absolute !important; width: 130vw !important; }"
+        ),
+    ),
+    Check(
+        id="progress-inside-site-bar-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            const settle = () => new Promise((done) =>
+              requestAnimationFrame(() => requestAnimationFrame(done)));
+            const overlaps = (a, b) => a.left < b.right && b.left < a.right
+              && a.top < b.bottom && b.top < a.bottom;
+            const problems = [];
+            for (const top of [0, document.documentElement.scrollHeight / 2]) {
+              window.scrollTo({top, behavior: "instant"});
+              await settle();
+              const bar = $(".read-progress").getBoundingClientRect();
+              const site = $(".site-bar").getBoundingClientRect();
+              if (bar.top < site.top || bar.bottom > site.bottom || bar.height <= 0)
+                problems.push(`at ${top}: bar ${bar.top}-${bar.bottom}, `
+                  + `site bar ${site.top}-${site.bottom}`);
+              for (const link of $$(".brand, .site-nav a").filter(visible))
+                if (overlaps(bar, link.getBoundingClientRect()))
+                  problems.push(`at ${top}: covers ${link.textContent.trim() || "the brand"}`);
+              // The bar takes no pointer events, so this reads what lies beneath it: the
+              // site bar there, never a vote button or anything else of the page.
+              const y = (bar.top + bar.bottom) / 2;
+              for (let x = 1; x < bar.right; x += 10) {
+                const under = document.elementFromPoint(x, y);
+                if (under && !under.closest(".site-bar"))
+                  problems.push(`at ${top}: covers ${under.className || under.tagName} at x=${x}`);
+              }
+            }
+            expect(!problems.length, problems.join("; "));
+        """,
+        sabotage=restyle(".read-progress { top: calc(var(--bar-h) + 40vh) !important; }"),
+    ),
     # Above the breakpoint the title sits beside the stats card, and in the fallback
     # font the probe renders, it must still stop short of it.
     *(

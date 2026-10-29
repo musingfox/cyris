@@ -1,0 +1,31 @@
+    <script>
+    // Reading progress (UI spec section 4): one segment per section of the issue, as wide
+    // as its share of the page, filled as far as the bottom of the window has reached.
+    (() => {
+        const sections = [...document.querySelectorAll('main > .section')];
+        if (!sections.length) return;
+        const bar = document.createElement('div');
+        bar.className = 'read-progress';
+        bar.setAttribute('aria-hidden', 'true');
+        const segments = sections.map(() => {
+            const segment = document.createElement('span');
+            segment.append(document.createElement('i'));
+            bar.append(segment);
+            return segment;
+        });
+        document.body.append(bar);
+        const update = () => {
+            const seen = window.scrollY + window.innerHeight;
+            sections.forEach((section, i) => {
+                const top = section.getBoundingClientRect().top + window.scrollY;
+                const height = section.offsetHeight || 1;
+                const read = Math.min(1, Math.max(0, (seen - top) / height));
+                segments[i].style.flexGrow = height;
+                segments[i].firstChild.style.width = `${read * 100}%`;
+            });
+        };
+        addEventListener('scroll', update, {passive: true});
+        addEventListener('resize', update);
+        update();
+    })();
+    </script>

@@ -1080,6 +1080,13 @@ EXPECTED_DIGEST_IDS = {
 # The three layers: once signed in, each pebble, sand block and water row shows one vote.
 EXPECTED_DIGEST_IDS |= {f"votes-shown-once-authorized-{width}" for width in (360, 1440)}
 
+# The reading progress bar: it fills on scroll, and on a phone it fits inside the site bar.
+EXPECTED_DIGEST_IDS |= {
+    *(f"progress-moves-on-scroll-{width}" for width in (360, 1440)),
+    "progress-fits-360",
+    "progress-inside-site-bar-360",
+}
+
 # The Wire's summaries: drawn below each title, and wrapping inside the row on a phone.
 EXPECTED_DIGEST_IDS |= {
     "wire-summary-below-title-375",
