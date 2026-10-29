@@ -110,49 +110,6 @@
             max-width: var(--measure-wide);
         }
 
-        /* === LEAD STORY === */
-        .lead-story {
-            position: relative;
-            border: 1px solid var(--border);
-            background: linear-gradient(180deg, var(--surface) 0%, var(--bg-elev) 100%);
-            padding: var(--s-8) var(--s-12);
-            overflow: hidden;
-        }
-
-        .lead-story::after {
-            content: "";
-            position: absolute;
-            left: 0; top: 0; bottom: 0;
-            width: 3px;
-            background: var(--accent);
-        }
-
-        .lead-story h2 {
-            font-family: var(--font-sans);
-            font-size: calc(clamp(28px, 4vw, 46px) * var(--type-scale));
-            font-weight: 600;
-            line-height: 1.1;
-            letter-spacing: -0.025em;
-            margin: var(--s-3) 0 var(--s-5);
-        }
-
-        .lead-story h2 a {
-            color: var(--text);
-            text-decoration: none;
-            background: none;
-            border: none;
-            transition: color var(--t-fast);
-        }
-
-        .lead-story h2 a:hover { color: var(--accent); }
-
-        .lead-story .summary {
-            font-size: calc(18px * var(--type-scale));
-            line-height: 1.65;
-            color: var(--text-dim);
-            max-width: var(--measure-wide);
-        }
-
         /* === META ROWS === */
         /* One row model for every item: flex, so a vote group is a flex item
            whatever display the vote probe gives it. Its type is the .label role. */
@@ -173,12 +130,6 @@
            would reach over the source names and votes beside it (spec section 4). */
         .orig { display: inline-flex; justify-content: center; min-width: 44px; position: relative; }
         .orig::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
-
-        .meta.ruled {
-            margin-top: var(--s-6);
-            padding-top: var(--s-5);
-            border-top: 1px dashed var(--border-strong);
-        }
 
         /* === ITEM TITLES (spec title role; the class sets 18 or 19px) === */
         .item-title {
@@ -250,17 +201,6 @@
 
         .news-cluster h3 { margin-bottom: var(--s-2); }
 
-        /* A news paragraph is drawn as a cluster without its heading (ui-language.md §6). */
-        .news-paragraph {
-            border-left: 2px solid var(--border-strong);
-            padding: var(--s-4) 0 var(--s-4) var(--s-5);
-            margin-bottom: var(--s-5);
-        }
-
-        /* Each cited unit's row has its own votes, whose 44px tap areas reach past the
-           drawn buttons; the gap keeps one row's from covering the next row's. */
-        .citations { display: flex; flex-direction: column; gap: var(--s-3); }
-
         .news-cluster .summary {
             font-size: calc(18px * var(--type-scale));
             color: var(--text-dim);
@@ -269,15 +209,7 @@
             max-width: var(--measure-wide);
         }
 
-        .news-paragraph .summary {
-            font-size: calc(18px * var(--type-scale));
-            color: var(--text-dim);
-            line-height: 1.65;
-            margin-bottom: var(--s-2);
-            max-width: var(--measure-wide);
-        }
-
-        /* === ARTICLE ITEM (Thematic) === */
+        /* === TRACKING === */
         .thematic-block {
             margin-bottom: var(--s-8);
         }
@@ -302,15 +234,7 @@
 
         .article-item:last-child { border-bottom: none; }
 
-        .article-item h3, .article-item h4 { margin-bottom: var(--s-2); }
-
-        .article-item .summary {
-            font-size: calc(18px * var(--type-scale));
-            color: var(--text-dim);
-            margin-bottom: var(--s-3);
-            line-height: 1.65;
-            max-width: var(--measure-wide);
-        }
+        .article-item h4 { margin-bottom: var(--s-2); }
 
         /* === HEADLINES (compact terminal-list) === */
         .headlines-compact {
@@ -380,7 +304,6 @@
         @media (max-width: 720px) {
             .section { margin-bottom: var(--s-12); }
             .headline-block { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
-            .lead-story { padding: var(--s-6) var(--s-5); }
         }
         {% include "_promote.css.j2" %}
 

@@ -717,17 +717,13 @@ TYPE_ROLES = [
     (9, "digest", ".issue-title", "clamp(56px, 8.75vw, 119px)"),
     (10, "digest", ".stats-card", "14px"),
     (12, "digest", ".section-tag", "12px"),
-    (17, "digest", ".lead-story h2", "clamp(28px, 4vw, 46px)"),
-    (18, "digest", ".lead-story .summary", "18px"),
     (19, "digest", ".meta", "12px"),
     (20, "digest", ".item-title.lg", "19px"),
     (21, "digest", ".featured-item .summary", "18px"),
     (23, "digest", ".pill", "12px"),
     (25, "digest", ".news-cluster .summary", "18px"),
-    (49, "digest", ".news-paragraph .summary", "18px"),
     (27, "digest", ".thematic-block h3::before", "12px"),
     (28, "digest", ".item-title", "18px"),
-    (29, "digest", ".article-item .summary", "18px"),
     (34, "digest", ".headline-item", "14px"),
     (35, "digest", ".headline-item .idx", "14px"),
     (48, "digest", ".headline-item .summary", "14px"),
@@ -793,7 +789,6 @@ def test_the_raw_page_head_is_the_prototype_page_head() -> None:
 @pytest.mark.parametrize(
     "key",
     [
-        "@media (max-width: 720px) | .lead-story",
         "@media (max-width: 720px) | .site-nav .label",
     ],
 )
@@ -827,17 +822,12 @@ def test_every_item_title_takes_the_title_role_from_one_rule() -> None:
     assert per_kind == []
 
 
-def test_every_meta_row_is_one_base_rule_and_the_lead_names_its_variant() -> None:
+def test_every_meta_row_is_one_base_rule() -> None:
     digest = _parsed("digest")
-    assert sorted(key for key in digest if ".meta" in key) == [".meta", ".meta.ruled"]
+    assert sorted(key for key in digest if ".meta" in key) == [".meta"]
     layout = {"display: flex", "flex-wrap: wrap", "align-items: center", "gap: var(--s-3)"}
     # A meta row speaks in the one label voice, so its type is the .label rule's, exactly.
     assert digest[".meta"] == layout | digest[".label"]
-    assert digest[".meta.ruled"] == {
-        "margin-top: var(--s-6)",
-        "padding-top: var(--s-5)",
-        "border-top: 1px dashed var(--border-strong)",
-    }
 
 
 def test_the_masthead_is_the_prototype_digest_head() -> None:
@@ -941,10 +931,8 @@ def test_every_footer_is_the_prototype_footer(page: str) -> None:
 # Every block of digest prose: the empty or degraded note and each item's summary.
 DIGEST_PROSE = (
     ".issue-note",
-    ".lead-story .summary",
     ".featured-item .summary",
     ".news-cluster .summary",
-    ".article-item .summary",
 )
 
 
@@ -957,19 +945,6 @@ def test_the_prototype_prose_stops_at_the_measure() -> None:
     prototype = parse_style_block(PROTOTYPE.read_text())
     assert "max-width: var(--measure-wide)" in prototype[".summary"]
     assert [key for key, rules in prototype.items() if "max-width: 70ch" in rules] == []
-
-
-def test_the_lead_story_is_the_prototype_lead_card() -> None:
-    digest = _parsed("digest")
-    assert [key for key in digest if ".lead-story::before" in key] == []
-    assert _declared(digest[".lead-story::after"], "box-shadow") == []
-    assert "padding: var(--s-8) var(--s-12)" in digest[".lead-story"]
-    assert _declared(digest[".lead-story"], "margin-bottom") == []
-    assert digest["@media (max-width: 720px) | .lead-story"] == {"padding: var(--s-6) var(--s-5)"}
-    title = digest[".lead-story h2"]
-    assert _declared(title, "max-width") == []
-    assert {"line-height: 1.1", "margin: var(--s-3) 0 var(--s-5)"} <= set(title)
-    assert {"color: var(--text-dim)", "line-height: 1.65"} <= set(digest[".lead-story .summary"])
 
 
 def test_archive_rows_are_the_prototype_rows_and_wrap_them_on_phones() -> None:
