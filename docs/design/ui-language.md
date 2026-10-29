@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-10-20
+updated: 2026-10-29
 ---
 
 # cyris UI design spec
@@ -322,7 +322,13 @@ out. Each section is one `<section class="section">`, and its name is printed on
   because a topic is something the reader asked to see.
 - **A pebble is one article's card.** `.featured-item`, in the `.featured-grid`: its title link, its
   own summary (an article the model wrote no summary for shows its excerpt, and the issue counts as
-  degraded), its tags, then its meta row. Stories are the read lane's summarized articles in the
+  degraded), its tags, then its meta row. The card is a flex column and its last child, the meta
+  row, takes `margin-top: auto`, so the cards of one grid row, which the grid draws one height,
+  end in meta rows that share their bottom edge however long each summary runs; the digest
+  probe's `pebble-meta-bottoms-1440` holds it. A refused vote's notice follows the meta row, so
+  while one shows, the meta row is the child before it and keeps the slack, and the notice sits
+  right below it (`pebble-vote-error-under-meta-1440`). The flex column stops margins collapsing,
+  so the card's tags row drops its own top margin and keeps the summary's. Stories are the read lane's summarized articles in the
   content's order, then the read lane's low-score rows by score, then the follow lane.
 - **A sand block is one topic of two or more articles.** `.news-cluster`: the topic's heading, one
   line saying what happened, its tags, then a meta row holding the fold and the votes. The fold is a

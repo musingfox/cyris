@@ -167,7 +167,19 @@
             padding: var(--s-6);
             transition: background-color var(--t-fast);
             position: relative;
+            /* A column, so the meta row can take the space a shorter card leaves: the
+               cards of one grid row are one height, and their meta rows line up at the foot. */
+            display: flex;
+            flex-direction: column;
         }
+
+        /* The meta row is the last child, or the one before a refused vote's notice; it
+           is named by position because every .meta shares one base rule
+           (tests/test_ui_spec.py). The :not keeps the notice from sharing the slack. */
+        .featured-item > :last-child:not(.vote-error), .featured-item > :has(+ .vote-error) { margin-top: auto; }
+        /* A flex column does not collapse margins: the summary's margin alone keeps the
+           space above the tags that the block layout's collapse left there. */
+        .featured-item .tags { margin-top: 0; }
 
         .featured-item:hover {
             background: var(--surface);

@@ -245,7 +245,10 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .item-title a:hover { color: var(--accent); }
 /* The grid lines live on the cards, so a short last row leaves blank page, not a filled block. */
 .featured-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
-.featured-item { background: var(--bg-elev); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: var(--s-6); transition: background-color var(--t-fast); }
+.featured-item { display: flex; flex-direction: column; background: var(--bg-elev); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: var(--s-6); transition: background-color var(--t-fast); }
+/* The meta row takes what a shorter card leaves, so one grid row's meta rows share their foot. */
+.featured-item > :last-child:not(.vote-error), .featured-item > :has(+ .vote-error) { margin-top: auto; }
+.featured-item .tags { margin-top: 0; }
 .featured-item:hover { background: var(--surface); }
 .featured-item h3 { margin-bottom: var(--s-3); }
 .featured-item .summary { margin-bottom: var(--s-4); }
