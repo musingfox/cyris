@@ -132,6 +132,8 @@ def test_a_cluster_of_one_article_is_a_water_row_keeping_its_story_and_tags() ->
 
 
 def test_a_filtered_headline_is_a_water_row_after_the_single_clusters() -> None:
+    # A stand-in until topic-store-and-votes: clusters and headlines come from two model
+    # calls and are preference-ranked apart, so no order across them exists to keep yet.
     headline = _item("wire", passed_through=True, tags=["t"])
     content = _content(news_clusters=[_cluster("one", 1)], filtered_headlines=[headline])
 
