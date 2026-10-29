@@ -581,6 +581,33 @@ _CHECKS: list[Check] = [
         """,
         sabotage=restyle(".featured-item > :last-child { margin-top: auto !important; }"),
     ),
+    # The reading progress bar spans the site bar's inner width, the column its brand and
+    # links sit in, not the whole window. A bar stretched edge to edge is the sabotage.
+    *(
+        Check(
+            id=f"progress-in-column-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script="""
+                await waitFor(() => $(".read-progress"), "the reading progress bar");
+                const inner = $(".site-bar-inner");
+                const style = getComputedStyle(inner);
+                const box = inner.getBoundingClientRect();
+                const left = box.left + parseFloat(style.paddingLeft);
+                const right = box.right - parseFloat(style.paddingRight);
+                const bar = $(".read-progress span:first-child").getBoundingClientRect();
+                const end = $(".read-progress span:last-child").getBoundingClientRect();
+                expect(Math.abs(bar.left - left) <= 1 && Math.abs(end.right - right) <= 1,
+                  `segments span ${bar.left}-${end.right}, the site bar's column ${left}-${right}`);
+            """,
+            sabotage=restyle(
+                ".read-progress { max-width: none !important; padding: 0 !important; }"
+            ),
+        )
+        for width in (1440, 2000)
+    ),
     # Above the breakpoint the title sits beside the stats card, and in the fallback
     # font the probe renders, it must still stop short of it.
     *(

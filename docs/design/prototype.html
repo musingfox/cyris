@@ -514,8 +514,9 @@ table.src td.areas-pos-cell { width: 1%; }
 .graph-node.down { fill: color-mix(in srgb, var(--text-dim) calc(50% + 50% * var(--b)), var(--text-faint)); }
 .graph-node.mixed { fill: none; stroke: var(--text-dim); stroke-width: 1.5; }
 .graph-label { fill: var(--text); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); }
-.read-progress { position: fixed; top: calc(var(--bar-h) - 3px); left: 0; right: 0; z-index: 11; height: 3px; display: flex; gap: var(--s-1); pointer-events: none; }
+.read-progress { position: fixed; top: calc(var(--bar-h) - 3px); left: 0; right: 0; z-index: 11; max-width: 1240px; height: 3px; margin: 0 auto; padding: 0 var(--s-4); display: flex; pointer-events: none; }
 .read-progress span { flex: 1 1 0; min-width: 0; background: var(--border-strong); }
+.read-progress span + span { border-left: 1px solid var(--bg); }
 .read-progress i { display: block; width: 0; height: 100%; background: var(--accent); }
 </style>
 </head>
