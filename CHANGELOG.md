@@ -17,9 +17,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one on the `json` backend, go straight to `/settings` as before.
 - Your votes can order each issue. With **Order by your votes** on (`/settings`,
   Digest) and vote similarity on, the headlines and Features closest to what you
-  voted up come first, and when an issue is full the headline closer to an
-  upvote takes the last slot. Nothing is dropped: a headline the issue leaves out
-  stays for the next one. Off keeps the model's order.
+  voted up come first. The order changes only where an item stands, never
+  whether it is shown. Off keeps the model's order.
 - The vote order can be asked of Clef. With `digest.preference_source` set to
   `clef`, Cloudflare's Clef model scores each headline and Feature the issue
   kept from its five nearest upvoted and downvoted titles, and that score
@@ -56,6 +55,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `skim`, `summarize` is `read` and `fan` is `follow`. An existing database moves to
   the new names when it next starts. A config or request that still says `tier` is
   refused, and the error names the lane to write instead.
+- **The digest page is three layers.** After Tracking, which now lists its hits as
+  links only, come Stories, one card per `read` or `follow` article with its
+  source name, and a `read` article's tags from this run; Topics, one block per
+  news topic of two or more articles, whose articles and their sources stay
+  folded; and Headlines, one row per
+  single-article topic or kept headline. The page shows no score and no Top story,
+  each item has one vote group, and a bar along the site bar shows how far you
+  have read. Areas no longer divide the page.
+- **Nothing the run kept is cut from an issue.** The issue's article limit, the
+  Features cap and the per-area quotas are gone; only the per-run intake limit,
+  `digest.max_articles_per_digest`, bounds an issue. An article the old caps left
+  pending for a later issue now appears in this one.
+- **An issue's article count counts articles.** `Included` on the page, the
+  archive, the mail, Discord's Kept line and `usage_log` count every article URL
+  the page shows, so a topic of three reports is three, not one. Issues stored
+  before keep the count they were saved with.
+- The mail and Discord no longer receive news paragraphs: they draw news as topic
+  clusters and headline rows, as before the paragraphs, still laid out by area.
 
 ### Removed
 
@@ -64,6 +81,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   checks each Access JWT and answers `403` to a protected request without a valid
   one. Scripts sign in with an Access service token, `CYRIS_ACCESS_CLIENT_ID` and
   `CYRIS_ACCESS_CLIENT_SECRET`, in place of the token.
+- The settings `digest.max_featured`, `digest.max_articles_per_digest_output` and
+  `digest.units_per_paragraph` are gone, with their `/settings` fields, as are
+  the news paragraph step and the per-area quotas. A stored D1 row of one of
+  them is ignored.
 
 ### Fixed
 
@@ -89,6 +110,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Upgrading
 
 - Redeploy `workers/rss`. cyris works with either Worker version.
+- Delete `max_featured`, `max_articles_per_digest_output` and
+  `units_per_paragraph` from `[digest]` in `cyris.toml`. A key left there, and a
+  D1 row of one, is ignored, so nothing breaks before you do.
 - Call `GET /stats` once after deploying, so the new `fetched_at` index builds
   before the next hourly read.
 - A source added after the deploy backfills its feed's recent history into the
