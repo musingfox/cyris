@@ -200,10 +200,20 @@
         }
 
         /* === NEWS CLUSTERS === */
+        /* Sand fills the column as the pebble grid does: 480px is the narrowest block
+           that still reads as a paragraph, and two of them with the gap are the most
+           the 1240px column holds, so it is two columns on a desktop and one on a phone. */
+        .sand-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+            gap: var(--s-5) var(--s-8);
+            /* A block's left rule ends with its own text, not the row's taller neighbour. */
+            align-items: start;
+        }
+
         .news-cluster {
             border-left: 2px solid var(--border-strong);
             padding: var(--s-4) 0 var(--s-4) var(--s-5);
-            margin-bottom: var(--s-5);
             transition: border-color var(--t-fast);
         }
 
@@ -425,6 +435,7 @@
 
             <section class="section">
                 <h2 class="section-tag"><span class="label">Topics</span></h2>
+                <div class="sand-grid">
                 {% for sand in layers.sand %}
                 <div class="news-cluster" lang="{{ content_lang }}">
                     <h3 class="item-title lg">{{ sand.heading }}</h3>
@@ -436,6 +447,7 @@
                     </div>
                 </div>
                 {% endfor %}
+                </div>
             </section>
             {%- endif %}
 

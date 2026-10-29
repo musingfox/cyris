@@ -608,6 +608,40 @@ _CHECKS: list[Check] = [
         )
         for width in (1440, 2000)
     ),
+    # The sand blocks fill the column as a grid: two side by side on a desktop, one above
+    # the other on a phone, with no sideways scroll there.
+    Check(
+        id="sand-side-by-side-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        act="await signedIn();",
+        script="""
+            const [a, b] = $$(".news-cluster").map((block) => block.getBoundingClientRect());
+            expect(a && b, "fewer than two sand blocks");
+            expect(Math.abs(a.top - b.top) <= 1 && b.left >= a.right,
+              `first at ${a.left},${a.top}, second at ${b.left},${b.top}`);
+        """,
+        sabotage=restyle(".sand-grid { display: block !important; }"),
+    ),
+    Check(
+        id="sand-stacks-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            const [a, b] = $$(".news-cluster").map((block) => block.getBoundingClientRect());
+            expect(a && b, "fewer than two sand blocks");
+            expect(b.top >= a.bottom, `second starts at ${b.top}, first ends at ${a.bottom}`);
+            const problem = overflow("360");
+            expect(!problem, problem);
+        """,
+        sabotage=restyle(
+            ".sand-grid { display: grid !important;"
+            " grid-template-columns: repeat(2, 300px) !important; }"
+        ),
+    ),
     # Above the breakpoint the title sits beside the stats card, and in the fallback
     # font the probe renders, it must still stop short of it.
     *(

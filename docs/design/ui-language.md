@@ -365,6 +365,14 @@ out. Each section is one `<section class="section">`, and its name is printed on
   `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`, with no column count set at any width. The Stories
   grid lines are drawn on each card's right and bottom edges, so when the last row is not full, the empty
   cells are the page background, not a solid block of border colour.
+- **Sand blocks fill the column as a grid:** `.sand-grid` holds them with
+  `repeat(auto-fit, minmax(min(100%, 480px), 1fr))` and an `--s-5` row and `--s-8` column gap, so the
+  1240px column holds two side by side and a phone one, with no column count and no breakpoint; a
+  window under about 1024px, whose column is under 992px, holds one. 480px
+  is the narrowest block that still reads as a paragraph, and three of them with their gaps would
+  need more than 1240px. Each block keeps the prose measure inside it. Until 2026-10-29 the blocks
+  were stacked, and at `--measure-wide` a block's line used about the left half of the column under a
+  two-column Stories grid. The digest probe's `sand-side-by-side-1440` and `sand-stacks-360` hold it.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
 - **Prose stops at `--measure-wide`.** Every summary and the empty or degraded
   note is at most `--measure-wide` wide, so a line stays readable when the container is 1240px; a card
