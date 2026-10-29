@@ -1,0 +1,4 @@
+{
+  "_comment": "The words a wire dateline ends in, just before its closing bracket, as in （中央社首爾29日綜合外電報導） or （中央社記者…電）. degrade.strip_dateline builds its pattern from them: the bracket pair at the very start of the text, its length cap and the day of the month it must carry are the shape, in code; these are the words. Add a wire's own closing word here, never a regex.",
+  "endings": ["電", "報導"]
+}

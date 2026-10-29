@@ -186,6 +186,24 @@ class TestClusterNews:
         assert all(m.passed_through for m in clusters[0].members)
         assert clusters[0].items[0].urls == [m.urls[0] for m in clusters[0].members]
 
+    async def test_the_sand_line_stand_in_skips_a_leading_wire_dateline(self, sample_news_articles):
+        wire = "<p>（中央社首爾29日綜合外電報導）南韓軍方表示，北韓今天發射一枚飛彈。</p>"
+        articles = [sample_news_articles[0].model_copy(update={"content": wire})]
+        articles += sample_news_articles[1:]
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "Missile", "summary": "s", "article_ids": [0, 1]}]}'
+        )
+
+        clusters, _ = await cluster_news(
+            articles,
+            llm,
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert clusters[0].members[0].summary == "南韓軍方表示，北韓今天發射一枚飛彈。"
+
     async def test_cluster_news_merges_reference_urls_with_store_fallback(self):
         articles = [
             Article(

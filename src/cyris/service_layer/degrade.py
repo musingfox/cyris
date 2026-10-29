@@ -7,23 +7,47 @@ Future embedding / RAG judgement can slot in as a smarter fallback than excerpts
 """
 
 import html
+import json
 import logging
 import re
 from collections import defaultdict
+from functools import cache
+from importlib.resources import files
 
 from cyris.domain.models import Article, DigestItem, DigestSection
 
 logger = logging.getLogger(__name__)
 
+# A dateline is a wire, a place, a date and at most a reporter's name, so a bracket
+# that runs past this before its closing word is an aside, which stays. The day of the
+# month is what tells it from a short bracket that merely ends in 電, such as （台電）.
+DATELINE_MAX_CHARS = 40
 
-def excerpt(content: str, length: int = 200) -> str:
+
+@cache
+def _dateline_re() -> re.Pattern[str]:
+    raw = (files(__package__) / "datelines.json").read_text(encoding="utf-8")
+    endings = "|".join(re.escape(word) for word in json.loads(raw)["endings"])
+    body = rf"(?=[^（）()]{{0,{DATELINE_MAX_CHARS}}}[）)])[^（）()]*?\d{{1,2}}日[^（）()]*?"
+    return re.compile(rf"^[（(]{body}(?:{endings})[）)]\s*")
+
+
+def strip_dateline(text: str) -> str:
+    """The text less a wire dateline in brackets at its very start, such as （中央社…電）."""
+    return _dateline_re().sub("", text, count=1)
+
+
+def excerpt(content: str, length: int = 200, *, drop_dateline: bool = False) -> str:
     """Plain-text excerpt from the start of the content — the no-LLM stand-in for a summary.
 
     Feed content is raw HTML; strip tags and decode entities so fallbacks
-    never leak markup into the digest.
+    never leak markup into the digest. `drop_dateline` strips a leading wire
+    dateline from the plain text before it is cut, so it costs none of `length`.
     """
     text = re.sub(r"<[^>]+>", " ", content or "")
     text = " ".join(html.unescape(text).split())
+    if drop_dateline:
+        text = strip_dateline(text)
     if len(text) <= length:
         return text
     return text[:length].rstrip() + "…"

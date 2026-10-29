@@ -131,6 +131,7 @@ COMPONENT_SELECTORS = frozenset(
         ".graph-label",
         ".read-progress",
         ".read-progress span",
+        ".read-progress span + span",
         ".read-progress i",
         "[hidden]",
         ".btn.sm, .brand, .site-nav a, details.more summary",

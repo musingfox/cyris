@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-10-20
+updated: 2026-10-29
 ---
 
 # cyris UI design spec
@@ -194,10 +194,11 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 |---|---|
 | **site bar** | Full width, sticky, height `--bar-h`, 1px `--border` at the bottom. On the left, the brand square (12px `--accent`, pulse animation) plus `CYRIS`; on the right, links in the label role, `Archive` · `Settings`, spaced `--s-5`. The current page is `--text` with a 1px `--accent` underline. `Settings` reuses the `/api/vote` probe and is hidden when not authorized. `Sign in` shows in its place only on an Access redirect, linking to `/login?next=` plus this page, so signing in returns here; every other probe outcome hides it, the app Worker's own 403 and a failed probe included. On /settings the brand link and `Archive` show only once the probe answers authorized, because a local `cyris triage-ui` serves no archive. At phone width the word `CYRIS` is hidden |
 | **interest graph** | Only on the interest page (§6 *interest*). Each tag is a circle that always shows its vote polarity: its fill is `--accent` for net up and `--text-dim` for net down, at half strength mixed with `--text-faint` when no hold is on it. Brightness, the tag's largest share of suppression time left, adds the other half on top, so a lit node is suppressed now and a dimmer one has less time left. A tied tag is a hollow ring in `--text-dim`. Its label is in `--text`. Edges between tags that co-occur are `--border-strong` hairlines. The page's table gives the same counts, polarity and days left in words, and is the text equivalent of the map |
-| **reading progress** | Only on the digest. A 3px strip fixed along the bottom edge of the site bar, inside its box, so it covers none of its links and nothing the bar does not already cover; it takes no pointer events and is hidden from assistive technology. One segment per section of the issue, as wide as that section's share of the page and `--s-1` apart; each is `--border-strong` and fills with `--accent` as far as the bottom of the window has passed through it. It moves only with the scroll, with no transition. Without script it is not drawn |
+| **reading progress** | Only on the digest. A 3px strip fixed along the bottom edge of the site bar, inside its box, so it covers none of its links and nothing the bar does not already cover; it takes no pointer events and is hidden from assistive technology. It spans the site bar's inner column, at most 1240px with `--s-4` inside each end as `.site-bar-inner` has, so it starts under the brand and ends under the last link rather than at the window's edges; the digest probe's `progress-in-column-*` checks hold it at 1440 and 2000px. One segment per section of the issue, as wide as that section's share of the page, divided by a 1px `--bg` hairline, so the strip reads as one line with small dividers rather than a broken one, as `--s-1` gaps made it until 2026-10-29; each is `--border-strong` and fills with `--accent` as far as the bottom of the window has passed through it. It moves only with the scroll, with no transition. Without script it is not drawn |
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em, and still takes taps over 44 × 44 (**tap area**). Pressed (`:active`) lowers opacity to .7 on top of whatever hover state the button already shows, and changes nothing else; .7 stays clear of disabled's .4, so a pressed button never reads as disabled. Disabled is always opacity .4, and a disabled button does not change on hover or press |
+| **vote button** | The ↑ and ↓ of a vote group (§4 *Interaction*, *Votes*), on the digest and raw pages: a small secondary button restyled to sit quietly beside the label-role meta text, because a filled, outlined 34px button drew the eye away from the item it votes on (2026-10-29). A `--s-6` square, its glyph centred with no padding, in `--text-dim` with no background and a transparent border. Hover, on a button neither voted nor failed, gives it the `--border-strong` border, a `--surface-2` background and `--text`; focus is the global `:focus-visible` outline; press and disabled are the button's. Voted (`.done`) shows an `--accent` glyph and border, failed (`.error`) a `--warn` glyph and border on `--warn-tint`, so a cast vote is the one that keeps a border at rest. It still takes taps over 44 × 44 (**tap area**) |
 | **tap area** | Every tap target takes taps over at least 44 × 44px, at every width, and a tap lands on exactly one target. A target drawn smaller keeps its drawn size and gets the rest from a transparent `::after`, `position: absolute`, `inset: min(0px, calc((100% - 44px) / 2))`, centred on it: the small button, the site bar's links, and the brand link, which is the 12px mark alone at phone width. Hit areas never cover each other or another target's drawn box, with one exception: the archive's `Digest` link takes taps over its whole headline card or row, and the `All articles` button sits on top of that area because it is positioned and follows `Digest` in the markup. The ↑ and ↓ votes keep their `--s-1` gap and split it at its midpoint, each taking the rest of its 44px outward, and the vote group sits `--s-2` further from what comes before it, so that outward part clears its neighbour: the arrow glyphs fall back to whatever monospace the reader has, so a gap wide enough for two centred areas would hold only for one font's width. The digest's ↗ original link is a 44px-wide box with its glyph centred, because a centred area would reach 18px over the source names and votes on either side. A settings fold's summary takes `--s-1` above it, half the field gap so the control above keeps its taps, and the rest below. A settings tab is itself at least 44px high, because its tab bar scrolls at phone width and clips anything drawn outside it. A sand block's `N articles` fold is exempt: a 44px area would cover the source links it unfolds. Text links inside a title or a line of text are exempt, as WCAG 2.5.8 exempts inline targets. The page probes' `tap-*` checks measure every target here at 375px, and the digest probe's `archive-*` checks test the `Digest` exception at 375 and 1440px |
 | **input / select** | Height 48px, `--s-4` left and right, `--bg-elev` background, 1px `--border-strong` border, `--r-control`, Geist 16px. On focus the border turns `--accent`, even on a field that failed validation; on failed validation the border turns `--warn`, with a notice below. Disabled is opacity .4, as a disabled button is |
 | **multi-line input** | `<textarea class="input">`, reusing the input's background, border, radius, font size, and its focus and failed-validation rules; its height comes from `rows`, with `--s-3` padding top and bottom, and it resizes vertically only |
@@ -322,16 +323,26 @@ out. Each section is one `<section class="section">`, and its name is printed on
   because a topic is something the reader asked to see.
 - **A pebble is one article's card.** `.featured-item`, in the `.featured-grid`: its title link, its
   own summary (an article the model wrote no summary for shows its excerpt, and the issue counts as
-  degraded), its tags, then its meta row. Stories are the read lane's summarized articles in the
+  degraded), its tags, then its meta row. The card is a flex column and its last child, the meta
+  row, takes `margin-top: auto`, so the cards of one grid row, which the grid draws one height,
+  end in meta rows that share their bottom edge however long each summary runs; the digest
+  probe's `pebble-meta-bottoms-1440` holds it. A refused vote's notice follows the meta row, so
+  while one shows, the meta row is the child before it and keeps the slack, and the notice sits
+  right below it (`pebble-vote-error-under-meta-1440`). The flex column stops margins collapsing,
+  so the card's tags row drops its own top margin and keeps the summary's. Stories are the read lane's summarized articles in the
   content's order, then the read lane's low-score rows by score, then the follow lane.
 - **A sand block is one topic of two or more articles.** `.news-cluster`: the topic's heading, one
   line saying what happened, its tags, then a meta row holding the fold and the votes. The fold is a
   `<details class="src-fold">` whose summary is `N articles` and which unfolds each member's title
   link with its source name. The line is a stand-in until the sand-what-happened ticket: the first
-  member's excerpt of up to 80 characters.
+  member's excerpt of up to 80 characters, taken after a wire dateline in brackets at the very
+  start of its text, such as `（中央社首爾29日綜合外電報導）`, which would otherwise spend most of
+  the line. A dateline carries a day of the month (`29日`), so a short bracket such as `（台電）`
+  stays (`docs/architecture.md` §5 has the words it ends in).
 - **A water row is one article: its title and the filter's one sentence.** A topic of one article is
   the exception: its row takes the cluster's heading and summary in place of the title and the
-  filter's sentence. Each row is a number, the
+  filter's sentence. A row is at least 44px tall, so a one-line row's vote tap area stops at its
+  own edge. Each row is a number, the
   title link and, below the title, the one-sentence summary the filter wrote for that article, in the
   small role (§3) under a title in `--text`; its tags follow, and the votes come last. The summary
   takes `overflow-wrap: anywhere`: an unbroken run such as a URL breaks inside it rather than widen a
@@ -357,6 +368,14 @@ out. Each section is one `<section class="section">`, and its name is printed on
   `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`, with no column count set at any width. The Stories
   grid lines are drawn on each card's right and bottom edges, so when the last row is not full, the empty
   cells are the page background, not a solid block of border colour.
+- **Sand blocks fill the column as a grid:** `.sand-grid` holds them with
+  `repeat(auto-fit, minmax(min(100%, 480px), 1fr))` and an `--s-5` row and `--s-8` column gap, so the
+  1240px column holds two side by side and a phone one, with no column count and no breakpoint; a
+  window under about 1024px, whose column is under 992px, holds one. 480px
+  is the narrowest block that still reads as a paragraph, and three of them with their gaps would
+  need more than 1240px. Each block keeps the prose measure inside it. Until 2026-10-29 the blocks
+  were stacked, and at `--measure-wide` a block's line used about the left half of the column under a
+  two-column Stories grid. The digest probe's `sand-side-by-side-1440` and `sand-stacks-360` hold it.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
 - **Prose stops at `--measure-wide`.** Every summary and the empty or degraded
   note is at most `--measure-wide` wide, so a line stays readable when the container is 1240px; a card

@@ -114,7 +114,19 @@ def _members(slug: str, sources: list[str]) -> list[DigestItem]:
 
 def content() -> DigestContent:
     """A digest with every layer: pebble cards, sand blocks with their folds, water rows."""
-    features = [_item("lead", "The lead story of the issue", ["Lead Source"], score=8.5)]
+    # The lead's summary and tags make its card taller than the two beside it, so the
+    # meta rows of one grid row only line up when the card puts its meta at the bottom.
+    lead_summary = "The lead story runs long enough to wrap across several lines of its card. " * 4
+    features = [
+        _item(
+            "lead",
+            "The lead story of the issue",
+            ["Lead Source"],
+            score=8.5,
+            summary=lead_summary.strip(),
+            tags=["Lead", "Long"],
+        )
+    ]
     features += [
         _item(f"feature-{n}", f"Feature story {n}", [f"Source {n}"], score=8.0 - n / 10)
         for n in range(1, 6)
@@ -516,6 +528,139 @@ _CHECKS: list[Check] = [
             expect(!problems.length, problems.join("; "));
         """,
         sabotage=restyle(".read-progress { top: calc(var(--bar-h) + 40vh) !important; }"),
+    ),
+    # The meta rows of the pebble cards in one grid row share their bottom edge, however
+    # tall each card's own content is. A meta row left where its content ends is the sabotage.
+    Check(
+        id="pebble-meta-bottoms-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        act="await signedIn();",
+        script="""
+            const rows = new Map();
+            for (const card of $$(".featured-item")) {
+              const top = Math.round(card.getBoundingClientRect().top);
+              rows.set(top, [...(rows.get(top) || []), card]);
+            }
+            const shared = [...rows.values()].filter((cards) => cards.length > 1);
+            expect(shared.length, "no grid row holds two cards");
+            const problems = shared.flatMap((cards) => {
+              const bottoms = cards.map((c) => $(".meta", c).getBoundingClientRect().bottom);
+              return Math.max(...bottoms) - Math.min(...bottoms) > 1 ? [bottoms.join(", ")] : [];
+            });
+            expect(!problems.length, `meta bottoms per row: ${problems.join("; ")}`);
+        """,
+        sabotage=restyle(".featured-item > :last-child { margin-top: 0 !important; }"),
+    ),
+    # A refused vote's notice follows the meta row inside the card, and the card's slack
+    # stays above the meta row, so on a short card the notice sits right below its buttons.
+    # Giving the notice a share of the slack, as a bare :last-child rule did, is the sabotage.
+    Check(
+        id="pebble-vote-error-under-meta-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        act="""
+            await signedIn();
+            const short = $$(".featured-item")[1];
+            showFailure($(".vote-group", short), VOTE_FAILED.notConfigured);
+        """,
+        script="""
+            const [lead, short] = $$(".featured-item");
+            const notice = $(".vote-error", short);
+            expect(notice, "no failure notice in the card");
+            const meta = $(".meta", short).getBoundingClientRect();
+            // The notice has no margin of its own, so it touches the row it reports on.
+            const gap = notice.getBoundingClientRect().top - meta.bottom;
+            expect(gap <= 1, `the notice sits ${gap}px below the meta row`);
+            // The card still has slack to give, so a notice that took a share would show.
+            const sameRow = lead.offsetHeight === short.offsetHeight;
+            const used = [...short.children].reduce((sum, c) => sum + c.offsetHeight, 0);
+            expect(sameRow && short.clientHeight > used + 1, "the short card has no slack");
+        """,
+        sabotage=restyle(".featured-item > :last-child { margin-top: auto !important; }"),
+    ),
+    # The reading progress bar spans the site bar's inner width, the column its brand and
+    # links sit in, not the whole window. A bar stretched edge to edge is the sabotage.
+    *(
+        Check(
+            id=f"progress-in-column-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await signedIn();",
+            script="""
+                await waitFor(() => $(".read-progress"), "the reading progress bar");
+                const inner = $(".site-bar-inner");
+                const style = getComputedStyle(inner);
+                const box = inner.getBoundingClientRect();
+                const left = box.left + parseFloat(style.paddingLeft);
+                const right = box.right - parseFloat(style.paddingRight);
+                const bar = $(".read-progress span:first-child").getBoundingClientRect();
+                const end = $(".read-progress span:last-child").getBoundingClientRect();
+                expect(Math.abs(bar.left - left) <= 1 && Math.abs(end.right - right) <= 1,
+                  `segments span ${bar.left}-${end.right}, the site bar's column ${left}-${right}`);
+            """,
+            sabotage=restyle(
+                ".read-progress { max-width: none !important; padding: 0 !important; }"
+            ),
+        )
+        for width in (1440, 2000)
+    ),
+    # The sand blocks fill the column as a grid: two side by side on a desktop, one above
+    # the other on a phone, with no sideways scroll there.
+    Check(
+        id="sand-side-by-side-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        act="await signedIn();",
+        script="""
+            const [a, b] = $$(".news-cluster").map((block) => block.getBoundingClientRect());
+            expect(a && b, "fewer than two sand blocks");
+            expect(Math.abs(a.top - b.top) <= 1 && b.left >= a.right,
+              `first at ${a.left},${a.top}, second at ${b.left},${b.top}`);
+        """,
+        sabotage=restyle(".sand-grid { display: block !important; }"),
+    ),
+    Check(
+        id="sand-stacks-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            const [a, b] = $$(".news-cluster").map((block) => block.getBoundingClientRect());
+            expect(a && b, "fewer than two sand blocks");
+            expect(b.top >= a.bottom, `second starts at ${b.top}, first ends at ${a.bottom}`);
+            const problem = overflow("360");
+            expect(!problem, problem);
+        """,
+        sabotage=restyle(
+            ".sand-grid { display: grid !important;"
+            " grid-template-columns: repeat(2, 300px) !important; }"
+        ),
+    ),
+    # A water row with no summary and no tags is one line, shorter than the 44px tap
+    # area its 24px vote buttons keep, so a short row must still be 44px tall or a tap
+    # between two rows votes on the neighbour.
+    Check(
+        id="water-row-holds-tap-area-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act=(
+            "await signedIn();"
+            " $$('.headline-item .summary, .headline-item .tags').forEach((e) => e.remove());"
+        ),
+        script="""
+            const rows = $$(".headline-item").map((row) => row.getBoundingClientRect().height);
+            expect(rows.length >= 2, "fewer than two water rows");
+            const short = rows.filter((h) => h < 44);
+            expect(!short.length, `rows of ${short.join(", ")}px are shorter than the tap area`);
+        """,
+        sabotage=restyle(".headline-item { min-height: 0 !important; }"),
     ),
     # Above the breakpoint the title sits beside the stats card, and in the fallback
     # font the probe renders, it must still stop short of it.
