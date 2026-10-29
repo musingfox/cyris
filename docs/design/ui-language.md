@@ -334,7 +334,9 @@ out. Each section is one `<section class="section">`, and its name is printed on
   line saying what happened, its tags, then a meta row holding the fold and the votes. The fold is a
   `<details class="src-fold">` whose summary is `N articles` and which unfolds each member's title
   link with its source name. The line is a stand-in until the sand-what-happened ticket: the first
-  member's excerpt of up to 80 characters.
+  member's excerpt of up to 80 characters, taken after a wire dateline in brackets at the very
+  start of its text, such as `（中央社首爾29日綜合外電報導）`, which would otherwise spend most of
+  the line (`docs/architecture.md` §5 has the words it ends in).
 - **A water row is one article: its title and the filter's one sentence.** A topic of one article is
   the exception: its row takes the cluster's heading and summary in place of the title and the
   filter's sentence. Each row is a number, the

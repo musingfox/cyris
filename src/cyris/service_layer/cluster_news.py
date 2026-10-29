@@ -42,11 +42,12 @@ def _member(article: Article, article_scores: dict[str, float] | None) -> Digest
 
     Stand-in until the sand-what-happened ticket: the summary is the article's own
     80-character excerpt, which the page shows as the sand block's one line for want
-    of a sentence written for the topic.
+    of a sentence written for the topic. A wire article opens with its dateline, which
+    would spend the line on the wire's name, so the excerpt starts after it.
     """
     return DigestItem(
         title=article.title,
-        summary=excerpt(article.content, 80) if article.content else "",
+        summary=excerpt(article.content, 80, drop_dateline=True) if article.content else "",
         sources=[article.source_name],
         urls=[article.url],
         score=(article_scores or {}).get(article.url),
