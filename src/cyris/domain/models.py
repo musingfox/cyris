@@ -273,8 +273,8 @@ class DigestContent(BaseModel):
     attention_sections: list[DigestSection] = Field(default_factory=list)
     filtered_headlines: list[DigestItem] = Field(default_factory=list)
     fan_sections: list[DigestSection] = Field(default_factory=list)
-    # The remaining news, written as paragraphs after the areas are stamped. It replaces
-    # `news_clusters` and `filtered_headlines`, which an issue from before it still holds.
+    # The news as paragraphs, from a step no run calls any more: an issue stored while it
+    # ran holds these in place of `news_clusters` and `filtered_headlines`.
     news_paragraphs: list[NewsParagraph] = Field(default_factory=list)
     # One section per tracked topic with a hit this run, headed by the topic's name.
     # Outside the issue's cap and its article count: a hit changes no article's state.

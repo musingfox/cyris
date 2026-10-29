@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 from functools import cache
 from importlib.resources import files
 
-from cyris.domain.models import Article, DigestItem
+from cyris.domain.models import Article
 
 
 @cache
@@ -177,57 +177,6 @@ def build_summarize_system_prompt(
 ) -> str:
     """Build summarize system prompt with output language and style."""
     return _finalize_system(SUMMARIZE_SYSTEM, language, style_prompt)
-
-
-NEWS_PARAGRAPH_SYSTEM = """\
-You are a news editor writing the news section of a digest as short paragraphs.
-
-Each numbered unit is one story, told by one or more reports. The reader sees your
-paragraphs, each followed by links to the units it cites.
-
-Task:
-1. Write paragraphs that together cover every unit; put related units in one paragraph
-2. Cite every unit in exactly one paragraph, by its number
-3. Keep the units' order: they come most relevant to the reader first, and each
-   paragraph is shown where its first unit stands
-4. Aim for the number of units per paragraph the request gives
-
-Rules:
-- Use only what the units say; add no facts of your own
-- Write every paragraph in <output_language>
-
-Respond in JSON:
-{
-  "paragraphs": [
-    {"text": "<paragraph in <output_language>>", "units": [<unit number>, ...]}
-  ]
-}
-"""
-
-
-def build_news_paragraph_system_prompt(language: str, *, style_prompt: str) -> str:
-    """Build the news paragraph system prompt with output language and style."""
-    return _finalize_system(NEWS_PARAGRAPH_SYSTEM, language, style_prompt)
-
-
-def build_news_paragraph_prompt(
-    units: Sequence[Sequence[DigestItem]], *, units_per_paragraph: int
-) -> str:
-    """Build the user prompt for one batch of news units.
-
-    Args:
-        units: Each unit's member items.
-        units_per_paragraph: The reader's target number of units per paragraph.
-    """
-    lines = [f"Aim for about {units_per_paragraph} units per paragraph.", ""]
-    # Positional ids, as in build_filter_prompt: the unit's first report on the id's
-    # line, each further report of the same story indented under it.
-    for i, members in enumerate(units):
-        for n, m in enumerate(members):
-            text = f"{m.title}: {m.summary}" if m.summary else m.title
-            lead = f"[{i}]" if n == 0 else "   +"
-            lines.append(f"{lead} ({' · '.join(dict.fromkeys(m.sources))}) {text}")
-    return "\n".join(lines)
 
 
 NEWS_CLUSTER_SYSTEM = """\
