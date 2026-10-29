@@ -112,7 +112,8 @@ class DigestItem(BaseModel):
     passed_through: bool = False
     # The reader's area for this item, by name: stamped after the pipeline, never by it.
     area: str | None = None
-    # The article's normalized tags, shown on its row or card. Nothing fills it yet.
+    # The tags scoring gave the article this run, shown on its card; only read-lane items
+    # carry them, and an article scored in an earlier run carries none.
     tags: list[str] = Field(default_factory=list)
 
     @property

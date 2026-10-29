@@ -294,6 +294,53 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
     assert deps.store.get_by_urls(["https://example.com/cloud"])[0].state == ArticleState.PENDING
 
 
+async def test_a_dry_run_shows_the_scoring_tags_on_the_pebble_and_stores_none(
+    tmp_path: Path,
+) -> None:
+    article = Article(
+        id=3,
+        title="Chip export rules",
+        url="https://example.com/chips",
+        content="New export rules for chips.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_lane=Lane.READ,
+        source_tags=["tech"],
+    )
+    scores = [{"id": 3, "score": 80, "language": "en", "tags": ["Chips", "Export Rules"]}]
+    section = {
+        "heading": "Trade",
+        "summary": "Chips.",
+        "summaries": {"0": "The rules, briefly."},
+        "article_ids": [0],
+    }
+    llm = FakeLLM([json.dumps({"scores": scores}), json.dumps({"sections": [section]})])
+    deps, _ = make_deps(tmp_path, llm, FakeSource([article]))
+    deps.store.save([article])
+
+    class RecordingTagStore:
+        def __init__(self) -> None:
+            self.saved: list[dict] = []
+
+        def save(self, url_to_tags) -> None:
+            self.saved.append(dict(url_to_tags))
+
+    tag_store = RecordingTagStore()
+    deps = replace(deps, tag_store=tag_store)
+
+    report = await run_digest(deps, RunOptions(dry_run=True))
+
+    assert report.rendered is not None
+    card = report.rendered[report.rendered.index('<article class="featured-item"') :]
+    card = card[: card.index("</article>")]
+    assert "Chip export rules" in card
+    assert re.findall(r'<span class="pill" lang="">([^<]*)</span>', card) == [
+        "chips",
+        "export rules",
+    ]
+    assert tag_store.saved == []
+
+
 async def test_publish_outcome_reaches_discord(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -8,6 +8,7 @@ from cyris.domain.models import (
     NO_LLM_MODEL,
     Article,
     DigestContent,
+    DigestSection,
     Lane,
     ProcessResult,
     SourceConfig,
@@ -48,6 +49,15 @@ def _story_id(date: str, period: str, member_urls: list[str]) -> str:
     return f"{date}-{period}-{membership}"
 
 
+def _stamp_tags(sections: list[DigestSection], article_tags: Mapping[str, list[str]]) -> None:
+    """Give each item the tags of its articles, in order, each tag once."""
+    for section in sections:
+        for item in section.items:
+            item.tags = list(
+                dict.fromkeys(tag for url in item.urls for tag in article_tags.get(url, []))
+            )
+
+
 class DigestPipeline:
     """Stage-based pipeline for digest articles.
 
@@ -81,6 +91,7 @@ class DigestPipeline:
         *,
         timezone: str,
         article_scores: dict[str, float] | None = None,
+        article_tags: Mapping[str, list[str]] | None = None,
         preference: PreferenceSource | None = None,
         date: str | None = None,
     ) -> ProcessResult:
@@ -94,6 +105,8 @@ class DigestPipeline:
             sources: Source configs keyed by name.
             period: Digest period ("morning" or "evening").
             timezone: IANA timezone for date formatting.
+            article_tags: The tags scoring gave each article this run, by URL; each
+                read-lane item carries its articles' tags.
             preference: Scores the articles this issue kept, by URL, to order the
                 Features, the news clusters and the headlines; None keeps the order
                 of the score and the model.
@@ -202,6 +215,8 @@ class DigestPipeline:
 
         # Follow lane: passthrough, grouped by source, never scored/filtered/summarized
         follow_sections = build_follow_sections(follow_lane)
+
+        _stamp_tags([*summaries, *attention], article_tags or {})
 
         total_included = (
             len(filtered)

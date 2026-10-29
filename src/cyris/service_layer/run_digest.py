@@ -507,14 +507,19 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     total_usage = UsageStats(model=cfg.app.llm_provider.model or NO_LLM_MODEL)
     area_picks: dict[str, AreaPick] = {}
 
-    persist_tags = None
-    if not options.dry_run and deps.tag_store is not None:
+    # Kept in memory for the page whether or not anything stores them: a dry run, or
+    # a deployment with no tag store, still shows each article's tags.
+    scoring_tags: dict[str, list[str]] = {}
+    save_tags = not options.dry_run and deps.tag_store is not None
 
-        def persist_tags(url_to_tags) -> None:
-            try:
-                deps.tag_store.save(url_to_tags)
-            except Exception as e:
-                logger.warning("Failed to persist scoring tags: %s", e)
+    def persist_tags(url_to_tags) -> None:
+        scoring_tags.update(url_to_tags)
+        if not save_tags:
+            return
+        try:
+            deps.tag_store.save(url_to_tags)
+        except Exception as e:
+            logger.warning("Failed to persist scoring tags: %s", e)
 
     persist_scores = None if options.dry_run else store.update_scores
     if rerun:
@@ -694,6 +699,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         timezone=tz,
         date=options.rerun_of or options.date,
         article_scores=article_scores,
+        article_tags=scoring_tags,
         preference=order,
     )
     content = result.content
