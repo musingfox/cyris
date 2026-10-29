@@ -4,6 +4,7 @@ import logging
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.domain.tags import NEWS_TAG, normalize_tags
+from cyris.service_layer.degrade import excerpt
 from cyris.service_layer.parse import echoed_position
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import (
@@ -34,6 +35,24 @@ def filter_news(articles: list[Article]) -> tuple[list[Article], list[Article]]:
             non_news_articles.append(article)
 
     return news_articles, non_news_articles
+
+
+def _member(article: Article, article_scores: dict[str, float] | None) -> DigestItem:
+    """One article of a cluster, as the page's fold and the sand line read it.
+
+    Stand-in until the sand-what-happened ticket: the summary is the article's own
+    80-character excerpt, which the page shows as the sand block's one line for want
+    of a sentence written for the topic.
+    """
+    return DigestItem(
+        title=article.title,
+        summary=excerpt(article.content, 80) if article.content else "",
+        sources=[article.source_name],
+        urls=[article.url],
+        score=(article_scores or {}).get(article.url),
+        ref_urls=article.ref_urls,
+        passed_through=True,
+    )
 
 
 async def cluster_news(
@@ -101,7 +120,7 @@ async def cluster_news(
             tags = normalize_tags(raw_tags) if isinstance(raw_tags, list) else []
 
             items = []
-            members = []
+            members: list[Article] = []
             sources = []
             urls = []
             scores = []
@@ -151,6 +170,7 @@ async def cluster_news(
                         heading=heading,
                         items=items,
                         tags=tags,
+                        members=[_member(a, article_scores) for a in members],
                     )
                 )
 

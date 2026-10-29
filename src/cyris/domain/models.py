@@ -112,6 +112,8 @@ class DigestItem(BaseModel):
     passed_through: bool = False
     # The reader's area for this item, by name: stamped after the pipeline, never by it.
     area: str | None = None
+    # The article's normalized tags, shown on its row or card. Nothing fills it yet.
+    tags: list[str] = Field(default_factory=list)
 
     @property
     def link(self) -> str | None:
@@ -135,6 +137,10 @@ class DigestSection(BaseModel):
     # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
     # news clusters; None everywhere else and on digests rendered before stories.
     story_id: str | None = None
+    # A news cluster's articles, one item each, beside the one merged item in `items`
+    # that carries the cluster's vote. Empty everywhere else and on clusters stored
+    # before it, whose members are only the merged item's URLs.
+    members: list[DigestItem] = Field(default_factory=list)
 
 
 class NewsParagraph(BaseModel):

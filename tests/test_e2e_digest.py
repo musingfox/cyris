@@ -564,8 +564,9 @@ def test_every_saved_item_takes_the_area_of_its_source(receipts) -> None:
     items = _digest_items(json.loads(issue["content"]))
     summary = json.loads(receipts.runs[0]["summary"])
     assert items and all(item["area"] == TECH_AREA["name"] for item in items)
-    # The stamp runs before the area quota, so it also counted the one unit the quota cut.
-    assert summary["area_stamp"] == {"picked": 0, "source": len(items) + 1, "none": 0}
+    # The stamp runs before the area quota, so it also counted the one unit the quota cut,
+    # and before the paragraphs, so it counted the two members of the cluster they replace.
+    assert summary["area_stamp"] == {"picked": 0, "source": len(items) + 3, "none": 0}
 
 
 def test_the_settings_and_sources_are_read_and_never_written(receipts) -> None:

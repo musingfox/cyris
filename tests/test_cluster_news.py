@@ -155,6 +155,37 @@ class TestClusterNews:
         assert usage.input_tokens == 100
         assert usage.output_tokens == 50
 
+    async def test_each_cluster_keeps_its_members_as_articles(self, sample_news_articles):
+        long_text = "<p>" + "word " * 40 + "</p>"
+        articles = [sample_news_articles[0].model_copy(update={"content": long_text})]
+        articles += sample_news_articles[1:]
+        llm = FakeLLM(
+            '{"clusters": [{"heading": "Layoffs", "summary": "s", "article_ids": [1, 0]}]}'
+        )
+
+        clusters, _ = await cluster_news(
+            articles,
+            llm,
+            article_scores={"https://example.com/101": 6.0},
+            snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        first, second = clusters[0].members
+        assert (first.title, first.sources, first.urls) == (
+            "Another Tech Firm Cuts Jobs",
+            ["Bloomberg"],
+            ["https://example.com/102"],
+        )
+        assert first.summary == articles[1].content
+        assert second.urls == ["https://example.com/101"]
+        assert second.score == 6.0
+        # The sand line's stand-in: an 80-character plain excerpt, the article's own text.
+        assert second.summary == ("word " * 16).rstrip() + "…"
+        assert all(m.passed_through for m in clusters[0].members)
+        assert clusters[0].items[0].urls == [m.urls[0] for m in clusters[0].members]
+
     async def test_cluster_news_merges_reference_urls_with_store_fallback(self):
         articles = [
             Article(
