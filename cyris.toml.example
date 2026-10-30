@@ -47,7 +47,7 @@ rank_by_preference = true               # order headlines and Features by your t
 preference_source = "cosine"            # who judges that order: cosine (your topic votes) or clef (needs a Workers AI token and [vote_similarity])
 summarize_follow = false                # explain each follow-lane article as read articles are
 vote_half_life_days = 7                 # a topic vote counts half as much after this many days
-topic_lifetime_days = 7                 # a topic with no new article for this many days has ended
+topic_lifetime_days = 7                 # topics seen within this many days are current; one you voted up stays longer
 
 [agent_vault]
 path = "./agent-vault"
