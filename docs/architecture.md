@@ -356,9 +356,9 @@ articles. Because the cut is relative to the window,
 more votes do not suppress more articles by themselves (ADR-0017). The seeds are the newest
 `max_seeds` human-stamped articles per side, one per topic (§4 *Topic members*): a vote on a topic
 stamps every member, and its newest-stamped member stands for it, so a 15-article topic takes one
-seed, not 15. It is the only personalization in the
-pipeline, and it acts twice: here it suppresses, and with the vote order on its verdicts also order
-the issue (below). Prompt-level preference learning was removed on 2026-08-27 because it had never
+seed, not 15. Here it suppresses; its only other use is the nearest votes it hands Clef when
+`preference_source = "clef"`. The issue's order comes from topic votes, not from its verdicts
+(below). Prompt-level preference learning was removed on 2026-08-27 because it had never
 produced a profile. Each flagged candidate leaves a row in `suppressions` (§4) that holds it for
 `SUPPRESSION_CLOCK_DAYS` (7) days from the run's start; before it drops candidates, every run reads
 the holds not yet expired and keeps those candidates out of the digest, whatever its own window
