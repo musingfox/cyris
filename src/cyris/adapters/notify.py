@@ -5,8 +5,9 @@ import re
 
 import httpx
 
-from cyris.adapters.output.html_digest import Story, _stories, citation_links, section_label
-from cyris.domain.area_layout import AreaSection, layout_by_area
+from cyris.adapters.output.html_digest import Story, citation_links
+from cyris.domain.area_layout import AreaSection
+from cyris.domain.layers import Pebble, Sand, Water, layer_by_lane
 from cyris.domain.models import (
     NO_LLM_MODEL,
     DigestContent,
@@ -172,6 +173,46 @@ def _render_area_section(section: AreaSection) -> str:
     return "\n".join(part for part in parts if part).strip()
 
 
+def _render_tracking(topic: DigestSection) -> str:
+    """A tracked topic as the page draws it: its name, then each hit's title link alone."""
+    hits = [f"- {_linked(item.title, item.link)}" for item in topic.items]
+    return "\n".join([f"### {topic.heading}", *hits, ""])
+
+
+def _render_pebble(pebble: Pebble) -> str:
+    """A pebble's card: its title link, its summary, then its source, the one layer naming it."""
+    item = pebble.item
+    lines = [f"### {_linked(item.title, item.link)}"]
+    if item.summary:
+        lines.append(item.summary)
+    if item.sources:
+        lines.append(f"*{', '.join(item.sources)}*")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_sand(sand: Sand) -> str:
+    """A topic block: its heading, its line, then its articles, where their sources are named."""
+    lines = [f"### {sand.heading}"]
+    if sand.line:
+        lines.append(sand.line)
+    for member in sand.members:
+        source = f" · *{', '.join(member.sources)}*" if member.sources else ""
+        lines.append(f"- {_linked(member.title, member.link)}{source}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_water(water: Water) -> list[str]:
+    """A row: its title link, then its sentence cut short; no source, as on the page."""
+    item = water.item
+    lines = [f"- **{_linked(item.title, item.link)}**"]
+    if item.summary:
+        summary = item.summary if len(item.summary) <= 80 else item.summary[:80] + "…"
+        lines.append(f"  {summary}")
+    return lines
+
+
 def build_discord_embeds(
     content: DigestContent, digest_url: str = "", publish_failed: bool = False
 ) -> list[dict]:
@@ -179,30 +220,24 @@ def build_discord_embeds(
 
     Returns a list of embed dicts, uncapped: `build_discord_payload` holds them to
     Discord's limits.
-    The embeds follow the page (docs/design/ui-language.md): the Top story, then one
-    embed per area section in its order, an empty section left out. The stats come last.
+    The embeds follow the page (docs/design/ui-language.md §6 *digest*): Tracking, then
+    the three layers of `layer_by_lane`, Stories, Topics and Headlines, an empty one left
+    out. The stats come last. `_fit_embeds` cuts from the end, so when the message runs
+    out of room the Headlines go first and the Stories last.
     """
     label = period_label(content.period)
+    layers = layer_by_lane(content)
+    blocks = [
+        ("Tracking", [_render_tracking(topic) for topic in layers.tracking], 0xE67E22),
+        ("Stories", [_render_pebble(pebble) for pebble in layers.pebbles], 0xF1C40F),
+        ("Topics", [_render_sand(sand) for sand in layers.sand], 0x5865F2),
+        ("Headlines", ["\n".join(_render_water(water)) for water in layers.water], 0x5865F2),
+    ]
     embeds: list[dict] = []
-
-    layout = layout_by_area(content)
-    headline = _stories(layout.headline) if layout.headline else []
-    text = "\n".join(_render_story_embed(story) for story in headline).strip()
-    if text:
-        embeds.append({"title": "⭐ Top story", "description": text, "color": 0xF1C40F})
-
-    for section in layout.sections:
-        text = _render_area_section(section)
+    for title, parts, color in blocks:
+        text = "\n".join(parts).strip()
         if text:
-            embeds.append(
-                {
-                    "title": UNNAMED_SECTION_TITLE
-                    if section.role == "unnamed"
-                    else section_label(section),
-                    "description": text,
-                    "color": 0x5865F2,
-                }
-            )
+            embeds.append({"title": title, "description": text, "color": color})
 
     # --- Stats ---
     pct = (

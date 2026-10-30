@@ -6,9 +6,10 @@ import logging
 import httpx
 import pytest
 import respx
+from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
 from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
-from cyris.domain.models import DigestContent, DigestItem, DigestSection
+from cyris.domain.models import DigestContent, DigestItem
 
 pytestmark = pytest.mark.unit
 
@@ -144,86 +145,49 @@ class TestDigestMail:
         assert "Publishing the online edition failed" in text
         assert "http" not in text
 
-    @staticmethod
-    def _areas_issue() -> DigestContent:
-        def card(title: str, area: str) -> DigestSection:
-            url = f"https://a.test/{title}"
-            item = DigestItem(title=title, summary="", sources=["S"], urls=[url], area=area)
-            return DigestSection(heading=title, items=[item])
-
-        content = _content()
-        content.area_order = ["Tech", "Health"]
-        content.featured_articles = [
-            card("Lead", "Tech"),
-            card("TechCard", "Tech"),
-            card("HealthCard", "Health"),
-        ]
-        content.news_clusters = [
-            DigestSection(
-                heading="Tech Cluster",
-                items=[DigestItem(title="C", summary="", sources=["S"], urls=[], area="Tech")],
-            )
-        ]
-        content.filtered_headlines = [
-            DigestItem(title="Unfiled", summary="", sources=["S"], urls=["https://u.test/1"])
-        ]
-        return content
-
-    def test_the_text_part_lists_each_area_in_the_stored_order(self):
-        _, text = build_digest_mail(self._areas_issue())
+    def test_the_text_part_is_tracking_then_the_three_layers(self):
+        _, text = build_digest_mail(four_layer_issue())
 
         lines = text.splitlines()
-        labels = [line for line in lines if line in ("Top story", "Tech", "Health", "Other")]
-        assert labels == ["Top story", "Tech", "Health", "Other"]
-        at = lines.index("Tech")
-        assert lines[at : lines.index("Health")] == [
-            "Tech",
-            "- TechCard — https://a.test/TechCard",
-            "- Tech Cluster",
+        assert lines[lines.index("Tracking") :] == [
+            "Tracking",
+            "- Tracked topic",
+            "  - A tracked hit — https://tracked.example.test/hit",
             "",
-        ]
-        assert lines[lines.index("Health") : lines.index("Other")] == [
-            "Health",
-            "- HealthCard — https://a.test/HealthCard",
+            "Stories",
+            "- A long read — https://pebble.example.test/read",
+            "  Why it matters.",
+            "  SRC-PEBBLE",
+            "- A followed post — https://fan.example.test/post",
+            "  SRC-FAN",
             "",
+            "Topics",
+            "- Two reports of one event",
+            "  Excerpt a",
+            "  - Report a — https://wire-a.example.test/a (SRC-WIRE-a)",
+            "  - Report b — https://wire-b.example.test/b (SRC-WIRE-b)",
+            "",
+            "Headlines",
+            "- One report — https://lone.example.test/1",
+            "  Its summary.",
+            "- A headline — https://headline.example.test/1",
+            "  The filter's sentence.",
         ]
 
-    def test_the_text_part_lists_a_clusters_heading_under_its_area(self):
-        _, text = build_digest_mail(self._areas_issue())
-
-        lines = text.splitlines()
-        assert lines.index("Tech") < lines.index("- Tech Cluster") < lines.index("Health")
-
-    def test_the_text_part_without_an_area_order_has_no_label_but_top_story(self):
-        content = _content()
-        content.featured_articles = [
-            DigestSection(
-                heading="Lead", items=[DigestItem(title="Lead", summary="", sources=["S"], urls=[])]
-            ),
-            DigestSection(
-                heading="Card", items=[DigestItem(title="Card", summary="", sources=["S"], urls=[])]
-            ),
-        ]
+    def test_an_empty_layer_has_no_label(self):
+        content = four_layer_issue().model_copy(update={"news_clusters": [], "tracked_topics": []})
 
         _, text = build_digest_mail(content)
 
-        assert text.splitlines()[-2:] == ["", "- Card"]
-        assert "Top story" in text.splitlines()
+        labels = {"Tracking", "Stories", "Topics", "Headlines"}
+        assert [line for line in text.splitlines() if line in labels] == ["Stories", "Headlines"]
 
-    def test_the_text_part_puts_unplaced_entries_under_other_last(self):
-        _, text = build_digest_mail(self._areas_issue())
+    def test_no_source_is_named_outside_a_pebble_or_a_sand_member(self):
+        _, text = build_digest_mail(four_layer_issue())
+        outside = [line for line in text.splitlines() if not line.startswith("  - Report")]
 
-        assert text.splitlines()[-2:] == ["Other", "- Unfiled — https://u.test/1"]
-
-    @pytest.mark.parametrize("area_order", [[], ["Tech", "Health"]], ids=["no-areas", "areas"])
-    def test_no_old_section_label_is_a_line_of_its_own(self, area_order):
-        content = self._areas_issue()
-        content.area_order = area_order
-
-        _, text = build_digest_mail(content)
-
-        old = {"Features", "In Focus", "Following", "On the Radar", "The Wire"}
-        assert not old & set(text.splitlines())
+        for source in UNNAMED_SOURCES:
+            assert not any(source in line for line in outside), source
 
     def test_the_text_part_puts_a_wire_rows_summary_on_the_line_below_it(self):
         content = _content()
@@ -243,25 +207,6 @@ class TestDigestMail:
             "  One sentence.",
             "- Wire Two — https://w.test/2",
         ]
-
-    def test_the_text_part_lists_a_groups_articles_under_its_heading(self):
-        content = _content()
-        content.featured_articles = [
-            DigestSection(
-                heading="Group heading",
-                summary="s",
-                items=[
-                    DigestItem(title=t, summary="s", sources=["S"], urls=[f"https://g.test/{t}"])
-                    for t in ("A", "B")
-                ],
-            )
-        ]
-
-        _, text = build_digest_mail(content)
-
-        assert (
-            "Top story\n- Group heading\n  - A — https://g.test/A\n  - B — https://g.test/B" in text
-        )
 
     @respx.mock
     async def test_it_sends_through_the_rest_api(self):
@@ -393,49 +338,6 @@ class TestDigestMailText:
         sent = json.loads(route.calls.last.request.content)
         assert (self.DEGRADED in sent["text"]) is degraded
 
-    def test_every_story_of_the_top_story_sits_before_the_first_area(self):
-        headline = DigestSection(
-            heading="Top",
-            summary=None,
-            items=[
-                DigestItem(
-                    title=t, summary=f"{t} summary.", sources=["S"], urls=[f"https://h.test/{t}"]
-                )
-                for t in ("X1", "X2", "X3")
-            ],
-        )
-        feature = DigestSection(
-            heading="F",
-            items=[
-                DigestItem(
-                    title="Tech Feature",
-                    summary="F.",
-                    sources=["S"],
-                    urls=["https://h.test/feature"],
-                    area="Tech",
-                )
-            ],
-        )
-        content = _content().model_copy(
-            update={
-                "featured_articles": [headline, feature],
-                "area_order": ["Tech"],
-                "filtered_headlines": [],
-                "news_clusters": [],
-                "attention_sections": [],
-                "fan_sections": [],
-                "thematic_summaries": [],
-            }
-        )
-
-        _, text = build_digest_mail(content)
-        lines = text.splitlines()
-        top = lines.index("Top story")
-        block = lines[top : lines.index("Tech")]
-
-        for title in ("X1", "X2", "X3"):
-            assert any(line.startswith(f"- {title} ") for line in block)
-
 
 class TestAlertMail:
     @respx.mock
@@ -550,9 +452,10 @@ def _paragraph_issue():
     )
 
 
-def test_the_plain_text_part_lists_each_paragraph_then_its_links() -> None:
+def test_the_plain_text_part_takes_a_legacy_paragraphs_layers_from_its_units() -> None:
     _, body = build_digest_mail(_paragraph_issue())
-    assert (
-        "World\nA quake struck; a letter followed.\n"
-        "  Wire A — https://a.test/quake\n  Wire B — https://b.test/quake\n  Letters"
-    ) in body
+    assert body.endswith(
+        "Topics\n- Quake\n  A quake struck; a letter followed.\n"
+        "  - Wire A — https://a.test/quake\n  - Wire B — https://b.test/quake\n"
+        "\nHeadlines\n- Letter"
+    )
