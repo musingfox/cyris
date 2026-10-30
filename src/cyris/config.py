@@ -191,6 +191,8 @@ class DigestConfig(BaseModel):
     # Which judge scores the vote order: cosine is vote similarity's title match, clef
     # is the Workers AI model; an issue clef cannot fully score falls back to cosine.
     preference_source: Literal["cosine", "clef"]
+    # Whether follow-lane articles get the read lane's explanation; false keeps their excerpt.
+    summarize_follow: bool
 
 
 class AgentVaultConfig(BaseModel):

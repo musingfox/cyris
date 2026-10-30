@@ -27,6 +27,8 @@ _TEST_VALUES: dict[str, Any] = {
     "digest.type_scale": 1,
     # Off: the model's order, which every test not about the vote order asserts.
     "digest.rank_by_preference": False,
+    # Off: follow articles keep their excerpt, which every test not about the switch asserts.
+    "digest.summarize_follow": False,
     "digest.preference_source": "cosine",
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
@@ -50,7 +52,7 @@ def pipeline_settings(**overrides: Any) -> dict[str, Any]:
         "featured_threshold": TEST_SETTINGS["routing.score_threshold"],
         "output_language": TEST_SETTINGS["digest.output_language"],
         "style_prompt": TEST_SETTINGS["digest.style_prompt"],
-        "summarize_follow": False,
+        "summarize_follow": TEST_SETTINGS["digest.summarize_follow"],
         **overrides,
     }
 

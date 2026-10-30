@@ -518,6 +518,19 @@ class TestPlainValues:
         assert body["field"] == "digest.preference_source"
         assert settings.calls == []
 
+    async def test_the_summarize_follow_switch_is_stored_as_a_boolean(self, settings):
+        client = await _client(settings)
+
+        res = await client.post(
+            "/api/settings/values", json={"values": {"digest.summarize_follow": True}}
+        )
+        body = await res.json()
+        await client.close()
+
+        assert res.status == 200
+        assert body["values"] == {"digest.summarize_follow": True}
+        assert settings.calls == [{"digest.summarize_follow": True}]
+
     async def test_the_type_size_as_a_string_is_refused(self, settings):
         client = await _client(settings)
 
