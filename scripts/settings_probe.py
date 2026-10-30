@@ -364,6 +364,8 @@ _PROBE_VALUES = {
     "digest.rank_by_preference": False,
     "digest.summarize_follow": False,
     "digest.preference_source": "cosine",
+    "digest.vote_half_life_days": 7,
+    "digest.topic_lifetime_days": 7,
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,

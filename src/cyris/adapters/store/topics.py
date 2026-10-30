@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from cyris.adapters.store.d1 import D1Queryable, chunk_rows
-from cyris.domain.models import TopicRecord, TopicVote
+from cyris.domain.models import TopicRecord, TopicSummary, TopicTag, TopicVote
 
 # `WHERE article_url IN (?, ...)`, kept under D1's 100 bound parameters.
 _URLS_PER_STATEMENT = 90
@@ -95,3 +95,43 @@ class D1TopicStore:
             )
             written += self._db.query(sql, [v for row in chunk for v in row]).changes
         return written
+
+    def topic_votes(self) -> list[TopicVote]:
+        rows = self._db.query("SELECT topic_id, direction, clicked_at FROM topic_votes").rows
+        return [TopicVote.model_validate(r) for r in rows]
+
+    def recent_topics(self, since: datetime, until: datetime) -> list[TopicSummary]:
+        rows = self._db.query(
+            "SELECT id, name, last_seen FROM topics WHERE last_seen >= ? AND last_seen <= ? "
+            "ORDER BY last_seen, id",
+            [_iso(since), _iso(until)],
+        ).rows
+        return self._with_tags(rows)
+
+    def topics_by_ids(self, ids: list[str]) -> list[TopicSummary]:
+        rows: list[dict] = []
+        unique = list(dict.fromkeys(ids))
+        for i in range(0, len(unique), _URLS_PER_STATEMENT):
+            batch = unique[i : i + _URLS_PER_STATEMENT]
+            marks = ", ".join("?" * len(batch))
+            sql = f"SELECT id, name, last_seen FROM topics WHERE id IN ({marks})"
+            rows += self._db.query(sql, batch).rows
+        return self._with_tags(rows)
+
+    def _with_tags(self, rows: list[dict]) -> list[TopicSummary]:
+        tags: dict[str, list[TopicTag]] = {}
+        ids = [r["id"] for r in rows]
+        for i in range(0, len(ids), _URLS_PER_STATEMENT):
+            batch = ids[i : i + _URLS_PER_STATEMENT]
+            sql = (
+                "SELECT topic_id, tag, kind FROM topic_tags "
+                f"WHERE topic_id IN ({', '.join('?' * len(batch))}) ORDER BY tag"
+            )
+            for r in self._db.query(sql, batch).rows:
+                tags.setdefault(r["topic_id"], []).append(TopicTag(tag=r["tag"], kind=r["kind"]))
+        return [
+            TopicSummary(
+                id=r["id"], name=r["name"], last_seen=r["last_seen"], tags=tags.get(r["id"], [])
+            )
+            for r in rows
+        ]

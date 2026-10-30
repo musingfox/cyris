@@ -110,3 +110,35 @@ def test_d1_chunks_an_issue_larger_than_one_statement_can_bind() -> None:
     store.save_topics("2026-10-30", "morning", topics, T0)
 
     assert len(store.topics_of_urls([f"u{i}" for i in range(120)])) == 120
+    assert len(store.topics_by_ids([f"t{i}" for i in range(120)])) == 120
+
+
+def test_recent_topics_are_those_last_seen_in_the_window_with_their_tags(store) -> None:
+    tags = (("kmt", TopicKind.ENTITY), ("taiwan", TopicKind.REGION))
+    store.save_topics("2026-10-20", "morning", [_topic("old", "u1")], T0 - timedelta(days=10))
+    store.save_topics("2026-10-30", "morning", [_topic("now", "u2", tags=tags)], T0)
+    store.save_topics("2026-10-31", "morning", [_topic("later", "u3")], T0 + timedelta(days=1))
+
+    (topic,) = store.recent_topics(T0 - timedelta(days=7), T0)
+
+    assert (topic.id, topic.name, topic.last_seen) == ("now", "NOW", T0)
+    assert [(t.tag, t.kind) for t in topic.tags] == [
+        ("kmt", TopicKind.ENTITY),
+        ("taiwan", TopicKind.REGION),
+    ]
+
+
+def test_topics_by_ids_names_only_stored_topics(store) -> None:
+    store.save_topics("2026-10-30", "morning", [_topic("a", "u1")], T0)
+
+    assert [t.id for t in store.topics_by_ids(["a", "missing"])] == ["a"]
+
+
+def test_every_recorded_vote_reads_back(store) -> None:
+    votes = [
+        TopicVote(topic_id="a", direction=1, clicked_at=T0),
+        TopicVote(topic_id="b", direction=-1, clicked_at=T0 + timedelta(hours=1)),
+    ]
+    store.record_topic_votes(votes)
+
+    assert sorted(store.topic_votes(), key=lambda v: v.topic_id) == votes

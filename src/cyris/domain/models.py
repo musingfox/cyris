@@ -408,6 +408,15 @@ class TopicRecord(BaseModel):
     tags: list[TopicTag] = Field(default_factory=list)
 
 
+class TopicSummary(BaseModel):
+    """A stored topic as a later issue reads it: its name, when it was last seen, its tags."""
+
+    id: str
+    name: str
+    last_seen: datetime
+    tags: list[TopicTag] = Field(default_factory=list)
+
+
 class TopicVote(BaseModel):
     """A reader's vote on a topic, at the time they clicked."""
 

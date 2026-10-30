@@ -185,14 +185,19 @@ class DigestConfig(BaseModel):
     # Every page's --type-scale. The app Worker reads it and injects it into each
     # HTML page it serves (workers/app/src/type_scale.js holds the same steps).
     type_scale: Literal[0.875, 1, 1.125]
-    # Order the headlines and Features by vote similarity's preference before the
-    # issue cap cuts them; false keeps the model's order. See docs/architecture.md §3.2.
+    # Order the headlines and Features by the reader's topic votes; false keeps the
+    # model's order. See docs/architecture.md §3.2.
     rank_by_preference: bool
-    # Which judge scores the vote order: cosine is vote similarity's title match, clef
-    # is the Workers AI model; an issue clef cannot fully score falls back to cosine.
+    # Which judge scores the vote order: cosine, a stored name kept, is the topic order
+    # (ADR-0023); clef is the Workers AI model, and an issue it cannot fully score
+    # falls back to the topic order.
     preference_source: Literal["cosine", "clef"]
     # Whether follow-lane articles get the read lane's explanation; false keeps their excerpt.
     summarize_follow: bool
+    # Option I's two clocks (ADR-0023): a topic vote halves every `vote_half_life_days`,
+    # and the topics last seen within `topic_lifetime_days` are the recent ones.
+    vote_half_life_days: int = Field(ge=1, le=365)
+    topic_lifetime_days: int = Field(ge=1, le=365)
 
 
 class AgentVaultConfig(BaseModel):

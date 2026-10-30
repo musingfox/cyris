@@ -30,6 +30,8 @@ _TEST_VALUES: dict[str, Any] = {
     # Off: follow articles keep their excerpt, which every test not about the switch asserts.
     "digest.summarize_follow": False,
     "digest.preference_source": "cosine",
+    "digest.vote_half_life_days": 7,
+    "digest.topic_lifetime_days": 7,
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,

@@ -8,7 +8,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from cyris.domain.models import TopicRecord, TopicVote
+from cyris.domain.models import TopicRecord, TopicSummary, TopicTag, TopicVote
 
 
 def _iso(value: datetime) -> str:
@@ -89,3 +89,35 @@ class JsonTopicStore:
             written += 1
         self._save(data)
         return written
+
+    def topic_votes(self) -> list[TopicVote]:
+        return [TopicVote.model_validate(v) for v in self._load()["votes"]]
+
+    def recent_topics(self, since: datetime, until: datetime) -> list[TopicSummary]:
+        low, high = _iso(since), _iso(until)
+        data = self._load()
+        ids = sorted(
+            (row["last_seen"], i)
+            for i, row in data["topics"].items()
+            if low <= row["last_seen"] <= high
+        )
+        return self._summaries(data, [i for _, i in ids])
+
+    def topics_by_ids(self, ids: list[str]) -> list[TopicSummary]:
+        data = self._load()
+        return self._summaries(data, [i for i in dict.fromkeys(ids) if i in data["topics"]])
+
+    @staticmethod
+    def _summaries(data: dict, ids: list[str]) -> list[TopicSummary]:
+        tags: dict[str, list[TopicTag]] = {}
+        for g in sorted(data["tags"], key=lambda g: g["tag"]):
+            tags.setdefault(g["topic_id"], []).append(TopicTag(tag=g["tag"], kind=g["kind"]))
+        return [
+            TopicSummary(
+                id=i,
+                name=data["topics"][i]["name"],
+                last_seen=data["topics"][i]["last_seen"],
+                tags=tags.get(i, []),
+            )
+            for i in ids
+        ]

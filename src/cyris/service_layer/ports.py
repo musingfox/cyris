@@ -15,6 +15,7 @@ from cyris.domain.models import (
     SourceConfig,
     StoredArticle,
     TopicRecord,
+    TopicSummary,
     TopicVote,
     UsageStats,
 )
@@ -148,6 +149,18 @@ class TopicRepository(Protocol):
 
     def record_topic_votes(self, votes: list[TopicVote]) -> int:
         """Append votes; one with the same topic and click time is already recorded."""
+        ...
+
+    def topic_votes(self) -> list[TopicVote]:
+        """Every recorded vote; one per click, so the table stays small."""
+        ...
+
+    def recent_topics(self, since: datetime, until: datetime) -> list[TopicSummary]:
+        """Topics last seen in [since, until], with their tags."""
+        ...
+
+    def topics_by_ids(self, ids: list[str]) -> list[TopicSummary]:
+        """The named topics that are stored, with their tags."""
         ...
 
 

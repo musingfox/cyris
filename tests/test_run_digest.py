@@ -32,8 +32,10 @@ from cyris.domain.models import (
     DigestSection,
     Lane,
     StoredArticle,
+    TopicVote,
     UsageStats,
 )
+from cyris.domain.topics import topic_id
 from cyris.service_layer.ports import NoulAnswer
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 from cyris.utils.timezone import now_in_timezone
@@ -2735,6 +2737,11 @@ class _FakeClef:
 _CLEF_ANSWERS = {"Leans disliked": 0.5, "Leans liked": 0.1, "Clef pick": 0.9}
 
 
+# The issue's date is named, so the test knows the stand-in topic ids the run will mint.
+_RANKED_RUN = RunOptions(date="2026-10-30")
+_LIKED_TOPIC = topic_id("2026-10-30", "morning", [_LEANS_LIKED])
+
+
 def _ranking_deps(
     tmp_path: Path,
     *,
@@ -2772,6 +2779,7 @@ def _ranking_deps(
             record_similarity=None,
             ask_clef=ask_clef,
             log_usage=log_usage or deps.log_usage,
+            topic_store=JsonTopicStore(tmp_path / "topics"),
         )
     )
     deps.store.save(candidates)
@@ -2785,6 +2793,11 @@ def _ranking_deps(
         deps.store.accept([_LIKED])
         deps.store.reject([_DISLIKED], "not_interested")
         deps.store.update_triage_timestamp([_LIKED, _DISLIKED], datetime.now(UTC))
+        # An up vote on the topic "Leans liked" is in this issue, as a rerun would see it.
+        vote = TopicVote(
+            topic_id=_LIKED_TOPIC, direction=1, clicked_at=datetime.now(UTC) - timedelta(minutes=1)
+        )
+        deps.topic_store.record_topic_votes([vote])
     return deps, contents, recorded
 
 
@@ -2793,19 +2806,21 @@ def _headlines(content: DigestContent) -> list[str]:
     return [item.title for item in content.filtered_headlines]
 
 
-async def test_the_headline_closer_to_an_upvote_leads_and_none_is_left_out(tmp_path: Path) -> None:
+async def test_the_headline_whose_topic_was_voted_up_leads_and_none_is_left_out(
+    tmp_path: Path,
+) -> None:
     on, on_contents, on_recorded = _ranking_deps(tmp_path / "on", rank=True)
     off, off_contents, off_recorded = _ranking_deps(tmp_path / "off", rank=False)
 
-    await run_digest(on, RunOptions())
-    await run_digest(off, RunOptions())
+    await run_digest(on, _RANKED_RUN)
+    await run_digest(off, _RANKED_RUN)
 
-    assert _headlines(on_contents[0]) == ["Leans liked", "Clef pick", "Leans disliked"]
+    assert _headlines(on_contents[0]) == ["Leans liked", "Leans disliked", "Clef pick"]
     assert _headlines(off_contents[0]) == list(_KEPT)
     [on_summary], [off_summary] = on_recorded, off_recorded
     assert "unplaced_news_cut" not in on_summary
     assert on_summary["preference_rank_applied"] is True
-    assert on_summary["preference_rank_moved_units"] == 3
+    assert on_summary["preference_rank_moved_units"] == 2
     assert on_summary["preference_rank_moved_features"] == 0
     assert "preference_rank_skipped" not in on_summary
     assert off_summary["preference_rank_applied"] is False
@@ -2817,8 +2832,8 @@ async def test_the_vote_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Pa
     on, _, _ = _ranking_deps(tmp_path / "on", rank=True)
     off, _, _ = _ranking_deps(tmp_path / "off", rank=False)
 
-    await run_digest(on, RunOptions())
-    await run_digest(off, RunOptions())
+    await run_digest(on, _RANKED_RUN)
+    await run_digest(off, _RANKED_RUN)
 
     urls = [_LEANS_DISLIKED, _LEANS_LIKED, _OFF_TOPIC]
     on_rows = {a.url: a for a in on.store.get_by_urls(urls)}
@@ -2835,39 +2850,37 @@ async def test_the_vote_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Pa
         )
 
 
-@pytest.mark.parametrize(
-    ("similarity", "votes", "reason"),
-    [
-        (False, True, "vote similarity off"),
-        (True, False, "vote similarity skipped: no human-voted articles yet"),
-    ],
-    ids=["disabled", "no-votes"],
-)
-async def test_without_a_similarity_verdict_nothing_is_reordered(
-    tmp_path: Path, similarity: bool, votes: bool, reason: str
-) -> None:
-    deps, contents, recorded = _ranking_deps(
-        tmp_path, rank=True, similarity=similarity, votes=votes
-    )
+async def test_the_topic_order_runs_with_vote_similarity_off(tmp_path: Path) -> None:
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=True, similarity=False)
 
-    await run_digest(deps, RunOptions())
+    await run_digest(deps, _RANKED_RUN)
 
-    assert _headlines(contents[0])[0] == "Leans disliked"
+    assert _headlines(contents[0])[0] == "Leans liked"
     [summary] = recorded
-    assert summary["preference_rank_applied"] is False
-    assert summary["preference_rank_skipped"] == reason
+    assert summary["preference_rank_applied"] is True
 
 
-async def test_cosine_names_its_source_and_model_in_the_summary(tmp_path: Path) -> None:
+async def test_with_no_topic_vote_nothing_is_reordered(tmp_path: Path) -> None:
+    deps, contents, recorded = _ranking_deps(tmp_path, rank=True, votes=False)
+
+    await run_digest(deps, _RANKED_RUN)
+
+    assert _headlines(contents[0]) == list(_KEPT)
+    [summary] = recorded
+    assert summary["preference_rank_applied"] is True
+    assert summary["preference_rank_moved_units"] == 0
+
+
+async def test_the_topic_order_names_its_source_in_the_summary(tmp_path: Path) -> None:
     clef = _FakeClef(_CLEF_ANSWERS)
     deps, contents, recorded = _ranking_deps(tmp_path, rank=True, ask_clef=clef)
 
-    await run_digest(deps, RunOptions())
+    await run_digest(deps, _RANKED_RUN)
 
     [summary] = recorded
     assert _headlines(contents[0])[0] == "Leans liked"
-    assert summary["preference_source"] == "cosine"
-    assert summary["preference_model"] == "test-embedding-model"
+    assert summary["preference_source"] == "topics"
+    assert summary["preference_model"] is None
     assert "preference_clef_skipped" not in summary
     assert "clef" not in summary
     assert clef.calls == []
@@ -2877,7 +2890,7 @@ async def test_clef_orders_the_issue_and_reports_its_spend(tmp_path: Path) -> No
     clef = _FakeClef(_CLEF_ANSWERS)
     deps, contents, recorded = _ranking_deps(tmp_path, rank=True, source="clef", ask_clef=clef)
 
-    await run_digest(deps, RunOptions())
+    await run_digest(deps, _RANKED_RUN)
 
     [summary] = recorded
     assert _headlines(contents[0])[0] == "Clef pick"
@@ -2893,23 +2906,23 @@ async def test_clef_orders_the_issue_and_reports_its_spend(tmp_path: Path) -> No
     assert sorted(clef.calls) == sorted(_KEPT)
 
 
-async def test_a_failed_clef_question_leaves_the_cosine_order_and_a_reason(tmp_path: Path) -> None:
+async def test_a_failed_clef_question_leaves_the_topic_order_and_a_reason(tmp_path: Path) -> None:
     clef = _FakeClef({**_CLEF_ANSWERS, "Leans liked": ClefError("x")})
     deps, contents, recorded = _ranking_deps(tmp_path, rank=True, source="clef", ask_clef=clef)
 
-    report = await run_digest(deps, RunOptions())
+    report = await run_digest(deps, _RANKED_RUN)
 
     [summary] = recorded
     assert report.status == summary["status"] == "ok"
     assert _headlines(contents[0])[0] == "Leans liked"
-    assert summary["preference_source"] == "cosine"
+    assert summary["preference_source"] == "topics"
     assert summary["preference_clef_skipped"] == "clef failed: ClefError: x"
 
 
-async def test_clef_without_a_client_leaves_the_cosine_order_and_a_reason(tmp_path: Path) -> None:
+async def test_clef_without_a_client_leaves_the_topic_order_and_a_reason(tmp_path: Path) -> None:
     deps, contents, recorded = _ranking_deps(tmp_path, rank=True, source="clef", ask_clef=None)
 
-    await run_digest(deps, RunOptions())
+    await run_digest(deps, _RANKED_RUN)
 
     [summary] = recorded
     assert _headlines(contents[0])[0] == "Leans liked"
@@ -2921,7 +2934,7 @@ async def test_ranking_off_ignores_the_clef_source(tmp_path: Path) -> None:
     clef = _FakeClef(_CLEF_ANSWERS)
     deps, contents, recorded = _ranking_deps(tmp_path, rank=False, source="clef", ask_clef=clef)
 
-    await run_digest(deps, RunOptions())
+    await run_digest(deps, _RANKED_RUN)
 
     [summary] = recorded
     assert _headlines(contents[0])[0] == "Leans disliked"
@@ -2938,8 +2951,8 @@ async def test_the_clef_order_changes_no_verdict_and_stamps_no_vote(tmp_path: Pa
     )
     off, _, _ = _ranking_deps(tmp_path / "off", rank=False)
 
-    await run_digest(on, RunOptions())
-    await run_digest(off, RunOptions())
+    await run_digest(on, _RANKED_RUN)
+    await run_digest(off, _RANKED_RUN)
 
     urls = [_LEANS_DISLIKED, _LEANS_LIKED, _CLEF_PICK, _OFF_TOPIC]
     on_rows = {a.url: a for a in on.store.get_by_urls(urls)}
@@ -2967,8 +2980,8 @@ async def test_clef_spend_stays_out_of_the_llm_usage(tmp_path: Path) -> None:
         log_usage=lambda content: logged["cosine"].append(content.usage.model_dump()),
     )
 
-    await run_digest(clef_deps, RunOptions())
-    await run_digest(cosine_deps, RunOptions())
+    await run_digest(clef_deps, _RANKED_RUN)
+    await run_digest(cosine_deps, _RANKED_RUN)
 
     [clef_summary], [cosine_summary] = clef_recorded, cosine_recorded
     assert clef_summary["llm"] == cosine_summary["llm"]
@@ -2997,7 +3010,7 @@ async def test_a_refused_clef_call_leaks_no_token(tmp_path: Path, caplog, with_c
     with caplog.at_level("DEBUG"):
         async with respx.mock:
             route = respx.post(_CLEF_RUN_URL).mock(return_value=httpx.Response(401, json=refusal))
-            report = await run_digest(deps, RunOptions())
+            report = await run_digest(deps, _RANKED_RUN)
 
     [summary] = recorded
     assert report.status == "ok"

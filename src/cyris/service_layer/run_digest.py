@@ -671,7 +671,10 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         source=cfg.app.digest.preference_source,
         similarity=similarity,
         ask_clef=deps.ask_clef,
-        embedding_model=deps.embedding_model,
+        topics=deps.topic_store,
+        at=datetime.fromisoformat(summary["started_at"]),
+        half_life_days=cfg.app.digest.vote_half_life_days,
+        lifetime_days=cfg.app.digest.topic_lifetime_days,
         snippet_length=cfg.app.digest.scoring_snippet_length,
     )
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}

@@ -53,7 +53,7 @@ async def test_no_topics_wired_is_an_empty_list_not_an_error(bare: TestClient) -
 async def test_no_topic_is_never_a_missing_setting(bare: TestClient) -> None:
     data = await (await bare.get("/api/settings")).json()
 
-    assert not [key for key in data["missing"] if "topic" in key]
+    assert not [key for key in data["missing"] if "tracked_topic" in key]
 
 
 async def test_a_json_deployment_shows_its_file_topics_and_refuses_writes() -> None:
