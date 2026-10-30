@@ -663,7 +663,7 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   title link. A pebble is its title link, its summary and its source name. A sand block is its
   heading, its line, then each member's title link with its source name, listed open because a mail
   client cannot be trusted with `<details>`; that list is the only place outside a pebble where a
-  source is named. A legacy news paragraph takes the layers its units take on the page. The
+  source is named. No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page. The
   plain-text part holds the same blocks, each item a `- title — link` line with its text indented
   below it.
 - **A Headlines row keeps its sentence.** Its summary follows its title as on the page, in the small role in

@@ -126,7 +126,6 @@
             <h2 class="section-tag"><span class="rule"></span>Stories</h2>
             {% for pebble in layers.pebbles %}{% set item = pebble.item %}
             <article class="item" lang="{{ '' if pebble.untranslated else content_lang }}">
-                {% if item.score is not none %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
                 <h3 class="title" lang="">{{ title_link(item) }}</h3>
                 {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
                 <p class="meta" lang="">{{ item.sources | join(' · ') }}</p>

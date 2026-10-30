@@ -77,6 +77,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   folded; a headline names none. Tracking reaches the mail for the first time,
   and neither the mail nor Discord has a Top story or area sections any more. When
   a Discord message runs out of room, Headlines are cut first and Stories last.
+- The mail no longer shows a score on a story, as the page does not.
 
 ### Removed
 

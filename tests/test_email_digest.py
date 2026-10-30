@@ -185,10 +185,9 @@ class TestSections:
         for source in UNNAMED_SOURCES:
             assert source not in outside, source
 
-    def test_the_pebbles_carry_their_scores_and_every_item_its_link(self):
+    def test_every_item_carries_its_link(self):
         html = render_digest_email(_full(), DIGEST_URL)
 
-        assert "91.0" in html
         for url in ["https://lead.test/a", "https://news.test/2", "https://wire.test/1"]:
             assert f'href="{url}"' in html
 
@@ -494,42 +493,13 @@ def _over(tint: str, ground: str) -> str:
     return "#" + "".join(f"{c:02x}" for c in blended)
 
 
-# A pill shows on a scored pebble: a grouped read section's articles and the single ones,
-# each scored 0.0, beside one unscored card. A group no longer has a card of its own.
-SCORED_ZERO_ISSUES = [
-    [
-        DigestSection(
-            heading="G",
-            summary="One.",
-            items=[
-                _item("A", "https://t.test/a", "S", 0.0),
-                _item("B", "https://t.test/b", "S", 0.0),
-            ],
-        ),
-        DigestSection(
-            heading="F",
-            items=[_item("C", "https://t.test/c", "S", 0.0), _item("U", "https://t.test/u", "S")],
-        ),
-    ],
-    [
-        DigestSection(
-            heading="H",
-            items=[
-                _item("L", "https://t.test/l", "S", 0.0),
-                _item("R", "https://t.test/r", "S", 0.0),
-            ],
-        ),
-        DigestSection(heading="F", items=[_item("U", "https://t.test/u", "S")]),
-    ],
-]
-
-
-@pytest.mark.parametrize(("featured", "pills"), zip(SCORED_ZERO_ISSUES, [3, 2], strict=True))
-def test_a_score_of_zero_shows_its_pill(featured, pills):
-    content = _full().model_copy(update={"featured_articles": featured})
+def test_no_item_shows_a_score_pill_as_on_the_page():
+    content = _full()
+    content.featured_articles[0].items[0].score = 0.0
     html = render_digest_email(content, DIGEST_URL)
-    assert html.count('<span class="pill">0.0</span>') == pills
-    assert html.count('class="pill"') == pills
+
+    assert 'class="pill"' not in html.split("</style>", 1)[1]
+    assert "91.0" not in html and "80.0" not in html
 
 
 def _paragraph_issue():
