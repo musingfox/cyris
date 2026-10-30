@@ -212,10 +212,13 @@ CREATE TABLE IF NOT EXISTS topic_members (
 CREATE INDEX IF NOT EXISTS idx_topic_members_url ON topic_members(article_url);
 CREATE INDEX IF NOT EXISTS idx_topic_members_issue ON topic_members(digest_date, period);
 
+-- A topic's tags are the ones its newest save gave it: `seen_at` is that save, as on
+-- `topic_members`, so a rerun drops the tags it no longer gives.
 CREATE TABLE IF NOT EXISTS topic_tags (
   topic_id TEXT NOT NULL,
   tag      TEXT NOT NULL,       -- normalized
   kind     TEXT NOT NULL CHECK (kind IN ('entity', 'domain', 'region')),
+  seen_at  TEXT NOT NULL,
   PRIMARY KEY (topic_id, tag)
 );
 

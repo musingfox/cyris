@@ -70,13 +70,11 @@ def test_a_vote_is_recorded_once_per_topic_and_click_time(store) -> None:
 def test_d1_keeps_the_four_kinds_of_data_in_their_tables() -> None:
     db = SqliteD1()
     store = D1TopicStore(db)
+    tags = (("anthropic", TopicKind.ENTITY), ("ai", TopicKind.DOMAIN))
+    store.save_topics("2026-10-30", "morning", [_topic("a", "u1", tags=tags)], T0)
     store.save_topics(
-        "2026-10-30",
-        "morning",
-        [_topic("a", "u1", tags=(("anthropic", TopicKind.ENTITY), ("ai", TopicKind.DOMAIN)))],
-        T0,
+        "2026-10-31", "morning", [_topic("a", "u9", tags=tags)], T0 + timedelta(days=1)
     )
-    store.save_topics("2026-10-31", "morning", [_topic("a", "u9")], T0 + timedelta(days=1))
     store.record_topic_votes([TopicVote(topic_id="a", direction=1, clicked_at=T0)])
 
     topic = db.query("SELECT name, first_seen, last_seen FROM topics").rows
@@ -126,6 +124,19 @@ def test_recent_topics_are_those_last_seen_in_the_window_with_their_tags(store) 
         ("kmt", TopicKind.ENTITY),
         ("taiwan", TopicKind.REGION),
     ]
+
+
+def test_a_rerun_that_tags_a_topic_differently_replaces_its_tags(store) -> None:
+    before = (("kmt", TopicKind.ENTITY), ("taiwan", TopicKind.REGION))
+    after = (("dpp", TopicKind.ENTITY),)
+    store.save_topics("2026-10-30", "morning", [_topic("a", "u1", tags=before)], T0)
+    store.save_topics(
+        "2026-10-30", "morning", [_topic("a", "u1", tags=after)], T0 + timedelta(minutes=5)
+    )
+
+    (topic,) = store.topics_by_ids(["a"])
+
+    assert [(t.tag, t.kind) for t in topic.tags] == [("dpp", TopicKind.ENTITY)]
 
 
 def test_topics_by_ids_names_only_stored_topics(store) -> None:

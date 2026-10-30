@@ -55,7 +55,8 @@ class JsonTopicStore:
             for t in topics
             for u in t.urls
         ]
-        tags = {(g["topic_id"], g["tag"]): g for g in data["tags"]}
+        saved = {t.id for t in topics}
+        tags = {(g["topic_id"], g["tag"]): g for g in data["tags"] if g["topic_id"] not in saved}
         for t in topics:
             for tag in t.tags:
                 tags[(t.id, tag.tag)] = {"topic_id": t.id, "tag": tag.tag, "kind": str(tag.kind)}

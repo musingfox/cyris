@@ -136,7 +136,8 @@ class TopicRepository(Protocol):
     def save_topics(
         self, digest_date: str, period: str, topics: list[TopicRecord], seen_at: datetime
     ) -> int:
-        """Write an issue's topics, replacing the members that issue held before.
+        """Write an issue's topics, replacing the members that issue held before and
+        each written topic's tags.
 
         A topic left with no member in any issue and no vote is deleted with its tags.
         Returns the number of rows written.

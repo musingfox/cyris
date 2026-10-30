@@ -366,11 +366,13 @@ EXPECTED_D1 = [
     "INSERT OR IGNORE INTO story_members",
     "DELETE FROM story_members",
     "DELETE FROM stories",
-    # The issue's topics: insert, then drop what this save did not write, then orphans.
+    # The issue's topics: insert, then drop the members and tags this save did not
+    # write, then orphans.
     "INSERT INTO topics",
     "INSERT OR REPLACE INTO topic_members",
     "INSERT OR REPLACE INTO topic_tags",
     "DELETE FROM topic_members",
+    "DELETE FROM topic_tags",
     "DELETE FROM topic_tags",
     "DELETE FROM topics",
     "INSERT INTO usage_log",

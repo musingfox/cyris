@@ -34,7 +34,7 @@ class D1TopicStore:
         stamp = _iso(seen_at)
         topic_rows = [[t.id, t.name, stamp, stamp] for t in topics]
         member_rows = [[t.id, url, digest_date, period, stamp] for t in topics for url in t.urls]
-        tag_rows = [[t.id, tag.tag, str(tag.kind)] for t in topics for tag in t.tags]
+        tag_rows = [[t.id, tag.tag, str(tag.kind), stamp] for t in topics for tag in t.tags]
 
         written = 0
         for chunk in chunk_rows(topic_rows, 4):
@@ -52,15 +52,21 @@ class D1TopicStore:
                 + ", ".join("(?, ?, ?, ?, ?)" for _ in chunk)
             )
             written += self._db.query(sql, [v for row in chunk for v in row]).changes
-        for chunk in chunk_rows(tag_rows, 3):
-            sql = "INSERT OR REPLACE INTO topic_tags (topic_id, tag, kind) VALUES " + ", ".join(
-                "(?, ?, ?)" for _ in chunk
+        for chunk in chunk_rows(tag_rows, 4):
+            sql = (
+                "INSERT OR REPLACE INTO topic_tags (topic_id, tag, kind, seen_at) VALUES "
+                + ", ".join("(?, ?, ?, ?)" for _ in chunk)
             )
             written += self._db.query(sql, [v for row in chunk for v in row]).changes
 
         self._db.query(
             "DELETE FROM topic_members WHERE digest_date = ? AND period = ? AND seen_at <> ?",
             [digest_date, period, stamp],
+        )
+        self._db.query(
+            "DELETE FROM topic_tags WHERE seen_at <> ? AND topic_id IN (SELECT topic_id "
+            "FROM topic_members WHERE digest_date = ? AND period = ? AND seen_at = ?)",
+            [stamp, digest_date, period, stamp],
         )
         orphan = (
             "SELECT id FROM topics WHERE id NOT IN (SELECT topic_id FROM topic_members) "
