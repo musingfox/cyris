@@ -8,6 +8,7 @@ import pytest
 from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
 from cyris.adapters.notify import (
+    _fit_embeds,
     build_discord_embeds,
     build_discord_payload,
     is_masked_webhook_url,
@@ -429,8 +430,15 @@ class TestDiscordPayload:
 ONLINE = "https://digest.example/2026-04-10-morning"
 
 
+def _bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
 def _counted(embed: dict) -> int:
-    """The characters Discord counts toward a message's 6000 (docs: message.mdx, Embed Limits)."""
+    """The fields Discord counts toward a message's 6000 (docs: message.mdx, Embed Limits).
+
+    In UTF-8 bytes: on 2026-10-30 a message of 5929 characters was refused at 10833.
+    """
     fields = embed.get("fields", [])
     texts = [
         embed.get("title"),
@@ -440,7 +448,7 @@ def _counted(embed: dict) -> int:
         *(f["name"] for f in fields),
         *(f["value"] for f in fields),
     ]
-    return sum(len(t or "") for t in texts)
+    return sum(_bytes(t or "") for t in texts)
 
 
 def _feature(n: int, summary_chars: int) -> DigestSection:
@@ -487,7 +495,7 @@ class TestDiscordPayloadLimits:
 
         assert sum(_counted(e) for e in embeds) <= 6000
         assert len(embeds) <= 10
-        assert all(len(e["title"]) <= 256 and len(e["description"]) <= 4096 for e in embeds)
+        assert all(_bytes(e["title"]) <= 256 and _bytes(e["description"]) <= 4096 for e in embeds)
         assert embeds[-1] == build_discord_embeds(content, ONLINE)[-1]
         assert f"[Read online]({ONLINE})" in embeds[-1]["description"]
 
@@ -503,7 +511,7 @@ class TestDiscordPayloadLimits:
             "Headlines",
             full[-1]["title"],
         ]
-        assert all(len(e["description"]) <= 4096 for e in embeds)
+        assert all(_bytes(e["description"]) <= 4096 for e in embeds)
         assert embeds == full
         stories = "\n".join(e["description"] for e in embeds[:2])
         for n in range(5):
@@ -553,6 +561,87 @@ class TestDiscordPayloadLimits:
         *kept, marker = embeds[rows_at]["description"].split("\n")
         assert "more in the online edition" in marker
         assert kept == full[rows_at]["description"].split("\n")[: len(kept)]
+
+
+def _chinese_issue() -> DigestContent:
+    """A mostly Chinese issue near 2026-10-30's: under 6000 characters in pebbles, over in bytes."""
+    features = [
+        DigestSection(
+            heading=f"長文 {n}",
+            items=[
+                DigestItem(
+                    title=f"長文標題 {n}",
+                    summary="這篇文章說明了為什麼這件事重要。" * 12,
+                    sources=["來源"],
+                    urls=[f"https://ex.com/zh/{n}"],
+                )
+            ],
+        )
+        for n in range(6)
+    ]
+    issue = _issue(features, headlines=0)
+    issue.filtered_headlines = [
+        DigestItem(
+            title=f"新聞標題第 {n} 則",
+            summary="一句話說明這則新聞。",
+            sources=["通訊社"],
+            urls=[f"https://wire.example/zh/{n}"],
+        )
+        for n in range(40)
+    ]
+    issue.articles_included = 46
+    return issue
+
+
+class TestDiscordPayloadLimitsInBytes:
+    """Discord's 413 on 2026-10-30 counted a Chinese issue's embeds in bytes, not characters."""
+
+    def test_a_chinese_issue_fits_in_bytes_and_keeps_its_pebbles(self):
+        content = _chinese_issue()
+        full = build_discord_embeds(content, ONLINE)
+        chars = sum(len(e["title"]) + len(e["description"]) for e in full)
+        assert chars < 6000 < sum(_counted(e) for e in full)
+
+        embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
+
+        assert sum(_counted(e) for e in embeds) <= 6000
+        assert all(_bytes(e["title"]) <= 256 for e in embeds)
+        assert all(_bytes(e["description"]) <= 4096 for e in embeds)
+        stories = "\n".join(e["description"] for e in embeds if e["title"] == "Stories")
+        for n in range(6):
+            assert f"[長文標題 {n}](https://ex.com/zh/{n})" in stories
+        assert embeds[-1] == full[-1]
+
+    def test_the_headlines_are_cut_first_at_a_line(self):
+        content = _chinese_issue()
+        full = build_discord_embeds(content, ONLINE)
+
+        embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
+
+        assert [e["title"] for e in full[:-1]] == ["Stories", "Headlines"]
+        assert [e["title"] for e in embeds[:-1]] == ["Stories", "Headlines"]
+        assert embeds[0] == full[0]
+        *kept, marker = embeds[1]["description"].split("\n")
+        assert "more in the online edition" in marker
+        assert kept == full[1]["description"].split("\n")[: len(kept)]
+
+    def test_a_chinese_layer_continues_before_4096_bytes(self):
+        content = _issue([], headlines=0)
+        content.featured_articles = _chinese_issue().featured_articles * 2
+
+        embeds = build_discord_embeds(content, ONLINE)
+
+        assert [e["title"] for e in embeds[:-1]].count("Stories") >= 2
+        assert all(_bytes(e["description"]) <= 4096 for e in embeds)
+
+    def test_a_long_title_is_cut_in_bytes_without_splitting_a_character(self):
+        stats = {"title": "Evening 2026-10-30", "description": "x", "color": 0}
+        embed = {"title": "標" * 100, "description": "內容", "color": 0}
+
+        title = _fit_embeds([embed, stats])[0]["title"]
+
+        assert _bytes(title) <= 256
+        assert title == "標" * 85
 
 
 class TestSendDiscord:
