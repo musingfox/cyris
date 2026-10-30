@@ -1329,6 +1329,19 @@ async def test_a_lost_notification_is_in_the_summary_and_the_run_stays_ok(
     assert summary["mail_notification"] == bounced
 
 
+async def test_a_dry_run_sends_nothing_and_records_no_notification(tmp_path: Path) -> None:
+    deps, notifications = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/t"
+    deps.cfg.app.notify.email_to = "me@example.org"
+    deps, recorded = _recording(deps)
+
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    [summary] = recorded
+    assert notifications == []
+    assert "discord_notification" not in summary and "mail_notification" not in summary
+
+
 async def test_mail_with_no_address_is_skipped_and_with_no_sender_failed(tmp_path: Path) -> None:
     deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
     deps, recorded = _recording(deps)

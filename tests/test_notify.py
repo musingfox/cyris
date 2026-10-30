@@ -758,6 +758,38 @@ class TestSendDiscordOutcome:
 
         assert outcome == {"status": "failed", "reason": f"HTTP 413: {message}"}
 
+    async def test_a_refusal_echoing_the_webhook_keeps_its_token_out(self, monkeypatch):
+        _discord_transport(
+            monkeypatch,
+            lambda request: httpx.Response(403, json={"message": f"Request denied: {request.url}"}),
+        )
+
+        outcome = await send_discord(
+            "https://discord.com/api/webhooks/999/s3cr3t-token", self._content()
+        )
+
+        assert outcome["status"] == "failed"
+        assert "s3cr3t-token" not in outcome["reason"]
+        assert _MASKED in outcome["reason"]
+
+    @pytest.mark.parametrize("body", [[], None, "Bad Gateway"])
+    async def test_a_refusal_with_a_non_object_body_is_still_an_outcome(self, monkeypatch, body):
+        _discord_transport(monkeypatch, lambda request: httpx.Response(502, json=body))
+
+        outcome = await send_discord("https://discord.com/api/webhooks/1/t", self._content())
+
+        assert outcome["status"] == "failed"
+        assert outcome["reason"].startswith("HTTP 502: ")
+
+    async def test_a_long_refusal_is_cut_to_500_characters(self, monkeypatch):
+        _discord_transport(
+            monkeypatch, lambda request: httpx.Response(400, json={"errors": "x" * 3000})
+        )
+
+        outcome = await send_discord("https://discord.com/api/webhooks/1/t", self._content())
+
+        assert len(outcome["reason"]) <= len("HTTP 400: ") + 500
+
     async def test_an_unreachable_webhook_names_the_error_without_its_token(self, monkeypatch):
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError(f"no route to {request.url}")

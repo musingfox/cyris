@@ -424,11 +424,17 @@ async def send_discord(
 
 
 def _discord_message(resp: httpx.Response) -> str:
-    """Discord's own words for a refusal: the body's `message`, else the body itself."""
+    """Discord's own words for a refusal: the body's `message`, else the body itself.
+
+    A proxy can answer with any body, so a non-object one falls back to the text, and the
+    reason is capped and redacted: it is stored in the run summary.
+    """
     try:
-        return str(resp.json().get("message") or resp.text)
+        body = resp.json()
     except ValueError:
-        return resp.text[:500]
+        body = None
+    message = body.get("message") if isinstance(body, dict) else None
+    return redact_webhook_tokens(str(message or resp.text)[:500])
 
 
 async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:
