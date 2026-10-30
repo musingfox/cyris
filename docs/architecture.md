@@ -526,8 +526,9 @@ Every persistent datum, where it lives now, and where it is going.
 **What this table covers:** state the pipeline keeps — anything a later run or a
 reader depends on. It does not cover a diagnostic command's output, and it does not need to: the
 comparisons write nothing at all, they emit, and where that lands is the shell's decision.
-`tests/test_local_writes.py` holds the set of files allowed to touch local disk at four, all of
-them a backend the D1 path does not use. A new one fails that test before it can become a row
+`tests/test_local_writes.py` holds the set of files allowed to touch local disk at six: the four that write the `json`
+backend's files, which the D1 path does not use, the vault probe `cyris doctor` skips under D1,
+and the file `--output` names. A new one fails that test before it can become a row
 nobody added. `tests/test_residency_covers_schema.py` does the same for the other half: every
 table `schema.sql` creates must appear in the rows below, so a new table cannot ship unlisted.
 
