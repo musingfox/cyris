@@ -90,7 +90,7 @@
     </style>
 </head>
 <body class="body">
-    <div class="preheader">{% if lead_story %}<span lang="{{ content_lang if lead_story.grouped else '' }}">{{ lead_story.title }}</span>{% elif content.news_paragraphs %}<span lang="{{ '' if content.news_paragraphs[0].passed_through else content_lang }}">{{ content.news_paragraphs[0].text | truncate(90) }}</span>{% elif content.news_clusters %}<span lang="{{ content_lang }}">{{ content.news_clusters[0].heading }}</span>{% endif %} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
+    <div class="preheader">{% if layers.pebbles %}<span lang="">{{ layers.pebbles[0].item.title }}</span>{% elif layers.sand %}<span lang="{{ content_lang }}">{{ layers.sand[0].heading }}</span>{% elif layers.water %}<span lang="{{ '' if layers.water[0].untranslated else content_lang }}">{{ layers.water[0].item.title }}</span>{% endif %} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
     <div class="wrap">
         <p class="brand"><span class="mark"></span>Cyris · {{ period_label }} · {{ content.date }}</p>
         <h1 class="issue-title">Signal<em>/</em>Noise</h1>
@@ -107,69 +107,56 @@
         <p class="desc">Nothing is in this issue: this run judged the {{ content.articles_received }} articles it received and kept none.{% if raw_url %} <a href="{{ raw_url }}">All articles</a> lists each one with its verdict.{% endif %}</p>
         {% endif %}
 
-        {% if lead_story %}
+        {% if layers.tracking %}
         <section class="section">
-            <h2 class="section-tag"><span class="rule"></span>Top story</h2>
-            <article class="lead" lang="{{ '' if lead_story.passed_through else content_lang }}">
-                {% if lead_story.score is not none %}<span class="pill">{{ "%.1f" | format(lead_story.score) }}</span>{% endif %}
-                <h3 class="lead-title"{% if not lead_story.grouped %} lang=""{% endif %}>{{ title_link(lead_story) }}</h3>
-                <p class="summary">{{ lead_story.summary }}</p>
-                {% if lead_story.grouped %}{{ members(lead_story) }}{% else %}{{ meta(lead_story) }}{% endif %}
-            </article>
-            {% for item in featured_articles %}
-            <article class="item" lang="{{ '' if item.passed_through else content_lang }}">
-                {% if item.score is not none %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
-                <h3 class="title" lang="">{{ title_link(item) }}</h3>
-                <p class="summary">{{ item.summary }}</p>
-                {{ meta(item) }}
+            <h2 class="section-tag"><span class="rule"></span>Tracking</h2>
+            {% for topic in layers.tracking %}
+            <article class="item" lang="">
+                <h3 class="title">{{ topic.heading }}</h3>
+                {% for item in topic.items %}
+                <h4 class="title member">{{ title_link(item) }}</h4>
+                {% endfor %}
             </article>
             {% endfor %}
         </section>
         {% endif %}
 
-        {% for area in layout.sections %}
+        {% if layers.pebbles %}
         <section class="section">
-            {% set label = area|section_label %}
-            {% if label is not none %}<h2 class="section-tag"><span class="rule"></span>{{ label }}</h2>{% endif %}
-            {% for section in area.features %}{% for item in section.items %}
-            <article class="item" lang="{{ '' if item.passed_through else content_lang }}">
-                {% if item.score is not none %}<span class="pill">{{ "%.1f" | format(item.score) }}</span>{% endif %}
+            <h2 class="section-tag"><span class="rule"></span>Stories</h2>
+            {% for pebble in layers.pebbles %}{% set item = pebble.item %}
+            <article class="item" lang="{{ '' if pebble.untranslated else content_lang }}">
                 <h3 class="title" lang="">{{ title_link(item) }}</h3>
-                <p class="summary">{{ item.summary }}</p>
-                {{ meta(item) }}
-            </article>
-            {% endfor %}{% endfor %}
-            {% for section in area.following %}{% for item in section.items %}
-            <article class="item" lang="">
-                <h3 class="title">{{ title_link(item) }}</h3>
                 {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
-                <p class="meta">{{ section.heading }} · {{ item.sources | join(' · ') }}</p>
+                <p class="meta" lang="">{{ item.sources | join(' · ') }}</p>
             </article>
-            {% endfor %}{% endfor %}
-            {% for cluster in area.clusters %}
-            <article class="item" lang="{{ content_lang }}">
-                <h3 class="title">{{ cluster.heading }}</h3>
-                {% for item in cluster.items %}
-                <p class="summary">{{ item.summary }}</p>
-                <p class="meta">{{ source_links(item) }}</p>
-                {% endfor %}
-            </article>
-            {% endfor %}
-            {% if area.rows %}
-            <ol class="wire" lang="{{ content_lang }}">
-                {% for row in area.rows %}{% set item = row.item %}
-                <li lang="{{ '' if row.untranslated else content_lang }}"><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</li>
-                {% endfor %}
-            </ol>
-            {% endif %}
-            {% for paragraph in area.paragraphs %}
-            <div class="item news-paragraph" lang="{{ '' if paragraph.passed_through else content_lang }}">
-                <p class="summary">{{ paragraph.text }}</p>
-                <p class="meta">{{ paragraph_sources(paragraph) }}</p>
-            </div>
             {% endfor %}
         </section>
-        {% endfor %}
+        {% endif %}
+
+        {% if layers.sand %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>Topics</h2>
+            {% for sand in layers.sand %}
+            <article class="item" lang="{{ content_lang }}">
+                <h3 class="title">{{ sand.heading }}</h3>
+                {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
+                <p class="desc" lang="">{% for member in sand.members %}{{ title_link(member) }}{% if member.sources %} · {{ member.sources | join(' · ') }}{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if layers.water %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>Headlines</h2>
+            <ol class="wire" lang="{{ content_lang }}">
+                {% for water in layers.water %}{% set item = water.item %}
+                <li lang="{{ '' if water.untranslated else content_lang }}"><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</li>
+                {% endfor %}
+            </ol>
+        </section>
+        {% endif %}
 
         <footer class="footer">
             <div>// Generated by <a href="{{ project_url }}">Cyris</a> · {{ content.usage.total_tokens }} tokens · {{ content.usage.api_calls }} api calls</div>

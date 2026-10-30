@@ -14,9 +14,10 @@ import httpx
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import period_label, redact_webhook_tokens
 from cyris.adapters.output.email_digest import raw_page_url, render_digest_email
-from cyris.adapters.output.html_digest import Story, _stories, citation_links, section_label
-from cyris.domain.area_layout import AreaSection, layout_by_area
-from cyris.domain.models import DigestContent, DigestItem, NewsParagraph
+from cyris.adapters.output.html_digest import Story, citation_links
+from cyris.domain.area_layout import AreaSection
+from cyris.domain.layers import Sand, layer_by_lane
+from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ def build_digest_mail(
     raw_page: bool = False,
     degraded: bool = False,
 ) -> tuple[str, str]:
-    """The subject and plain-text body: the issue's sections, as the HTML part orders them."""
+    """The subject and plain-text body: Tracking and the three layers, as the HTML part has them."""
     title = f"{period_label(content.period)} digest {content.date}"
     lines = [title, ""]
     if digest_url:
@@ -121,16 +122,38 @@ def build_digest_mail(
             f"{content.articles_received} articles it received and kept none."
             + (f" All articles lists each one with its verdict: {raw_url}" if raw_url else "")
         )
-    layout = layout_by_area(content)
-    stories = _stories(layout.headline) if layout.headline else []
+    layers = layer_by_lane(content)
     blocks = [
-        ("Top story", [line for story in stories for line in _story_lines(story)]),
-        *((section_label(section), _area_entries(section)) for section in layout.sections),
+        ("Tracking", [line for topic in layers.tracking for line in _tracking_lines(topic)]),
+        ("Stories", [line for pebble in layers.pebbles for line in _pebble_lines(pebble.item)]),
+        ("Topics", [line for sand in layers.sand for line in _sand_lines(sand)]),
+        ("Headlines", [line for water in layers.water for line in _wire_lines(water.item)]),
     ]
     for label, entries in blocks:
         if entries:
-            lines += ["", *([label] if label else []), *entries]
+            lines += ["", label, *entries]
     return title, "\n".join(lines)
+
+
+def _tracking_lines(topic: DigestSection) -> list[str]:
+    return [f"- {topic.heading}", *(f"  {_line(item)}" for item in topic.items)]
+
+
+def _pebble_lines(item: DigestItem) -> list[str]:
+    """A pebble's title and link, its summary, then its source: the one layer naming it."""
+    return [
+        _line(item),
+        *([f"  {item.summary}"] if item.summary else []),
+        *([f"  {', '.join(item.sources)}"] if item.sources else []),
+    ]
+
+
+def _sand_lines(sand: Sand) -> list[str]:
+    """A topic's heading and line, then each article with its source, as the page's fold."""
+    members = [
+        f"  {_line(m)}" + (f" ({', '.join(m.sources)})" if m.sources else "") for m in sand.members
+    ]
+    return [f"- {sand.heading}", *([f"  {sand.line}"] if sand.line else []), *members]
 
 
 def _area_entries(section: AreaSection) -> list[str]:

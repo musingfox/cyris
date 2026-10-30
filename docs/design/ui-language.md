@@ -306,8 +306,8 @@ The body is four sections in a fixed order: Tracking, then the three layers of A
 (pebble), Topics (sand) and Headlines (water). `domain.layers.layer_by_lane` decides each item's layer by
 its lane and its member count in this issue alone, never by a score or an area: every `read` or `follow`
 article is a pebble, a news topic of two or more articles is sand, and a topic of one article or a kept
-headline is water. Areas do not divide the page; the mail and Discord still lay the issue out by area
-(§6 *email*). Nothing the run kept is cut from the page: there is no output cap. Empty sections are left
+headline is water. Areas do not divide the page, and the mail and Discord take the same four sections in
+the same order (§6 *email*). Nothing the run kept is cut from the page: there is no output cap. Empty sections are left
 out. Each section is one `<section class="section">`, and its name is printed once, by its section marker
 (§4), an `h2`, with no number and no repeated large section title.
 
@@ -655,17 +655,24 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   `@media (prefers-color-scheme: dark)` the §2 colours replace it, and the head declares
   `color-scheme: light dark` so Apple Mail does not re-tint either. Gmail ignores the media query and
   inverts the light message itself, which stays legible; an inverted dark one would not.
-- **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. Sections follow the issue's area
-  order (`layout_by_area`), with "Other" last; the page's three layers (§6 *digest*) do not reach the
-  mail, which draws news clusters and Wire rows as an issue held them before the paragraphs. Tracking is not in the mail yet; the page is where it is read. The lead is the headline card's
-  square panel; every other item is separated by a `--border` hairline.
-- **Legacy: a news paragraph is its text and its links.** Only an issue stored while the
-  paragraph step ran holds paragraphs; no run writes them now. In the HTML part it is the paragraph in the body role
-  and a line of source links below it, after the area's rows, with no fold; in the plain-text part it
-  is the paragraph, then one indented `source — link` line per cited article.
-- **A Wire row keeps its sentence.** Its summary follows its title as on the page, in the small role in
+- **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. The sections are the page's, in its
+  order and under its names (§6 *digest*): Tracking, Stories, Topics and Headlines, from
+  `layer_by_lane`, an empty one left out. There is no lead panel; every item is separated by a
+  `--border` hairline.
+- **Each block says what it says on the page, unfolded.** A Tracking topic is its name and each hit's
+  title link. A pebble is its title link, its summary and its source name. A sand block is its
+  heading, its line, then each member's title link with its source name, listed open because a mail
+  client cannot be trusted with `<details>`; that list is the only place outside a pebble where a
+  source is named. No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page. The
+  plain-text part holds the same blocks, each item a `- title — link` line with its text indented
+  below it.
+- **A Headlines row keeps its sentence.** Its summary follows its title as on the page, in the small role in
   the HTML part, breaking an unbroken run as the page does, and on its own indented line in the
-  plain-text part; a row with no summary is its title alone.
+  plain-text part; a row with no summary is its title alone. A row names no source.
+- **Discord follows the same order.** The notification is one embed per non-empty section, titled as
+  the mail's, then the stats; a section longer than one embed's 4096 characters continues in embeds of
+  the same title. Discord refuses a message over 6000 characters or 10 embeds whole, so the embeds are
+  cut from the end: Headlines lose rows first and Stories last.
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a
   `--warn` notice instead. The footer's project link (§4) is the one link off that host.

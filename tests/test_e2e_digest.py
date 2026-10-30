@@ -757,16 +757,17 @@ def check_grouped_top_story(r: Receipts) -> None:
         [URL[k]] for k in TOP_STORY
     ]
     assert [c.one("p", "summary").text() for c in cards] == [OWN_SUMMARIES[k] for k in TOP_STORY]
-    # The mail and Discord still lay the issue out by area, the group under its heading.
-
-    top = r.discord()["embeds"][0]["description"]
-    assert TOP_GROUP["heading"] in top
+    # The mail and Discord open their Stories with the same cards, under no group heading.
+    (stories,) = [e["description"] for e in r.discord()["embeds"] if e["title"] == "Stories"]
     mail = r.mail()
-    for key in TOP_STORY:
-        assert f"- [{TITLE[key]}]({URL[key]})" in top, key
-        assert f"  - {TITLE[key]} — {URL[key]}" in mail["text"], key
-    mail_lead = parse_html(mail["html"]).one("article", "lead")
-    assert mail_lead.one("h3", "lead-title").text() == TOP_GROUP["heading"]
+    lines = mail["text"].splitlines()
+    at = lines.index("Stories")
+    for n, key in enumerate(TOP_STORY):
+        assert stories.split("\n### ")[n].lstrip("# ").startswith(f"[{TITLE[key]}]({URL[key]})")
+        assert f"- {TITLE[key]} — {URL[key]}" in lines[at:], key
+    mail_cards = parse_html(mail["html"]).find_all("article", "item")[: len(TOP_STORY)]
+    assert [c.one("h3").text() for c in mail_cards] == [TITLE[k] for k in TOP_STORY]
+    assert TOP_GROUP["heading"] not in stories + mail["text"]
 
 
 def test_two_high_scorers_on_one_topic_reach_the_page_as_one_top_story(receipts) -> None:
@@ -881,22 +882,22 @@ def test_ids_the_model_rewrote_still_match_by_position(receipts) -> None:
 
 
 def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
-    # The Top story, the one Tech area section (its cards, cluster and rows), then the stats.
-    top, tech, stats = receipts.discord()["embeds"]
-    assert tech["title"] == TECH_AREA["name"]
-    assert UNLINKED_TITLE in tech["description"]
-    for key in FEATURES:
-        assert f"[{TITLE[key]}]({URL[key]})" in tech["description"], key
-    assert CLUSTER["heading"] in tech["description"]
+    # The page's layers in its order, then the stats; the scenario tracks no topic.
+    stories, topics, headlines, stats = receipts.discord()["embeds"]
+    assert [e["title"] for e in (stories, topics, headlines)] == ["Stories", "Topics", "Headlines"]
+    assert UNLINKED_TITLE in stories["description"]
+    for key in (*TOP_STORY, *FEATURES):
+        assert f"[{TITLE[key]}]({URL[key]})" in stories["description"], key
+    assert CLUSTER["heading"] in topics["description"]
     for key in WATER:
-        assert f"({URL[key]})" in tech["description"], key
+        assert f"({URL[key]})" in headlines["description"], key
     assert f"({receipts.digest_url})" in stats["description"]
     # 4 sources, 13 articles received, 12 kept: the topic of two counts as two.
     for count in ("**4**", "**13**", "**12**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
     assert stats["title"].split()[0] == "Morning"
-    assert all(e["title"] for e in (top, tech, stats))
+    assert all(e["title"] for e in (stories, topics, headlines, stats))
     mail = receipts.mail()
     assert (mail["to"], mail["from"]) == ("reader@e2e.test", "digest@e2e.test")
     words = mail["subject"].split()

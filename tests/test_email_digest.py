@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from css_rules import text_langs
+from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
 from cyris.adapters.output.email_digest import (
     LIGHT_PALETTE,
@@ -128,79 +129,21 @@ class TestWhatAMailClientKeeps:
 MARKER = re.compile(r'<h2 class="section-tag"><span class="rule"></span>([^<]*)</h2>')
 
 
-def _placed(area_order: list[str], tech: str | None = "Tech") -> DigestContent:
-    def item(title: str, area: str | None) -> DigestItem:
-        url = f"https://{title.lower().replace(' ', '-')}.test/"
-        return _item(title, url, "Src").model_copy(update={"area": area})
-
-    return DigestContent(
-        date="2026-09-27",
-        period="morning",
-        sources_processed=3,
-        articles_received=9,
-        articles_included=4,
-        usage=UsageStats(input_tokens=1, output_tokens=1, api_calls=1, model="m"),
-        area_order=area_order,
-        featured_articles=[
-            DigestSection(heading="Lead", items=[item("Lead Story", None)]),
-            DigestSection(heading="Feature", items=[item("Tech Feature", tech)]),
-        ],
-        fan_sections=[DigestSection(heading="Fans", items=[item("Health Fan", "Health")])],
-        attention_sections=[DigestSection(heading="Watch", items=[item("Gone Radar", "Retired")])],
-        filtered_headlines=[item("Tech Wire", tech)],
-    )
+def _section(html: str, label: str) -> str:
+    start = html.index(f'<span class="rule"></span>{label}</h2>')
+    return html[start : html.index("</section>", start)]
 
 
 class TestSections:
-    def test_each_area_is_a_marker_in_its_stored_order_after_the_top_story(self):
-        html = render_digest_email(_placed(["Tech", "Health"]), DIGEST_URL)
+    def test_tracking_then_stories_topics_and_headlines_as_on_the_page(self):
+        html = render_digest_email(four_layer_issue(), DIGEST_URL)
 
-        assert MARKER.findall(html) == ["Top story", "Tech", "Health", "Other"]
-        assert html.index(">Lead Story<") < html.index(">Tech Feature<")
-        assert html.index(">Tech Feature<") < html.index(">Tech Wire<") < html.index(">Health Fan<")
-        assert html.index(">Health Fan<") < html.index(">Gone Radar<")
+        assert MARKER.findall(html) == ["Tracking", "Stories", "Topics", "Headlines"]
 
-    def test_an_area_lists_its_cards_then_follows_then_clusters_then_rows(self):
-        def tech(title: str) -> DigestItem:
-            url = f"https://{title.lower().replace(' ', '-')}.test/"
-            return _item(title, url, "Src").model_copy(update={"area": "Tech"})
+    def test_an_empty_layer_has_no_marker(self):
+        content = four_layer_issue().model_copy(update={"news_clusters": [], "tracked_topics": []})
 
-        content = _placed(["Tech"])
-        content.fan_sections = [DigestSection(heading="Fans", items=[tech("Tech Fan")])]
-        content.news_clusters = [
-            DigestSection(
-                heading="Cluster Heading", items=[tech("Cluster One"), tech("Cluster Two")]
-            )
-        ]
-        content.filtered_headlines = [tech("Tech Wire")]
-
-        html = render_digest_email(content, DIGEST_URL)
-
-        positions = [
-            html.index(">Tech Feature<"),
-            html.index(">Tech Fan<"),
-            html.index(">Cluster Heading<"),
-            html.index(">Tech Wire<"),
-        ]
-        assert positions == sorted(positions)
-
-    def test_an_issue_with_no_area_order_has_no_area_marker_and_every_entry(self):
-        html = render_digest_email(_placed([], tech=None), DIGEST_URL)
-
-        assert MARKER.findall(html) == ["Top story"]
-        for title in ["Tech Feature", "Tech Wire", "Health Fan", "Gone Radar"]:
-            assert f">{title}<" in html
-
-    def test_an_unplaced_entry_closes_the_issue_under_other(self):
-        html = render_digest_email(_placed(["Tech", "Health"]), DIGEST_URL)
-
-        assert MARKER.findall(html)[-1] == "Other"
-
-    def test_an_area_name_is_escaped(self):
-        html = render_digest_email(_placed(["<b>Tech</b>"], tech="<b>Tech</b>"), DIGEST_URL)
-
-        assert "<b>Tech</b>" not in html
-        assert "&lt;b&gt;Tech&lt;/b&gt;" in html
+        assert MARKER.findall(render_digest_email(content, DIGEST_URL)) == ["Stories", "Headlines"]
 
     def test_an_empty_issue_has_no_section_marker(self):
         html = render_digest_email(_issue(), DIGEST_URL)
@@ -208,45 +151,45 @@ class TestSections:
         assert MARKER.findall(html) == []
         assert EMPTY_SENTENCE in html
 
-    def test_tracked_topics_are_not_in_the_mail(self):
-        content = _placed(["Tech"]).model_copy(
-            update={
-                "tracked_topics": [
-                    DigestSection(
-                        heading="Watched Topic", items=[_item("Topic Item", "https://t.test/", "T")]
-                    )
-                ]
-            }
-        )
-        html = render_digest_email(content, DIGEST_URL)
+    def test_tracking_lists_each_hit_as_a_link_alone(self):
+        tracking = _section(render_digest_email(four_layer_issue(), DIGEST_URL), "Tracking")
 
-        assert "Tracking" not in html
-        assert "Watched Topic" not in html
+        assert ">Tracked topic</h3>" in tracking
+        assert '<a href="https://tracked.example.test/hit">A tracked hit</a>' in tracking
+        assert "Not shown." not in tracking and "SRC-TRACKED" not in tracking
 
-    def test_the_lead_carries_its_score_and_the_article_links(self):
+    def test_a_pebble_is_its_title_link_summary_and_source(self):
+        stories = _section(render_digest_email(four_layer_issue(), DIGEST_URL), "Stories")
+
+        assert '<a href="https://pebble.example.test/read">A long read</a>' in stories
+        assert '<p class="summary">Why it matters.</p>' in stories
+        assert '<p class="meta" lang="">SRC-PEBBLE</p>' in stories
+        assert '<p class="meta" lang="">SRC-FAN</p>' in stories
+
+    def test_a_sand_block_is_its_heading_its_line_and_each_member_with_its_source(self):
+        topics = _section(render_digest_email(four_layer_issue(), DIGEST_URL), "Topics")
+
+        assert ">Two reports of one event</h3>" in topics
+        assert '<p class="summary" lang="">Excerpt a</p>' in topics
+        assert (
+            '<a href="https://wire-a.example.test/a">Report a</a> · SRC-WIRE-a<br>'
+            '<a href="https://wire-b.example.test/b">Report b</a> · SRC-WIRE-b</p>'
+        ) in topics
+        assert "The model's cluster summary." not in topics
+
+    def test_no_source_is_named_outside_a_pebble_or_a_sand_member_list(self):
+        html = render_digest_email(four_layer_issue(), DIGEST_URL)
+        members = re.search(r'<p class="desc" lang="">.*?</p>', _section(html, "Topics")).group()
+        outside = html.replace(members, "")
+
+        for source in UNNAMED_SOURCES:
+            assert source not in outside, source
+
+    def test_every_item_carries_its_link(self):
         html = render_digest_email(_full(), DIGEST_URL)
 
-        assert "91.0" in html
         for url in ["https://lead.test/a", "https://news.test/2", "https://wire.test/1"]:
             assert f'href="{url}"' in html
-
-    def test_a_group_prints_its_summary_once_and_links_each_article(self):
-        content = _full()
-        group = content.featured_articles[0]
-        for item in group.items:
-            item.summary = "Shared summary."
-        content.featured_articles = [group.model_copy(update={"summary": "Shared summary."})]
-
-        html = render_digest_email(content, DIGEST_URL)
-
-        assert html.count("Shared summary.") == 1
-        assert "91.0" in html and "80.0" in html
-        assert ">Lead group</h3>" in html
-        for title, url in [
-            ("Lead Story", "https://lead.test/a"),
-            ("Second Feature", "https://feature.test/b"),
-        ]:
-            assert f'<a href="{url}">{title}</a>' in html
 
     def test_a_wire_row_carries_its_summary_and_one_without_is_its_title_alone(self):
         content = _full()
@@ -257,54 +200,9 @@ class TestSections:
 
         title = '<a href="https://wire.test/1">Wire One</a>'
         assert f'{title}<p class="summary">Wire One summary.</p></li>' in wire
-        assert '<li lang=""><span class="idx">003</span>No Link</li>' in wire
+        assert '<li lang=""><span class="idx">002</span>No Link</li>' in wire
 
-
-def _entry(title: str, summary: str, area: str | None = None) -> DigestItem:
-    return DigestItem(
-        title=title,
-        summary=summary,
-        sources=["Src"],
-        urls=[f"https://{title.lower().replace(' ', '-')}.test/"],
-        area=area,
-    )
-
-
-def _top_story_block(html: str) -> str:
-    start = html.index('<h2 class="section-tag"><span class="rule"></span>Top story</h2>')
-    return html[start : html.index("</section>", start)]
-
-
-class TestAreaSkeletonLayout:
-    def test_the_top_story_block_holds_every_story_of_the_headline(self):
-        headline = DigestSection(
-            heading="Top",
-            summary=None,
-            items=[_entry(title, f"{title} summary.") for title in ("X1", "X2", "X3")],
-        )
-        content = DigestContent(
-            date="2026-09-27",
-            period="morning",
-            sources_processed=1,
-            articles_received=4,
-            articles_included=4,
-            usage=UsageStats(),
-            featured_articles=[
-                headline,
-                DigestSection(heading="F", items=[_entry("Tech Feature", "F.", area="Tech")]),
-            ],
-            area_order=["Tech"],
-        )
-
-        html = render_digest_email(content, DIGEST_URL)
-        block = _top_story_block(html)
-
-        for title in ("X1", "X2", "X3"):
-            assert f">{title}<" in block
-        assert MARKER.findall(block) == ["Top story"]
-        assert MARKER.findall(html) == ["Top story", "Tech"]
-
-    def test_a_radar_row_is_untranslated_and_a_headline_row_takes_the_output_language(self):
+    def test_a_radar_pebble_is_untranslated_and_a_headline_row_takes_the_output_language(self):
         content = DigestContent(
             date="2026-09-27",
             period="morning",
@@ -313,16 +211,16 @@ class TestAreaSkeletonLayout:
             articles_included=2,
             usage=UsageStats(),
             output_language="en",
-            area_order=["Tech"],
             attention_sections=[
-                DigestSection(heading="Radar", items=[_entry("Radar Row", "R.", area="Tech")])
+                DigestSection(heading="Radar", items=[_item("Radar Row", "https://r.test/", "Src")])
             ],
-            filtered_headlines=[_entry("Wire Row", "W.", area="Tech")],
+            filtered_headlines=[_item("Wire Row", "https://w.test/", "Src")],
         )
 
         html = render_digest_email(content, DIGEST_URL)
 
-        assert re.findall(r'<li lang="([^"]*)"', html) == ["", "en"]
+        assert re.findall(r'<article class="item" lang="([^"]*)"', html) == [""]
+        assert re.findall(r'<li lang="([^"]*)"', html) == ["en"]
 
 
 class TestLanguage:
@@ -335,7 +233,7 @@ class TestLanguage:
     ]
     PASSED_THROUGH = ["Fan Item"]
     TITLES = ["Lead Story", "Second Feature"]
-    CHROME = ["Top story"]
+    CHROME = ["Stories"]
 
     def test_the_chrome_is_english_and_the_content_carries_the_output_language(self):
         content = _full().model_copy(update={"output_language": "ja"})
@@ -352,15 +250,16 @@ class TestLanguage:
 
         assert {text: langs[text] for text in self.TITLES} == dict.fromkeys(self.TITLES, "")
 
-    def test_a_grouped_top_story_keeps_its_heading_and_leaves_its_titles_unknown(self):
+    def test_a_grouped_section_is_one_pebble_per_article_under_its_own_summary(self):
         content = _full().model_copy(update={"output_language": "ja"})
         group = content.featured_articles[0]
         content.featured_articles = [group.model_copy(update={"summary": "Shared summary."})]
-        langs = text_langs(render_digest_email(content, DIGEST_URL))
+        html = render_digest_email(content, DIGEST_URL)
+        langs = text_langs(html)
 
-        written = ["Lead group", "Shared summary."]
-        assert {text: langs[text] for text in written} == dict.fromkeys(written, "ja")
+        assert "Shared summary." not in html and "Lead group" not in html
         assert {text: langs[text] for text in self.TITLES} == dict.fromkeys(self.TITLES, "")
+        assert langs["Second Feature summary."] == "ja"
 
     @staticmethod
     def _passed_through(*titles: str) -> DigestContent:
@@ -407,14 +306,17 @@ class TestLanguage:
 
         assert self._preheader_langs(content) == {"Lead Story": "", "· Kept 15 of 300": "en"}
 
-    def test_the_preheader_keeps_a_written_heading_in_the_output_language(self):
-        grouped = _full().model_copy(update={"output_language": "ja"})
-        group = grouped.featured_articles[0]
-        grouped.featured_articles = [group.model_copy(update={"summary": "Shared summary."})]
-        no_lead = _full().model_copy(update={"output_language": "ja", "featured_articles": []})
+    def test_with_no_pebble_the_preheader_is_a_topics_written_heading(self):
+        no_pebble = _full().model_copy(
+            update={
+                "output_language": "ja",
+                "featured_articles": [],
+                "fan_sections": [],
+                "attention_sections": [],
+            }
+        )
 
-        assert self._preheader_langs(grouped)["Lead group"] == "ja"
-        assert self._preheader_langs(no_lead)["A Cluster"] == "ja"
+        assert self._preheader_langs(no_pebble)["A Cluster"] == "ja"
 
     def test_a_plain_language_name_leaves_the_content_language_unknown(self):
         content = _full().model_copy(update={"output_language": "Traditional Chinese"})
@@ -591,42 +493,13 @@ def _over(tint: str, ground: str) -> str:
     return "#" + "".join(f"{c:02x}" for c in blended)
 
 
-# Every place a pill can show: a grouped Top story and its members, a single Top story and
-# the Features beside it, and an area's Features. Each scored 0.0, beside one unscored card.
-SCORED_ZERO_ISSUES = [
-    [
-        DigestSection(
-            heading="G",
-            summary="One.",
-            items=[
-                _item("A", "https://t.test/a", "S", 0.0),
-                _item("B", "https://t.test/b", "S", 0.0),
-            ],
-        ),
-        DigestSection(
-            heading="F",
-            items=[_item("C", "https://t.test/c", "S", 0.0), _item("U", "https://t.test/u", "S")],
-        ),
-    ],
-    [
-        DigestSection(
-            heading="H",
-            items=[
-                _item("L", "https://t.test/l", "S", 0.0),
-                _item("R", "https://t.test/r", "S", 0.0),
-            ],
-        ),
-        DigestSection(heading="F", items=[_item("U", "https://t.test/u", "S")]),
-    ],
-]
-
-
-@pytest.mark.parametrize(("featured", "pills"), zip(SCORED_ZERO_ISSUES, [4, 2], strict=True))
-def test_a_score_of_zero_shows_its_pill(featured, pills):
-    content = _full().model_copy(update={"featured_articles": featured})
+def test_no_item_shows_a_score_pill_as_on_the_page():
+    content = _full()
+    content.featured_articles[0].items[0].score = 0.0
     html = render_digest_email(content, DIGEST_URL)
-    assert html.count('<span class="pill">0.0</span>') == pills
-    assert html.count('class="pill"') == pills
+
+    assert 'class="pill"' not in html.split("</style>", 1)[1]
+    assert "91.0" not in html and "80.0" not in html
 
 
 def _paragraph_issue():
@@ -659,11 +532,12 @@ def _paragraph_issue():
     )
 
 
-def test_a_news_paragraph_in_the_mail_is_its_text_and_its_links() -> None:
+def test_a_legacy_news_paragraph_in_the_mail_takes_the_layers_of_its_units() -> None:
     html = render_digest_email(_paragraph_issue(), DIGEST_URL)
-    assert '<p class="summary">A quake struck; a letter followed.</p>' in html
+    topics = _section(html, "Topics")
+    assert '<p class="summary">A quake struck; a letter followed.</p>' in topics
     assert (
-        '<a href="https://a.test/quake">Wire A</a> · <a href="https://b.test/quake">Wire B</a>'
-        in html
+        '<a href="https://a.test/quake">Wire A</a><br><a href="https://b.test/quake">Wire B</a>'
+        in topics
     )
-    assert 'class="wire"' not in html
+    assert '<span class="idx">001</span>Letter</li>' in _section(html, "Headlines")
