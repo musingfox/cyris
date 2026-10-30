@@ -170,9 +170,10 @@ closed by moving to the storage product first named for it:
 | `Embedder → FS` | `embeddings.json` (415 MB), rewritten whole every run | **not Vectorize.** The cache was deleted rather than relocated — a run re-embeds ~600 texts for ~20 neurons — why not Vectorize: [ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md) |
 | `NewsletterArchiveSource ← FS` | local maildir | **deleted** 2026-08-27 (M1), superseded by the newsletter Worker |
 
-One filesystem edge remains, and it is the documented fallback rather than a defect:
-`HtmlDigestWriter` writes `agent-vault/html/` when `[store] backend` is still `json`. With D1 wired,
-the site's file list comes from the `pages_manifest` table and nothing is written locally.
+One filesystem edge remains, the `json` backend, and it is the documented fallback rather than a
+defect: while `[store] backend` is still `json`, `HtmlDigestWriter` writes `agent-vault/html/`, and
+the article store, `topics.json` and `usage.jsonl` live in the agent vault (§4 lists each). With D1
+wired, the site's file list comes from the `pages_manifest` table and nothing is written locally.
 
 The other local write is deliberate and holds no state: `cyris run --dry-run --output PATH` and
 `cyris regenerate --output PATH` write the rendered page to the path the operator names, and nothing
@@ -362,7 +363,9 @@ articles. Because the cut is relative to the window,
 more votes do not suppress more articles by themselves (ADR-0017). The seeds are the newest
 `max_seeds` human-stamped articles per side, one per topic (§4 *Topic members*): a vote on a topic
 stamps every member, and its newest-stamped member stands for it, so a 15-article topic takes one
-seed, not 15. Here it suppresses; its only other use is the nearest votes it hands Clef when
+seed, not 15. When the topic store cannot be read, each voted URL is its own seed, as before
+topics, and `run_summary`'s `vote_similarity_topic_dedup_skipped` says why. Every voted URL, not only
+the seeds, is kept out of the candidates. Here it suppresses; its only other use is the nearest votes it hands Clef when
 `preference_source = "clef"`. The issue's order comes from topic votes, not from its verdicts
 (below). Prompt-level preference learning was removed on 2026-08-27 because it had never
 produced a profile. Each flagged candidate leaves a row in `suppressions` (§4) that holds it for
@@ -437,8 +440,8 @@ rerun of it; the order carries across issues once the filter assigns topics. On 
 the one-article clusters first and the kept headlines after them, each part in that order: the two
 come from separate model calls and are ranked apart. The order rejects nothing and stamps no
 `triaged_at`, and with no cap it changes only where an item stands, never whether it is shown. Off,
-or with no topic store, the issue keeps the score's and the model's order. `run_summary` records
-which: `preference_rank_applied`, the reason in `preference_rank_skipped`, and
+with no topic store, or when the topic store cannot be read, the issue keeps the score's and the
+model's order; a failed read costs the order, never the run. `run_summary` records which: `preference_rank_applied`, the reason in `preference_rank_skipped`, and
 `preference_rank_moved_features` and `_units`, the Features positions and the cluster and headline
 positions that differ from the order without it.
 
@@ -544,7 +547,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Topics | **D1 `topics`**; `topics.json` in the agent vault for a `json` deployment | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. A stand-in until the filter assigns topics: each item of the page is a topic of this issue only (`domain/topics.py`), so an id never spans two issues. A topic left with no member and no vote is deleted |
 | Topic members | **D1 `topic_members`**; `topics.json` for `json` | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which stay the clustering step's record |
 | Topic tags | **D1 `topic_tags`**; `topics.json` for `json` | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, so a rerun that tags a topic differently replaces them. Today's tags carry no kind, so the stand-in stores every one as `domain` (`STAND_IN_TAG_KIND`) |
-| Topic votes | **D1 `topic_votes`**; `topics.json` for `json` | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A URL no topic holds (an issue published before topics, the raw page) writes no row |
+| Topic votes | **D1 `topic_votes`**; `topics.json` for `json` | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one, with no opposite vote between them, is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A sync whose topic-vote write fails still stamps and ACKs its votes, since the stamp is the vote's record and a held ACK would re-stamp the same URLs every run; that sync's topic votes are lost, and `run_summary`'s `topic_votes_failed` says why. A URL no topic holds (an issue published before topics, the raw page) writes no row |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry |
 | Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. D1 only: a `json` deployment polls no Worker |
 | Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |
