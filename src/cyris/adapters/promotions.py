@@ -123,17 +123,24 @@ def topic_votes(
 
 
 def unrecorded(votes: list[TopicVote], recorded: list[TopicVote]) -> list[TopicVote]:
-    """The votes no recorded vote already stands for (`ONE_CLICK_WINDOW`)."""
-    return [
-        v
-        for v in votes
-        if not any(
-            r.topic_id == v.topic_id
-            and r.direction == v.direction
-            and abs(r.clicked_at - v.clicked_at) <= ONE_CLICK_WINDOW
-            for r in recorded
+    """The votes no recorded vote already stands for (`ONE_CLICK_WINDOW`).
+
+    A recorded vote stands for one only when the reader did not turn the other way
+    between the two: up, down, up within the window is three votes, not one.
+    """
+
+    def same_click(v: TopicVote, r: TopicVote) -> bool:
+        if r.topic_id != v.topic_id or r.direction != v.direction:
+            return False
+        if abs(r.clicked_at - v.clicked_at) > ONE_CLICK_WINDOW:
+            return False
+        first, last = sorted((r.clicked_at, v.clicked_at))
+        return not any(
+            o.topic_id == v.topic_id and o.direction != v.direction and first < o.clicked_at < last
+            for o in recorded
         )
-    ]
+
+    return [v for v in votes if not any(same_click(v, r) for r in recorded)]
 
 
 def sync_promotions(

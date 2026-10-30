@@ -287,6 +287,18 @@ def test_a_later_click_on_the_same_topic_is_a_second_vote(tmp_path):
     assert len(topics.topic_votes()) == 2
 
 
+def test_a_change_of_mind_within_a_minute_keeps_every_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    for second, vote in (("00", "up"), ("10", "down"), ("20", "up")):
+        _sync(
+            [{"url": "https://news.example/0", "vote": vote, "ts": f"2026-10-30T09:00:{second}Z"}],
+            articles,
+            topics,
+        )
+
+    assert [v.direction for v in topics.topic_votes()] == [1, -1, 1]
+
+
 def test_a_vote_on_a_url_no_topic_holds_only_stamps_it(tmp_path):
     articles, topics = _sand_store(tmp_path)
     payload = [{"url": "https://news.example/3", "vote": "up", "ts": "2026-10-30T09:00:00Z"}]
