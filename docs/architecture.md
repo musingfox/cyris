@@ -425,7 +425,9 @@ is scored as its topic (§4 *Topics*): the topic's own votes, each halving every
 decayed votes of the other topics carrying it, divided by df, the number of topics carrying it among
 those last seen in the `digest.topic_lifetime_days` before the run's start and this issue's own; a
 topic's own vote is not counted again through its tags, and domain and region tags carry nothing
-(`domain/topic_rank.py`, `service_layer/topic_order.py`). Embeddings take no part, so the order needs
+(`domain/topic_rank.py`, `service_layer/topic_order.py`). A voted topic outside that window lends
+through its tags only while its decayed vote is worth more than `RECENT_VOTE_CUTOFF`, so the topics a
+run looks up do not grow with the whole vote history. Embeddings take no part, so the order needs
 no vote similarity. Every article URL takes its topic's score, and `order_by_preference`
 (`domain/selection.py`) orders the Features, after their score sort, the news clusters and the kept
 headlines, each list by its entries' best article's score. Equal scores keep the incoming order, so

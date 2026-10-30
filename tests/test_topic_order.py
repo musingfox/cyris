@@ -88,3 +88,25 @@ def test_a_voted_topic_that_has_ended_still_lends_its_vote_but_is_not_counted_in
     scores = score_issue_topics(store, issue, AT, half_life_days=H, lifetime_days=L)
 
     assert scores["u1"] == pytest.approx(0.5 ** (10 / H))
+
+
+class CountingTopics(FakeTopics):
+    def topics_by_ids(self, ids) -> list[TopicSummary]:
+        self.asked = list(ids)
+        return super().topics_by_ids(ids)
+
+
+def test_a_vote_faded_below_the_cutoff_is_not_looked_up() -> None:
+    store = CountingTopics(
+        [_summary("lively", 20, "kmt"), _summary("faded", 30, "kmt")],
+        [_vote("lively", 1, 20), _vote("faded", -1, 30)],
+    )
+    issue = [
+        TopicRecord(
+            id="now", name="now", urls=["u1"], tags=[TopicTag(tag="kmt", kind=TopicKind.ENTITY)]
+        )
+    ]
+
+    score_issue_topics(store, issue, AT, half_life_days=H, lifetime_days=L)
+
+    assert store.asked == ["lively"]
