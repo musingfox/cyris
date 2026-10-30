@@ -19,7 +19,13 @@ from cyris.adapters.promotions import sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
-from cyris.service_layer.ports import ArticleRepository, AskClef, FetchSource, LLMClient
+from cyris.service_layer.ports import (
+    ArticleRepository,
+    AskClef,
+    FetchSource,
+    LLMClient,
+    TopicRepository,
+)
 
 
 @cache
@@ -297,6 +303,19 @@ def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
     return D1ArticleStore(d1)
 
 
+def build_topic_store(cfg: Config, d1: Any | None = None) -> TopicRepository:
+    """Where topics and topic votes live: D1 tables, else `topics.json` in the vault."""
+    d1 = d1 or build_d1_client(cfg)
+    if d1 is None:
+        from cyris.adapters.store.json_topics import JsonTopicStore
+
+        return JsonTopicStore(cfg.app.agent_vault.path)
+
+    from cyris.adapters.store.topics import D1TopicStore
+
+    return D1TopicStore(d1)
+
+
 @dataclass(frozen=True)
 class Deps:
     """Concrete dependencies for the use cases; built once per invocation."""
@@ -311,6 +330,8 @@ class Deps:
     log_usage: Callable[..., None]
     tag_store: Any | None = None
     story_store: Any | None = None
+    # None only for a test that builds Deps by hand; build_deps always wires one.
+    topic_store: TopicRepository | None = None
     # Set instead of `publish` when the site is published from the D1 manifest:
     # takes {path: bytes} for this run's pages. Nothing touches the filesystem.
     publish_site: Callable[[dict[str, bytes], str], bool] | None = None
@@ -535,6 +556,7 @@ def build_deps(
         log_usage=log_usage,
         tag_store=tag_store,
         story_store=story_store,
+        topic_store=build_topic_store(cfg, d1),
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
         embedding_model=embedding_model(

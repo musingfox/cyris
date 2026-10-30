@@ -32,7 +32,7 @@ READER = {
     "vote_similarity.enabled": True,
 }
 # Columns whose CHECK refuses the filler value.
-FILL = {("areas", "status"): "active"}
+FILL = {("areas", "status"): "active", ("topic_tags", "kind"): "entity"}
 
 
 def _rss_ddl() -> list[str]:

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
@@ -386,6 +386,36 @@ class StoryRecord(BaseModel):
     urls: list[str]
 
 
+class TopicKind(StrEnum):
+    """What a topic tag names. Only an entity tag carries vote preference (ADR-0023)."""
+
+    ENTITY = "entity"
+    DOMAIN = "domain"
+    REGION = "region"
+
+
+class TopicTag(BaseModel):
+    tag: str  # normalized, `domain.tags.normalize_tag`
+    kind: TopicKind
+
+
+class TopicRecord(BaseModel):
+    """One topic of an issue: the articles it holds here, and its tags."""
+
+    id: str
+    name: str
+    urls: list[str]
+    tags: list[TopicTag] = Field(default_factory=list)
+
+
+class TopicVote(BaseModel):
+    """A reader's vote on a topic, at the time they clicked."""
+
+    topic_id: str
+    direction: Literal[1, -1]
+    clicked_at: datetime
+
+
 class ProcessResult(BaseModel):
     """Result of processing articles through lane-based pipeline."""
 
@@ -394,6 +424,7 @@ class ProcessResult(BaseModel):
     rejected_urls: list[str]
     url_to_tags: dict[str, list[str]] = Field(default_factory=dict)
     story_records: list[StoryRecord] = Field(default_factory=list)
+    topics: list[TopicRecord] = Field(default_factory=list)
     # Features and news positions the vote preference changed; None when none was given.
     preference_moves: dict[str, int] | None = None
 

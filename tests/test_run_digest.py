@@ -18,6 +18,7 @@ from cyris.adapters.clef import ClefClient, ClefError
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
 from cyris.adapters.store import ArticleStore
+from cyris.adapters.store.json_topics import JsonTopicStore
 from cyris.bootstrap import Deps
 from cyris.config import (
     AgentVaultConfig,
@@ -663,6 +664,37 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
     assert story_store.calls == 1  # the write was attempted, not skipped
     assert report.status == "ok"
     assert report.html_path is not None and report.html_path.exists()
+
+
+async def test_a_run_saves_its_topics_and_a_cluster_is_one_topic(tmp_path: Path) -> None:
+    articles = [
+        Article(
+            id=i,
+            title=f"News {i}",
+            url=f"https://news.example/{i}",
+            content="News content",
+            published_at=datetime.now(UTC) - timedelta(hours=1),
+            source_name="Wire",
+            source_lane=Lane.SKIM,
+            source_tags=["news"],
+        )
+        for i in (1, 2)
+    ]
+    llm = FakeLLM(
+        json.dumps(
+            {"clusters": [{"heading": "H", "summary": "S", "article_ids": [0, 1], "tags": []}]}
+        )
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
+    deps = replace(deps, topic_store=JsonTopicStore(tmp_path / "topics"))
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    urls = ["https://news.example/1", "https://news.example/2"]
+    topics = deps.topic_store.topics_of_urls(urls)
+    assert set(topics) == set(urls)
+    assert len(set(topics.values())) == 1
 
 
 def _fresh_and_earlier_deps(tmp_path: Path) -> Deps:

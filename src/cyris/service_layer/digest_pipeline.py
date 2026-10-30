@@ -22,6 +22,7 @@ from cyris.domain.selection import (
     preference_moves,
     split_read_lane_by_score,
 )
+from cyris.domain.topics import stand_in_topics
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
@@ -318,5 +319,6 @@ class DigestPipeline:
             rejected_urls=rejected_urls,
             url_to_tags=url_to_tags,
             story_records=story_records,
+            topics=stand_in_topics(content),
             preference_moves=moves,
         )

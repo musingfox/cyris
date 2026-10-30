@@ -725,6 +725,13 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             deps.story_store.save(content.date, content.period, result.story_records)
         except Exception as e:
             logger.warning("Failed to persist story membership: %s", e)
+    if not options.dry_run and deps.topic_store is not None:
+        try:
+            seen_at = datetime.fromisoformat(summary["started_at"])
+            deps.topic_store.save_topics(content.date, content.period, result.topics, seen_at)
+        except Exception as e:
+            logger.warning("Failed to persist topics: %s", e)
+            summary["topics_error"] = str(e)
 
     # In memory: the saved row carries the stamp, and so do the mail and Discord, which
     # still lay the issue out by area; no other store does.

@@ -11,6 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   follow articles** on (`/settings`, Digest), each follow article's card says
   what the article is, as a `read` article's does; off keeps the start of its
   own text, as before.
+- Every run records its topics. Each item on the page is a topic, with its
+  articles and its tags, in four new tables (`topics`, `topic_members`,
+  `topic_tags`, `topic_votes`) or in `topics.json` on the `json` backend. For now a
+  topic lasts one issue: a topic that carries across issues comes when the filter
+  assigns topics.
 - **A new deployment is set up by a wizard.** While its source list is empty,
   `/settings` opens `/onboarding`: six steps, of which this release fills three —
   the output language and timezone, the publish hours, and the notifications.
