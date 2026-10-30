@@ -13,9 +13,12 @@ from dataclasses import dataclass, field
 
 from cyris.domain.models import ArticleState, StoredArticle
 from cyris.domain.similarity import SimilarityVerdict, judge, nearest_k
-from cyris.service_layer.ports import ArticleRepository, Embedder
+from cyris.service_layer.ports import ArticleRepository, Embedder, TopicRepository
 
 logger = logging.getLogger(__name__)
+
+# URLs per topic lookup: a page of the store's URL batch, so each costs one D1 query.
+_TOPIC_PAGE = 90
 
 
 @dataclass
@@ -47,8 +50,13 @@ class VoteSimilarityReport:
         return not self.skipped_reason
 
 
-def _voted(store: ArticleRepository, state: ArticleState, limit: int) -> list[StoredArticle]:
-    """The most recently human-stamped articles in a state.
+def _voted(
+    store: ArticleRepository,
+    state: ArticleState,
+    limit: int,
+    topics: TopicRepository | None = None,
+) -> list[StoredArticle]:
+    """The most recently human-stamped articles in a state, one per topic.
 
     `triaged_at` is what separates a reader's decision from the pipeline's own
     verdict, and the pipeline is demonstrably wrong on exactly the class the first
@@ -58,9 +66,30 @@ def _voted(store: ArticleRepository, state: ArticleState, limit: int) -> list[St
     The whole state has to be pulled before filtering — `list_articles` orders by
     first_seen_at, so a recency-limited page of 3,000+ pipeline verdicts would
     contain no human votes at all. Same approach as `collect_triage_feedback`.
+
+    One vote on a topic stamps every member, so a 15-article topic would take 15
+    seeds for one judgment; its newest-stamped member stands for it. A row no topic
+    holds is its own seed. Topics are looked up a page at a time, newest first,
+    until `limit` seeds are found.
     """
     rows = [a for a in store.list_articles(state=state, limit=100_000) if a.triaged_at]
-    return sorted(rows, key=lambda a: a.triaged_at, reverse=True)[:limit]
+    rows.sort(key=lambda a: a.triaged_at, reverse=True)
+    if topics is None:
+        return rows[:limit]
+    seeds: list[StoredArticle] = []
+    taken: set[str] = set()
+    for i in range(0, len(rows), _TOPIC_PAGE):
+        page = rows[i : i + _TOPIC_PAGE]
+        topic_of = topics.topics_of_urls([a.url for a in page])
+        for article in page:
+            key = topic_of.get(article.url, article.url)
+            if key in taken:
+                continue
+            taken.add(key)
+            seeds.append(article)
+            if len(seeds) == limit:
+                return seeds
+    return seeds
 
 
 async def judge_by_votes(
@@ -69,6 +98,7 @@ async def judge_by_votes(
     candidates: list[StoredArticle],
     *,
     max_seeds: int,
+    topics: TopicRepository | None = None,
 ) -> VoteSimilarityReport:
     """Compare candidates against upvoted and downvoted articles.
 
@@ -78,8 +108,8 @@ async def judge_by_votes(
     if not candidates:
         return VoteSimilarityReport(skipped_reason="no candidates")
 
-    up = _voted(store, ArticleState.ACCEPTED, max_seeds)
-    down = _voted(store, ArticleState.REJECTED, max_seeds)
+    up = _voted(store, ArticleState.ACCEPTED, max_seeds, topics)
+    down = _voted(store, ArticleState.REJECTED, max_seeds, topics)
     if not down and not up:
         return VoteSimilarityReport(skipped_reason="no human-voted articles yet")
 

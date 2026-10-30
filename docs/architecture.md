@@ -353,7 +353,10 @@ cosine to its nearest downvote is an outlier among this run's candidates: a robu
 `OUTLIER_MARGIN` (3.5), and not closer to an upvote. A window of fewer than
 `MIN_OUTLIER_WINDOW` (10) candidates flags nothing, because its median and MAD rest on two or three
 articles. Because the cut is relative to the window,
-more votes do not suppress more articles by themselves (ADR-0017). It is the only personalization in the
+more votes do not suppress more articles by themselves (ADR-0017). The seeds are the newest
+`max_seeds` human-stamped articles per side, one per topic (§4 *Topic members*): a vote on a topic
+stamps every member, and its newest-stamped member stands for it, so a 15-article topic takes one
+seed, not 15. It is the only personalization in the
 pipeline, and it acts twice: here it suppresses, and with the vote order on its verdicts also order
 the issue (below). Prompt-level preference learning was removed on 2026-08-27 because it had never
 produced a profile. Each flagged candidate leaves a row in `suppressions` (§4) that holds it for

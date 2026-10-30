@@ -246,3 +246,31 @@ def test_nearest_titles_names_the_closest_votes_each_way_closest_first():
     )
 
     assert report.nearest_titles("c", 2) == (["U2", "U3"], ["D1", "D2"])
+
+
+class FakeTopics:
+    def __init__(self, topic_of: dict[str, str]) -> None:
+        self._topic_of = topic_of
+
+    def topics_of_urls(self, urls: list[str]) -> dict[str, str]:
+        return {u: self._topic_of[u] for u in urls if u in self._topic_of}
+
+
+async def test_a_voted_topic_is_one_seed_however_many_articles_it_holds():
+    sand = [
+        article(f"s{i}", f"Lottery {i}", ArticleState.REJECTED, triaged=True) for i in range(15)
+    ]
+    singles = [
+        article(f"x{i}", f"Tariff {i}", ArticleState.REJECTED, triaged=True) for i in range(2)
+    ]
+    store = FakeStore(sand + singles)
+    topics = FakeTopics({a.url: "sand" for a in sand})
+
+    report = await judge_by_votes(
+        store, FakeEmbedder(), [article("c1", "Lottery again")], max_seeds=3, topics=topics
+    )
+
+    assert report.downvote_seeds == 3
+    seeds = set(report.down_seed_vectors)
+    assert len(seeds & {a.url for a in sand}) == 1
+    assert {"x0", "x1"} <= seeds

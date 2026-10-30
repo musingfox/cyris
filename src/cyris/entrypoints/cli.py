@@ -477,6 +477,7 @@ def vote_sim(
             embedder,
             candidates,
             max_seeds=cfg.app.vote_similarity.max_seeds,
+            topics=deps.topic_store,
         )
     )
     if not report.ran:

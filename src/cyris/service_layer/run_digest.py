@@ -576,6 +576,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             deps.embedder,
             pending_articles,
             max_seeds=cfg.app.vote_similarity.max_seeds,
+            topics=deps.topic_store,
         )
         # `Embedder.usage` exists because `embed-compare` needs it; until this
         # line a digest run embedded ~600 texts and reported none of it.
