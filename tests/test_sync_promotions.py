@@ -308,3 +308,17 @@ def test_the_newest_click_on_a_topic_sets_its_direction():
     (vote,) = topic_votes(promotions, {"a": "t", "b": "t"}, datetime.now(UTC))
 
     assert (vote.direction, vote.clicked_at) == (-1, datetime(2026, 10, 30, 9, 5, tzinfo=UTC))
+
+
+def test_a_vote_is_dated_after_the_readers_last_change_of_direction():
+    promotions = [
+        PromotedArticle(url="a", vote="up", ts="2026-10-30T09:00:00Z"),
+        PromotedArticle(url="b", vote="down", ts="2026-10-30T09:05:00Z"),
+        PromotedArticle(url="c", vote="up", ts="2026-10-30T09:10:00Z"),
+        PromotedArticle(url="d", vote="up", ts="2026-10-30T09:10:00.003Z"),
+    ]
+    topic_of = dict.fromkeys("abcd", "t")
+
+    (vote,) = topic_votes(promotions, topic_of, datetime.now(UTC))
+
+    assert (vote.direction, vote.clicked_at) == (1, datetime(2026, 10, 30, 9, 10, tzinfo=UTC))

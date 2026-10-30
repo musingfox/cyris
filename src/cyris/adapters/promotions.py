@@ -97,8 +97,8 @@ def topic_votes(
 
     A topic's vote group posts once per member URL, so one click arrives as several
     promotions a few milliseconds apart: the newest one's direction stands, timed by
-    the first of those that agree with it, so a sync retried before its ACK records
-    the same row again rather than a second vote.
+    the first click of the agreeing run it ends, so a sync retried before its ACK
+    records the same row again rather than a second vote.
     """
     by_topic: dict[str, list[tuple[datetime, int]]] = {}
     for p in promotions:
@@ -109,8 +109,15 @@ def topic_votes(
         by_topic.setdefault(topic, []).append((clicked, -1 if p.vote == "down" else 1))
     votes = []
     for topic, clicks in by_topic.items():
-        direction = max(clicks)[1]
-        first = min(t for t, d in clicks if d == direction)
+        clicks.sort()
+        direction = clicks[-1][1]
+        # The run of agreeing clicks that ends the window: a click before the reader
+        # last changed direction is not when this vote was cast.
+        first = clicks[-1][0]
+        for clicked, d in reversed(clicks):
+            if d != direction:
+                break
+            first = clicked
         votes.append(TopicVote(topic_id=topic, direction=direction, clicked_at=first))
     return votes
 
