@@ -138,6 +138,26 @@ async def summarize_articles(
     return sections
 
 
+def _explanations_in(data: object, group: list[Article]) -> dict[str, str]:
+    """The explanations a reply holds for `group`, by URL; malformed parts are skipped."""
+    sections = data.get("sections") if isinstance(data, dict) else None
+    if not isinstance(sections, list):
+        raise ValueError(f"explain reply has no sections list: {data!r:.200}")
+    found: dict[str, str] = {}
+    for section_data in sections:
+        own_summaries = section_data.get("summaries") if isinstance(section_data, dict) else None
+        if not isinstance(own_summaries, dict):
+            continue
+        for raw_id, text in own_summaries.items():
+            try:
+                index = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < len(group) and isinstance(text, str) and text.strip():
+                found[group[index].url] = text
+    return found
+
+
 async def explain_follow_articles(
     articles: list[Article],
     llm: LLMClient,
@@ -167,24 +187,13 @@ async def explain_follow_articles(
                 temperature=1.0,
                 usage=usage,
             )
+            explanations.update(_explanations_in(data, group))
         except Exception:
             logger.warning(
-                "Explain LLM call failed for source '%s'; excerpts kept", source_name, exc_info=True
+                "Explain failed for source '%s'; excerpts kept", source_name, exc_info=True
             )
             if usage is not None:
                 usage.fell_back_to_excerpts = True
-            continue
-        for section_data in data.get("sections", []):
-            own_summaries = section_data.get("summaries")
-            if not isinstance(own_summaries, dict):
-                continue
-            for raw_id, text in own_summaries.items():
-                try:
-                    index = int(raw_id)
-                except (TypeError, ValueError):
-                    continue
-                if 0 <= index < len(group) and isinstance(text, str) and text.strip():
-                    explanations[group[index].url] = text
     missing = sum(1 for a in articles if a.url not in explanations)
     if missing:
         logger.warning("Explain wrote nothing for %d follow articles; excerpts kept", missing)

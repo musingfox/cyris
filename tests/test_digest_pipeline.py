@@ -867,3 +867,18 @@ class TestSummarizeFollow:
         items = [i for s in result.content.fan_sections for i in s.items]
         assert [(i.summary, i.passed_through) for i in items] == [("Body.", True)] * 3
         assert result.content.usage.fell_back_to_excerpts
+
+    @pytest.mark.parametrize(
+        "reply",
+        ['{"sections": null}', '{"sections": [null]}', '{"sections": [{"summaries": null}]}', "[]"],
+    )
+    async def test_on_survives_a_malformed_reply_with_excerpts(self, sample_sources, reply):
+        pipeline = DigestPipeline(FakeLLM(reply), **pipeline_settings(summarize_follow=True))
+
+        result = await pipeline.process(
+            self._follow(), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        items = [i for s in result.content.fan_sections for i in s.items]
+        assert [(i.summary, i.passed_through) for i in items] == [("Body.", True)] * 3
+        assert result.content.usage.fell_back_to_excerpts
