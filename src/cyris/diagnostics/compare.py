@@ -182,6 +182,7 @@ def compare_llms(
             featured_threshold=cfg.app.routing.score_threshold,
             output_language=cfg.app.digest.output_language,
             style_prompt=cfg.app.digest.style_prompt,
+            summarize_follow=False,
         )
         started = time.monotonic()
         try:

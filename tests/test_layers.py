@@ -87,10 +87,21 @@ def test_a_pebble_is_untranslated_when_its_text_is_the_articles_own() -> None:
             DigestSection(heading="f", items=[_item("model"), _item("x", passed_through=True)])
         ],
         attention_sections=[DigestSection(heading="a", items=[_item("radar")])],
-        fan_sections=[DigestSection(heading="Fan", items=[_item("fan")])],
+        fan_sections=[
+            DigestSection(
+                heading="Fan",
+                items=[_item("fan", passed_through=True), _item("explained-fan")],
+            )
+        ],
     )
 
-    assert [p.untranslated for p in layer_by_lane(content).pebbles] == [False, True, True, True]
+    assert [p.untranslated for p in layer_by_lane(content).pebbles] == [
+        False,
+        True,
+        True,
+        True,
+        False,
+    ]
 
 
 def test_a_legacy_issue_with_features_in_thematic_summaries_still_makes_pebbles() -> None:

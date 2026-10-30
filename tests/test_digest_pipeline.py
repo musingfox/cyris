@@ -790,3 +790,80 @@ class TestThePreferenceOrdersTheNews:
             )
 
         assert [s.heading for s in result.content.news_clusters] == ["voted", "quiet"]
+
+
+class TestSummarizeFollow:
+    """With the setting on, follow articles get the read lane's explanation; off, an excerpt."""
+
+    @staticmethod
+    def _follow():
+        a, b = (_article(i, Lane.FOLLOW, "A group") for i in (21, 22))
+        c = _article(23, Lane.FOLLOW, "A newsletter")
+        return [a, b, c]
+
+    @staticmethod
+    def _llm():
+        return FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Ignored heading",
+                            "summary": "Ignored group line.",
+                            "summaries": {"0": "Explains the first.", "1": "Explains the second."},
+                            "article_ids": [0, 1],
+                        }
+                    ]
+                }
+            )
+        )
+
+    async def test_off_sends_no_follow_article_to_the_model(self, sample_sources):
+        llm = self._llm()
+        pipeline = DigestPipeline(llm, **pipeline_settings(summarize_follow=False))
+
+        result = await pipeline.process(
+            self._follow(), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        assert llm.calls == []
+        items = [i for s in result.content.fan_sections for i in s.items]
+        assert [i.summary for i in items] == ["Body."] * 3
+        assert all(i.passed_through for i in items)
+
+    async def test_on_explains_each_source_and_keeps_the_sections_by_source(self, sample_sources):
+        llm = self._llm()
+        pipeline = DigestPipeline(llm, **pipeline_settings(summarize_follow=True))
+
+        result = await pipeline.process(
+            self._follow(), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        assert [c["prompt"].splitlines()[0] for c in llm.calls] == [
+            "Topic group: A group",
+            "Topic group: A newsletter",
+        ]
+        assert all("never analyse" in c["system"] for c in llm.calls)
+        sections = result.content.fan_sections
+        assert [s.heading for s in sections] == ["A group", "A newsletter"]
+        group, newsletter = sections
+        assert [(i.summary, i.passed_through) for i in group.items] == [
+            ("Explains the first.", False),
+            ("Explains the second.", False),
+        ]
+        # The newsletter's call explained ids 0 and 1, of which it has only 0.
+        assert [(i.summary, i.passed_through) for i in newsletter.items] == [
+            ("Explains the first.", False)
+        ]
+
+    async def test_on_keeps_the_excerpt_where_the_model_wrote_nothing(self, sample_sources):
+        llm = FakeLLM(error=RuntimeError("down"))
+        pipeline = DigestPipeline(llm, **pipeline_settings(summarize_follow=True))
+
+        result = await pipeline.process(
+            self._follow(), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        items = [i for s in result.content.fan_sections for i in s.items]
+        assert [(i.summary, i.passed_through) for i in items] == [("Body.", True)] * 3
+        assert result.content.usage.fell_back_to_excerpts

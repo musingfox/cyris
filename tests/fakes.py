@@ -50,6 +50,7 @@ def pipeline_settings(**overrides: Any) -> dict[str, Any]:
         "featured_threshold": TEST_SETTINGS["routing.score_threshold"],
         "output_language": TEST_SETTINGS["digest.output_language"],
         "style_prompt": TEST_SETTINGS["digest.style_prompt"],
+        "summarize_follow": False,
         **overrides,
     }
 

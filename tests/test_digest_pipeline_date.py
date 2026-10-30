@@ -22,6 +22,7 @@ def _pipeline() -> DigestPipeline:
         featured_threshold=0,
         output_language="en",
         style_prompt="",
+        summarize_follow=False,
     )
 
 

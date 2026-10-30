@@ -2048,7 +2048,12 @@ def _every_section(output_language: str) -> DigestContent:
         output_language=output_language,
         featured_articles=[DigestSection(heading="Features", items=[item("Lead"), item("Second")])],
         news_clusters=[DigestSection(heading="Cluster heading", items=[cluster])],
-        fan_sections=[DigestSection(heading="Fan heading", items=[item("Fan")])],
+        fan_sections=[
+            DigestSection(
+                heading="Fan heading",
+                items=[item("Fan").model_copy(update={"passed_through": True})],
+            )
+        ],
         attention_sections=[DigestSection(heading="Radar heading", items=[item("Radar")])],
         filtered_headlines=[item("Wire")],
     )
