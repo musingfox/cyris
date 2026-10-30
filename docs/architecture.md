@@ -54,6 +54,7 @@ flowchart TB
         P2["ArticleRepository"]
         P3["FetchSource"]
         P4["Embedder"]
+        P5["TopicRepository"]
     end
 
     subgraph ADP["Adapters"]
@@ -73,6 +74,7 @@ flowchart TB
         TAGS["D1TagStore"]
         STORIES["D1StoryStore"]
         DIGESTS["D1DigestStore"]
+        TOPICS["D1TopicStore · JsonTopicStore"]
     end
 
     subgraph EXT["External"]
@@ -91,6 +93,7 @@ flowchart TB
     UC -->|Protocol| P1
     RUN -->|Protocol| P2
     RUN -->|Protocol| P4
+    RUN -->|Protocol| P5
 
     P1 -. impl .-> LLM
     P2 -. impl .-> STORE
@@ -98,6 +101,7 @@ flowchart TB
     P3 -. impl .-> CFNL
     P3 -. impl .-> RSS
     P4 -. impl .-> EMB
+    P5 -. impl .-> TOPICS
 
     RUN -->|direct inject| HTML
     RUN -->|direct inject| PUB
@@ -121,11 +125,13 @@ flowchart TB
     TAGS --> CFW
     STORIES --> CFW
     DIGESTS --> CFW
+    TOPICS --> CFW
     NOTI --> DISC
     MAIL --> CFW
     EMB --> CFW
     CLEF --> CFW
     HTML -->|json backend only| FS
+    TOPICS -->|json backend only| FS
     CLI -->|--output PATH, operator's file| FS
 
     classDef port fill:#0F6E7A,stroke:#5AC3CC,color:#fff;
