@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-10-29
+updated: 2026-10-31
 ---
 
 # cyris UI design spec
@@ -195,7 +195,10 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 |---|---|
 | **site bar** | Full width, sticky, height `--bar-h`, 1px `--border` at the bottom. On the left, the brand square (12px `--accent`, pulse animation) plus `CYRIS`; on the right, links in the label role, `Archive` · `Settings`, spaced `--s-5`. The current page is `--text` with a 1px `--accent` underline. `Settings` reuses the `/api/vote` probe and is hidden when not authorized. `Sign in` shows in its place only on an Access redirect, linking to `/login?next=` plus this page, so signing in returns here; every other probe outcome hides it, the app Worker's own 403 and a failed probe included. On /settings the brand link and `Archive` show only once the probe answers authorized, because a local `cyris triage-ui` serves no archive. At phone width the word `CYRIS` is hidden |
 | **interest graph** | Only on the interest page (§6 *interest*). Each tag is a circle that always shows its vote polarity: its fill is `--accent` for net up and `--text-dim` for net down, at half strength mixed with `--text-faint` when no hold is on it. Brightness, the tag's largest share of suppression time left, adds the other half on top, so a lit node is suppressed now and a dimmer one has less time left. A tied tag is a hollow ring in `--text-dim`. Its label is in `--text`. Edges between tags that co-occur are `--border-strong` hairlines. The page's table gives the same counts, polarity and days left in words, and is the text equivalent of the map |
-| **reading progress** | Only on the digest. A 3px strip fixed along the bottom edge of the site bar, inside its box, so it covers none of its links and nothing the bar does not already cover; it takes no pointer events and is hidden from assistive technology. It spans the site bar's inner column, at most 1240px with `--s-4` inside each end as `.site-bar-inner` has, so it starts under the brand and ends under the last link rather than at the window's edges; the digest probe's `progress-in-column-*` checks hold it at 1440 and 2000px. One segment per section of the issue, as wide as that section's share of the page, divided by a 1px `--bg` hairline, so the strip reads as one line with small dividers rather than a broken one, as `--s-1` gaps made it until 2026-10-29; each is `--border-strong` and fills with `--accent` as far as the bottom of the window has passed through it. It moves only with the scroll, with no transition. Without script it is not drawn |
+| **reading progress** | Only on the digest. A 3px strip fixed along the bottom edge of the site bar, inside its box, so it covers none of its links and nothing the bar does not already cover; it takes no pointer events and is hidden from assistive technology. It spans the site bar's inner column, at most 1240px with `--s-4` inside each end as `.site-bar-inner` has, so it starts under the brand and ends under the last link rather than at the window's edges; the digest probe's `progress-in-column-*` checks hold it at 1440 and 2000px. One segment per layer of the issue (§6 *digest*), as wide as that layer's share of the issue's items (a Tracking hit is not an item, so it adds no width), divided by a 1px `--bg` hairline, so the strip reads as one line with small dividers rather than a broken one, as `--s-1` gaps made it until 2026-10-29; each is `--border-strong`. A layer before the one shown is filled `--accent`, a layer after it is empty, and the one shown fills as far as the bottom of the window has passed through it. Widths come from item counts, not heights, because only one layer is laid out at a time. It moves only with the scroll and the layer switch, with no transition. Without script it is not drawn |
+| **layer dock** | Only on the digest, and only with script: a bar fixed along the bottom of the window, full width, `--bg-elev` with a 1px `--border` on top, its content in the site bar's inner column, height `--s-12`. The page takes the same height as bottom padding, so the dock never covers the last item or a vote. On the left, a back control `↑ Stories` naming the previous layer (a small secondary button, hidden on the first layer), then the layer shown and its count in the label role, `Topics · 20`, which is how a reader mid-layer knows where they are. On the right, `Skip to 14 Headlines ↓`, a small secondary button naming the next layer and its count, hidden on the last. Skip and back switch layers as a pull does (§4 *Interaction*, *Layers*). On a phone the `Skip to` words are hidden and the button keeps the layer and count |
+| **layer edge** | The fade at the edge of a layer that has a neighbour, only with script: a gradient from `--bg` to transparent over the window's bottom `--s-16` while a next layer exists, and over its top `--s-12`, under the site and issue bars, while a previous one exists. It takes no pointer events, so a vote under it still takes its tap. While a reader pulls at the edge (§4 *Interaction*, *Layers*) it deepens by up to `--s-12` and holds a 1px `--accent` line that fills with the pull, beside one line in the label role: `Keep scrolling for 20 Topics`, or `Press ↓ again for 20 Topics` once a key has armed the switch |
+| **story image** | A pebble's article image (§6 *digest*): `1200 / 630`, `object-fit: cover`, square corners, a 1px `--border`, on `--surface` while it loads, so a late image moves nothing. At rest it is greyscale at opacity .55, because a full-colour photograph was the loudest thing on the dark page (owner, 2026-10-31); hovering or focusing within its item restores its colour and full opacity. It is decorative (`alt=""`), since the title beside it names the article, and loads with `loading="lazy"`, `decoding="async"` and `referrerpolicy="no-referrer"`. An image that fails to load removes its box, and an item with no image has no box at all, never a placeholder. The image is the one the article's feed supplied (`docs/architecture.md` §4); the page fetches nothing else. An image URL that two or more articles of one source share in the issue is the site's default picture, not the article's, and is not shown: on 2026-10-30 one news site gave the same logo as the og:image of 29 of its 73 links, and a feed can repeat a picture the same way |
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em, and still takes taps over 44 × 44 (**tap area**). Pressed (`:active`) lowers opacity to .7 on top of whatever hover state the button already shows, and changes nothing else; .7 stays clear of disabled's .4, so a pressed button never reads as disabled. Disabled is always opacity .4, and a disabled button does not change on hover or press |
@@ -224,13 +227,38 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 
 - **Focus:** every interactive element has `:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }`.
   Only inputs may remove the outline, showing focus by a border colour change instead.
-- **Transitions:** only `color`, `background-color`, `border-color` and `opacity` change, over `--t-fast`,
+- **Transitions:** only `color`, `background-color`, `border-color` and `opacity` change, plus `filter` on
+  the story image alone, over `--t-fast`,
   and `transition: all` is never written. Transform is used only for the triage card's drag and fly-out,
   on raw and on labels, and to rotate the feature flow's static chevrons.
 - **Hover** neither moves nor scales. The pressed state only lowers opacity, to the button's .7 (§4).
   A disabled button neither hovers nor presses.
 - **Reduced motion:** `@media (prefers-reduced-motion: reduce)` cancels transitions, animations and smooth
   scroll globally.
+- **Layers:** the digest shows one layer at a time (§6 *digest*), and a reader crosses into the next
+  one only on purpose. These are the rules, settled on throwaway pages on 2026-10-30 and 2026-10-31
+  (vault `pm/cyris/docs/digest-pebble-sand-water/layers-2026-10-30/`, versions `b4-keys` and
+  `b7-left-wide`):
+  - *Pull.* Scrolling down stops where the layer ends. Further wheel or touch movement is a pull,
+    shown by the layer edge (§4); 160px of pull switches to the next layer. The pull resets when the
+    reader stops for 400ms. The gesture that hits the edge never counts, so a trackpad's momentum
+    cannot carry a reader through: a pull starts after 150ms without wheel input, or with a new touch.
+    The same holds upward at a layer's top, back to the previous layer.
+  - *Keys.* Space, Page Down, the arrow keys, Home and End scroll inside a layer as they always do.
+    At an edge a held key, which repeats, never switches. Once a key reaches the edge, the next fresh
+    press of a key in that direction switches; a reader who reached the edge by wheel or touch
+    first arms it with one press and switches with the second, so one press at an edge never jumps.
+    An armed edge disarms after 3 seconds, or when the reader scrolls away from it. Keys do nothing
+    in a form field or with Ctrl, Alt or Meta held. `N` switches to the next layer; nothing on the page
+    advertises it.
+  - *Switch.* The layer left is hidden, not scrolled past. Going forward lands on the next layer's
+    `h2` under the bars; going back lands on the previous layer's end, where the reader left it.
+    The new layer fades in over 200ms with opacity alone; under reduced motion it appears at once.
+    Focus moves to the new layer's `h2` (`tabindex="-1"`), and its ring shows only for a switch made
+    from the keyboard.
+  - *Never blocked.* A scrollbar drag, a link to `#` an item in a hidden layer (which switches to
+    it first) and every key inside a layer work as on any page. Find-in-page cannot reach a hidden
+    layer; that is accepted, since one layer at a time is the point.
 - **Votes:** each small ↑ / ↓ vote button is named `More like this` / `Less like this` and carries
   `aria-pressed`, true on the vote this browser cast. While a vote is in flight both buttons of its group
   are disabled, and the request gives up after a fixed timeout; once it settles, focus goes back to the
@@ -312,6 +340,14 @@ the same order (§6 *email*). Nothing the run kept is cut from the page: there i
 out. Each section is one `<section class="section">`, and its name is printed once, by its section marker
 (§4), an `h2`, with no number and no repeated large section title.
 
+**With script, the page shows one layer at a time** (owner, 2026-10-30 and 2026-10-31). The page is
+read like the jar of ADR-0023, stones before sand before water, and a reader who stops after one layer
+has read a whole thing rather than the top of a long scroll. The masthead and Tracking belong to the
+first layer shown. A reader crosses to the next layer by a deliberate pull or key, or by the layer
+dock's `Skip`, and goes back the same way (§4 *Interaction*, *Layers*; §4 *layer dock*, *layer edge*).
+A switch hides the layer left. Without script every layer shows, stacked, exactly as the markup
+orders them, with no dock and no edge; the mail and Discord are not affected.
+
 - **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers; `h3` is
   a pebble's title, a sand block's heading and a tracked topic's name; `h4` is a Tracking hit. `h3` and
   `h4` are both the title role (§3), with the class `.item-title`: `h3` adds `.lg` for 19px, and `h4`
@@ -322,16 +358,16 @@ out. Each section is one `<section class="section">`, and its name is printed on
   hit is left out, and so is the whole section when none has one. Hits sit outside the issue's article
   count, because a hit is a view of the run's candidates, not a verdict on them. It opens the body
   because a topic is something the reader asked to see.
-- **A pebble is one article's card.** `.featured-item`, in the `.featured-grid`: its title link, its
-  own summary (an article the model wrote no summary for shows its excerpt, and the issue counts as
-  degraded), its tags, then its meta row. The card is a flex column and its last child, the meta
-  row, takes `margin-top: auto`, so the cards of one grid row, which the grid draws one height,
-  end in meta rows that share their bottom edge however long each summary runs; the digest
-  probe's `pebble-meta-bottoms-1440` holds it. A refused vote's notice follows the meta row, so
-  while one shows, the meta row is the child before it and keeps the slack, and the notice sits
-  right below it (`pebble-vote-error-under-meta-1440`). The flex column stops margins collapsing,
-  so the card's tags row drops its own top margin and keeps the summary's. Stories are the read lane's summarized articles in the
-  content's order, then the read lane's low-score rows by score, then the follow lane.
+- **A pebble is one article's row.** `.featured-item`, in the `.featured-grid`: its story image
+  (§4) when the article has one, its title link, its own summary (an article the model wrote no
+  summary for shows its excerpt, and the issue counts as degraded), its tags, then its meta row. A
+  refused vote's notice sits right below the meta row. With an image the item is two columns, the
+  image on the left at 280px, its top aligned with the title's, and the text beside it with an `--s-6`
+  gap; without one the text takes the full width. Below 720px the image is 112px wide and sits
+  beside the title alone, and everything after the title takes the full width, because a summary
+  beside the image was too narrow to read at 360px. Stories are the read lane's
+  summarized articles in the content's order, then the read lane's low-score rows by score, then
+  the follow lane.
 - **A sand block is one topic of two or more articles.** `.news-cluster`: the topic's heading, one
   line saying what happened, its tags, then a meta row holding the fold and the votes. The fold is a
   `<details class="src-fold">` whose summary is `N articles` and which unfolds each member's title
@@ -365,10 +401,10 @@ out. Each section is one `<section class="section">`, and its name is printed on
   `data-story-id`. The vote group
   stays hidden until the `/api/vote` probe answers authorized, so a reader who cannot vote never sees
   a button that would fail.
-- **Pebble cards share one fluid column rule:**
-  `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`, with no column count set at any width. The Stories
-  grid lines are drawn on each card's right and bottom edges, so when the last row is not full, the empty
-  cells are the page background, not a solid block of border colour.
+- **Stories are one article per row** at every width: `.featured-grid` is a single column, its lines
+  drawn on each row's right and bottom edges. Until 2026-10-31 pebbles were cards in a fluid
+  `repeat(auto-fit, minmax(min(100%, 320px), 1fr))` grid; the owner found articles side by side
+  read badly once they carried images (2026-10-31).
 - **Sand blocks fill the column as a grid:** `.sand-grid` holds them with
   `repeat(auto-fit, minmax(min(100%, 480px), 1fr))` and an `--s-5` row and `--s-8` column gap, so the
   1240px column holds two side by side and a phone one, with no column count and no breakpoint; a
@@ -661,7 +697,9 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   `layer_by_lane`, an empty one left out. There is no lead panel; every item is separated by a
   `--border` hairline.
 - **Each block says what it says on the page, unfolded.** A Tracking topic is its name and each hit's
-  title link. A pebble is its title link, its summary and its source name. A sand block is its
+  title link. A pebble is its title link, its summary and its source name, with no story image: a
+  mail client may block a remote image, and one it loads tells the image's host who opened the
+  mail. The mail shows every layer at once, as the page does without script. A sand block is its
   heading, its line, then each member's title link with its source name, listed open because a mail
   client cannot be trusted with `<details>`; that list is the only place outside a pebble where a
   source is named. No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page. The
