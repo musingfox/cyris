@@ -435,8 +435,12 @@ no vote similarity. Every article URL takes its topic's score, and `order_by_pre
 (`domain/selection.py`) orders the Features, after their score sort, the news clusters and the kept
 headlines, each list by its entries' best article's score. Equal scores keep the incoming order, so
 an issue with no vote keeps it whole, and the Top story never moves. While topic ids last one issue
-and today's tags are stored as `domain` (§4), a vote can move only the issue it was cast on, as a
-rerun of it; the order carries across issues once the filter assigns topics. On the page, water lists
+and today's tags are stored as `domain` (§4), a vote moves no published issue: its topic is in no
+later issue and shares no entity tag with one, and the issue it was cast on cannot be reordered by
+it either. A rerun skips the vote sync, so the vote is synced by the next normal run, which publishes
+a newer issue and so makes a publishing rerun of the voted one refused; a rerun also re-clusters,
+so its stand-in ids can differ. Votes take effect once the filter assigns topics whose ids last
+across issues. On the page, water lists
 the one-article clusters first and the kept headlines after them, each part in that order: the two
 come from separate model calls and are ranked apart. The order rejects nothing and stamps no
 `triaged_at`, and with no cap it changes only where an item stands, never whether it is shown. Off,

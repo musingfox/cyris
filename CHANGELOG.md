@@ -57,8 +57,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   your votes** on, an item's place follows its topic's votes, each counting half
   as much after **Vote half-life** days, plus what you voted on topics that share
   a named entity with it. Embeddings no longer take part, so the order works with
-  vote similarity off. While a topic lasts one issue, a vote moves only the issue
-  it was cast on. An issue Clef cannot fully score now falls back to this order.
+  vote similarity off. While a topic lasts one issue, a vote is recorded but moves
+  no issue yet: it takes effect once topics last across issues. An issue Clef
+  cannot fully score now falls back to this order.
 - **A deployment with no source waits instead of failing.** An empty source list
   is how a deployment starts, before onboarding picks any feed, so `cyris run`
   now ends there having fetched nothing and called no model, saying it waits for
