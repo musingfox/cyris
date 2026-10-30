@@ -491,50 +491,68 @@ class TestDiscordPayloadLimits:
         assert embeds[-1] == build_discord_embeds(content, ONLINE)[-1]
         assert f"[Read online]({ONLINE})" in embeds[-1]["description"]
 
-    def test_a_section_over_4096_alone_is_cut_and_the_stats_stay(self):
+    def test_a_layer_over_4096_continues_in_an_embed_of_its_own_title(self):
         content = _issue([_feature(0, 100), *(_feature(n, 1200) for n in range(1, 5))], 2)
         full = build_discord_embeds(content, ONLINE)
 
-        stories, headlines, stats = build_discord_payload(content, ONLINE)["embeds"]
+        embeds = build_discord_payload(content, ONLINE)["embeds"]
 
-        *kept, marker = stories["description"].split("\n")
-        assert kept == full[0]["description"].split("\n")[: len(kept)]
-        assert "more in the online edition" in marker
-        assert len(stories["description"]) <= 4096 < len(full[0]["description"])
-        assert (headlines, stats) == (full[1], full[-1])
+        assert [e["title"] for e in embeds] == [
+            "Stories",
+            "Stories",
+            "Headlines",
+            full[-1]["title"],
+        ]
+        assert all(len(e["description"]) <= 4096 for e in embeds)
+        assert embeds == full
+        stories = "\n".join(e["description"] for e in embeds[:2])
+        for n in range(5):
+            assert f"[Feature {n}](https://ex.com/{n})" in stories
 
-    def test_pebbles_and_sand_survive_when_the_rows_overflow_the_total(self):
-        content = four_layer_issue().model_copy(
-            update={
-                "filtered_headlines": [
-                    DigestItem(
-                        title=f"Headline {n} " + "x" * 60,
-                        summary="One line about it " * 5,
-                        sources=["Wire"],
-                        urls=[f"https://wire.example/{n}"],
-                    )
-                    for n in range(120)
-                ]
-            }
-        )
+    def test_pebbles_outlive_the_rows_when_stories_alone_overflow_the_total(self):
+        # The review's case: one long Stories layer, then a few short rows.
+        content = _issue([_feature(n, 450) for n in range(14)], headlines=10)
+
+        embeds = build_discord_payload(content, ONLINE)["embeds"]
+
+        assert sum(_counted(e) for e in embeds) <= 6000
+        assert {e["title"] for e in embeds[:-1]} == {"Stories"}
+        assert "Headline 0" not in json.dumps(embeds)
+
+    def test_pebbles_and_sand_stay_whole_when_the_rows_overflow_the_total(self):
+        content = four_layer_issue()
+        pebble = content.featured_articles[0].items[0]
+        content.featured_articles[0].items = [
+            pebble.model_copy(update={"title": f"Read {n}", "summary": "Why it matters. " * 40})
+            for n in range(5)
+        ]
+        cluster = content.news_clusters[0]
+        cluster.members = [
+            m.model_copy(update={"summary": "Excerpt " * 40}) for m in cluster.members
+        ] * 4
+        content.filtered_headlines = [
+            DigestItem(
+                title=f"Headline {n} " + "x" * 60,
+                summary="One line about it " * 5,
+                sources=["Wire"],
+                urls=[f"https://wire.example/{n}"],
+            )
+            for n in range(120)
+        ]
         full = build_discord_embeds(content, ONLINE)
+        rows_at = [e["title"] for e in full].index("Headlines")
+        # Above one embed's 4096 before the rows, so only the 6000 total can cut them.
+        assert sum(len(e["description"]) for e in full[:rows_at]) > 4096
         assert sum(_counted(e) for e in full) > 6000
 
         embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
 
         assert sum(_counted(e) for e in embeds) <= 6000
-        assert embeds[:3] == full[:3]
-        assert [e["title"] for e in embeds] == [
-            "Tracking",
-            "Stories",
-            "Topics",
-            "Headlines",
-            full[-1]["title"],
-        ]
-        *kept, marker = embeds[3]["description"].split("\n")
+        assert embeds[:rows_at] == full[:rows_at]
+        assert [e["title"] for e in embeds[rows_at:]] == ["Headlines", full[-1]["title"]]
+        *kept, marker = embeds[rows_at]["description"].split("\n")
         assert "more in the online edition" in marker
-        assert kept == full[3]["description"].split("\n")[: len(kept)]
-        assert len(embeds[3]["description"]) < len(full[3]["description"])
+        assert kept == full[rows_at]["description"].split("\n")[: len(kept)]
 
 
 class TestSendDiscord:

@@ -670,7 +670,8 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   the HTML part, breaking an unbroken run as the page does, and on its own indented line in the
   plain-text part; a row with no summary is its title alone. A row names no source.
 - **Discord follows the same order.** The notification is one embed per non-empty section, titled as
-  the mail's, then the stats. Discord refuses a message over 6000 characters whole, so the embeds are
+  the mail's, then the stats; a section longer than one embed's 4096 characters continues in embeds of
+  the same title. Discord refuses a message over 6000 characters or 10 embeds whole, so the embeds are
   cut from the end: Headlines lose rows first and Stories last.
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a

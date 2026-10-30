@@ -213,17 +213,35 @@ def _render_water(water: Water) -> list[str]:
     return lines
 
 
+def _continued(parts: list[str]) -> list[str]:
+    """A layer's items as embed descriptions, each at most one embed long where it can be.
+
+    Items are never split here: one item over the limit is a description of its own, and
+    `_fit_embeds` cuts it at its lines.
+    """
+    pages: list[str] = []
+    page: list[str] = []
+    for part in parts:
+        if page and len("\n".join([*page, part]).strip()) > _DISCORD_DESCRIPTION_MAX:
+            pages.append("\n".join(page).strip())
+            page = []
+        page.append(part)
+    pages.append("\n".join(page).strip())
+    return [text for text in pages if text]
+
+
 def build_discord_embeds(
     content: DigestContent, digest_url: str = "", publish_failed: bool = False
 ) -> list[dict]:
     """Build Discord embed objects from DigestContent.
 
-    Returns a list of embed dicts, uncapped: `build_discord_payload` holds them to
-    Discord's limits.
+    Returns a list of embed dicts, uncapped in total: `build_discord_payload` holds them
+    to Discord's limits.
     The embeds follow the page (docs/design/ui-language.md §6 *digest*): Tracking, then
     the three layers of `layer_by_lane`, Stories, Topics and Headlines, an empty one left
-    out. The stats come last. `_fit_embeds` cuts from the end, so when the message runs
-    out of room the Headlines go first and the Stories last.
+    out. The stats come last. A layer longer than one embed's description continues in
+    embeds of the same title, so that `_fit_embeds`, which cuts from the end, takes the
+    Headlines first and the Stories last when the message runs out of room.
     """
     label = period_label(content.period)
     layers = layer_by_lane(content)
@@ -235,8 +253,7 @@ def build_discord_embeds(
     ]
     embeds: list[dict] = []
     for title, parts, color in blocks:
-        text = "\n".join(parts).strip()
-        if text:
+        for text in _continued(parts):
             embeds.append({"title": title, "description": text, "color": color})
 
     # --- Stats ---
