@@ -72,6 +72,13 @@ class TestSummarizeSystemPrompt:
         assert NO_BODY_MARKER in SUMMARIZE_SYSTEM
         assert "not fetched" in SUMMARIZE_SYSTEM
 
+    def test_only_the_marker_means_not_fetched(self):
+        """A feed that ships only a teaser is explained from it, not called unfetched."""
+        sentences = SUMMARIZE_SYSTEM.replace("\n", " ").split(". ")
+        unfetched = [s for s in sentences if "not fetched" in s]
+        assert unfetched and all(NO_BODY_MARKER in s for s in unfetched)
+        assert any("teaser" in s and "from what that text says" in s for s in sentences)
+
     def test_it_keeps_the_reply_shape_summarize_parses(self):
         for key in ('"heading"', '"summary"', '"summaries"', '"article_ids"'):
             assert key in SUMMARIZE_SYSTEM

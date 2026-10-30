@@ -120,12 +120,12 @@ Instead, name the subject and say what the article does with it: "Reports that�
 "Announces…", "Walks through how…", "Interviews…", "Argues that…" (attributing the claim to \
 the article, not asserting it).
 
-When an article's text is missing — the entry shows """
+When an entry shows """
     + NO_BODY_MARKER
-    + """, or the \
-text is only a title, a teaser, a sign-up prompt or a few words — do not describe content you \
-cannot see. Say plainly that the article's text was not fetched and that only its title is \
-known; you may restate what the title says, as the title.
+    + """ in place of its text, say plainly \
+that the article's text was not fetched and only its title is known; you may restate what the \
+title says, as the title, and nothing more. When the text is short, such as a feed's teaser, \
+explain the article from what that text says, and do not add what it does not say.
 
 Also give each group a "heading" that names its shared subject in a few plain words, and a \
 "summary" of one sentence saying what the group's articles are about, under the same rules: \
