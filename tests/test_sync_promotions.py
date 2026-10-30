@@ -321,6 +321,22 @@ def test_a_broken_topic_store_still_stamps_and_acks_and_names_why(tmp_path):
     assert synced.topic_votes_failed.startswith("topic store failed: JSONDecodeError")
 
 
+def test_a_vote_on_a_topic_member_gone_from_the_store_is_still_a_topic_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    topics.save_topics(
+        "2026-10-30",
+        "evening",
+        [TopicRecord(id="pruned", name="Pruned", urls=["https://news.example/pruned"])],
+        datetime(2026, 10, 30, 12, tzinfo=UTC),
+    )
+    payload = [{"url": "https://news.example/pruned", "vote": "down", "ts": "2026-10-30T13:00:00Z"}]
+
+    _sync(payload, articles, topics)
+
+    assert articles.get_by_urls(["https://news.example/pruned"]) == []
+    assert [(v.topic_id, v.direction) for v in topics.topic_votes()] == [("pruned", -1)]
+
+
 def test_a_vote_on_a_url_no_topic_holds_only_stamps_it(tmp_path):
     articles, topics = _sand_store(tmp_path)
     payload = [{"url": "https://news.example/3", "vote": "up", "ts": "2026-10-30T09:00:00Z"}]

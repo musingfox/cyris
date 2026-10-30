@@ -200,9 +200,10 @@ def sync_promotions(
     record_votes(store, accepted=accepted, rejected=rejected, at=now)
     failed = ""
     if topics is not None:
-        voted = [p for p in promotions if p.url not in missing]
+        # Every URL, the ones the article store no longer holds included: a topic's
+        # membership outlives its articles, and the vote was on the topic.
         try:
-            votes = topic_votes(voted, topics.topics_of_urls([p.url for p in voted]), now)
+            votes = topic_votes(promotions, topics.topics_of_urls(urls), now)
             if votes:
                 topics.record_topic_votes(unrecorded(votes, topics.topic_votes()))
         except Exception as e:
