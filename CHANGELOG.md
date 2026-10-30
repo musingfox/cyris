@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   follow articles** on (`/settings`, Digest), each follow article's card says
   what the article is, as a `read` article's does; off keeps the start of its
   own text, as before.
+- A vote on the page lands on its topic. One click on any item, a topic of
+  several articles included, writes one vote on that topic with the time you
+  clicked. Each article it covers is still marked as voted, as before.
 - Every run records its topics. Each item on the page is a topic, with its
   articles and its tags, in four new tables (`topics`, `topic_members`,
   `topic_tags`, `topic_votes`) or in `topics.json` on the `json` backend. For now a

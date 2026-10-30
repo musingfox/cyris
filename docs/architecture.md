@@ -405,8 +405,8 @@ article is a pebble, its own card, the Top story's group split into its articles
 two or more articles is sand, one block whose members stay folded; a cluster of one article, or a
 headline the filter kept, is water, a row. Tracking comes first, then pebbles, sand and water. Each
 item carries exactly one vote group: a pebble's and a water row's vote is for its article, and a
-sand block's is for every member URL, posted once per URL as a cluster's vote was, until
-topic-store-and-votes moves the vote onto a topic id. A cluster is a stand-in for the topic it will
+sand block's is for every member URL, posted once per URL as a cluster's vote was; the vote
+sync turns those posts into one vote on the item's topic (§4 *Topic votes*). A cluster is a stand-in for the topic it will
 become: this issue's `cluster_news` groups, never across issues, and sand's line is its first
 member's excerpt until sand-what-happened writes one.
 
@@ -485,8 +485,8 @@ run, a run started by hand and a SIGTERM-cancelled run send no alert. A catch-up
 alerts as any other does, so a failure that persists alerts once per retry. Votes cast on the
 published digest go to the promote Worker's KV and are drained at each digest run, by the run
 itself and by the `cyris promote-sync` after it, which is what turns a click into a
-`triaged_at` stamp. The stamp is the sync's time, not the click's: `sync_promotions` parses the
-payload's `ts` and never stores it, so how often votes arrive cannot be read from the store. A
+`triaged_at` stamp. The stamp is the sync's time, not the click's; the click's time, the payload's `ts`,
+is kept only on the topic vote the sync writes beside it (§4 *Topic votes*). A
 vote on a grouped item posts once for every URL in the group, so rows stamped at one instant may
 be one judgment rather than independent labels. The raw page's triage view is the only triage surface; the pending backlog
 across days is reachable only through `cyris articles`. `/labels` writes human verdicts too, through
@@ -520,7 +520,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Topics | **D1 `topics`**; `topics.json` in the agent vault for a `json` deployment | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. A stand-in until the filter assigns topics: each item of the page is a topic of this issue only (`domain/topics.py`), so an id never spans two issues. A topic left with no member and no vote is deleted |
 | Topic members | **D1 `topic_members`**; `topics.json` for `json` | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which stay the clustering step's record |
 | Topic tags | **D1 `topic_tags`**; `topics.json` for `json` | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`; tags accumulate across issues. Today's tags carry no kind, so the stand-in stores every one as `domain` (`STAND_IN_TAG_KIND`) |
-| Topic votes | **D1 `topic_votes`**; `topics.json` for `json` | same | Append-only, keyed by topic and click time: the direction (1 or -1). Nothing writes it yet |
+| Topic votes | **D1 `topic_votes`**; `topics.json` for `json` | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A URL no topic holds (an issue published before topics, the raw page) writes no row |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry |
 | Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. D1 only: a `json` deployment polls no Worker |
 | Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |

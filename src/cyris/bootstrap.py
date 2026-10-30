@@ -379,7 +379,9 @@ class Deps:
 
 
 def build_promotion_sync(
-    cfg: Config, store: ArticleRepository | None = None
+    cfg: Config,
+    store: ArticleRepository | None = None,
+    topics: TopicRepository | None = None,
 ) -> Callable[[], int] | None:
     """The vote pull bound to `store`, or None when no vote Worker is configured.
 
@@ -391,7 +393,8 @@ def build_promotion_sync(
     if not (promote.worker_url and promote.token):
         return None
     store = store if store is not None else build_store(cfg)
-    return partial(sync_promotions, promote.worker_url, promote.token, store)
+    topics = topics if topics is not None else build_topic_store(cfg)
+    return partial(sync_promotions, promote.worker_url, promote.token, store, topics)
 
 
 def build_rss_source(cfg: Config) -> FetchSource:
@@ -540,7 +543,8 @@ def build_deps(
                     cfg.app.promote.pages_project,
                 )
 
-    sync = None if dry_run else build_promotion_sync(cfg, store)
+    topic_store = build_topic_store(cfg, d1)
+    sync = None if dry_run else build_promotion_sync(cfg, store, topic_store)
 
     return Deps(
         cfg=cfg,
@@ -556,7 +560,7 @@ def build_deps(
         log_usage=log_usage,
         tag_store=tag_store,
         story_store=story_store,
-        topic_store=build_topic_store(cfg, d1),
+        topic_store=topic_store,
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
         embedding_model=embedding_model(

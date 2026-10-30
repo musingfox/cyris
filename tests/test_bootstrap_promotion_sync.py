@@ -25,15 +25,15 @@ def test_a_vote_worker_binds_the_pull_to_the_store(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(
         "cyris.bootstrap.sync_promotions",
-        lambda url, token, store: calls.append((url, token, store)) or 3,
+        lambda url, token, store, topics: calls.append((url, token, store, topics)) or 3,
     )
     cfg = make_config(promote=PromoteConfig(worker_url="https://votes.example", token="t"))
     # promote-sync starts on an empty D1, where the settings tables are unbuilt.
     cfg.app.llm_provider = None
     cfg.app.vote_similarity = None
-    store = object()
+    store, topics = object(), object()
 
-    sync = bootstrap.build_promotion_sync(cfg, store)
+    sync = bootstrap.build_promotion_sync(cfg, store, topics)
 
     assert sync() == 3
-    assert calls == [("https://votes.example", "t", store)]
+    assert calls == [("https://votes.example", "t", store, topics)]

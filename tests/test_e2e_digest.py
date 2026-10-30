@@ -351,6 +351,8 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "UPDATE stored_articles SET state",
     "UPDATE stored_articles SET triaged_at",
+    # The voted URL's topic; a first run holds none, so no topic vote is written.
+    "SELECT topic_members",
     # The save: the newsletter dedup read, then 11 articles at 17 columns, five rows a
     # statement under D1's 100 bound parameters.
     "SELECT stored_articles",

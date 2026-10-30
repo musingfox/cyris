@@ -7,7 +7,9 @@ import httpx
 from pydantic import BaseModel
 
 from cyris.adapters.store import ArticleStore
+from cyris.domain.models import TopicVote
 from cyris.domain.triage import RejectReason
+from cyris.service_layer.ports import TopicRepository
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +81,36 @@ def record_votes(
         store.update_triage_timestamp(rejected + accepted, at)
 
 
+def topic_votes(
+    promotions: list[PromotedArticle], topic_of: dict[str, str], now: datetime
+) -> list[TopicVote]:
+    """One vote per topic from its articles' votes, at the time it was clicked.
+
+    A topic's vote group posts once per member URL, so one click arrives as several
+    promotions a few milliseconds apart: the newest one's direction stands, timed by
+    the first of those that agree with it, so a sync retried before its ACK records
+    the same row again rather than a second vote.
+    """
+    by_topic: dict[str, list[tuple[datetime, int]]] = {}
+    for p in promotions:
+        topic = topic_of.get(p.url)
+        if topic is None:
+            continue
+        clicked = datetime.fromisoformat(p.ts) if p.ts else now
+        by_topic.setdefault(topic, []).append((clicked, -1 if p.vote == "down" else 1))
+    votes = []
+    for topic, clicks in by_topic.items():
+        direction = max(clicks)[1]
+        first = min(t for t, d in clicks if d == direction)
+        votes.append(TopicVote(topic_id=topic, direction=direction, clicked_at=first))
+    return votes
+
+
 def sync_promotions(
     worker_url: str,
     token: str,
     store: ArticleStore,
+    topics: TopicRepository | None = None,
 ) -> int:
     """Pull votes, apply them to the store, then ACK.
 
@@ -90,6 +118,10 @@ def sync_promotions(
     voted article gets a ``triaged_at`` stamp that tells it apart from the
     digest run's own accept/reject verdicts. A "down" vote rejects, anything
     else accepts.
+
+    A voted URL that an issue put under a topic also writes one vote on that
+    topic, at the click's time (`topic_votes`); a URL no topic holds, from an issue
+    published before topics or from the raw page, is stamped and nothing more.
 
     Promotions whose URL is no longer in the store are logged and ACKed
     anyway. ACK happens only after the store is updated, so a failure here
@@ -115,7 +147,13 @@ def sync_promotions(
 
     rejected = [a.url for a in found if vote_by_url[a.url] == "down"]
     accepted = [a.url for a in found if vote_by_url[a.url] != "down"]
-    record_votes(store, accepted=accepted, rejected=rejected, at=datetime.now(UTC))
+    now = datetime.now(UTC)
+    record_votes(store, accepted=accepted, rejected=rejected, at=now)
+    if topics is not None:
+        voted = [p for p in promotions if p.url not in missing]
+        topics.record_topic_votes(
+            topic_votes(voted, topics.topics_of_urls([p.url for p in voted]), now)
+        )
 
     ack_promotions(worker_url, token, urls)
     logger.info("Synced %d vote(s) (%d down)", len(urls), len(rejected))
