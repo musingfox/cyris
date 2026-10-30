@@ -105,6 +105,14 @@
     ],
     "route": "plain"
   },
+  "digest.summarize_follow": {
+    "tab": "digest",
+    "label": "Summarize follow articles",
+    "controls": [
+      "summarize-follow"
+    ],
+    "route": "plain"
+  },
   "general.digest_window_hours": {
     "tab": "pipeline",
     "label": "Window (hours)",

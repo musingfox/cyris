@@ -56,7 +56,11 @@ def layer_by_lane(content: DigestContent) -> Layers:
     ]
     radar = [item for section in content.attention_sections for item in section.items]
     pebbles += [Pebble(item, True) for item in sorted(radar, key=_by_score, reverse=True)]
-    pebbles += [Pebble(item, True) for section in content.fan_sections for item in section.items]
+    pebbles += [
+        Pebble(item, item.passed_through)
+        for section in content.fan_sections
+        for item in section.items
+    ]
 
     sand: list[Sand] = []
     water: list[Water] = []

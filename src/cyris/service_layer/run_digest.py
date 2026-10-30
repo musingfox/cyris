@@ -690,6 +690,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         featured_threshold=cfg.app.routing.score_threshold,
         output_language=cfg.app.digest.output_language,
         style_prompt=cfg.app.digest.style_prompt,
+        summarize_follow=cfg.app.digest.summarize_follow,
     )
 
     result = await digest_pipeline.process(

@@ -9,6 +9,7 @@ from cyris.service_layer.prompts import (
     CLEF_PREFERENCE,
     FILTER_CRITERIA,
     FILTER_SYSTEM,
+    NO_BODY_MARKER,
     SUMMARIZE_SYSTEM,
     build_filter_prompt,
     build_filter_system_prompt,
@@ -51,15 +52,36 @@ class TestFilterSystemPrompt:
 
 
 class TestSummarizeSystemPrompt:
-    def test_summarize_system_depth_and_synthesis(self):
-        """SUMMARIZE_SYSTEM should specify 3-5 sentence structure and synthesis."""
-        assert "3-5" in SUMMARIZE_SYSTEM
-        # Check for synthesis-related instructions
-        assert (
-            "synthesize" in SUMMARIZE_SYSTEM.lower()
-            or "diverge" in SUMMARIZE_SYSTEM.lower()
-            or "agree" in SUMMARIZE_SYSTEM.lower()
-        )
+    def test_it_explains_and_does_not_analyse(self):
+        """The prompt casts the model as the reader's editor, never as an analyst."""
+        text = SUMMARIZE_SYSTEM.lower()
+        assert "analyst" not in text
+        assert "explain" in text
+        assert "never analyse" in text
+
+    @pytest.mark.parametrize(
+        "counter_example",
+        ["This reflects", "likely to", "The key argument is", "This means", "Worth reading if"],
+    )
+    def test_it_names_each_way_of_crossing_the_line(self, counter_example):
+        """Analysis, inference, ranking points, consequences and advice are each named."""
+        assert counter_example in SUMMARIZE_SYSTEM
+
+    def test_it_says_a_missing_body_plainly(self):
+        """An article with no fetched text gets that said, not invented content."""
+        assert NO_BODY_MARKER in SUMMARIZE_SYSTEM
+        assert "not fetched" in SUMMARIZE_SYSTEM
+
+    def test_only_the_marker_means_not_fetched(self):
+        """A feed that ships only a teaser is explained from it, not called unfetched."""
+        sentences = SUMMARIZE_SYSTEM.replace("\n", " ").split(". ")
+        unfetched = [s for s in sentences if "not fetched" in s]
+        assert unfetched and all(NO_BODY_MARKER in s for s in unfetched)
+        assert any("teaser" in s and "from what that text says" in s for s in sentences)
+
+    def test_it_keeps_the_reply_shape_summarize_parses(self):
+        for key in ('"heading"', '"summary"', '"summaries"', '"article_ids"'):
+            assert key in SUMMARIZE_SYSTEM
 
 
 class TestBuildFilterPrompt:
@@ -101,6 +123,36 @@ class TestBuildFilterPrompt:
 
 
 class TestBuildSummarizePrompt:
+    def test_an_article_with_no_text_carries_the_marker(self):
+        article = Article(
+            id=203,
+            title="EP200: A newsletter issue",
+            url="https://example.com/empty",
+            content="",
+            published_at=datetime(2026, 10, 28, 10, 0, tzinfo=UTC),
+            source_name="ByteByteGo",
+            source_lane=Lane.READ,
+            source_tags=["tech"],
+        )
+
+        prompt = build_summarize_prompt("tech", [article], snippet_length=1000)
+
+        assert f"[0] (ByteByteGo) EP200: A newsletter issue\n    {NO_BODY_MARKER}" in prompt
+
+    def test_an_article_with_text_carries_no_marker(self):
+        article = Article(
+            id=204,
+            title="Has text",
+            url="https://example.com/text",
+            content="Some body.",
+            published_at=datetime(2026, 10, 28, 10, 0, tzinfo=UTC),
+            source_name="Blog",
+            source_lane=Lane.READ,
+            source_tags=["tech"],
+        )
+
+        assert NO_BODY_MARKER not in build_summarize_prompt("tech", [article], snippet_length=100)
+
     def test_build_summarize_prompt_truncates_at_snippet_length(self):
         article = Article(
             id=201,

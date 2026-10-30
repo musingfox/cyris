@@ -476,7 +476,9 @@ const plainValue = (input) => {
   // The type size is stored as a number, which a select only holds as text.
   if (input.id === "type-scale") return input.value === "" ? null : Number(input.value);
   // A switch is stored as a boolean; its select holds "true" or "false".
-  if (input.id === "rank-by-preference") return {true: true, false: false}[input.value] ?? null;
+  if (input.id === "rank-by-preference" || input.id === "summarize-follow") {
+    return {true: true, false: false}[input.value] ?? null;
+  }
   // The style prompt is the reader's own words, spaces included.
   return input.id === "style-prompt" ? input.value : input.value.trim();
 };

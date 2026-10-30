@@ -295,6 +295,17 @@ class TestLanguage:
             self.PASSED_THROUGH, ""
         )
 
+    @pytest.mark.parametrize(
+        ("passed_through", "lang"), [(False, "ja"), (True, "")], ids=["explained", "excerpt"]
+    )
+    def test_a_follow_pebble_is_tagged_by_what_wrote_its_text(self, passed_through, lang):
+        content = _full().model_copy(update={"output_language": "ja"})
+        content.fan_sections[0].items[0].passed_through = passed_through
+        langs = text_langs(render_digest_email(content, DIGEST_URL))
+
+        assert langs["Fan Item summary."] == lang
+        assert langs["Fan Item"] == ""
+
     @staticmethod
     def _preheader_langs(content: DigestContent) -> dict[str, str | None]:
         html = render_digest_email(content, DIGEST_URL)

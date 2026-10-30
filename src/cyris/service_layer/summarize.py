@@ -2,6 +2,7 @@
 
 import logging
 from collections import defaultdict
+from collections.abc import Mapping
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.service_layer.degrade import excerpt, excerpt_sections_from_articles
@@ -137,15 +138,83 @@ async def summarize_articles(
     return sections
 
 
-def build_follow_sections(articles: list[Article]) -> list[DigestSection]:
-    """Build follow-lane sections grouped by source (no AI, never discarded).
+def _explanations_in(data: object, group: list[Article]) -> dict[str, str]:
+    """The explanations a reply holds for `group`, by URL; malformed parts are skipped."""
+    sections = data.get("sections") if isinstance(data, dict) else None
+    if not isinstance(sections, list):
+        raise ValueError(f"explain reply has no sections list: {data!r:.200}")
+    found: dict[str, str] = {}
+    for section_data in sections:
+        own_summaries = section_data.get("summaries") if isinstance(section_data, dict) else None
+        if not isinstance(own_summaries, dict):
+            continue
+        for raw_id, text in own_summaries.items():
+            try:
+                index = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < len(group) and isinstance(text, str) and text.strip():
+                found[group[index].url] = text
+    return found
 
-    Each followed group/newsletter becomes one section; items carry a short
-    non-LLM excerpt so updates from tracked groups keep their own channel and
-    aren't washed out by the knowledge sections.
+
+async def explain_follow_articles(
+    articles: list[Article],
+    llm: LLMClient,
+    usage: UsageStats | None = None,
+    *,
+    snippet_length: int,
+    output_language: str,
+    style_prompt: str,
+) -> dict[str, str]:
+    """Each follow-lane article's explanation by URL, one call per source.
+
+    The read lane's prompt writes it, so a followed article's card says what the article
+    is the way a read article's does. An article the model left unexplained, or a source
+    whose call failed, is absent, and keeps its excerpt.
+    """
+    groups: dict[str, list[Article]] = {}
+    for article in articles:
+        groups.setdefault(article.source_name, []).append(article)
+
+    explanations: dict[str, str] = {}
+    for source_name, group in groups.items():
+        try:
+            data = await complete_json(
+                llm,
+                build_summarize_prompt(source_name, group, snippet_length=snippet_length),
+                system=build_summarize_system_prompt(output_language, style_prompt=style_prompt),
+                temperature=1.0,
+                usage=usage,
+            )
+            explanations.update(_explanations_in(data, group))
+        except Exception:
+            logger.warning(
+                "Explain failed for source '%s'; excerpts kept", source_name, exc_info=True
+            )
+            if usage is not None:
+                usage.fell_back_to_excerpts = True
+    missing = sum(1 for a in articles if a.url not in explanations)
+    if missing:
+        logger.warning("Explain wrote nothing for %d follow articles; excerpts kept", missing)
+        if usage is not None:
+            usage.fell_back_to_excerpts = True
+    return explanations
+
+
+def build_follow_sections(
+    articles: list[Article], explanations: Mapping[str, str] | None = None
+) -> list[DigestSection]:
+    """Build follow-lane sections grouped by source, never discarded.
+
+    Each followed group/newsletter becomes one section, so updates from tracked groups
+    keep their own channel and aren't washed out by the knowledge sections. An item
+    carries its explanation from `explanations` when it has one, else a short excerpt
+    of its own text.
 
     Args:
         articles: Follow-lane articles to group by source.
+        explanations: Explanations by article URL, from `explain_follow_articles`.
 
     Returns:
         One DigestSection per source, items in feed order.
@@ -153,22 +222,27 @@ def build_follow_sections(articles: list[Article]) -> list[DigestSection]:
     if not articles:
         return []
 
+    explanations = explanations or {}
     groups: dict[str, list[Article]] = {}
     for article in articles:
         groups.setdefault(article.source_name, []).append(article)
 
     sections = []
     for source_name, group in groups.items():
-        items = [
-            DigestItem(
-                title=article.title,
-                summary=excerpt(article.content, 80) if article.content else "",
-                sources=[article.source_name],
-                urls=[article.url],
-                ref_urls=article.ref_urls,
+        items = []
+        for article in group:
+            explanation = explanations.get(article.url)
+            items.append(
+                DigestItem(
+                    title=article.title,
+                    summary=explanation
+                    or (excerpt(article.content, 80) if article.content else ""),
+                    sources=[article.source_name],
+                    urls=[article.url],
+                    ref_urls=article.ref_urls,
+                    passed_through=explanation is None,
+                )
             )
-            for article in group
-        ]
         sections.append(DigestSection(heading=source_name, items=items))
 
     logger.info("Built %d fan sections from %d articles", len(sections), len(articles))

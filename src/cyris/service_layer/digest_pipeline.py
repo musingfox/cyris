@@ -29,6 +29,7 @@ from cyris.service_layer.schedule import Period
 from cyris.service_layer.summarize import (
     build_attention_sections,
     build_follow_sections,
+    explain_follow_articles,
     summarize_articles,
 )
 from cyris.utils.timezone import now_in_timezone
@@ -74,6 +75,7 @@ class DigestPipeline:
         featured_threshold: int,
         output_language: str,
         style_prompt: str,
+        summarize_follow: bool,
     ) -> None:
         self._llm = llm
         self.summarize_snippet_length = summarize_snippet_length
@@ -82,6 +84,7 @@ class DigestPipeline:
         self.featured_threshold = featured_threshold
         self.output_language = output_language
         self.style_prompt = style_prompt
+        self.summarize_follow = summarize_follow
 
     async def process(
         self,
@@ -213,8 +216,19 @@ class DigestPipeline:
         # Build attention sections for low-score articles
         attention = build_attention_sections(low_score_articles, article_scores)
 
-        # Follow lane: passthrough, grouped by source, never scored/filtered/summarized
-        follow_sections = build_follow_sections(follow_lane)
+        # Follow lane: grouped by source, never scored or filtered; explained only when
+        # the reader asked for it.
+        explanations = None
+        if self.summarize_follow and self._llm is not None and follow_lane:
+            explanations = await explain_follow_articles(
+                follow_lane,
+                self._llm,
+                usage=usage,
+                snippet_length=self.summarize_snippet_length,
+                output_language=self.output_language,
+                style_prompt=self.style_prompt,
+            )
+        follow_sections = build_follow_sections(follow_lane, explanations)
 
         _stamp_tags([*summaries, *attention], article_tags or {})
 

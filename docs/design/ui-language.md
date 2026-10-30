@@ -47,8 +47,9 @@ page added later.
    output language, keep its tag. The archive
    headline card's title follows its lead, so a group's heading keeps the tag and a single article's
    title carries `lang=""`. Text passed through
-   untranslated, which is the follow lane's and the low-score read rows' pebbles, Tracking, a sand
-   block's member list and every raw row, carries `lang=""`, HTML's unknown
+   untranslated, which is the low-score read rows' pebbles, the follow lane's pebbles while
+   `digest.summarize_follow` is off, Tracking, a sand block's member list and every raw row,
+   carries `lang=""`, HTML's unknown
    language: no reliable tag for it exists. So does a pebble, sand line or headline row that holds the
    article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
    it; the step that writes that fallback marks the item, so the page and the mail tag those items by

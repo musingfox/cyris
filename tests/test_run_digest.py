@@ -467,6 +467,33 @@ def _with_progress(deps: Deps) -> tuple[Deps, list[str]]:
     return replace(deps, on_progress=messages.append), messages
 
 
+@pytest.mark.parametrize("on", [True, False], ids=["on", "off"])
+async def test_the_summarize_follow_setting_reaches_the_pipeline(tmp_path: Path, on: bool) -> None:
+    llm = FakeLLM(
+        json.dumps(
+            {
+                "sections": [
+                    {
+                        "heading": "H",
+                        "summary": "S",
+                        "summaries": {"0": "Explained."},
+                        "article_ids": [0],
+                    }
+                ]
+            }
+        )
+    )
+    source = FakeSource([_fan_article(article_id=1, title="Issue", url="https://a.com/1")])
+    contents: list = []
+    deps, _ = make_deps(tmp_path, llm, source, discord_contents=contents)
+    deps.cfg.app.digest.summarize_follow = on
+
+    await run_digest(deps, RunOptions())
+
+    item = contents[0].fan_sections[0].items[0]
+    assert item.summary == ("Explained." if on else "Newsletter body.")
+
+
 async def test_run_digest_empty_content_has_no_dead_link_progress(tmp_path: Path) -> None:
     source = FakeSource([])
     deps, _ = make_deps(tmp_path, FakeLLM(), source)

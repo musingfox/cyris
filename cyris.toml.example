@@ -45,6 +45,7 @@ style_prompt = ""                       # optional: your tone/focus, injected in
 type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
 rank_by_preference = true               # order headlines and Features by your votes; needs [vote_similarity]
 preference_source = "cosine"            # who judges that order: cosine (title similarity) or clef (needs a Workers AI token)
+summarize_follow = false                # explain each follow-lane article as read articles are
 
 [agent_vault]
 path = "./agent-vault"

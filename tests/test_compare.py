@@ -5,6 +5,7 @@ had no test at all: `margin`, what counts as a disagreement, and the one that
 matters most — an arm that never reached its model is not a result.
 """
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -172,6 +173,31 @@ def test_an_arm_that_never_reached_its_model_is_not_a_row():
     assert [row.label for row in rows] == ["alive"]
     assert rows[0].rendered == "# digest"
     assert rows[0].content.usage.api_calls > 0
+
+
+@pytest.mark.parametrize("on", [True, False], ids=["on", "off"])
+def test_each_arm_reads_the_summarize_follow_setting(on: bool):
+    cfg = make_config(
+        sources={"Src": SourceConfig(name="Src", url="http://s", lane=Lane.FOLLOW)},
+        digest={"summarize_follow": on},
+    )
+    followed = _article("http://a.com/1").model_copy(update={"source_lane": Lane.FOLLOW})
+    reply = {"sections": [{"heading": "H", "summaries": {"0": "Explained."}, "article_ids": [0]}]}
+
+    rows = compare_llms(
+        [("arm", FakeLLM(responses=json.dumps(reply)))],
+        [followed],
+        {},
+        cfg,
+        period="morning",
+        render=lambda content: "# digest",
+    )
+
+    if on:
+        assert rows[0].content.fan_sections[0].items[0].summary == "Explained."
+    else:
+        # No call reached the model, so the arm is not a row (see the test above).
+        assert rows == []
 
 
 def test_the_cli_no_longer_holds_the_comparison_logic() -> None:

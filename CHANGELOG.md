@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Articles from a source you follow can be explained too. With **Summarize
+  follow articles** on (`/settings`, Digest), each follow article's card says
+  what the article is, as a `read` article's does; off keeps the start of its
+  own text, as before.
 - **A new deployment is set up by a wizard.** While its source list is empty,
   `/settings` opens `/onboarding`: six steps, of which this release fills three —
   the output language and timezone, the publish hours, and the notifications.
@@ -34,6 +38,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A card explains its article instead of analysing it.** The text under each
+  `read` article says what the article reports, announces or argues, in one or
+  two sentences, so you can decide whether to open it; it no longer draws out
+  core arguments, implications or advice. An article whose text was never
+  fetched says so, rather than a summary made up from its title.
 - **A deployment with no source waits instead of failing.** An empty source list
   is how a deployment starts, before onboarding picks any feed, so `cyris run`
   now ends there having fetched nothing and called no model, saying it waits for
@@ -114,6 +123,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Upgrading
 
+- `digest.summarize_follow` is a new required setting: a run stops naming it
+  until it is stored. Store `false`, which keeps today's issues, before the next
+  digest hour: on `/settings` (Digest) once the new version is up, or with
+  `cyris settings push` from a `cyris.toml` whose `[digest]` sets
+  `summarize_follow = false`, which adds only the keys D1 lacks. A `json`
+  deployment adds that line to its `cyris.toml`.
 - Redeploy `workers/rss`. cyris works with either Worker version.
 - Delete `max_featured`, `max_articles_per_digest_output` and
   `units_per_paragraph` from `[digest]` in `cyris.toml`. A key left there, and a

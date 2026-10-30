@@ -197,6 +197,11 @@
               <p class="small">Who decides which headlines are closest to your votes. An issue Clef cannot fully score uses title similarity.</p>
               <p class="small" id="clef-needs" hidden>Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN).</p>
             </div>
+            <div class="field">
+              <label class="label" for="summarize-follow">Summarize follow articles</label>
+              <select class="select" id="summarize-follow"><option value="false">Off</option><option value="true">On</option></select>
+              <p class="small">Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text.</p>
+            </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
               <div class="notice" id="digest-result" role="status" hidden></div>
