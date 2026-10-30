@@ -920,7 +920,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             # everybody, from the log. Say which one it was.
             logger.info("No Discord webhook configured — skipping the digest notification")
 
-        await deps.send_discord(
+        summary["discord_notification"] = await deps.send_discord(
             notify.discord_webhook_url,
             content,
             digest_url=digest_url,
@@ -930,13 +930,13 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
 
         if not notify.email_to:
             logger.info("No email address configured — skipping the digest mail")
+            summary["mail_notification"] = {"status": "skipped"}
         elif deps.send_email is None:
-            logger.warning(
-                "An email address is set, but CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN "
-                "is missing, so no mail can be sent"
-            )
+            missing = "CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is missing"
+            logger.warning("An email address is set, but %s, so no mail can be sent", missing)
+            summary["mail_notification"] = {"status": "failed", "reason": missing}
         else:
-            await deps.send_email(
+            summary["mail_notification"] = await deps.send_email(
                 notify.email_to,
                 notify.email_from,
                 content,

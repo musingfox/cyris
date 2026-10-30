@@ -137,6 +137,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the run still reported ok. The message now keeps its stats and the Read online
   link whole and cuts the last sections at a line break, each cut section ending
   with a note that the rest is in the online edition.
+- A long issue written mostly in Chinese now reaches Discord too. The message was
+  held to Discord's limits in characters, but Discord measured the 2026-10-30
+  evening message at 10833 against its 6000 and refused it, because a Chinese
+  character takes three bytes. The limits are now counted in UTF-8 bytes, so such
+  an issue keeps its Stories and loses Headlines first, as an English one does.
+- A notification that does not arrive is now in the run's record. The run
+  summary names what became of each channel, `discord_notification` and
+  `mail_notification`: sent (or, for mail, delivered or queued), skipped when no
+  webhook or recipient is set, or failed with the reason, such as Discord's HTTP
+  status and message. The run still counts as `ok`, as before; until now the
+  failure was only in the log.
 
 ### Upgrading
 

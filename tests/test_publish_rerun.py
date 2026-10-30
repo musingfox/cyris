@@ -147,7 +147,7 @@ async def test_the_newest_issue_is_replaced_published_and_notifies_nobody(
     tmp_path: Path, today_is_the_16th
 ) -> None:
     u1, u2 = _article(1, "Kept one"), _article(2, "Kept two")
-    deps, db, site, notifications, mailed, _, stories, _ = _setup(
+    deps, db, site, notifications, mailed, _, stories, summaries = _setup(
         tmp_path, [u1, u2], replies=[_scores([u1, u2]), _sections([u1, u2])]
     )
     deps.digest_store.save(_content("2026-10-14", "evening"), raw_page=False)
@@ -161,6 +161,8 @@ async def test_the_newest_issue_is_replaced_published_and_notifies_nobody(
     assert ("2026-10-14", "evening") in stories.saved
     assert f"/{SLUG}.html" in site.live
     assert notifications == [] and mailed == []
+    [summary] = summaries
+    assert "discord_notification" not in summary and "mail_notification" not in summary
 
 
 async def test_an_older_issue_is_not_latest_and_writes_nothing_but_its_run_record(

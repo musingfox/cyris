@@ -222,7 +222,7 @@ def _continued(parts: list[str]) -> list[str]:
     pages: list[str] = []
     page: list[str] = []
     for part in parts:
-        if page and len("\n".join([*page, part]).strip()) > _DISCORD_DESCRIPTION_MAX:
+        if page and _size("\n".join([*page, part]).strip()) > _DISCORD_DESCRIPTION_MAX:
             pages.append("\n".join(page).strip())
             page = []
         page.append(part)
@@ -307,14 +307,29 @@ _DISCORD_CONTENT_MAX = 2000
 _MORE_ONLINE = "*… more in the online edition*"
 
 
+def _size(text: str) -> int:
+    """How much of a limit `text` takes: its UTF-8 bytes, never fewer than its characters.
+
+    Counted in characters, the 2026-10-30 evening message measured 5929 of 6000 and was
+    refused with 413 "Oversized fields: message.embeds=10833": the issue was mostly
+    Chinese, three bytes a character. Bytes hold whichever unit Discord counts in.
+    """
+    return len(text.encode("utf-8"))
+
+
+def _cut_title(title: str) -> str:
+    """`title` cut to `_DISCORD_TITLE_MAX` bytes, never inside a character."""
+    return title.encode("utf-8")[:_DISCORD_TITLE_MAX].decode("utf-8", errors="ignore")
+
+
 def _cut_at_lines(text: str, room: int) -> str:
     """`text` if it fits in `room`, else its leading whole lines and a marker, else ""."""
-    if len(text) <= room:
+    if _size(text) <= room:
         return text
     kept: list[str] = []
-    used = len(_MORE_ONLINE)
+    used = _size(_MORE_ONLINE)
     for line in text.split("\n"):
-        used += len(line) + 1
+        used += _size(line) + 1
         if used > room:
             break
         kept.append(line)
@@ -331,16 +346,16 @@ def _fit_embeds(embeds: list[dict]) -> list[dict]:
     and every section after it is dropped.
     """
     *sections, stats = embeds
-    budget = _DISCORD_EMBED_TOTAL - len(stats["title"]) - len(stats["description"])
+    budget = _DISCORD_EMBED_TOTAL - _size(stats["title"]) - _size(stats["description"])
     fitted = []
     for embed in sections[: _DISCORD_MAX_EMBEDS - 1]:
-        title = embed["title"][:_DISCORD_TITLE_MAX]
+        title = _cut_title(embed["title"])
         capped = _cut_at_lines(embed["description"], _DISCORD_DESCRIPTION_MAX)
-        room = budget - len(title)
-        description = capped if len(capped) <= room else _cut_at_lines(embed["description"], room)
+        room = budget - _size(title)
+        description = capped if _size(capped) <= room else _cut_at_lines(embed["description"], room)
         if description:
             fitted.append(embed | {"title": title, "description": description})
-            budget -= len(title) + len(description)
+            budget -= _size(title) + _size(description)
         if description != capped:
             break
     return [*fitted, stats]
@@ -377,16 +392,18 @@ async def send_discord(
     digest_url: str = "",
     publish_failed: bool = False,
     degraded: bool = False,
-) -> None:
-    """Send digest content to Discord via webhook.
+) -> dict[str, str]:
+    """Send digest content to Discord via webhook; return the outcome for the run summary.
 
-    Does nothing if webhook_url is empty. Failures are logged but not raised.
+    The outcome is `{"status": "sent"}`, `{"status": "skipped"}` without a webhook, or
+    `{"status": "failed", "reason": ...}`. Failures are logged and returned, not raised:
+    a lost message must not cost the run its record.
     When digest_url is set, a link to the online (Cloudflare Pages) digest is
     included in the stats embed; when publishing was attempted and failed, the
     missing link is called out instead of silently omitted.
     """
     if not webhook_url:
-        return
+        return {"status": "skipped"}
 
     payload = build_discord_payload(content, digest_url, publish_failed, degraded)
 
@@ -395,8 +412,29 @@ async def send_discord(
             resp = await client.post(webhook_url, json=payload)
             resp.raise_for_status()
             logger.debug("Discord webhook sent: %d embeds", len(payload["embeds"]))
-    except httpx.HTTPError:
-        logger.warning("Discord webhook failed", exc_info=True)
+    except httpx.HTTPStatusError as e:
+        reason = f"HTTP {e.response.status_code}: {_discord_message(e.response)}"
+        logger.warning("Discord webhook failed: %s", reason, exc_info=True)
+        return {"status": "failed", "reason": reason}
+    except httpx.HTTPError as e:
+        reason = redact_webhook_tokens(f"{type(e).__name__}: {e}")
+        logger.warning("Discord webhook failed: %s", reason, exc_info=True)
+        return {"status": "failed", "reason": reason}
+    return {"status": "sent"}
+
+
+def _discord_message(resp: httpx.Response) -> str:
+    """Discord's own words for a refusal: the body's `message`, else the body itself.
+
+    A proxy can answer with any body, so a non-object one falls back to the text, and the
+    reason is capped and redacted: it is stored in the run summary.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    message = body.get("message") if isinstance(body, dict) else None
+    return redact_webhook_tokens(str(message or resp.text)[:500])
 
 
 async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:

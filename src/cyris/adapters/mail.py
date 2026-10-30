@@ -178,21 +178,25 @@ async def send_digest_mail(
     *,
     account_id: str,
     token: str,
-) -> None:
-    """Mail one issue's announcement. Does nothing without a recipient.
+) -> dict[str, str]:
+    """Mail one issue's announcement; return the outcome for the run summary.
 
-    Failures are logged, not raised, as `send_discord` does: a lost message must
-    not cost the run its record.
+    The outcome is `{"status": "delivered"}` or `"queued"`, `{"status": "skipped"}`
+    without a recipient, or `{"status": "failed", "reason": ...}`. Failures are logged
+    and returned, not raised, as `send_discord` does: a lost message must not cost the
+    run its record.
     """
     if not recipient:
-        return
+        return {"status": "skipped"}
     subject, text = build_digest_mail(content, digest_url, publish_failed, raw_page, degraded)
     html = render_digest_email(content, digest_url, raw_page, publish_failed, degraded)
     try:
         status = await send_mail(account_id, token, sender, recipient, subject, text, html)
-        logger.info("Digest mail %s to %s", status, recipient)
     except RuntimeError as e:
         logger.warning("Digest mail to %s failed: %s", recipient, e)
+        return {"status": "failed", "reason": str(e)}
+    logger.info("Digest mail %s to %s", status, recipient)
+    return {"status": status}
 
 
 async def send_alert_mail(
