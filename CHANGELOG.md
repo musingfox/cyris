@@ -34,6 +34,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A card explains its article instead of analysing it.** The text under each
+  `read` article says what the article reports, announces or argues, in one or
+  two sentences, so you can decide whether to open it; it no longer draws out
+  core arguments, implications or advice. An article whose text was never
+  fetched says so, rather than a summary made up from its title.
 - **A deployment with no source waits instead of failing.** An empty source list
   is how a deployment starts, before onboarding picks any feed, so `cyris run`
   now ends there having fetched nothing and called no model, saying it waits for
