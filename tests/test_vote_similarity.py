@@ -295,3 +295,17 @@ async def test_an_unreadable_topic_store_seeds_each_voted_url_and_names_why():
     assert report.ran
     assert report.downvote_seeds == 3
     assert report.topic_dedup_skipped == "topic store failed: ValueError: topics.json is not JSON"
+
+
+async def test_a_voted_topic_s_other_members_are_not_candidates():
+    sand = [article(f"s{i}", f"Lottery {i}", ArticleState.REJECTED, triaged=True) for i in range(3)]
+    report = await judge_by_votes(
+        FakeStore(sand),
+        FakeEmbedder(),
+        [*sand, article("c1", "Lottery again")],
+        max_seeds=3,
+        topics=FakeTopics({a.url: "sand" for a in sand}),
+    )
+
+    assert report.downvote_seeds == 1
+    assert set(report.candidate_vectors) == {"c1"}

@@ -75,8 +75,20 @@ def _voted(
     holds is its own seed. Topics are looked up a page at a time, newest first,
     until `limit` seeds are found.
     """
+    return _seeds(_stamped(store, state), limit, topics)
+
+
+def _stamped(store: ArticleRepository, state: ArticleState) -> list[StoredArticle]:
+    """Every human-stamped article in a state, newest stamp first."""
     rows = [a for a in store.list_articles(state=state, limit=100_000) if a.triaged_at]
     rows.sort(key=lambda a: a.triaged_at, reverse=True)
+    return rows
+
+
+def _seeds(
+    rows: list[StoredArticle], limit: int, topics: TopicRepository | None
+) -> list[StoredArticle]:
+    """The first `limit` of `rows`, one per topic (`_voted`)."""
     if topics is None:
         return rows[:limit]
     seeds: list[StoredArticle] = []
@@ -111,10 +123,12 @@ async def judge_by_votes(
     if not candidates:
         return VoteSimilarityReport(skipped_reason="no candidates")
 
+    up_rows = _stamped(store, ArticleState.ACCEPTED)
+    down_rows = _stamped(store, ArticleState.REJECTED)
     dedup_skipped = ""
     try:
-        up = _voted(store, ArticleState.ACCEPTED, max_seeds, topics)
-        down = _voted(store, ArticleState.REJECTED, max_seeds, topics)
+        up = _seeds(up_rows, max_seeds, topics)
+        down = _seeds(down_rows, max_seeds, topics)
     except Exception as e:
         if topics is None:
             raise
@@ -122,8 +136,8 @@ async def judge_by_votes(
         # not the pass.
         logger.warning("Topic store unreadable, every voted URL is its own seed: %s", e)
         dedup_skipped = f"topic store failed: {type(e).__name__}: {e}"
-        up = _voted(store, ArticleState.ACCEPTED, max_seeds)
-        down = _voted(store, ArticleState.REJECTED, max_seeds)
+        up = _seeds(up_rows, max_seeds, None)
+        down = _seeds(down_rows, max_seeds, None)
     if not down and not up:
         return VoteSimilarityReport(
             skipped_reason="no human-voted articles yet", topic_dedup_skipped=dedup_skipped
@@ -131,9 +145,10 @@ async def judge_by_votes(
 
     # An article the reader already ruled on is not a candidate for the same ruling:
     # it would match its own seed at cosine 1.0 and report a decision that was
-    # already made, drowning out the generalisation that is the point here.
-    seed_urls = {a.url for a in up + down}
-    candidates = [a for a in candidates if a.url not in seed_urls]
+    # already made, drowning out the generalisation that is the point here. Every
+    # voted URL, not only the seeds: a topic's other members were ruled on too.
+    voted_urls = {a.url for a in up_rows + down_rows}
+    candidates = [a for a in candidates if a.url not in voted_urls]
     if not candidates:
         return VoteSimilarityReport(
             skipped_reason="every candidate was already voted on",
