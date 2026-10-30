@@ -351,6 +351,8 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "UPDATE stored_articles SET state",
     "UPDATE stored_articles SET triaged_at",
+    # The voted URL's topic; a first run holds none, so no topic vote is written.
+    "SELECT topic_members",
     # The save: the newsletter dedup read, then 11 articles at 17 columns, five rows a
     # statement under D1's 100 bound parameters.
     "SELECT stored_articles",
@@ -364,6 +366,15 @@ EXPECTED_D1 = [
     "INSERT OR IGNORE INTO story_members",
     "DELETE FROM story_members",
     "DELETE FROM stories",
+    # The issue's topics: insert, then drop the members and tags this save did not
+    # write, then orphans.
+    "INSERT INTO topics",
+    "INSERT OR REPLACE INTO topic_members",
+    "INSERT OR REPLACE INTO topic_tags",
+    "DELETE FROM topic_members",
+    "DELETE FROM topic_tags",
+    "DELETE FROM topic_tags",
+    "DELETE FROM topics",
     "INSERT INTO usage_log",
     # One per verdict: accepted, then rejected; then the window's collected articles.
     "UPDATE stored_articles SET state",

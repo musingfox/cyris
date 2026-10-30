@@ -423,7 +423,10 @@ def promote_sync(
         typer.echo("Promotion sync not configured (set promote.worker_url + token).")
         return
 
-    typer.echo(f"Synced {sync()} digest vote(s).")
+    synced = sync()
+    typer.echo(f"Synced {synced.votes} digest vote(s).")
+    if synced.topic_votes_failed:
+        typer.echo(f"Their topic votes were not written: {synced.topic_votes_failed}")
 
 
 @app.command("vote-sim")
@@ -477,6 +480,7 @@ def vote_sim(
             embedder,
             candidates,
             max_seeds=cfg.app.vote_similarity.max_seeds,
+            topics=deps.topic_store,
         )
     )
     if not report.ran:

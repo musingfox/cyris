@@ -15,11 +15,17 @@ from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord, send_discord_alert
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.usage_log import append_usage, append_usage_d1
-from cyris.adapters.promotions import sync_promotions
+from cyris.adapters.promotions import SyncResult, sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
-from cyris.service_layer.ports import ArticleRepository, AskClef, FetchSource, LLMClient
+from cyris.service_layer.ports import (
+    ArticleRepository,
+    AskClef,
+    FetchSource,
+    LLMClient,
+    TopicRepository,
+)
 
 
 @cache
@@ -297,6 +303,19 @@ def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
     return D1ArticleStore(d1)
 
 
+def build_topic_store(cfg: Config, d1: Any | None = None) -> TopicRepository:
+    """Where topics and topic votes live: D1 tables, else `topics.json` in the vault."""
+    d1 = d1 or build_d1_client(cfg)
+    if d1 is None:
+        from cyris.adapters.store.json_topics import JsonTopicStore
+
+        return JsonTopicStore(cfg.app.agent_vault.path)
+
+    from cyris.adapters.store.topics import D1TopicStore
+
+    return D1TopicStore(d1)
+
+
 @dataclass(frozen=True)
 class Deps:
     """Concrete dependencies for the use cases; built once per invocation."""
@@ -307,10 +326,12 @@ class Deps:
     fetch_sources: list[FetchSource]
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled
     publish: Callable[[str], bool] | None
-    sync_promotions: Callable[[], int] | None
+    sync_promotions: Callable[[], SyncResult] | None
     log_usage: Callable[..., None]
     tag_store: Any | None = None
     story_store: Any | None = None
+    # None only for a test that builds Deps by hand; build_deps always wires one.
+    topic_store: TopicRepository | None = None
     # Set instead of `publish` when the site is published from the D1 manifest:
     # takes {path: bytes} for this run's pages. Nothing touches the filesystem.
     publish_site: Callable[[dict[str, bytes], str], bool] | None = None
@@ -358,8 +379,10 @@ class Deps:
 
 
 def build_promotion_sync(
-    cfg: Config, store: ArticleRepository | None = None
-) -> Callable[[], int] | None:
+    cfg: Config,
+    store: ArticleRepository | None = None,
+    topics: TopicRepository | None = None,
+) -> Callable[[], SyncResult] | None:
     """The vote pull bound to `store`, or None when no vote Worker is configured.
 
     Reads no runtime setting, so `promote-sync` can call it on an empty D1. With
@@ -370,7 +393,8 @@ def build_promotion_sync(
     if not (promote.worker_url and promote.token):
         return None
     store = store if store is not None else build_store(cfg)
-    return partial(sync_promotions, promote.worker_url, promote.token, store)
+    topics = topics if topics is not None else build_topic_store(cfg)
+    return partial(sync_promotions, promote.worker_url, promote.token, store, topics)
 
 
 def build_rss_source(cfg: Config) -> FetchSource:
@@ -519,7 +543,8 @@ def build_deps(
                     cfg.app.promote.pages_project,
                 )
 
-    sync = None if dry_run else build_promotion_sync(cfg, store)
+    topic_store = build_topic_store(cfg, d1)
+    sync = None if dry_run else build_promotion_sync(cfg, store, topic_store)
 
     return Deps(
         cfg=cfg,
@@ -535,6 +560,7 @@ def build_deps(
         log_usage=log_usage,
         tag_store=tag_store,
         story_store=story_store,
+        topic_store=topic_store,
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
         embedding_model=embedding_model(

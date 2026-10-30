@@ -1,20 +1,23 @@
 """Use case: score the articles an issue kept by how likely this reader is to upvote them.
 
-Two sources can score them. `cosine` reads the vote-similarity pass's verdicts. `clef`
-puts one question per kept article to Clef, beside the titles of its nearest votes,
-and falls back to the cosine scores when it cannot answer every question: a digest
-must still go out, and a half-Clef order would mix two scales.
+Two sources can score them. `cosine`, a name kept for the stored setting, now scores
+each article as its topic by the reader's topic votes, option I (ADR-0023); embeddings
+take no part. `clef` puts one question per kept article to Clef, beside the titles of
+its nearest votes, and falls back to the topic scores when it cannot answer every
+question: a digest must still go out, and a half-Clef order would mix two scales.
 """
 
 import asyncio
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
-from cyris.domain.models import Article
+from cyris.domain.models import Article, TopicRecord
 from cyris.service_layer import prompts
-from cyris.service_layer.ports import AskClef, NoulAnswer
+from cyris.service_layer.ports import AskClef, NoulAnswer, TopicRepository
+from cyris.service_layer.topic_order import score_issue_topics
 from cyris.service_layer.vote_similarity import VoteSimilarityReport
 
 logger = logging.getLogger(__name__)
@@ -53,6 +56,10 @@ class OrderReceipt:
         return summary
 
 
+# The receipt's name for option I's order.
+TOPICS_SOURCE = "topics"
+
+
 class VoteOrder:
     def __init__(
         self,
@@ -61,59 +68,66 @@ class VoteOrder:
         source: Literal["cosine", "clef"],
         similarity: VoteSimilarityReport | None,
         ask_clef: AskClef | None,
-        embedding_model: str,
+        topics: TopicRepository | None,
+        at: datetime,
+        half_life_days: int,
+        lifetime_days: int,
         snippet_length: int,
     ) -> None:
         self._rank = rank
         self._source = source
         self._similarity = similarity
         self._ask_clef = ask_clef
-        self._embedding_model = embedding_model
+        self._topics = topics
+        self._at = at
+        self._half_life_days = half_life_days
+        self._lifetime_days = lifetime_days
         self._snippet_length = snippet_length
         self.receipt = OrderReceipt()
 
-    async def __call__(self, kept: list[Article]) -> Mapping[str, float] | None:
-        """Each kept article's score, or None when this issue keeps the model's order."""
-        similarity = self._similarity
-        reason = self._unranked_reason()
-        if reason:
-            self.receipt = OrderReceipt(
-                skipped=reason, clef_skipped=reason if self._wants_clef() else None
-            )
-            return None
-        assert similarity is not None
-        kept_urls = {a.url for a in kept}
-        cosine = {
-            url: verdict.net for url, verdict in similarity.verdicts.items() if url in kept_urls
-        }
-        if self._source != "clef":
-            self.receipt = OrderReceipt(source="cosine", model=self._embedding_model)
-            return cosine
-
-        scores, receipt = await self._by_clef(kept, similarity)
-        if scores is not None:
-            self.receipt = receipt
-            return scores
-        receipt.source, receipt.model = "cosine", self._embedding_model
-        self.receipt = receipt
-        return cosine
-
-    def _wants_clef(self) -> bool:
-        return self._rank and self._source == "clef"
-
-    def _unranked_reason(self) -> str:
+    async def __call__(
+        self, kept: list[Article], issue: list[TopicRecord]
+    ) -> Mapping[str, float] | None:
+        """Each article's score, or None when this issue keeps the model's order."""
         if not self._rank:
-            return "switched off"
-        if self._similarity is None:
-            return "vote similarity off"
-        if not self._similarity.ran:
-            return f"vote similarity skipped: {self._similarity.skipped_reason}"
-        return ""
+            self.receipt = OrderReceipt(skipped="switched off")
+            return None
+        if self._topics is None:
+            self.receipt = OrderReceipt(skipped="no topic store")
+            return None
+        if self._source == "clef":
+            scores, receipt = await self._by_clef(kept)
+            if scores is not None:
+                self.receipt = receipt
+                return scores
+        else:
+            receipt = OrderReceipt()
+        try:
+            scores = score_issue_topics(
+                self._topics,
+                issue,
+                self._at,
+                half_life_days=self._half_life_days,
+                lifetime_days=self._lifetime_days,
+            )
+        except Exception as e:
+            # The issue is already paid for: a failed read costs its order, not the issue.
+            logger.warning("Topic store unreadable, the model's order stands: %s", e)
+            receipt.skipped = f"topic store failed: {type(e).__name__}: {e}"
+            self.receipt = receipt
+            return None
+        receipt.source = TOPICS_SOURCE
+        self.receipt = receipt
+        return scores
 
-    async def _by_clef(
-        self, kept: list[Article], similarity: VoteSimilarityReport
-    ) -> tuple[dict[str, float] | None, OrderReceipt]:
+    async def _by_clef(self, kept: list[Article]) -> tuple[dict[str, float] | None, OrderReceipt]:
         """Clef's score per asked article, or None with the reason it could not give them."""
+        similarity = self._similarity
+        if similarity is None:
+            return None, OrderReceipt(clef_skipped="vote similarity off")
+        if not similarity.ran:
+            reason = f"vote similarity skipped: {similarity.skipped_reason}"
+            return None, OrderReceipt(clef_skipped=reason)
         ask = self._ask_clef
         if ask is None:
             return None, OrderReceipt(clef_skipped="no Workers AI token or account id")
@@ -166,7 +180,7 @@ class VoteOrder:
                     source="clef", model=model, clef_spend=spend()
                 )
             reason = f"clef answered {len(asked) - len(missing)} of {len(asked)} questions"
-        logger.warning("Clef did not order this issue, the cosine order stands: %s", reason)
+        logger.warning("Clef did not order this issue, the topic order stands: %s", reason)
         return None, OrderReceipt(clef_skipped=reason, clef_spend=spend())
 
     def _question(self, article: Article, similarity: VoteSimilarityReport) -> dict:

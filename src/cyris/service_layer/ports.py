@@ -9,7 +9,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from cyris.domain.models import Article, ArticleState, SourceConfig, StoredArticle, UsageStats
+from cyris.domain.models import (
+    Article,
+    ArticleState,
+    SourceConfig,
+    StoredArticle,
+    TopicRecord,
+    TopicSummary,
+    TopicVote,
+    UsageStats,
+)
 from cyris.service_layer.parse import extract_json
 
 
@@ -114,6 +123,45 @@ class ArticleRepository(Protocol):
         this exclusion — a backend that deletes stamped rows silently erodes
         the corpus.
         """
+        ...
+
+
+class TopicRepository(Protocol):
+    """Persistence boundary for topics, their members and tags, and the votes on them.
+
+    Beside `ArticleRepository` rather than in it: a topic is not article state, and
+    both backends keep it apart from their articles (D1 tables, a json file).
+    """
+
+    def save_topics(
+        self, digest_date: str, period: str, topics: list[TopicRecord], seen_at: datetime
+    ) -> int:
+        """Write an issue's topics, replacing the members that issue held before and
+        each written topic's tags.
+
+        A topic left with no member in any issue and no vote is deleted with its tags.
+        Returns the number of rows written.
+        """
+        ...
+
+    def topics_of_urls(self, urls: list[str]) -> dict[str, str]:
+        """Each URL's topic id, from the newest save that holds it; absent if none does."""
+        ...
+
+    def record_topic_votes(self, votes: list[TopicVote]) -> int:
+        """Append votes; one with the same topic and click time is already recorded."""
+        ...
+
+    def topic_votes(self) -> list[TopicVote]:
+        """Every recorded vote; one per click, so the table stays small."""
+        ...
+
+    def recent_topics(self, since: datetime, until: datetime) -> list[TopicSummary]:
+        """Topics last seen in [since, until], with their tags."""
+        ...
+
+    def topics_by_ids(self, ids: list[str]) -> list[TopicSummary]:
+        """The named topics that are stored, with their tags."""
         ...
 
 

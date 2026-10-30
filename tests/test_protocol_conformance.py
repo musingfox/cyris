@@ -30,14 +30,24 @@ from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.store.article_store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
+from cyris.adapters.store.json_topics import JsonTopicStore
+from cyris.adapters.store.topics import D1TopicStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
-from cyris.service_layer.ports import ArticleRepository, Embedder, FetchSource, LLMClient
+from cyris.service_layer.ports import (
+    ArticleRepository,
+    Embedder,
+    FetchSource,
+    LLMClient,
+    TopicRepository,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 IMPLEMENTATIONS = [
     (ArticleRepository, ArticleStore),
     (ArticleRepository, D1ArticleStore),
+    (TopicRepository, D1TopicStore),
+    (TopicRepository, JsonTopicStore),
     (LLMClient, AnthropicClient),
     (LLMClient, GeminiClient),
     (LLMClient, OpenAIClient),

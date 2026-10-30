@@ -10,7 +10,7 @@ import pytest
 from fakes import TEST_SETTINGS, FakeLLM, pipeline_settings
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.domain.models import Article, DigestItem, DigestSection, Lane
+from cyris.domain.models import Article, DigestItem, DigestSection, Lane, TopicRecord
 from cyris.domain.selection import digest_urls, split_read_lane_by_score
 from cyris.service_layer.digest_pipeline import DigestPipeline
 
@@ -657,9 +657,11 @@ class TestKeptItemsReachThePreference:
     ):
         articles, headlines, sections = self._kept_issue()
         asked: list[list[Article]] = []
+        issues: list[list[TopicRecord]] = []
 
-        async def preference(kept):
+        async def preference(kept, topics):
             asked.append(kept)
+            issues.append(topics)
             return None
 
         await self._process(
@@ -668,6 +670,8 @@ class TestKeptItemsReachThePreference:
 
         [kept] = asked
         assert [a.url for a in kept] == [articles[0].url, articles[1].url, articles[4].url]
+        # Each kept article reaches the preference inside the issue's topic.
+        assert {a.url for a in kept} <= {u for t in issues[0] for u in t.urls}
         assert [a.title for a in kept] == ["Original one", "Original two", articles[4].title]
 
     async def test_every_cluster_member_reaches_the_preference(self, sample_sources):
@@ -688,7 +692,7 @@ class TestKeptItemsReachThePreference:
         cluster = DigestSection(heading="News", items=[_item(w) for w in wires])
         asked: list[list[Article]] = []
 
-        async def preference(kept):
+        async def preference(kept, _topics):
             asked.append(kept)
             return None
 
@@ -721,7 +725,7 @@ class TestThePreferenceOrdersTheNews:
     async def _headlines(self, sample_sources, scores):
         h1, h2 = (_article(i, Lane.SKIM, "TechCrunch") for i in (1, 2))
 
-        async def preference(_kept):
+        async def preference(_kept, _topics):
             return scores
 
         pipeline = DigestPipeline(FakeLLM(), **pipeline_settings())
@@ -766,7 +770,7 @@ class TestThePreferenceOrdersTheNews:
             DigestSection(heading="voted", items=[_item(w) for w in wires[2:]]),
         ]
 
-        async def preference(_kept):
+        async def preference(_kept, _topics):
             return {"https://example.com/1": -0.2, "https://example.com/4": 0.6}
 
         pipeline = DigestPipeline(FakeLLM(), **pipeline_settings())

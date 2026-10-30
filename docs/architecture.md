@@ -54,6 +54,7 @@ flowchart TB
         P2["ArticleRepository"]
         P3["FetchSource"]
         P4["Embedder"]
+        P5["TopicRepository"]
     end
 
     subgraph ADP["Adapters"]
@@ -73,6 +74,7 @@ flowchart TB
         TAGS["D1TagStore"]
         STORIES["D1StoryStore"]
         DIGESTS["D1DigestStore"]
+        TOPICS["D1TopicStore · JsonTopicStore"]
     end
 
     subgraph EXT["External"]
@@ -91,6 +93,7 @@ flowchart TB
     UC -->|Protocol| P1
     RUN -->|Protocol| P2
     RUN -->|Protocol| P4
+    RUN -->|Protocol| P5
 
     P1 -. impl .-> LLM
     P2 -. impl .-> STORE
@@ -98,6 +101,7 @@ flowchart TB
     P3 -. impl .-> CFNL
     P3 -. impl .-> RSS
     P4 -. impl .-> EMB
+    P5 -. impl .-> TOPICS
 
     RUN -->|direct inject| HTML
     RUN -->|direct inject| PUB
@@ -121,11 +125,13 @@ flowchart TB
     TAGS --> CFW
     STORIES --> CFW
     DIGESTS --> CFW
+    TOPICS --> CFW
     NOTI --> DISC
     MAIL --> CFW
     EMB --> CFW
     CLEF --> CFW
     HTML -->|json backend only| FS
+    TOPICS -->|json backend only| FS
     CLI -->|--output PATH, operator's file| FS
 
     classDef port fill:#0F6E7A,stroke:#5AC3CC,color:#fff;
@@ -164,9 +170,10 @@ closed by moving to the storage product first named for it:
 | `Embedder → FS` | `embeddings.json` (415 MB), rewritten whole every run | **not Vectorize.** The cache was deleted rather than relocated — a run re-embeds ~600 texts for ~20 neurons — why not Vectorize: [ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md) |
 | `NewsletterArchiveSource ← FS` | local maildir | **deleted** 2026-08-27 (M1), superseded by the newsletter Worker |
 
-One filesystem edge remains, and it is the documented fallback rather than a defect:
-`HtmlDigestWriter` writes `agent-vault/html/` when `[store] backend` is still `json`. With D1 wired,
-the site's file list comes from the `pages_manifest` table and nothing is written locally.
+One filesystem edge remains, the `json` backend, and it is the documented fallback rather than a
+defect: while `[store] backend` is still `json`, `HtmlDigestWriter` writes `agent-vault/html/`, and
+the article store, `topics.json` and `usage.jsonl` live in the agent vault (§4 lists each). With D1
+wired, the site's file list comes from the `pages_manifest` table and nothing is written locally.
 
 The other local write is deliberate and holds no state: `cyris run --dry-run --output PATH` and
 `cyris regenerate --output PATH` write the rendered page to the path the operator names, and nothing
@@ -179,7 +186,7 @@ test.
 
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
-| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
+| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `TopicRepository` (`D1TopicStore`, `JsonTopicStore`), `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
 | **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
@@ -353,9 +360,14 @@ cosine to its nearest downvote is an outlier among this run's candidates: a robu
 `OUTLIER_MARGIN` (3.5), and not closer to an upvote. A window of fewer than
 `MIN_OUTLIER_WINDOW` (10) candidates flags nothing, because its median and MAD rest on two or three
 articles. Because the cut is relative to the window,
-more votes do not suppress more articles by themselves (ADR-0017). It is the only personalization in the
-pipeline, and it acts twice: here it suppresses, and with the vote order on its verdicts also order
-the issue (below). Prompt-level preference learning was removed on 2026-08-27 because it had never
+more votes do not suppress more articles by themselves (ADR-0017). The seeds are the newest
+`max_seeds` human-stamped articles per side, one per topic (§4 *Topic members*): a vote on a topic
+stamps every member, and its newest-stamped member stands for it, so a 15-article topic takes one
+seed, not 15. When the topic store cannot be read, each voted URL is its own seed, as before
+topics, and `run_summary`'s `vote_similarity_topic_dedup_skipped` says why. Every voted URL, not only
+the seeds, is kept out of the candidates. Here it suppresses; its only other use is the nearest votes it hands Clef when
+`preference_source = "clef"`. The issue's order comes from topic votes, not from its verdicts
+(below). Prompt-level preference learning was removed on 2026-08-27 because it had never
 produced a profile. Each flagged candidate leaves a row in `suppressions` (§4) that holds it for
 `SUPPRESSION_CLOCK_DAYS` (7) days from the run's start; before it drops candidates, every run reads
 the holds not yet expired and keeps those candidates out of the digest, whatever its own window
@@ -405,37 +417,55 @@ article is a pebble, its own card, the Top story's group split into its articles
 two or more articles is sand, one block whose members stay folded; a cluster of one article, or a
 headline the filter kept, is water, a row. Tracking comes first, then pebbles, sand and water. Each
 item carries exactly one vote group: a pebble's and a water row's vote is for its article, and a
-sand block's is for every member URL, posted once per URL as a cluster's vote was, until
-topic-store-and-votes moves the vote onto a topic id. A cluster is a stand-in for the topic it will
+sand block's is for every member URL, posted once per URL as a cluster's vote was; the vote
+sync turns those posts into one vote on the item's topic (§4 *Topic votes*). A cluster is a stand-in for the topic it will
 become: this issue's `cluster_news` groups, never across issues, and sand's line is its first
 member's excerpt until sand-what-happened writes one.
 
-**The vote order** (`[digest] rank_by_preference`). When it is on and vote similarity judged this
-run's candidates, a candidate's preference is its cosine to the nearest upvote minus its cosine to
-the nearest downvote, a side with no seed counting 0. `order_by_preference` (`domain/selection.py`)
-orders the Features, after their score sort, the news clusters and the kept headlines, each list by
-its entries' best article's preference; every member of a cluster is scored, since which is best is
-not known before. Equal preferences keep the incoming order, an entry none of whose articles was
-judged keeps its slot, and the Top story never moves. On the page, water lists the one-article
-clusters first and the kept headlines after them, each part in that order: the two come from
-separate model calls and are ranked apart, a stand-in until topic-store-and-votes gives topics one
-order. The order rejects nothing and stamps no `triaged_at`, and with no cap it changes only where
-an item stands, never whether it is shown. Off, or with vote similarity off or skipped, the issue
-keeps the score's and the model's order. `run_summary` records which: `preference_rank_applied`,
-the reason in `preference_rank_skipped`, and `preference_rank_moved_features` and `_units`, the
-Features positions and the cluster and headline positions that differ from the order without it.
+**The vote order** (`[digest] rank_by_preference`), option I of ADR-0023. When it is on, each item
+is scored as its topic (§4 *Topics*): the topic's own votes, each halving every
+`digest.vote_half_life_days`, plus the preference of its entity tags. A tag's preference is the
+decayed votes of the other topics carrying it, divided by df, the number of topics carrying it among
+those last seen in the `digest.topic_lifetime_days` before the run's start and this issue's own; a
+topic's own vote is not counted again through its tags, and domain and region tags carry nothing
+(`domain/topic_rank.py`, `service_layer/topic_order.py`). A voted topic outside that window lends
+through its tags only while its decayed vote is worth more than `RECENT_VOTE_CUTOFF`, so the topics a
+run looks up do not grow with the whole vote history. Embeddings take no part, so the order needs
+no vote similarity. Every article URL takes its topic's score, and `order_by_preference`
+(`domain/selection.py`) orders the Features, after their score sort, the news clusters and the kept
+headlines, each list by its entries' best article's score. Equal scores keep the incoming order, so
+an issue with no vote keeps it whole, and the Top story never moves. While topic ids last one issue
+and today's tags are stored as `domain` (§4), a vote moves no published issue: its topic is in no
+later issue and shares no entity tag with one, and the issue it was cast on cannot be reordered by
+it either. A rerun skips the vote sync, so the vote is synced by the next normal run, which publishes
+a newer issue and so makes a publishing rerun of the voted one refused; a rerun also re-clusters,
+so its stand-in ids can differ. Votes take effect once the filter assigns topics whose ids last
+across issues. On the page, water lists
+the one-article clusters first and the kept headlines after them, each part in that order: the two
+come from separate model calls and are ranked apart. The order rejects nothing and stamps no
+`triaged_at`, and with no cap it changes only where an item stands, never whether it is shown. Off,
+with no topic store, or when the topic store cannot be read, the issue keeps the score's and the
+model's order; a failed read costs the order, never the run. `run_summary` records which: `preference_rank_applied`, the reason in `preference_rank_skipped`, and
+`preference_rank_moved_features` and `_units`, the Features positions and the cluster and headline
+positions that differ from the order without it.
 
-**Who scores them** (`digest.preference_source`, `cosine` or `clef`). `cosine` is the order above.
-`clef` replaces the cosine difference with Clef's probability that the reader upvotes the item,
+The recent-topic list (`recent_topic_list` in `service_layer/topic_order.py`) is the topics last seen
+in `digest.topic_lifetime_days`, plus each topic the reader voted up whose net decayed vote is still
+above `RECENT_VOTE_CUTOFF` (0.1, about four half-lives; owner, 2026-10-30). Nothing reads it yet: it
+is what vault card `filter-assigns-topics` hands the model.
+
+**Who scores them** (`digest.preference_source`, `cosine` or `clef`). `cosine` is the order above;
+the value keeps its name because it is a stored setting, though no cosine takes part since ADR-0023.
+`clef` replaces the topic score with Clef's probability that the reader upvotes the item,
 asked once per kept item, the Features the issue kept and every news article the filter kept or
 the clustering grouped, and no other candidate, so a run makes tens of calls, not one per candidate. Each question carries the article's title, source and
 first `digest.scoring_snippet_length` characters (the snippet scoring reads), and the titles, never the text, of its five nearest upvotes and five nearest
-downvotes. The filter is untouched, and no `triaged_at` is
-stamped. The whole issue falls back to the cosine order when Clef cannot score every asked item:
-no `CLOUDFLARE_AI_TOKEN` (or `CLOUDFLARE_EMBEDDING_API_TOKEN`) with `CLOUDFLARE_ACCOUNT_ID`, no kept
+downvotes, which vote similarity supplies. The filter is untouched, and no `triaged_at` is
+stamped. The whole issue falls back to the topic order when Clef cannot score every asked item:
+vote similarity off or skipped, no `CLOUDFLARE_AI_TOKEN` (or `CLOUDFLARE_EMBEDDING_API_TOKEN`) with `CLOUDFLARE_ACCOUNT_ID`, no kept
 item with a nearest vote, a failed call, a question left unanswered, or the pass passing 60 seconds. A half-Clef order would mix
 two scales, so one failed question drops all of them; the run does not fail. `run_summary` records
-`preference_source` and `preference_model` for the order used, `preference_clef_skipped` with the
+`preference_source` (`topics` or `clef`) and `preference_model` for the order used, `preference_clef_skipped` with the
 reason when `clef` was chosen and did not order the issue, and `clef` with the calls, answers
 and input tokens it spent. That spend stays out of the LLM `usage`.
 
@@ -445,7 +475,9 @@ and the run continues. Topic tags emitted by scoring and by news clustering land
 articles the clustering step grouped — replaces its
 (date, period) window in `stories`/`story_members` (`D1StoryStore`). Both stores are direct
 injections built only when D1 is configured; with `backend = "json"` they are absent and the run
-skips the writes.
+skips the writes. A third fact is not D1-only: each non-dry run writes the issue's topics,
+their members and tags through `TopicRepository` (§4), to D1 or to the `json` backend's
+`topics.json`, also fail-soft (`topics_error` in `run_summary`).
 
 A publishing run also saves the URLs it fed the pipeline to `digest_inputs`, which is the record a
 rerun rebuilds from. `cyris regenerate` has two forms over a stored issue: a re-render to a file, with
@@ -483,8 +515,8 @@ run, a run started by hand and a SIGTERM-cancelled run send no alert. A catch-up
 alerts as any other does, so a failure that persists alerts once per retry. Votes cast on the
 published digest go to the promote Worker's KV and are drained at each digest run, by the run
 itself and by the `cyris promote-sync` after it, which is what turns a click into a
-`triaged_at` stamp. The stamp is the sync's time, not the click's: `sync_promotions` parses the
-payload's `ts` and never stores it, so how often votes arrive cannot be read from the store. A
+`triaged_at` stamp. The stamp is the sync's time, not the click's; the click's time, the payload's `ts`,
+is kept only on the topic vote the sync writes beside it (§4 *Topic votes*). A
 vote on a grouped item posts once for every URL in the group, so rows stamped at one instant may
 be one judgment rather than independent labels. The raw page's triage view is the only triage surface; the pending backlog
 across days is reachable only through `cyris articles`. `/labels` writes human verdicts too, through
@@ -503,8 +535,9 @@ Every persistent datum, where it lives now, and where it is going.
 **What this table covers:** state the pipeline keeps — anything a later run or a
 reader depends on. It does not cover a diagnostic command's output, and it does not need to: the
 comparisons write nothing at all, they emit, and where that lands is the shell's decision.
-`tests/test_local_writes.py` holds the set of files allowed to touch local disk at four, all of
-them a backend the D1 path does not use. A new one fails that test before it can become a row
+`tests/test_local_writes.py` holds the set of files allowed to touch local disk at six: the four that write the `json`
+backend's files, which the D1 path does not use, the vault probe `cyris doctor` skips under D1,
+and the file `--output` names. A new one fails that test before it can become a row
 nobody added. `tests/test_residency_covers_schema.py` does the same for the other half: every
 table `schema.sql` creates must appear in the rows below, so a new table cannot ship unlisted.
 
@@ -515,6 +548,10 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
 | Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window |
 | Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
+| Topics | **D1 `topics`**; `topics.json` in the agent vault for a `json` deployment | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. A stand-in until the filter assigns topics: each item of the page is a topic of this issue only (`domain/topics.py`), so an id never spans two issues. A topic left with no member and no vote is deleted |
+| Topic members | **D1 `topic_members`**; `topics.json` for `json` | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which stay the clustering step's record |
+| Topic tags | **D1 `topic_tags`**; `topics.json` for `json` | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, so a rerun that tags a topic differently replaces them. Today's tags carry no kind, so the stand-in stores every one as `domain` (`STAND_IN_TAG_KIND`) |
+| Topic votes | **D1 `topic_votes`**; `topics.json` for `json` | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one, with no opposite vote between them, is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A sync whose topic-vote write fails still stamps and ACKs its votes, since the stamp is the vote's record and a held ACK would re-stamp the same URLs every run; that sync's topic votes are lost, and `run_summary`'s `topic_votes_failed` says why. A URL no topic holds (an issue published before topics, the raw page) writes no row |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry |
 | Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. D1 only: a `json` deployment polls no Worker |
 | Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |
@@ -634,8 +671,10 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
 | ~~Featured cap (`digest.max_featured`)~~ | — | — | **deleted** 2026-10-29: the page draws every read and follow article as a pebble, so no number of Features cards is chosen (ADR-0023). A stored D1 row is ignored |
 | Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
-| Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` keeps today's order and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
+| Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` names the topic order since ADR-0023 (§3.2) and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
 | Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `cyris.toml.example` sets `false`, which is the passthrough every issue had before it |
+| Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over, are the reader's to tune. Required, no code default |
+| Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — an up-voted topic stays on the recent-topic list while its net vote is worth more than this, about four half-lives (owner, 2026-10-30) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
 | Score thresholds, the intake cap `digest.max_articles_per_digest`, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
 | LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline); `cyris.toml [llm_provider]` for a `json` deployment | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |

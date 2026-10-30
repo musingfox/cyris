@@ -13,9 +13,12 @@ from dataclasses import dataclass, field
 
 from cyris.domain.models import ArticleState, StoredArticle
 from cyris.domain.similarity import SimilarityVerdict, judge, nearest_k
-from cyris.service_layer.ports import ArticleRepository, Embedder
+from cyris.service_layer.ports import ArticleRepository, Embedder, TopicRepository
 
 logger = logging.getLogger(__name__)
+
+# URLs per topic lookup: a page of the store's URL batch, so each costs one D1 query.
+_TOPIC_PAGE = 90
 
 
 @dataclass
@@ -33,6 +36,9 @@ class VoteSimilarityReport:
     up_seed_vectors: dict[str, list[float]] = field(default_factory=dict)
     down_seed_vectors: dict[str, list[float]] = field(default_factory=dict)
     seed_titles: dict[str, str] = field(default_factory=dict)
+    # Why the seeds were not counted one per topic, when the topic store could not
+    # name them: each voted URL was then its own seed, as before topics.
+    topic_dedup_skipped: str = ""
 
     def nearest_titles(self, url: str, k: int) -> tuple[list[str], list[str]]:
         """Titles of the `k` upvotes and `k` downvotes closest to a judged candidate."""
@@ -47,8 +53,13 @@ class VoteSimilarityReport:
         return not self.skipped_reason
 
 
-def _voted(store: ArticleRepository, state: ArticleState, limit: int) -> list[StoredArticle]:
-    """The most recently human-stamped articles in a state.
+def _voted(
+    store: ArticleRepository,
+    state: ArticleState,
+    limit: int,
+    topics: TopicRepository | None = None,
+) -> list[StoredArticle]:
+    """The most recently human-stamped articles in a state, one per topic.
 
     `triaged_at` is what separates a reader's decision from the pipeline's own
     verdict, and the pipeline is demonstrably wrong on exactly the class the first
@@ -58,9 +69,42 @@ def _voted(store: ArticleRepository, state: ArticleState, limit: int) -> list[St
     The whole state has to be pulled before filtering — `list_articles` orders by
     first_seen_at, so a recency-limited page of 3,000+ pipeline verdicts would
     contain no human votes at all. Same approach as `collect_triage_feedback`.
+
+    One vote on a topic stamps every member, so a 15-article topic would take 15
+    seeds for one judgment; its newest-stamped member stands for it. A row no topic
+    holds is its own seed. Topics are looked up a page at a time, newest first,
+    until `limit` seeds are found.
     """
+    return _seeds(_stamped(store, state), limit, topics)
+
+
+def _stamped(store: ArticleRepository, state: ArticleState) -> list[StoredArticle]:
+    """Every human-stamped article in a state, newest stamp first."""
     rows = [a for a in store.list_articles(state=state, limit=100_000) if a.triaged_at]
-    return sorted(rows, key=lambda a: a.triaged_at, reverse=True)[:limit]
+    rows.sort(key=lambda a: a.triaged_at, reverse=True)
+    return rows
+
+
+def _seeds(
+    rows: list[StoredArticle], limit: int, topics: TopicRepository | None
+) -> list[StoredArticle]:
+    """The first `limit` of `rows`, one per topic (`_voted`)."""
+    if topics is None:
+        return rows[:limit]
+    seeds: list[StoredArticle] = []
+    taken: set[str] = set()
+    for i in range(0, len(rows), _TOPIC_PAGE):
+        page = rows[i : i + _TOPIC_PAGE]
+        topic_of = topics.topics_of_urls([a.url for a in page])
+        for article in page:
+            key = topic_of.get(article.url, article.url)
+            if key in taken:
+                continue
+            taken.add(key)
+            seeds.append(article)
+            if len(seeds) == limit:
+                return seeds
+    return seeds
 
 
 async def judge_by_votes(
@@ -69,6 +113,7 @@ async def judge_by_votes(
     candidates: list[StoredArticle],
     *,
     max_seeds: int,
+    topics: TopicRepository | None = None,
 ) -> VoteSimilarityReport:
     """Compare candidates against upvoted and downvoted articles.
 
@@ -78,18 +123,37 @@ async def judge_by_votes(
     if not candidates:
         return VoteSimilarityReport(skipped_reason="no candidates")
 
-    up = _voted(store, ArticleState.ACCEPTED, max_seeds)
-    down = _voted(store, ArticleState.REJECTED, max_seeds)
+    up_rows = _stamped(store, ArticleState.ACCEPTED)
+    down_rows = _stamped(store, ArticleState.REJECTED)
+    dedup_skipped = ""
+    try:
+        up = _seeds(up_rows, max_seeds, topics)
+        down = _seeds(down_rows, max_seeds, topics)
+    except Exception as e:
+        if topics is None:
+            raise
+        # Counting a topic once only evens out the seeds: losing it costs their balance,
+        # not the pass.
+        logger.warning("Topic store unreadable, every voted URL is its own seed: %s", e)
+        dedup_skipped = f"topic store failed: {type(e).__name__}: {e}"
+        up = _seeds(up_rows, max_seeds, None)
+        down = _seeds(down_rows, max_seeds, None)
     if not down and not up:
-        return VoteSimilarityReport(skipped_reason="no human-voted articles yet")
+        return VoteSimilarityReport(
+            skipped_reason="no human-voted articles yet", topic_dedup_skipped=dedup_skipped
+        )
 
     # An article the reader already ruled on is not a candidate for the same ruling:
     # it would match its own seed at cosine 1.0 and report a decision that was
-    # already made, drowning out the generalisation that is the point here.
-    seed_urls = {a.url for a in up + down}
-    candidates = [a for a in candidates if a.url not in seed_urls]
+    # already made, drowning out the generalisation that is the point here. Every
+    # voted URL, not only the seeds: a topic's other members were ruled on too.
+    voted_urls = {a.url for a in up_rows + down_rows}
+    candidates = [a for a in candidates if a.url not in voted_urls]
     if not candidates:
-        return VoteSimilarityReport(skipped_reason="every candidate was already voted on")
+        return VoteSimilarityReport(
+            skipped_reason="every candidate was already voted on",
+            topic_dedup_skipped=dedup_skipped,
+        )
 
     try:
         seed_vectors = await embedder.embed([a.title for a in up + down])
@@ -99,7 +163,9 @@ async def judge_by_votes(
             raise ValueError("the embedder answered a different number of vectors than texts")
     except Exception as e:
         logger.warning("Vote similarity unavailable, digest continues unfiltered: %s", e)
-        return VoteSimilarityReport(skipped_reason=f"embedding failed: {e}")
+        return VoteSimilarityReport(
+            skipped_reason=f"embedding failed: {e}", topic_dedup_skipped=dedup_skipped
+        )
 
     # Paired before the empty vectors drop out, so each URL stays with its own vector.
     up_seeds = {a.url: v for a, v in zip(up, seed_vectors[: len(up)], strict=True) if v}
@@ -132,4 +198,5 @@ async def judge_by_votes(
         up_seed_vectors=up_seeds,
         down_seed_vectors=down_seeds,
         seed_titles={a.url: a.title for a in up + down if a.url in up_seeds or a.url in down_seeds},
+        topic_dedup_skipped=dedup_skipped,
     )

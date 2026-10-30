@@ -364,6 +364,8 @@ _PROBE_VALUES = {
     "digest.rank_by_preference": False,
     "digest.summarize_follow": False,
     "digest.preference_source": "cosine",
+    "digest.vote_half_life_days": 7,
+    "digest.topic_lifetime_days": 7,
     "routing.score_threshold": 70,
     "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,
@@ -3531,36 +3533,55 @@ addEventListener("change", (e) => {
 }, true);
 """
 
-# The vote order waits for vote similarity, and Clef for its token (ui-language.md §4
-# field): the control is disabled with a line saying why, and follows the page's values.
-RANK_WAITS = """
-const rank = $("#rank-by-preference"), line = $("#rank-needs");
-expect(rank.disabled, "the vote order is not disabled");
-expect(visible(line), "no line says what it waits for");
-expect(line.textContent === "Needs vote similarity on, under Model.", `line: ${line.textContent}`);
+# Clef waits for vote similarity, whose nearest votes it reads, and for its token
+# (ui-language.md §4 field): the option is disabled with a line saying why, and
+# follows the page's values. The vote order itself waits for nothing: topic votes
+# need no embeddings.
+TOKEN = "data.clef_ready = true;"
+VOTES_ON = 'data.values["vote_similarity.enabled"] = true;'
+CLEF_WAITS_FOR_VOTES = """
+const select = $("#preference-source"), line = $("#clef-needs-votes");
+expect(!select.disabled, "the whole select is disabled");
+expect($('option[value="clef"]', select).disabled, "Clef is not disabled");
+expect(visible(line), "no line says Clef waits for vote similarity");
+const want = "Clef needs vote similarity on, under Model.";
+expect(line.textContent === want, `line: ${line.textContent}`);
 """
 CLEF_WAITS = """
 const select = $("#preference-source"), line = $("#clef-needs");
 expect(!select.disabled, "the whole select is disabled");
 expect($('option[value="clef"]', select).disabled, "Clef is not disabled");
-expect(!$('option[value="cosine"]', select).disabled, "Title similarity is disabled");
+expect(!$('option[value="cosine"]', select).disabled, "Your topic votes is disabled");
 expect(visible(line), "no line says what Clef waits for");
 expect(line.textContent.startsWith("Clef needs a Workers AI token"), `line: ${line.textContent}`);
 """
 CHECKS += [
     Check(
-        id="digest-order-waits-for-vote-similarity",
+        id="digest-order-free-of-vote-similarity",
         fixture="writable",
         path="/settings#digest",
         act="await settingsLoaded();",
-        script=RANK_WAITS,
-        # The stored value says vote similarity is on, so a page that reads it lets the order go.
-        sabotage_preload=answer_settings('data.values["vote_similarity.enabled"] = true;'),
+        script="""
+            expect($("#vote-enabled").value === "false", "vote similarity is on in the fixture");
+            expect(!$("#rank-by-preference").disabled, "the vote order waits for vote similarity");
+        """,
+        sabotage="""$("#rank-by-preference").disabled = true;""",
     ),
     Check(
-        id="digest-order-follows-vote-similarity",
+        id="digest-clef-waits-for-vote-similarity",
+        fixture="writable",
+        path="/settings#digest",
+        preload=answer_settings(TOKEN),
+        act="await settingsLoaded();",
+        script=CLEF_WAITS_FOR_VOTES,
+        # The stored value says vote similarity is on, so a page that reads it offers Clef.
+        sabotage_preload=answer_settings(TOKEN + VOTES_ON),
+    ),
+    Check(
+        id="digest-clef-follows-vote-similarity",
         fixture="writable",
         path="/settings#model",
+        preload=answer_settings(TOKEN),
         act="""
             await settingsLoaded();
             setValue($("#vote-enabled"), "true");
@@ -3568,52 +3589,32 @@ CHECKS += [
             await waitFor(() => same(panels(), ["digest"]), "digest");
         """,
         script=f"""
-            const rank = $("#rank-by-preference");
-            expect(!rank.disabled, "the vote order stays disabled with vote similarity on");
-            expect(!visible($("#rank-needs")), "the line stays with vote similarity on");
+            const clef = $('#preference-source option[value="clef"]');
+            expect(!clef.disabled, "Clef stays disabled with vote similarity on");
+            expect(!visible($("#clef-needs-votes")), "the line stays with vote similarity on");
             location.hash = "model";
             await waitFor(() => same(panels(), ["model"]), "model");
             setValue($("#vote-enabled"), "false");
             location.hash = "digest";
             await waitFor(() => same(panels(), ["digest"]), "digest");
-            {{ {RANK_WAITS} }}
+            {{ {CLEF_WAITS_FOR_VOTES} }}
         """,
-        sabotage_preload=DEAF_VOTE_SELECT,
-    ),
-    Check(
-        id="digest-order-unset-saves-off",
-        fixture="writable",
-        path="/settings#digest",
-        setup=_unset("digest.rank_by_preference"),
-        act="""
-            await settingsLoaded();
-            saveOf("digest").click();
-            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
-              "the save");
-        """,
-        script=f"""
-            {RANK_WAITS}
-            expect(rank.value === "false", `value: ${{rank.value}}`);
-            expect(!rank.hasAttribute("aria-invalid"), "the field is still marked");
-        """,
-        sabotage_preload=rewrite_post(
-            "/api/settings/values", 'body.values["digest.rank_by_preference"] = true;'
-        ),
-        receipt=_calls([{"digest.rank_by_preference": False}]),
+        sabotage_preload=answer_settings(TOKEN) + DEAF_VOTE_SELECT,
     ),
     Check(
         id="digest-clef-waits-for-its-token",
         fixture="writable",
         path="/settings#digest",
+        preload=answer_settings(VOTES_ON),
         act="await settingsLoaded();",
         script=CLEF_WAITS,
-        sabotage_preload=answer_settings("data.clef_ready = true;"),
+        sabotage_preload=answer_settings(VOTES_ON + TOKEN),
     ),
     Check(
         id="digest-clef-offered-with-its-token",
         fixture="writable",
         path="/settings#digest",
-        preload=answer_settings("data.clef_ready = true;"),
+        preload=answer_settings(VOTES_ON + TOKEN),
         act="""
             await settingsLoaded();
             setValue($("#preference-source"), "clef");
@@ -3625,21 +3626,20 @@ CHECKS += [
             expect(select.value === "clef", `value: ${select.value}`);
             expect(!saveOf("digest").disabled, "Save is not live after picking Clef");
         """,
-        sabotage_preload=answer_settings("data.clef_ready = false;"),
+        sabotage_preload=answer_settings(VOTES_ON + "data.clef_ready = false;"),
     ),
-    # A disabled control leaves the tab order, so its reason must be its description,
-    # read when a screen reader reaches the control.
+    # A disabled option leaves the choices, so its reason must be the select's
+    # description, read when a screen reader reaches the select.
     Check(
-        id="digest-order-reason-describes-it",
+        id="digest-clef-votes-reason-describes-it",
         fixture="writable",
         path="/settings#digest",
         act="await settingsLoaded();",
         script="""
-            const rank = $("#rank-by-preference");
-            const ids = (rank.getAttribute("aria-describedby") || "").split(" ");
-            expect(ids.includes("rank-needs"), `described by: ${ids}`);
+            const ids = ($("#preference-source").getAttribute("aria-describedby") || "").split(" ");
+            expect(ids.includes("clef-needs-votes"), `described by: ${ids}`);
         """,
-        sabotage="""$("#rank-by-preference").removeAttribute("aria-describedby");""",
+        sabotage="""$("#preference-source").removeAttribute("aria-describedby");""",
     ),
     Check(
         id="digest-clef-reason-describes-it",
@@ -3653,17 +3653,18 @@ CHECKS += [
         sabotage="""$("#preference-source").removeAttribute("aria-describedby");""",
     ),
     Check(
-        id="digest-order-reason-leaves-with-vote-similarity",
+        id="digest-clef-votes-reason-leaves-with-vote-similarity",
         fixture="writable",
         path="/settings#digest",
-        preload=answer_settings('data.values["vote_similarity.enabled"] = true;'),
+        preload=answer_settings(VOTES_ON),
         act="await settingsLoaded();",
         script="""
-            const rank = $("#rank-by-preference");
-            const ids = (rank.getAttribute("aria-describedby") || "").split(" ");
-            expect(!ids.includes("rank-needs"), `described by: ${ids}`);
+            const ids = ($("#preference-source").getAttribute("aria-describedby") || "").split(" ");
+            expect(!ids.includes("clef-needs-votes"), `described by: ${ids}`);
         """,
-        sabotage="""$("#rank-by-preference").setAttribute("aria-describedby", "rank-needs");""",
+        sabotage=(
+            """$("#preference-source").setAttribute("aria-describedby", "clef-needs-votes");"""
+        ),
     ),
 ]
 # Every tap target takes taps over 44 x 44 on a phone, and none covers another. Help

@@ -113,6 +113,22 @@
     ],
     "route": "plain"
   },
+  "digest.vote_half_life_days": {
+    "tab": "digest",
+    "label": "Vote half-life (days)",
+    "controls": [
+      "vote-half-life"
+    ],
+    "route": "plain"
+  },
+  "digest.topic_lifetime_days": {
+    "tab": "digest",
+    "label": "Topic lifetime (days)",
+    "controls": [
+      "topic-lifetime"
+    ],
+    "route": "plain"
+  },
   "general.digest_window_hours": {
     "tab": "pipeline",
     "label": "Window (hours)",

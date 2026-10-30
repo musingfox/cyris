@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   follow articles** on (`/settings`, Digest), each follow article's card says
   what the article is, as a `read` article's does; off keeps the start of its
   own text, as before.
+- A topic you voted on counts once among vote similarity's seeds, however many
+  articles it holds, so one big story no longer crowds out your other votes.
+- A vote on the page lands on its topic. One click on any item, a topic of
+  several articles included, writes one vote on that topic with the time you
+  clicked. Each article it covers is still marked as voted, as before.
+- Every run records its topics. Each item on the page is a topic, with its
+  articles and its tags, in four new tables (`topics`, `topic_members`,
+  `topic_tags`, `topic_votes`) or in `topics.json` on the `json` backend. For now a
+  topic lasts one issue: a topic that carries across issues comes when the filter
+  assigns topics.
 - **A new deployment is set up by a wizard.** While its source list is empty,
   `/settings` opens `/onboarding`: six steps, of which this release fills three —
   the output language and timezone, the publish hours, and the notifications.
@@ -43,6 +53,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   two sentences, so you can decide whether to open it; it no longer draws out
   core arguments, implications or advice. An article whose text was never
   fetched says so, rather than a summary made up from its title.
+- **Your topic votes order the issue, not title similarity.** With **Order by
+  your votes** on, an item's place follows its topic's votes, each counting half
+  as much after **Vote half-life** days, plus what you voted on topics that share
+  a named entity with it. Embeddings no longer take part, so the order works with
+  vote similarity off. While a topic lasts one issue, a vote is recorded but moves
+  no issue yet: it takes effect once topics last across issues. An issue Clef
+  cannot fully score now falls back to this order.
 - **A deployment with no source waits instead of failing.** An empty source list
   is how a deployment starts, before onboarding picks any feed, so `cyris run`
   now ends there having fetched nothing and called no model, saying it waits for
@@ -129,6 +146,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cyris settings push` from a `cyris.toml` whose `[digest]` sets
   `summarize_follow = false`, which adds only the keys D1 lacks. A `json`
   deployment adds that line to its `cyris.toml`.
+- Set `digest.vote_half_life_days` and `digest.topic_lifetime_days` (7 and 7 to
+  start) on `/settings` (Digest), or in `[digest]` of `cyris.toml`, before the
+  next run: both are required, and a run with either missing stops.
 - Redeploy `workers/rss`. cyris works with either Worker version.
 - Delete `max_featured`, `max_articles_per_digest_output` and
   `units_per_paragraph` from `[digest]` in `cyris.toml`. A key left there, and a

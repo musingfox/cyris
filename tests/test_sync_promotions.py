@@ -1,14 +1,21 @@
 """Tests for promotion sync from the Cloudflare Worker."""
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
-from cyris.adapters.promotions import PromotedArticle, pull_promotions, sync_promotions
+from cyris.adapters.promotions import (
+    PromotedArticle,
+    pull_promotions,
+    sync_promotions,
+    topic_votes,
+)
 from cyris.adapters.store import ArticleStore
-from cyris.domain.models import Article, ArticleState, Lane
+from cyris.adapters.store.json_topics import JsonTopicStore
+from cyris.domain.models import Article, ArticleState, Lane, TopicRecord
 from cyris.domain.triage import RejectReason
 
 pytestmark = pytest.mark.integration
@@ -78,7 +85,7 @@ def test_sync_accepts_and_acks(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 1
+    assert synced.votes == 1
     [article] = store.get_by_urls(["https://example.com/stored"])
     assert article.state == ArticleState.ACCEPTED
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/stored"]}
@@ -93,7 +100,7 @@ def test_sync_legacy_deep_vote_accepts(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 1
+    assert synced.votes == 1
     [article] = store.get_by_urls(["https://example.com/stored"])
     assert article.state == ArticleState.ACCEPTED
 
@@ -133,7 +140,7 @@ def test_sync_routes_votes(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 2
+    assert synced.votes == 2
 
     [up] = store.get_by_urls(["https://example.com/stored"])
     [down] = store.get_by_urls(["https://example.com/nope"])
@@ -154,7 +161,7 @@ def test_sync_missing_url_acks_anyway(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 1
+    assert synced.votes == 1
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/unknown"]}
 
 
@@ -199,5 +206,169 @@ def test_sync_empty_queue_skips_ack(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 0
+    assert synced.votes == 0
     post.assert_not_called()
+
+
+def _sand_store(tmp_path) -> tuple[ArticleStore, JsonTopicStore]:
+    articles = ArticleStore(tmp_path / "agent-vault")
+    articles.save(
+        [
+            Article(
+                id=i,
+                title=f"Member {i}",
+                url=f"https://news.example/{i}",
+                content="",
+                published_at=datetime.now(UTC),
+                source_name="Wire",
+                source_lane=Lane.SKIM,
+            )
+            for i in range(4)
+        ]
+    )
+    topics = JsonTopicStore(tmp_path / "agent-vault")
+    sand = TopicRecord(id="sand", name="Sand", urls=[f"https://news.example/{i}" for i in range(3)])
+    topics.save_topics("2026-10-30", "morning", [sand], datetime(2026, 10, 30, tzinfo=UTC))
+    return articles, topics
+
+
+def _sync(payload, articles, topics) -> None:
+    with (
+        patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
+        patch("cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})),
+    ):
+        sync_promotions(WORKER_URL, TOKEN, articles, topics)
+
+
+def test_a_sand_vote_is_one_topic_vote_at_its_click_and_stamps_every_member(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    payload = [
+        {"url": f"https://news.example/{i}", "vote": "down", "ts": f"2026-10-30T09:00:00.00{i}Z"}
+        for i in range(3)
+    ]
+
+    _sync(payload, articles, topics)
+
+    stored = articles.get_by_urls([f"https://news.example/{i}" for i in range(3)])
+    assert all(a.state == ArticleState.REJECTED and a.triaged_at for a in stored)
+    data = json.loads((tmp_path / "agent-vault" / "topics.json").read_text())
+    assert data["votes"] == [
+        {"topic_id": "sand", "direction": -1, "clicked_at": "2026-10-30T09:00:00.000000+00:00"}
+    ]
+
+
+def test_one_click_split_across_two_syncs_is_one_topic_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    clicks = [
+        {"url": f"https://news.example/{i}", "vote": "up", "ts": f"2026-10-30T09:00:0{i}Z"}
+        for i in range(3)
+    ]
+
+    _sync(clicks[:1], articles, topics)
+    _sync(clicks[1:], articles, topics)
+
+    assert [(v.topic_id, v.direction) for v in topics.topic_votes()] == [("sand", 1)]
+
+
+def test_a_later_click_on_the_same_topic_is_a_second_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+
+    _sync(
+        [{"url": "https://news.example/0", "vote": "up", "ts": "2026-10-30T09:00:00Z"}],
+        articles,
+        topics,
+    )
+    _sync(
+        [{"url": "https://news.example/0", "vote": "up", "ts": "2026-10-30T21:00:00Z"}],
+        articles,
+        topics,
+    )
+
+    assert len(topics.topic_votes()) == 2
+
+
+def test_a_change_of_mind_within_a_minute_keeps_every_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    for second, vote in (("00", "up"), ("10", "down"), ("20", "up")):
+        _sync(
+            [{"url": "https://news.example/0", "vote": vote, "ts": f"2026-10-30T09:00:{second}Z"}],
+            articles,
+            topics,
+        )
+
+    assert [v.direction for v in topics.topic_votes()] == [1, -1, 1]
+
+
+def test_a_broken_topic_store_still_stamps_and_acks_and_names_why(tmp_path):
+    articles, _ = _sand_store(tmp_path)
+    (tmp_path / "agent-vault" / "topics.json").write_text("{not json")
+    payload = [{"url": "https://news.example/0", "vote": "up", "ts": "2026-10-30T09:00:00Z"}]
+
+    with (
+        patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
+        patch(
+            "cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})
+        ) as post,
+    ):
+        synced = sync_promotions(
+            WORKER_URL, TOKEN, articles, JsonTopicStore(tmp_path / "agent-vault")
+        )
+
+    (stored,) = articles.get_by_urls(["https://news.example/0"])
+    assert stored.state == ArticleState.ACCEPTED and stored.triaged_at
+    assert post.call_args.kwargs["json"] == {"urls": ["https://news.example/0"]}
+    assert synced.votes == 1
+    assert synced.topic_votes_failed.startswith("topic store failed: JSONDecodeError")
+
+
+def test_a_vote_on_a_topic_member_gone_from_the_store_is_still_a_topic_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    topics.save_topics(
+        "2026-10-30",
+        "evening",
+        [TopicRecord(id="pruned", name="Pruned", urls=["https://news.example/pruned"])],
+        datetime(2026, 10, 30, 12, tzinfo=UTC),
+    )
+    payload = [{"url": "https://news.example/pruned", "vote": "down", "ts": "2026-10-30T13:00:00Z"}]
+
+    _sync(payload, articles, topics)
+
+    assert articles.get_by_urls(["https://news.example/pruned"]) == []
+    assert [(v.topic_id, v.direction) for v in topics.topic_votes()] == [("pruned", -1)]
+
+
+def test_a_vote_on_a_url_no_topic_holds_only_stamps_it(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    payload = [{"url": "https://news.example/3", "vote": "up", "ts": "2026-10-30T09:00:00Z"}]
+
+    _sync(payload, articles, topics)
+
+    (stored,) = articles.get_by_urls(["https://news.example/3"])
+    assert stored.state == ArticleState.ACCEPTED and stored.triaged_at
+    data = json.loads((tmp_path / "agent-vault" / "topics.json").read_text())
+    assert data["votes"] == []
+
+
+def test_the_newest_click_on_a_topic_sets_its_direction():
+    promotions = [
+        PromotedArticle(url="a", vote="up", ts="2026-10-30T09:00:00Z"),
+        PromotedArticle(url="b", vote="down", ts="2026-10-30T09:05:00Z"),
+    ]
+
+    (vote,) = topic_votes(promotions, {"a": "t", "b": "t"}, datetime.now(UTC))
+
+    assert (vote.direction, vote.clicked_at) == (-1, datetime(2026, 10, 30, 9, 5, tzinfo=UTC))
+
+
+def test_a_vote_is_dated_after_the_readers_last_change_of_direction():
+    promotions = [
+        PromotedArticle(url="a", vote="up", ts="2026-10-30T09:00:00Z"),
+        PromotedArticle(url="b", vote="down", ts="2026-10-30T09:05:00Z"),
+        PromotedArticle(url="c", vote="up", ts="2026-10-30T09:10:00Z"),
+        PromotedArticle(url="d", vote="up", ts="2026-10-30T09:10:00.003Z"),
+    ]
+    topic_of = dict.fromkeys("abcd", "t")
+
+    (vote,) = topic_votes(promotions, topic_of, datetime.now(UTC))
+
+    assert (vote.direction, vote.clicked_at) == (1, datetime(2026, 10, 30, 9, 10, tzinfo=UTC))

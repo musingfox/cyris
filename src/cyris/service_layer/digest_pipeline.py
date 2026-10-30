@@ -13,6 +13,7 @@ from cyris.domain.models import (
     ProcessResult,
     SourceConfig,
     StoryRecord,
+    TopicRecord,
     UsageStats,
 )
 from cyris.domain.selection import (
@@ -22,6 +23,7 @@ from cyris.domain.selection import (
     preference_moves,
     split_read_lane_by_score,
 )
+from cyris.domain.topics import stand_in_topics
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
@@ -36,7 +38,9 @@ from cyris.utils.timezone import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
-PreferenceSource = Callable[[list[Article]], Awaitable[Mapping[str, float] | None]]
+PreferenceSource = Callable[
+    [list[Article], list[TopicRecord]], Awaitable[Mapping[str, float] | None]
+]
 
 
 def _story_id(date: str, period: str, member_urls: list[str]) -> str:
@@ -110,9 +114,9 @@ class DigestPipeline:
             timezone: IANA timezone for date formatting.
             article_tags: The tags scoring gave each article this run, by URL; each
                 read-lane item carries its articles' tags.
-            preference: Scores the articles this issue kept, by URL, to order the
-                Features, the news clusters and the headlines; None keeps the order
-                of the score and the model.
+            preference: Scores the articles this issue kept, by URL, given the
+                issue's topics, to order the Features, the news clusters and the
+                headlines; None keeps the order of the score and the model.
             date: The issue's date, YYYY-MM-DD; None means today in `timezone`.
 
         Returns:
@@ -303,7 +307,9 @@ class DigestPipeline:
                 )
                 for url in entry.urls
             )
-            scores = await preference([by_url[u] for u in kept_urls if u in by_url])
+            scores = await preference(
+                [by_url[u] for u in kept_urls if u in by_url], stand_in_topics(laid_out)
+            )
         content = order_by_preference(laid_out, scores)
         moves = None if scores is None else preference_moves(laid_out, content)
         # Accepted means shown in this issue. What the summarizer left out of every
@@ -318,5 +324,6 @@ class DigestPipeline:
             rejected_urls=rejected_urls,
             url_to_tags=url_to_tags,
             story_records=story_records,
+            topics=stand_in_topics(content),
             preference_moves=moves,
         )

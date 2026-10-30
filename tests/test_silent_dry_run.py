@@ -17,6 +17,7 @@ from cyris.adapters.store.runs import D1RunLog
 from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
 from cyris.adapters.store.stories import D1StoryStore
 from cyris.adapters.store.tags import D1TagStore
+from cyris.adapters.store.topics import D1TopicStore
 from cyris.bootstrap import Deps
 from cyris.config import AgentVaultConfig
 from cyris.domain.models import Article, Lane
@@ -88,6 +89,7 @@ def _deps(tmp_path: Path, db: RecordingD1, sent: list, log_usage=None) -> Deps:
         log_usage=log_usage or partial(append_usage_d1, client=db),
         tag_store=D1TagStore(db),
         story_store=D1StoryStore(db),
+        topic_store=D1TopicStore(db),
         area_store=D1AreaStore(db),
         record_run=D1RunLog(db, "").record,
         record_similarity=D1SimilarityShadow(db, "test-model").record,
@@ -119,7 +121,9 @@ async def test_a_publishing_run_writes_the_tables_the_dry_run_skips(tmp_path: Pa
 
     await run_digest(deps, RunOptions(dry_run=False))
 
-    assert {"usage_log", "digests", "stored_articles"} <= db.written_tables()
+    assert {"usage_log", "digests", "stored_articles", "topics", "topic_members"} <= (
+        db.written_tables()
+    )
 
 
 async def test_a_dry_run_does_not_fail_when_usage_logging_would_raise(tmp_path: Path) -> None:

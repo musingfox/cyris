@@ -186,6 +186,52 @@ CREATE TABLE IF NOT EXISTS article_tags (
 
 CREATE INDEX IF NOT EXISTS idx_article_tags_tag ON article_tags(tag);
 
+-- Topics: what a reader votes on (ADR-0023). A topic's id is meant to carry across
+-- issues; until the filter assigns topics, each issue's item is a fresh topic.
+-- `stories` stays as it is: a separate record of the clustering step.
+CREATE TABLE IF NOT EXISTS topics (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  first_seen TEXT NOT NULL,     -- ISO-8601 UTC, the first issue that held it
+  last_seen  TEXT NOT NULL      -- the newest issue that held it
+);
+
+CREATE INDEX IF NOT EXISTS idx_topics_last_seen ON topics(last_seen);
+
+-- The articles each issue put under a topic. `seen_at` is the save that wrote the
+-- row, so a re-run of the issue deletes the rows its own save did not write.
+CREATE TABLE IF NOT EXISTS topic_members (
+  topic_id    TEXT NOT NULL,
+  article_url TEXT NOT NULL,
+  digest_date TEXT NOT NULL,
+  period      TEXT NOT NULL,
+  seen_at     TEXT NOT NULL,
+  PRIMARY KEY (topic_id, article_url, digest_date, period)
+);
+
+CREATE INDEX IF NOT EXISTS idx_topic_members_url ON topic_members(article_url);
+CREATE INDEX IF NOT EXISTS idx_topic_members_issue ON topic_members(digest_date, period);
+
+-- A topic's tags are the ones its newest save gave it: `seen_at` is that save, as on
+-- `topic_members`, so a rerun drops the tags it no longer gives.
+CREATE TABLE IF NOT EXISTS topic_tags (
+  topic_id TEXT NOT NULL,
+  tag      TEXT NOT NULL,       -- normalized
+  kind     TEXT NOT NULL CHECK (kind IN ('entity', 'domain', 'region')),
+  seen_at  TEXT NOT NULL,
+  PRIMARY KEY (topic_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS idx_topic_tags_tag ON topic_tags(tag);
+
+-- Append-only: an up then a down on one topic net to nothing as they decay.
+CREATE TABLE IF NOT EXISTS topic_votes (
+  topic_id   TEXT NOT NULL,
+  direction  INTEGER NOT NULL CHECK (direction IN (1, -1)),
+  clicked_at TEXT NOT NULL,     -- ISO-8601 UTC, the promote Worker's time of the click
+  PRIMARY KEY (topic_id, clicked_at)
+);
+
 -- One row per digest run, on every path: an empty window and an exception leave
 -- a row too, so "ran and found nothing" is distinguishable from "never started".
 -- `summary` is the whole run_summary dict, so a later field needs no migration.

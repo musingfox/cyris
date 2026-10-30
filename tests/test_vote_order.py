@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from cyris.adapters.clef import ClefError
-from cyris.domain.models import Article, Lane
+from cyris.domain.models import Article, Lane, TopicRecord, TopicVote
 from cyris.domain.similarity import SimilarityVerdict
 from cyris.service_layer import prompts, vote_order
 from cyris.service_layer.ports import NoulAnswer
@@ -16,8 +16,8 @@ from cyris.service_layer.vote_similarity import VoteSimilarityReport
 
 pytestmark = pytest.mark.unit
 
-MODEL = "gemini-embedding-001"
 SNIPPET = 1000
+AT = datetime(2026, 10, 30, 8, tzinfo=UTC)
 
 
 def _article(url: str, title: str = "T", content: str = "body") -> Article:
@@ -60,33 +60,62 @@ class _Clef:
         return answer
 
 
-def _order(report, ask=None, *, rank=True, source="clef") -> VoteOrder:
+class _Topics:
+    """A topic store holding only votes: no earlier topic, so each tag's df is this issue's."""
+
+    def __init__(self, votes: list[TopicVote]) -> None:
+        self.votes = votes
+
+    def topic_votes(self) -> list[TopicVote]:
+        return self.votes
+
+    def recent_topics(self, since, until) -> list:
+        return []
+
+    def topics_by_ids(self, ids) -> list:
+        return []
+
+
+def _up(topic: str) -> TopicVote:
+    """A vote clicked at the issue's own time, so it weighs exactly 1."""
+    return TopicVote(topic_id=topic, direction=1, clicked_at=AT)
+
+
+def _order(report, ask=None, *, rank=True, source="clef", votes=(), topics=True) -> VoteOrder:
     return VoteOrder(
         rank=rank,
         source=source,
         similarity=report,
         ask_clef=ask,
-        embedding_model=MODEL,
+        topics=_Topics(list(votes)) if topics is True else (topics or None),
+        at=AT,
+        half_life_days=7,
+        lifetime_days=7,
         snippet_length=SNIPPET,
     )
+
+
+def _ask(order: VoteOrder, kept: list[Article]):
+    """Each kept article as a topic of its own, id its URL, as the stand-in makes it."""
+    return order(kept, [TopicRecord(id=a.url, name=a.title, urls=[a.url]) for a in kept])
 
 
 def _answer(noul: float, tokens: int | None = 842) -> NoulAnswer:
     return NoulAnswer(noul=noul, model="clef-flash", input_tokens=tokens)
 
 
-# ---- CosineVoteOrderUnchanged ----------------------------------------------------------
+# ---- TopicVoteOrder --------------------------------------------------------------------
 
 
-async def test_cosine_source_returns_each_verdicts_net_and_asks_no_clef() -> None:
+async def test_the_topic_source_scores_each_article_as_its_topic_and_asks_no_clef() -> None:
     clef = _Clef()
-    order = _order(_report({"a": 0.3, "b": -0.1}), clef, source="cosine")
+    order = _order(None, clef, source="cosine", votes=[_up("b")])
 
-    scores = await order([_article("a"), _article("b")])
+    scores = await _ask(order, [_article("a"), _article("b")])
 
-    assert scores == {"a": 0.3, "b": -0.1}
-    assert order.receipt.source == "cosine"
-    assert order.receipt.model == MODEL
+    assert scores == {"a": 0.0, "b": 1.0}
+    assert order.receipt.source == "topics"
+    assert order.receipt.model is None
     assert order.receipt.clef_skipped is None
     assert order.receipt.clef_spend is None
     assert clef.calls == []
@@ -95,41 +124,63 @@ async def test_cosine_source_returns_each_verdicts_net_and_asks_no_clef() -> Non
 async def test_ranking_off_keeps_the_model_order() -> None:
     order = _order(_report({"a": 0.3}), rank=False, source="cosine")
 
-    assert await order([_article("a")]) is None
+    assert await _ask(order, [_article("a")]) is None
     assert order.receipt.source is None
     assert order.receipt.skipped == "switched off"
 
 
-async def test_without_a_similarity_report_nothing_is_ordered() -> None:
-    order = _order(None, source="cosine")
+async def test_without_a_topic_store_nothing_is_ordered() -> None:
+    order = _order(None, source="cosine", topics=False)
 
-    assert await order([_article("a")]) is None
-    assert order.receipt.skipped == "vote similarity off"
+    assert await _ask(order, [_article("a")]) is None
+    assert order.receipt.skipped == "no topic store"
 
 
-async def test_a_skipped_similarity_pass_names_its_reason() -> None:
+async def test_the_topic_order_needs_no_vote_similarity() -> None:
     report = _report({}, skipped_reason="no human-voted articles yet")
-    order = _order(report, source="cosine")
+    order = _order(report, source="cosine", votes=[_up("a")])
 
-    assert await order([_article("a")]) is None
-    assert order.receipt.skipped == "vote similarity skipped: no human-voted articles yet"
+    assert await _ask(order, [_article("a")]) == {"a": 1.0}
+    assert order.receipt.skipped == ""
+
+
+@pytest.mark.parametrize("source", ["cosine", "clef"])
+async def test_an_unreadable_topic_store_keeps_the_model_order_and_names_why(source) -> None:
+    class Unreadable(_Topics):
+        def topic_votes(self) -> list[TopicVote]:
+            raise RuntimeError("D1 down")
+
+    order = _order(None, _Clef(), source=source, topics=Unreadable([]))
+
+    assert await _ask(order, [_article("a")]) is None
+    assert order.receipt.source is None
+    assert order.receipt.skipped == "topic store failed: RuntimeError: D1 down"
 
 
 async def test_ranking_off_with_clef_asks_nothing_and_reports_no_clef_reason() -> None:
     clef = _Clef()
     order = _order(_report({"a": 0.3}), clef, rank=False)
 
-    assert await order([_article("a")]) is None
+    assert await _ask(order, [_article("a")]) is None
     assert order.receipt.skipped == "switched off"
     assert order.receipt.clef_skipped is None
     assert clef.calls == []
 
 
-async def test_clef_without_a_similarity_report_reports_the_same_reason_twice() -> None:
+async def test_clef_without_a_similarity_report_takes_the_topic_order() -> None:
     order = _order(None, _Clef())
 
-    assert await order([_article("a")]) is None
-    assert order.receipt.skipped == order.receipt.clef_skipped == "vote similarity off"
+    assert await _ask(order, [_article("a")]) == {"a": 0.0}
+    assert order.receipt.source == "topics"
+    assert order.receipt.clef_skipped == "vote similarity off"
+
+
+async def test_clef_after_a_skipped_similarity_pass_names_its_reason() -> None:
+    order = _order(_report({}, skipped_reason="no human-voted articles yet"), _Clef())
+
+    await _ask(order, [_article("a")])
+
+    assert order.receipt.clef_skipped == "vote similarity skipped: no human-voted articles yet"
 
 
 # ---- ClefVoteOrder ---------------------------------------------------------------------
@@ -139,7 +190,7 @@ async def test_clef_scores_each_kept_article_by_its_probability() -> None:
     clef = _Clef({"A": _answer(0.2), "B": _answer(0.7)})
     order = _order(_report({"a": 0.0, "b": 0.0}), clef)
 
-    scores = await order([_article("a", "A"), _article("b", "B")])
+    scores = await _ask(order, [_article("a", "A"), _article("b", "B")])
 
     assert scores == {"a": 0.2, "b": 0.7}
     assert order.receipt.source == "clef"
@@ -157,7 +208,7 @@ async def test_an_article_without_a_candidate_vector_is_not_asked() -> None:
     clef = _Clef({"A": _answer(0.2), "X": _answer(0.5)})
     order = _order(_report({"a": 0.0}), clef)
 
-    scores = await order([_article("a", "A"), _article("x", "X")])
+    scores = await _ask(order, [_article("a", "A"), _article("x", "X")])
 
     assert scores == {"a": 0.2}
     assert len(clef.calls) == 1
@@ -167,15 +218,15 @@ async def test_an_answer_without_a_token_count_leaves_the_total_unknown() -> Non
     clef = _Clef({"A": _answer(0.2, None), "B": _answer(0.7)})
     order = _order(_report({"a": 0.0, "b": 0.0}), clef)
 
-    await order([_article("a", "A"), _article("b", "B")])
+    await _ask(order, [_article("a", "A"), _article("b", "B")])
 
     assert order.receipt.clef_spend["input_tokens"] is None
 
 
-# ---- ClefFallsBackToCosine -------------------------------------------------------------
+# ---- ClefFallsBackToTopics -------------------------------------------------------------
 
 
-async def test_one_failed_question_sends_the_whole_issue_to_the_cosine_order() -> None:
+async def test_one_failed_question_sends_the_whole_issue_to_the_topic_order() -> None:
     clef = _Clef(
         {
             "A": _answer(0.9),
@@ -183,32 +234,32 @@ async def test_one_failed_question_sends_the_whole_issue_to_the_cosine_order() -
             "C": _answer(0.1),
         }
     )
-    order = _order(_report({"A": 0.1, "B": 0.3, "C": 0.2}), clef)
+    order = _order(_report({"A": 0.1, "B": 0.3, "C": 0.2}), clef, votes=[_up("B")])
 
-    scores = await order([_article("A", "A"), _article("B", "B"), _article("C", "C")])
+    scores = await _ask(order, [_article("A", "A"), _article("B", "B"), _article("C", "C")])
 
-    assert scores == {"A": 0.1, "B": 0.3, "C": 0.2}
-    assert order.receipt.source == "cosine"
-    assert order.receipt.model == MODEL
+    assert scores == {"A": 0.0, "B": 1.0, "C": 0.0}
+    assert order.receipt.source == "topics"
+    assert order.receipt.model is None
     assert (
         order.receipt.clef_skipped
         == "clef failed: ClefError: Clef refused the request (HTTP 400): bad"
     )
 
 
-async def test_no_clef_client_takes_the_cosine_order_without_a_call() -> None:
-    order = _order(_report({"a": 0.4}), None)
+async def test_no_clef_client_takes_the_topic_order_without_a_call() -> None:
+    order = _order(_report({"a": 0.4}), None, votes=[_up("a")])
 
-    assert await order([_article("a")]) == {"a": 0.4}
+    assert await _ask(order, [_article("a")]) == {"a": 1.0}
     assert order.receipt.clef_skipped == "no Workers AI token or account id"
     assert order.receipt.clef_spend is None
 
 
-async def test_no_kept_vector_takes_the_cosine_order_without_a_call() -> None:
+async def test_no_kept_vector_takes_the_topic_order_without_a_call() -> None:
     clef = _Clef()
     order = _order(_report({}, vectors=False), clef)
 
-    assert await order([_article("a")]) == {}
+    assert await _ask(order, [_article("a")]) == {"a": 0.0}
     assert order.receipt.clef_skipped == "no kept item has a nearest vote"
     assert clef.calls == []
     assert order.receipt.clef_spend is None
@@ -218,7 +269,7 @@ async def test_a_transport_error_is_named_by_its_type_and_message() -> None:
     clef = _Clef({"A": httpx.ConnectError("boom")})
     order = _order(_report({"a": 0.4}), clef)
 
-    await order([_article("a", "A")])
+    await _ask(order, [_article("a", "A")])
 
     assert order.receipt.clef_skipped == "clef failed: ConnectError: boom"
 
@@ -231,7 +282,7 @@ async def test_cancelling_the_ordering_task_propagates_the_cancellation() -> Non
         raise AssertionError
 
     order = _order(_report({"a": 0.4}), hang)
-    task = asyncio.create_task(order([_article("a", "A")]))
+    task = asyncio.create_task(_ask(order, [_article("a", "A")]))
     await asyncio.sleep(0)
     task.cancel()
 
@@ -256,13 +307,13 @@ async def test_at_most_eight_questions_are_in_flight() -> None:
     urls = [f"u{i}" for i in range(20)]
     order = _order(_report(dict.fromkeys(urls, 0.0)), slow)
 
-    scores = await order([_article(u) for u in urls])
+    scores = await _ask(order, [_article(u) for u in urls])
 
     assert len(scores) == 20
     assert peak == vote_order.CLEF_CONCURRENCY == 8
 
 
-async def test_a_pass_past_its_deadline_takes_the_cosine_order(monkeypatch) -> None:
+async def test_a_pass_past_its_deadline_takes_the_topic_order(monkeypatch) -> None:
     monkeypatch.setattr(vote_order, "CLEF_PASS_SECONDS", 0.05)
     never = asyncio.Event()
 
@@ -270,11 +321,11 @@ async def test_a_pass_past_its_deadline_takes_the_cosine_order(monkeypatch) -> N
         await never.wait()
         raise AssertionError
 
-    order = _order(_report({"a": 0.4}), hang)
+    order = _order(_report({"a": 0.4}), hang, votes=[_up("a")])
 
-    scores = await asyncio.wait_for(order([_article("a")]), timeout=1)
+    scores = await asyncio.wait_for(_ask(order, [_article("a")]), timeout=1)
 
-    assert scores == {"a": 0.4}
+    assert scores == {"a": 1.0}
     assert order.receipt.clef_skipped == "clef timed out after 0.05s"
 
 
@@ -298,7 +349,7 @@ async def test_a_question_carries_the_article_and_its_five_nearest_votes_each_wa
     clef = _Clef({"Original A": _answer(0.5)})
     article = _article("a", "Original A", "x" * 1500)
 
-    await _order(report, clef)([article])
+    await _ask(_order(report, clef), [article])
 
     [(state, instructions)] = clef.calls
     assert state == {
@@ -317,7 +368,7 @@ async def test_without_upvotes_the_question_lists_none() -> None:
     )
     clef = _Clef({"A": _answer(0.5)})
 
-    await _order(report, clef)([_article("a", "A")])
+    await _ask(_order(report, clef), [_article("a", "A")])
 
     assert clef.calls[0][0]["reader_upvoted"] == []
 
@@ -329,37 +380,34 @@ async def test_the_snippet_length_is_the_one_the_order_was_given() -> None:
         source="clef",
         similarity=_report({"a": 0.0}),
         ask_clef=clef,
-        embedding_model=MODEL,
+        topics=_Topics([]),
+        at=AT,
+        half_life_days=7,
+        lifetime_days=7,
         snippet_length=7,
     )
 
-    await order([_article("a", "A", "x" * 20)])
+    await _ask(order, [_article("a", "A", "x" * 20)])
 
     assert clef.calls[0][0]["article"]["content"] == "x" * 7
 
 
-async def test_the_cosine_scores_cover_only_the_kept_articles() -> None:
-    order = _order(_report({"a": 0.3, "z": 0.9}), source="cosine")
-
-    assert await order([_article("a")]) == {"a": 0.3}
-
-
-async def test_clef_with_no_kept_vector_returns_no_other_candidates_scores() -> None:
+async def test_clef_with_no_kept_vector_scores_only_the_issues_topics() -> None:
     report = _report({"z": 0.9}, vectors=False)
 
-    assert await _order(report, _Clef())([_article("a")]) == {}
+    assert await _ask(_order(report, _Clef()), [_article("a")]) == {"a": 0.0}
 
 
-async def test_a_question_that_cancels_itself_sends_the_issue_to_cosine() -> None:
+async def test_a_question_that_cancels_itself_sends_the_issue_to_the_topic_order() -> None:
     async def cancels(state: dict, instructions: str) -> NoulAnswer:
         if state["article"]["title"] == "B":
             raise asyncio.CancelledError
         return _answer(0.9)
 
-    order = _order(_report({"a": 0.1, "b": 0.2}), cancels)
+    order = _order(_report({"a": 0.1, "b": 0.2}), cancels, votes=[_up("b")])
 
-    scores = await order([_article("a", "A"), _article("b", "B")])
+    scores = await _ask(order, [_article("a", "A"), _article("b", "B")])
 
-    assert scores == {"a": 0.1, "b": 0.2}
-    assert order.receipt.source == "cosine"
+    assert scores == {"a": 0.0, "b": 1.0}
+    assert order.receipt.source == "topics"
     assert order.receipt.clef_skipped == "clef answered 1 of 2 questions"

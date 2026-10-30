@@ -435,9 +435,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
     if deps.sync_promotions is not None and options.rerun_of is None:
         try:
-            vote_count = await asyncio.to_thread(deps.sync_promotions)
-            if vote_count:
-                progress(f"Synced {vote_count} digest vote(s).")
+            synced = await asyncio.to_thread(deps.sync_promotions)
+            if synced.votes:
+                progress(f"Synced {synced.votes} digest vote(s).")
+            if synced.topic_votes_failed:
+                summary["topic_votes_failed"] = synced.topic_votes_failed
         except Exception as e:
             logger.warning("Promotion sync failed: %s", e)
 
@@ -576,6 +578,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             deps.embedder,
             pending_articles,
             max_seeds=cfg.app.vote_similarity.max_seeds,
+            topics=deps.topic_store,
         )
         # `Embedder.usage` exists because `embed-compare` needs it; until this
         # line a digest run embedded ~600 texts and reported none of it.
@@ -594,6 +597,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                     logger.error("Failed to record vote similarity: %s", e)
                     summary["vote_similarity_record_error"] = str(e)
 
+        if similarity.topic_dedup_skipped:
+            summary["vote_similarity_topic_dedup_skipped"] = similarity.topic_dedup_skipped
         if not similarity.ran:
             summary["vote_similarity_skipped"] = similarity.skipped_reason
             logger.info("Vote similarity skipped: %s", similarity.skipped_reason)
@@ -670,7 +675,10 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         source=cfg.app.digest.preference_source,
         similarity=similarity,
         ask_clef=deps.ask_clef,
-        embedding_model=deps.embedding_model,
+        topics=deps.topic_store,
+        at=datetime.fromisoformat(summary["started_at"]),
+        half_life_days=cfg.app.digest.vote_half_life_days,
+        lifetime_days=cfg.app.digest.topic_lifetime_days,
         snippet_length=cfg.app.digest.scoring_snippet_length,
     )
     article_scores = {a.url: a.score for a in pending_articles if a.score is not None}
@@ -725,6 +733,13 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             deps.story_store.save(content.date, content.period, result.story_records)
         except Exception as e:
             logger.warning("Failed to persist story membership: %s", e)
+    if not options.dry_run and deps.topic_store is not None:
+        try:
+            seen_at = datetime.fromisoformat(summary["started_at"])
+            deps.topic_store.save_topics(content.date, content.period, result.topics, seen_at)
+        except Exception as e:
+            logger.warning("Failed to persist topics: %s", e)
+            summary["topics_error"] = str(e)
 
     # In memory: the saved row carries the stamp, and so do the mail and Discord, which
     # still lay the issue out by area; no other store does.
