@@ -42,11 +42,25 @@ def test_the_newest_save_holding_a_url_names_its_topic(store) -> None:
     assert store.topics_of_urls(["u1"]) == {"u1": "new"}
 
 
+GONE_TAGS = (("kmt", TopicKind.ENTITY),)
+
+
 def test_a_rerun_of_an_issue_replaces_its_members_and_drops_the_orphan(store) -> None:
-    store.save_topics("2026-10-30", "morning", [_topic("gone", "u1")], T0)
+    store.save_topics("2026-10-30", "morning", [_topic("gone", "u1", tags=GONE_TAGS)], T0)
     store.save_topics("2026-10-30", "morning", [_topic("kept", "u1")], T0 + timedelta(minutes=5))
 
     assert store.topics_of_urls(["u1"]) == {"u1": "kept"}
+    assert store.topics_by_ids(["gone"]) == []
+
+
+def test_d1_leaves_no_row_of_an_orphan_topic() -> None:
+    db = SqliteD1()
+    store = D1TopicStore(db)
+    store.save_topics("2026-10-30", "morning", [_topic("gone", "u1", tags=GONE_TAGS)], T0)
+    store.save_topics("2026-10-30", "morning", [_topic("kept", "u1")], T0 + timedelta(minutes=5))
+
+    assert db.query("SELECT id FROM topics").rows == [{"id": "kept"}]
+    assert db.query("SELECT topic_id FROM topic_tags").rows == []
 
 
 def test_a_voted_topic_survives_a_rerun_that_drops_it(store) -> None:
