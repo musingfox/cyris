@@ -142,6 +142,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   evening message at 10833 against its 6000 and refused it, because a Chinese
   character takes three bytes. The limits are now counted in UTF-8 bytes, so such
   an issue keeps its Stories and loses Headlines first, as an English one does.
+- A notification that does not arrive is now in the run's record. The run
+  summary names what became of each channel, `discord_notification` and
+  `mail_notification`: sent (or, for mail, delivered or queued), skipped when no
+  webhook or recipient is set, or failed with the reason, such as Discord's HTTP
+  status and message. The run still counts as `ok`, as before; until now the
+  failure was only in the log.
 
 ### Upgrading
 

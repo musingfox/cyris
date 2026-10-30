@@ -1303,6 +1303,51 @@ def _recording(deps: Deps) -> tuple[Deps, list[dict]]:
     return replace(deps, record_run=recorded.append), recorded
 
 
+async def test_a_lost_notification_is_in_the_summary_and_the_run_stays_ok(
+    tmp_path: Path,
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.discord_webhook_url = "https://discord.com/api/webhooks/1/t"
+    deps.cfg.app.notify.email_to = "me@example.org"
+    refused = {"status": "failed", "reason": "HTTP 413: Message size exceeds maximum allowed."}
+    bounced = {"status": "failed", "reason": "me@example.org bounced permanently"}
+
+    async def discord(*args, **kwargs):
+        return refused
+
+    async def mail(*args, **kwargs):
+        return bounced
+
+    deps, recorded = _recording(replace(deps, send_discord=discord, send_email=mail))
+
+    report = await run_digest(deps, RunOptions())
+
+    [summary] = recorded
+    assert report.status == "ok"
+    assert summary["status"] == "ok"
+    assert summary["discord_notification"] == refused
+    assert summary["mail_notification"] == bounced
+
+
+async def test_mail_with_no_address_is_skipped_and_with_no_sender_failed(tmp_path: Path) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, recorded = _recording(deps)
+    await run_digest(deps, RunOptions())
+    assert recorded[0]["mail_notification"] == {"status": "skipped"}
+
+    deps, _ = make_deps(tmp_path / "with-address", _notify_llm(), FakeSource([_notify_article()]))
+    deps.cfg.app.notify.email_to = "me@example.org"
+    assert deps.send_email is None
+    deps, recorded = _recording(deps)
+    await run_digest(deps, RunOptions())
+
+    assert recorded[0]["status"] == "ok"
+    assert recorded[0]["mail_notification"] == {
+        "status": "failed",
+        "reason": "CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is missing",
+    }
+
+
 async def test_an_empty_window_hands_its_summary_to_the_recorder(tmp_path: Path) -> None:
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
     deps, recorded = _recording(deps)

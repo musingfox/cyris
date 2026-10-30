@@ -392,16 +392,18 @@ async def send_discord(
     digest_url: str = "",
     publish_failed: bool = False,
     degraded: bool = False,
-) -> None:
-    """Send digest content to Discord via webhook.
+) -> dict[str, str]:
+    """Send digest content to Discord via webhook; return the outcome for the run summary.
 
-    Does nothing if webhook_url is empty. Failures are logged but not raised.
+    The outcome is `{"status": "sent"}`, `{"status": "skipped"}` without a webhook, or
+    `{"status": "failed", "reason": ...}`. Failures are logged and returned, not raised:
+    a lost message must not cost the run its record.
     When digest_url is set, a link to the online (Cloudflare Pages) digest is
     included in the stats embed; when publishing was attempted and failed, the
     missing link is called out instead of silently omitted.
     """
     if not webhook_url:
-        return
+        return {"status": "skipped"}
 
     payload = build_discord_payload(content, digest_url, publish_failed, degraded)
 
@@ -410,8 +412,23 @@ async def send_discord(
             resp = await client.post(webhook_url, json=payload)
             resp.raise_for_status()
             logger.debug("Discord webhook sent: %d embeds", len(payload["embeds"]))
-    except httpx.HTTPError:
-        logger.warning("Discord webhook failed", exc_info=True)
+    except httpx.HTTPStatusError as e:
+        reason = f"HTTP {e.response.status_code}: {_discord_message(e.response)}"
+        logger.warning("Discord webhook failed: %s", reason, exc_info=True)
+        return {"status": "failed", "reason": reason}
+    except httpx.HTTPError as e:
+        reason = redact_webhook_tokens(f"{type(e).__name__}: {e}")
+        logger.warning("Discord webhook failed: %s", reason, exc_info=True)
+        return {"status": "failed", "reason": reason}
+    return {"status": "sent"}
+
+
+def _discord_message(resp: httpx.Response) -> str:
+    """Discord's own words for a refusal: the body's `message`, else the body itself."""
+    try:
+        return str(resp.json().get("message") or resp.text)
+    except ValueError:
+        return resp.text[:500]
 
 
 async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:

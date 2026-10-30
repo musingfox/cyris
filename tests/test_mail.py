@@ -277,6 +277,43 @@ class TestDigestMail:
         assert route.call_count == 1
         assert "forbidden" in caplog.text
 
+    @respx.mock
+    async def test_the_outcome_names_a_failure_and_its_reason(self):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(
+                403,
+                json={"success": False, "errors": [{"code": 10102, "message": "forbidden"}]},
+            )
+        )
+
+        outcome = await send_digest_mail(
+            "me@example.org", "d@example.org", _content(), account_id=ACCOUNT, token="t"
+        )
+
+        assert route.call_count == 1
+        assert outcome == {"status": "failed", "reason": "forbidden"}
+
+    @pytest.mark.parametrize("status", ["delivered", "queued"])
+    @respx.mock
+    async def test_the_outcome_names_what_the_api_did_with_the_mail(self, status):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(200, json=_result(**{status: ["me@example.org"]}))
+        )
+
+        outcome = await send_digest_mail(
+            "me@example.org", "d@example.org", _content(), account_id=ACCOUNT, token="t"
+        )
+
+        assert route.call_count == 1
+        assert outcome == {"status": status}
+
+    async def test_the_outcome_of_no_recipient_is_skipped(self):
+        outcome = await send_digest_mail(
+            "", "d@example.org", _content(), account_id=ACCOUNT, token="t"
+        )
+
+        assert outcome == {"status": "skipped"}
+
 
 class TestDigestMailText:
     EMPTY = "Nothing is in this issue: this run judged the 300 articles it received and kept none."

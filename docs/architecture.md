@@ -497,7 +497,13 @@ Output is the HTML digest and a companion raw page listing what this run judged 
 still pending — uncapped, so what the digest left out stays visible; rows an earlier run in the
 overlapping 24h window already judged are left off, since they were on that run's raw page — both
 deployed to Cloudflare
-Pages, followed by a notification to Discord and, when a recipient is set, by mail. An issue
+Pages, followed by a notification to Discord and, when a recipient is set, by mail. A lost
+notification does not fail the run, which stays `ok`; `run_summary` records each channel's outcome
+instead, `discord_notification` as `sent`, `skipped` (no webhook) or `failed`, and
+`mail_notification` as `delivered`, `queued`, `skipped` (no recipient) or `failed`, each a
+`{"status": ...}` object that carries a `reason` when it failed: Discord's HTTP status and own
+message, the Email Sending API's message, or the missing credentials. A dry run and a rerun send
+neither and record neither. An issue
 whose publish failed is not digested again: its articles are already accepted. Instead every
 non-dry run starts by comparing D1 `digests` with `pages_manifest` and publishes each stored
 issue the site lacks, re-rendered from its row, before anything can end the run early; the raw

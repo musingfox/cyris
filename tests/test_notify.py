@@ -724,6 +724,56 @@ class TestSendDiscord:
         assert requests == []
 
 
+class TestSendDiscordOutcome:
+    """The run summary records what became of the message; a failure is never raised."""
+
+    @staticmethod
+    def _content() -> DigestContent:
+        return DigestContent(
+            date="2026-10-30",
+            period="evening",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+        )
+
+    async def test_a_sent_message(self, monkeypatch):
+        _discord_transport(monkeypatch, lambda request: httpx.Response(204))
+
+        outcome = await send_discord("https://discord.com/api/webhooks/1/t", self._content())
+
+        assert outcome == {"status": "sent"}
+
+    async def test_no_webhook_is_skipped(self):
+        assert await send_discord("", self._content()) == {"status": "skipped"}
+
+    async def test_a_refusal_names_its_status_and_discords_message(self, monkeypatch):
+        message = "Message size exceeds maximum allowed. Oversized fields: message.embeds=10833"
+        _discord_transport(
+            monkeypatch,
+            lambda request: httpx.Response(413, json={"message": message, "code": 40005}),
+        )
+
+        outcome = await send_discord("https://discord.com/api/webhooks/1/t", self._content())
+
+        assert outcome == {"status": "failed", "reason": f"HTTP 413: {message}"}
+
+    async def test_an_unreachable_webhook_names_the_error_without_its_token(self, monkeypatch):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError(f"no route to {request.url}")
+
+        _discord_transport(monkeypatch, handler)
+
+        outcome = await send_discord(
+            "https://discord.com/api/webhooks/999/s3cr3t-token", self._content()
+        )
+
+        assert outcome["status"] == "failed"
+        assert outcome["reason"].startswith("ConnectError: no route to")
+        assert "s3cr3t-token" not in outcome["reason"]
+        assert _MASKED in outcome["reason"]
+
+
 class TestMaskDiscordWebhookUrl:
     def test_replaces_token_keeps_id(self):
         assert (
