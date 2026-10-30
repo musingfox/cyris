@@ -29,7 +29,7 @@ def test_the_vote_order_judge_is_a_select_in_the_digest_form() -> None:
     select = re.search(r'<select class="select" id="preference-source">(.*?)</select>', form[0])
     assert select, "no #preference-source in the digest form"
     options = re.findall(r'<option value="([^"]*)">([^<]*)</option>', select[1])
-    assert options == [("cosine", "Title similarity"), ("clef", "Clef")]
+    assert options == [("cosine", "Your topic votes"), ("clef", "Clef")]
 
 
 def test_reasoning_effort_is_a_select_in_the_pipeline_form() -> None:

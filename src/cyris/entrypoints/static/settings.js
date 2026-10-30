@@ -274,24 +274,18 @@ function updateEmbeddingHint() {
 }
 
 // A setting that does nothing until another holds a value is disabled until then,
-// with a line saying what it waits for (ui-language.md §4 field). The vote order
-// follows the Vote similarity select as it stands, unsaved or not; Clef's option
-// follows its token, which only the server's environment can change.
+// with a line saying what it waits for (ui-language.md §4 field). Clef's option
+// waits for two things: vote similarity, whose nearest votes it reads, as the Vote
+// similarity select stands, unsaved or not; and its token, which only the server's
+// environment can change.
 function updateDependencies() {
   const votes = $("vote-enabled").value === "true";
-  const rank = $("rank-by-preference");
-  rank.disabled = !votes;
-  $("rank-needs").hidden = votes;
-  describe(rank, "rank-needs", !votes);
-  // A required setting is never locked out of being stored: with no value, the
-  // order a run takes without vote similarity is shown, and Save stores it.
-  if (!votes && rank.value === "") {
-    rank.value = "false";
-    refresh($("digest-form"));
-  }
-  $("preference-source").querySelector('option[value="clef"]').disabled = !state.clef_ready;
+  const source = $("preference-source");
+  source.querySelector('option[value="clef"]').disabled = !votes || !state.clef_ready;
+  $("clef-needs-votes").hidden = votes;
+  describe(source, "clef-needs-votes", !votes);
   $("clef-needs").hidden = !!state.clef_ready;
-  describe($("preference-source"), "clef-needs", !state.clef_ready);
+  describe(source, "clef-needs", !state.clef_ready);
 }
 
 $("vote-enabled").addEventListener("change", () => { if (state) updateDependencies(); });

@@ -1181,14 +1181,14 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             </div>
             <div class="field">
               <label class="label" for="rank-by-preference">Order by your votes</label>
-              <select class="select" id="rank-by-preference" disabled><option value="false" selected>Off</option><option value="true">On</option></select>
-              <p class="small">Put the headlines and Features closest to what you voted up first. The order only moves items; nothing is left out for it.</p>
-              <p class="small" id="rank-needs">Needs vote similarity on, under Model.</p>
+              <select class="select" id="rank-by-preference"><option value="false" selected>Off</option><option value="true">On</option></select>
+              <p class="small">Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it.</p>
             </div>
             <div class="field">
               <label class="label" for="preference-source">Order judged by</label>
-              <select class="select" id="preference-source"><option value="cosine">Title similarity</option><option value="clef" disabled>Clef</option></select>
-              <p class="small">Who decides which headlines are closest to your votes. An issue Clef cannot fully score uses title similarity.</p>
+              <select class="select" id="preference-source"><option value="cosine">Your topic votes</option><option value="clef" disabled>Clef</option></select>
+              <p class="small">Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes.</p>
+              <p class="small" id="clef-needs-votes">Clef needs vote similarity on, under Model.</p>
               <p class="small" id="clef-needs">Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN).</p>
             </div>
             <div class="field">
@@ -1897,14 +1897,14 @@ $("#propose-areas").onclick = () => {
 };
 renderAreas();
 
-/* ---- settings dependencies: the vote order waits for vote similarity (§4 field) ---- */
-const voteOrderNeeds = () => {
+/* ---- settings dependencies: Clef waits for vote similarity (§4 field) ---- */
+const clefNeeds = () => {
   const on = $("#vote-enabled").value === "true";
-  $("#rank-by-preference").disabled = !on;
-  $("#rank-needs").hidden = on;
+  $('#preference-source option[value="clef"]').disabled = true;
+  $("#clef-needs-votes").hidden = on;
 };
-$("#vote-enabled").addEventListener("change", voteOrderNeeds);
-voteOrderNeeds();
+$("#vote-enabled").addEventListener("change", clefNeeds);
+clefNeeds();
 
 /* ---- settings forms: dirty tracking + save ---- */
 $$("form.tab").forEach((form) => {

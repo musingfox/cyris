@@ -695,14 +695,14 @@ EXPECTED_IDS = {
     "fits-largest-375-tab-hint-taps-through",
     "tap-tabs-375",
     "tap-folds-375",
-    "digest-order-waits-for-vote-similarity",
-    "digest-order-follows-vote-similarity",
-    "digest-order-unset-saves-off",
+    "digest-order-free-of-vote-similarity",
+    "digest-clef-waits-for-vote-similarity",
+    "digest-clef-follows-vote-similarity",
     "digest-clef-waits-for-its-token",
     "digest-clef-offered-with-its-token",
-    "digest-order-reason-describes-it",
+    "digest-clef-votes-reason-describes-it",
     "digest-clef-reason-describes-it",
-    "digest-order-reason-leaves-with-vote-similarity",
+    "digest-clef-votes-reason-leaves-with-vote-similarity",
 }
 
 
