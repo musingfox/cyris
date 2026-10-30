@@ -102,15 +102,23 @@ class VoteOrder:
                 return scores
         else:
             receipt = OrderReceipt()
+        try:
+            scores = score_issue_topics(
+                self._topics,
+                issue,
+                self._at,
+                half_life_days=self._half_life_days,
+                lifetime_days=self._lifetime_days,
+            )
+        except Exception as e:
+            # The issue is already paid for: a failed read costs its order, not the issue.
+            logger.warning("Topic store unreadable, the model's order stands: %s", e)
+            receipt.skipped = f"topic store failed: {type(e).__name__}: {e}"
+            self.receipt = receipt
+            return None
         receipt.source = TOPICS_SOURCE
         self.receipt = receipt
-        return score_issue_topics(
-            self._topics,
-            issue,
-            self._at,
-            half_life_days=self._half_life_days,
-            lifetime_days=self._lifetime_days,
-        )
+        return scores
 
     async def _by_clef(self, kept: list[Article]) -> tuple[dict[str, float] | None, OrderReceipt]:
         """Clef's score per asked article, or None with the reason it could not give them."""

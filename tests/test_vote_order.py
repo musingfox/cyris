@@ -87,7 +87,7 @@ def _order(report, ask=None, *, rank=True, source="clef", votes=(), topics=True)
         source=source,
         similarity=report,
         ask_clef=ask,
-        topics=_Topics(list(votes)) if topics else None,
+        topics=_Topics(list(votes)) if topics is True else (topics or None),
         at=AT,
         half_life_days=7,
         lifetime_days=7,
@@ -142,6 +142,19 @@ async def test_the_topic_order_needs_no_vote_similarity() -> None:
 
     assert await _ask(order, [_article("a")]) == {"a": 1.0}
     assert order.receipt.skipped == ""
+
+
+@pytest.mark.parametrize("source", ["cosine", "clef"])
+async def test_an_unreadable_topic_store_keeps_the_model_order_and_names_why(source) -> None:
+    class Unreadable(_Topics):
+        def topic_votes(self) -> list[TopicVote]:
+            raise RuntimeError("D1 down")
+
+    order = _order(None, _Clef(), source=source, topics=Unreadable([]))
+
+    assert await _ask(order, [_article("a")]) is None
+    assert order.receipt.source is None
+    assert order.receipt.skipped == "topic store failed: RuntimeError: D1 down"
 
 
 async def test_ranking_off_with_clef_asks_nothing_and_reports_no_clef_reason() -> None:
