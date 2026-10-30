@@ -435,9 +435,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     # Pull promote-button clicks from the cloud Worker (non-blocking on failure)
     if deps.sync_promotions is not None and options.rerun_of is None:
         try:
-            vote_count = await asyncio.to_thread(deps.sync_promotions)
-            if vote_count:
-                progress(f"Synced {vote_count} digest vote(s).")
+            synced = await asyncio.to_thread(deps.sync_promotions)
+            if synced.votes:
+                progress(f"Synced {synced.votes} digest vote(s).")
+            if synced.topic_votes_failed:
+                summary["topic_votes_failed"] = synced.topic_votes_failed
         except Exception as e:
             logger.warning("Promotion sync failed: %s", e)
 

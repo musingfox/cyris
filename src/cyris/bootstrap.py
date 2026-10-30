@@ -15,7 +15,7 @@ from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord, send_discord_alert
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.usage_log import append_usage, append_usage_d1
-from cyris.adapters.promotions import sync_promotions
+from cyris.adapters.promotions import SyncResult, sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
@@ -326,7 +326,7 @@ class Deps:
     fetch_sources: list[FetchSource]
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled
     publish: Callable[[str], bool] | None
-    sync_promotions: Callable[[], int] | None
+    sync_promotions: Callable[[], SyncResult] | None
     log_usage: Callable[..., None]
     tag_store: Any | None = None
     story_store: Any | None = None
@@ -382,7 +382,7 @@ def build_promotion_sync(
     cfg: Config,
     store: ArticleRepository | None = None,
     topics: TopicRepository | None = None,
-) -> Callable[[], int] | None:
+) -> Callable[[], SyncResult] | None:
     """The vote pull bound to `store`, or None when no vote Worker is configured.
 
     Reads no runtime setting, so `promote-sync` can call it on an empty D1. With

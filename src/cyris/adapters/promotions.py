@@ -1,6 +1,7 @@
 """Pull promote-button clicks from the Cloudflare Worker into the local store."""
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -23,6 +24,14 @@ TIMEOUT_SECONDS = 15
 # click, not a second vote. Sixty seconds leaves the 10 a wide margin; a reader voting
 # the same way again within a minute means nothing new either.
 ONE_CLICK_WINDOW = timedelta(seconds=60)
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    """How many votes a sync applied, and why their topic votes were not written."""
+
+    votes: int
+    topic_votes_failed: str = ""
 
 
 class PromotedArticle(BaseModel):
@@ -148,7 +157,7 @@ def sync_promotions(
     token: str,
     store: ArticleStore,
     topics: TopicRepository | None = None,
-) -> int:
+) -> SyncResult:
     """Pull votes, apply them to the store, then ACK.
 
     Votes carry the only human-labelled signal in the pipeline, so every
@@ -162,17 +171,20 @@ def sync_promotions(
 
     Promotions whose URL is no longer in the store are logged and ACKed
     anyway. ACK happens only after the store is updated, so a failure here
-    leaves promotions queued for the next run.
+    leaves promotions queued for the next run. A failed topic-vote write is not
+    such a failure: the stamp is the vote's record, and holding the ACK would
+    re-stamp the same URLs every run, making old votes look newest. It is logged
+    and named in the result, and the topic votes of that sync are lost.
 
     Returns:
-        Number of votes applied.
+        The votes applied, and why their topic votes were not written.
 
     Raises:
         httpx.HTTPError: If the Worker is unreachable.
     """
     promotions = pull_promotions(worker_url, token)
     if not promotions:
-        return 0
+        return SyncResult(0)
 
     urls = [p.url for p in promotions]
     vote_by_url = {p.url: p.vote for p in promotions}
@@ -186,12 +198,17 @@ def sync_promotions(
     accepted = [a.url for a in found if vote_by_url[a.url] != "down"]
     now = datetime.now(UTC)
     record_votes(store, accepted=accepted, rejected=rejected, at=now)
+    failed = ""
     if topics is not None:
         voted = [p for p in promotions if p.url not in missing]
-        votes = topic_votes(voted, topics.topics_of_urls([p.url for p in voted]), now)
-        if votes:
-            topics.record_topic_votes(unrecorded(votes, topics.topic_votes()))
+        try:
+            votes = topic_votes(voted, topics.topics_of_urls([p.url for p in voted]), now)
+            if votes:
+                topics.record_topic_votes(unrecorded(votes, topics.topic_votes()))
+        except Exception as e:
+            logger.error("Topic votes not written, the votes are stamped and acked: %s", e)
+            failed = f"topic store failed: {type(e).__name__}: {e}"
 
     ack_promotions(worker_url, token, urls)
     logger.info("Synced %d vote(s) (%d down)", len(urls), len(rejected))
-    return len(urls)
+    return SyncResult(len(urls), failed)

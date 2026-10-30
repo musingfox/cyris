@@ -85,7 +85,7 @@ def test_sync_accepts_and_acks(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 1
+    assert synced.votes == 1
     [article] = store.get_by_urls(["https://example.com/stored"])
     assert article.state == ArticleState.ACCEPTED
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/stored"]}
@@ -100,7 +100,7 @@ def test_sync_legacy_deep_vote_accepts(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 1
+    assert synced.votes == 1
     [article] = store.get_by_urls(["https://example.com/stored"])
     assert article.state == ArticleState.ACCEPTED
 
@@ -140,7 +140,7 @@ def test_sync_routes_votes(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 2
+    assert synced.votes == 2
 
     [up] = store.get_by_urls(["https://example.com/stored"])
     [down] = store.get_by_urls(["https://example.com/nope"])
@@ -161,7 +161,7 @@ def test_sync_missing_url_acks_anyway(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 1
+    assert synced.votes == 1
     assert post.call_args.kwargs["json"] == {"urls": ["https://example.com/unknown"]}
 
 
@@ -206,7 +206,7 @@ def test_sync_empty_queue_skips_ack(store):
     ):
         synced = sync_promotions(WORKER_URL, TOKEN, store)
 
-    assert synced == 0
+    assert synced.votes == 0
     post.assert_not_called()
 
 
@@ -297,6 +297,28 @@ def test_a_change_of_mind_within_a_minute_keeps_every_vote(tmp_path):
         )
 
     assert [v.direction for v in topics.topic_votes()] == [1, -1, 1]
+
+
+def test_a_broken_topic_store_still_stamps_and_acks_and_names_why(tmp_path):
+    articles, _ = _sand_store(tmp_path)
+    (tmp_path / "agent-vault" / "topics.json").write_text("{not json")
+    payload = [{"url": "https://news.example/0", "vote": "up", "ts": "2026-10-30T09:00:00Z"}]
+
+    with (
+        patch("cyris.adapters.promotions.httpx.get", return_value=_mock_response(payload)),
+        patch(
+            "cyris.adapters.promotions.httpx.post", return_value=_mock_response({"ok": True})
+        ) as post,
+    ):
+        synced = sync_promotions(
+            WORKER_URL, TOKEN, articles, JsonTopicStore(tmp_path / "agent-vault")
+        )
+
+    (stored,) = articles.get_by_urls(["https://news.example/0"])
+    assert stored.state == ArticleState.ACCEPTED and stored.triaged_at
+    assert post.call_args.kwargs["json"] == {"urls": ["https://news.example/0"]}
+    assert synced.votes == 1
+    assert synced.topic_votes_failed.startswith("topic store failed: JSONDecodeError")
 
 
 def test_a_vote_on_a_url_no_topic_holds_only_stamps_it(tmp_path):

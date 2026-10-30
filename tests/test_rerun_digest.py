@@ -10,6 +10,7 @@ import pytest
 from fakes import FakeLLM, RecordingD1, SqliteD1
 from test_run_digest import make_deps
 
+from cyris.adapters.promotions import SyncResult
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
@@ -92,9 +93,9 @@ def _deps(tmp_path: Path, *, replies, record, rows):
         inputs.save(RERUN, "morning", record)
     summaries: list[dict] = []
 
-    def sync() -> int:
+    def sync() -> SyncResult:
         sync.calls += 1
-        return 0
+        return SyncResult(0)
 
     sync.calls = 0
     deps = replace(
