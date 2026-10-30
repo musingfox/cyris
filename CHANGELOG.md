@@ -71,8 +71,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   archive, the mail, Discord's Kept line and `usage_log` count every article URL
   the page shows, so a topic of three reports is three, not one. Issues stored
   before keep the count they were saved with.
-- The mail and Discord no longer receive news paragraphs: they draw news as topic
-  clusters and headline rows, as before the paragraphs, still laid out by area.
+- **The mail and Discord are the same three layers.** Both now follow the page:
+  Tracking, then Stories, Topics and Headlines, in that order. A story names its
+  source; a topic lists its articles, each with its source, open rather than
+  folded; a headline names none. Tracking reaches the mail for the first time,
+  and neither the mail nor Discord has a Top story or area sections any more. When
+  a Discord message runs out of room, Headlines are cut first and Stories last.
 
 ### Removed
 
