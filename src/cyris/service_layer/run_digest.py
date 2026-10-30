@@ -595,6 +595,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                     logger.error("Failed to record vote similarity: %s", e)
                     summary["vote_similarity_record_error"] = str(e)
 
+        if similarity.topic_dedup_skipped:
+            summary["vote_similarity_topic_dedup_skipped"] = similarity.topic_dedup_skipped
         if not similarity.ran:
             summary["vote_similarity_skipped"] = similarity.skipped_reason
             logger.info("Vote similarity skipped: %s", similarity.skipped_reason)

@@ -36,6 +36,9 @@ class VoteSimilarityReport:
     up_seed_vectors: dict[str, list[float]] = field(default_factory=dict)
     down_seed_vectors: dict[str, list[float]] = field(default_factory=dict)
     seed_titles: dict[str, str] = field(default_factory=dict)
+    # Why the seeds were not counted one per topic, when the topic store could not
+    # name them: each voted URL was then its own seed, as before topics.
+    topic_dedup_skipped: str = ""
 
     def nearest_titles(self, url: str, k: int) -> tuple[list[str], list[str]]:
         """Titles of the `k` upvotes and `k` downvotes closest to a judged candidate."""
@@ -108,10 +111,23 @@ async def judge_by_votes(
     if not candidates:
         return VoteSimilarityReport(skipped_reason="no candidates")
 
-    up = _voted(store, ArticleState.ACCEPTED, max_seeds, topics)
-    down = _voted(store, ArticleState.REJECTED, max_seeds, topics)
+    dedup_skipped = ""
+    try:
+        up = _voted(store, ArticleState.ACCEPTED, max_seeds, topics)
+        down = _voted(store, ArticleState.REJECTED, max_seeds, topics)
+    except Exception as e:
+        if topics is None:
+            raise
+        # Counting a topic once only evens out the seeds: losing it costs their balance,
+        # not the pass.
+        logger.warning("Topic store unreadable, every voted URL is its own seed: %s", e)
+        dedup_skipped = f"topic store failed: {type(e).__name__}: {e}"
+        up = _voted(store, ArticleState.ACCEPTED, max_seeds)
+        down = _voted(store, ArticleState.REJECTED, max_seeds)
     if not down and not up:
-        return VoteSimilarityReport(skipped_reason="no human-voted articles yet")
+        return VoteSimilarityReport(
+            skipped_reason="no human-voted articles yet", topic_dedup_skipped=dedup_skipped
+        )
 
     # An article the reader already ruled on is not a candidate for the same ruling:
     # it would match its own seed at cosine 1.0 and report a decision that was
@@ -119,7 +135,10 @@ async def judge_by_votes(
     seed_urls = {a.url for a in up + down}
     candidates = [a for a in candidates if a.url not in seed_urls]
     if not candidates:
-        return VoteSimilarityReport(skipped_reason="every candidate was already voted on")
+        return VoteSimilarityReport(
+            skipped_reason="every candidate was already voted on",
+            topic_dedup_skipped=dedup_skipped,
+        )
 
     try:
         seed_vectors = await embedder.embed([a.title for a in up + down])
@@ -129,7 +148,9 @@ async def judge_by_votes(
             raise ValueError("the embedder answered a different number of vectors than texts")
     except Exception as e:
         logger.warning("Vote similarity unavailable, digest continues unfiltered: %s", e)
-        return VoteSimilarityReport(skipped_reason=f"embedding failed: {e}")
+        return VoteSimilarityReport(
+            skipped_reason=f"embedding failed: {e}", topic_dedup_skipped=dedup_skipped
+        )
 
     # Paired before the empty vectors drop out, so each URL stays with its own vector.
     up_seeds = {a.url: v for a, v in zip(up, seed_vectors[: len(up)], strict=True) if v}
@@ -162,4 +183,5 @@ async def judge_by_votes(
         up_seed_vectors=up_seeds,
         down_seed_vectors=down_seeds,
         seed_titles={a.url: a.title for a in up + down if a.url in up_seeds or a.url in down_seeds},
+        topic_dedup_skipped=dedup_skipped,
     )
