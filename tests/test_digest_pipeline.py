@@ -882,3 +882,19 @@ class TestSummarizeFollow:
         items = [i for s in result.content.fan_sections for i in s.items]
         assert [(i.summary, i.passed_through) for i in items] == [("Body.", True)] * 3
         assert result.content.usage.fell_back_to_excerpts
+
+    async def test_on_keeps_the_excerpt_of_an_article_the_model_skipped(self, sample_sources):
+        pipeline = DigestPipeline(self._llm(), **pipeline_settings(summarize_follow=True))
+        group = [_article(i, Lane.FOLLOW, "A group") for i in (31, 32, 33)]
+
+        result = await pipeline.process(
+            group, sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        items = result.content.fan_sections[0].items
+        assert [(i.summary, i.passed_through) for i in items] == [
+            ("Explains the first.", False),
+            ("Explains the second.", False),
+            ("Body.", True),
+        ]
+        assert result.content.usage.fell_back_to_excerpts
