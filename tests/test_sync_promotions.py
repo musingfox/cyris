@@ -257,6 +257,36 @@ def test_a_sand_vote_is_one_topic_vote_at_its_click_and_stamps_every_member(tmp_
     ]
 
 
+def test_one_click_split_across_two_syncs_is_one_topic_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+    clicks = [
+        {"url": f"https://news.example/{i}", "vote": "up", "ts": f"2026-10-30T09:00:0{i}Z"}
+        for i in range(3)
+    ]
+
+    _sync(clicks[:1], articles, topics)
+    _sync(clicks[1:], articles, topics)
+
+    assert [(v.topic_id, v.direction) for v in topics.topic_votes()] == [("sand", 1)]
+
+
+def test_a_later_click_on_the_same_topic_is_a_second_vote(tmp_path):
+    articles, topics = _sand_store(tmp_path)
+
+    _sync(
+        [{"url": "https://news.example/0", "vote": "up", "ts": "2026-10-30T09:00:00Z"}],
+        articles,
+        topics,
+    )
+    _sync(
+        [{"url": "https://news.example/0", "vote": "up", "ts": "2026-10-30T21:00:00Z"}],
+        articles,
+        topics,
+    )
+
+    assert len(topics.topic_votes()) == 2
+
+
 def test_a_vote_on_a_url_no_topic_holds_only_stamps_it(tmp_path):
     articles, topics = _sand_store(tmp_path)
     payload = [{"url": "https://news.example/3", "vote": "up", "ts": "2026-10-30T09:00:00Z"}]

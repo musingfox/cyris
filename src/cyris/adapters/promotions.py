@@ -1,7 +1,7 @@
 """Pull promote-button clicks from the Cloudflare Worker into the local store."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from pydantic import BaseModel
@@ -14,6 +14,15 @@ from cyris.service_layer.ports import TopicRepository
 logger = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 15
+
+# One click on a topic posts once per member URL, all at once, and the page gives up on
+# a post after 10 seconds (VOTE_TIMEOUT_MS in _promote_script.html.j2), so the promote
+# Worker stamps one click's posts within about 10 seconds of each other. A sync can ACK
+# some of those posts before the rest land, so the next sync sees the same click again:
+# a same-direction vote on the same topic within this window of a recorded one is that
+# click, not a second vote. Sixty seconds leaves the 10 a wide margin; a reader voting
+# the same way again within a minute means nothing new either.
+ONE_CLICK_WINDOW = timedelta(seconds=60)
 
 
 class PromotedArticle(BaseModel):
@@ -106,6 +115,20 @@ def topic_votes(
     return votes
 
 
+def unrecorded(votes: list[TopicVote], recorded: list[TopicVote]) -> list[TopicVote]:
+    """The votes no recorded vote already stands for (`ONE_CLICK_WINDOW`)."""
+    return [
+        v
+        for v in votes
+        if not any(
+            r.topic_id == v.topic_id
+            and r.direction == v.direction
+            and abs(r.clicked_at - v.clicked_at) <= ONE_CLICK_WINDOW
+            for r in recorded
+        )
+    ]
+
+
 def sync_promotions(
     worker_url: str,
     token: str,
@@ -151,9 +174,9 @@ def sync_promotions(
     record_votes(store, accepted=accepted, rejected=rejected, at=now)
     if topics is not None:
         voted = [p for p in promotions if p.url not in missing]
-        topics.record_topic_votes(
-            topic_votes(voted, topics.topics_of_urls([p.url for p in voted]), now)
-        )
+        votes = topic_votes(voted, topics.topics_of_urls([p.url for p in voted]), now)
+        if votes:
+            topics.record_topic_votes(unrecorded(votes, topics.topic_votes()))
 
     ack_promotions(worker_url, token, urls)
     logger.info("Synced %d vote(s) (%d down)", len(urls), len(rejected))
