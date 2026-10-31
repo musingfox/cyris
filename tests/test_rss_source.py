@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
+import feed_image_cases
 import pytest
 
 from cyris.adapters.fetch.rss_source import RssSource
@@ -187,3 +188,19 @@ async def test_entities_inside_a_cdata_title_are_decoded():
     )
 
     assert articles[0].title == "Highly & Readwise: Ukraine’s"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", list(feed_image_cases.CASES))
+async def test_an_entry_takes_the_image_its_feed_names(name):
+    """The same order and rules as the Worker's parser (`tests/feed_image_cases.py`)."""
+    inner, wanted = feed_image_cases.CASES[name]
+    source = RssSource(_http_returning(feed_image_cases.feed(inner).encode()))
+
+    (article,) = await source.fetch_articles(
+        after=AFTER,
+        before=BEFORE,
+        sources={"F": SourceConfig(name="F", url="https://d.test/feed")},
+    )
+
+    assert article.image_url == wanted
