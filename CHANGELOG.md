@@ -120,6 +120,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `digest.units_per_paragraph` are gone, with their `/settings` fields, as are
   the news paragraph step and the per-area quotas. A stored D1 row of one of
   them is ignored.
+- The setting `routing.summarize_score_threshold` (**Summary score** in
+  `/settings`, Pipeline) is gone, now that every `read` article is summarized. A
+  stored D1 row of it, or the key left in a `cyris.toml`, is ignored.
 
 ### Fixed
 

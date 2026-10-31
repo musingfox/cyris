@@ -178,7 +178,6 @@ SETTINGS = harness.settings(
         # a1 and a2 clear 80, so their topic, b1 and b2 with them, is the Top story; l1 is
         # the one Feature.
         "routing.score_threshold": 80,
-        "routing.summarize_score_threshold": 50,
     }
 )
 # Every article the filter kept is shown: nothing after it cuts the issue.

@@ -33,7 +33,6 @@ _TEST_VALUES: dict[str, Any] = {
     "digest.vote_half_life_days": 7,
     "digest.topic_lifetime_days": 7,
     "routing.score_threshold": 70,
-    "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,
     "vote_similarity.provider": "workers_ai",
     "vote_similarity.model": "",

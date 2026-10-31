@@ -67,7 +67,6 @@ database_id = ""                        # or CYRIS_STORE_DATABASE_ID
 
 [routing]
 score_threshold = 70                    # two articles on one topic at or above it share the Top story (0-100)
-summarize_score_threshold = 70
 
 [html_output]
 # The local install's only output: without this (or [promote] publish_enabled)

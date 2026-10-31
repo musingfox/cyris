@@ -87,6 +87,17 @@ class TestLoadConfig:
         assert cfg.present_settings()["general.timezone"] == "UTC"
         assert cfg.config_file_found is True
 
+    def test_a_setting_an_older_build_read_does_not_stop_the_load(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text(
+            settings_toml().replace("[routing]\n", "[routing]\nsummarize_score_threshold = 70\n")
+        )
+
+        cfg = _load_tmp(tmp_path, config_file)
+
+        assert cfg.missing_settings == []
+        assert "routing.summarize_score_threshold" not in cfg.present_settings()
+
     def test_malformed_config_file_raises(self, tmp_path):
         config_file = tmp_path / "cyris.toml"
         config_file.write_text("[general\n")
@@ -346,25 +357,6 @@ class TestRoutingConfig:
         with pytest.raises(ValidationError, match="score_threshold"):
             _table(RoutingConfig, "routing", score_threshold=-10)
 
-    def test_summarize_score_threshold_custom(self):
-        """RoutingConfig accepts custom summarize_score_threshold."""
-        from cyris.config import RoutingConfig
-
-        config = _table(RoutingConfig, "routing", summarize_score_threshold=80)
-        assert config.summarize_score_threshold == 80
-
-    def test_summarize_score_threshold_validation(self):
-        """RoutingConfig rejects invalid summarize_score_threshold."""
-        from pydantic import ValidationError
-
-        from cyris.config import RoutingConfig
-
-        with pytest.raises(ValidationError, match="summarize_score_threshold"):
-            _table(RoutingConfig, "routing", summarize_score_threshold=150)
-
-        with pytest.raises(ValidationError, match="summarize_score_threshold"):
-            _table(RoutingConfig, "routing", summarize_score_threshold=-5)
-
 
 class TestDigestConfigSnippetLength:
     def test_digest_config_both_custom_snippet_lengths(self):
@@ -602,10 +594,10 @@ class TestJsonSettingsFromFileOnly:
         assert cfg.app.digest is None
         assert cfg.missing_settings == ["digest.preference_source"]
 
-    def test_a_file_with_one_key_leaves_the_other_twenty_five_missing(self, tmp_path):
+    def test_a_file_with_one_key_leaves_the_other_twenty_four_missing(self, tmp_path):
         cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
 
-        assert len(cfg.missing_settings) == 25
+        assert len(cfg.missing_settings) == 24
         assert "general.timezone" not in cfg.missing_settings
         assert cfg.present_settings() == {"general.timezone": "UTC"}
 
