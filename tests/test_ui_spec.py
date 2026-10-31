@@ -875,7 +875,7 @@ def test_the_story_image_is_the_specs_greyscale_box() -> None:
         "opacity: .55",
         "transition: filter var(--t-fast), opacity var(--t-fast)",
     } <= digest[".featured-item > .story-image"]
-    assert digest[".featured-item:is(:hover, :focus-within) > .story-image"] == {
+    assert digest[".featured-item:is(:hover, :focus-within:not(.quiet:focus)) > .story-image"] == {
         "filter: none",
         "opacity: 1",
     }

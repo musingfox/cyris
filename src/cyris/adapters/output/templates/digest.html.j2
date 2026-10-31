@@ -197,7 +197,7 @@
             opacity: .55;
             transition: filter var(--t-fast), opacity var(--t-fast);
         }
-        .featured-item:is(:hover, :focus-within) > .story-image { filter: none; opacity: 1; }
+        .featured-item:is(:hover, :focus-within:not(.quiet:focus)) > .story-image { filter: none; opacity: 1; }
 
         .featured-item:hover {
             background: var(--surface);
@@ -372,6 +372,28 @@
         /* An item's tags take their own row, so however many there are the votes stay
            on the meta row beside the fold or the source. */
         .tags { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+
+        /* === LAYERS === */
+        /* Only with script, which adds .layered, the dock and the edges (spec section 4,
+           layer dock and layer edge; the prototype's #digest). */
+        .layered { padding-bottom: var(--s-12); }
+        .layer-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; height: var(--s-12); background: var(--bg-elev); border-top: 1px solid var(--border); }
+        .layer-dock-inner { height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--s-4); display: flex; align-items: center; gap: var(--s-4); }
+        .layer-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .layer-back, .layer-skip { flex: none; white-space: nowrap; }
+        .layer-edge { position: fixed; left: 0; right: 0; z-index: 9; display: none; pointer-events: none; }
+        .has-next .layer-edge.down, .has-prev .layer-edge.up { display: block; }
+        .layer-edge.down { bottom: var(--s-12); height: calc(var(--s-16) + var(--s-12) * var(--pull-down, 0)); background: linear-gradient(to top, var(--bg), transparent); }
+        .layer-edge.up { top: var(--edge-top, var(--bar-h)); height: calc(var(--s-12) + var(--s-12) * var(--pull-up, 0)); background: linear-gradient(to bottom, var(--bg), transparent); }
+        .layer-edge-inner { height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--s-4); display: flex; flex-direction: column; justify-content: flex-end; }
+        .layer-edge.up .layer-edge-inner { justify-content: flex-start; }
+        .layer-pull { display: flex; align-items: center; gap: var(--s-3); }
+        .layer-pull i { flex: 1; height: 1px; }
+        .layer-pull b { display: block; width: 0; height: 100%; background: var(--accent); }
+        :is(.section-tag, .featured-item, .news-cluster, .headline-item).quiet:focus-visible { outline: none; }
+        .layer-in { animation: layer-in 200ms ease-out; }
+        @keyframes layer-in { from { opacity: 0; } }
+        @media (max-width: 720px) { .layer-skip .skip-words { display: none; } }
     </style>
 </head>
 <body>
@@ -505,7 +527,7 @@
         </footer>
     </div>
     {% include "_promote_script.html.j2" %}
-    {% include "_progress_script.html.j2" %}
+    {% include "_layers_script.html.j2" %}
     {% include "_probe_script.html.j2" %}
 </body>
 </html>

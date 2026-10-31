@@ -2626,6 +2626,19 @@ def test_every_pebble_sand_and_water_item_carries_its_own_id_for_in_page_links()
     assert len(every_id) == len(set(every_id))
 
 
+def test_the_layers_are_drawn_by_script_alone_so_without_it_every_layer_shows() -> None:
+    # ui-language section 6: without script the three layers show stacked, with no dock,
+    # no edge and nothing hidden; the script adds all of it.
+    html, _ = _three_layer_dom()
+    markup = re.sub(r"<(script|style)>.*?</\1>", "", html, flags=re.DOTALL)
+
+    assert "<script>" in html
+    for drawn_by_script in ("layered", "layer-dock", "layer-edge", "read-progress", "layer-in"):
+        assert drawn_by_script not in markup
+    assert " hidden" not in markup.split("<main>", 1)[1]
+    assert _markers(markup) == ["Tracking", "Stories", "Topics", "Headlines"]
+
+
 def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None:
     html, root = _three_layer_dom()
 
