@@ -94,6 +94,15 @@ LONG_WIRE_SUMMARY = (
 )
 
 
+# A story image that loads without the network, at the feed picture's usual 1200 x 630.
+STORY_IMAGE = (
+    "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%20630'"
+    "%3E%3Crect%20width='1200'%20height='630'%20fill='%23c2523b'/%3E%3C/svg%3E"
+)
+# One the fixture server answers 404 for, so it fails to load.
+BROKEN_STORY_IMAGE = "/story-image-missing.jpg"
+
+
 def url_of(slug: str) -> str:
     return f"https://example.test/{slug}"
 
@@ -114,8 +123,8 @@ def _members(slug: str, sources: list[str]) -> list[DigestItem]:
 
 def content() -> DigestContent:
     """A digest with every layer: pebble cards, sand blocks with their folds, water rows."""
-    # The lead's summary and tags make its card taller than the two beside it, so the
-    # meta rows of one grid row only line up when the card puts its meta at the bottom.
+    # The lead runs several lines and carries a story image that loads; the first
+    # feature names one that fails, and the rest name none.
     lead_summary = "The lead story runs long enough to wrap across several lines of its card. " * 4
     features = [
         _item(
@@ -125,10 +134,17 @@ def content() -> DigestContent:
             score=8.5,
             summary=lead_summary.strip(),
             tags=["Lead", "Long"],
+            image_url=STORY_IMAGE,
         )
     ]
     features += [
-        _item(f"feature-{n}", f"Feature story {n}", [f"Source {n}"], score=8.0 - n / 10)
+        _item(
+            f"feature-{n}",
+            f"Feature story {n}",
+            [f"Source {n}"],
+            score=8.0 - n / 10,
+            image_url=BROKEN_STORY_IMAGE if n == 1 else None,
+        )
         for n in range(1, 6)
     ]
     featured = [DigestSection(heading="Top", items=features)]
@@ -529,57 +545,137 @@ _CHECKS: list[Check] = [
         """,
         sabotage=restyle(".read-progress { top: calc(var(--bar-h) + 40vh) !important; }"),
     ),
-    # The meta rows of the pebble cards in one grid row share their bottom edge, however
-    # tall each card's own content is. A meta row left where its content ends is the sabotage.
+    # A refused vote's notice sits right below the meta row it reports on, in the text's
+    # column of an item with an image as of one without.
+    *(
+        Check(
+            id=f"pebble-vote-error-under-meta-{n}-1440",
+            fixture="signed-in",
+            path=PAGE,
+            width=1440,
+            act=f"""
+                await signedIn();
+                showFailure($(".vote-group", $$(".featured-item")[{n}]), VOTE_FAILED.notConfigured);
+            """,
+            script=f"""
+                const item = $$(".featured-item")[{n}];
+                const notice = $(".vote-error", item);
+                expect(notice, "no failure notice in the item");
+                const meta = $(".meta", item).getBoundingClientRect();
+                const box = notice.getBoundingClientRect();
+                const gap = box.top - meta.bottom;
+                expect(gap >= -0.5 && gap <= 1, `the notice sits ${{gap}}px below the meta row`);
+                expect(Math.abs(box.left - meta.left) <= 0.5,
+                  `the notice starts at ${{box.left}}, the meta row at ${{meta.left}}`);
+            """,
+            sabotage=restyle(".featured-item .vote-error { margin-top: var(--s-6) !important; }"),
+        )
+        for n in (0, 2)
+    ),
+    # A story image is the spec's box: 280px wide on a desktop, at the feed picture's
+    # 1200 / 630, greyscale at .55 until its item is hovered or focused, and on the left
+    # of the text with its top on the title's.
     Check(
-        id="pebble-meta-bottoms-1440",
+        id="story-image-box-1440",
         fixture="signed-in",
         path=PAGE,
         width=1440,
         act="await signedIn();",
         script="""
-            const rows = new Map();
-            for (const card of $$(".featured-item")) {
-              const top = Math.round(card.getBoundingClientRect().top);
-              rows.set(top, [...(rows.get(top) || []), card]);
-            }
-            const shared = [...rows.values()].filter((cards) => cards.length > 1);
-            expect(shared.length, "no grid row holds two cards");
-            const problems = shared.flatMap((cards) => {
-              const bottoms = cards.map((c) => $(".meta", c).getBoundingClientRect().bottom);
-              return Math.max(...bottoms) - Math.min(...bottoms) > 1 ? [bottoms.join(", ")] : [];
-            });
-            expect(!problems.length, `meta bottoms per row: ${problems.join("; ")}`);
+            const image = $(".featured-item .story-image");
+            expect(image, "no story image");
+            const box = image.getBoundingClientRect();
+            const title = $("h3", image.parentElement).getBoundingClientRect();
+            const style = getComputedStyle(image);
+            expect(Math.abs(box.width - 280) <= 0.5, `the image is ${box.width}px wide`);
+            expect(Math.abs(box.width / box.height - 1200 / 630) < 0.02,
+              `the image is ${box.width} x ${box.height}`);
+            expect(style.filter === "grayscale(1)" && style.opacity === "0.55",
+              `at rest the image has filter ${style.filter}, opacity ${style.opacity}`);
+            expect(title.left >= box.right && Math.abs(title.top - box.top) <= 1,
+              `the title at ${title.left},${title.top}, the image ends at ${box.right},${box.top}`);
         """,
-        sabotage=restyle(".featured-item > :last-child { margin-top: 0 !important; }"),
+        # Without its transition, so the sabotaged colour is read at once, not mid-fade.
+        sabotage=restyle(
+            ".featured-item > .story-image"
+            " { filter: none !important; transition: none !important; }"
+        ),
     ),
-    # A refused vote's notice follows the meta row inside the card, and the card's slack
-    # stays above the meta row, so on a short card the notice sits right below its buttons.
-    # Giving the notice a share of the slack, as a bare :last-child rule did, is the sabotage.
+    # On a phone the image is 112px and sits beside the title alone; the summary below
+    # takes the item's full width.
     Check(
-        id="pebble-vote-error-under-meta-1440",
+        id="story-image-box-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            const image = $(".featured-item .story-image");
+            expect(image, "no story image");
+            const box = image.getBoundingClientRect();
+            const item = image.parentElement;
+            const title = $("h3", item).getBoundingClientRect();
+            const summary = $(".summary", item).getBoundingClientRect();
+            expect(Math.abs(box.width - 112) <= 0.5, `the image is ${box.width}px wide`);
+            expect(title.left >= box.right, `title at ${title.left}, image ends ${box.right}`);
+            expect(Math.abs(summary.left - box.left) <= 0.5 && summary.top >= box.bottom,
+              `the summary at ${summary.left},${summary.top}, the image ${box.left}-${box.bottom}`);
+            const problem = overflow("360");
+            expect(!problem, problem);
+        """,
+        sabotage=restyle(
+            ".featured-item:has(> .story-image)"
+            " { grid-template-columns: 280px minmax(0, 1fr) !important; }"
+        ),
+    ),
+    # Focusing within the item gives its image back its colour.
+    Check(
+        id="story-image-colour-on-focus-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        focused=True,
+        act="""
+            await signedIn();
+            $(".featured-item:has(> .story-image) h3 a").focus();
+        """,
+        script="""
+            const image = $(".featured-item .story-image");
+            await waitFor(() => {
+              const style = getComputedStyle(image);
+              return style.filter === "none" && style.opacity === "1";
+            }, "the focused item's image in colour").catch(() => {});
+            const style = getComputedStyle(image);
+            expect(style.filter === "none" && style.opacity === "1",
+              `focused, the image has filter ${style.filter}, opacity ${style.opacity}`);
+        """,
+        sabotage=restyle(
+            ".featured-item:is(:hover, :focus-within) > .story-image"
+            " { filter: grayscale(1) !important; }"
+        ),
+    ),
+    # An image that fails to load removes its box, and an item with no image never had one:
+    # only the lead keeps its image, and the first feature's title opens its item.
+    Check(
+        id="story-image-broken-removed-1440",
         fixture="signed-in",
         path=PAGE,
         width=1440,
         act="""
             await signedIn();
-            const short = $$(".featured-item")[1];
-            showFailure($(".vote-group", short), VOTE_FAILED.notConfigured);
+            $$(".featured-item")[1].scrollIntoView({block: "center", behavior: "instant"});
         """,
         script="""
-            const [lead, short] = $$(".featured-item");
-            const notice = $(".vote-error", short);
-            expect(notice, "no failure notice in the card");
-            const meta = $(".meta", short).getBoundingClientRect();
-            // The notice has no margin of its own, so it touches the row it reports on.
-            const gap = notice.getBoundingClientRect().top - meta.bottom;
-            expect(gap <= 1, `the notice sits ${gap}px below the meta row`);
-            // The card still has slack to give, so a notice that took a share would show.
-            const sameRow = lead.offsetHeight === short.offsetHeight;
-            const used = [...short.children].reduce((sum, c) => sum + c.offsetHeight, 0);
-            expect(sameRow && short.clientHeight > used + 1, "the short card has no slack");
+            const broken = $$(".featured-item")[1];
+            await waitFor(() => !$(".story-image", broken), "the broken image's removal")
+              .catch(() => {});
+            expect(!$(".story-image", broken), "the broken image keeps its box");
+            expect(broken.firstElementChild.tagName === "H3",
+              `the item opens with ${broken.firstElementChild.tagName}`);
+            const pictured = $$(".featured-item").filter((item) => $(".story-image", item));
+            expect(pictured.length === 1, `${pictured.length} items show an image`);
         """,
-        sabotage=restyle(".featured-item > :last-child { margin-top: auto !important; }"),
+        sabotage_preload=('addEventListener("error", (e) => e.stopImmediatePropagation(), true);'),
     ),
     # The reading progress bar spans the site bar's inner width, the column its brand and
     # links sit in, not the whole window. A bar stretched edge to edge is the sabotage.
