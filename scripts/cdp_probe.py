@@ -37,7 +37,18 @@ from cyris.config import DigestConfig
 CHECK_TIMEOUT_S = 30
 POINTERS = ("mouse", "touch")
 MOUSE_BUTTONS = ("left", "middle", "right")
-KEYS = ("Enter", " ", "Tab", "ArrowLeft", "ArrowRight")
+KEYS = (
+    "Enter",
+    " ",
+    "Tab",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowDown",
+    "ArrowUp",
+    "PageDown",
+    "End",
+    "n",
+)
 HEIGHT = 900
 # The UI spec's tap area (§4): the least a target takes taps over, each way.
 TAP_PX = 44
@@ -135,7 +146,9 @@ class Check:
     release belongs to the press before it. A mouse press may name its
     `"button"` (`MOUSE_BUTTONS`, default left), and a move may add a vertical
     `"dy"`. `{"key": name}` presses and releases one of `KEYS` on whatever has
-    focus.
+    focus, and `{"hold": name, "repeats": n}` holds it down for `n` auto-repeats
+    before releasing it. `{"wheel": dy}` turns the mouse wheel by `dy` pixels at the
+    window's centre, and `{"wait": ms}` pauses the input.
     """
 
     id: str
@@ -173,7 +186,18 @@ class Check:
                 pass
             elif keys == {"release"} and pressed:
                 pressed = False
-            elif keys == {"key"} and step["key"] in KEYS:
+            elif (
+                (keys == {"key"} and step["key"] in KEYS)
+                or (
+                    keys == {"hold", "repeats"}
+                    and step["hold"] in KEYS
+                    and isinstance(step["repeats"], int)
+                )
+                or (
+                    keys in ({"wheel"}, {"wait"})
+                    and all(isinstance(value, int) for value in step.values())
+                )
+            ):
                 pass
             elif keys != {"hover"}:
                 raise ValueError(f"{self.id}: gesture step {step} is unknown or has no press")
@@ -443,7 +467,26 @@ const KEY_EVENTS = {
   'Tab': { code: 'Tab', windowsVirtualKeyCode: 9 },
   'ArrowLeft': { code: 'ArrowLeft', windowsVirtualKeyCode: 37 },
   'ArrowRight': { code: 'ArrowRight', windowsVirtualKeyCode: 39 },
+  'ArrowDown': { code: 'ArrowDown', windowsVirtualKeyCode: 40 },
+  'ArrowUp': { code: 'ArrowUp', windowsVirtualKeyCode: 38 },
+  'PageDown': { code: 'PageDown', windowsVirtualKeyCode: 34 },
+  'End': { code: 'End', windowsVirtualKeyCode: 35 },
+  'n': { code: 'KeyN', windowsVirtualKeyCode: 78, text: 'n' },
 };
+// A held key repeats about this often, as a desktop's default auto-repeat does.
+const REPEAT_MS = 33;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const hold = async (key, repeats) => {
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key, ...KEY_EVENTS[key] });
+  for (let n = 0; n < repeats; n++) {
+    await sleep(REPEAT_MS);
+    await call('Input.dispatchKeyEvent',
+      { type: 'keyDown', key, ...KEY_EVENTS[key], autoRepeat: true });
+  }
+  await call('Input.dispatchKeyEvent', { type: 'keyUp', key, ...KEY_EVENTS[key], text: undefined });
+};
+const wheel = (deltaY) => call('Input.dispatchMouseEvent',
+  { type: 'mouseWheel', x: job.width / 2, y: job.height / 2, deltaX: 0, deltaY });
 const press = async (key) => {
   await call('Input.dispatchKeyEvent', { type: 'keyDown', key, ...KEY_EVENTS[key] });
   await call('Input.dispatchKeyEvent', { type: 'keyUp', key, ...KEY_EVENTS[key], text: undefined });
@@ -469,6 +512,12 @@ const perform = async (gestures) => {
   for (const step of gestures) {
     if ('key' in step) {
       await press(step.key);
+    } else if ('hold' in step) {
+      await hold(step.hold, step.repeats);
+    } else if ('wheel' in step) {
+      await wheel(step.wheel);
+    } else if ('wait' in step) {
+      await sleep(step.wait);
     } else if ('hover' in step) {
       const { x, y } = await centre(step.hover);
       await mouse('mouseMoved', x, y, false);

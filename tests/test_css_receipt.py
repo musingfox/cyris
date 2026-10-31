@@ -1085,6 +1085,8 @@ EXPECTED_DIGEST_IDS |= {
     *(f"progress-moves-on-scroll-{width}" for width in (360, 1440)),
     "progress-fits-360",
     "progress-inside-site-bar-360",
+    *(f"progress-no-layer-{width}" for width in (360, 1440)),
+    "progress-one-layer-1440",
 }
 
 # The Wire's summaries: drawn below each title, and wrapping inside the row on a phone.
@@ -1094,6 +1096,30 @@ EXPECTED_DIGEST_IDS |= {
     "wire-fits-375",
     "wire-fits-largest-375",
     "wire-fits-smallest-375",
+}
+
+# One layer at a time: the pull, the keys, Skip and back, a link into a hidden layer, and
+# a dock that covers no vote on a phone.
+EXPECTED_DIGEST_IDS |= {
+    *(f"layers-one-at-a-time-{width}" for width in (360, 1440)),
+    *(f"layer-pull-{width}" for width in (360, 1440)),
+    "layer-edge-gesture-spent-1440",
+    "layer-key-first-press-arms-1440",
+    "layer-key-held-never-switches-1440",
+    "layer-key-fresh-press-switches-1440",
+    "layer-n-key-1440",
+    "layer-n-held-switches-once-1440",
+    *(f"layer-skip-and-back-{width}" for width in (360, 1440)),
+    "layer-back-focus-key-1440",
+    *(f"layer-back-focus-pull-{width}" for width in (360, 1440)),
+    "layer-back-focus-dock-1440",
+    "layer-back-image-key-1440",
+    "layer-back-image-dock-1440",
+    "layer-hash-on-load-1440",
+    "layer-hash-on-load-360",
+    "layer-hash-change-360",
+    "layer-dock-clear-of-votes-360",
+    *(f"layer-end-holds-with-images-{width}" for width in (360, 1440)),
 }
 
 _VOID_TAGS = {"meta", "link", "br", "img", "input", "hr"}
