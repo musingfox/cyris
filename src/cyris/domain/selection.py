@@ -4,50 +4,9 @@ import logging
 from collections.abc import Mapping
 from itertools import zip_longest
 
-from cyris.domain.models import Article, DigestContent, DigestItem, DigestSection
+from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
 logger = logging.getLogger(__name__)
-
-
-def split_read_lane_by_score(
-    articles: list[Article],
-    article_scores: dict[str, float] | None,
-    threshold: int,
-) -> tuple[list[Article], list[Article]]:
-    """Split read-lane articles by score threshold.
-
-    Articles with score >= threshold go to high_score (AI summarization).
-    Articles with score < threshold go to low_score (attention sections).
-    Articles without scores default to high_score.
-
-    Args:
-        articles: Read-lane articles to split.
-        article_scores: Optional mapping of article URLs to scores.
-        threshold: Score threshold for splitting.
-
-    Returns:
-        Tuple of (high_score_articles, low_score_articles).
-    """
-    if not articles:
-        return ([], [])
-
-    if article_scores is None:
-        # No scores available, all go to high_score (default to AI processing)
-        return (articles, [])
-
-    high_score = []
-    low_score = []
-
-    for article in articles:
-        score = article_scores.get(article.url)
-        if score is None or score >= threshold:
-            # No score or meets threshold → AI summarization
-            high_score.append(article)
-        else:
-            # Below threshold → attention section
-            low_score.append(article)
-
-    return (high_score, low_score)
 
 
 def _by_score(item: DigestItem) -> tuple[bool, float]:

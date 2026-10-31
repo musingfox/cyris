@@ -48,6 +48,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Every `read` article gets a summary.** An article scored under
+  **Summary score** used to show the first 80 characters of its text, which for
+  a newsletter was often its subscribe pitch; it is now summarized with the rest
+  of its tag group, at no extra call. The score still orders the Stories.
 - **A card explains its article instead of analysing it.** The text under each
   `read` article says what the article reports, announces or argues, in one or
   two sentences, so you can decide whether to open it; it no longer draws out
@@ -116,6 +120,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `digest.units_per_paragraph` are gone, with their `/settings` fields, as are
   the news paragraph step and the per-area quotas. A stored D1 row of one of
   them is ignored.
+- The setting `routing.summarize_score_threshold` (**Summary score** in
+  `/settings`, Pipeline) is gone, now that every `read` article is summarized. A
+  stored D1 row of it, or the key left in a `cyris.toml`, is ignored.
 
 ### Fixed
 

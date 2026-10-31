@@ -33,7 +33,6 @@ _TEST_VALUES: dict[str, Any] = {
     "digest.vote_half_life_days": 7,
     "digest.topic_lifetime_days": 7,
     "routing.score_threshold": 70,
-    "routing.summarize_score_threshold": 70,
     "vote_similarity.enabled": False,
     "vote_similarity.provider": "workers_ai",
     "vote_similarity.model": "",
@@ -50,7 +49,6 @@ def pipeline_settings(**overrides: Any) -> dict[str, Any]:
     return {
         "summarize_snippet_length": TEST_SETTINGS["digest.summarize_snippet_length"],
         "filter_snippet_length": TEST_SETTINGS["digest.filter_snippet_length"],
-        "summarize_score_threshold": TEST_SETTINGS["routing.summarize_score_threshold"],
         "featured_threshold": TEST_SETTINGS["routing.score_threshold"],
         "output_language": TEST_SETTINGS["digest.output_language"],
         "style_prompt": TEST_SETTINGS["digest.style_prompt"],

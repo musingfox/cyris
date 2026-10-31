@@ -68,7 +68,10 @@ SUMMARY_REPLY = json.dumps(
             {
                 "heading": "Space",
                 "summary": "Launches.",
-                "articles": [{"id": "0", "title": "Orbit story 1", "source": "TechSource"}],
+                "articles": [
+                    {"id": str(n), "title": f"Orbit story {n + 1}", "source": "TechSource"}
+                    for n in range(3)
+                ],
             }
         ]
     }
@@ -360,7 +363,7 @@ async def test_a_failed_stamp_saves_no_area_order_and_no_area(tmp_path: Path, mo
 
 
 def _radar_articles(n: int, *, synthetic_last: bool = False) -> list[Article]:
-    """Low-scored read-lane articles: each one is a radar row, with no LLM call."""
+    """Low-scored read-lane articles on one tag: each one is a pebble."""
     return [
         Article(
             id=i,
@@ -383,9 +386,20 @@ async def _run_radar(tmp_path: Path, articles: list[Article], *, areas=(), filte
         {"id": a.id, "score": 10, "language": "en", "tags": ["s"], "area": "Tech"}
         for a in everything
     ]
-    replies = [json.dumps({"scores": scores})] + (
-        [json.dumps({"selected": []})] if filtered else []
-    )
+    summary = {
+        "sections": [
+            {
+                "heading": "Tech",
+                "summaries": {str(n): f"Summary {n}." for n in range(len(articles))},
+                "article_ids": list(range(len(articles))),
+            }
+        ]
+    }
+    replies = [
+        json.dumps({"scores": scores}),
+        *([json.dumps({"selected": []})] if filtered else []),
+        json.dumps(summary),
+    ]
     deps, _ = make_deps(tmp_path, FakeLLM(replies), FakeSource(everything))
     deps.cfg.areas = list(areas)
     deps.cfg.sources = {}

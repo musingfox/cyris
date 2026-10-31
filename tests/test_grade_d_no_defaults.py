@@ -177,7 +177,6 @@ def _grade_d_parameters():
     return [
         (pipeline.__init__, "summarize_snippet_length"),
         (pipeline.__init__, "filter_snippet_length"),
-        (pipeline.__init__, "summarize_score_threshold"),
         (pipeline.__init__, "style_prompt"),
         (pipeline.process, "timezone"),
         (filtering.filter_articles, "filter_snippet_length"),

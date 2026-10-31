@@ -153,14 +153,6 @@
     ],
     "route": "plain"
   },
-  "routing.summarize_score_threshold": {
-    "tab": "pipeline",
-    "label": "Summary score",
-    "controls": [
-      "summarize-threshold"
-    ],
-    "route": "plain"
-  },
   "digest.scoring_snippet_length": {
     "tab": "pipeline",
     "label": "Characters read (Scoring)",

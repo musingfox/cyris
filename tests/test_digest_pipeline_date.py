@@ -18,7 +18,6 @@ def _pipeline() -> DigestPipeline:
         FakeLLM("{}"),
         summarize_snippet_length=200,
         filter_snippet_length=200,
-        summarize_score_threshold=0,
         featured_threshold=0,
         output_language="en",
         style_prompt="",

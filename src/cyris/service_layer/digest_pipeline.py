@@ -21,7 +21,6 @@ from cyris.domain.selection import (
     layer_by_score,
     order_by_preference,
     preference_moves,
-    split_read_lane_by_score,
 )
 from cyris.domain.story_images import stamp_story_images
 from cyris.domain.topics import stand_in_topics
@@ -30,7 +29,6 @@ from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.ports import LLMClient
 from cyris.service_layer.schedule import Period
 from cyris.service_layer.summarize import (
-    build_attention_sections,
     build_follow_sections,
     explain_follow_articles,
     summarize_articles,
@@ -76,7 +74,6 @@ class DigestPipeline:
         *,
         summarize_snippet_length: int,
         filter_snippet_length: int,
-        summarize_score_threshold: int,
         featured_threshold: int,
         output_language: str,
         style_prompt: str,
@@ -85,7 +82,6 @@ class DigestPipeline:
         self._llm = llm
         self.summarize_snippet_length = summarize_snippet_length
         self.filter_snippet_length = filter_snippet_length
-        self.summarize_score_threshold = summarize_score_threshold
         self.featured_threshold = featured_threshold
         self.output_language = output_language
         self.style_prompt = style_prompt
@@ -196,20 +192,8 @@ class DigestPipeline:
             style_prompt=self.style_prompt,
         )
 
-        # Split read lane by score threshold
-        high_score_articles, low_score_articles = split_read_lane_by_score(
-            read_lane, article_scores, self.summarize_score_threshold
-        )
-
-        logger.info(
-            "Split read lane: %d high-score (AI), %d low-score (attention)",
-            len(high_score_articles),
-            len(low_score_articles),
-        )
-
-        # AI summarization for high-score articles
         summaries = await summarize_articles(
-            high_score_articles,
+            read_lane,
             self._llm,
             usage=usage,
             snippet_length=self.summarize_snippet_length,
@@ -217,9 +201,6 @@ class DigestPipeline:
             output_language=self.output_language,
             style_prompt=self.style_prompt,
         )
-
-        # Build attention sections for low-score articles
-        attention = build_attention_sections(low_score_articles, article_scores)
 
         # Follow lane: grouped by source, never scored or filtered; explained only when
         # the reader asked for it.
@@ -235,7 +216,7 @@ class DigestPipeline:
             )
         follow_sections = build_follow_sections(follow_lane, explanations)
 
-        _stamp_tags([*summaries, *attention], article_tags or {})
+        _stamp_tags(summaries, article_tags or {})
 
         cost = usage.estimated_cost
         logger.info(
@@ -287,7 +268,6 @@ class DigestPipeline:
             usage=usage,
             news_clusters=news_clusters,
             thematic_summaries=summaries,
-            attention_sections=attention,
             filtered_headlines=filtered,
             fan_sections=follow_sections,
             output_language=self.output_language,
@@ -318,7 +298,6 @@ class DigestPipeline:
             (
                 *content.featured_articles,
                 *content.thematic_summaries,
-                *content.attention_sections,
                 *content.fan_sections,
             ),
             articles,
