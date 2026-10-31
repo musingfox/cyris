@@ -257,7 +257,8 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
     Focus moves to the new layer's `h2` (`tabindex="-1"`), and its ring shows only for a switch made
     from the keyboard.
   - *Never blocked.* A scrollbar drag, a link to `#` an item in a hidden layer (which switches to
-    it first) and every key inside a layer work as on any page. Find-in-page cannot reach a hidden
+    it first, on load and on a hash change; every pebble, sand block and headline carries an `id`
+    for it) and every key inside a layer work as on any page. Find-in-page cannot reach a hidden
     layer; that is accepted, since one layer at a time is the point.
 - **Votes:** each small ↑ / ↓ vote button is named `More like this` / `Less like this` and carries
   `aria-pressed`, true on the vote this browser cast. While a vote is in flight both buttons of its group
@@ -343,7 +344,7 @@ out. Each section is one `<section class="section">`, and its name is printed on
 **With script, the page shows one layer at a time** (owner, 2026-10-30 and 2026-10-31). The page is
 read like the jar of ADR-0023, stones before sand before water, and a reader who stops after one layer
 has read a whole thing rather than the top of a long scroll. The masthead and Tracking belong to the
-first layer shown. A reader crosses to the next layer by a deliberate pull or key, or by the layer
+first layer shown; the footer, and anything else after the last layer, belongs to the last. A reader crosses to the next layer by a deliberate pull or key, or by the layer
 dock's `Skip`, and goes back the same way (§4 *Interaction*, *Layers*; §4 *layer dock*, *layer edge*).
 A switch hides the layer left. Without script every layer shows, stacked, exactly as the markup
 orders them, with no dock and no edge; the mail and Discord are not affected.
