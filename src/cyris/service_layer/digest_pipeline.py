@@ -23,6 +23,7 @@ from cyris.domain.selection import (
     preference_moves,
     split_read_lane_by_score,
 )
+from cyris.domain.story_images import stamp_story_images
 from cyris.domain.topics import stand_in_topics
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
@@ -312,6 +313,16 @@ class DigestPipeline:
             )
         content = order_by_preference(laid_out, scores)
         moves = None if scores is None else preference_moves(laid_out, content)
+        # Only Stories show a picture: the sections `layer_by_lane` makes pebbles of.
+        stamp_story_images(
+            (
+                *content.featured_articles,
+                *content.thematic_summaries,
+                *content.attention_sections,
+                *content.fan_sections,
+            ),
+            articles,
+        )
         # Accepted means shown in this issue. What the summarizer left out of every
         # section stays pending for the next run in the window.
         accepted_urls = list(digest_urls(content))

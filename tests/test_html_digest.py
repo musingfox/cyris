@@ -222,8 +222,8 @@ def test_the_heading_outline_skips_no_level():
 
 def test_clusters_are_headed_at_h3_and_radar_items_are_rows():
     digest = receipt_fixtures()[1]
-    assert re.search(r'<div class="news-cluster" lang="[^"]*">\s*<h3', digest)
-    assert '<div class="headline-item">' in digest
+    assert re.search(r'<div class="news-cluster" id="topic-1" lang="[^"]*">\s*<h3', digest)
+    assert '<div class="headline-item" id="headline-1">' in digest
     assert "<h5" not in digest
 
 
@@ -1105,7 +1105,7 @@ def test_all_sections_render(tmp_path):
 def _wire_rows(html: str) -> list[str]:
     """Each Wire row's markup, up to the next row or the section's end."""
     wire = html.split('class="headlines-compact"', 1)[1].split("</section>", 1)[0]
-    return wire.split('<div class="headline-item">')[1:]
+    return re.split(r'<div class="headline-item" id="headline-\d+">', wire)[1:]
 
 
 def test_a_wire_row_shows_its_summary_below_its_title_and_before_its_votes(tmp_path):
@@ -2567,6 +2567,76 @@ def test_every_pebble_sand_and_water_item_has_exactly_one_vote_group() -> None:
     for item in (*pebbles, *sand, *water):
         assert len(_by_class(item, "vote-group")) == 1, item.text_content()
     assert len(_by_class(root, "vote-group")) == 5
+
+
+STORY_IMAGE = "https://pebble.example.test/read.jpg"
+
+
+def _pictured_issue() -> DigestContent:
+    issue = _three_layer_issue()
+    issue.featured_articles[0].items[0].image_url = STORY_IMAGE
+    return issue
+
+
+def test_a_pebble_with_a_picture_opens_with_its_image_box_and_one_without_has_none() -> None:
+    root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(_pictured_issue())).root
+
+    pictured, plain = _by_class(root, "featured-item")
+    (image,) = _by_class(pictured, "story-image")
+    assert pictured.children[0] is image
+    assert image.tag == "img"
+    assert image.attrs == {
+        "class": "story-image",
+        "src": STORY_IMAGE,
+        "alt": "",
+        "loading": "lazy",
+        "decoding": "async",
+        "referrerpolicy": "no-referrer",
+    }
+    assert _by_class(plain, "story-image") == []
+
+
+def test_no_item_outside_stories_shows_a_picture() -> None:
+    issue = _pictured_issue()
+    for section in (*issue.news_clusters, *issue.tracked_topics):
+        for item in section.items:
+            item.image_url = STORY_IMAGE
+    for item in issue.filtered_headlines:
+        item.image_url = STORY_IMAGE
+    root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(issue)).root
+
+    images = root.find_all(lambda n: n.tag == "img")
+    assert [image.parent.classes for image in images] == [{"featured-item"}]
+
+
+def test_every_pebble_sand_and_water_item_carries_its_own_id_for_in_page_links() -> None:
+    # The layer script switches to the layer of a `#id` it is sent to (ui-language section 4).
+    _, root = _three_layer_dom()
+
+    ids = {
+        kind: [n.attrs.get("id") for n in _by_class(root, kind)]
+        for kind in ("featured-item", "news-cluster", "headline-item")
+    }
+    assert ids == {
+        "featured-item": ["story-1", "story-2"],
+        "news-cluster": ["topic-1"],
+        "headline-item": ["headline-1", "headline-2"],
+    }
+    every_id = [n.attrs["id"] for n in root.find_all(lambda n: "id" in n.attrs)]
+    assert len(every_id) == len(set(every_id))
+
+
+def test_the_layers_are_drawn_by_script_alone_so_without_it_every_layer_shows() -> None:
+    # ui-language section 6: without script the three layers show stacked, with no dock,
+    # no edge and nothing hidden; the script adds all of it.
+    html, _ = _three_layer_dom()
+    markup = re.sub(r"<(script|style)>.*?</\1>", "", html, flags=re.DOTALL)
+
+    assert "<script>" in html
+    for drawn_by_script in ("layered", "layer-dock", "layer-edge", "read-progress", "layer-in"):
+        assert drawn_by_script not in markup
+    assert " hidden" not in markup.split("<main>", 1)[1]
+    assert _markers(markup) == ["Tracking", "Stories", "Topics", "Headlines"]
 
 
 def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None:

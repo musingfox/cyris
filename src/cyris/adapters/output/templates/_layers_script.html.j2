@@ -1,0 +1,223 @@
+    <script>
+    // The digest's layers (UI spec section 4, Interaction, Layers; section 6, digest): with
+    // script one layer shows at a time. A reader crosses by a pull at its edge, counted only
+    // from a gesture that began there, by a second fresh key press there, or by the dock's
+    // Skip, back or N. Without script nothing here runs and every layer shows, stacked.
+    // The reading progress has one segment per layer, as wide as its share of the items,
+    // because only one layer is laid out at a time. `docs/design/prototype.html` is the
+    // reference this follows.
+    (() => {
+        // The spec's numbers, settled on throwaway pages (section 4, Layers): the pull that
+        // switches, the pause that resets it, the gap that makes a wheel gesture fresh, and
+        // how long a key keeps an edge armed.
+        const PULL = 160, IDLE_MS = 400, FRESH_GAP_MS = 150, ARMED_MS = 3000;
+        // WebKit finishes a held arrow key's edge bounce after a key switch, so the landing
+        // holds this long unless the reader gives new input.
+        const LAND_HOLD_MS = 600;
+        // A key press counts as having reached the edge if its scroll got there this soon.
+        const KEY_REACH_MS = 1500;
+        const KEYS_DOWN = ['ArrowDown', 'PageDown', 'End'], KEYS_UP = ['ArrowUp', 'PageUp', 'Home'];
+        const $ = (selector, root = document) => root.querySelector(selector);
+        const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+        const main = $('main');
+        const layered = $$('main > .section').filter((s) => $('.featured-grid, .sand-grid, .headlines-compact', s));
+        const view = document.body, root = document.documentElement;
+        const make = (html) => { const t = document.createElement('template'); t.innerHTML = html; return t.content.firstElementChild; };
+        const bar = make('<div class="read-progress" aria-hidden="true"></div>');
+        // An issue with no layer draws one segment, the whole page (spec section 4, reading progress).
+        if (!layered.length) {
+            const fill = document.createElement('i'), segment = document.createElement('span');
+            segment.append(fill);
+            bar.append(segment);
+            view.append(bar);
+            const whole = () => { fill.style.width = `${Math.min(1, (scrollY + innerHeight) / Math.max(1, root.scrollHeight)) * 100}%`; };
+            addEventListener('scroll', whole, {passive: true});
+            addEventListener('resize', whole);
+            whole();
+            requestAnimationFrame(whole);
+            return;
+        }
+        const layers = layered.map((s) => {
+            const h2 = $('.section-tag', s), items = $$('.featured-item, .news-cluster, .headline-item', s);
+            const last = items[items.length - 1];
+            h2.tabIndex = -1;
+            last.tabIndex = -1;
+            return {s, h2, last, name: h2.textContent.trim(), count: items.length};
+        });
+        const lastLayer = layered[layered.length - 1];
+        // The masthead and every block above the first layer belong to it; the footer, and
+        // anything else after the last layer, to the last.
+        const first = [$('.masthead'), ...[...main.children].filter((e) => e.compareDocumentPosition(layered[0]) & Node.DOCUMENT_POSITION_FOLLOWING)];
+        const after = [...[...main.children].filter((e) => e.compareDocumentPosition(lastLayer) & Node.DOCUMENT_POSITION_PRECEDING), $('.footer')];
+        const counted = (l) => `${l.count} ${l.name}`;
+        const dock = make('<div class="layer-dock"><div class="layer-dock-inner"><button type="button" class="btn secondary sm layer-back"></button><span class="label layer-where"></span><button type="button" class="btn secondary sm layer-skip"></button></div></div>');
+        const edge = (dir) => make(`<div class="layer-edge ${dir}" aria-hidden="true"><div class="layer-edge-inner"><div class="layer-pull" hidden><span class="label"></span><i><b></b></i></div></div></div>`);
+        const up = edge('up'), down = edge('down');
+        view.classList.add('layered');
+        view.append(bar, up, down, dock);
+        const back = $('.layer-back', dock), where = $('.layer-where', dock), skip = $('.layer-skip', dock);
+        const segments = layers.map((l) => {
+            const segment = document.createElement('span');
+            segment.style.flexGrow = l.count || 1;
+            segment.append(document.createElement('i'));
+            bar.append(segment);
+            return segment;
+        });
+        let cur = 0, pull = 0, pullDir = 0, pushed = 0, armed = 0, idle, armedIdle, swallow = false;
+        let lastWheel = 0, streamDir = 0, streamAtEdge = false, touchY = 0, touchTop = false, touchBottom = false;
+        let lastKeyDir = 0, lastKeyAt = 0, modality = 'pointer', landY = null, landAt = 0;
+        const atTop = () => scrollY <= 0;
+        const atBottom = () => scrollY >= root.scrollHeight - innerHeight - 1;
+        const atEdge = (dir) => (dir > 0 ? atBottom() : atTop()) && !!layers[cur + dir];
+        const barsBottom = () => Math.max(...[$('.site-bar'), $('.issue-bar')].filter(Boolean).map((b) => b.getBoundingClientRect().bottom));
+        const progress = () => layers.forEach((l, i) => {
+            let read = i < cur ? 1 : 0;
+            if (i === cur) {
+                const top = (i === 0 ? first[0] : l.s).getBoundingClientRect().top + scrollY;
+                const bottom = l.s.getBoundingClientRect().bottom + scrollY;
+                read = Math.min(1, Math.max(0, (scrollY + innerHeight - top) / Math.max(1, bottom - top)));
+            }
+            segments[i].firstChild.style.width = `${read * 100}%`;
+        });
+        const hint = (el, dir, next) => {
+            const row = $('.layer-pull', el), shown = next && atEdge(dir) && (armed === dir || pushed === dir || pullDir === dir);
+            row.hidden = !shown;
+            if (!shown) return;
+            $('.label', row).textContent = armed === dir ? `Press ${dir > 0 ? '↓' : '↑'} again for ${counted(next)}` : `Keep scrolling for ${counted(next)}`;
+            $('b', row).style.width = `${pullDir === dir ? Math.min(1, pull / PULL) * 100 : 0}%`;
+        };
+        const render = () => {
+            const prev = layers[cur - 1], next = layers[cur + 1];
+            if (armed && !atEdge(armed)) disarm();
+            view.classList.toggle('has-prev', !!prev);
+            view.classList.toggle('has-next', !!next);
+            where.textContent = `${layers[cur].name} · ${layers[cur].count}`;
+            back.hidden = !prev;
+            if (prev) { back.textContent = `↑ ${prev.name}`; back.setAttribute('aria-label', `Back to ${prev.name}`); }
+            skip.hidden = !next;
+            if (next) {
+                const words = document.createElement('span');
+                words.className = 'skip-words';
+                words.textContent = 'Skip to ';
+                skip.replaceChildren(words, `${counted(next)} ↓`);
+                skip.setAttribute('aria-label', `Skip to ${counted(next)}`);
+            }
+            root.style.setProperty('--edge-top', `${barsBottom()}px`);
+            const p = Math.min(1, pull / PULL);
+            root.style.setProperty('--pull-down', pullDir > 0 ? p : 0);
+            root.style.setProperty('--pull-up', pullDir < 0 ? p : 0);
+            hint(down, 1, next);
+            hint(up, -1, prev);
+            progress();
+        };
+        const show = (i, land, focus, animate = true) => {
+            const a = document.activeElement;
+            cur = i; pull = 0; pullDir = 0; pushed = 0; armed = 0; lastKeyDir = 0; swallow = true;
+            layers.forEach((l, j) => { l.s.hidden = j !== i; });
+            first.forEach((e) => { e.hidden = i !== 0; });
+            after.forEach((e) => { e.hidden = i !== layers.length - 1; });
+            render();
+            if (land === 'top') scrollTo({top: 0, behavior: 'instant'});
+            else if (land === 'end') scrollTo({top: root.scrollHeight, behavior: 'instant'});
+            landY = land && modality === 'key' ? scrollY : null; landAt = performance.now();
+            render();
+            if (animate) {
+                const shown = [layers[i].s, ...(i === 0 ? first : []), ...(i === layers.length - 1 ? after : [])];
+                shown.forEach((e) => { e.classList.remove('layer-in'); void e.offsetWidth; e.classList.add('layer-in'); });
+                setTimeout(() => shown.forEach((e) => e.classList.remove('layer-in')), 250);
+            }
+            // Focus never stays on something just hidden: it goes where the reader lands, the
+            // heading going forward and the last item going back, ringed only after a keyboard
+            // switch; a link's landing focuses the dock.
+            const target = focus && layers[i][focus];
+            if (target) { target.classList.toggle('quiet', modality !== 'key'); target.focus({preventScroll: true}); }
+            else if (a && a !== document.body && a.closest('[hidden]')) (back.hidden ? skip : back).focus({preventScroll: true});
+        };
+        const forward = () => show(cur + 1, 'top', 'h2');
+        const backward = () => show(cur - 1, 'end', 'last');
+        const switchTo = (dir) => (dir > 0 ? forward() : backward());
+        // A link to an item in a hidden layer switches to that layer first, then brings the
+        // item under the bars; an item already shown is left to the browser's own jump.
+        const toHash = () => {
+            let id = '';
+            try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+            const target = id && document.getElementById(id);
+            if (!target) return;
+            let i = layers.findIndex((l) => l.s.contains(target));
+            if (i < 0 && first.some((e) => e.contains(target))) i = 0;
+            if (i < 0 && after.some((e) => e.contains(target))) i = layers.length - 1;
+            if (i < 0 || i === cur) return;
+            show(i, null, null);
+            scrollTo({top: target.getBoundingClientRect().top + scrollY - $('.site-bar').getBoundingClientRect().bottom, behavior: 'instant'});
+            render();
+        };
+        const armIdle = () => { clearTimeout(idle); idle = setTimeout(() => { pull = 0; pullDir = 0; pushed = 0; render(); }, IDLE_MS); };
+        const disarm = () => { armed = 0; clearTimeout(armedIdle); };
+        const arm = (dir) => { armed = dir; clearTimeout(armedIdle); armedIdle = setTimeout(() => { armed = 0; render(); }, ARMED_MS); };
+        const tug = (dir, delta) => {
+            if (dir !== pullDir) { pull = 0; pullDir = dir; }
+            pull += delta;
+            if (pull >= PULL) return switchTo(dir);
+            armIdle();
+            render();
+        };
+        addEventListener('wheel', (e) => {
+            if (e.ctrlKey || !e.deltaY) return;
+            const dir = Math.sign(e.deltaY), now = performance.now();
+            if (now - lastWheel >= FRESH_GAP_MS || dir !== streamDir) { streamDir = dir; streamAtEdge = atEdge(dir); swallow = false; }
+            lastWheel = now;
+            // The rest of the gesture that switched layers is spent, so the new layer starts where it lands.
+            if (swallow) return e.preventDefault();
+            if (!atEdge(dir)) return;
+            e.preventDefault();
+            pushed = dir; armIdle(); render();
+            if (!streamAtEdge) return;
+            const was = cur;
+            tug(dir, Math.abs(e.deltaY) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1));
+            if (cur !== was) streamAtEdge = false;
+        }, {passive: false});
+        addEventListener('touchstart', (e) => { swallow = false; touchY = e.touches[0].clientY; touchTop = atTop(); touchBottom = atBottom(); }, {passive: true});
+        addEventListener('touchmove', (e) => {
+            const dy = touchY - e.touches[0].clientY, dir = Math.sign(dy);
+            touchY = e.touches[0].clientY;
+            if (swallow) { if (e.cancelable) e.preventDefault(); return; }
+            if (!dir || !atEdge(dir) || !(dir > 0 ? touchBottom : touchTop)) return;
+            if (e.cancelable) e.preventDefault();
+            pushed = dir;
+            tug(dir, Math.abs(dy));
+        }, {passive: false});
+        for (const type of ['pointerdown', 'wheel', 'touchstart']) addEventListener(type, () => { modality = 'pointer'; lastKeyDir = 0; landY = null; }, {capture: true, passive: true});
+        addEventListener('scroll', () => {
+            if (landY !== null && performance.now() - landAt < LAND_HOLD_MS && scrollY !== landY) scrollTo({top: landY, behavior: 'instant'});
+            // A key whose scroll has just reached the edge arms it, so the next fresh press switches.
+            if (!armed && lastKeyDir && performance.now() - lastKeyAt < KEY_REACH_MS && atEdge(lastKeyDir)) arm(lastKeyDir);
+            render();
+        }, {passive: true});
+        addEventListener('resize', render);
+        addEventListener('hashchange', () => { toHash(); render(); });
+        addEventListener('keydown', (e) => {
+            modality = 'key'; landY = null;
+            if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
+            if (e.key === 'n' || e.key === 'N') {
+                if (e.repeat || !layers[cur + 1]) return;
+                e.preventDefault();
+                return forward();
+            }
+            const space = e.key === ' ' && !e.target.closest('button, summary, a, [role=button]');
+            const dir = KEYS_DOWN.includes(e.key) || (space && !e.shiftKey) ? 1 : KEYS_UP.includes(e.key) || (space && e.shiftKey) ? -1 : 0;
+            if (!dir) return;
+            lastKeyDir = dir; lastKeyAt = performance.now();
+            if (!atEdge(dir)) return;
+            e.preventDefault();
+            // A held key (auto-repeat) or the first press at an edge only arms; a fresh press when armed switches.
+            if (!e.repeat && armed === dir) return switchTo(dir);
+            arm(dir);
+            render();
+        });
+        back.addEventListener('click', backward);
+        skip.addEventListener('click', forward);
+        show(0, null, null, false);
+        toHash();
+        requestAnimationFrame(render);
+    })();
+    </script>

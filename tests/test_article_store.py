@@ -152,6 +152,28 @@ def test_save_preserves_ref_urls(store: ArticleStore) -> None:
     assert reloaded[0].ref_urls == ["https://example.com/a"]
 
 
+def test_save_keeps_the_feed_image_and_a_rerun_reads_it_back(store: ArticleStore) -> None:
+    """The image an article's feed named survives the store on both backends."""
+    now = datetime.now(UTC)
+    pictured = Article(
+        id=1,
+        title="Pictured",
+        url="https://example.com/pictured",
+        content="Content",
+        published_at=now,
+        source_name="Feed",
+        source_lane=Lane.READ,
+        image_url="https://cdn.example.com/pictured.jpg",
+    )
+    plain = pictured.model_copy(update={"url": "https://example.com/plain", "image_url": None})
+    store.save([pictured, plain], now=now)
+
+    reloaded = {a.url: a.to_article() for a in store.get_by_urls([pictured.url, plain.url])}
+
+    assert reloaded[pictured.url].image_url == "https://cdn.example.com/pictured.jpg"
+    assert reloaded[plain.url].image_url is None
+
+
 def test_update_states_existing_articles(
     store: ArticleStore, sample_articles: list[Article]
 ) -> None:

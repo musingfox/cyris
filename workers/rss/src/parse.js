@@ -85,6 +85,50 @@ function entryAuthor(entry) {
   return text(author) || text(entry["dc:creator"]) || null;
 }
 
+// An http(s) URL resolved against the entry's own link, else null: a relative
+// `src` names a file on the article's host, and a `data:` image is no address.
+// A link that is itself relative is no base, and must not cost an absolute image.
+function imageAddress(raw, base) {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw.replace(/&amp;/g, "&"), URL.canParse(base) ? base : undefined);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function isImage(node) {
+  const medium = node?.["@_medium"];
+  const type = node?.["@_type"] ?? "";
+  return medium === "image" || type.startsWith("image/");
+}
+
+// The picture the feed names for its entry, as docs/architecture.md §4 *Article image
+// URL* orders the places. Only the feed: the article page is never fetched for one.
+// A `media:content` or `enclosure` counts only when it says it is an image, since
+// either may as well be the episode's audio or video. YouTube's feed puts its media
+// elements inside `media:group`, so that is read the same as the entry. A thumbnail
+// nested in a `media:content` is the entry's too, as feedparser lists it, and so is
+// an Atom `<link rel="enclosure">`, which feedparser lists among the enclosures.
+function entryImage(entry, link) {
+  const scopes = [entry, ...asArray(entry["media:group"])];
+  const contents = scopes.flatMap((s) => asArray(s["media:content"]));
+  const enclosures = [
+    ...asArray(entry.enclosure),
+    ...asArray(entry.link).filter((l) => l?.["@_rel"] === "enclosure"),
+  ];
+  const first = (nodes) =>
+    nodes.map((n) => imageAddress(n?.["@_url"] ?? n?.["@_href"], link)).find(Boolean);
+  const found =
+    first([...scopes, ...contents].flatMap((s) => asArray(s?.["media:thumbnail"]))) ||
+    first(contents.filter(isImage)) ||
+    first(enclosures.filter(isImage));
+  if (found) return found;
+  const img = /<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/i.exec(entryContent(entry));
+  return img ? imageAddress(img[1], link) : null;
+}
+
 export function parseFeed(xml, sourceName) {
   const doc = parser.parse(xml);
   const entries = [
@@ -95,7 +139,8 @@ export function parseFeed(xml, sourceName) {
 
   const rows = [];
   for (const entry of entries) {
-    const url = stripTrackingParams(entryLink(entry));
+    const link = entryLink(entry);
+    const url = stripTrackingParams(link);
     const publishedAt = entryPublished(entry);
     if (!url || !publishedAt) continue;
     rows.push({
@@ -106,6 +151,7 @@ export function parseFeed(xml, sourceName) {
       author: entryAuthor(entry),
       published_at: publishedAt,
       source_name: sourceName,
+      image_url: entryImage(entry, link),
     });
   }
   return rows;

@@ -47,6 +47,21 @@ async def test_rows_map_to_articles_with_lane_from_config():
     assert articles[0].url == "https://a.test/1"
     assert articles[0].source_lane == Lane.READ
     assert articles[0].published_at.tzinfo is not None
+    assert articles[0].image_url is None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_a_buffered_image_url_reaches_the_article():
+    rows = [{**ROW, "image_url": "https://a.test/1.jpg"}]
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=rows))
+
+    (article,) = await CloudflareRssSource(WORKER, "tok").fetch_articles(
+        after=AFTER, before=BEFORE, sources={}
+    )
+
+    assert route.call_count == 1
+    assert article.image_url == "https://a.test/1.jpg"
 
 
 def _worker_row_ceiling() -> str:

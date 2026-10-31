@@ -149,37 +149,55 @@
 
         .item-title a:hover { color: var(--accent); }
 
-        /* === FEATURED GRID === */
+        /* === STORIES === */
+        /* One article per row; the grid lines live on the rows. */
         .featured-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+            grid-template-columns: minmax(0, 1fr);
             margin-bottom: var(--s-12);
             border-top: 1px solid var(--border);
             border-left: 1px solid var(--border);
         }
 
-        /* Each card draws its own right and bottom hairline, so a short last row
-           leaves its empty cells as page, not a border-coloured block. */
         .featured-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            align-content: start;
             background: var(--bg-elev);
             border-right: 1px solid var(--border);
             border-bottom: 1px solid var(--border);
             padding: var(--s-6);
             transition: background-color var(--t-fast);
             position: relative;
-            /* A column, so the meta row can take the space a shorter card leaves: the
-               cards of one grid row are one height, and their meta rows line up at the foot. */
-            display: flex;
-            flex-direction: column;
         }
 
-        /* The meta row is the last child, or the one before a refused vote's notice; it
-           is named by position because every .meta shares one base rule
-           (tests/test_ui_spec.py). The :not keeps the notice from sharing the slack. */
-        .featured-item > :last-child:not(.vote-error), .featured-item > :has(+ .vote-error) { margin-top: auto; }
-        /* A flex column does not collapse margins: the summary's margin alone keeps the
-           space above the tags that the block layout's collapse left there. */
-        .featured-item .tags { margin-top: 0; }
+        /* A grid does not collapse margins: the summary's margin alone keeps the space
+           above the tags. The space below them is the tags' own, because every .meta
+           shares one base rule (tests/test_ui_spec.py). */
+        .featured-item .tags { margin-top: 0; margin-bottom: var(--s-4); }
+
+        /* A story image spans the text's rows; the last, flexible row takes whatever
+           height the image adds, so the title, summary, tags and meta keep their own spacing. */
+        .featured-item:has(> .story-image) {
+            grid-template-columns: 280px minmax(0, 1fr);
+            grid-template-rows: repeat(5, auto) 1fr;
+            column-gap: var(--s-6);
+        }
+        .featured-item:has(> .story-image) > * { grid-column: 2; }
+        .featured-item > .story-image {
+            grid-column: 1;
+            grid-row: 1 / -1;
+            align-self: start;
+            width: 100%;
+            aspect-ratio: 1200 / 630;
+            object-fit: cover;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            filter: grayscale(1);
+            opacity: .55;
+            transition: filter var(--t-fast), opacity var(--t-fast);
+        }
+        .featured-item:is(:hover, :focus-within:not(.quiet:focus)) > .story-image { filter: none; opacity: 1; }
 
         .featured-item:hover {
             background: var(--surface);
@@ -328,6 +346,11 @@
         @media (max-width: 720px) {
             .section { margin-bottom: var(--s-12); }
             .headline-block { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+            /* A summary beside the image was too narrow to read at 360px, so only the
+               title sits beside it. */
+            .featured-item:has(> .story-image) { grid-template-columns: 112px minmax(0, 1fr); grid-template-rows: none; }
+            .featured-item > .story-image { grid-row: 1; }
+            .featured-item:has(> .story-image) > :not(.story-image, h3) { grid-column: 1 / -1; }
         }
         {% include "_promote.css.j2" %}
 
@@ -349,9 +372,36 @@
         /* An item's tags take their own row, so however many there are the votes stay
            on the meta row beside the fold or the source. */
         .tags { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+
+        /* === LAYERS === */
+        /* Only with script, which adds .layered, the dock and the edges (spec section 4,
+           layer dock and layer edge; the prototype's #digest). */
+        .layered { padding-bottom: var(--s-12); }
+        .layer-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; height: var(--s-12); background: var(--bg-elev); border-top: 1px solid var(--border); }
+        .layer-dock-inner { height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--s-4); display: flex; align-items: center; gap: var(--s-4); }
+        .layer-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .layer-back, .layer-skip { flex: none; white-space: nowrap; }
+        .layer-edge { position: fixed; left: 0; right: 0; z-index: 9; display: none; pointer-events: none; }
+        .has-next .layer-edge.down, .has-prev .layer-edge.up { display: block; }
+        .layer-edge.down { bottom: var(--s-12); height: calc(var(--s-16) + var(--s-12) * var(--pull-down, 0)); background: linear-gradient(to top, var(--bg), transparent); }
+        .layer-edge.up { top: var(--edge-top, var(--bar-h)); height: calc(var(--s-12) + var(--s-12) * var(--pull-up, 0)); background: linear-gradient(to bottom, var(--bg), transparent); }
+        .layer-edge-inner { height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--s-4); display: flex; flex-direction: column; justify-content: flex-end; }
+        .layer-edge.up .layer-edge-inner { justify-content: flex-start; }
+        .layer-pull { display: flex; align-items: center; gap: var(--s-3); }
+        .layer-pull i { flex: 1; height: 1px; }
+        .layer-pull b { display: block; width: 0; height: 100%; background: var(--accent); }
+        :is(.section-tag, .featured-item, .news-cluster, .headline-item).quiet:focus-visible { outline: none; }
+        .layer-in { animation: layer-in 200ms ease-out; }
+        @keyframes layer-in { from { opacity: 0; } }
+        @media (max-width: 720px) { .layer-skip .skip-words { display: none; } }
     </style>
 </head>
 <body>
+    <script>
+    // An image that fails to load removes its box (UI spec section 4, story image). It
+    // listens before any image is parsed, since one can fail before a later script runs.
+    addEventListener('error', (e) => { if (e.target.matches?.('.story-image')) e.target.remove(); }, true);
+    </script>
     {% include "_site_bar.html.j2" %}
     {% with view="digest" %}{% include "_issue_bar.html.j2" %}{% endwith %}
     <div class="container">
@@ -416,7 +466,8 @@
                 <h2 class="section-tag"><span class="label">Stories</span></h2>
                 <div class="featured-grid" lang="{{ content_lang }}">
                     {% for pebble in layers.pebbles %}{% set item = pebble.item %}
-                    <article class="featured-item"{% if pebble.untranslated %} lang=""{% endif %}>
+                    <article class="featured-item" id="story-{{ loop.index }}"{% if pebble.untranslated %} lang=""{% endif %}>
+                        {% if item.image_url %}<img class="story-image" src="{{ item.image_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
                         <h3 class="item-title lg" lang="">{{ title_link(item) }}</h3>
                         {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
                         {{ tag_pills(item.tags) }}
@@ -439,7 +490,7 @@
                 <h2 class="section-tag"><span class="label">Topics</span></h2>
                 <div class="sand-grid">
                 {% for sand in layers.sand %}
-                <div class="news-cluster" lang="{{ content_lang }}">
+                <div class="news-cluster" id="topic-{{ loop.index }}" lang="{{ content_lang }}">
                     <h3 class="item-title lg">{{ sand.heading }}</h3>
                     {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
                     {{ tag_pills(sand.tags) }}
@@ -460,7 +511,7 @@
                 <h2 class="section-tag"><span class="label">Headlines</span></h2>
                 <div class="headlines-compact" lang="{{ content_lang }}">
                     {% for water in layers.water %}{% set item = water.item %}
-                    <div class="headline-item"{% if water.untranslated %} lang=""{% endif %}>
+                    <div class="headline-item" id="headline-{{ loop.index }}"{% if water.untranslated %} lang=""{% endif %}>
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
                         <div class="text">{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}{{ tag_pills(water.tags) }}</div>
                         {{ promote_btn(item, water.story_id) }}
@@ -476,7 +527,7 @@
         </footer>
     </div>
     {% include "_promote_script.html.j2" %}
-    {% include "_progress_script.html.j2" %}
+    {% include "_layers_script.html.j2" %}
     {% include "_probe_script.html.j2" %}
 </body>
 </html>

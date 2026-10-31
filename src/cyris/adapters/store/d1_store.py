@@ -47,6 +47,7 @@ COLUMNS = (
     "score",
     "language",
     "triaged_at",
+    "image_url",
 )
 
 # `WHERE url IN (?, ?, ...)` plus whatever the statement sets, kept under 100.
@@ -95,6 +96,7 @@ def _to_row(article: StoredArticle) -> list[Any]:
         article.score,
         article.language,
         _iso(article.triaged_at),
+        article.image_url,
     ]
 
 

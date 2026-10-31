@@ -96,6 +96,8 @@ ARTICLES = {
     ]
 }
 AUTHORS = {"a1": "E2E Author"}
+# The picture a1's feed named, as the rss Worker buffered it.
+IMAGES = {"a1": "https://deep.e2e.test/a1.jpg"}
 LETTER_EML = Path(__file__).parent / "e2e" / "letter.eml"
 LETTER_TITLE = "Issue 12: what the fakes received"
 # The one sender-owned post link in the letter's HTML, with its utm_ parameters stripped.
@@ -235,6 +237,7 @@ def _rss_rows(now: datetime) -> list[dict]:
             ),
             "fetched_at": _iso(fetched[a["key"]]),
             "source_name": a["source"],
+            "image_url": IMAGES.get(a["key"]),
         }
         for a in ARTICLES.values()
     ]
@@ -334,9 +337,12 @@ EXPECTED_ROUTES = {
 # publish_site and the run record.
 EXPECTED_D1 = [
     "schema",
-    # The lane step is pending on a first boot, so the runner reads its precondition
-    # and records it; its statements do not run on a database that never had the column.
+    # The lane step and the image step are pending on a first boot, so the runner reads
+    # each one's precondition and records it; neither runs on a database `schema.sql`
+    # built, which never had the renamed column and already has `image_url`.
     "SELECT schema_migrations",
+    "PRAGMA table_info",
+    "INSERT OR IGNORE INTO schema_migrations",
     "PRAGMA table_info",
     "INSERT OR IGNORE INTO schema_migrations",
     "SELECT settings",
@@ -446,6 +452,7 @@ def _expected_row(r: "Receipts", key: str) -> dict:
         "score": float(SCORES[key]) if key in SCORES else None,
         "language": "en" if key in SCORES else None,
         "triaged_at": None,
+        "image_url": IMAGES.get(key),
     }
 
 
@@ -480,6 +487,7 @@ def test_every_article_row_holds_what_cyris_was_given_and_decided(receipts) -> N
         "rejection_reason": str(RejectReason.NOT_INTERESTED),
         "score": seed.score,
         "language": seed.language,
+        "image_url": None,
     }
     ack = only(receipts.records, "promote_ack")
     assert json_body(ack) == {"urls": [seed.url]}
@@ -783,6 +791,16 @@ def check_grouped_top_story(r: Receipts) -> None:
 
 def test_two_high_scorers_on_one_topic_reach_the_page_as_one_top_story(receipts) -> None:
     check_grouped_top_story(receipts)
+
+
+def test_the_picture_a_feed_named_reaches_its_story_and_no_other(receipts) -> None:
+    pictured = {
+        url: [img.attrs["src"] for img in card.find_all("img", "story-image")]
+        for url, card in _pebbles(receipts).items()
+    }
+    assert pictured.pop(URL["a1"]) == [IMAGES["a1"]]
+    assert pictured and all(images == [] for images in pictured.values())
+    assert "story-image" not in receipts.mail()["html"]
 
 
 # ---- scripted case 2: a Features article the model wrote no summary for ------

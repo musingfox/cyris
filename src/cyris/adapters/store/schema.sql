@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS stored_articles (
   rejection_reason TEXT,
   score            REAL,
   language         TEXT,
-  triaged_at       TEXT                  -- non-null ⇒ a human decided; the pipeline must not overwrite
+  triaged_at       TEXT,                 -- non-null ⇒ a human decided; the pipeline must not overwrite
+  image_url        TEXT                  -- the feed's picture for the article (IMAGE_URL_STEP)
 );
 
 -- The digest window, the triage queue, and `cyris learn` are the three read paths.

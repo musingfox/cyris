@@ -13,8 +13,11 @@ import asyncio
 import html
 import io
 import logging
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 
@@ -106,7 +109,8 @@ class RssSource:
 
             # Without stripping, the same article arrives under two URLs and
             # defeats the store's URL primary key.
-            url = strip_tracking_params(getattr(entry, "link", ""))
+            link = getattr(entry, "link", "")
+            url = strip_tracking_params(link)
             if not url:
                 continue
 
@@ -124,12 +128,53 @@ class RssSource:
                     source_name=source.name,
                     source_lane=source.lane or Lane.SKIM,
                     source_tags=source.tags,
+                    image_url=_entry_image(entry, link),
                 )
             )
         return articles
 
     async def health_check(self) -> bool:
         return True
+
+
+_IMG_SRC = re.compile(r"""<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+
+
+def _image_address(raw: str | None, base: str) -> str | None:
+    """An http(s) URL resolved against the entry's link, else None, as the Worker's is."""
+    if not raw:
+        return None
+    try:
+        url = urljoin(base, raw.replace("&amp;", "&"))
+        scheme = urlsplit(url).scheme
+    except ValueError:  # a malformed authority, such as `http://[x/`; the picture is optional
+        return None
+    return url if scheme in ("http", "https") else None
+
+
+def _is_image(node: Mapping[str, str]) -> bool:
+    return node.get("medium") == "image" or node.get("type", "").startswith("image/")
+
+
+def _entry_image(entry: Mapping[str, Any], link: str) -> str | None:
+    """The picture the feed names for its entry, in `workers/rss/src/parse.js`'s order.
+
+    The two parsers must give one entry the same URL. feedparser lists every
+    `media:thumbnail` and `media:content` as `media_thumbnail` and `media_content`
+    dicts, those inside `media:group` included, and every enclosure under
+    `enclosures` with an `href`. A media:content or enclosure counts only when it
+    says it is an image.
+    """
+    candidates = [
+        *(t.get("url") for t in entry.get("media_thumbnail", [])),
+        *(m.get("url") for m in entry.get("media_content", []) if _is_image(m)),
+        *(e.get("href") for e in entry.get("enclosures", []) if _is_image(e)),
+    ]
+    for raw in candidates:
+        if found := _image_address(raw, link):
+            return found
+    img = _IMG_SRC.search(_entry_content(entry))
+    return _image_address(img.group(1), link) if img else None
 
 
 def _entry_content(entry: object) -> str:

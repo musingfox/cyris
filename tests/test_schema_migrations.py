@@ -199,6 +199,8 @@ def test_the_rewrite_leaves_every_other_column_of_the_row_alone() -> None:
     apply_schema(db)
 
     after = db.query("SELECT * FROM stored_articles").rows[0]
+    # `image_url` is the next step's column, added empty.
+    assert after.pop("image_url") is None
     assert {k: v for k, v in after.items() if k != "source_lane"} == {
         k: v for k, v in before.items() if k != "source_tier"
     }
@@ -317,7 +319,7 @@ def test_an_interrupted_lane_migration_finishes_on_the_next_boot(k: int) -> None
 
     assert _final_state(db) == _clean_run_state()
     recorded = [r["id"] for r in db.query("SELECT id FROM schema_migrations").rows]
-    assert recorded == ["0001_tier_to_lane"]
+    assert recorded == [step.id for step in MIGRATIONS]
 
 
 def test_the_whole_script_run_before_the_record_is_not_run_twice() -> None:
@@ -329,7 +331,7 @@ def test_the_whole_script_run_before_the_record_is_not_run_twice() -> None:
 
     assert _final_state(db) == _clean_run_state()
     recorded = [r["id"] for r in db.query("SELECT id FROM schema_migrations").rows]
-    assert recorded == ["0001_tier_to_lane"]
+    assert recorded == [step.id for step in MIGRATIONS]
 
 
 EXTRA_STEP = Step(

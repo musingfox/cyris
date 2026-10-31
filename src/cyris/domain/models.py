@@ -93,6 +93,8 @@ class Article(BaseModel):
     source_lane: Lane
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
+    # The picture the article's feed names for it; a newsletter issue has none.
+    image_url: str | None = None
     # Not persisted: only the store's save needs it, to tell a newsletter issue's
     # repeated link apart from an ordinary duplicate URL.
     source_type: str = "rss"
@@ -115,6 +117,9 @@ class DigestItem(BaseModel):
     # The tags scoring gave the article this run, shown on its card; only read-lane items
     # carry them, and an article scored in an earlier run carries none.
     tags: list[str] = Field(default_factory=list)
+    # A pebble's story image: its article's feed picture, unless the issue shows that
+    # picture is the source's default (`domain.story_images`).
+    image_url: str | None = None
 
     @property
     def link(self) -> str | None:
@@ -312,6 +317,7 @@ class StoredArticle(BaseModel):
     source_lane: Lane
     source_tags: list[str] = Field(default_factory=list)
     ref_urls: list[str] = Field(default_factory=list)
+    image_url: str | None = None
 
     state: ArticleState = ArticleState.PENDING
     first_seen_at: datetime
@@ -348,6 +354,7 @@ class StoredArticle(BaseModel):
             source_lane=article.source_lane,
             source_tags=article.source_tags,
             ref_urls=article.ref_urls,
+            image_url=article.image_url,
             first_seen_at=first_seen_at,
         )
 
@@ -364,6 +371,7 @@ class StoredArticle(BaseModel):
             source_lane=self.source_lane,
             source_tags=self.source_tags,
             ref_urls=self.ref_urls,
+            image_url=self.image_url,
         )
 
 

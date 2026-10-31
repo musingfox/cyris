@@ -104,6 +104,7 @@ class CloudflareRssSource:
                         source_name=row.get("source_name", ""),
                         source_lane=source.lane if source else Lane.SKIM,
                         source_tags=source.tags if source else [],
+                        image_url=row.get("image_url") or None,
                     )
                 )
             except (KeyError, ValueError):

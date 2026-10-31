@@ -504,6 +504,18 @@ def _over(tint: str, ground: str) -> str:
     return "#" + "".join(f"{c:02x}" for c in blended)
 
 
+def test_the_mail_shows_no_story_image():
+    content = _full()
+    for section in content.featured_articles:
+        for item in section.items:
+            item.image_url = "https://img.example.test/story.jpg"
+
+    html = render_digest_email(content, DIGEST_URL)
+
+    assert "<img" not in html
+    assert "img.example.test" not in html
+
+
 def test_no_item_shows_a_score_pill_as_on_the_page():
     content = _full()
     content.featured_articles[0].items[0].score = 0.0

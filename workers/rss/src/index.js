@@ -19,7 +19,7 @@ const CORS_HEADERS = {
 // cheaper than asking whether it is needed. One statement per line — that is
 // what `exec()` splits on.
 const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, guid TEXT, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', author TEXT, published_at TEXT NOT NULL, source_name TEXT NOT NULL, fetched_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, guid TEXT, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', author TEXT, published_at TEXT NOT NULL, source_name TEXT NOT NULL, fetched_at TEXT NOT NULL, image_url TEXT);`,
   `CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);`,
   `CREATE INDEX IF NOT EXISTS idx_articles_fetched_at ON articles(fetched_at);`,
   `CREATE TABLE IF NOT EXISTS feed_health (name TEXT PRIMARY KEY, consecutive_failures INTEGER NOT NULL DEFAULT 0, last_error TEXT, last_failed_at TEXT, last_ok_at TEXT);`,
@@ -30,9 +30,23 @@ const SCHEMA = [
 // of one, so a transient failure would have turned `GET /articles` into a 500
 // and cost that digest every RSS article.
 let schemaApplied = false;
+async function hasImageColumn(env) {
+  const { results } = await env.DB.prepare("PRAGMA table_info('articles')").all();
+  return results.some((column) => column.name === "image_url");
+}
 async function ensureSchema(env) {
   if (schemaApplied) return;
   await env.DB.exec(SCHEMA);
+  // A table created before `image_url` existed keeps its old shape under
+  // `IF NOT EXISTS`, and SQLite has no `ADD COLUMN IF NOT EXISTS`.
+  if (!(await hasImageColumn(env))) {
+    try {
+      await env.DB.prepare("ALTER TABLE articles ADD COLUMN image_url TEXT").run();
+    } catch (error) {
+      // Two isolates can start on the old table together; the one that loses adds nothing.
+      if (!(await hasImageColumn(env))) throw error;
+    }
+  }
   schemaApplied = true;
 }
 
@@ -113,8 +127,8 @@ async function poll(env, feeds) {
   let written = 0;
   const insert = env.DB.prepare(
     `INSERT OR IGNORE INTO articles
-       (url, guid, title, content, author, published_at, source_name, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (url, guid, title, content, author, published_at, source_name, fetched_at, image_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   for (let i = 0; i < fresh.length; i += 50) {
     const batch = fresh.slice(i, i + 50).map((r) =>
@@ -126,7 +140,8 @@ async function poll(env, feeds) {
         r.author,
         r.published_at,
         r.source_name,
-        fetchedAt
+        fetchedAt,
+        r.image_url
       )
     );
     const results = await env.DB.batch(batch);
@@ -187,7 +202,7 @@ export default {
       const limit = Math.min(Number(url.searchParams.get("limit")) || 500, 2000);
 
       const { results } = await env.DB.prepare(
-        `SELECT url, guid, title, content, author, published_at, source_name
+        `SELECT url, guid, title, content, author, published_at, source_name, image_url
            FROM articles
           WHERE fetched_at >= ? AND fetched_at < ?
           ORDER BY fetched_at DESC

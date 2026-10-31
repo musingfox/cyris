@@ -23,6 +23,7 @@ import json
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import unquote
 
 from aiohttp import web
 from cdp_probe import (
@@ -58,7 +59,15 @@ PERIOD = "morning"
 PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 ARCHIVE = "/index.html"
 
-KINDS = ("signed-in", "signed-in-largest", "signed-in-smallest", "vote-fails")
+KINDS = (
+    "signed-in",
+    "signed-in-largest",
+    "signed-in-smallest",
+    "vote-fails",
+    "pictured",
+    "no-layer",
+    "one-layer",
+)
 
 # Every element a vote group sits in, one per layer: a pebble card, a sand block, a water row.
 ITEM_SELECTORS = (
@@ -94,6 +103,15 @@ LONG_WIRE_SUMMARY = (
 )
 
 
+# A story image that loads without the network, at the feed picture's usual 1200 x 630.
+STORY_IMAGE = (
+    "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%20630'"
+    "%3E%3Crect%20width='1200'%20height='630'%20fill='%23c2523b'/%3E%3C/svg%3E"
+)
+# One the fixture server answers 404 for, so it fails to load.
+BROKEN_STORY_IMAGE = "/story-image-missing.jpg"
+
+
 def url_of(slug: str) -> str:
     return f"https://example.test/{slug}"
 
@@ -114,8 +132,8 @@ def _members(slug: str, sources: list[str]) -> list[DigestItem]:
 
 def content() -> DigestContent:
     """A digest with every layer: pebble cards, sand blocks with their folds, water rows."""
-    # The lead's summary and tags make its card taller than the two beside it, so the
-    # meta rows of one grid row only line up when the card puts its meta at the bottom.
+    # The lead runs several lines and carries a story image that loads; the first
+    # feature names one that fails, and the rest name none.
     lead_summary = "The lead story runs long enough to wrap across several lines of its card. " * 4
     features = [
         _item(
@@ -125,10 +143,17 @@ def content() -> DigestContent:
             score=8.5,
             summary=lead_summary.strip(),
             tags=["Lead", "Long"],
+            image_url=STORY_IMAGE,
         )
     ]
     features += [
-        _item(f"feature-{n}", f"Feature story {n}", [f"Source {n}"], score=8.0 - n / 10)
+        _item(
+            f"feature-{n}",
+            f"Feature story {n}",
+            [f"Source {n}"],
+            score=8.0 - n / 10,
+            image_url=BROKEN_STORY_IMAGE if n == 1 else None,
+        )
         for n in range(1, 6)
     ]
     featured = [DigestSection(heading="Top", items=features)]
@@ -196,9 +221,66 @@ def content() -> DigestContent:
     )
 
 
-def render_page() -> str:
+def render_page(issue: DigestContent | None = None) -> str:
     with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render(content())
+        return HtmlDigestWriter(Path(unused)).render(issue or content())
+
+
+# A story image the fixture serves only after this long, so a lazy image near a
+# layer's end arrives after the reader has reached that end.
+SLOW_IMAGE_MS = 400
+SLOW_IMAGE = "/story-image.svg"
+
+
+def pictured_content() -> DigestContent:
+    """`content` with a picture on every Stories item, served slowly, one near the end broken."""
+    issue = content()
+    pebbles = [
+        item
+        for section in (
+            *issue.featured_articles,
+            *issue.attention_sections,
+            *issue.fan_sections,
+        )
+        for item in section.items
+    ]
+    for n, item in enumerate(pebbles):
+        item.image_url = f"{SLOW_IMAGE}?n={n}"
+    # The fan stories close the Stories layer: the next to last fails, the last loads.
+    issue.fan_sections[-1].items[-2].image_url = BROKEN_STORY_IMAGE
+    return issue
+
+
+def no_layer_content() -> DigestContent:
+    """An issue with no layer: the masthead, and Tracking long enough to scroll."""
+    issue = content()
+    issue.featured_articles = []
+    issue.news_clusters = []
+    issue.fan_sections = []
+    issue.attention_sections = []
+    issue.filtered_headlines = []
+    issue.articles_included = 0
+    issue.tracked_topics[0].items = [
+        _item(f"tracked-{n}", f"Tracked hit {n}", ["Wire"]) for n in range(1, 41)
+    ]
+    return issue
+
+
+def one_layer_content() -> DigestContent:
+    """An issue whose one layer is Headlines, after Tracking."""
+    issue = content()
+    issue.featured_articles = []
+    issue.news_clusters = []
+    issue.fan_sections = []
+    issue.attention_sections = []
+    return issue
+
+
+ISSUES = {
+    "pictured": pictured_content,
+    "no-layer": no_layer_content,
+    "one-layer": one_layer_content,
+}
 
 
 def render_archive() -> str:
@@ -216,10 +298,13 @@ def build_fixture(kind: str) -> VoteFixture:
     Every kind answers the probe signed in; `signed-in` takes every vote,
     `signed-in-largest` and `signed-in-smallest` do too on the page served at
     the largest and the smallest type size, and `vote-fails` refuses every vote.
+    `pictured` serves `pictured_content`, every Stories item with a slow picture;
+    `no-layer` and `one-layer` serve the issues of those names.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
-    page, archive = render_page(), render_archive()
+    page = render_page(ISSUES[kind]() if kind in ISSUES else None)
+    archive = render_archive()
     if kind.endswith("-largest"):
         page = at_largest_type_scale(page)
     if kind.endswith("-smallest"):
@@ -243,8 +328,14 @@ def build_fixture(kind: str) -> VoteFixture:
             return web.json_response({"ok": False}, status=502)
         return web.json_response({"ok": True})
 
+    async def slow_image(_: web.Request) -> web.Response:
+        await asyncio.sleep(SLOW_IMAGE_MS / 1000)
+        svg = unquote(STORY_IMAGE.split(",", 1)[1])
+        return web.Response(text=svg, content_type="image/svg+xml")
+
     app.router.add_get(PAGE, serve_page)
     app.router.add_get(ARCHIVE, serve_archive)
+    app.router.add_get(SLOW_IMAGE, slow_image)
     app.router.add_get("/api/vote", probe)
     app.router.add_post("/api/vote", vote)
     return fixture
@@ -301,10 +392,41 @@ DIGEST_PRELUDE = (
     base_prelude()
     + f"const ITEM_SELECTORS = {json.dumps(ITEM_SELECTORS)};\n"
     + """
-const signedIn = () => waitFor(() => {
+// With script one layer shows at a time; the checks of items read every layer at once,
+// stacked as a page without script lays them out, so they show the hidden ones first.
+const showEveryLayer = () => $$("main > *, .masthead, .footer")
+  .forEach((e) => { e.hidden = false; });
+const signedIn = () => (showEveryLayer(), waitFor(() => {
   const groups = $$(".vote-group");
   return groups.length && groups.every(visible);
-}, "the vote buttons");
+}, "the vote buttons"));
+// The layered page as a reader gets it: the sections that are layers, the one shown,
+// and whether the window has reached either end of it.
+const layerSections = () => $$("main > .section")
+  .filter((s) => $(".featured-grid, .sand-grid, .headlines-compact", s));
+// The votes the sign-in probe shows lengthen the layer, so its end is read after them.
+const layered = () => waitFor(() => $(".layer-dock") && $$(".vote-group").some(visible),
+  "the layer dock and the vote buttons");
+const isHidden = (el) => !el.getClientRects().length;
+const shownLayers = () => layerSections().filter((s) => !isHidden(s))
+  .map((s) => $(".section-tag", s).textContent.trim());
+const atLayerBottom = () => scrollY >= document.documentElement.scrollHeight - innerHeight - 1;
+const toLayerBottom = () => window.scrollTo({top: document.documentElement.scrollHeight,
+  behavior: "instant"});
+const frames = () => new Promise((done) =>
+  requestAnimationFrame(() => requestAnimationFrame(done)));
+// Focus never stays on what a switch hid; a hidden element can stay activeElement.
+const expectFocusShown = () => {
+  const a = document.activeElement;
+  expect(!a || a === document.body || !isHidden(a), `focus stays on hidden ${named(a)}`);
+};
+const expectFocusOn = (el) => expect(document.activeElement === el,
+  `focus on ${named(document.activeElement)}, want ${named(el)}`);
+const expectShown = (name) => {
+  const shown = shownLayers();
+  expect(same(shown, [name]), `layers shown: ${shown.join(", ") || "none"}, want ${name}`);
+  expectFocusShown();
+};
 // Fails on each problem `measure` names for a shown vote group, and on each item kind
 // showing none.
 const expectEveryItem = (measure) => {
@@ -348,6 +470,17 @@ const besideMeta = (group) => {
 )
 
 
+# What a progress strip of one segment adds: with no layer the page is long enough that
+# the fill grows as it scrolls; the only layer has no neighbour, in the dock or an edge.
+PROGRESS_ALONE = {
+    "no-layer": "expect(before < after - 1, `at the top the fill is already ${before}px`);",
+    "one-layer": """
+        expect(isHidden($(".layer-back")) && isHidden($(".layer-skip")),
+          "the dock names a neighbour of the only layer");
+        expect(!document.body.matches(".has-prev, .has-next"), "an edge shows");
+    """,
+}
+
 _CHECKS: list[Check] = [
     # Signed in, every pebble, sand block and water row shows its one vote group with both
     # buttons drawn, and Tracking shows none. The stylesheet hides them all until the
@@ -359,6 +492,7 @@ _CHECKS: list[Check] = [
             path=PAGE,
             width=width,
             script="""
+                showEveryLayer();
                 const items = ITEM_SELECTORS.flatMap((selector) => $$(selector));
                 await waitFor(() => $$(".vote-group").filter(visible).length === items.length,
                   `${items.length} vote groups shown`);
@@ -448,12 +582,12 @@ _CHECKS: list[Check] = [
             fixture="signed-in",
             path=PAGE,
             width=width,
-            act="await signedIn();",
+            act="await layered();",
             script="""
                 const segments = $$(".read-progress span");
-                const sections = $$("main > .section");
-                expect(segments.length === sections.length,
-                  `${segments.length} segments for ${sections.length} sections`);
+                const layers = layerSections();
+                expect(segments.length === layers.length,
+                  `${segments.length} segments for ${layers.length} layers`);
                 const filled = () => $$(".read-progress i")
                   .reduce((sum, fill) => sum + fill.getBoundingClientRect().width, 0);
                 const settle = () => new Promise((done) =>
@@ -479,7 +613,7 @@ _CHECKS: list[Check] = [
         fixture="signed-in",
         path=PAGE,
         width=360,
-        act="await signedIn();",
+        act="await layered();",
         script="""
             await waitFor(() => $(".read-progress"), "the reading progress bar");
             const problem = overflow("360");
@@ -498,7 +632,7 @@ _CHECKS: list[Check] = [
         fixture="signed-in",
         path=PAGE,
         width=360,
-        act="await signedIn();",
+        act="await layered();",
         script="""
             const settle = () => new Promise((done) =>
               requestAnimationFrame(() => requestAnimationFrame(done)));
@@ -529,57 +663,172 @@ _CHECKS: list[Check] = [
         """,
         sabotage=restyle(".read-progress { top: calc(var(--bar-h) + 40vh) !important; }"),
     ),
-    # The meta rows of the pebble cards in one grid row share their bottom edge, however
-    # tall each card's own content is. A meta row left where its content ends is the sabotage.
+    # An issue with no layer still draws the strip, as one segment that is the whole page;
+    # one with a single layer draws that layer's one segment, with no neighbour in the dock.
+    # Each fills to its end as the window reaches the page's end.
+    *(
+        Check(
+            id=f"progress-{kind}-{width}",
+            fixture=kind,
+            path=PAGE,
+            width=width,
+            act=(
+                'await waitFor(() => $(".read-progress"), "the reading progress bar");'
+                if kind == "no-layer"
+                else "await layered();"
+            ),
+            script=f"""
+                const segments = $$(".read-progress span");
+                expect(segments.length === 1, `${{segments.length}} segments`);
+                const strip = $(".read-progress").getBoundingClientRect();
+                const segment = segments[0].getBoundingClientRect();
+                expect(segment.width > strip.width - 40, `the segment spans ${{segment.width}}px`);
+                const filled = () => $(".read-progress i").getBoundingClientRect().width;
+                window.scrollTo({{top: 0, behavior: "instant"}});
+                await frames();
+                const before = filled();
+                toLayerBottom();
+                await frames();
+                const after = filled();
+                expect(Math.abs(after - segment.width) <= 1,
+                  `at the end the fill is ${{after}}px of ${{segment.width}}px`);
+                {PROGRESS_ALONE[kind]}
+            """,
+            sabotage=restyle(".read-progress i { width: 0 !important; }"),
+        )
+        for kind, width in (("no-layer", 360), ("no-layer", 1440), ("one-layer", 1440))
+    ),
+    # A refused vote's notice sits right below the meta row it reports on, in the text's
+    # column of an item with an image as of one without.
+    *(
+        Check(
+            id=f"pebble-vote-error-under-meta-{n}-1440",
+            fixture="signed-in",
+            path=PAGE,
+            width=1440,
+            act=f"""
+                await signedIn();
+                showFailure($(".vote-group", $$(".featured-item")[{n}]), VOTE_FAILED.notConfigured);
+            """,
+            script=f"""
+                const item = $$(".featured-item")[{n}];
+                const notice = $(".vote-error", item);
+                expect(notice, "no failure notice in the item");
+                const meta = $(".meta", item).getBoundingClientRect();
+                const box = notice.getBoundingClientRect();
+                const gap = box.top - meta.bottom;
+                expect(gap >= -0.5 && gap <= 1, `the notice sits ${{gap}}px below the meta row`);
+                expect(Math.abs(box.left - meta.left) <= 0.5,
+                  `the notice starts at ${{box.left}}, the meta row at ${{meta.left}}`);
+            """,
+            sabotage=restyle(".featured-item .vote-error { margin-top: var(--s-6) !important; }"),
+        )
+        for n in (0, 2)
+    ),
+    # A story image is the spec's box: 280px wide on a desktop, at the feed picture's
+    # 1200 / 630, greyscale at .55 until its item is hovered or focused, and on the left
+    # of the text with its top on the title's.
     Check(
-        id="pebble-meta-bottoms-1440",
+        id="story-image-box-1440",
         fixture="signed-in",
         path=PAGE,
         width=1440,
         act="await signedIn();",
         script="""
-            const rows = new Map();
-            for (const card of $$(".featured-item")) {
-              const top = Math.round(card.getBoundingClientRect().top);
-              rows.set(top, [...(rows.get(top) || []), card]);
-            }
-            const shared = [...rows.values()].filter((cards) => cards.length > 1);
-            expect(shared.length, "no grid row holds two cards");
-            const problems = shared.flatMap((cards) => {
-              const bottoms = cards.map((c) => $(".meta", c).getBoundingClientRect().bottom);
-              return Math.max(...bottoms) - Math.min(...bottoms) > 1 ? [bottoms.join(", ")] : [];
-            });
-            expect(!problems.length, `meta bottoms per row: ${problems.join("; ")}`);
+            const image = $(".featured-item .story-image");
+            expect(image, "no story image");
+            const box = image.getBoundingClientRect();
+            const title = $("h3", image.parentElement).getBoundingClientRect();
+            const style = getComputedStyle(image);
+            expect(Math.abs(box.width - 280) <= 0.5, `the image is ${box.width}px wide`);
+            expect(Math.abs(box.width / box.height - 1200 / 630) < 0.02,
+              `the image is ${box.width} x ${box.height}`);
+            expect(style.filter === "grayscale(1)" && style.opacity === "0.55",
+              `at rest the image has filter ${style.filter}, opacity ${style.opacity}`);
+            expect(title.left >= box.right && Math.abs(title.top - box.top) <= 1,
+              `the title at ${title.left},${title.top}, the image ends at ${box.right},${box.top}`);
         """,
-        sabotage=restyle(".featured-item > :last-child { margin-top: 0 !important; }"),
+        # Without its transition, so the sabotaged colour is read at once, not mid-fade.
+        sabotage=restyle(
+            ".featured-item > .story-image"
+            " { filter: none !important; transition: none !important; }"
+        ),
     ),
-    # A refused vote's notice follows the meta row inside the card, and the card's slack
-    # stays above the meta row, so on a short card the notice sits right below its buttons.
-    # Giving the notice a share of the slack, as a bare :last-child rule did, is the sabotage.
+    # On a phone the image is 112px and sits beside the title alone; the summary below
+    # takes the item's full width.
     Check(
-        id="pebble-vote-error-under-meta-1440",
+        id="story-image-box-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="await signedIn();",
+        script="""
+            const image = $(".featured-item .story-image");
+            expect(image, "no story image");
+            const box = image.getBoundingClientRect();
+            const item = image.parentElement;
+            const title = $("h3", item).getBoundingClientRect();
+            const summary = $(".summary", item).getBoundingClientRect();
+            expect(Math.abs(box.width - 112) <= 0.5, `the image is ${box.width}px wide`);
+            expect(title.left >= box.right, `title at ${title.left}, image ends ${box.right}`);
+            expect(Math.abs(summary.left - box.left) <= 0.5 && summary.top >= box.bottom,
+              `the summary at ${summary.left},${summary.top}, the image ${box.left}-${box.bottom}`);
+            const problem = overflow("360");
+            expect(!problem, problem);
+        """,
+        sabotage=restyle(
+            ".featured-item:has(> .story-image)"
+            " { grid-template-columns: 280px minmax(0, 1fr) !important; }"
+        ),
+    ),
+    # Focusing within the item gives its image back its colour.
+    Check(
+        id="story-image-colour-on-focus-1440",
+        fixture="signed-in",
+        path=PAGE,
+        width=1440,
+        focused=True,
+        act="""
+            await signedIn();
+            $(".featured-item:has(> .story-image) h3 a").focus();
+        """,
+        script="""
+            const image = $(".featured-item .story-image");
+            await waitFor(() => {
+              const style = getComputedStyle(image);
+              return style.filter === "none" && style.opacity === "1";
+            }, "the focused item's image in colour").catch(() => {});
+            const style = getComputedStyle(image);
+            expect(style.filter === "none" && style.opacity === "1",
+              `focused, the image has filter ${style.filter}, opacity ${style.opacity}`);
+        """,
+        sabotage=restyle(
+            ".featured-item:is(:hover, :focus-within) > .story-image"
+            " { filter: grayscale(1) !important; }"
+        ),
+    ),
+    # An image that fails to load removes its box, and an item with no image never had one:
+    # only the lead keeps its image, and the first feature's title opens its item.
+    Check(
+        id="story-image-broken-removed-1440",
         fixture="signed-in",
         path=PAGE,
         width=1440,
         act="""
             await signedIn();
-            const short = $$(".featured-item")[1];
-            showFailure($(".vote-group", short), VOTE_FAILED.notConfigured);
+            $$(".featured-item")[1].scrollIntoView({block: "center", behavior: "instant"});
         """,
         script="""
-            const [lead, short] = $$(".featured-item");
-            const notice = $(".vote-error", short);
-            expect(notice, "no failure notice in the card");
-            const meta = $(".meta", short).getBoundingClientRect();
-            // The notice has no margin of its own, so it touches the row it reports on.
-            const gap = notice.getBoundingClientRect().top - meta.bottom;
-            expect(gap <= 1, `the notice sits ${gap}px below the meta row`);
-            // The card still has slack to give, so a notice that took a share would show.
-            const sameRow = lead.offsetHeight === short.offsetHeight;
-            const used = [...short.children].reduce((sum, c) => sum + c.offsetHeight, 0);
-            expect(sameRow && short.clientHeight > used + 1, "the short card has no slack");
+            const broken = $$(".featured-item")[1];
+            await waitFor(() => !$(".story-image", broken), "the broken image's removal")
+              .catch(() => {});
+            expect(!$(".story-image", broken), "the broken image keeps its box");
+            expect(broken.firstElementChild.tagName === "H3",
+              `the item opens with ${broken.firstElementChild.tagName}`);
+            const pictured = $$(".featured-item").filter((item) => $(".story-image", item));
+            expect(pictured.length === 1, `${pictured.length} items show an image`);
         """,
-        sabotage=restyle(".featured-item > :last-child { margin-top: auto !important; }"),
+        sabotage_preload=('addEventListener("error", (e) => e.stopImmediatePropagation(), true);'),
     ),
     # The reading progress bar spans the site bar's inner width, the column its brand and
     # links sit in, not the whole window. A bar stretched edge to edge is the sabotage.
@@ -589,7 +838,7 @@ _CHECKS: list[Check] = [
             fixture="signed-in",
             path=PAGE,
             width=width,
-            act="await signedIn();",
+            act="await layered();",
             script="""
                 await waitFor(() => $(".read-progress"), "the reading progress bar");
                 const inner = $(".site-bar-inner");
@@ -926,6 +1175,416 @@ _CHECKS += [
     smallest_twin(check, check.id.replace("tap-", "tap-smallest-"), "signed-in-smallest")
     for check in _CHECKS
     if check.id in {f"tap-{name}-{TAP_WIDTH}" for name in SMALLEST_TAP_TWINS}
+]
+
+
+def _layer_counts() -> list[tuple[str, int]]:
+    """Each layer the fixture has, in page order, with its item count."""
+    layers = layer_by_lane(content())
+    return [
+        ("Stories", len(layers.pebbles)),
+        ("Topics", len(layers.sand)),
+        ("Headlines", len(layers.water)),
+    ]
+
+
+LAYERS = _layer_counts()
+NEXT_LAYER = f"{LAYERS[1][1]} {LAYERS[1][0]}"
+
+
+def _ignored(event: str, when: str = "true") -> str:
+    """A sabotage: the page's layer script never hears `event` while `when` holds."""
+    return f"""addEventListener("{event}", (e) => {{
+        if ({when}) e.stopImmediatePropagation();
+    }}, {{capture: true}});"""
+
+
+# A sabotage: a page that switches layers, as a layer that cannot hold a reader would.
+SWITCHED = """$(".layer-skip").click();"""
+# The window's bottom, `above` pixels short of the end of the first layer.
+NEAR_BOTTOM = """
+await layered();
+window.scrollTo({top: document.documentElement.scrollHeight - innerHeight - {above},
+  behavior: "instant"});
+await frames();
+"""
+EXPECT_TOPICS = """
+await waitFor(() => same(shownLayers(), ["Topics"]), "the Topics layer shown");
+await frames();
+expectShown("Topics");
+"""
+# With script one layer shows at a time (ui-language section 4, Layers; section 6, digest).
+_CHECKS += [
+    # The first layer shows with the masthead and Tracking, and nothing else; the dock
+    # names it and the next, and the reading progress has one segment per layer, as
+    # wide as its share of the items.
+    *(
+        Check(
+            id=f"layers-one-at-a-time-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await layered(); await frames();",
+            script=f"""
+                expectShown("Stories");
+                expect(!isHidden($(".masthead")), "the masthead is hidden");
+                expect(isHidden($(".footer")), "the footer shows on the first layer");
+                const where = $(".layer-where").textContent;
+                const dockText = {json.dumps(f"{LAYERS[0][0]} · {LAYERS[0][1]}")};
+                expect(where === dockText, `dock: ${{where}}`);
+                expect(isHidden($(".layer-back")), "back shows on the first layer");
+                const skip = $(".layer-skip").getAttribute("aria-label");
+                expect(skip === {json.dumps(f"Skip to {NEXT_LAYER}")}, `skip: ${{skip}}`);
+                const grow = $$(".read-progress span").map((s) => s.style.flexGrow);
+                const shares = {json.dumps([str(n) for _, n in LAYERS])};
+                expect(same(grow, shares), `segments: ${{grow}}`);
+            """,
+            sabotage=restyle("main > .section[hidden] { display: block !important; }"),
+        )
+        for width in (360, 1440)
+    ),
+    # At the end of a layer a fresh pull of 160px switches to the next one, which lands
+    # on its heading with the layer left hidden.
+    *(
+        Check(
+            id=f"layer-pull-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act=NEAR_BOTTOM.replace("{above}", "0"),
+            gestures=({"wait": 300}, {"wheel": 100}, {"wait": 50}, {"wheel": 100}),
+            script=EXPECT_TOPICS
+            + """
+                expect(scrollY === 0, `landed at ${scrollY}, not on the heading`);
+                expectFocusOn($(".section-tag", layerSections()[1]));
+            """,
+            sabotage=_ignored("wheel"),
+        )
+        for width in (360, 1440)
+    ),
+    # The wheel gesture that reaches the edge never counts, however far it goes on.
+    Check(
+        id="layer-edge-gesture-spent-1440",
+        fixture="signed-in",
+        path=PAGE,
+        act=NEAR_BOTTOM.replace("{above}", "200"),
+        gestures=(
+            {"wait": 300},
+            *({"wheel": 100}, {"wait": 40}) * 8,
+            {"wait": 100},
+        ),
+        script="""
+            expect(atLayerBottom(), `stopped at ${scrollY}, short of the layer's end`);
+            expectShown("Stories");
+        """,
+        sabotage=SWITCHED,
+    ),
+    # One key press at an edge reached by scrolling only arms it, and says so.
+    Check(
+        id="layer-key-first-press-arms-1440",
+        fixture="signed-in",
+        path=PAGE,
+        act=NEAR_BOTTOM.replace("{above}", "0"),
+        gestures=({"wait": 200}, {"key": "ArrowDown"}),
+        script=f"""
+            await frames();
+            expectShown("Stories");
+            const hint = $(".layer-edge.down .layer-pull");
+            expect(!isHidden(hint), "no hint at the armed edge");
+            const text = $(".label", hint).textContent;
+            expect(text === {json.dumps(f"Press ↓ again for {NEXT_LAYER}")}, `hint: ${{text}}`);
+        """,
+        sabotage="""addEventListener("keydown", () => $(".layer-skip").click(),
+            {capture: true});""",
+    ),
+    # Holding N switches once: its auto-repeat must not run through every layer.
+    Check(
+        id="layer-n-held-switches-once-1440",
+        fixture="signed-in",
+        path=PAGE,
+        act="await layered();",
+        gestures=({"hold": "n", "repeats": 20}, {"wait": 100}),
+        script=EXPECT_TOPICS,
+        sabotage="""addEventListener("keydown", (e) => {
+            if (e.repeat) $(".layer-skip").click();
+        }, {capture: true});""",
+    ),
+    # A held key scrolls to the edge and never past it; the next fresh press switches,
+    # with the heading's focus ring showing because the switch came from the keyboard.
+    Check(
+        id="layer-key-held-never-switches-1440",
+        fixture="signed-in",
+        path=PAGE,
+        act=NEAR_BOTTOM.replace("{above}", "120"),
+        gestures=({"wait": 200}, {"hold": "ArrowDown", "repeats": 20}, {"wait": 100}),
+        script="""
+            expect(atLayerBottom(), `the held key stopped at ${scrollY}, short of the end`);
+            expectShown("Stories");
+        """,
+        sabotage="""addEventListener("keydown", (e) => {
+            if (e.repeat) $(".layer-skip").click();
+        }, {capture: true});""",
+    ),
+    Check(
+        id="layer-key-fresh-press-switches-1440",
+        fixture="signed-in",
+        path=PAGE,
+        act=NEAR_BOTTOM.replace("{above}", "120"),
+        gestures=(
+            {"wait": 200},
+            {"hold": "ArrowDown", "repeats": 20},
+            {"wait": 100},
+            {"key": "ArrowDown"},
+        ),
+        script=EXPECT_TOPICS
+        + """
+            const heading = $(".section-tag", layerSections()[1]);
+            expectFocusOn(heading);
+            expect(!heading.classList.contains("quiet"), "a keyboard switch hides the focus ring");
+        """,
+        sabotage=_ignored("keydown", "!e.repeat"),
+    ),
+    # N switches to the next layer from anywhere in it.
+    Check(
+        id="layer-n-key-1440",
+        fixture="signed-in",
+        path=PAGE,
+        act="await layered();",
+        gestures=({"key": "n"},),
+        script=EXPECT_TOPICS,
+        sabotage=_ignored("keydown"),
+    ),
+    # Skip goes to the next layer and back returns to the end of the one left, hiding
+    # the layer it leaves each time.
+    *(
+        Check(
+            id=f"layer-skip-and-back-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="await layered();",
+            gestures=(
+                {"press": ".layer-skip", "pointer": "mouse"},
+                {"release": True},
+                {"wait": 100},
+                {"press": ".layer-back", "pointer": "mouse"},
+                {"release": True},
+            ),
+            script="""
+                await waitFor(() => same(shownLayers(), ["Stories"]), "the Stories layer shown");
+                await frames();
+                expectShown("Stories");
+                expect(isHidden(layerSections()[1]), "the Topics layer still shows");
+                expect(scrollY > 0 && atLayerBottom(), `back landed at ${scrollY}, not the end`);
+            """,
+            sabotage=restyle(".layer-back { pointer-events: none !important; }"),
+        )
+        for width in (360, 1440)
+    ),
+    # Going back lands focus on the previous layer's last item, at its end: by a key, a
+    # pull or the dock's back. The ring shows only after the keyboard switch. The sabotage
+    # is a switch that leaves focus where it was, on the heading of the layer it hid.
+    *(
+        Check(
+            id=f"layer-back-focus-{by}-{width}",
+            fixture="signed-in",
+            path=PAGE,
+            width=width,
+            act="""
+                await layered();
+                $(".layer-skip").click();
+                await frames();
+                $(".section-tag", layerSections()[1]).focus();
+            """,
+            gestures=gestures,
+            script=f"""
+                await waitFor(() => same(shownLayers(), ["Stories"]), "the Stories layer shown");
+                await frames();
+                expectShown("Stories");
+                const items = $$(".featured-item");
+                const last = items[items.length - 1];
+                expectFocusOn(last);
+                expect(scrollY > 0 && atLayerBottom(), `back landed at ${{scrollY}}, not the end`);
+                const quiet = last.classList.contains("quiet");
+                expect(quiet === {json.dumps(by != "key")},
+                  `after a {by} switch the ring ${{quiet ? "hides" : "shows"}}`);
+            """,
+            sabotage="""
+                const focus = HTMLElement.prototype.focus;
+                HTMLElement.prototype.focus = function (options) {
+                  if (!this.matches(".featured-item")) focus.call(this, options);
+                };
+            """,
+        )
+        for by, width, gestures in (
+            ("key", 1440, ({"wait": 200}, {"key": "ArrowUp"}, {"wait": 50}, {"key": "ArrowUp"})),
+            ("pull", 360, ({"wait": 300}, {"wheel": -100}, {"wait": 50}, {"wheel": -100})),
+            ("pull", 1440, ({"wait": 300}, {"wheel": -100}, {"wait": 50}, {"wheel": -100})),
+            ("dock", 1440, ({"press": ".layer-back", "pointer": "mouse"}, {"release": True})),
+        )
+    ),
+    # Back lands focus on Stories' last item; its image turns to colour only when the
+    # switch came from the keyboard, as the ring does. The sabotage colours any focused item.
+    *(
+        Check(
+            id=f"layer-back-image-{by}-1440",
+            fixture="pictured",
+            path=PAGE,
+            act="""
+                await layered();
+                $(".layer-skip").click();
+                await frames();
+                $(".section-tag", layerSections()[1]).focus();
+            """,
+            gestures=gestures,
+            script=f"""
+                await waitFor(() => same(shownLayers(), ["Stories"]), "the Stories layer shown");
+                await frames();
+                const items = $$(".featured-item");
+                const last = items[items.length - 1];
+                expectFocusOn(last);
+                const image = $(".story-image", last);
+                expect(image, "the last Stories item has its image");
+                await new Promise((done) => setTimeout(done, 300));
+                const style = getComputedStyle(image);
+                const colour = style.filter === "none" && style.opacity === "1";
+                expect(colour === {json.dumps(by == "key")},
+                  `after a {by} switch the image has filter ${{style.filter}},`
+                  + ` opacity ${{style.opacity}}`);
+            """,
+            sabotage=restyle(
+                ".featured-item:focus > .story-image"
+                + (
+                    " { filter: grayscale(1) !important; opacity: .55 !important; }"
+                    if by == "key"
+                    else " { filter: none !important; opacity: 1 !important; }"
+                )
+            ),
+        )
+        for by, gestures in (
+            ("key", ({"wait": 200}, {"key": "ArrowUp"}, {"wait": 50}, {"key": "ArrowUp"})),
+            ("dock", ({"press": ".layer-back", "pointer": "mouse"}, {"release": True})),
+        )
+    ),
+    # A link to an item in a hidden layer switches to it, on load and on a hash change,
+    # and brings the item under the bars.
+    *(
+        Check(
+            id=f"layer-hash-{when}-{width}",
+            fixture="signed-in",
+            path=PAGE + "#headline-2" if when == "on-load" else PAGE,
+            width=width,
+            act="await layered();" + ("" if when == "on-load" else ' location.hash = "#topic-2";'),
+            script=f"""
+                const name = {json.dumps("Headlines" if when == "on-load" else "Topics")};
+                await waitFor(() => same(shownLayers(), [name]), `the ${{name}} layer shown`);
+                await frames();
+                expectShown(name);
+                const item = $({json.dumps("#headline-2" if when == "on-load" else "#topic-2")});
+                // Right under the bars, or as near as the end of a short layer lets it come.
+                const {{top, bottom}} = item.getBoundingClientRect();
+                const bar = $(".site-bar").getBoundingClientRect().bottom;
+                const dock = $(".layer-dock").getBoundingClientRect().top;
+                expect((Math.abs(top - bar) <= 1 || atLayerBottom()) && top >= bar - 1
+                  && bottom <= dock, `the item spans ${{top}}-${{bottom}}, under ${{bar}}`);
+            """,
+            sabotage_preload=(
+                "document.getElementById = () => null;"
+                if when == "on-load"
+                else _ignored("hashchange")
+            ),
+        )
+        for when, width in (("on-load", 1440), ("on-load", 360), ("change", 360))
+    ),
+    # On a phone the dock covers no vote at the end of any layer: the page keeps the
+    # dock's height free below its last item, and the edge's fade takes no taps.
+    Check(
+        id="layer-dock-clear-of-votes-360",
+        fixture="signed-in",
+        path=PAGE,
+        width=360,
+        act="""
+            await layered();
+            await waitFor(() => $$(".vote-group").some(visible), "the vote buttons");
+        """,
+        script="""
+            const problems = [];
+            for (let n = 0; n < layerSections().length; n++) {
+              if (n) $(".layer-skip").click();
+              toLayerBottom();
+              await frames();
+              const dock = $(".layer-dock").getBoundingClientRect();
+              const bar = $(".site-bar").getBoundingClientRect().bottom;
+              const seen = $$(".promote-btn").filter((b) => !isHidden(b)).filter((b) => {
+                const r = b.getBoundingClientRect();
+                return r.top >= bar && r.top < innerHeight;
+              });
+              if (!seen.length) problems.push(`layer ${n + 1}: no vote in view at its end`);
+              for (const b of seen) {
+                const r = b.getBoundingClientRect();
+                if (r.bottom > dock.top || !lands(b, r.left + r.width / 2, r.top + r.height / 2))
+                  problems.push(`layer ${n + 1}: ${named(b.closest(".vote-group").parentElement)}`
+                    + ` ends at ${r.bottom}, the dock starts at ${dock.top}`);
+              }
+            }
+            expect(!problems.length, problems.join("; "));
+        """,
+        sabotage=restyle(".layer-dock { height: 50vh !important; }"),
+    ),
+    # With a picture on every Stories item, the ones near the layer's end load only once
+    # the reader is there, slowly, and one fails and loses its box. The end must stay the
+    # end: the pull still switches, and back lands on the end with the last item above the
+    # dock. The sabotage is an image box that reserves no height, in a browser without
+    # scroll anchoring, as WebKit is: Chromium's anchoring would hide the growth.
+    *(
+        Check(
+            id=f"layer-end-holds-with-images-{width}",
+            fixture="pictured",
+            path=PAGE,
+            width=width,
+            act="""
+                ctx.loads = 0; ctx.errors = 0; ctx.seen = [];
+                new MutationObserver(() => ctx.seen.push(shownLayers().join()))
+                  .observe(document.body, {subtree: true, attributeFilter: ["hidden"]});
+                document.addEventListener("load", (e) => {
+                  if (e.target.matches?.(".story-image")) ctx.loads++; }, true);
+                addEventListener("error", (e) => {
+                  if (e.target.matches?.(".story-image")) ctx.errors++; }, true);
+            """
+            + NEAR_BOTTOM.replace("{above}", "0"),
+            gestures=(
+                {"wait": 1000},
+                {"wheel": 100},
+                {"wait": 50},
+                {"wheel": 100},
+                {"wait": 100},
+                {"press": ".layer-back", "pointer": "mouse"},
+                {"release": True},
+                {"wait": 1000},
+            ),
+            script="""
+                expect(ctx.loads > 0 && ctx.errors > 0,
+                  `${ctx.loads} pictures loaded and ${ctx.errors} failed near the end`);
+                expect(ctx.seen.includes("Topics"), `the pull never showed Topics: ${ctx.seen}`);
+                await frames();
+                expectShown("Stories");
+                expect(scrollY > 0 && atLayerBottom(), `back landed at ${scrollY}, not the end`);
+                const items = $$(".featured-item");
+                const last = items[items.length - 1].getBoundingClientRect();
+                const dock = $(".layer-dock").getBoundingClientRect().top;
+                expect(last.bottom <= dock, `the last item ends at ${last.bottom}, dock ${dock}`);
+                const pictured = items.map((i) => $(".story-image", i)).filter(Boolean)
+                  .filter((image) => !isHidden(image));
+                expect(pictured.every((image) => image.getBoundingClientRect().height > 0),
+                  "a picture in view has no height");
+            """,
+            sabotage=restyle(
+                ".featured-item > .story-image { aspect-ratio: auto !important;"
+                " height: auto !important; } html { overflow-anchor: none !important; }"
+            ),
+        )
+        for width in (360, 1440)
+    ),
 ]
 # A sabotage: the masthead stops clipping the title the fallback font sets too wide.
 UNCLIPPED_MASTHEAD = """$(".headline-block").style.overflowX = "visible";"""
