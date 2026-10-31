@@ -126,7 +126,7 @@ TITLE = {key: a["title"] for key, a in ARTICLES.items()} | {
 }
 URL = {key: a["url"] for key, a in ARTICLES.items()} | {"l1": LETTER_URL, "l2": UNLINKED_URL}
 
-# l2 scores under the summarize threshold, so it is listed On the Radar unsummarised.
+# l2 scores under every threshold, and the model still summarizes it with l1.
 SCORES = {"a1": 92, "a2": 88, "b1": 75, "b2": 70, "l1": 72, "l2": 45, "f1": 60, "f2": 40}
 TOP_GROUP = {"heading": "Receipts over exit codes", "summary": "Both say: read the receipt."}
 CLUSTER = {
@@ -140,6 +140,7 @@ OWN_SUMMARIES = {
     "a2": "A2 on its own.",
     "b1": "B1 on its own.",
     "b2": "B2 on its own.",
+    "l2": "L2 on its own.",
 }
 FILTER_PICKS = {
     "f1": "F1 in one line.",
@@ -184,7 +185,7 @@ SETTINGS = harness.settings(
 SHOWN = set(URL) - {"f2"}
 TOP_STORY = ("a1", "a2", "b1", "b2")
 FEATURES = ("l1",)
-# The pebbles in page order: the Top story's articles, the Feature, then the radar letter.
+# The pebbles in page order: the Top story's articles, the Feature, then the unlinked letter.
 PEBBLES = (*TOP_STORY, *FEATURES, "l2")
 SOURCE_OF = {key: a["source"] for key, a in ARTICLES.items()} | {
     "l1": LETTERS.name,
@@ -687,7 +688,10 @@ def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) ->
     ]
     # One call per topic group, in the order the store returns the window.
     assert sorted(given[3:5]) == sorted(
-        [sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2")), [TITLE["l1"]]]
+        [
+            sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2")),
+            sorted(TITLE[k] for k in ("l1", "l2")),
+        ]
     )
     for call in calls:
         ids = [article_id for article_id, _, _ in call["llm"]["articles"]]
@@ -877,6 +881,8 @@ def check_newsletter_reaches_the_digest(r: Receipts) -> None:
     unlinked = cards[LETTERS.homepage]
     assert unlinked.one("h3").text() == UNLINKED_TITLE
     assert set(unlinked.hrefs()) == {LETTERS.homepage}
+    # Scored under every threshold, it still carries the model's summary.
+    assert unlinked.one("p", "summary").text() == OWN_SUMMARIES["l2"]
 
 
 def test_a_queued_newsletter_reaches_the_digest_through_the_email_parser(receipts) -> None:

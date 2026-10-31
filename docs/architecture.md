@@ -350,7 +350,7 @@ Each source carries a **lane**, which decides how much attention it gets:
 | Lane | Treatment |
 |---|---|
 | `skim` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
-| `read` | Scored by the LLM, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions. Every one is a pebble on the page (below). |
+| `read` | Scored by the LLM, then every one summarized, in one call per tag group; the score orders them. Every one is a pebble on the page (below). |
 | `follow` | Passthrough. Never scored or filtered — followed groups and newsletters go straight through, each a pebble on the page. An item carries an excerpt of its own text, or, with `digest.summarize_follow` on (§5), the read lane's explanation, written in one call per source. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates

@@ -11,7 +11,7 @@ from fakes import TEST_SETTINGS, FakeLLM, pipeline_settings
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.models import Article, DigestItem, DigestSection, Lane, TopicRecord
-from cyris.domain.selection import digest_urls, split_read_lane_by_score
+from cyris.domain.selection import digest_urls
 from cyris.service_layer.digest_pipeline import DigestPipeline
 
 pytestmark = pytest.mark.integration
@@ -420,165 +420,37 @@ class TestVerdictsFollowTheDigest:
         assert result.rejected_urls == []
 
 
-class TestSplitReadLaneByScore:
-    def test_all_above_threshold(self):
-        articles = [
-            Article(
-                id=1,
-                title="High Score 1",
-                url="https://example.com/1",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-            Article(
-                id=2,
-                title="High Score 2",
-                url="https://example.com/2",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
+class TestEveryReadArticleIsSummarized:
+    async def test_a_low_scored_read_article_gets_the_models_summary(self, sample_sources):
+        article = _article(1, Lane.READ, "Stratechery")
+        llm = FakeLLM(
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "Heading",
+                            "summaries": {"0": "What the model wrote."},
+                            "article_ids": [0],
+                        }
+                    ]
+                }
+            )
+        )
+        pipeline = DigestPipeline(llm, **pipeline_settings())
+
+        result = await pipeline.process(
+            [article],
+            sample_sources,
+            timezone=TEST_SETTINGS["general.timezone"],
+            article_scores={article.url: 1.0},
+        )
+
+        items = [item for s in result.content.featured_articles for item in s.items]
+        items += [item for s in result.content.thematic_summaries for item in s.items]
+        assert [(i.urls, i.summary, i.passed_through) for i in items] == [
+            ([article.url], "What the model wrote.", False)
         ]
-        article_scores = {
-            "https://example.com/1": 80.0,
-            "https://example.com/2": 75.0,
-        }
-
-        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
-
-        assert len(high) == 2
-        assert len(low) == 0
-
-    def test_mixed_scores(self):
-        articles = [
-            Article(
-                id=1,
-                title="High",
-                url="https://example.com/1",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-            Article(
-                id=2,
-                title="Low 1",
-                url="https://example.com/2",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-            Article(
-                id=3,
-                title="Low 2",
-                url="https://example.com/3",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-        ]
-        article_scores = {
-            "https://example.com/1": 80.0,
-            "https://example.com/2": 55.0,
-            "https://example.com/3": 65.0,
-        }
-
-        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
-
-        assert len(high) == 1
-        assert high[0].title == "High"
-        assert len(low) == 2
-        assert low[0].title == "Low 1"
-        assert low[1].title == "Low 2"
-
-    def test_missing_scores_default_to_high(self):
-        articles = [
-            Article(
-                id=1,
-                title="Has Score",
-                url="https://example.com/1",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-            Article(
-                id=2,
-                title="No Score",
-                url="https://example.com/2",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-        ]
-        article_scores = {
-            "https://example.com/1": 55.0,
-        }
-
-        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
-
-        assert len(high) == 1
-        assert high[0].title == "No Score"
-        assert len(low) == 1
-        assert low[0].title == "Has Score"
-
-    def test_none_article_scores_all_go_to_high(self):
-        articles = [
-            Article(
-                id=1,
-                title="Article 1",
-                url="https://example.com/1",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-            Article(
-                id=2,
-                title="Article 2",
-                url="https://example.com/2",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-        ]
-
-        high, low = split_read_lane_by_score(articles, None, threshold=70)
-
-        assert len(high) == 2
-        assert len(low) == 0
-
-    def test_empty_articles(self):
-        high, low = split_read_lane_by_score([], {}, threshold=70)
-
-        assert high == []
-        assert low == []
-
-    def test_score_exactly_at_threshold(self):
-        articles = [
-            Article(
-                id=1,
-                title="Exact",
-                url="https://example.com/1",
-                content="Content",
-                published_at=datetime(2026, 4, 10, tzinfo=UTC),
-                source_name="Source",
-                source_lane=Lane.READ,
-            ),
-        ]
-        article_scores = {"https://example.com/1": 70.0}
-
-        high, low = split_read_lane_by_score(articles, article_scores, threshold=70)
-
-        assert len(high) == 1
-        assert len(low) == 0
+        assert result.content.attention_sections == []
 
 
 def _scored_topic() -> tuple[list[Article], dict[str, float], FakeLLM]:
@@ -617,7 +489,7 @@ def _scored_topic() -> tuple[list[Article], dict[str, float], FakeLLM]:
 
 async def _page(sample_sources, tmp_path, **settings) -> str:
     articles, scores, llm = _scored_topic()
-    pipeline = DigestPipeline(llm, **pipeline_settings(summarize_score_threshold=0, **settings))
+    pipeline = DigestPipeline(llm, **pipeline_settings(**settings))
     result = await pipeline.process(
         articles,
         sample_sources,
@@ -664,7 +536,7 @@ class TestKeptItemsReachThePreference:
     async def _process(self, articles, sample_sources, *, headlines, sections, preference, news=()):
         pipeline = DigestPipeline(
             FakeLLM(),
-            **pipeline_settings(summarize_score_threshold=0, featured_threshold=100),
+            **pipeline_settings(featured_threshold=100),
         )
         with (
             patch(

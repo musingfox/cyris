@@ -6,7 +6,7 @@ Each source declares a lane, in `sources.yaml` on a local install or on `/settin
 | Lane | Processing | Example |
 |------|-----------|---------|
 | `skim` | Discard most; surface only significant headlines. News-tagged articles are clustered by topic | TechCrunch, 聯合新聞網 |
-| `read` | Scored, then split by `[routing] summarize_score_threshold` into full summaries and brief mentions | Stratechery, Benedict Evans |
+| `read` | Scored, then every article summarized; the score orders them | Stratechery, Benedict Evans |
 | `follow` | Passthrough. Never scored, filtered, or summarized | followed groups and newsletters |
 
 An article moves `pending → accepted / rejected / awaiting_triage`. A run accepts only
