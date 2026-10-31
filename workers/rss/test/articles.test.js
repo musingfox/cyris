@@ -16,8 +16,8 @@ async function get(path) {
 
 await get("/stats");
 const insert = DB.raw.prepare(
-  `INSERT INTO articles (url, guid, title, content, author, published_at, source_name, fetched_at)
-   VALUES (:url, :guid, :title, :content, :author, :published_at, :source_name, :fetched_at)`
+  `INSERT INTO articles (url, guid, title, content, author, published_at, source_name, fetched_at, image_url)
+   VALUES (:url, :guid, :title, :content, :author, :published_at, :source_name, :fetched_at, :image_url)`
 );
 for (const row of cases.rows) insert.run(row);
 

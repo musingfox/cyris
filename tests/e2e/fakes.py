@@ -63,7 +63,16 @@ DISCORD_CONTENT_MAX = 2000
 RSS_DEFAULT_LIMIT = 500
 RSS_MAX_LIMIT = 2000
 # workers/rss/src/index.js: the SELECT list of a window read; fetched_at is never returned.
-RSS_COLUMNS = ("url", "guid", "title", "content", "author", "published_at", "source_name")
+RSS_COLUMNS = (
+    "url",
+    "guid",
+    "title",
+    "content",
+    "author",
+    "published_at",
+    "source_name",
+    "image_url",
+)
 # workers/newsletter/src/index.js VALUE_HEADERS: the headers it keeps a value for.
 NEWSLETTER_VALUE_HEADERS = {
     "archived-at", "list-id", "list-post", "list-archive", "list-help", "x-mc-user",

@@ -1,5 +1,5 @@
 {
-  "columns": ["author", "content", "guid", "published_at", "source_name", "title", "url"],
+  "columns": ["author", "content", "guid", "image_url", "published_at", "source_name", "title", "url"],
   "rows": [
     {
       "url": "https://e2e.test/1",
@@ -9,7 +9,8 @@
       "author": "A",
       "published_at": "2026-10-01T07:00:00.000Z",
       "source_name": "Feed",
-      "fetched_at": "2026-10-01T08:00:00.000Z"
+      "fetched_at": "2026-10-01T08:00:00.000Z",
+      "image_url": "https://e2e.test/1.jpg"
     },
     {
       "url": "https://e2e.test/2",
@@ -19,7 +20,8 @@
       "author": "B",
       "published_at": "2026-09-30T08:00:00.000Z",
       "source_name": "Feed",
-      "fetched_at": "2026-10-02T08:00:00.000Z"
+      "fetched_at": "2026-10-02T08:00:00.000Z",
+      "image_url": null
     },
     {
       "url": "https://e2e.test/3",
@@ -29,7 +31,8 @@
       "author": "C",
       "published_at": "2026-10-02T20:00:00.000Z",
       "source_name": "Feed",
-      "fetched_at": "2026-10-03T08:00:00.000Z"
+      "fetched_at": "2026-10-03T08:00:00.000Z",
+      "image_url": null
     }
   ],
   "reads": [
