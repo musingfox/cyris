@@ -49,7 +49,13 @@ LANE_STEP = Step(
     Requires("stored_articles", "source_tier", present=True),
 )
 
-MIGRATIONS: tuple[Step, ...] = (LANE_STEP,)
+IMAGE_URL_STEP = Step(
+    "0002_stored_articles_image_url",
+    ("ALTER TABLE stored_articles ADD COLUMN image_url TEXT",),
+    Requires("stored_articles", "image_url", present=False),
+)
+
+MIGRATIONS: tuple[Step, ...] = (LANE_STEP, IMAGE_URL_STEP)
 
 
 def _holds(client: D1Queryable, requires: Requires) -> bool:

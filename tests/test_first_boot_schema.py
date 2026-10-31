@@ -15,6 +15,7 @@ from legacy_schema import recorded as _recorded
 
 from cyris.adapters.store.d1 import D1Error, apply_schema
 from cyris.adapters.store.d1_store import D1ArticleStore
+from cyris.adapters.store.migrations import MIGRATIONS
 from cyris.domain.models import Article, Lane
 
 pytestmark = pytest.mark.integration
@@ -216,7 +217,8 @@ def test_an_old_database_booted_by_load_effective_config_is_migrated(tmp_path, m
     _boot_via_load_effective_config(monkeypatch, tmp_path, db)
 
     assert "source_lane" in _columns(db) and "source_tier" not in _columns(db)  # legacy-tier
-    assert _recorded(db) == ["0001_tier_to_lane"]
+    assert "image_url" in _columns(db)
+    assert _recorded(db) == [step.id for step in MIGRATIONS]
 
 
 def test_an_old_database_reached_by_sources_push_is_migrated(tmp_path, monkeypatch) -> None:
@@ -225,7 +227,8 @@ def test_an_old_database_reached_by_sources_push_is_migrated(tmp_path, monkeypat
     _boot_via_sources_push(monkeypatch, tmp_path, db)
 
     assert "source_lane" in _columns(db) and "source_tier" not in _columns(db)  # legacy-tier
-    assert _recorded(db) == ["0001_tier_to_lane"]
+    assert "image_url" in _columns(db)
+    assert _recorded(db) == [step.id for step in MIGRATIONS]
 
 
 @pytest.mark.parametrize("path", ["load_effective_config", "sources_push"])

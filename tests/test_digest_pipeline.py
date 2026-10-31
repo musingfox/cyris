@@ -153,6 +153,45 @@ class TestDigestPipeline:
         assert result.rejected_urls == []
         assert result.content.articles_included == 2
 
+    async def test_a_story_shows_its_feeds_picture_unless_its_source_shares_it(
+        self, pipeline, sample_sources
+    ):
+        def article(n: int, image_url: str | None) -> Article:
+            return Article(
+                id=n,
+                title=f"Post {n}",
+                url=f"https://group.example/{n}",
+                content="body",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Club",
+                source_lane=Lane.FOLLOW,
+                image_url=image_url,
+            )
+
+        result = await pipeline.process(
+            [
+                article(1, "https://group.example/own.jpg"),
+                article(2, "https://group.example/logo.png"),
+                article(3, "https://group.example/logo.png"),
+                article(4, None),
+            ],
+            sample_sources,
+            period="morning",
+            timezone=TEST_SETTINGS["general.timezone"],
+        )
+
+        images = {
+            item.urls[0]: item.image_url
+            for section in result.content.fan_sections
+            for item in section.items
+        }
+        assert images == {
+            "https://group.example/1": "https://group.example/own.jpg",
+            "https://group.example/2": None,
+            "https://group.example/3": None,
+            "https://group.example/4": None,
+        }
+
     async def test_story_records_name_every_cluster_with_its_full_membership(self, sample_sources):
         """Story records carry every cluster's full URL list."""
         news = [

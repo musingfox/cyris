@@ -88,6 +88,7 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
         source_lane=Lane.READ,
         source_tags=["tech", "ai"],
         ref_urls=["https://example.com/ref"],
+        image_url="https://example.com/full.jpg",
         state=ArticleState.AWAITING_TRIAGE,
         first_seen_at=now,
         digest_date="2026-08-25",
