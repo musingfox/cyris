@@ -793,6 +793,16 @@ def test_two_high_scorers_on_one_topic_reach_the_page_as_one_top_story(receipts)
     check_grouped_top_story(receipts)
 
 
+def test_the_picture_a_feed_named_reaches_its_story_and_no_other(receipts) -> None:
+    pictured = {
+        url: [img.attrs["src"] for img in card.find_all("img", "story-image")]
+        for url, card in _pebbles(receipts).items()
+    }
+    assert pictured.pop(URL["a1"]) == [IMAGES["a1"]]
+    assert pictured and all(images == [] for images in pictured.values())
+    assert "story-image" not in receipts.mail()["html"]
+
+
 # ---- scripted case 2: a Features article the model wrote no summary for ------
 
 

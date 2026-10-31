@@ -2569,6 +2569,46 @@ def test_every_pebble_sand_and_water_item_has_exactly_one_vote_group() -> None:
     assert len(_by_class(root, "vote-group")) == 5
 
 
+STORY_IMAGE = "https://pebble.example.test/read.jpg"
+
+
+def _pictured_issue() -> DigestContent:
+    issue = _three_layer_issue()
+    issue.featured_articles[0].items[0].image_url = STORY_IMAGE
+    return issue
+
+
+def test_a_pebble_with_a_picture_opens_with_its_image_box_and_one_without_has_none() -> None:
+    root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(_pictured_issue())).root
+
+    pictured, plain = _by_class(root, "featured-item")
+    (image,) = _by_class(pictured, "story-image")
+    assert pictured.children[0] is image
+    assert image.tag == "img"
+    assert image.attrs == {
+        "class": "story-image",
+        "src": STORY_IMAGE,
+        "alt": "",
+        "loading": "lazy",
+        "decoding": "async",
+        "referrerpolicy": "no-referrer",
+    }
+    assert _by_class(plain, "story-image") == []
+
+
+def test_no_item_outside_stories_shows_a_picture() -> None:
+    issue = _pictured_issue()
+    for section in (*issue.news_clusters, *issue.tracked_topics):
+        for item in section.items:
+            item.image_url = STORY_IMAGE
+    for item in issue.filtered_headlines:
+        item.image_url = STORY_IMAGE
+    root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(issue)).root
+
+    images = root.find_all(lambda n: n.tag == "img")
+    assert [image.parent.classes for image in images] == [{"featured-item"}]
+
+
 def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None:
     html, root = _three_layer_dom()
 

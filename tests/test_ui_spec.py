@@ -864,10 +864,35 @@ def test_a_short_last_row_of_features_leaves_its_empty_cells_blank() -> None:
     } <= digest[".featured-item"]
 
 
-BODY_TRACKS = "grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr))"
+def test_the_story_image_is_the_specs_greyscale_box() -> None:
+    digest = _parsed("digest")
+    assert {
+        "aspect-ratio: 1200 / 630",
+        "object-fit: cover",
+        "border: 1px solid var(--border)",
+        "background: var(--surface)",
+        "filter: grayscale(1)",
+        "opacity: .55",
+        "transition: filter var(--t-fast), opacity var(--t-fast)",
+    } <= digest[".featured-item > .story-image"]
+    assert digest[".featured-item:is(:hover, :focus-within) > .story-image"] == {
+        "filter: none",
+        "opacity: 1",
+    }
+    assert (
+        "grid-template-columns: 280px minmax(0, 1fr)"
+        in digest[".featured-item:has(> .story-image)"]
+    )
+    assert (
+        "grid-template-columns: 112px minmax(0, 1fr)"
+        in digest["@media (max-width: 720px) | .featured-item:has(> .story-image)"]
+    )
 
 
-def test_the_feature_grid_is_one_fluid_track_rule() -> None:
+BODY_TRACKS = "grid-template-columns: minmax(0, 1fr)"
+
+
+def test_stories_are_one_article_per_row_at_every_width() -> None:
     digest = _parsed("digest")
     assert BODY_TRACKS in digest[".featured-grid"]
     narrowed = [key for key in digest if key.startswith("@media") and "featured-grid" in key]
