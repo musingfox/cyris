@@ -444,7 +444,7 @@
                 <h2 class="section-tag"><span class="label">Stories</span></h2>
                 <div class="featured-grid" lang="{{ content_lang }}">
                     {% for pebble in layers.pebbles %}{% set item = pebble.item %}
-                    <article class="featured-item"{% if pebble.untranslated %} lang=""{% endif %}>
+                    <article class="featured-item" id="story-{{ loop.index }}"{% if pebble.untranslated %} lang=""{% endif %}>
                         {% if item.image_url %}<img class="story-image" src="{{ item.image_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
                         <h3 class="item-title lg" lang="">{{ title_link(item) }}</h3>
                         {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
@@ -468,7 +468,7 @@
                 <h2 class="section-tag"><span class="label">Topics</span></h2>
                 <div class="sand-grid">
                 {% for sand in layers.sand %}
-                <div class="news-cluster" lang="{{ content_lang }}">
+                <div class="news-cluster" id="topic-{{ loop.index }}" lang="{{ content_lang }}">
                     <h3 class="item-title lg">{{ sand.heading }}</h3>
                     {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
                     {{ tag_pills(sand.tags) }}
@@ -489,7 +489,7 @@
                 <h2 class="section-tag"><span class="label">Headlines</span></h2>
                 <div class="headlines-compact" lang="{{ content_lang }}">
                     {% for water in layers.water %}{% set item = water.item %}
-                    <div class="headline-item"{% if water.untranslated %} lang=""{% endif %}>
+                    <div class="headline-item" id="headline-{{ loop.index }}"{% if water.untranslated %} lang=""{% endif %}>
                         <span class="idx">{{ "%03d" | format(loop.index) }}</span>
                         <div class="text">{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}{{ tag_pills(water.tags) }}</div>
                         {{ promote_btn(item, water.story_id) }}

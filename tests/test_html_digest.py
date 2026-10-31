@@ -222,8 +222,8 @@ def test_the_heading_outline_skips_no_level():
 
 def test_clusters_are_headed_at_h3_and_radar_items_are_rows():
     digest = receipt_fixtures()[1]
-    assert re.search(r'<div class="news-cluster" lang="[^"]*">\s*<h3', digest)
-    assert '<div class="headline-item">' in digest
+    assert re.search(r'<div class="news-cluster" id="topic-1" lang="[^"]*">\s*<h3', digest)
+    assert '<div class="headline-item" id="headline-1">' in digest
     assert "<h5" not in digest
 
 
@@ -1105,7 +1105,7 @@ def test_all_sections_render(tmp_path):
 def _wire_rows(html: str) -> list[str]:
     """Each Wire row's markup, up to the next row or the section's end."""
     wire = html.split('class="headlines-compact"', 1)[1].split("</section>", 1)[0]
-    return wire.split('<div class="headline-item">')[1:]
+    return re.split(r'<div class="headline-item" id="headline-\d+">', wire)[1:]
 
 
 def test_a_wire_row_shows_its_summary_below_its_title_and_before_its_votes(tmp_path):
@@ -2607,6 +2607,23 @@ def test_no_item_outside_stories_shows_a_picture() -> None:
 
     images = root.find_all(lambda n: n.tag == "img")
     assert [image.parent.classes for image in images] == [{"featured-item"}]
+
+
+def test_every_pebble_sand_and_water_item_carries_its_own_id_for_in_page_links() -> None:
+    # The layer script switches to the layer of a `#id` it is sent to (ui-language section 4).
+    _, root = _three_layer_dom()
+
+    ids = {
+        kind: [n.attrs.get("id") for n in _by_class(root, kind)]
+        for kind in ("featured-item", "news-cluster", "headline-item")
+    }
+    assert ids == {
+        "featured-item": ["story-1", "story-2"],
+        "news-cluster": ["topic-1"],
+        "headline-item": ["headline-1", "headline-2"],
+    }
+    every_id = [n.attrs["id"] for n in root.find_all(lambda n: "id" in n.attrs)]
+    assert len(every_id) == len(set(every_id))
 
 
 def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None:
