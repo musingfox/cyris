@@ -1,0 +1,1173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream letter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+/* POC only: the typographic and scene motion needs durations the spec has no token for. */
+:root { --t-word: 520ms; --t-leave: 260ms; --t-arrive: 420ms; --t-scene: 600ms; --scrim-h: 60vh; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+/* the stage: a full-screen scene; the sentence sits over it behind a --bg scrim */
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; transition: opacity var(--t-scene) ease-out; }
+.scrim { position: fixed; left: 0; right: 0; top: 0; height: var(--scrim-h); pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 94%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 86%, transparent) 72%, transparent 100%);
+  transition: opacity var(--t-scene) ease-out; }
+.strata-labels span { position: fixed; left: 0; top: 0; pointer-events: none; white-space: nowrap;
+  transition: opacity var(--t-scene) ease-out; }
+.strata-labels b { font-weight: 500; color: var(--text); }
+body.text-only #scene, body.text-only .scrim, body.text-only .strata-labels { display: none; }
+body.revealed #scene, body.revealed .scrim, body.revealed .strata-labels { opacity: 0; }
+
+.page { position: relative; max-width: var(--measure); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-16); min-height: 100vh; }
+@media (min-width: 720px) { .page { padding: var(--s-8) var(--s-6) var(--s-20); } }
+body.revealed .page { max-width: var(--measure-wide); }
+
+.top { display: flex; justify-content: space-between; align-items: center; height: var(--s-8); }
+.brand { display: flex; align-items: center; gap: var(--s-2); font-family: var(--font-mono); font-weight: 500;
+  font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text); }
+.brand i { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+
+/* the letter: answers condensed into lines, receding above the sentence */
+.letter { font-family: var(--font-serif); font-size: calc(19px * var(--type-scale)); line-height: 1.45;
+  color: var(--text-dim); margin: var(--s-8) 0 var(--s-6); min-height: var(--s-6); }
+.letter p { margin: 0; }
+.letter p.salute { font-style: italic; }
+.letter p.sign { font-style: italic; color: var(--text); margin-top: var(--s-2); }
+.letter.capped { max-height: calc(19px * 1.45 * 2 * var(--type-scale)); overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%);
+  mask-image: linear-gradient(to bottom, transparent, #000 60%); }
+.letter .arrive { animation: arrive var(--t-arrive) ease-out both; }
+.letter [lang] { font-style: normal; }
+body.revealed .letter { display: none; }
+@keyframes arrive { from { opacity: 0; transform: translateY(var(--s-3)); } to { opacity: 1; transform: none; } }
+
+.stage { transition: opacity var(--t-leave) ease-in, transform var(--t-leave) ease-in; }
+.stage.leaving { opacity: 0; transform: translateY(calc(-1 * var(--s-8))) scale(.96); transform-origin: top left; }
+
+.say { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(32px, 5.6vw, 52px) * var(--type-scale));
+  line-height: 1.14; letter-spacing: -0.02em; margin: 0; overflow-wrap: anywhere; text-align: center; }
+.say.dense { font-size: calc(clamp(24px, 3.9vw, 34px) * var(--type-scale)); line-height: 1.35; letter-spacing: -0.01em; }
+.say em { font-style: italic; color: var(--accent); }
+.say em[lang] { font-style: normal; }
+.w { display: inline-block; animation: assemble var(--t-word) ease-out both; }
+.say.still .w { animation: fade var(--t-arrive) ease-out both; animation-delay: 0s !important; }
+@keyframes assemble { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+.count { font-variant-numeric: tabular-nums; color: var(--accent); font-style: italic; }
+
+/* a blank: a word in the sentence the reader taps or types */
+.blank { font: inherit; letter-spacing: inherit; color: var(--text-dim); background: none; border: 0;
+  border-bottom: 1px solid var(--border-strong); padding: 2px .06em; margin: 0; cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.blank:hover { color: var(--text); }
+.blank.say { font-family: var(--font-serif); }
+.blank:active { opacity: .7; }
+.blank:disabled { cursor: default; }
+.blank[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+input.blank, select.blank { cursor: text; color: var(--accent); border-bottom-color: var(--accent-dim); border-radius: 0;
+  -webkit-appearance: none; appearance: none; text-align: center; }
+input.blank:focus, select.blank:focus { outline: none; border-bottom-color: var(--accent); }
+input.blank::placeholder { color: var(--text-dim); font-style: italic; }
+input.blank.hour { width: 1.6em; -moz-appearance: textfield; }
+input.blank.hour::-webkit-inner-spin-button, input.blank.hour::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.blank.wide { width: min(100%, 9em); }
+input.blank[aria-invalid="true"] { border-bottom-color: var(--warn); }
+select.blank { cursor: pointer; background: none; padding-right: .1em; max-width: 100%; }
+select.blank option { font-family: var(--font-sans); font-size: 16px; background: var(--bg-elev); color: var(--text); }
+
+.quiet { display: flex; gap: var(--s-8); margin-top: var(--s-6); flex-wrap: wrap; justify-content: center; }
+.hint { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: var(--s-4) auto 0; text-align: center; max-width: 34em; }
+.hint.warn { color: var(--warn); }
+.shortcut { font: inherit; color: var(--text-dim); background: none; border: 0; border-bottom: 1px solid var(--border-strong);
+  padding: 0; cursor: pointer; font-family: var(--font-serif); font-style: italic; font-size: calc(19px * var(--type-scale)); }
+.shortcut:hover { color: var(--text); }
+.shortcut-row { text-align: center; margin: var(--s-5) 0 0; }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-8); }
+.nav .grow { flex: 1; }
+.btn { height: 44px; padding: 0 var(--s-5); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; border-radius: var(--r-control); border: 1px solid transparent; cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* the first issue: the whole screen, three labelled layers */
+.issue { margin-top: var(--s-8); }
+.issue.appear { animation: fade var(--t-scene) ease-out both; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.issue-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-4); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -0.04em; margin: 0; }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.layer { margin-top: var(--s-12); }
+.layer-head { margin: 0 0 var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-2); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.layer-head p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); display: grid; gap: var(--s-1); }
+.item + .item { border-top: 0; }
+.item h3 { font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; margin: 0; }
+.item.pebble h3 { font-size: calc(19px * var(--type-scale)); }
+.item p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item .more { color: var(--accent); }
+.water { border: 1px solid var(--border); background: var(--bg-elev); }
+.water div { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
+.water div:last-child { border-bottom: 0; }
+.water .label { flex: none; }
+.empty { font-size: calc(14px * var(--type-scale)); color: var(--text-dim); margin: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-hidden="true"></canvas>
+<div class="scrim" aria-hidden="true"></div>
+<div class="strata-labels" aria-hidden="true">
+  <span class="label" data-tray="pebble"><b>Pebble</b> · read whole</span>
+  <span class="label" data-tray="sand"><b>Sand</b> · many on one topic, a line</span>
+  <span class="label" data-tray="water"><b>Water</b> · one line each</span>
+</div>
+<main class="page">
+  <div class="top"><span class="brand"><i aria-hidden="true"></i>Cyris</span><span class="label" id="progress"></span></div>
+  <div class="letter" id="letter" aria-label="The letter so far"></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+</main>
+<script type="module">
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/* ---- fake data: names and topics from src/cyris/onboarding_feeds.json ---- */
+const TOPICS = [
+  { id: "tech", label: "Technology" },
+  { id: "business", label: "Business & economy" },
+  { id: "world", label: "World" },
+  { id: "taiwan", label: "Taiwan" },
+  { id: "science", label: "Science & health" },
+  { id: "ideas", label: "Ideas & culture" },
+];
+const FEEDS = {
+  tech: ["iThome", "科技新報", "數位時代", "Hacker News", "Stratechery", "Simon Willison's Weblog"],
+  business: ["經濟日報", "The Economist", "Financial Times", "市場先生", "Noahpinion"],
+  world: ["BBC中文網 繁體", "端傳媒", "The Guardian", "NPR", "The Diplomat"],
+  taiwan: ["報導者", "中央社即時新聞 政治新聞", "公視新聞網", "自由時報", "關鍵評論網", "台灣事實查核中心"],
+  science: ["泛科學 PanSci", "CASE 報科學", "Quanta Magazine", "Nautilus", "Terence Tao"],
+  ideas: ["換日線", "Aeon", "The Marginalian", "The Atlantic Ideas", "Literary Hub"],
+};
+const STANCE_POOL = {
+  tech: ["台積電美國廠", "AI 代理", "開源授權"],
+  business: ["美國關稅", "央行利率", "輝達財報"],
+  world: ["烏克蘭停火談判", "美中晶片管制", "加薩人道走廊"],
+  taiwan: ["總預算審查", "罷免投票", "健保費率調整"],
+  science: ["登革熱疫情", "減重藥物", "韋伯望遠鏡"],
+  ideas: ["獨立書店", "長照人力", "AI 與著作權"],
+};
+const TITLES = {
+  tech: ["企業導入 AI 代理的第一年：權限管理成最大瓶頸", "亞利桑那二廠提前量產，良率仍落後台南", "開源授權改版爭議：社群為何出走"],
+  business: ["關稅上路三個月：台灣出口商怎麼調整供應鏈", "央行按兵不動，房市信用管制再收緊", "輝達財報優於預期，伺服器供應鏈訂單看到明年"],
+  world: ["停火談判第二輪：雙方在哪些條件上仍有分歧", "美中晶片管制再升級，東南亞封測廠受惠", "人道走廊重開，聯合國物資車隊進入北部"],
+  taiwan: ["山區部落的最後一哩路：偏鄉醫療的十年", "總預算審查卡關，地方建設經費延宕", "健保費率調整案：誰多付、誰少付"],
+  science: ["登革熱南部疫情升溫，專家：社區孳生源是關鍵", "減重藥物的長期數據：停藥後會怎樣", "韋伯望遠鏡看見最早的星系團"],
+  ideas: ["獨立書店的第三種活法", "長照人力缺口：移工之外還有什麼路", "生成式 AI 與著作權：法院怎麼看"],
+};
+const LANGS = ["Traditional Chinese", "Simplified Chinese", "English", "Japanese"];
+const LANG_TAG = { "Traditional Chinese": "zh-Hant", "Simplified Chinese": "zh-Hans", English: "en", Japanese: "ja" };
+
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.codePointAt(0)) % 9973; return h; }
+function newCount(name) { return 3 + hash(name) % 14; }
+function topicOf(name) { return TOPICS.find(t => FEEDS[t.id].includes(name))?.id || "tech"; }
+function stanceCat(t) { return TOPICS.find(x => STANCE_POOL[x.id].includes(t))?.id || "tech"; }
+function isLatin(s) { return /^[\x00-\x7f’]+$/.test(s); }
+
+/* ---- state; a step opened by hash fills in what the steps before it would have ---- */
+const STEPS = ["opening", "topics", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+const PROGRESS = { opening: 1, topics: 2, feeds: 2, lanes: 3, fetch: 4, stances: 5, issue: 6, settings: 7 };
+function detectLang() {
+  const l = (navigator.language || "en").toLowerCase();
+  if (/^zh-(tw|hk|mo|hant)/.test(l)) return "Traditional Chinese";
+  if (l.startsWith("zh")) return "Simplified Chinese";
+  if (l.startsWith("ja")) return "Japanese";
+  return "English";
+}
+const S = {
+  topics: null, feeds: null, own: [], whole: null, lIdx: 0, fetched: false,
+  stances: {}, sIdx: 0, issued: false, done: false,
+  hours: [8, 18], lang: detectLang(),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", discord: "", email: "",
+};
+function ensure(step) {
+  const i = STEPS.indexOf(step);
+  if (i > 1 && S.topics === null) S.topics = ["taiwan", "tech"];
+  if (i > 2 && S.feeds === null) S.feeds = ["報導者", "公視新聞網", "關鍵評論網", "iThome", "Stratechery", "數位時代"];
+  if (i > 3 && S.whole === null) S.whole = { "報導者": true, "Stratechery": true };
+  if (i > 4) S.fetched = true;
+  if (i > 6) S.issued = true;
+}
+const chosenTopics = () => S.topics || [];
+const pickedFeeds = () => [...(S.feeds || []), ...S.own];
+const isWhole = f => !!(S.whole && S.whole[f] === true);
+const wholeFeeds = () => pickedFeeds().filter(isWhole);
+/* unanswered means skim; a skimmed feed is sand when another skimmed feed shares its topic, else water */
+function skimShape(f) {
+  const c = topicOf(f);
+  return pickedFeeds().filter(g => topicOf(g) === c && !isWhole(g)).length >= 2 ? "sand" : "water";
+}
+function stanceTopics() {
+  const ids = chosenTopics().length ? chosenTopics() : ["taiwan", "tech"];
+  const out = [];
+  for (let r = 0; out.length < 6 && r < 3; r++) for (const id of ids) if (out.length < 6) out.push(STANCE_POOL[id][r]);
+  for (const t of TOPICS) for (const s of STANCE_POOL[t.id]) if (out.length < 6 && !out.includes(s)) out.push(s);
+  return out;
+}
+
+/* ---- the issue the answers make: the same rule the scene's strata follow ---- */
+function issueParts() {
+  const feeds = pickedFeeds(), st = t => S.stances[t];
+  const whole = wholeFeeds().map((f, k) => ({ feed: f, title: TITLES[topicOf(f)][(hash(f) + k) % 3] }));
+  const sand = [], water = [];
+  for (const c of [...new Set(feeds.map(topicOf))]) {
+    const skim = feeds.filter(f => topicOf(f) === c && !isWhole(f));
+    if (!skim.length) continue;
+    const pool = STANCE_POOL[c].filter(t => st(t) !== "less").sort((a, b) => (st(b) === "more") - (st(a) === "more"));
+    if (skim.length >= 2 && pool.length) {
+      const more = st(pool[0]) === "more";
+      sand.push({ topic: pool[0], cat: c, more, count: Math.min(skim.length + 1 + (more ? 2 : 0), 6), sources: skim });
+      water.push({ key: "w:" + c, title: TITLES[c][(hash(c) + 1) % 3], feed: skim[skim.length - 1] });
+    } else skim.forEach((f, k) => water.push({ key: "f:" + f, title: TITLES[c][(hash(f) + k + 1) % 3], feed: f }));
+  }
+  const inCount = feeds.reduce((n, f) => n + newCount(f), 0);
+  const kept = whole.length + sand.reduce((n, s) => n + s.count, 0) + water.length;
+  return { whole, sand, water, inCount: Math.max(inCount, kept), kept };
+}
+
+/* ---- what the strata hold at a step: the scene renders this, the issue lists it ---- */
+function strataFor(step) {
+  const m = { stones: [], piles: {}, dashes: [] };
+  const i = STEPS.indexOf(step);
+  if (i < 3) return m;
+  const feeds = pickedFeeds();
+  const answered = i > 3 ? feeds : feeds.filter(f => S.whole && f in S.whole);
+  for (const f of answered) {
+    if (isWhole(f)) m.stones.push({ key: "f:" + f, tray: "pebble", src: f, size: 0.24 + (hash(f) % 5) * 0.015 });
+    else if (skimShape(f) === "sand") { const c = topicOf(f); m.piles[c] = (m.piles[c] || 0) + 3; m.src = m.src || {}; (m.src[c] ||= []).push(f); }
+    else m.dashes.push({ key: "f:" + f, src: f });
+  }
+  if (i >= 5) for (const t of stanceTopics()) {
+    const v = S.stances[t];
+    m.stones.push({ key: "t:" + t, topic: true, cat: stanceCat(t), size: 0.17,
+      tray: v === "more" ? "pebble" : v === "less" ? "water" : "sand", accent: v === "more" });
+  }
+  if (i >= 6 && (S.issued || step === "settings")) addIssue(m);
+  return m;
+}
+function addIssue(m) {
+  const p = issueParts();
+  for (const s of p.sand) { m.piles[s.cat] = (m.piles[s.cat] || 0) + s.count; (m.src ||= {})[s.cat] = s.sources; }
+  for (const w of p.water) if (!m.dashes.some(d => d.key === w.key)) m.dashes.push({ key: w.key, src: w.feed });
+  return p;
+}
+
+/* ---- the letter: each answered step condensed to one line ---- */
+function list(xs, max) {
+  const shown = xs.slice(0, max), rest = xs.length - shown.length;
+  if (rest > 0) return shown.join(", ") + " and " + rest + " more";
+  return shown.length > 1 ? shown.slice(0, -1).join(", ") + " and " + shown[shown.length - 1] : shown[0] || "";
+}
+function lineFor(step) {
+  switch (step) {
+    case "opening": return "Ninety in, a dozen out.";
+    case "topics": return chosenTopics().length ? "You follow " + list(chosenTopics().map(id => TOPICS.find(t => t.id === id).label), 3) + "." : "No topics yet; you'll bring your own feeds.";
+    case "feeds": return pickedFeeds().length ? "I’ll watch " + list(pickedFeeds(), 3) + " for you." : "No feeds yet.";
+    case "lanes": { const w = wholeFeeds(); return w.length ? "Whole: " + list(w, 3) + ". The rest, a line each." : "Everything in a line; nothing whole."; }
+    case "fetch": return "I read " + pickedFeeds().reduce((n, f) => n + newCount(f), 0) + " new articles.";
+    case "stances": {
+      const m = Object.keys(S.stances).filter(k => S.stances[k] === "more"), l = Object.keys(S.stances).filter(k => S.stances[k] === "less");
+      if (!m.length && !l.length) return "No leanings yet; I'll learn them as you read.";
+      return [m.length ? "More " + m.join(", ") : "", l.length ? "less " + l.join(", ") : ""].filter(Boolean).join("; ") + ".";
+    }
+    case "issue": { const p = issueParts(); return "Your first issue: " + p.whole.length + " pebbles, " + p.sand.length + " sand, " + p.water.length + " water."; }
+    case "settings": return "P.S. " + pad(S.hours[0]) + " and " + pad(S.hours[1]) + ", in " + S.lang + ", " + S.tz + " time.";
+  }
+}
+const pad = h => String(h).padStart(2, "0") + ":00";
+
+let arriving = false, timers = [];
+function later(fn, ms) { const t = setTimeout(fn, RM.matches ? 0 : ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+function renderLetter(step) {
+  const i = STEPS.indexOf(step), el = document.getElementById("letter");
+  el.textContent = "";
+  const lines = STEPS.slice(0, i).map(lineFor);
+  if (step === "stances" && Object.keys(S.stances).length) lines.push(lineFor("stances"));
+  if (step === "settings" && S.done) lines.push(lineFor("settings"));
+  if (lines.length) { const p = document.createElement("p"); p.className = "salute"; p.textContent = "Dear reader,"; el.append(p); }
+  lines.forEach((t, k) => {
+    const p = document.createElement("p");
+    p.append(...mixLang(t));
+    if (arriving && k === lines.length - 1) p.className = "arrive";
+    el.append(p);
+  });
+  const full = step === "settings" && S.done;
+  if (full) { const p = document.createElement("p"); p.className = "sign"; p.textContent = "Your editor, cyris"; el.append(p); }
+  el.classList.toggle("capped", !full);
+  arriving = false;
+}
+/* split a sentence so CJK runs carry their own lang, as ui-language §1.7 asks */
+function mixLang(t) {
+  return t.split(/([　-鿿＀-￯][　-鿿＀-￯\s\w]*)/).filter(Boolean).map(seg => {
+    if (/[　-鿿]/.test(seg)) { const s = document.createElement("span"); s.lang = ""; s.textContent = seg; return s; }
+    return document.createTextNode(seg);
+  });
+}
+
+/* ---- a sentence that assembles word by word; nodes in it are single words ---- */
+function sentence(parts, cls) {
+  const el = document.createElement("p");
+  el.className = "say" + (cls ? " " + cls : "");
+  let n = 0;
+  const word = node => {
+    const w = document.createElement("span"); w.className = "w";
+    w.style.animationDelay = (n++ * 45) + "ms";
+    w.append(node); el.append(w);
+  };
+  for (const part of parts) {
+    if (typeof part === "string") {
+      part.split(/(\s+)/).forEach(tok => {
+        if (!tok) return;
+        if (/^\s+$/.test(tok)) el.append(" ");
+        else word(document.createTextNode(tok));
+      });
+    } else word(part);
+  }
+  el.assembledIn = RM.matches || (cls || "").includes("still") ? 0 : n * 45 + 520;
+  return el;
+}
+/* the scene holds near still while a sentence assembles */
+function speak(stage, s) { stage.append(s); SC?.calm(s.assembledIn); return s; }
+function blankBtn(text, pressed, onTap, lang) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "blank"; b.textContent = text;
+  if (lang !== undefined) b.lang = lang;
+  if (pressed !== null) b.setAttribute("aria-pressed", String(!!pressed));
+  b.addEventListener("click", () => onTap(b));
+  return b;
+}
+function btn(text, kind, onTap) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "btn " + kind; b.textContent = text;
+  b.addEventListener("click", onTap); return b;
+}
+function hint(text, cls) { const p = document.createElement("p"); p.className = "hint" + (cls ? " " + cls : ""); p.textContent = text; return p; }
+function nav(step, primary, back) {
+  const n = document.createElement("div"); n.className = "nav";
+  const i = STEPS.indexOf(step);
+  if (i > 0) n.append(btn("Back", "secondary", back || (() => go(STEPS[i - 1], false))));
+  if (step !== "settings") n.append(btn("Skip", "secondary", () => skip(step)));
+  const g = document.createElement("span"); g.className = "grow"; n.append(g);
+  if (primary) n.append(primary);
+  return n;
+}
+function span(t) { const s = document.createElement("span"); s.textContent = t; if (!isLatin(t)) s.lang = ""; return s; }
+function sayBtn(t, pressed, fn) { const b = blankBtn(t, pressed, fn); b.classList.add("say", "dense"); return b; }
+const lock = stage => stage.querySelectorAll("button, input, select").forEach(b => b.disabled = true);
+
+/* ---- moving between steps: the sentence condenses, a line joins the letter ---- */
+let forward = false;
+function go(step, fwd) {
+  const stage = document.getElementById("stage");
+  forward = !!fwd;
+  if (fwd && !RM.matches) {
+    stage.classList.add("leaving");
+    setTimeout(() => { arriving = true; setHash(step); }, 260);
+  } else { arriving = !!fwd; setHash(step); }
+}
+function setHash(step) { if (location.hash === "#" + step) render(); else location.hash = step; }
+function next(step) { go(STEPS[STEPS.indexOf(step) + 1], true); }
+function skip(step) {
+  if (step === "topics" && S.topics === null) S.topics = [];
+  if (step === "feeds" && S.feeds === null) S.feeds = [];
+  if (step === "lanes" && S.whole === null) S.whole = {};
+  if (step === "fetch") S.fetched = true;
+  if (step === "issue") S.issued = true;
+  next(step);
+}
+
+/* ---- streams per step: where articles fall from ---- */
+const col = (k, n) => n > 1 ? ((k + 0.5) / n - 0.5) * 0.86 : 0;
+function emittersFor(step) {
+  const topicStreams = rate => chosenTopics().length
+    ? chosenTopics().map(id => ({ key: id, u: col(TOPICS.findIndex(t => t.id === id), TOPICS.length), rate }))
+    : [{ key: "any", u: 0, rate: rate / 3 }];
+  const feedStreams = rate => { const f = pickedFeeds(); return f.map((name, k) => ({ key: name, cat: topicOf(name), u: col(k, f.length), rate })); };
+  switch (step) {
+    case "opening": return Array.from({ length: 9 }, (_, k) => ({ key: "c" + k, u: col(k, 9), rate: 0 }));
+    case "topics": return topicStreams(5);
+    case "feeds": {
+      if (!pickedFeeds().length) return topicStreams(3);
+      const names = [...new Set(chosenTopics().flatMap(id => FEEDS[id])), ...S.own];
+      return pickedFeeds().map(f => ({ key: f, cat: topicOf(f), u: col(names.indexOf(f), names.length), rate: 2.2 }));
+    }
+    case "lanes": return feedStreams(0.5);
+    case "settings": return [];
+    default: return feedStreams(0);
+  }
+}
+
+/* ---- the steps ---- */
+const VIEW = {
+  opening(stage) {
+    const count = document.createElement("span"); count.className = "count"; count.textContent = "90";
+    const s = speak(stage, sentence(["Every day, about ninety articles reach your feeds. I’ll keep the ", count, " worth your time."]));
+    const sr = document.createElement("p"); sr.className = "sr"; sr.textContent = "I'll keep the twelve worth your time."; stage.append(sr);
+    stage.append(nav("opening", btn("Begin", "primary", () => next("opening"))));
+    const seed = { stones: [{ key: "o:1", tray: "pebble", size: 0.27 }, { key: "o:2", tray: "pebble", size: 0.24 }],
+      piles: { o: 7 }, dashes: [{ key: "o:1" }, { key: "o:2" }, { key: "o:3" }] };
+    if (RM.matches) { count.textContent = "12"; SC?.sync(seed, { animate: false }); return; }
+    if (SC) {
+      SC.sync({ stones: [], piles: {}, dashes: [] }, { animate: false });
+      SC.sync(seed, { animate: true, spread: 3.6, ahead: 1.4, caught: 78, onCatch: n => count.textContent = String(Math.max(12, 90 - n)) })
+        .then(() => count.textContent = "12");
+      return;
+    }
+    later(() => {
+      let v = 90; const tick = () => { v -= v > 40 ? 4 : v > 20 ? 2 : 1; count.textContent = String(Math.max(v, 12)); if (v > 12) later(tick, 40 + (90 - v) * 1.4); };
+      tick();
+    }, s.assembledIn);
+  },
+  topics(stage) {
+    if (S.topics === null) S.topics = [];
+    const parts = ["What do you follow? "];
+    TOPICS.forEach((t, k) => {
+      parts.push(blankBtn(t.label, S.topics.includes(t.id), b => {
+        const on = b.getAttribute("aria-pressed") !== "true";
+        b.setAttribute("aria-pressed", String(on));
+        S.topics = TOPICS.filter(x => x.id === t.id ? on : S.topics.includes(x.id)).map(x => x.id);
+        S.feeds = null; S.whole = null; S.lIdx = 0;
+        SC?.setEmitters(emittersFor("topics"));
+      }));
+      parts.push(k < TOPICS.length - 2 ? ", " : k === TOPICS.length - 2 ? " or " : ".");
+    });
+    speak(stage, sentence(parts));
+    stage.append(hint("Each topic you tap opens a stream. With none, you can bring your own feeds next."));
+    stage.append(nav("topics", btn("These", "primary", () => next("topics"))));
+  },
+  feeds(stage) {
+    const names = [...new Set(chosenTopics().flatMap(id => FEEDS[id]))];
+    if (S.feeds === null) S.feeds = [];
+    const parts = [names.length ? "Then I’ll read " : "Give me a feed to read: "];
+    names.forEach((f, k) => {
+      parts.push(blankBtn(f, S.feeds.includes(f), b => {
+        const on = b.getAttribute("aria-pressed") !== "true";
+        b.setAttribute("aria-pressed", String(on));
+        S.feeds = on ? [...S.feeds, f] : S.feeds.filter(x => x !== f);
+        S.whole = null; S.lIdx = 0; count();
+        SC?.setEmitters(emittersFor("feeds"));
+      }, isLatin(f) ? undefined : ""));
+      parts.push(k < names.length - 1 ? ", " : " ");
+    });
+    S.own.forEach(f => parts.push(blankBtn(f, true, () => { S.own = S.own.filter(x => x !== f); render(); }), ", "));
+    const own = document.createElement("input");
+    own.className = "blank wide"; own.type = "url"; own.placeholder = names.length ? "or one of yours" : "paste a feed address";
+    own.setAttribute("aria-label", "Add your own feed");
+    parts.push(own, ".");
+    speak(stage, sentence(parts, "dense"));
+    const counter = hint(""); counter.setAttribute("aria-live", "polite"); stage.append(counter);
+    const count = () => { const n = pickedFeeds().length; counter.textContent = n ? n + (n === 1 ? " feed" : " feeds") + " picked." + (n > 12 ? " Past 12, my first read takes longer than a minute." : "") : "Tap the feeds you want. Press Enter after an address to add it."; };
+    count();
+    own.addEventListener("keydown", e => {
+      if (e.key !== "Enter") return;
+      const v = own.value.trim();
+      if (!/^https?:\/\/[^\s.]+\.[^\s]+$/.test(v)) { own.setAttribute("aria-invalid", "true"); counter.textContent = "That doesn't look like a feed address. It starts with https://."; counter.classList.add("warn"); return; }
+      S.own.push(new URL(v).hostname.replace(/^www\./, "")); S.whole = null; S.lIdx = 0; render();
+    });
+    own.addEventListener("input", () => { own.removeAttribute("aria-invalid"); counter.classList.remove("warn"); });
+    stage.append(nav("feeds", btn("Read these", "primary", () => next("feeds"))));
+  },
+  /* one feed per sentence; the answer drops its stone or pours its grains, then the next feed is asked */
+  lanes(stage) {
+    const feeds = pickedFeeds();
+    if (S.whole === null) S.whole = {};
+    const back = () => { if (S.lIdx > 0) { S.lIdx--; go("lanes", false); } else go("feeds", false); };
+    if (!feeds.length) {
+      speak(stage, sentence(["Nothing to hand you yet."]));
+      stage.append(hint("No feeds picked. Go Back to pick some."));
+      stage.append(nav("lanes", btn("Go on", "primary", () => next("lanes")), back));
+      return;
+    }
+    if (S.lIdx >= feeds.length) S.lIdx = feeds.length - 1;
+    const f = feeds[S.lIdx];
+    const answer = v => () => {
+      S.whole[f] = v; lock(stage);
+      whole.setAttribute("aria-pressed", String(v)); line.setAttribute("aria-pressed", String(!v));
+      const done = () => { if (S.lIdx + 1 < feeds.length) { S.lIdx++; go("lanes", true); } else next("lanes"); };
+      if (SC) SC.sync(strataFor("lanes"), { animate: !RM.matches }).then(done); else done();
+    };
+    const whole = blankBtn("the whole piece", S.whole[f] === true, answer(true));
+    const line = blankBtn("a line", S.whole[f] === false, answer(false));
+    speak(stage, sentence([span(f), ": I’ll hand you ", whole, " or ", line, "."]));
+    const rest = feeds.slice(S.lIdx + 1).filter(g => !(g in S.whole));
+    if (rest.length) {
+      const p = document.createElement("p"); p.className = "shortcut-row";
+      const b = document.createElement("button"); b.type = "button"; b.className = "shortcut";
+      b.textContent = "The rest: a line.";
+      b.addEventListener("click", () => {
+        feeds.forEach(g => { if (!(g in S.whole)) S.whole[g] = false; }); lock(stage);
+        if (SC) SC.sync(strataFor("lanes"), { animate: !RM.matches }).then(() => next("lanes")); else next("lanes");
+      });
+      p.append(b); stage.append(p);
+    }
+    stage.append(hint((S.lIdx + 1) + " of " + feeds.length + ". Whole sets a stone among the pebbles; a line pours grains into the sand."));
+    stage.append(nav("lanes", null, back));
+  },
+  fetch(stage) {
+    const feeds = pickedFeeds();
+    const total = feeds.reduce((n, f) => n + newCount(f), 0);
+    const box = document.createElement("div"); stage.append(box);
+    const primary = btn("Go on", "primary", () => { S.fetched = true; next("fetch"); });
+    stage.append(nav("fetch", primary));
+    const say = parts => { box.textContent = ""; box.append(sentence(parts, "still")); };
+    const finish = () => { S.fetched = true; say(["I read " + total + " new articles from " + feeds.length + (feeds.length === 1 ? " feed." : " feeds.")]); };
+    if (!feeds.length) { box.append(sentence(["Nothing to read yet: no feeds picked."])); return; }
+    if (S.fetched || RM.matches) { SC?.gather(feeds.map(f => [f, newCount(f)]), false); finish(); return; }
+    const per = 8000 / feeds.length;
+    feeds.forEach((f, k) => later(() => { say(["Reading ", span(f), "… " + newCount(f) + " new."]); SC?.gather([[f, newCount(f)]], true); }, k * per));
+    later(finish, 8000);
+  },
+  /* one topic per sentence; more lifts its stone into the pebbles in accent, less sinks it under the water */
+  stances(stage) {
+    const topics = stanceTopics();
+    if (S.sIdx >= topics.length) S.sIdx = 0;
+    const t = topics[S.sIdx];
+    SC?.focus("t:" + t);
+    const topic = document.createElement("em"); topic.lang = ""; topic.textContent = t;
+    speak(stage, sentence(["More of ", topic, "?"]));
+    const q = document.createElement("div"); q.className = "quiet";
+    const answer = v => b => {
+      S.stances[t] = v; lock(stage); b.setAttribute("aria-pressed", "true");
+      const done = () => { if (S.sIdx + 1 < topics.length) { S.sIdx++; go("stances", true); } else { S.sIdx = 0; next("stances"); } };
+      if (SC) SC.sync(strataFor("stances"), { animate: !RM.matches }).then(done); else done();
+    };
+    q.append(sayBtn("More, please.", S.stances[t] === "more", answer("more")), sayBtn("Less.", S.stances[t] === "less", answer("less")));
+    stage.append(q);
+    stage.append(hint((S.sIdx + 1) + " of " + topics.length + ", from what I just read. Skip leaves the rest unanswered; that counts for nothing."));
+    stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
+  },
+  issue(stage) {
+    const box = document.createElement("div"); stage.append(box);
+    const reveal = () => {
+      clearTimers();
+      S.issued = true;
+      SC?.sync(strataFor("issue"), { animate: false });
+      SC?.pose("strata", false); SC?.cover(true);
+      document.body.classList.add("revealed");
+      stage.textContent = "";
+      const issue = buildIssue(); if (!RM.matches) issue.classList.add("appear");
+      stage.append(issue);
+      stage.append(nav("issue", btn("One more thing", "primary", () => next("issue"))));
+      window.scrollTo(0, 0);
+    };
+    if (S.issued || RM.matches) { reveal(); return; }
+    const say = l => { box.textContent = ""; box.append(sentence(l, "still")); };
+    const w = wholeFeeds(), more = Object.keys(S.stances).filter(k => S.stances[k] === "more");
+    const p = issueParts();
+    const sandTopic = (p.sand[0] && p.sand[0].topic) || more[0] || stanceTopics()[0];
+    const lines = [
+      ["Sorting " + p.inCount + " articles through what you told me."],
+      ["Setting aside the ones you won’t miss."],
+      w.length ? ["Setting a pebble: ", span(w[0]), ", the whole piece."] : ["No pebbles today: you asked for nothing whole."],
+      ["Pouring sand: articles on ", span(sandTopic), ", one line."],
+      ["Letting the water run: single headlines, one row each."],
+    ];
+    stage.append(nav("issue", btn("Show me now", "primary", reveal)));
+    const per = 10000 / lines.length;
+    lines.forEach((l, k) => later(() => say(l), k * per));
+    let descended = false;
+    const descend = () => {
+      if (descended) return; descended = true;
+      say(["Here is your first issue."]);
+      const onIssue = () => location.hash === "#issue" && !S.issued && reveal();
+      if (SC) SC.pose("strata", true).then(() => later(onIssue, 400)); else later(onIssue, 900);
+    };
+    if (!SC) { later(descend, 10000); return; }
+    const m = strataFor("stances"); addIssue(m);
+    const less = Object.keys(S.stances).filter(k => S.stances[k] === "less");
+    SC.sync(m, { animate: true, spread: 9, caught: Math.max(0, p.inCount - p.kept), bounce: less.length * 4, hits: w })
+      .then(() => { if (location.hash === "#issue" && !S.issued) later(descend, Math.max(0, 10000 - SC.elapsed())); });
+    later(descend, 14000);
+  },
+  settings(stage) {
+    if (S.done) {
+      speak(stage, sentence(["Until ", span(pad(S.hours[0])), ", then."]));
+      stage.append(hint("This prototype ends here. In the product, Finish opens Settings."));
+      stage.append(nav("settings", btn("Change the P.S.", "secondary", () => { S.done = false; render(); })));
+      return;
+    }
+    const hourIn = k => {
+      const i = document.createElement("input"); i.className = "blank hour"; i.type = "number"; i.min = "0"; i.max = "23"; i.inputMode = "numeric";
+      i.value = String(S.hours[k]); i.setAttribute("aria-label", k ? "Second publish hour" : "First publish hour");
+      i.addEventListener("input", () => { const v = Number(i.value); const ok = i.value !== "" && v >= 0 && v <= 23 && Number.isInteger(v); i.toggleAttribute("aria-invalid", !ok); if (ok) S.hours[k] = v; });
+      return i;
+    };
+    const sel = (opts, val, label, onPick) => {
+      const s = document.createElement("select"); s.className = "blank"; s.setAttribute("aria-label", label);
+      opts.forEach(o => s.append(new Option(o, o, false, o === val)));
+      const fit = () => s.style.width = (s.value.length * 0.36 + 0.5) + "em";
+      s.addEventListener("change", () => { onPick(s.value); fit(); }); fit(); return s;
+    };
+    const zones = [...new Set([S.tz, "Asia/Taipei", "Asia/Tokyo", "Europe/London", "America/New_York", "America/Los_Angeles", "UTC"])];
+    const text = (type, ph, key, label) => {
+      const i = document.createElement("input"); i.className = "blank wide"; i.type = type; i.placeholder = ph; i.value = S[key];
+      i.setAttribute("aria-label", label); i.addEventListener("input", () => S[key] = i.value.trim()); return i;
+    };
+    speak(stage, sentence(["P.S. Each day at ", hourIn(0), " and ", hourIn(1), ", in ",
+      sel(LANGS, S.lang, "Output language", v => S.lang = v), ", on ",
+      sel(zones, S.tz, "Timezone", v => S.tz = v), " time, I’ll write you what’s worth reading. I can also tell ",
+      text("url", "a Discord webhook", "discord", "Discord webhook"), " or ", text("email", "your email", "email", "Email"), "."], "dense"));
+    stage.append(hint("Language and timezone came from this browser. Everything here is optional."));
+    const err = hint("", "warn"); err.setAttribute("role", "status"); stage.append(err);
+    stage.append(nav("settings", btn("Sign the letter", "primary", () => {
+      if (stage.querySelector("[aria-invalid]")) { err.textContent = "A publish hour is a whole number from 0 to 23."; return; }
+      S.done = true; arriving = true;
+      const st = document.getElementById("stage");
+      if (RM.matches) render(); else { st.classList.add("leaving"); setTimeout(render, 260); }
+    })));
+  },
+};
+
+function buildIssue() {
+  const lang = LANG_TAG[S.lang] || "zh-Hant";
+  const sec = document.createElement("section"); sec.className = "issue"; sec.setAttribute("aria-label", "Your first issue");
+  const head = document.createElement("div"); head.className = "issue-head";
+  const h = document.createElement("h2"); h.className = "issue-title"; h.textContent = "Issue one";
+  const d = document.createElement("span"); d.className = "data"; d.textContent = new Date().toISOString().slice(0, 10);
+  head.append(h, d); sec.append(head);
+  const layer = (name, help, n) => {
+    const l = document.createElement("div"); l.className = "layer";
+    const lh = document.createElement("div"); lh.className = "layer-head";
+    const m = document.createElement("h3"); m.className = "marker label"; m.textContent = name + " · " + n;
+    const p = document.createElement("p"); p.textContent = help;
+    lh.append(m, p); l.append(lh); sec.append(l); return l;
+  };
+  const { whole, sand, water } = issueParts();
+  const pebbles = layer("Pebble", "What you read whole, one stone each.", whole.length);
+  if (!whole.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "None: you asked for nothing whole. Mark a feed “the whole piece” and its articles land here."; pebbles.append(p); }
+  whole.forEach(({ feed, title }) => {
+    const it = document.createElement("article"); it.className = "item pebble";
+    it.innerHTML = '<span class="label"></span><h3 lang=""></h3><p></p>';
+    it.querySelector(".label").textContent = feed;
+    it.querySelector("h3").textContent = title;
+    const p = it.querySelector("p"); p.lang = lang; p.textContent = lang === "en" ? "A summary of the whole piece, written for you." : "整篇讀完後替你寫的摘要：重點、脈絡與值得細讀的段落。";
+    pebbles.append(it);
+  });
+  const sandL = layer("Sand", "Several articles on one topic, told in a line.", sand.length);
+  if (!sand.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "None this time: no two skimmed feeds shared a topic."; sandL.append(p); }
+  sand.forEach(s => {
+    const it = document.createElement("article"); it.className = "item";
+    it.innerHTML = '<h3></h3><p></p><span class="label"></span>';
+    it.querySelector("h3").textContent = s.topic; it.querySelector("h3").lang = lang;
+    const p = it.querySelector("p"); p.lang = lang; p.textContent = lang === "en" ? s.count + " outlets on one development, told once." : s.count + " 篇報導同一進展，合成一句話告訴你。";
+    const lab = it.querySelector(".label"); lab.textContent = s.count + " articles";
+    if (s.more) { const m = document.createElement("span"); m.className = "more"; m.textContent = " · more, as you asked"; lab.append(m); }
+    sandL.append(it);
+  });
+  const waterL = layer("Water", "Single headlines you can let run past.", water.length);
+  const wl = document.createElement("div"); wl.className = "water";
+  water.forEach(r => {
+    const row = document.createElement("div");
+    const t = document.createElement("span"); t.lang = ""; t.textContent = r.title;
+    const s = document.createElement("span"); s.className = "label"; s.textContent = r.feed;
+    row.append(t, s); wl.append(row);
+  });
+  if (water.length) waterL.append(wl);
+  return sec;
+}
+
+/* ================= the scene: articles fall through a mesh and settle into three strata ================= */
+const Y = { top: 4.6, mesh: 0.35, pebble: -0.8, sand: -1.95, water: -3.1 };
+const GRAINS = 6;
+const HALF_D = 1.0;
+
+function createScene(THREE, canvas) {
+  const css = n => new THREE.Color().setStyle(getComputedStyle(document.documentElement).getPropertyValue(n).trim());
+  const C = { bg: css("--bg"), text: css("--text"), dim: css("--text-dim"), faint: css("--text-faint"), accent: css("--accent"),
+    border: css("--border"), strong: css("--border-strong") };
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setClearColor(C.bg, 1);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(C.bg, 10, 26);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
+  scene.add(new THREE.HemisphereLight(C.text, C.bg, 1.4));
+  const sun = new THREE.DirectionalLight(C.text, 2.2); sun.position.set(-3, 6, 5); scene.add(sun);
+
+  let SPAN = 9, aspect = 1, time = 0, pace = 1, paceTo = 1, calmUntil = 0, running = false, covered = false;
+  const X = u => u * SPAN;
+
+  /* the filter: a horizontal mesh of hairlines */
+  const unit = new THREE.Group(); scene.add(unit);
+  const gridPts = [];
+  for (let z = -HALF_D; z <= HALF_D + 1e-6; z += HALF_D / 4) gridPts.push(-0.5, 0, z, 0.5, 0, z);
+  for (let k = 0; k <= 24; k++) { const x = -0.5 + k / 24; gridPts.push(x, 0, -HALF_D, x, 0, HALF_D); }
+  const gridGeo = new THREE.BufferGeometry(); gridGeo.setAttribute("position", new THREE.Float32BufferAttribute(gridPts, 3));
+  const grid = new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: C.strong }));
+  grid.position.y = Y.mesh; unit.add(grid);
+  /* the three trays: hairline outlines */
+  const trayGeo = new THREE.BufferGeometry().setFromPoints([[-0.5, -HALF_D], [0.5, -HALF_D], [0.5, HALF_D], [-0.5, HALF_D]].map(([x, z]) => new THREE.Vector3(x, 0, z)));
+  for (const k of ["pebble", "sand", "water"]) {
+    const t = new THREE.LineLoop(trayGeo, new THREE.LineBasicMaterial({ color: C.strong }));
+    t.position.y = Y[k]; unit.add(t);
+  }
+  /* water: a translucent sheet whose vertices ripple */
+  const waterGeo = new THREE.PlaneGeometry(1, HALF_D * 2, 48, 16); waterGeo.rotateX(-Math.PI / 2);
+  const wBase = waterGeo.attributes.position.array.slice();
+  const water = new THREE.Mesh(waterGeo, new THREE.MeshStandardMaterial({ color: C.dim, transparent: true, opacity: 0.2,
+    roughness: 0.08, metalness: 0, side: THREE.DoubleSide, depthWrite: false }));
+  water.position.y = Y.water; water.renderOrder = 2; unit.add(water);
+  const ripples = [];
+  const waveAt = (x, z) => {
+    let y = 0.018 * Math.sin(x * 1.7 + time * 0.6) * Math.cos(z * 2.1 + time * 0.4);
+    for (const r of ripples) {
+      const age = time - r.t0, d = Math.hypot(x - X(r.u), z - r.z);
+      if (age > 0) y += 0.11 * Math.exp(-age * 1.3) * Math.exp(-d * 1.2) * Math.sin(d * 9 - age * 7);
+    }
+    return y;
+  };
+
+  /* instanced bodies: articles in flight, sand grains, water lines */
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SV = new THREE.Vector3(), E = new THREE.Euler(), TMP = new THREE.Color();
+  const inst = (geo, mat, cap) => { const m = new THREE.InstancedMesh(geo, mat, cap); m.count = 0; m.frustumCulled = false;
+    for (let i = 0; i < cap; i++) m.setColorAt(i, C.text); scene.add(m); return m; };
+  const dots = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }), 900);
+  const grainsM = inst(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 }), 1600);
+  const dashM = inst(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }), 40);
+  const stoneGeo = new THREE.IcosahedronGeometry(1, 4);
+
+  const parts = [];      // articles in flight or resting on the mesh
+  const queue = [];      // scheduled spawns {at, fn}
+  const stones = new Map(), piles = new Map(), dashes = new Map();
+  let emitters = [], focusKey = null;
+
+  const rnd = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+  const emitU = key => { const e = emitters.find(e => e.key === key); return e ? e.u : (Math.random() - 0.5) * 0.8; };
+  const anyEmitU = () => emitters.length ? emitters[Math.floor(Math.random() * emitters.length)].u : (Math.random() - 0.5) * 0.8;
+
+  function spawn(u, fate, dest, ahead = 0) {
+    if (parts.length >= 880) { if (dest) arrive(dest); return; }
+    const p = { u: u + (Math.random() - 0.5) * 0.035, y: Y.top + Math.random() * 0.4, z: (Math.random() - 0.5) * HALF_D * 1.2,
+      vy: 2.0 + Math.random() * 0.5, vx: 0, r: 0.045, fate, dest, state: "fall", age: 0, color: C.text, s: 1 };
+    if (dest && dest.type === "grain") p.r = 0.04;
+    p.y -= p.vy * ahead;
+    parts.push(p);
+  }
+  function arrive(d) {
+    if (d.type === "grain") { const p = piles.get(d.cat); if (p && d.k < p.n) p.shown = Math.max(p.shown, d.k + 1), p.pop[d.k] = time; }
+    else if (d.type === "dash") { const x = dashes.get(d.key); if (x) { x.shown = true; x.t0 = time; ripples.push({ u: x.u, z: x.z, t0: time }); } }
+    else if (d.type === "water") ripples.push({ u: d.u, z: d.z || 0, t0: time });
+    else if (d.type === "hit") { const s = stones.get(d.key); if (s) s.pulse = time; }
+    if (d.batch) done1(d.batch);
+  }
+  /* each sync is a batch; its promise settles when everything it sent has arrived */
+  function done1(b) { if (--b.n <= 0 && b.res) { const r = b.res; b.res = null; r(); } }
+
+  /* layout of the strata in units of SPAN */
+  function pileOrder() {
+    const cats = new Set([...piles.keys()].filter(c => piles.get(c).n > 0));
+    for (const s of stones.values()) if (s.tray === "sand" && s.cat) cats.add(s.cat);
+    const ord = c => { const i = TOPICS.findIndex(t => t.id === c); return i < 0 ? -1 : i; };
+    return [...cats].sort((a, b) => ord(a) - ord(b));
+  }
+  const pileU = c => { const o = pileOrder(); const i = o.indexOf(c); return i < 0 ? 0 : col(i, o.length); };
+  const pileR = n => 0.1 + 0.03 * Math.sqrt(n);
+  function grainPos(c, k, out) {
+    const p = piles.get(c), n = Math.max(p.n * GRAINS, 1), R = pileR(n), H = 0.06 + 0.03 * Math.sqrt(n);
+    const a = rnd(k, c.length + 1) * Math.PI * 2, d = Math.sqrt(rnd(k + 9, 3)) * R;
+    const x = X(pileU(c)) + Math.cos(a) * d, z = Math.sin(a) * d * 0.7;
+    out.set(x, Y.sand + 0.03 + rnd(k, 7) * H * (1 - d / R), z); return out;
+  }
+  function stoneSlot(s) {
+    const same = [...stones.values()].filter(o => o.tray === s.tray && !o.leaving);
+    const i = same.indexOf(s);
+    if (s.tray === "pebble") {
+      const n = same.length; return { x: X(col(i, n) * (n > 1 ? 1 : 0)), y: Y.pebble + s.size * 0.5, z: i % 2 ? 0.28 : -0.18 };
+    }
+    if (s.tray === "water") { const n = same.length; return { x: X(col(i, n)), y: Y.water - 0.22, z: (i % 2 ? 0.3 : -0.2) }; }
+    const mates = same.filter(o => o.cat === s.cat), j = mates.indexOf(s), p = piles.get(s.cat);
+    const h = p && p.n ? 0.06 + 0.03 * Math.sqrt(p.n * GRAINS) : 0;
+    return { x: X(pileU(s.cat)) + (j - (mates.length - 1) / 2) * 0.34, y: Y.sand + h + s.size * 0.45, z: 0.25 };
+  }
+  function makeStone(spec) {
+    const mat = new THREE.MeshStandardMaterial({ color: spec.topic ? C.dim : C.text, roughness: 0.5, metalness: 0.02, emissive: C.accent, emissiveIntensity: 0 });
+    const mesh = new THREE.Mesh(stoneGeo, mat);
+    const h = hash(spec.key);
+    const s = { ...spec, mesh, aspect: [1 + (h % 7) * 0.05, 0.55 + (h % 5) * 0.04, 0.8 + (h % 3) * 0.06], rot: (h % 360) * Math.PI / 180,
+      anim: null, pulse: -9, shown: false, glow: 0 };
+    mesh.visible = false; scene.add(mesh); stones.set(spec.key, s); return s;
+  }
+  function place(s) { const t = stoneSlot(s); s.cur = { ...t }; s.mesh.visible = true; s.shown = true; }
+
+  /* the scene follows a model of the strata; with animate, every difference arrives as a fall */
+  function sync(model, opts = {}) {
+    const animate = !!opts.animate && !RM.matches;
+    const sched = [], batch = { n: 0, res: null };
+    const keep = new Set(model.stones.map(s => s.key));
+    for (const [k, s] of stones) if (!keep.has(k)) {
+      if (animate) { s.leaving = true; s.anim = { kind: "fade", t0: null, dur: 0.5 }; } else { scene.remove(s.mesh); stones.delete(k); }
+    }
+    for (const spec of model.stones) {
+      let s = stones.get(spec.key);
+      if (!s) {
+        s = makeStone(spec);
+        if (animate) { const st = s; sched.push(C1(() => { st.anim = { kind: "fall", from: { x: X(spec.src ? emitU(spec.src) : anyEmitU()), y: Y.mesh + 2.0, z: 0 }, t0: time, dur: 1.5, batch }; st.mesh.visible = true; })); }
+        continue;
+      }
+      const moved = s.tray !== spec.tray;
+      Object.assign(s, { tray: spec.tray, accent: !!spec.accent, size: spec.size });
+      if (moved && animate) { batch.n++; s.anim = { kind: "move", from: { ...s.cur }, t0: time, dur: 1.6, batch }; }
+    }
+    const cats = new Set([...Object.keys(model.piles), ...piles.keys()]);
+    for (const c of cats) {
+      const n = model.piles[c] || 0;
+      let p = piles.get(c); if (!p) { p = { n: 0, shown: 0, pop: [] }; piles.set(c, p); }
+      const from = p.shown;
+      p.n = n;
+      if (!animate || n < from) { p.shown = n; continue; }
+      const srcs = (model.src && model.src[c]) || [];
+      for (let k = from; k < n; k++) sched.push(C1(() => spawn(srcs.length ? emitU(srcs[k % srcs.length]) : anyEmitU(), "pass", { type: "grain", cat: c, k, batch })));
+    }
+    const dkeep = new Set(model.dashes.map(d => d.key));
+    for (const k of [...dashes.keys()]) if (!dkeep.has(k)) dashes.delete(k);
+    model.dashes.forEach(d => {
+      if (dashes.has(d.key)) return;
+      const x = { key: d.key, u: 0, z: 0, shown: !animate, t0: -9 }; dashes.set(d.key, x);
+      if (animate) sched.push(C1(() => spawn(d.src ? emitU(d.src) : anyEmitU(), "pass", { type: "dash", key: d.key, batch })));
+    });
+    layoutDashes();
+    for (const s of stones.values()) if (!s.anim && !s.leaving) {
+      if (!animate || !s.cur) { if (!animate || s.shown) place(s); }
+      else { const t = stoneSlot(s); if (Math.hypot(t.x - s.cur.x, t.y - s.cur.y, t.z - s.cur.z) > 0.01) s.anim = { kind: "move", from: { ...s.cur }, t0: time, dur: 0.9 }; }
+    }
+    for (const f of opts.hits || []) sched.push(C1(() => spawn(emitU(f), "pass", { type: "hit", key: "f:" + f, batch })));
+    if (!animate) { if (!running) draw(); return Promise.resolve(); }
+    let caughtN = 0;
+    for (let k = 0; k < (opts.caught || 0); k++) sched.push(C1(() => spawn(anyEmitU(), "catch", { type: "none", batch })));
+    for (let k = 0; k < (opts.bounce || 0); k++) sched.push(C1(() => spawn(anyEmitU(), "bounce", { type: "none", batch })));
+    onCatch = opts.onCatch ? () => opts.onCatch(++caughtN) : null;
+    shuffle(sched);
+    const spread = opts.spread || Math.min(1.2, sched.length * 0.06), ahead = opts.ahead || 0;
+    sched.forEach((fn, i) => {
+      const at = -ahead + (spread + ahead) * (i / Math.max(1, sched.length));
+      if (fn.counted) batch.n++;
+      if (at <= 0) { const a = -at; queue.push({ at: time, fn, ahead: a }); } else queue.push({ at: time + at, fn });
+    });
+    return new Promise(res => { if (batch.n <= 0) res(); else batch.res = res; });
+  }
+  let onCatch = null;
+  const C1 = fn => (fn.counted = true, fn);
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } }
+  function layoutDashes() { const all = [...dashes.values()]; all.forEach((d, i) => { d.u = col(i, all.length); d.z = (i % 3 - 1) * 0.45; }); }
+
+  /* bodies resting on the mesh: what the first read brought in */
+  function gather(list, animate) {
+    if (!animate || RM.matches) {
+      for (const [f, n] of list) for (let k = 0; k < n; k++) parts.push({ u: emitU(f) + (Math.random() - 0.5) * 0.06, y: Y.mesh + 0.045, z: (Math.random() - 0.5) * HALF_D * 1.6,
+        vy: 0, vx: 0, r: 0.045, fate: "gather", state: "rest", age: 0, color: C.dim, s: 1, h: Math.random() * 0.12 });
+      if (!running) draw(); return;
+    }
+    for (const [f, n] of list) for (let k = 0; k < n; k++) queue.push({ at: time + k * 0.09, fn: () => spawn(emitU(f), "gather", null) });
+  }
+  function clearGather(instant) { for (const p of parts) if (p.fate === "gather") { if (instant || RM.matches) p.state = "gone"; else { p.state = "fade"; p.age = 0; } } }
+
+  function step(dt) {
+    time += dt;
+    for (let i = queue.length - 1; i >= 0; i--) if (queue[i].at <= time) {
+      const q = queue.splice(i, 1)[0];
+      if (q.ahead) { const n = parts.length; q.fn(); if (parts.length > n) { const p = parts[parts.length - 1]; p.y -= p.vy * q.ahead; } } else q.fn();
+    }
+    for (const e of emitters) { if (!e.rate) continue; e.acc = (e.acc || 0) + dt * e.rate; while (e.acc >= 1) { e.acc -= 1; spawn(e.u, Math.random() < 0.15 ? "pass" : "catch", null); } }
+    for (const p of parts) {
+      p.age += dt;
+      if (p.state === "fall") {
+        p.vy = Math.min(p.vy + 1.2 * dt, 3.2); p.y -= p.vy * dt;
+        if (p.y <= Y.mesh + p.r) {
+          if (p.fate === "pass") { p.state = "below"; p.color = C.accent; if (!p.dest) p.dest = { type: "water", u: p.u, z: p.z }; }
+          else if (p.fate === "bounce") { if (p.dest) arrive(p.dest); p.state = "bounce"; p.vy = -(1.6 + Math.random()); p.vx = (Math.random() - 0.5) * 0.12; p.color = C.dim; p.age = 0; }
+          else { p.state = "rest"; p.y = Y.mesh + p.r; p.color = C.dim; p.age = 0; p.h = p.fate === "gather" ? Math.random() * 0.12 : 0; if (p.fate === "catch") { if (onCatch) onCatch(); if (p.dest) arrive(p.dest); } }
+        }
+      } else if (p.state === "below") {
+        const d = p.dest; let ty = Y.water, tu = p.u, tz = p.z;
+        if (d.type === "grain") { const pl = piles.get(d.cat); if (pl) { grainPos(d.cat, d.k * GRAINS, V); ty = V.y; tu = V.x / SPAN; tz = V.z; } }
+        else if (d.type === "dash") { const x = dashes.get(d.key); if (x) { tu = x.u; tz = x.z; } }
+        else if (d.type === "hit") { const s = stones.get(d.key); if (s && s.cur) { ty = s.cur.y + s.size * 0.3; tu = s.cur.x / SPAN; tz = s.cur.z; } }
+        p.u += (tu - p.u) * Math.min(1, dt * 3); p.z += (tz - p.z) * Math.min(1, dt * 3);
+        p.vy = Math.min(p.vy + 2 * dt, 3.4); p.y -= p.vy * dt;
+        if (p.y <= ty) { p.state = "gone"; arrive(d); }
+      } else if (p.state === "bounce") {
+        p.y -= p.vy * dt; p.vy += 4 * dt; p.u += p.vx * dt; p.s = Math.max(0, 1 - p.age / 1.1);
+        if (p.age > 1.1) p.state = "gone";
+      } else if (p.state === "rest") {
+        if (p.fate === "catch") { p.s = p.age < 1.1 ? 1 : Math.max(0, 1 - (p.age - 1.1) / 0.5); if (p.s <= 0) p.state = "gone"; }
+      } else if (p.state === "fade") { p.s = Math.max(0, 1 - p.age / 0.6); if (p.s <= 0) p.state = "gone"; }
+    }
+    for (let i = parts.length - 1; i >= 0; i--) if (parts[i].state === "gone") parts.splice(i, 1);
+    for (let i = ripples.length - 1; i >= 0; i--) if (time - ripples[i].t0 > 4) ripples.splice(i, 1);
+    for (const s of stones.values()) animStone(s);
+  }
+  const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  function animStone(s) {
+    const a = s.anim; if (!a) return;
+    if (a.t0 === null) a.t0 = time;
+    const t = Math.min(1, (time - a.t0) / a.dur);
+    if (a.kind === "fade") { s.fade = 1 - t; if (t >= 1) { scene.remove(s.mesh); stones.delete(s.key); } return; }
+    const to = stoneSlot(s);
+    if (a.kind === "fall") {
+      const k = t * t;
+      s.cur = { x: a.from.x + (to.x - a.from.x) * ease(t), y: a.from.y + (to.y - a.from.y) * k, z: a.from.z + (to.z - a.from.z) * t };
+    } else s.cur = { x: a.from.x + (to.x - a.from.x) * ease(t), y: a.from.y + (to.y - a.from.y) * ease(t), z: a.from.z + (to.z - a.from.z) * ease(t) };
+    if (t >= 1) { s.anim = null; s.shown = true; if (a.kind === "fall") { s.pulse = time; if (s.tray === "water") ripples.push({ u: to.x / SPAN, z: to.z, t0: time }); } if (a.batch) done1(a.batch); }
+  }
+
+  function draw() {
+    /* articles */
+    let n = 0;
+    for (const p of parts) {
+      if (n >= 900) break;
+      const sc = p.r * p.s;
+      M.compose(V.set(X(p.u), p.y + (p.h || 0), p.z), Q.identity(), SV.set(sc, sc, sc));
+      dots.setMatrixAt(n, M); dots.setColorAt(n, p.color); n++;
+    }
+    dots.count = n; dots.instanceMatrix.needsUpdate = true; if (dots.instanceColor) dots.instanceColor.needsUpdate = true;
+    /* sand */
+    n = 0;
+    for (const [c, p] of piles) for (let k = 0; k < p.shown * GRAINS && n < 1600; k++) {
+      grainPos(c, k, V);
+      const age = time - (p.pop[Math.floor(k / GRAINS)] ?? -9), pop = age < 0.3 ? 0.4 + age * 2 : 1, sc = 0.042 * pop;
+      E.set(k, k * 2, k * 3); Q.setFromEuler(E);
+      M.compose(V, Q, SV.set(sc, sc * 0.8, sc));
+      grainsM.setMatrixAt(n, M); grainsM.setColorAt(n, rnd(k, 5) < 0.3 ? C.faint : C.dim); n++;
+    }
+    grainsM.count = n; grainsM.instanceMatrix.needsUpdate = true; if (grainsM.instanceColor) grainsM.instanceColor.needsUpdate = true;
+    /* water lines */
+    n = 0;
+    for (const d of dashes.values()) {
+      if (!d.shown) continue;
+      const x = X(d.u), y = Y.water + waveAt(x, d.z) + 0.02, grow = Math.min(1, (time - d.t0) / 0.5);
+      M.compose(V.set(x, y, d.z), Q.identity(), SV.set(Math.min(0.5, SPAN * 0.07) * grow, 0.014, 0.04));
+      dashM.setMatrixAt(n, M); dashM.setColorAt(n, C.text); n++;
+    }
+    dashM.count = n; dashM.instanceMatrix.needsUpdate = true; if (dashM.instanceColor) dashM.instanceColor.needsUpdate = true;
+    /* the water sheet */
+    const pos = waterGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const x = wBase[i * 3] * SPAN, z = wBase[i * 3 + 2]; pos.array[i * 3 + 1] = waveAt(x, z); }
+    pos.needsUpdate = true; waterGeo.computeVertexNormals();
+    /* stones */
+    for (const s of stones.values()) {
+      if (!s.cur) { s.mesh.visible = false; continue; }
+      s.mesh.visible = s.mesh.visible || s.shown;
+      const bump = Math.max(0, 1 - (time - s.pulse) / 0.5);
+      const sz = s.size * (s.accent ? 1.6 : 1) * (1 + 0.12 * bump) * (s.fade ?? 1);
+      s.mesh.position.set(s.cur.x, s.cur.y + (s.tray === "water" ? waveAt(s.cur.x, s.cur.z) * 0.5 : 0), s.cur.z);
+      s.mesh.scale.set(sz * s.aspect[0], sz * s.aspect[1], sz * s.aspect[2]);
+      s.mesh.rotation.set(0, s.rot, 0);
+      const target = s.accent ? 1 : 0;
+      s.glow += (target - s.glow) * (s.anim || running ? 0.08 : 1);
+      const base = s.tray === "water" ? C.faint : s.topic && s.key !== focusKey ? C.dim : C.text;
+      s.mesh.material.color.copy(TMP.copy(base).lerp(C.accent, s.glow));
+      s.mesh.material.emissiveIntensity = 0.9 * s.glow;
+    }
+    placeLabels();
+    renderer.render(scene, camera);
+  }
+
+  /* the camera: high above the mesh, or down at the strata */
+  const POSE = {
+    top: () => ({ pos: [0, 1.6, fitZ(12.5)], look: [0, 0.55, 0] }),
+    strata: () => ({ pos: [0, 0.5, fitZ(7.4)], look: [0, -1.25, 0] }),
+  };
+  const fitZ = z => { const w = 2 * z * Math.tan(THREE.MathUtils.degToRad(21)) * aspect; return w < SPAN * 1.12 ? (SPAN * 1.12) / (2 * Math.tan(THREE.MathUtils.degToRad(21)) * aspect) : z; };
+  let cam = { name: "top", from: null, t0: 0, dur: 0, res: null };
+  const lookV = new THREE.Vector3();
+  function applyCamera() {
+    const to = POSE[cam.name]();
+    let pos = to.pos, look = to.look;
+    if (cam.from) {
+      const t = Math.min(1, (performance.now() - cam.t0) / cam.dur), e = ease(t);
+      pos = pos.map((v, i) => cam.from.pos[i] + (v - cam.from.pos[i]) * e);
+      look = look.map((v, i) => cam.from.look[i] + (v - cam.from.look[i]) * e);
+      if (t >= 1) { cam.from = null; const r = cam.res; cam.res = null; r && r(); }
+    }
+    const sway = RM.matches ? 0 : Math.sin(performance.now() / 9000) * 0.12;
+    camera.position.set(pos[0] + sway, pos[1], pos[2]);
+    camera.lookAt(lookV.set(look[0], look[1], look[2]));
+  }
+  function pose(name, animate) {
+    if (cam.name === name && !cam.from) return Promise.resolve();
+    if (!animate || RM.matches) { cam = { name, from: null }; applyCamera(); if (!running) draw(); return Promise.resolve(); }
+    const cur = { pos: camera.position.toArray(), look: POSE[cam.name]().look };
+    cam = { name, from: cur, t0: performance.now(), dur: 2600, res: null };
+    return new Promise(r => cam.res = r);
+  }
+
+  /* the strata's names, pinned beside each tray */
+  const labels = [...document.querySelectorAll(".strata-labels span")];
+  let textBottom = 0;
+  function placeLabels() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    for (const el of labels) {
+      V.set(-SPAN / 2, Y[el.dataset.tray], HALF_D).project(camera);
+      const x = Math.max(16, (V.x + 1) / 2 * w), y = (1 - V.y) / 2 * h + 6;
+      el.style.transform = `translate(${x}px, ${y}px)`;
+      el.style.opacity = y < textBottom ? "0" : "";
+    }
+  }
+
+  function resize() {
+    const w = innerWidth, h = innerHeight; aspect = w / h;
+    renderer.setSize(w, h, false); camera.aspect = aspect; camera.updateProjectionMatrix();
+    const vis = 2 * 12.5 * Math.tan(THREE.MathUtils.degToRad(21)) * aspect;
+    SPAN = Math.max(3.4, Math.min(9, vis * 0.84));
+    unit.children.forEach(o => { o.scale.x = SPAN; });
+    applyCamera(); if (!running) draw();
+  }
+
+  let last = 0;
+  function frame(now) {
+    const raw = Math.min(0.1, (now - (last || now)) / 1000); last = now;
+    if (now < calmUntil) paceTo = 0.06; else paceTo = 1;
+    pace += (paceTo - pace) * Math.min(1, raw * (paceTo > pace ? 2.6 : 6));
+    step(raw * pace);
+    applyCamera(); draw();
+  }
+  function setLoop() {
+    const on = !RM.matches && !covered && !document.hidden;
+    if (on === running) return;
+    running = on; last = 0;
+    renderer.setAnimationLoop(on ? frame : null);
+    if (!on) draw();
+  }
+  document.addEventListener("visibilitychange", setLoop);
+  addEventListener("resize", resize);
+  RM.addEventListener?.("change", setLoop);
+  resize(); setLoop();
+
+  return {
+    sync, gather, clearGather, pose,
+    setEmitters(list) { emitters = list.map(e => ({ ...(emitters.find(o => o.key === e.key) || {}), ...e })); },
+    calm(ms) { if (ms > 0) calmUntil = performance.now() + ms; },
+    focus(key) { focusKey = key; if (!running) draw(); },
+    cover(on) { covered = on; setLoop(); },
+    textBottom(px) { textBottom = px; if (!running) draw(); },
+    elapsed: () => (performance.now() - enteredAt),
+    mark() { enteredAt = performance.now(); },
+  };
+}
+let enteredAt = performance.now();
+
+/* WebGL or not: without it, the letter is the whole experience */
+let SC = null;
+try {
+  if (!document.createElement("canvas").getContext("webgl2")) throw new Error("no WebGL 2");
+  const THREE = await import("three");
+  SC = createScene(THREE, document.getElementById("scene"));
+} catch (e) {
+  SC = null;
+}
+document.body.classList.toggle("text-only", !SC);
+
+/* the scrim follows the sentence, so text stays readable over the stream */
+const stageEl = document.getElementById("stage");
+new ResizeObserver(() => {
+  const b = stageEl.getBoundingClientRect().bottom;
+  document.documentElement.style.setProperty("--scrim-h", Math.min(innerHeight * 0.9, b + 48) + "px");
+  SC?.textBottom(b + 8);
+}).observe(stageEl);
+
+let seq = 0;
+async function render() {
+  const my = ++seq;
+  clearTimers();
+  let step = location.hash.slice(1);
+  if (!STEPS.includes(step)) step = "opening";
+  ensure(step);
+  const fwd = forward; forward = false;
+  document.getElementById("progress").textContent = PROGRESS[step] + " of 7";
+  document.body.classList.remove("revealed");
+  renderLetter(step);
+  const stage = document.getElementById("stage");
+  stage.classList.remove("leaving"); stage.textContent = "";
+  if (SC) {
+    SC.mark(); SC.cover(false);
+    SC.pose("top", false);
+    SC.setEmitters(emittersFor(step));
+    if (step !== "fetch") SC.clearGather(!fwd);
+    if (step !== "opening" && step !== "issue") {
+      const m = strataFor(step);
+      if (step === "fetch" && S.fetched) SC.gather([], false);
+      await SC.sync(m, { animate: fwd && !RM.matches });
+      if (my !== seq) return;
+    } else if (step === "issue") SC.sync(strataFor("stances"), { animate: false });
+  }
+  VIEW[step](stage);
+}
+window.addEventListener("hashchange", () => render());
+render();
+</script>
+</body>
+</html>

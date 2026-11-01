@@ -15,6 +15,7 @@ data; no request leaves the page.
 | `b-pebble-sand-water.html` | The reader drops each feed into a layer: pebble, sand or water | preference forming |
 | `c-editors-letter.html` | Cyris speaks as an editor, one sentence at a time; each setting is a blank in a sentence | step transitions |
 | `d-reveal.html` | Setup stays light; the two waits become a live view of the editor at work, ending in the first issue | first-issue reveal |
+| `e-stream-letter.html` | C's editor speaks over A's stream, rendered in 3D as pebble, sand and water | opening, preference forming, first-issue reveal |
 
 ## The flow every POC walks (owner, 2026-11-01)
 
