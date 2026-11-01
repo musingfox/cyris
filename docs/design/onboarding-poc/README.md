@@ -23,6 +23,22 @@ data; no request leaves the page.
 | `j-room.html` | Every source is a voice in a crowded room: headlines talk over each other unreadably until the editor lets a few speak clearly in front and the rest drop to a dim murmur that stays; feeds only thicken the murmur, a never-miss source steps to the front, stances raise a topic out of the murmur or quiet it, and the second wait sorts the room into Deep reads, Stories and Fragments before the issue shows them | opening, preference forming |
 | `k-overload.html` | First person: headlines fly at your face until the cyris logo fades in and the flow turns calm; the calm stream is one evenly spaced lane out of the logo, picked feeds join it, a never-miss source's headlines come forward and stay in front, more draws a topic forward and less lets it drift back, and the second wait sorts it into Deep reads, Stories and Fragments | opening |
 
+## Chosen: K (owner, 2026-11-01)
+
+The owner picked `k-overload.html` after seeing G–K: it works better than every earlier
+version, and its animation is to be made finer later. Open in K at selection:
+
+- At 390px wide the calm lane is narrow; headlines bunch near the vanishing point and the
+  three foreground cards carry the reading.
+- The three layers are named only in the never-miss hint and the second wait's narration, so a
+  reader may reach the reveal without knowing them.
+- At 1280×800 the calm opening overflows and the page scrolls.
+- The fake headline pool is small, so a lane fed by several feeds of one topic repeats titles.
+
+Next: write the direction into `docs/design/ui-language.md` §6 *onboarding* before the wizard
+changes (vault card `onboarding-first-impression`). The wizard's content change itself is
+`onboarding-topic-votes`, blocked on `topic-store-and-votes`.
+
 ## Owner's review after A–F (2026-11-01)
 
 These override the flow below for every POC from G on.
