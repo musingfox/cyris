@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attention funnel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+/* POC only: the typographic motion and the canvas height need values the spec has no token for. */
+:root { --t-word: 520ms; --t-leave: 260ms; --t-scene: 600ms; --funnel-h: 160px; }
+@media (min-width: 720px) { :root { --funnel-h: 250px; } }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: var(--measure-wide); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-12); min-height: 100vh; }
+@media (min-width: 720px) { .page { padding: var(--s-8) var(--s-6) var(--s-16); } }
+.top { display: flex; justify-content: space-between; align-items: center; height: var(--s-8); }
+.brand { display: flex; align-items: center; gap: var(--s-2); font-family: var(--font-mono); font-weight: 500;
+  font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text); }
+.brand i { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.stage { margin-top: var(--s-8); transition: opacity var(--t-leave) ease-in, transform var(--t-leave) ease-in; }
+.stage.leaving { opacity: 0; transform: translateY(calc(-1 * var(--s-6))); }
+
+/* the editor's sentence, assembled word by word (from e-stream-letter) */
+.say { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(30px, 5.2vw, 48px) * var(--type-scale));
+  line-height: 1.14; letter-spacing: -0.02em; margin: 0 auto; overflow-wrap: anywhere; text-align: center; max-width: var(--measure); }
+.say.dense { font-size: calc(clamp(24px, 3.9vw, 34px) * var(--type-scale)); line-height: 1.3; letter-spacing: -0.01em; }
+.say em { font-style: italic; color: var(--accent); }
+.say em[lang] { font-style: normal; }
+.w { display: inline-block; animation: assemble var(--t-word) ease-out both; }
+.say.still .w { animation: fade var(--t-leave) ease-out both; animation-delay: 0s !important; }
+@keyframes assemble { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.blank { font: inherit; letter-spacing: inherit; color: var(--text-dim); background: none; border: 0;
+  border-bottom: 1px solid var(--border-strong); padding: 2px .06em; margin: 0; cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.blank:hover { color: var(--text); }
+.blank:active { opacity: .7; }
+.blank:disabled { cursor: default; }
+.blank[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+input.blank, select.blank { cursor: text; color: var(--accent); border-bottom-color: var(--accent-dim); border-radius: 0;
+  -webkit-appearance: none; appearance: none; text-align: center; }
+input.blank:focus, select.blank:focus { outline: none; border-bottom-color: var(--accent); }
+input.blank::placeholder { color: var(--text-dim); font-style: italic; }
+input.blank.hour { width: 1.6em; -moz-appearance: textfield; }
+input.blank.hour::-webkit-inner-spin-button, input.blank.hour::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.blank.wide { width: min(100%, 9em); }
+input.blank[aria-invalid="true"] { border-bottom-color: var(--warn); }
+select.blank { cursor: pointer; background: none; padding-right: .1em; max-width: 100%; }
+select.blank option { font-family: var(--font-sans); font-size: 16px; background: var(--bg-elev); color: var(--text); }
+.quiet { display: flex; gap: var(--s-8); margin-top: var(--s-5); flex-wrap: wrap; justify-content: center; }
+.hint { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: var(--s-4) auto 0; text-align: center; max-width: 34em; }
+.hint.warn { color: var(--warn); }
+.shortcut { font: inherit; color: var(--text-dim); background: none; border: 0; border-bottom: 1px solid var(--border-strong);
+  padding: 0; cursor: pointer; font-family: var(--font-serif); font-style: italic; font-size: calc(19px * var(--type-scale)); }
+.shortcut:hover { color: var(--text); }
+.shortcut-row { text-align: center; margin: var(--s-4) 0 0; }
+
+/* the funnel: what comes in above, the canvas, what reaches you below */
+.funnel { margin: var(--s-6) auto 0; max-width: var(--measure); background: var(--bg); }
+.funnel canvas { display: block; width: 100%; height: var(--funnel-h); }
+.meter { display: flex; justify-content: center; align-items: baseline; gap: var(--s-2); min-height: var(--s-6); }
+.meter b { font-family: var(--font-mono); font-weight: 400; font-size: calc(19px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text); }
+.meter.out b { color: var(--accent); }
+.meter.out b + .label { margin-left: calc(-1 * var(--s-2)); }
+.funnel.sticky { position: sticky; top: 0; z-index: 1; padding-top: var(--s-2); border-bottom: 1px solid var(--border); padding-bottom: var(--s-2); }
+
+/* the feed picker: topic filters and feeds on one screen */
+.filters, .feeds { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.filters { margin-top: var(--s-5); }
+.feeds { margin-top: var(--s-4); }
+.chip { min-height: 36px; padding: 0 var(--s-3); border-radius: var(--r-tag); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-sans); font-size: calc(14px * var(--type-scale));
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast); }
+.chip:hover { color: var(--text); }
+.chip.filter { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; background: none; }
+.chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+.chip .n { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.own { display: flex; gap: var(--s-2); margin: var(--s-6) auto 0; max-width: 34em; flex-wrap: wrap; align-items: flex-end; }
+.own label { width: 100%; }
+.field { flex: 1; min-width: 0; height: 44px; padding: 0 var(--s-3); border-radius: var(--r-control); border: 1px solid var(--border-strong);
+  background: var(--bg-elev); color: var(--text); font-family: var(--font-mono); font-size: 16px; }
+.field:focus { outline: none; border-color: var(--accent); }
+.field[aria-invalid="true"] { border-color: var(--warn); }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-8); }
+.nav.sticky { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: var(--s-3) 0; margin-top: var(--s-6); }
+.nav .grow { flex: 1; }
+.btn { height: 44px; padding: 0 var(--s-5); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; border-radius: var(--r-control); border: 1px solid transparent; cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* the first issue: the whole screen, three labelled layers (from e-stream-letter) */
+.issue { margin-top: var(--s-4); }
+.issue.appear { animation: fade var(--t-scene) ease-out both; }
+.issue-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-4); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -0.04em; margin: 0; }
+.layer { margin-top: var(--s-12); }
+.layer-head { margin: 0 0 var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-2); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.layer-head p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); display: grid; gap: var(--s-1); }
+.item + .item { border-top: 0; }
+.item h3 { font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; margin: 0; }
+.item.pebble h3 { font-size: calc(19px * var(--type-scale)); }
+.item p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item .more { color: var(--accent); }
+.water { border: 1px solid var(--border); background: var(--bg-elev); }
+.water div { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
+.water div:last-child { border-bottom: 0; }
+.water .label { flex: none; }
+.empty { font-size: calc(14px * var(--type-scale)); color: var(--text-dim); margin: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top"><span class="brand"><i aria-hidden="true"></i>Cyris</span><span class="label" id="progress"></span></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+</main>
+<script>
+"use strict";
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/* ---- fake data: names and topics from src/cyris/onboarding_feeds.json ---- */
+const TOPICS = [
+  { id: "tech", label: "Technology" },
+  { id: "business", label: "Business & economy" },
+  { id: "world", label: "World" },
+  { id: "taiwan", label: "Taiwan" },
+  { id: "science", label: "Science & health" },
+  { id: "ideas", label: "Ideas & culture" },
+];
+/* POC only: the per-day counts are plausible guesses, not measured from the feeds. */
+const FEEDS = [
+  ["中央社即時新聞 政治新聞", ["taiwan"], 45], ["中央社即時新聞 科技新聞", ["tech", "taiwan"], 25], ["報導者", ["taiwan", "ideas"], 2],
+  ["公視新聞網", ["taiwan"], 70], ["自由時報", ["taiwan"], 150], ["關鍵評論網", ["taiwan", "ideas"], 30], ["iThome", ["tech"], 25],
+  ["科技新報", ["tech"], 35], ["INSIDE", ["tech", "business"], 12], ["BBC中文網 繁體", ["world"], 30], ["紐約時報中文網 繁體", ["world"], 15],
+  ["RFI 法國國際廣播電台 繁體", ["world"], 25], ["明報新聞網", ["world"], 80], ["RTHK 香港電台", ["world"], 90], ["經濟日報", ["business", "taiwan"], 120],
+  ["換日線", ["ideas", "world"], 4], ["電腦王阿達", ["tech"], 15], ["BBC News", ["world"], 60], ["The New York Times", ["world"], 50],
+  ["The Guardian", ["world"], 100], ["NPR", ["world"], 40], ["The Verge", ["tech"], 40], ["Ars Technica", ["tech"], 25],
+  ["The Economist", ["world", "business"], 15], ["Financial Times", ["business", "world"], 60], ["Bloomberg", ["business"], 80],
+  ["Hacker News", ["tech"], 30], ["Techmeme", ["tech"], 40], ["數位時代", ["tech", "business"], 20], ["Gea-Suan Lin's BLOG", ["tech"], 4],
+  ["Simon Willison's Weblog", ["tech"], 3], ["Daring Fireball", ["tech"], 5], ["Stratechery", ["tech", "business"], 1],
+  ["ChinaTalk", ["world", "tech"], 1], ["市場先生", ["business"], 1], ["股感 StockFeel", ["business"], 4], ["Marginal Revolution", ["business"], 4],
+  ["Noahpinion", ["business", "world"], 1], ["Paul Krugman", ["business"], 1], ["端傳媒", ["world", "taiwan"], 5],
+  ["Global Taiwan Institute", ["taiwan", "world"], 1], ["台灣事實查核中心", ["taiwan"], 3], ["Focus Taiwan (CNA English)", ["taiwan"], 40],
+  ["Taiwan Insight", ["taiwan"], 1], ["泛科學 PanSci", ["science"], 5], ["CASE 報科學", ["science"], 3], ["Quanta Magazine", ["science"], 2],
+  ["Nautilus", ["science", "ideas"], 2], ["Aeon", ["ideas", "science"], 1], ["Readmoo 閱讀最前線", ["ideas"], 2], ["OKAPI 閱讀生活誌", ["ideas"], 2],
+  ["The Marginalian", ["ideas"], 1], ["The Atlantic Ideas", ["ideas"], 3], ["Dezeen", ["ideas"], 12], ["Lenny's Newsletter", ["business", "tech"], 1],
+  ["Not Boring", ["business", "tech"], 1], ["Slow Boring", ["world"], 1], ["The Diplomat", ["world"], 10], ["Foreign Policy", ["world"], 8],
+  ["Kottke", ["ideas"], 6], ["Literary Hub", ["ideas"], 8], ["Terence Tao", ["science"], 1], ["The Conversation", ["science", "world"], 20],
+].map(([name, topics, daily]) => ({ name, topics, daily }));
+const OWN_DAILY = 5;
+const STANCE_POOL = {
+  tech: ["台積電美國廠", "AI 代理", "開源授權"],
+  business: ["美國關稅", "央行利率", "輝達財報"],
+  world: ["烏克蘭停火談判", "美中晶片管制", "加薩人道走廊"],
+  taiwan: ["總預算審查", "罷免投票", "健保費率調整"],
+  science: ["登革熱疫情", "減重藥物", "韋伯望遠鏡"],
+  ideas: ["獨立書店", "長照人力", "AI 與著作權"],
+};
+const TITLES = {
+  tech: ["企業導入 AI 代理的第一年：權限管理成最大瓶頸", "亞利桑那二廠提前量產，良率仍落後台南", "開源授權改版爭議：社群為何出走"],
+  business: ["關稅上路三個月：台灣出口商怎麼調整供應鏈", "央行按兵不動，房市信用管制再收緊", "輝達財報優於預期，伺服器供應鏈訂單看到明年"],
+  world: ["停火談判第二輪：雙方在哪些條件上仍有分歧", "美中晶片管制再升級，東南亞封測廠受惠", "人道走廊重開，聯合國物資車隊進入北部"],
+  taiwan: ["山區部落的最後一哩路：偏鄉醫療的十年", "總預算審查卡關，地方建設經費延宕", "健保費率調整案：誰多付、誰少付"],
+  science: ["登革熱南部疫情升溫，專家：社區孳生源是關鍵", "減重藥物的長期數據：停藥後會怎樣", "韋伯望遠鏡看見最早的星系團"],
+  ideas: ["獨立書店的第三種活法", "長照人力缺口：移工之外還有什麼路", "生成式 AI 與著作權：法院怎麼看"],
+};
+const LANGS = ["Traditional Chinese", "Simplified Chinese", "English", "Japanese"];
+const LANG_TAG = { "Traditional Chinese": "zh-Hant", "Simplified Chinese": "zh-Hans", English: "en", Japanese: "ja" };
+
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.codePointAt(0)) % 9973; return h; }
+const feedRec = name => FEEDS.find(f => f.name === name);
+const dailyOf = name => feedRec(name)?.daily ?? OWN_DAILY;
+const topicOf = name => feedRec(name)?.topics[0] || "tech";
+const isLatin = s => /^[\x00-\x7f’]+$/.test(s);
+/* what reaches the reader: all of a trickle, about a dozen of a flood */
+function toYou(n) { return n <= 12 ? n : n < 250 ? 12 : n < 600 ? 13 : 14; }
+
+/* ---- state; a step opened by hash fills in what the steps before it would have ---- */
+const STEPS = ["opening", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+function detectLang() {
+  const l = (navigator.language || "en").toLowerCase();
+  if (/^zh-(tw|hk|mo|hant)/.test(l)) return "Traditional Chinese";
+  if (l.startsWith("zh")) return "Simplified Chinese";
+  if (l.startsWith("ja")) return "Japanese";
+  return "English";
+}
+const S = {
+  filter: [], feeds: null, own: [], whole: null, lIdx: 0, fetched: false,
+  stances: {}, sIdx: 0, issued: false, done: false,
+  hours: [8, 18], lang: detectLang(),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", discord: "", email: "",
+};
+function ensure(step) {
+  const i = STEPS.indexOf(step);
+  if (i > 1 && S.feeds === null) S.feeds = ["報導者", "公視新聞網", "關鍵評論網", "iThome", "Stratechery", "數位時代"];
+  if (i > 2 && S.whole === null) S.whole = { "報導者": true, "Stratechery": true };
+  if (i > 3) S.fetched = true;
+  if (i > 5) S.issued = true;
+}
+const pickedFeeds = () => [...(S.feeds || []), ...S.own];
+const inPerDay = () => pickedFeeds().reduce((n, f) => n + dailyOf(f), 0);
+const isWhole = f => !!(S.whole && S.whole[f] === true);
+const wholeFeeds = () => pickedFeeds().filter(isWhole);
+/* unanswered means skim; a skimmed feed is sand when another skimmed feed shares its topic, else water */
+function trayOf(f) {
+  if (isWhole(f)) return "pebble";
+  const c = topicOf(f);
+  return pickedFeeds().filter(g => topicOf(g) === c && !isWhole(g)).length >= 2 ? "sand" : "water";
+}
+function stanceTopics() {
+  const ids = [...new Set(pickedFeeds().map(topicOf))];
+  if (!ids.length) ids.push("taiwan", "tech");
+  const out = [];
+  for (let r = 0; out.length < 6 && r < 3; r++) for (const id of ids) if (out.length < 6) out.push(STANCE_POOL[id][r]);
+  for (const t of TOPICS) for (const s of STANCE_POOL[t.id]) if (out.length < 6 && !out.includes(s)) out.push(s);
+  return out;
+}
+
+/* ---- the issue the answers make (from e-stream-letter) ---- */
+function issueParts() {
+  const feeds = pickedFeeds(), st = t => S.stances[t];
+  const whole = wholeFeeds().map((f, k) => ({ feed: f, title: TITLES[topicOf(f)][(hash(f) + k) % 3] }));
+  const sand = [], water = [];
+  for (const c of [...new Set(feeds.map(topicOf))]) {
+    const skim = feeds.filter(f => topicOf(f) === c && !isWhole(f));
+    if (!skim.length) continue;
+    const pool = STANCE_POOL[c].filter(t => st(t) !== "less").sort((a, b) => (st(b) === "more") - (st(a) === "more"));
+    if (skim.length >= 2 && pool.length) {
+      const more = st(pool[0]) === "more";
+      sand.push({ topic: pool[0], cat: c, more, count: Math.min(skim.length + 1 + (more ? 2 : 0), 6), sources: skim });
+      water.push({ title: TITLES[c][(hash(c) + 1) % 3], feed: skim[skim.length - 1] });
+    } else skim.forEach((f, k) => water.push({ title: TITLES[c][(hash(f) + k + 1) % 3], feed: f }));
+  }
+  return { whole, sand, water };
+}
+
+const pad = h => String(h).padStart(2, "0") + ":00";
+let timers = [];
+function later(fn, ms) { const t = setTimeout(fn, RM.matches ? 0 : ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+/* ---- a sentence that assembles word by word; nodes in it are single words ---- */
+function sentence(parts, cls) {
+  const el = document.createElement("p");
+  el.className = "say" + (cls ? " " + cls : "");
+  let n = 0;
+  const word = node => { const w = document.createElement("span"); w.className = "w"; w.style.animationDelay = (n++ * 45) + "ms"; w.append(node); el.append(w); };
+  for (const part of parts) {
+    if (typeof part === "string") part.split(/(\s+)/).forEach(tok => { if (!tok) return; if (/^\s+$/.test(tok)) el.append(" "); else word(document.createTextNode(tok)); });
+    else word(part);
+  }
+  el.assembledIn = RM.matches || (cls || "").includes("still") ? 0 : n * 45 + 520;
+  return el;
+}
+/* the canvas holds near still while a sentence assembles */
+function speak(stage, s) { stage.append(s); SC.calm(s.assembledIn); return s; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function blankBtn(text, pressed, onTap) {
+  const b = el("button", "blank", text); b.type = "button";
+  if (pressed !== null) b.setAttribute("aria-pressed", String(!!pressed));
+  b.addEventListener("click", () => onTap(b)); return b;
+}
+function btn(text, kind, onTap) { const b = el("button", "btn " + kind, text); b.type = "button"; b.addEventListener("click", onTap); return b; }
+function hint(text, cls) { return el("p", "hint" + (cls ? " " + cls : ""), text); }
+function span(t) { const s = el("span", "", t); if (!isLatin(t)) s.lang = ""; return s; }
+function sayBtn(t, pressed, fn) { const b = blankBtn(t, pressed, fn); b.classList.add("say", "dense"); return b; }
+const lock = stage => stage.querySelectorAll("button, input, select").forEach(b => b.disabled = true);
+function nav(step, primary, back, cls) {
+  const n = el("div", "nav" + (cls ? " " + cls : ""));
+  const i = STEPS.indexOf(step);
+  if (i > 0) n.append(btn("Back", "secondary", back || (() => go(STEPS[i - 1], false))));
+  if (step !== "settings") n.append(btn("Skip", "secondary", () => skip(step)));
+  n.append(el("span", "grow"));
+  if (primary) n.append(primary);
+  return n;
+}
+/* the funnel block: "in" above the canvas, "to you" below; the numbers ease toward their targets */
+function funnelBlock(inLabel, sticky) {
+  const box = el("div", "funnel" + (sticky ? " sticky" : ""));
+  const top = el("div", "meter"); const inN = el("b", "", "0"); top.append(el("span", "label", inLabel), inN);
+  const bot = el("div", "meter out"); const outN = el("b", "", "0"); const outT = el("span", "label", "");
+  bot.append(el("span", "label", "to you"), outN, outT);
+  box.append(top, SC.canvas, bot);
+  const set = (inV, outV, inUnit) => {
+    SC.meters = { inN, outN, outT, inUnit, inTo: inV, outTo: outV };
+    if (RM.matches) SC.flushMeters();
+  };
+  return { box, set };
+}
+
+/* ---- moving between steps ---- */
+function go(step, fwd) {
+  const stage = document.getElementById("stage");
+  if (fwd && !RM.matches) { stage.classList.add("leaving"); setTimeout(() => setHash(step), 260); }
+  else setHash(step);
+}
+function setHash(step) { if (location.hash === "#" + step) render(); else location.hash = step; }
+function next(step) { go(STEPS[STEPS.indexOf(step) + 1], true); }
+function skip(step) {
+  if (step === "feeds" && S.feeds === null) S.feeds = [];
+  if (step === "lanes") { if (S.whole === null) S.whole = {}; S.lIdx = 0; }
+  if (step === "fetch") S.fetched = true;
+  if (step === "stances") S.sIdx = 0;
+  if (step === "issue") S.issued = true;
+  next(step);
+}
+const streams = (lit) => pickedFeeds().map(f => ({ key: f, label: f, daily: dailyOf(f), on: lit ? lit(f) : true }));
+
+/* ---- the steps ---- */
+const VIEW = {
+  opening(stage) {
+    speak(stage, sentence(["I keep your attention on what ", el("em", "", "truly"), " matters."]));
+    const fb = funnelBlock("in");
+    stage.append(fb.box);
+    SC.mode("funnel");
+    const anon = Array.from({ length: 9 }, (_, k) => ({ key: "o" + k, label: "", daily: [150, 60, 45, 30, 80, 25, 40, 12, 3][k], on: true }));
+    SC.streams(anon);
+    fb.set(445, 12, "a day");
+    fb.box.querySelector(".out .label:last-child").textContent = ", twice a day";
+    stage.append(nav("opening", btn("Show me how", "primary", () => next("opening"))));
+  },
+
+  feeds(stage) {
+    if (S.feeds === null) S.feeds = [];
+    speak(stage, sentence(["What should I read for you?"]));
+    const fb = funnelBlock("in", true);
+    stage.append(fb.box);
+    SC.mode("funnel");
+    const refresh = (added) => {
+      SC.streams(streams(), added);
+      const n = inPerDay(), o = toYou(n);
+      fb.set(n, o, "a day");
+      fb.box.querySelector(".out .label:last-child").textContent = n === 0 ? ", nothing yet" : n <= 12 ? ", all of it" : ", twice a day";
+      fb.box.querySelector(".out b").style.display = n === 0 ? "none" : "";
+      fb.box.querySelector(".out b").previousSibling.textContent = n > 12 ? "to you, about" : "to you";
+      status.textContent = pickedFeeds().length ? pickedFeeds().length + (pickedFeeds().length === 1 ? " feed" : " feeds") + " picked. Tap one again to remove it." : "Tap any feed. None is fine too.";
+    };
+    const filters = el("div", "filters"); filters.setAttribute("aria-label", "Show feeds about");
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Feeds");
+    const status = hint(""); status.setAttribute("aria-live", "polite");
+    const drawList = () => {
+      list.textContent = "";
+      const shown = FEEDS.filter(f => !S.filter.length || f.topics.some(t => S.filter.includes(t)));
+      for (const f of shown) {
+        const c = el("button", "chip"); c.type = "button";
+        const nm = el("span", "", f.name); if (!isLatin(f.name)) nm.lang = "";
+        c.append(nm, el("span", "n", f.daily + "/day"));
+        c.setAttribute("aria-pressed", String(S.feeds.includes(f.name)));
+        c.addEventListener("click", () => {
+          const on = !S.feeds.includes(f.name);
+          S.feeds = on ? [...S.feeds, f.name] : S.feeds.filter(x => x !== f.name);
+          c.setAttribute("aria-pressed", String(on));
+          S.whole = null; S.lIdx = 0; refresh(on ? f.name : null);
+        });
+        list.append(c);
+      }
+      for (const o of S.own) {
+        const c = el("button", "chip"); c.type = "button"; c.setAttribute("aria-pressed", "true");
+        c.append(el("span", "", o), el("span", "n", "yours"));
+        c.addEventListener("click", () => { S.own = S.own.filter(x => x !== o); S.whole = null; S.lIdx = 0; drawList(); refresh(); });
+        list.append(c);
+      }
+    };
+    const all = el("button", "chip filter", "All"); all.type = "button";
+    const fBtns = TOPICS.map(t => { const b = el("button", "chip filter", t.label); b.type = "button"; b.dataset.id = t.id; return b; });
+    const syncFilters = () => { all.setAttribute("aria-pressed", String(!S.filter.length)); fBtns.forEach(b => b.setAttribute("aria-pressed", String(S.filter.includes(b.dataset.id)))); };
+    all.addEventListener("click", () => { S.filter = []; syncFilters(); drawList(); });
+    fBtns.forEach(b => b.addEventListener("click", () => {
+      const id = b.dataset.id;
+      S.filter = S.filter.includes(id) ? S.filter.filter(x => x !== id) : [...S.filter, id];
+      syncFilters(); drawList();
+    }));
+    filters.append(all, ...fBtns); syncFilters();
+    stage.append(filters, list, status);
+
+    const own = el("div", "own");
+    const lab = el("label", "label", "Or paste one of your own (optional)"); lab.htmlFor = "own-feed";
+    const inp = el("input", "field"); inp.id = "own-feed"; inp.type = "url"; inp.placeholder = "https://"; inp.autocomplete = "off";
+    const add = btn("Add", "secondary", () => {
+      const v = inp.value.trim();
+      if (!/^https?:\/\/[^\s.]+\.[^\s]+$/.test(v)) { inp.setAttribute("aria-invalid", "true"); err.textContent = "That doesn't look like a feed address. It starts with https://."; return; }
+      const h = new URL(v).hostname.replace(/^www\./, "");
+      if (!S.own.includes(h)) S.own.push(h);
+      inp.value = ""; S.whole = null; S.lIdx = 0; drawList(); refresh(h);
+    });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+    inp.addEventListener("input", () => { inp.removeAttribute("aria-invalid"); err.textContent = ""; });
+    const err = hint("", "warn"); err.setAttribute("role", "status");
+    own.append(lab, inp, add);
+    stage.append(own, err);
+    stage.append(nav("feeds", btn("Continue", "primary", () => next("feeds")), null, "sticky"));
+    drawList(); refresh();
+  },
+
+  /* one feed per sentence; the answer drops its mark into pebble, sand or water */
+  lanes(stage) {
+    const feeds = pickedFeeds();
+    if (S.whole === null) S.whole = {};
+    const back = () => { if (S.lIdx > 0) { S.lIdx--; go("lanes", false); } else go("feeds", false); };
+    if (!feeds.length) {
+      speak(stage, sentence(["Nothing to hand you yet."]));
+      stage.append(hint("You picked no feeds. Go Back to pick some, or go on and add them later in Settings."));
+      stage.append(nav("lanes", btn("Go on", "primary", () => next("lanes")), back));
+      SC.mode("none");
+      return;
+    }
+    if (S.lIdx >= feeds.length) S.lIdx = feeds.length - 1;
+    const f = feeds[S.lIdx];
+    const answer = v => () => {
+      S.whole[f] = v; lock(stage);
+      whole.setAttribute("aria-pressed", String(v)); line.setAttribute("aria-pressed", String(!v));
+      SC.trays(feeds.filter(g => g in S.whole), null, [f]);
+      later(() => { if (S.lIdx + 1 < feeds.length) { S.lIdx++; go("lanes", true); } else next("lanes"); }, 900);
+    };
+    const whole = blankBtn("the whole piece", S.whole[f] === true, answer(true));
+    const line = blankBtn("a line", S.whole[f] === false, answer(false));
+    speak(stage, sentence([span(f), ": I’ll hand you ", whole, " or ", line, "?"]));
+    const rest = feeds.slice(S.lIdx).filter(g => !(g in S.whole));
+    if (rest.length > 1) {
+      const p = el("p", "shortcut-row"); const b = el("button", "shortcut", "The rest: a line."); b.type = "button";
+      b.addEventListener("click", () => {
+        const fresh = feeds.filter(g => !(g in S.whole));
+        fresh.forEach(g => S.whole[g] = false); lock(stage);
+        SC.trays(feeds, null, fresh); later(() => next("lanes"), 1000);
+      });
+      p.append(b); stage.append(p);
+    }
+    const box = el("div", "funnel"); box.append(SC.canvas); stage.append(box);
+    SC.mode("trays");
+    SC.trays(feeds.filter(g => g in S.whole), f, []);
+    stage.append(hint((S.lIdx + 1) + " of " + feeds.length + ". Unanswered means a line."));
+    stage.append(nav("lanes", null, back));
+  },
+
+  fetch(stage) {
+    const feeds = pickedFeeds();
+    const total = inPerDay();
+    const box = el("div"); stage.append(box);
+    const say = parts => { box.textContent = ""; box.append(sentence(parts, "still")); };
+    if (!feeds.length) {
+      box.append(sentence(["Nothing to read yet: no feeds picked."]));
+      SC.mode("none");
+      stage.append(nav("fetch", btn("Go on", "primary", () => { S.fetched = true; next("fetch"); })));
+      return;
+    }
+    const fb = funnelBlock("read"); stage.append(fb.box);
+    SC.mode("funnel");
+    stage.append(nav("fetch", btn("Go on", "primary", () => { S.fetched = true; next("fetch"); })));
+    const finish = () => {
+      S.fetched = true;
+      SC.streams(streams());
+      fb.set(total, toYou(total), "articles");
+      say(["I read " + total + " new articles from " + feeds.length + (feeds.length === 1 ? " feed." : " feeds.")]);
+    };
+    if (S.fetched || RM.matches) { finish(); return; }
+    const arrived = new Set(); let read = 0;
+    SC.streams(streams(() => false));
+    fb.set(0, 0, "articles");
+    const per = 8000 / feeds.length;
+    feeds.forEach((f, k) => later(() => {
+      arrived.add(f); read += dailyOf(f);
+      SC.streams(streams(g => arrived.has(g)), f);
+      fb.set(read, toYou(read), "articles");
+      say(["Reading ", span(f), "… " + dailyOf(f) + " new."]);
+    }, k * per));
+    later(finish, 8000);
+  },
+
+  /* one topic per sentence; more lets its dots through in accent, less turns them away at the rim */
+  stances(stage) {
+    const topics = stanceTopics();
+    if (S.sIdx >= topics.length) S.sIdx = 0;
+    const t = topics[S.sIdx];
+    const topic = el("em", "", t); topic.lang = "";
+    speak(stage, sentence(["More of ", topic, "?"]));
+    const q = el("div", "quiet");
+    const answer = v => b => {
+      S.stances[t] = v; lock(stage); b.setAttribute("aria-pressed", "true");
+      SC.highlight(t, v);
+      later(() => { if (S.sIdx + 1 < topics.length) { S.sIdx++; go("stances", true); } else { S.sIdx = 0; next("stances"); } }, 2200);
+    };
+    q.append(sayBtn("More, please.", S.stances[t] === "more", answer("more")), sayBtn("Less.", S.stances[t] === "less", answer("less")));
+    stage.append(q);
+    const fb = funnelBlock("in"); stage.append(fb.box);
+    SC.mode("funnel");
+    const list = pickedFeeds().length ? streams() : [{ key: "d", label: "", daily: 60, on: true }];
+    SC.streams(list);
+    const n = list.reduce((s, x) => s + x.daily, 0);
+    fb.set(n, toYou(n), "a day");
+    fb.box.querySelector(".out .label:last-child").textContent = ", twice a day";
+    SC.highlight(t, S.stances[t] || null);
+    stage.append(hint((S.sIdx + 1) + " of " + topics.length + ", from what I just read. The bright dots are " + t + ". No answer counts for nothing."));
+    stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
+  },
+
+  issue(stage) {
+    const reveal = () => {
+      clearTimers(); S.issued = true; SC.mode("none");
+      stage.textContent = "";
+      const issue = buildIssue(); if (!RM.matches) issue.classList.add("appear");
+      stage.append(issue);
+      stage.append(nav("issue", btn("One more thing", "primary", () => next("issue"))));
+      window.scrollTo(0, 0);
+    };
+    if (S.issued || RM.matches) { reveal(); return; }
+    const box = el("div"); stage.append(box);
+    const say = l => { box.textContent = ""; box.append(sentence(l, "still")); };
+    const fb = funnelBlock("in"); stage.append(fb.box);
+    SC.mode("funnel");
+    const list = pickedFeeds().length ? streams() : [];
+    SC.streams(list);
+    const n = inPerDay();
+    fb.set(n, toYou(n), "a day");
+    fb.box.querySelector(".out .label:last-child").textContent = ", twice a day";
+    const more = Object.keys(S.stances).filter(k => S.stances[k] === "more");
+    if (more[0]) SC.highlight(more[0], "more");
+    const w = wholeFeeds(), p = issueParts();
+    const lines = [
+      ["Sorting " + n + " articles through what you told me."],
+      ["Setting aside the ones you won’t miss."],
+      w.length ? ["A pebble: ", span(w[0]), ", the whole piece."] : ["No pebbles today: you asked for nothing whole."],
+      p.sand.length ? ["Sand: ", span(p.sand[0].topic), ", told in a line."] : ["Water: single headlines, one row each."],
+      ["Here is your first issue."],
+    ];
+    stage.append(nav("issue", btn("Show me now", "primary", reveal)));
+    lines.forEach((l, k) => later(() => say(l), k * 2400));
+    later(() => location.hash === "#issue" && !S.issued && reveal(), 12000);
+  },
+
+  settings(stage) {
+    SC.mode("none");
+    if (S.done) {
+      speak(stage, sentence(["Until ", span(pad(S.hours[0])), ", then."]));
+      stage.append(hint("This prototype ends here. In the product, Finish opens Settings."));
+      stage.append(nav("settings", btn("Change these", "secondary", () => { S.done = false; render(); })));
+      return;
+    }
+    const hourIn = k => {
+      const i = el("input", "blank hour"); i.type = "number"; i.min = "0"; i.max = "23"; i.inputMode = "numeric";
+      i.value = String(S.hours[k]); i.setAttribute("aria-label", k ? "Second publish hour" : "First publish hour");
+      i.addEventListener("input", () => { const v = Number(i.value); const ok = i.value !== "" && v >= 0 && v <= 23 && Number.isInteger(v); i.toggleAttribute("aria-invalid", !ok); if (ok) S.hours[k] = v; });
+      return i;
+    };
+    const sel = (opts, val, label, onPick) => {
+      const s = el("select", "blank"); s.setAttribute("aria-label", label);
+      opts.forEach(o => s.append(new Option(o, o, false, o === val)));
+      const fit = () => s.style.width = (s.value.length * 0.36 + 0.5) + "em";
+      s.addEventListener("change", () => { onPick(s.value); fit(); }); fit(); return s;
+    };
+    const zones = [...new Set([S.tz, "Asia/Taipei", "Asia/Tokyo", "Europe/London", "America/New_York", "America/Los_Angeles", "UTC"])];
+    const text = (type, ph, key, label) => {
+      const i = el("input", "blank wide"); i.type = type; i.placeholder = ph; i.value = S[key];
+      i.setAttribute("aria-label", label); i.addEventListener("input", () => S[key] = i.value.trim()); return i;
+    };
+    speak(stage, sentence(["P.S. Each day at ", hourIn(0), " and ", hourIn(1), ", in ",
+      sel(LANGS, S.lang, "Output language", v => S.lang = v), ", on ",
+      sel(zones, S.tz, "Timezone", v => S.tz = v), " time, I’ll write you what’s worth reading. I can also tell ",
+      text("url", "a Discord webhook", "discord", "Discord webhook"), " or ", text("email", "your email", "email", "Email"), "."], "dense"));
+    stage.append(hint("Language and timezone came from this browser. Everything here is optional."));
+    const err = hint("", "warn"); err.setAttribute("role", "status"); stage.append(err);
+    stage.append(nav("settings", btn("Finish", "primary", () => {
+      if (stage.querySelector("[aria-invalid]")) { err.textContent = "A publish hour is a whole number from 0 to 23."; return; }
+      S.done = true;
+      if (RM.matches) render(); else { stage.classList.add("leaving"); setTimeout(render, 260); }
+    })));
+  },
+};
+
+function buildIssue() {
+  const lang = LANG_TAG[S.lang] || "zh-Hant";
+  const sec = el("section", "issue"); sec.setAttribute("aria-label", "Your first issue");
+  const head = el("div", "issue-head");
+  head.append(el("h2", "issue-title", "Issue one"), el("span", "data", new Date().toISOString().slice(0, 10) + " · " + inPerDay() + " in"));
+  sec.append(head);
+  const layer = (name, help, n) => {
+    const l = el("div", "layer"); const lh = el("div", "layer-head");
+    lh.append(el("h3", "marker label", name + " · " + n), el("p", "", help));
+    l.append(lh); sec.append(l); return l;
+  };
+  const { whole, sand, water } = issueParts();
+  const pebbles = layer("Pebble", "What you read whole, one stone each.", whole.length);
+  if (!whole.length) pebbles.append(el("p", "empty", "None: you asked for nothing whole. Mark a feed “the whole piece” and its articles land here."));
+  whole.forEach(({ feed, title }) => {
+    const it = el("article", "item pebble");
+    const h = el("h3", "", title); h.lang = "";
+    const p = el("p", "", lang === "en" ? "A summary of the whole piece, written for you." : "整篇讀完後替你寫的摘要：重點、脈絡與值得細讀的段落。"); p.lang = lang;
+    it.append(el("span", "label", feed), h, p); pebbles.append(it);
+  });
+  const sandL = layer("Sand", "Several articles on one topic, told in a line.", sand.length);
+  if (!sand.length) sandL.append(el("p", "empty", "None this time: no two skimmed feeds shared a topic."));
+  sand.forEach(s => {
+    const it = el("article", "item");
+    const h = el("h3", "", s.topic); h.lang = lang;
+    const p = el("p", "", lang === "en" ? s.count + " outlets on one development, told once." : s.count + " 篇報導同一進展，合成一句話告訴你。"); p.lang = lang;
+    const lab = el("span", "label", s.count + " articles");
+    if (s.more) lab.append(el("span", "more", " · more, as you asked"));
+    it.append(h, p, lab); sandL.append(it);
+  });
+  const waterL = layer("Water", "Single headlines you can let run past.", water.length);
+  if (!water.length) waterL.append(el("p", "empty", "None: pick a feed and its single headlines run here."));
+  else {
+    const wl = el("div", "water");
+    water.forEach(r => { const row = el("div"); const t = el("span", "", r.title); t.lang = ""; row.append(t, el("span", "label", r.feed)); wl.append(row); });
+    waterL.append(wl);
+  }
+  return sec;
+}
+
+/* ================= the canvas: tributaries pour into a funnel; or three trays ================= */
+function createScene() {
+  const canvas = document.createElement("canvas"); canvas.setAttribute("aria-hidden", "true");
+  const cx = canvas.getContext("2d");
+  const C = {}; for (const n of ["--bg", "--text", "--text-dim", "--text-faint", "--accent", "--border", "--border-strong"]) C[n] = getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let W = 0, H = 0, DPR = 1, mode = "none", raf = 0, last = 0, time = 0;
+  let src = [], parts = [], bucket = 0, calmUntil = 0, pace = 1, flash = null;
+  let hi = null; /* { topic, fate } */
+  let trayItems = [], trayAsk = null, drops = [];
+  const api = { canvas, meters: null };
+
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return false;
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    if (W !== r.width || H !== r.height) { W = r.width; H = r.height; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); layoutSrc(); }
+    return true;
+  }
+  const G = () => ({ srcY: 22, mouthY: H * 0.48, mouthL: W / 2 - Math.min(W * 0.36, 230), mouthR: W / 2 + Math.min(W * 0.36, 230), neckY: H * 0.8, neck: 7 });
+  function layoutSrc() {
+    const n = src.length, l = Math.max(8, W / 2 - 340), r = Math.min(W - 8, W / 2 + 340), g = G();
+    src.forEach((s, i) => {
+      s.x = n === 1 ? W / 2 : l + (r - l) * (i + 0.5) / n;
+      s.mx = n === 1 ? W / 2 : g.mouthL + 12 + (g.mouthR - g.mouthL - 24) * (i + 0.5) / n;
+    });
+  }
+  const rateOf = s => s.on ? 0.35 + 1.1 * Math.sqrt(s.daily / 30) : 0;
+  const outRate = () => { const m = api.meters; return m ? Math.min(1, (m.outTo || 0) / 12) * 1.3 : 1.3; };
+
+  function spawn(s) {
+    const lit = !!hi && rndf() < 0.3;
+    parts.push({ s, ph: "trib", t: 0, sp: 0.55 + rndf() * 0.3, lit, mx: s.mx + (rndf() - 0.5) * 10, a: 1, jit: (rndf() - 0.5) });
+  }
+  let seed = 1; const rndf = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+
+  function tick(dt) {
+    time += dt;
+    if (mode === "funnel") {
+      const g = G();
+      bucket = Math.min(2, bucket + outRate() * dt);
+      for (const s of src) { s.acc = (s.acc || 0) + rateOf(s) * dt; while (s.acc >= 1 && parts.length < 420) { s.acc -= 1; spawn(s); } if (s.acc > 1) s.acc = 0; }
+      for (const p of parts) {
+        p.age = (p.age || 0) + dt;
+        if (p.ph === "trib") {
+          p.t += p.sp * dt;
+          if (p.t >= 1) {
+            p.t = 0; p.ph = "cone";
+            const fate = p.lit && hi ? hi.fate : null;
+            if (fate === "less") p.ph = "away";
+            else if (fate === "more" || bucket >= 1) { if (fate !== "more") bucket -= 1; p.pass = true; }
+            else p.dropAt = 0.15 + rndf() * 0.6;
+          }
+        } else if (p.ph === "cone") {
+          p.t += 0.9 * dt;
+          if (!p.pass && p.t >= p.dropAt) { p.ph = "drop"; p.t = 0; p.x0 = posOf(p, g).x; p.y0 = posOf(p, g).y; }
+          else if (p.pass && p.t >= 1) { p.ph = "out"; p.t = 0; }
+        } else if (p.ph === "out") { p.t += 0.8 * dt; if (p.t >= 1) p.dead = true; }
+        else if (p.ph === "drop" || p.ph === "away") { p.t += 1.4 * dt; if (p.t >= 1) p.dead = true; }
+      }
+      parts = parts.filter(p => !p.dead);
+    }
+    if (mode === "trays") for (const d of drops) d.t = Math.min(1, d.t + dt / 0.55);
+    const m = api.meters;
+    if (m) {
+      const k = Math.min(1, dt * 3);
+      m.inV = (m.inV ?? 0) + (m.inTo - (m.inV ?? 0)) * k; m.outV = (m.outV ?? 0) + (m.outTo - (m.outV ?? 0)) * k;
+      if (Math.abs(m.inTo - m.inV) < 0.5) m.inV = m.inTo; if (Math.abs(m.outTo - m.outV) < 0.5) m.outV = m.outTo;
+      writeMeters();
+    }
+    if (flash) { flash.t += dt; if (flash.t > 2.4) flash = null; }
+  }
+  function writeMeters() { const m = api.meters; if (!m) return; m.inN.textContent = Math.round(m.inV) + " " + m.inUnit; m.outN.textContent = String(Math.round(m.outV)); }
+  api.flushMeters = () => { const m = api.meters; if (!m) return; m.inV = m.inTo; m.outV = m.outTo; writeMeters(); };
+
+  const bez = (a, c, b, t) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * c + t * t * b;
+  function posOf(p, g) {
+    const sx = p.s.x, mx = p.mx;
+    if (p.ph === "trib") return { x: bez(sx, sx, mx, p.t), y: bez(g.srcY, (g.srcY + g.mouthY) / 2, g.mouthY, p.t) };
+    if (p.ph === "cone") { const e = p.t; const nx = W / 2 + p.jit * g.neck; return { x: mx + (nx - mx) * e * e * (3 - 2 * e) , y: g.mouthY + (g.neckY - g.mouthY) * e }; }
+    if (p.ph === "out") return { x: W / 2 + p.jit * 2, y: g.neckY + (H - 6 - g.neckY) * p.t };
+    if (p.ph === "away") return { x: mx + p.jit * 30 * p.t, y: g.mouthY - 26 * Math.sin(p.t * Math.PI * 0.7) };
+    return { x: p.x0 + Math.sign(p.x0 - W / 2 || 1) * 14 * p.t, y: p.y0 + 6 * p.t };
+  }
+
+  function draw() {
+    if (!size()) return;
+    cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    cx.fillStyle = C["--bg"]; cx.fillRect(0, 0, W, H);
+    if (mode === "funnel") drawFunnel(); else if (mode === "trays") drawTrays();
+  }
+  function drawFunnel() {
+    const g = G();
+    cx.lineWidth = 1;
+    /* tributaries */
+    for (const s of src) {
+      cx.strokeStyle = s.on ? C["--border-strong"] : C["--border"];
+      cx.beginPath(); cx.moveTo(s.x, g.srcY); cx.quadraticCurveTo(s.x, (g.srcY + g.mouthY) / 2, s.mx, g.mouthY); cx.stroke();
+    }
+    /* labels: shown where they fit; the newest stays lit for a moment */
+    cx.font = '500 10px "Geist Mono", ui-monospace, monospace'; cx.textBaseline = "top"; cx.textAlign = "center";
+    const gap = src.length ? (src.length > 1 ? Math.abs(src[1].x - src[0].x) : W) : 0;
+    for (const s of src) {
+      if (!s.label) continue;
+      const isNew = flash && flash.key === s.key;
+      let t = s.label; if ([...t].length > 12) t = [...t].slice(0, 11).join("") + "…";
+      if (!isNew && cx.measureText(t).width + 8 > gap) continue;
+      if (isNew && cx.measureText(t).width + 8 > gap) t = s.label;
+      const tw = cx.measureText(t).width, x = Math.max(tw / 2 + 2, Math.min(W - tw / 2 - 2, s.x));
+      cx.globalAlpha = isNew ? Math.min(1, 2.6 - flash.t) : 1;
+      if (isNew) { cx.fillStyle = C["--bg"]; cx.fillRect(x - tw / 2 - 3, 2, tw + 6, 14); }
+      cx.fillStyle = isNew ? C["--text"] : s.on ? C["--text-dim"] : C["--text-faint"];
+      cx.fillText(t, x, 4);
+      cx.globalAlpha = 1;
+    }
+    /* the funnel walls and neck */
+    cx.strokeStyle = C["--text-faint"];
+    cx.beginPath();
+    cx.moveTo(g.mouthL, g.mouthY); cx.lineTo(W / 2 - g.neck, g.neckY); cx.lineTo(W / 2 - g.neck, H);
+    cx.moveTo(g.mouthR, g.mouthY); cx.lineTo(W / 2 + g.neck, g.neckY); cx.lineTo(W / 2 + g.neck, H);
+    cx.stroke();
+    /* dots */
+    for (const p of parts) {
+      const { x, y } = posOf(p, g);
+      let col = p.lit ? C["--text"] : C["--text-dim"], a = 1, r = p.lit ? 2.4 : 1.8;
+      if (p.ph === "out" || (p.ph === "cone" && p.pass && p.t > 0.6)) { col = C["--accent"]; r = 2.4; }
+      if (p.ph === "drop") { col = C["--text-faint"]; a = 1 - p.t; }
+      if (p.ph === "away") { a = 1 - p.t; }
+      if (p.ph === "out") a = p.t > 0.8 ? (1 - p.t) * 5 : 1;
+      cx.globalAlpha = a; cx.fillStyle = col; cx.beginPath(); cx.arc(x, y, r, 0, Math.PI * 2); cx.fill();
+    }
+    cx.globalAlpha = 1;
+    /* the answered stance, said beside the rim */
+    if (hi && hi.fate) {
+      cx.font = '500 11px "Geist Mono", ui-monospace, monospace'; cx.textBaseline = "middle"; cx.textAlign = "left";
+      cx.fillStyle = hi.fate === "more" ? C["--accent"] : C["--text-dim"];
+      const t = hi.fate === "more" ? "↓ passes" : "↑ turned away";
+      cx.fillText(t, Math.min(g.mouthR + 8, W - cx.measureText(t).width - 4), g.mouthY + 14);
+    }
+  }
+
+  /* trays: pebble, sand, water side by side; each answered feed is one mark */
+  const TRAY = { pebble: ["Pebble", "read whole"], sand: ["Sand", "a line per topic"], water: ["Water", "a line each"] };
+  function trayX(k) { return W * ({ pebble: 1, sand: 3, water: 5 }[k]) / 6; }
+  function drawTrays() {
+    const floor = H - 44, half = Math.min(W / 6 - 10, 110);
+    cx.lineWidth = 1; cx.textAlign = "center"; cx.textBaseline = "top";
+    const counts = { pebble: 0, sand: 0, water: 0 };
+    const items = trayItems.map(f => { const k = trayOf(f); return { f, k, i: counts[k]++ }; });
+    for (const k of Object.keys(TRAY)) {
+      const x = trayX(k);
+      cx.strokeStyle = C["--border-strong"]; cx.beginPath(); cx.moveTo(x - half, floor + 0.5); cx.lineTo(x + half, floor + 0.5); cx.stroke();
+      cx.font = '500 11px "Geist Mono", ui-monospace, monospace'; cx.fillStyle = counts[k] ? C["--text"] : C["--text-dim"];
+      cx.fillText(TRAY[k][0].toUpperCase() + " " + counts[k], x, floor + 8);
+      cx.font = '400 11px "Geist Mono", ui-monospace, monospace'; cx.fillStyle = C["--text-dim"];
+      cx.fillText(TRAY[k][1], x, floor + 24);
+    }
+    const perRow = Math.max(1, Math.floor((half * 2) / 18));
+    for (const it of items) {
+      const x0 = trayX(it.k), col = it.i % perRow, row = Math.floor(it.i / perRow);
+      let tx = x0 - half + 9 + col * 18, ty = floor - 8 - row * 16;
+      const d = drops.find(z => z.f === it.f);
+      let x = tx, y = ty;
+      if (d && d.t < 1) { if (d.t < 0) continue; const e = d.t * d.t; x = W / 2 + (tx - W / 2) * d.t; y = 30 + (ty - 30) * e; }
+      cx.fillStyle = it.k === "pebble" ? C["--text"] : C["--text-dim"]; cx.strokeStyle = C["--text-dim"];
+      if (it.k === "pebble") { cx.beginPath(); cx.ellipse(x, y, 7, 5.5, 0, 0, Math.PI * 2); cx.fill(); }
+      else if (it.k === "sand") { for (let g = 0; g < 7; g++) { cx.beginPath(); cx.arc(x + ((hash(it.f) * (g + 3)) % 13) - 6, y + 3 - ((g * 5) % 7) * 0.9, 1.4, 0, Math.PI * 2); cx.fill(); } }
+      else { cx.beginPath(); cx.moveTo(x - 7, y + 3); cx.lineTo(x + 7, y + 3); cx.stroke(); }
+    }
+    if (trayAsk) {
+      cx.font = '500 11px "Geist Mono", ui-monospace, monospace'; cx.fillStyle = C["--text"];
+      cx.fillText(trayAsk, W / 2, 4);
+      cx.beginPath(); cx.arc(W / 2, 30, 3, 0, Math.PI * 2); cx.fill();
+    }
+  }
+
+  function frame(ts) {
+    const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+    const target = performance.now() < calmUntil ? 0.12 : 1;
+    pace += (target - pace) * Math.min(1, dt * 4);
+    tick(dt * pace);
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+  /* reduced motion: run the simulation ahead and draw its end state once */
+  function settle() { const m = api.meters; for (let i = 0; i < 240; i++) tick(1 / 30); drops.forEach(d => d.t = 1); if (m) api.flushMeters(); flash = null; draw(); }
+  function kick() {
+    if (RM.matches || mode === "none") { cancelAnimationFrame(raf); raf = 0; if (mode !== "none") requestAnimationFrame(settle); return; }
+    if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
+  }
+
+  api.mode = m => { hi = null; flash = null; if (m !== mode) { parts = []; bucket = 1; } mode = m; kick(); };
+  api.streams = (list, added) => {
+    const old = new Map(src.map(s => [s.key, s]));
+    src = list.map(e => Object.assign(old.get(e.key) || {}, e));
+    const live = new Set(src);
+    parts = parts.filter(p => live.has(p.s));
+    layoutSrc();
+    if (added) flash = { key: added, t: 0 };
+    kick();
+  };
+  api.highlight = (topic, fate) => {
+    const g = G();
+    hi = { topic, fate };
+    for (const p of parts) {
+      if (p.ph === "trib" && !fate && rndf() < 0.3) p.lit = true;
+      if (!p.lit || p.ph !== "cone" || p.pass && fate !== "less") continue;
+      if (fate === "more") p.pass = true;
+      else if (fate === "less") { p.mx = posOf(p, g).x; p.ph = "away"; p.t = 0; }
+    }
+    kick();
+  };
+  api.trays = (answered, ask, dropKeys) => {
+    trayItems = answered.slice(); trayAsk = ask ? ([...ask].length > 28 ? [...ask].slice(0, 27).join("") + "…" : ask) : null;
+    drops = dropKeys.map((f, k) => ({ f, t: -k * 0.15 }));
+    kick();
+  };
+  api.calm = ms => { if (ms > 0) calmUntil = performance.now() + ms; };
+  new ResizeObserver(() => { if (size() && (RM.matches || !raf)) draw(); }).observe(canvas);
+  RM.addEventListener?.("change", kick);
+  return api;
+}
+const SC = createScene();
+
+let seq = 0;
+function render() {
+  seq++;
+  clearTimers();
+  let step = location.hash.slice(1);
+  if (!STEPS.includes(step)) step = "opening";
+  ensure(step);
+  document.getElementById("progress").textContent = (STEPS.indexOf(step) + 1) + " of " + STEPS.length;
+  const stage = document.getElementById("stage");
+  stage.classList.remove("leaving"); stage.textContent = "";
+  SC.meters = null;
+  VIEW[step](stage);
+}
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>
