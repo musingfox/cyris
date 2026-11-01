@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overload, then calm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+/* POC only: the typographic motion, the logo's fade and the canvas heights need values the spec has no token for. */
+:root { --t-word: 520ms; --t-leave: 260ms; --t-scene: 600ms; --t-logo: 1200ms; --field-h: 270px; --open-h: min(60vh, 520px); }
+@media (min-width: 720px) { :root { --field-h: 320px; } }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: var(--measure-wide); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-12); min-height: 100vh; }
+@media (min-width: 720px) { .page { padding: var(--s-8) var(--s-6) var(--s-16); } }
+.top { display: flex; justify-content: space-between; align-items: center; height: var(--s-8); }
+.brand { display: flex; align-items: center; gap: var(--s-3); font-family: var(--font-mono); font-weight: 500;
+  font-size: calc(14px * var(--type-scale)); letter-spacing: .18em; color: var(--text); }
+.brand i { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+body.intro .top .brand { visibility: hidden; }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.stage { margin-top: var(--s-6); transition: opacity var(--t-leave) ease-in, transform var(--t-leave) ease-in; }
+.stage.leaving { opacity: 0; transform: translateY(calc(-1 * var(--s-6))); }
+
+/* the editor's sentence, assembled word by word (from e-stream-letter) */
+.say { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(30px, 5.2vw, 48px) * var(--type-scale));
+  line-height: 1.14; letter-spacing: -0.02em; margin: 0 auto; overflow-wrap: anywhere; text-align: center; max-width: var(--measure); }
+.say.dense { font-size: calc(clamp(24px, 3.9vw, 34px) * var(--type-scale)); line-height: 1.3; letter-spacing: -0.01em; }
+.say em { font-style: italic; color: var(--accent); }
+.say em[lang] { font-style: normal; }
+.w { display: inline-block; animation: assemble var(--t-word) ease-out both; }
+.say.still .w { animation: fade var(--t-leave) ease-out both; animation-delay: 0s !important; }
+@keyframes assemble { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.blank { font: inherit; letter-spacing: inherit; color: var(--text-dim); background: none; border: 0;
+  border-bottom: 1px solid var(--border-strong); padding: 2px .06em; margin: 0; cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.blank:hover { color: var(--text); }
+.blank:active { opacity: .7; }
+.blank:disabled { cursor: default; }
+.blank[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+input.blank, select.blank { cursor: text; color: var(--accent); border-bottom-color: var(--accent-dim); border-radius: 0;
+  -webkit-appearance: none; appearance: none; text-align: center; }
+input.blank:focus, select.blank:focus { outline: none; border-bottom-color: var(--accent); }
+input.blank::placeholder { color: var(--text-dim); font-style: italic; }
+input.blank.hour { width: 1.6em; -moz-appearance: textfield; }
+input.blank.hour::-webkit-inner-spin-button, input.blank.hour::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.blank.wide { width: min(100%, 9em); }
+input.blank[aria-invalid="true"] { border-bottom-color: var(--warn); }
+select.blank { cursor: pointer; background: none; padding-right: .1em; max-width: 100%; }
+select.blank option { font-family: var(--font-sans); font-size: 16px; background: var(--bg-elev); color: var(--text); }
+.quiet { display: flex; gap: var(--s-8); margin-top: var(--s-5); flex-wrap: wrap; justify-content: center; }
+.hint { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: var(--s-4) auto 0; text-align: center; max-width: 34em; }
+.hint.warn { color: var(--warn); }
+.hint.lead { margin: 0 auto var(--s-4); }
+
+/* the stream: one first-person field, shared by every step */
+.field { position: relative; margin: var(--s-5) auto 0; max-width: var(--measure-wide); background: var(--bg); }
+.field canvas { display: block; width: 100%; height: var(--field-h); }
+.field.tall { margin-top: 0; width: 100vw; max-width: none; margin-left: calc(50% - 50vw); }
+.field.tall canvas { height: var(--open-h); }
+.field.sticky { position: sticky; top: 0; z-index: 1; padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.top { gap: var(--s-3); }
+.top .brand { margin-right: auto; }
+.top .skip-intro { height: var(--s-8); padding: 0 var(--s-3); }
+/* the logo sits on the vanishing point, so the calm stream comes out from behind it */
+.logo { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: var(--s-2) var(--s-3);
+  background: var(--bg); opacity: 0; transition: opacity var(--t-logo) ease-out; pointer-events: none; }
+.logo.on { opacity: 1; }
+.logo .brand { font-size: calc(20px * var(--type-scale)); gap: var(--s-3); }
+.logo .brand i { width: 16px; height: 16px; }
+.claim { min-height: 3.6em; margin-top: var(--s-5); }
+
+/* the feed picker: topic filters and feeds on one screen */
+.filters, .feeds { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.filters { margin-top: var(--s-5); }
+.feeds { margin-top: var(--s-4); }
+.chip { min-height: 36px; padding: 0 var(--s-3); border-radius: var(--r-tag); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-sans); font-size: calc(14px * var(--type-scale));
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast); }
+.chip:hover { color: var(--text); }
+.chip.filter { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; background: none; }
+.chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+.chip .n { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
+.own { display: flex; gap: var(--s-2); margin: var(--s-6) auto 0; max-width: 34em; flex-wrap: wrap; align-items: flex-end; }
+.own label { width: 100%; }
+.input { flex: 1; min-width: 0; height: 44px; padding: 0 var(--s-3); border-radius: var(--r-control); border: 1px solid var(--border-strong);
+  background: var(--bg-elev); color: var(--text); font-family: var(--font-mono); font-size: 16px; }
+.input:focus { outline: none; border-color: var(--accent); }
+.input[aria-invalid="true"] { border-color: var(--warn); }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-8); }
+.nav.sticky { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: var(--s-3) 0; margin-top: var(--s-6); }
+.nav.held { visibility: hidden; }
+.nav .grow { flex: 1; }
+.btn { height: 44px; padding: 0 var(--s-5); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; border-radius: var(--r-control); border: 1px solid transparent; cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* the first issue: three labelled layers, front to back (from e-stream-letter) */
+.issue { margin-top: var(--s-4); }
+.issue.appear { animation: fade var(--t-scene) ease-out both; }
+.issue-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-4); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -0.04em; margin: 0; }
+.layer { margin-top: var(--s-12); }
+.layer-head { margin: 0 0 var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-2); color: var(--text); }
+.marker svg { flex: none; width: 24px; height: 12px; color: var(--text-dim); }
+.layer-head p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); display: grid; gap: var(--s-1); }
+.item + .item { border-top: 0; }
+.item h3 { font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; margin: 0; }
+.item.deep h3 { font-size: calc(19px * var(--type-scale)); }
+.item p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item .more { color: var(--accent); }
+.frags { border: 1px solid var(--border); background: var(--bg-elev); }
+.frags div { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
+.frags div:last-child { border-bottom: 0; }
+.frags .label { flex: none; }
+.empty { font-size: calc(14px * var(--type-scale)); color: var(--text-dim); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top"><span class="brand"><i aria-hidden="true"></i>CYRIS</span><span class="label" id="progress"></span></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+</main>
+<script>
+"use strict";
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/* ---- fake data: names and topics from src/cyris/onboarding_feeds.json ---- */
+const TOPICS = [
+  { id: "tech", label: "Technology", zh: "科技" },
+  { id: "business", label: "Business & economy", zh: "財經" },
+  { id: "world", label: "World", zh: "國際" },
+  { id: "taiwan", label: "Taiwan", zh: "台灣" },
+  { id: "science", label: "Science & health", zh: "科學與健康" },
+  { id: "ideas", label: "Ideas & culture", zh: "思想與文化" },
+];
+/* POC only: rough relative volumes that set how often a feed's headlines join the lane; never shown. */
+const FEEDS = [
+  ["中央社即時新聞 政治新聞", ["taiwan"], 45], ["中央社即時新聞 科技新聞", ["tech", "taiwan"], 25], ["報導者", ["taiwan", "ideas"], 2],
+  ["公視新聞網", ["taiwan"], 70], ["自由時報", ["taiwan"], 150], ["關鍵評論網", ["taiwan", "ideas"], 30], ["iThome", ["tech"], 25],
+  ["科技新報", ["tech"], 35], ["INSIDE", ["tech", "business"], 12], ["BBC中文網 繁體", ["world"], 30], ["紐約時報中文網 繁體", ["world"], 15],
+  ["RFI 法國國際廣播電台 繁體", ["world"], 25], ["明報新聞網", ["world"], 80], ["RTHK 香港電台", ["world"], 90], ["經濟日報", ["business", "taiwan"], 120],
+  ["換日線", ["ideas", "world"], 4], ["電腦王阿達", ["tech"], 15], ["BBC News", ["world"], 60], ["The New York Times", ["world"], 50],
+  ["The Guardian", ["world"], 100], ["NPR", ["world"], 40], ["The Verge", ["tech"], 40], ["Ars Technica", ["tech"], 25],
+  ["The Economist", ["world", "business"], 15], ["Financial Times", ["business", "world"], 60], ["Bloomberg", ["business"], 80],
+  ["Hacker News", ["tech"], 30], ["Techmeme", ["tech"], 40], ["數位時代", ["tech", "business"], 20], ["Gea-Suan Lin's BLOG", ["tech"], 4],
+  ["Simon Willison's Weblog", ["tech"], 3], ["Daring Fireball", ["tech"], 5], ["Stratechery", ["tech", "business"], 1],
+  ["ChinaTalk", ["world", "tech"], 1], ["市場先生", ["business"], 1], ["股感 StockFeel", ["business"], 4], ["Marginal Revolution", ["business"], 4],
+  ["Noahpinion", ["business", "world"], 1], ["Paul Krugman", ["business"], 1], ["端傳媒", ["world", "taiwan"], 5],
+  ["Global Taiwan Institute", ["taiwan", "world"], 1], ["台灣事實查核中心", ["taiwan"], 3], ["Focus Taiwan (CNA English)", ["taiwan"], 40],
+  ["Taiwan Insight", ["taiwan"], 1], ["泛科學 PanSci", ["science"], 5], ["CASE 報科學", ["science"], 3], ["Quanta Magazine", ["science"], 2],
+  ["Nautilus", ["science", "ideas"], 2], ["Aeon", ["ideas", "science"], 1], ["Readmoo 閱讀最前線", ["ideas"], 2], ["OKAPI 閱讀生活誌", ["ideas"], 2],
+  ["The Marginalian", ["ideas"], 1], ["The Atlantic Ideas", ["ideas"], 3], ["Dezeen", ["ideas"], 12], ["Lenny's Newsletter", ["business", "tech"], 1],
+  ["Not Boring", ["business", "tech"], 1], ["Slow Boring", ["world"], 1], ["The Diplomat", ["world"], 10], ["Foreign Policy", ["world"], 8],
+  ["Kottke", ["ideas"], 6], ["Literary Hub", ["ideas"], 8], ["Terence Tao", ["science"], 1], ["The Conversation", ["science", "world"], 20],
+].map(([name, topics, daily]) => ({ name, topics, daily }));
+const OWN_DAILY = 5;
+const STANCE_POOL = {
+  tech: ["台積電美國廠", "AI 代理", "開源授權"],
+  business: ["美國關稅", "央行利率", "輝達財報"],
+  world: ["烏克蘭停火談判", "美中晶片管制", "加薩人道走廊"],
+  taiwan: ["總預算審查", "罷免投票", "健保費率調整"],
+  science: ["登革熱疫情", "減重藥物", "韋伯望遠鏡"],
+  ideas: ["一座城市的夜生活史", "翻譯文學在台灣還有市場嗎", "慢讀運動：為什麼有人選擇少讀", "獨立書店", "長照人力", "AI 與著作權"],
+};
+/* fake headlines in both languages; a feed gets the ones in its own script */
+const HEADS = {
+  tech: ["台廠搶進低軌衛星供應鏈", "生成式 AI 進入客服第一線", "資料中心用電成地方新難題", "企業導入 AI 代理的第一年：權限管理成最大瓶頸", "亞利桑那廠提前量產，良率仍落後台南", "開源授權改版爭議：社群為何出走", "邊緣運算晶片成新戰場，台廠搶進",
+    "Apple quietly redraws its chip roadmap", "The hidden cost of running open models", "Why every app now wants to be an agent", "A browser engine nobody asked for, and why it matters"],
+  business: ["股市創高之後，散戶該注意什麼", "房市降溫，建商推案轉趨保守", "新台幣升值，出口業怎麼避險", "關稅上路後：台灣出口商怎麼調整供應鏈", "央行按兵不動，房市信用管制再收緊", "輝達財報優於預期，伺服器供應鏈訂單看到明年", "航運運價再起，貨主提前備貨",
+    "Markets brace for another long rate pause", "Shipping costs climb as tariffs bite", "Inside the scramble for data-centre power", "The quiet return of the industrial policy"],
+  world: ["日本新首相的外交第一步", "東南亞選舉觀察：年輕選民轉向", "北極航道開通，誰的利益", "停火談判再啟：雙方在哪些條件上仍有分歧", "美中晶片管制再升級，東南亞封測廠受惠", "人道走廊重開，聯合國物資車隊進入北部", "歐盟峰會為新制裁方案爭論到深夜",
+    "Ceasefire talks stall over border guarantees", "EU leaders split on a new sanctions package", "Floods displace thousands across the delta", "What the election result means for the region"],
+  taiwan: ["台鐵公司化後的第一個颱風季", "缺工潮下的中小製造業", "核三除役後，南部供電怎麼調度", "國中會考新制，家長最在意什麼", "山區部落的最後一哩路：偏鄉醫療的十年", "總預算審查卡關，地方建設經費延宕", "健保費率調整案：誰多付、誰少付", "罷免投票前夕，兩黨動員進入最後衝刺",
+    "Taiwan's grid races to add storage before summer", "Lawmakers deadlock over the central budget", "Fact-checkers trace a viral claim to its source"],
+  science: ["睡眠不足如何影響青少年大腦", "氣候變遷讓颱風更難預測", "新抗生素在土壤中被發現", "登革熱南部疫情升溫，專家：社區孳生源是關鍵", "減重藥物的長期數據：停藥後會怎樣", "韋伯望遠鏡看見最早的星系團", "腸道菌與睡眠：新研究怎麼說",
+    "A new map of the brain's wiring", "What the deep ocean tells us about climate", "The long tail of a quiet pandemic"],
+  ideas: ["獨立書店的第三種活法", "長照人力缺口：移工之外還有什麼路", "生成式 AI 與著作權：法院怎麼看", "城市為什麼越來越像",
+    "The case for reading slowly", "What we lose when every city looks the same", "On attention, and who gets to spend it"],
+};
+const STANCE_HEADS = ["{t}：各方說法一次看", "{t}，下一步怎麼走", "{t}的爭議在哪裡", "一篇看懂{t}"];
+const LANGS = ["Traditional Chinese", "Simplified Chinese", "English", "Japanese"];
+const LANG_TAG = { "Traditional Chinese": "zh-Hant", "Simplified Chinese": "zh-Hans", English: "en", Japanese: "ja" };
+
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.codePointAt(0)) % 9973; return h; }
+const feedRec = name => FEEDS.find(f => f.name === name);
+const dailyOf = name => feedRec(name)?.daily ?? OWN_DAILY;
+const topicOf = name => feedRec(name)?.topics[0] || "tech";
+const isLatin = s => /^[\x00-\x7f’]+$/.test(s);
+const headsOf = (topic, latin) => { const p = HEADS[topic].filter(h => isLatin(h) === latin); return p.length ? p : HEADS[topic]; };
+const TITLES = Object.fromEntries(Object.keys(HEADS).map(k => [k, headsOf(k, false)]));
+
+/* ---- state; a step opened by hash fills in what the steps before it would have ---- */
+const STEPS = ["opening", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+function detectLang() {
+  const l = (navigator.language || "en").toLowerCase();
+  if (/^zh-(tw|hk|mo|hant)/.test(l)) return "Traditional Chinese";
+  if (l.startsWith("zh")) return "Simplified Chinese";
+  if (l.startsWith("ja")) return "Japanese";
+  return "English";
+}
+const S = {
+  filter: [], feeds: null, own: [], whole: null, fetched: false, introSeen: false,
+  stances: {}, sIdx: 0, issued: false, done: false,
+  hours: [8, 18], lang: detectLang(),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", discord: "", email: "",
+};
+function ensure(step) {
+  const i = STEPS.indexOf(step);
+  if (i > 1 && S.feeds === null) S.feeds = ["報導者", "公視新聞網", "關鍵評論網", "iThome", "Stratechery", "數位時代"];
+  if (i > 2 && S.whole === null) S.whole = { "報導者": true, "Stratechery": true };
+  if (i > 3) S.fetched = true;
+  if (i > 5) S.issued = true;
+}
+const pickedFeeds = () => [...(S.feeds || []), ...S.own];
+const isWhole = f => !!(S.whole && S.whole[f] === true);
+const wholeFeeds = () => pickedFeeds().filter(isWhole);
+const moreTopics = () => Object.keys(S.stances).filter(k => S.stances[k] === "more");
+/* what the stream carries; `only` limits it to the feeds read so far */
+function laneOf(only, extra) {
+  const fs = pickedFeeds().filter(f => !only || only(f));
+  return { feeds: fs, held: fs.filter(isWhole), more: [], stories: [], ...extra };
+}
+function stanceTopics() {
+  const ids = [...new Set(pickedFeeds().map(topicOf))];
+  if (!ids.length) ids.push("taiwan", "tech");
+  const out = [];
+  for (let r = 0; out.length < 6 && r < 3; r++) for (const id of ids) if (out.length < 6) out.push(STANCE_POOL[id][r]);
+  for (const t of TOPICS) for (const s of STANCE_POOL[t.id]) if (out.length < 6 && !out.includes(s)) out.push(s);
+  return out;
+}
+
+/* ---- the issue the answers make (from e-stream-letter) ---- */
+function issueParts() {
+  const feeds = pickedFeeds(), st = t => S.stances[t];
+  const whole = wholeFeeds().map((f, k) => ({ feed: f, title: TITLES[topicOf(f)][(hash(f) + k) % 3] }));
+  const sand = [], water = [];
+  for (const c of [...new Set(feeds.map(topicOf))]) {
+    const skim = feeds.filter(f => topicOf(f) === c && !isWhole(f));
+    if (!skim.length) continue;
+    const pool = STANCE_POOL[c].filter(t => st(t) !== "less").sort((a, b) => (st(b) === "more") - (st(a) === "more"));
+    if (skim.length >= 2 && pool.length) {
+      sand.push({ topic: pool[0], more: st(pool[0]) === "more", sources: skim });
+      water.push({ title: TITLES[c][(hash(c) + 1) % 3], feed: skim[skim.length - 1] });
+    } else skim.forEach((f, k) => water.push({ title: TITLES[c][(hash(f) + k + 1) % 3], feed: f }));
+  }
+  return { whole, sand, water };
+}
+
+const pad = h => String(h).padStart(2, "0") + ":00";
+let timers = [];
+function later(fn, ms) { const t = setTimeout(fn, RM.matches ? 0 : ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+/* ---- a sentence that assembles word by word; nodes in it are single words ---- */
+function sentence(parts, cls) {
+  const el = document.createElement("p");
+  el.className = "say" + (cls ? " " + cls : "");
+  let n = 0;
+  const word = node => { const w = document.createElement("span"); w.className = "w"; w.style.animationDelay = (n++ * 45) + "ms"; w.append(node); el.append(w); };
+  for (const part of parts) {
+    if (typeof part === "string") part.split(/(\s+)/).forEach(tok => { if (!tok) return; if (/^\s+$/.test(tok)) el.append(" "); else word(document.createTextNode(tok)); });
+    else word(part);
+  }
+  el.assembledIn = RM.matches || (cls || "").includes("still") ? 0 : n * 45 + 520;
+  return el;
+}
+/* the stream holds near still while a sentence assembles */
+function speak(stage, s) { stage.append(s); SC.calm(s.assembledIn); return s; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function blankBtn(text, pressed, onTap) {
+  const b = el("button", "blank", text); b.type = "button";
+  if (pressed !== null) b.setAttribute("aria-pressed", String(!!pressed));
+  b.addEventListener("click", () => onTap(b)); return b;
+}
+function btn(text, kind, onTap) { const b = el("button", "btn " + kind, text); b.type = "button"; b.addEventListener("click", onTap); return b; }
+function hint(text, cls) { return el("p", "hint" + (cls ? " " + cls : ""), text); }
+function span(t) { const s = el("span", "", t); if (!isLatin(t)) s.lang = ""; return s; }
+function sayBtn(t, pressed, fn) { const b = blankBtn(t, pressed, fn); b.classList.add("say", "dense"); return b; }
+const lock = stage => stage.querySelectorAll("button, input, select").forEach(b => b.disabled = true);
+function nav(step, primary, back, cls) {
+  const n = el("div", "nav" + (cls ? " " + cls : ""));
+  const i = STEPS.indexOf(step);
+  if (i > 0) n.append(btn("Back", "secondary", back || (() => go(STEPS[i - 1], false))));
+  if (step !== "settings") n.append(btn("Skip", "secondary", () => skip(step)));
+  n.append(el("span", "grow"));
+  if (primary) n.append(primary);
+  return n;
+}
+function fieldBlock(cls) { const box = el("div", "field" + (cls ? " " + cls : "")); box.append(SC.canvas); return box; }
+
+/* ---- moving between steps ---- */
+function go(step, fwd) {
+  const stage = document.getElementById("stage");
+  if (fwd && !RM.matches) { stage.classList.add("leaving"); setTimeout(() => setHash(step), 260); }
+  else setHash(step);
+}
+function setHash(step) { if (location.hash === "#" + step) render(); else location.hash = step; }
+function next(step) { go(STEPS[STEPS.indexOf(step) + 1], true); }
+function skip(step) {
+  if (step === "opening") S.introSeen = true;
+  if (step === "feeds" && S.feeds === null) S.feeds = [];
+  if (step === "lanes" && S.whole === null) S.whole = {};
+  if (step === "fetch") S.fetched = true;
+  if (step === "stances") S.sIdx = 0;
+  if (step === "issue") S.issued = true;
+  next(step);
+}
+
+/* ---- the steps ---- */
+const CLAIM = () => ["Too much, too fast. I’ll hold it for you; ", el("em", "", "you"), " say what matters."];
+const VIEW = {
+  /* first person: headlines fly at the reader's face until the logo comes in and the stream turns calm */
+  opening(stage) {
+    document.body.classList.add("intro");
+    const box = fieldBlock("tall");
+    const logo = el("div", "logo"); logo.setAttribute("aria-hidden", "true");
+    logo.innerHTML = '<span class="brand"><i></i>CYRIS</span>';
+    box.append(logo);
+    const claim = el("div", "claim");
+    const n = nav("opening", btn("Show me how", "primary", () => next("opening")));
+    let skipB = null;
+    const showClaim = () => {
+      if (claim.firstChild) return;
+      S.introSeen = true; skipB?.remove(); n.classList.remove("held");
+      speak(claim, sentence(CLAIM(), RM.matches ? "still" : ""));
+    };
+    if (!S.introSeen && !RM.matches) {
+      skipB = btn("Skip intro", "secondary skip-intro", () => SC.skipIntro());
+      document.querySelector(".top").insertBefore(skipB, document.getElementById("progress")); n.classList.add("held");
+    }
+    stage.append(box, claim, n);
+    SC.opening({ instant: S.introSeen, onLogo: () => logo.classList.add("on"), onClaim: showClaim });
+  },
+
+  feeds(stage) {
+    if (S.feeds === null) S.feeds = [];
+    speak(stage, sentence(["What should I read for you?"]));
+    stage.append(fieldBlock("sticky"));
+    const refresh = added => {
+      SC.lane(laneOf(null, { held: [] }), added);
+      status.textContent = pickedFeeds().length
+        ? "Each feed joins the stream. However many you add, it keeps a pace you can read. Tap a feed again to remove it."
+        : "Tap any feed. None is fine too.";
+    };
+    const filters = el("div", "filters"); filters.setAttribute("aria-label", "Show feeds about");
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Feeds");
+    const status = hint(""); status.setAttribute("aria-live", "polite");
+    const drawList = () => {
+      list.textContent = "";
+      const shown = FEEDS.filter(f => !S.filter.length || f.topics.some(t => S.filter.includes(t)));
+      for (const f of shown) {
+        const c = el("button", "chip"); c.type = "button";
+        const nm = el("span", "", f.name); if (!isLatin(f.name)) nm.lang = "";
+        c.append(nm);
+        c.setAttribute("aria-pressed", String(S.feeds.includes(f.name)));
+        c.addEventListener("click", () => {
+          const on = !S.feeds.includes(f.name);
+          S.feeds = on ? [...S.feeds, f.name] : S.feeds.filter(x => x !== f.name);
+          c.setAttribute("aria-pressed", String(on));
+          S.whole = null; refresh(on ? f.name : null);
+        });
+        list.append(c);
+      }
+      for (const o of S.own) {
+        const c = el("button", "chip"); c.type = "button"; c.setAttribute("aria-pressed", "true");
+        c.append(el("span", "", o), el("span", "n", "yours"));
+        c.addEventListener("click", () => { S.own = S.own.filter(x => x !== o); S.whole = null; drawList(); refresh(); });
+        list.append(c);
+      }
+    };
+    const all = el("button", "chip filter", "All"); all.type = "button";
+    const fBtns = TOPICS.map(t => { const b = el("button", "chip filter", t.label); b.type = "button"; b.dataset.id = t.id; return b; });
+    const syncFilters = () => { all.setAttribute("aria-pressed", String(!S.filter.length)); fBtns.forEach(b => b.setAttribute("aria-pressed", String(S.filter.includes(b.dataset.id)))); };
+    all.addEventListener("click", () => { S.filter = []; syncFilters(); drawList(); });
+    fBtns.forEach(b => b.addEventListener("click", () => { S.filter = [b.dataset.id]; syncFilters(); drawList(); }));
+    filters.append(all, ...fBtns); syncFilters();
+    stage.append(filters, list, status);
+
+    const own = el("div", "own");
+    const lab = el("label", "label", "Or paste one of your own (optional)"); lab.htmlFor = "own-feed";
+    const inp = el("input", "input"); inp.id = "own-feed"; inp.type = "url"; inp.placeholder = "https://"; inp.autocomplete = "off";
+    const add = btn("Add", "secondary", () => {
+      const v = inp.value.trim();
+      if (!/^https?:\/\/[^\s.]+\.[^\s]+$/.test(v)) { inp.setAttribute("aria-invalid", "true"); err.textContent = "That doesn't look like a feed address. It starts with https://."; return; }
+      const h = new URL(v).hostname.replace(/^www\./, "");
+      if (!S.own.includes(h)) S.own.push(h);
+      inp.value = ""; S.whole = null; drawList(); refresh(h);
+    });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+    inp.addEventListener("input", () => { inp.removeAttribute("aria-invalid"); err.textContent = ""; });
+    const err = hint("", "warn"); err.setAttribute("role", "status");
+    own.append(lab, inp, add);
+    stage.append(own, err);
+    stage.append(nav("feeds", btn("Continue", "primary", () => next("feeds")), null, "sticky"));
+    drawList(); refresh();
+  },
+
+  /* one question over all picked feeds: a tapped feed's headlines come forward and stay */
+  lanes(stage) {
+    const feeds = pickedFeeds();
+    if (S.whole === null) S.whole = {};
+    if (!feeds.length) {
+      speak(stage, sentence(["Nothing in the stream yet."]));
+      stage.append(hint("You picked no feeds. Go Back to pick some, or go on and add them later in Settings."));
+      stage.append(nav("lanes", btn("Go on", "primary", () => next("lanes"))));
+      SC.mode("none");
+      return;
+    }
+    feeds.forEach(g => { if (!(g in S.whole)) S.whole[g] = false; });
+    const label = () => wholeFeeds().length ? "Keep these close" : "None, skim them all";
+    const go_on = btn(label(), "primary", () => next("lanes"));
+    speak(stage, sentence(["Is there a source you never want to miss?"]));
+    stage.append(fieldBlock("sticky"));
+    SC.lane(laneOf());
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Sources you never want to miss");
+    for (const f of feeds) {
+      const c = el("button", "chip"); c.type = "button"; c.append(span(f));
+      c.setAttribute("aria-pressed", String(S.whole[f] === true));
+      c.addEventListener("click", () => {
+        S.whole[f] = !S.whole[f];
+        c.setAttribute("aria-pressed", String(S.whole[f]));
+        SC.lane(laneOf());
+        go_on.textContent = label();
+      });
+      list.append(c);
+    }
+    stage.append(list);
+    stage.append(hint("Tap one and its articles come forward and stay with you, read whole: your Deep reads. The rest I skim as they pass: Stories when several tell one story, Fragments when one does."));
+    stage.append(nav("lanes", go_on));
+  },
+
+  fetch(stage) {
+    const feeds = pickedFeeds();
+    const box = el("div"); stage.append(box);
+    const say = parts => { box.textContent = ""; box.append(sentence(parts, "still")); };
+    if (!feeds.length) {
+      box.append(sentence(["Nothing to read yet: no feeds picked."]));
+      SC.mode("none");
+      stage.append(nav("fetch", btn("Go on", "primary", () => { S.fetched = true; next("fetch"); })));
+      return;
+    }
+    stage.append(fieldBlock());
+    stage.append(nav("fetch", btn("Go on", "primary", () => { S.fetched = true; next("fetch"); })));
+    const finish = () => { S.fetched = true; SC.lane(laneOf()); say(["Everything you picked is in."]); };
+    if (S.fetched || RM.matches) { finish(); return; }
+    const arrived = new Set();
+    SC.lane(laneOf(() => false));
+    say(["Opening your feeds…"]);
+    const per = 8000 / feeds.length;
+    feeds.forEach((f, k) => later(() => {
+      arrived.add(f);
+      SC.lane(laneOf(g => arrived.has(g)), f);
+      say(["Reading ", span(f), "…"]);
+    }, k * per));
+    later(finish, 8000);
+  },
+
+  /* one topic per sentence; more draws its headlines forward, less lets them drift away */
+  stances(stage) {
+    const topics = stanceTopics();
+    if (S.sIdx >= topics.length) S.sIdx = 0;
+    const t = topics[S.sIdx];
+    const topic = el("em", "", t); topic.lang = "";
+    const picked = pickedFeeds().length > 0;
+    if (S.sIdx === 0) stage.append(hint(picked ? "I read your sources and found these topics in them. Tell me which to bring closer, and which to let go." : "You picked no sources, so here are some topics to start with. Tell me which to bring closer, and which to let go.", "lead"));
+    speak(stage, sentence(["More of ", topic, "?"]));
+    const q = el("div", "quiet");
+    const answer = v => b => {
+      S.stances[t] = v; lock(stage); b.setAttribute("aria-pressed", "true");
+      SC.fate(v);
+      later(() => { if (S.sIdx + 1 < topics.length) { S.sIdx++; go("stances", true); } else { S.sIdx = 0; next("stances"); } }, 2200);
+    };
+    q.append(sayBtn("More, please.", S.stances[t] === "more", answer("more")), sayBtn("Less.", S.stances[t] === "less", answer("less")));
+    stage.append(q);
+    stage.append(fieldBlock());
+    const cfg = laneOf(null, { more: moreTopics().filter(x => x !== t), lit: t });
+    if (!cfg.feeds.length) cfg.feeds = FEEDS.filter(f => f.topics.some(x => x === "taiwan" || x === "tech")).map(f => f.name);
+    SC.lane(cfg);
+    if (S.stances[t]) SC.fate(S.stances[t]);
+    stage.append(hint((picked ? "Found in the sources you picked. " : "") + "The bright headlines are this topic: more brings them forward to stay, less lets them drift away. No answer counts for nothing."));
+    stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
+  },
+
+  /* the second wait sorts the stream front to back: what stays, what is told once, what drifts past */
+  issue(stage) {
+    const reveal = () => {
+      clearTimers(); S.issued = true; SC.mode("none");
+      stage.textContent = "";
+      const issue = buildIssue(); if (!RM.matches) issue.classList.add("appear");
+      stage.append(issue);
+      stage.append(nav("issue", btn("One more thing", "primary", () => next("issue"))));
+      window.scrollTo(0, 0);
+    };
+    if (S.issued || RM.matches) { reveal(); return; }
+    const box = el("div"); stage.append(box);
+    const say = l => { box.textContent = ""; box.append(sentence(l, "still")); };
+    stage.append(fieldBlock());
+    const w = wholeFeeds(), p = issueParts(), more = moreTopics();
+    const base = laneOf(null, { held: [], more: [] });
+    SC.lane(base);
+    let done = false;
+    const turn = () => { if (done) return; done = true; clearTimers(); reveal(); };
+    stage.append(nav("issue", btn("Show me now", "primary", turn)));
+    const steps = base.feeds.length ? [
+      [["Sorting what came in through what you told me."], base],
+      [w.length ? ["Deep reads first: ", span(w[0]), ", kept close and read whole."] : ["No Deep reads today: you asked to keep nothing close."], { ...base, held: w }],
+      [p.sand.length ? ["Then Stories: ", span(p.sand[0].topic), ", told once."] : ["No Stories: no two skimmed feeds shared one."], { ...base, held: w, more, stories: p.sand.slice(0, 1).map(s => s.topic) }],
+      [["The rest are Fragments: single headlines drifting past."], { ...base, held: w, more, stories: p.sand.slice(0, 1).map(s => s.topic) }],
+      [["Here is your first issue."], null],
+    ] : [
+      [["Nothing in the stream: you picked no feeds."], base],
+      [["Here is your first issue, empty for now."], null],
+    ];
+    steps.forEach(([line, cfg], k) => later(() => { say(line); if (cfg) SC.lane(cfg); }, k * 2400));
+    later(() => location.hash === "#issue" && turn(), steps.length * 2400);
+  },
+
+  settings(stage) {
+    SC.mode("none");
+    if (S.done) {
+      speak(stage, sentence(["Until ", span(pad(S.hours[0])), ", then."]));
+      stage.append(hint("This prototype ends here. In the product, Finish opens Settings."));
+      stage.append(nav("settings", btn("Change these", "secondary", () => { S.done = false; render(); })));
+      return;
+    }
+    const hourIn = k => {
+      const i = el("input", "blank hour"); i.type = "number"; i.min = "0"; i.max = "23"; i.inputMode = "numeric";
+      i.value = String(S.hours[k]); i.setAttribute("aria-label", k ? "Second publish hour" : "First publish hour");
+      i.addEventListener("input", () => { const v = Number(i.value); const ok = i.value !== "" && v >= 0 && v <= 23 && Number.isInteger(v); i.toggleAttribute("aria-invalid", !ok); if (ok) S.hours[k] = v; });
+      return i;
+    };
+    const sel = (opts, val, label, onPick) => {
+      const s = el("select", "blank"); s.setAttribute("aria-label", label);
+      opts.forEach(o => s.append(new Option(o, o, false, o === val)));
+      const fit = () => s.style.width = (s.value.length * 0.36 + 0.5) + "em";
+      s.addEventListener("change", () => { onPick(s.value); fit(); }); fit(); return s;
+    };
+    const zones = [...new Set([S.tz, "Asia/Taipei", "Asia/Tokyo", "Europe/London", "America/New_York", "America/Los_Angeles", "UTC"])];
+    const text = (type, ph, key, label) => {
+      const i = el("input", "blank wide"); i.type = type; i.placeholder = ph; i.value = S[key];
+      i.setAttribute("aria-label", label); i.addEventListener("input", () => S[key] = i.value.trim()); return i;
+    };
+    speak(stage, sentence(["P.S. Each day at ", hourIn(0), " and ", hourIn(1), ", in ",
+      sel(LANGS, S.lang, "Output language", v => S.lang = v), ", on ",
+      sel(zones, S.tz, "Timezone", v => S.tz = v), " time, I’ll hold the stream still for you. I can also tell ",
+      text("url", "a Discord webhook", "discord", "Discord webhook"), " or ", text("email", "your email", "email", "Email"), "."], "dense"));
+    stage.append(hint("Language and timezone came from this browser. Everything here is optional."));
+    const err = hint("", "warn"); err.setAttribute("role", "status"); stage.append(err);
+    stage.append(nav("settings", btn("Finish", "primary", () => {
+      if (stage.querySelector("[aria-invalid]")) { err.textContent = "A publish hour is a whole number from 0 to 23."; return; }
+      S.done = true;
+      if (RM.matches) render(); else { stage.classList.add("leaving"); setTimeout(render, 260); }
+    })));
+  },
+};
+
+/* the three layers' marks: kept close, several merged into one, single dashes passing */
+const GLYPH = {
+  deep: '<rect x="2" y="2" width="20" height="8" fill="currentColor"/>',
+  stories: '<path d="M1 2 L11 6 M1 6 H11 M1 10 L11 6 M11 6 H23" fill="none" stroke="currentColor"/>',
+  frags: '<path d="M1 6h4M9 6h4M17 6h4" fill="none" stroke="currentColor"/>',
+};
+function buildIssue() {
+  const lang = LANG_TAG[S.lang] || "zh-Hant";
+  const sec = el("section", "issue"); sec.setAttribute("aria-label", "Your first issue");
+  const head = el("div", "issue-head");
+  head.append(el("h2", "issue-title", "Issue one"), el("span", "data", new Date().toISOString().slice(0, 10)));
+  sec.append(head);
+  const layer = (name, kind, help) => {
+    const l = el("div", "layer"); const lh = el("div", "layer-head");
+    const m = el("h3", "marker label");
+    m.innerHTML = `<svg viewBox="0 0 24 12" aria-hidden="true">${GLYPH[kind]}</svg>`;
+    m.append(name);
+    lh.append(m, el("p", "", help));
+    l.append(lh); sec.append(l); return l;
+  };
+  const { whole, sand, water } = issueParts();
+  const deep = layer("Deep reads", "deep", "What you kept close: sources you never want to miss, read whole.");
+  if (!whole.length) deep.append(el("p", "empty", "None yet: tap a source you never want to miss and its articles stay here, first."));
+  whole.forEach(({ feed, title }) => {
+    const it = el("article", "item deep");
+    const h = el("h3", "", title); h.lang = "";
+    const p = el("p", "", lang === "en" ? "A summary of the whole piece, written for you." : "整篇讀完後替你寫的摘要：重點、脈絡與值得細讀的段落。"); p.lang = lang;
+    it.append(el("span", "label", feed), h, p); deep.append(it);
+  });
+  const stories = layer("Stories", "stories", "Several articles on one story, told once.");
+  if (!sand.length) stories.append(el("p", "empty", "None this time: no two skimmed feeds shared a story."));
+  sand.forEach(s => {
+    const it = el("article", "item");
+    const h = el("h3", "", s.topic); h.lang = lang;
+    const p = el("p", "", lang === "en" ? "Several outlets on one development, told once." : "多家媒體報導同一進展，合成一句話告訴你。"); p.lang = lang;
+    const lab = el("span", "label", "Several sources");
+    if (s.more) lab.append(el("span", "more", " · more, as you asked"));
+    it.append(h, p, lab); stories.append(it);
+  });
+  const frags = layer("Fragments", "frags", "Single headlines you can let drift past.");
+  if (!water.length) frags.append(el("p", "empty", "None: pick a feed and its single headlines run here."));
+  else {
+    const wl = el("div", "frags");
+    water.forEach(r => { const row = el("div"); const t = el("span", "", r.title); t.lang = ""; row.append(t, el("span", "label", r.feed)); wl.append(row); });
+    frags.append(wl);
+  }
+  return sec;
+}
+
+/* ================= the stream: headlines in depth, projected toward the reader ================= */
+/*
+ * Depth is u = ln z. A headline at depth z is drawn at scale s = 1/z from the vanishing point, so
+ * equal steps in u look like equal steps in time. The calm lane is a lattice in u that moves toward
+ * the reader at one slow speed, so the stream stays evenly spaced however many feeds feed it.
+ */
+function createScene() {
+  const canvas = document.createElement("canvas"); canvas.setAttribute("aria-hidden", "true");
+  const cx = canvas.getContext("2d");
+  const C = {}; for (const n of ["--bg", "--bg-elev", "--border", "--border-strong", "--text", "--text-dim", "--text-faint", "--accent"]) C[n] = getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const SANS = '"Geist", "PingFang TC", "Noto Sans TC", system-ui, sans-serif', MONO = '"Geist Mono", ui-monospace, monospace';
+  let W = 0, H = 0, DPR = 1, mode = "none", raf = 0, last = 0, calmUntil = 0, pace = 1;
+  let items = [], rows = [], lanePos = 0, lastSlot = 0, yR = null, laneA = 1, chaosAmt = 0, clock = 0;
+  let cfg = { feeds: [], held: [], more: [], stories: [], lit: null }, fate = null, op = null;
+  const GAP = 0.3, U_FAR = Math.log(9), U_DIE = Math.log(0.66), K_CALM = 0.15;
+  /* the opening's clock, in seconds: chaos until the logo, then the turn, then the few that matter, then the claim */
+  const T = { logo: 3.4, turn: 3.6, turnDur: 1.6, matter: 5.3, claim: 6.5 };
+  let seed = 3; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const clamp = x => Math.max(0, Math.min(1, x));
+  const ease = x => x * x * (3 - 2 * x);
+  const api = { canvas };
+
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return false;
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    if (W !== r.width || H !== r.height) { W = r.width; H = r.height; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); yR = null; }
+    return true;
+  }
+  function geo() {
+    const intro = mode === "opening", fs = W >= 600 ? 14 : 12.5, rowH = W >= 600 ? 34 : 30;
+    const shown = Math.min(4, rows.filter(r => !r.gone).length);
+    const shelfTop = H - 8 - Math.max(shown, intro ? 3 : 0) * rowH;
+    const vy = H * (intro ? 0.4 : 0.12);
+    const yRt = Math.min(H * (intro ? 0.66 : 0.6), shelfTop - fs * 1.8);
+    return { fs, rowH, shelfTop, vx: W / 2, vy, yRt };
+  }
+
+  /* ---- what a headline says and which feed it came from ---- */
+  function pickFeed(feeds) {
+    let tot = 0; const w = feeds.map(f => (tot += Math.sqrt(dailyOf(f)), tot));
+    const r = rnd() * tot; return feeds[w.findIndex(x => x >= r)] ?? feeds[0];
+  }
+  /* prefer a headline not already on screen, so the stream does not repeat itself */
+  function headOf(feed) {
+    const p = headsOf(topicOf(feed), isLatin(feed)), on = new Set([...items.map(it => it.text), ...rows.map(r => r.title)]);
+    const fresh = p.filter(h => !on.has(h) && !on.has(cut(h, geo().fs * 1.5, W - 32)));
+    const pool = fresh.length ? fresh : p; return pool[Math.floor(rnd() * pool.length)];
+  }
+  function stanceHead(t) { return STANCE_HEADS[Math.floor(rnd() * STANCE_HEADS.length)].replace("{t}", t); }
+  /* a lane title is cut once, at the largest size it is drawn readable */
+  function cut(text, f, maxW) {
+    if (!(maxW > 0)) return text;
+    cx.font = `500 ${f}px ${SANS}`;
+    if (cx.measureText(text).width <= maxW) return text;
+    let t = [...text]; while (t.length > 2 && cx.measureText(t.join("") + "…").width > maxW) t.pop();
+    return t.join("") + "…";
+  }
+
+  /* ---- the calm lane ---- */
+  const fillP = () => cfg.everything ? 0.9 : cfg.feeds.length ? Math.min(0.92, 0.4 + 0.12 * cfg.feeds.length) : 0;
+  function laneItem(q, feed, extra) {
+    const { text: given, ...rest } = extra || {}, lit = !!rest.lit;
+    const text = given || (lit ? stanceHead(cfg.lit) : headOf(feed));
+    return { kind: "lane", q, du: 0, side: (Math.round(q / GAP) % 2) ? 1 : -1, feed, fi: 1, hi: 0, fa: 1, lit, recede: false,
+      ...rest, text: cut(text, geo().fs * 1.5, W - 32) };
+  }
+  function newLane(q) {
+    const lit = !!cfg.lit && fate !== "less" && rnd() < 0.5;
+    return laneItem(q, pickFeed(cfg.feeds), { lit });
+  }
+  function seedLane() {
+    lastSlot = Math.floor((U_FAR + lanePos) / GAP);
+    for (let s = Math.ceil((U_DIE + 0.15 + lanePos) / GAP); s <= lastSlot; s++) if (!slotTaken(s * GAP) && rnd() < fillP()) items.push(newLane(s * GAP));
+  }
+  const slotTaken = q => items.some(it => it.kind === "lane" && !it.recede && Math.abs(it.q - q) < 1e-6);
+  function freeSlot(uMin, uMax) {
+    const out = [];
+    for (let s = Math.ceil((uMin + lanePos) / GAP); s * GAP - lanePos <= uMax; s++) if (!slotTaken(s * GAP)) out.push(s * GAP);
+    return out.length ? out[Math.floor(rnd() * out.length)] : null;
+  }
+  /* a headline that must be seen now takes a near slot; whoever held it drifts back */
+  function inject(feed, extra) {
+    let q = freeSlot(0.35, 1.2);
+    if (q === null) {
+      const near = items.filter(it => it.kind === "lane" && !it.recede && !it.lit && !it.hi && it.q - lanePos > 0.35 && it.q - lanePos < 1.2);
+      if (!near.length) return null;
+      const out = near[Math.floor(rnd() * near.length)]; out.recede = true; q = out.q;
+    }
+    const it = laneItem(q, feed, { fi: 0, hi: 1, ...extra }); items.push(it); return it;
+  }
+  function lanePosOf(it, g) {
+    const u = it.q - lanePos + it.du, s = Math.exp(-u);
+    let x = g.vx, y = g.vy + (yR - g.vy) * s, f = g.fs * s, a = clamp((U_FAR - u) / 0.8) * it.fi * it.fa;
+    if (u < 0) { const p = clamp(-u / -U_DIE); x += it.side * ease(p) * W * 0.62; y = yR + (s - 1) * (yR - g.vy) * 0.3; a *= 1 - p; }
+    return { x, y, f, a, u };
+  }
+
+  /* ---- chaos: headlines and topics thrown at the reader from the vanishing point ---- */
+  function chaosItem(z) {
+    const t = TOPICS[Math.floor(rnd() * TOPICS.length)], r = rnd();
+    let text, feed = null, tag = false;
+    if (r < 0.14) { text = rnd() < 0.5 ? t.label : t.zh; tag = true; }
+    else if (r < 0.24) { text = STANCE_POOL[t.id][Math.floor(rnd() * 3)]; tag = true; }
+    else {
+      const latin = rnd() < 0.4;
+      const fs = FEEDS.filter(f => f.topics.includes(t.id) && isLatin(f.name) === latin);
+      feed = (fs.length ? fs : FEEDS)[Math.floor(rnd() * (fs.length || FEEDS.length))].name;
+      text = headOf(feed);
+    }
+    const m = Math.min(W, H);
+    return { kind: "chaos", tag, text, feed, z, ang: rnd() * Math.PI * 2, rho: m * (0.1 + 0.5 * Math.sqrt(rnd())),
+      wf: 6 + rnd() * 7, ph: rnd() * 7, bright: rnd() < 0.3, sz: 0.85 + rnd() * 0.4, fade: 1 };
+  }
+  const chaosK = t => 0.8 + 2.2 * Math.pow(clamp(t / T.turn), 1.4);
+  function chaosPosOf(it, g) {
+    const s = 1 / it.z, j = chaosAmt * 1.6 * Math.min(s, 3);
+    const x = g.vx + Math.cos(it.ang) * it.rho * s + Math.sin(clock * it.wf + it.ph) * j;
+    const y = g.vy + Math.sin(it.ang) * it.rho * s * 0.8 + Math.cos(clock * it.wf * 0.9 + it.ph) * j;
+    const f = g.fs * s * it.sz;
+    /* fades in from the distance, and fades out before it grows large enough to cover the screen */
+    const a = clamp((7.5 - it.z) / 2.5) * clamp((60 - f) / 26) * it.fade;
+    return { x, y, f, a };
+  }
+
+  /* ---- the shelf: rows that came forward and stay near the reader ---- */
+  function screenOf(it, g) { return it.kind === "chaos" ? chaosPosOf(it, g) : lanePosOf(it, g); }
+  function grab(pred, n) {
+    const g = geo(), got = [];
+    const cand = items.filter(it => it.kind === "lane" && !it.recede && pred(it)).map(it => ({ it, p: lanePosOf(it, g) }))
+      .filter(c => c.p.u > U_DIE + 0.1 && c.p.u < 1.9 && c.p.a > 0.05).sort((a, b) => a.p.u - b.p.u);
+    for (const c of cand.slice(0, n)) { got.push({ x: c.p.x, y: c.p.y, f: c.p.f, a: c.p.a, text: c.it.text, feed: c.it.feed }); items.splice(items.indexOf(c.it), 1); }
+    return got;
+  }
+  const fromVP = text => { const g = geo(); return { x: g.vx, y: g.vy, f: 2, a: 0, text }; };
+  function addRow(key, kind, title, label, froms) {
+    const old = rows.find(r => r.key === key && !r.gone);
+    if (old) return old;
+    const r = { key, kind, title: cut(title, 14, Math.min(W - 32, 560) - 120), label, froms, t: 0, y: null, gone: false, ga: 1 };
+    rows.push(r); return r;
+  }
+  function syncRows() {
+    const want = [
+      ...cfg.held.map(f => ({ key: "f:" + f, kind: "held", label: f, pred: it => it.feed === f, title: () => headOf(f), n: 1 })),
+      ...cfg.more.map(t => ({ key: "m:" + t, kind: "held", label: "More", pred: it => it.lit && cfg.lit === t, title: () => stanceHead(t), n: 1 })),
+      ...cfg.stories.map(t => ({ key: "s:" + t, kind: "story", label: "Several sources", pred: it => !cfg.held.includes(it.feed), title: () => t, n: 3 })),
+    ];
+    const keys = new Set(want.map(w => w.key));
+    for (const r of rows) if (!r.gone && r.kind !== "matter" && !keys.has(r.key)) r.gone = true;
+    if (mode !== "opening") for (const r of rows) if (r.kind === "matter") r.gone = true;
+    for (const w of want) {
+      if (rows.some(r => r.key === w.key && !r.gone)) continue;
+      const froms = grab(w.pred, w.n);
+      const title = w.kind === "story" ? w.title() : froms[0]?.text || w.title();
+      addRow(w.key, w.kind, title, w.label, froms.length ? froms : [fromVP(title)]);
+    }
+  }
+
+  /* ---- motion ---- */
+  function tick(dt, rawDt) {
+    clock += rawDt;
+    const g = geo();
+    if (yR === null) yR = g.yRt; else yR += (g.yRt - yR) * Math.min(1, dt * 3);
+    if (op && !op.done) introTick(rawDt, g);
+    const laneLive = mode === "lane" || (mode === "opening" && (!op || op.t >= T.turn));
+    if (laneLive) {
+      lanePos += K_CALM * dt;
+      const far = Math.floor((U_FAR + lanePos) / GAP);
+      while (lastSlot < far) { lastSlot++; if (!slotTaken(lastSlot * GAP) && rnd() < fillP()) items.push(newLane(lastSlot * GAP)); }
+    }
+    const kc = op && !op.done ? (op.t < T.turn ? chaosK(op.t) : chaosK(T.turn) * (1 - 0.8 * ease(clamp((op.t - T.turn) / T.turnDur)))) : 2;
+    for (const it of items) {
+      if (it.kind === "chaos") {
+        const slow = it.join ? 1 - ease(it.join.j) : it.matter ? 1 - ease(clamp((op.t - T.turn) / 0.8)) : 1;
+        it.z *= Math.exp(-kc * rawDt * slow);
+        if (it.join) { it.join.j = Math.min(1, it.join.j + rawDt / 1.5); if (it.join.j >= 1) { Object.assign(it, laneItem(it.join.q, it.feed || "", { text: it.text })); delete it.join; } }
+        else if (op && op.t >= T.turn && !it.matter) it.fade = Math.max(0, it.fade - rawDt / 0.7);
+        const p = chaosPosOf(it, g);
+        if (!it.join && (it.z < 0.12 || p.f > 60 || it.fade <= 0 || Math.abs(p.x - g.vx) > W * 0.5 + p.f * 12 || Math.abs(p.y - g.vy) > H + p.f)) it.dead = true;
+        continue;
+      }
+      it.fi = Math.min(1, it.fi + dt / 0.6); it.hi = Math.max(0, it.hi - dt / 2.6);
+      if (it.recede) { it.du += 0.9 * dt; it.fa -= dt / 1.3; if (it.fa <= 0) it.dead = true; continue; }
+      const u = it.q - lanePos;
+      if (u < U_DIE) { it.dead = true; continue; }
+      /* a kept source's headline, or a topic asked for more of, comes forward to its row instead of passing */
+      if (u < 0.15 && mode === "lane") {
+        const key = cfg.held.includes(it.feed) ? "f:" + it.feed : (it.lit && fate === "more" ? "m:" + cfg.lit : null);
+        const r = key && rows.find(x => x.key === key && !x.gone);
+        if (r && r.t >= 1) { const p = lanePosOf(it, g); r.froms = [{ x: p.x, y: p.y, f: p.f, a: p.a, text: it.text }]; r.title = cut(it.text, 14, Math.min(W - 32, 560) - 120); r.t = 0; it.dead = true; }
+      }
+    }
+    items = items.filter(it => !it.dead);
+    for (const r of rows) { r.t = Math.min(1, r.t + dt / 0.9); if (r.gone) { r.ga -= dt / 0.6; } }
+    rows = rows.filter(r => !r.gone || r.ga > 0);
+  }
+  function introTick(dt, g) {
+    op.t += dt; const t = op.t;
+    if (t < T.turn) {
+      op.acc += dt * (10 + 40 * Math.pow(t / T.turn, 1.6));
+      while (op.acc >= 1) { op.acc--; if (items.length < 150) items.push(chaosItem(7 + rnd() * 1.5)); }
+      chaosAmt = 1; laneA = 0;
+    } else {
+      if (!op.turned) turn();
+      const k = ease(clamp((t - T.turn) / T.turnDur)); chaosAmt = 1 - k; laneA = k;
+    }
+    if (t >= T.logo && !op.logo) { op.logo = true; op.onLogo(); }
+    while (op.matter < 3 && t >= T.matter + op.matter * 0.45) {
+      op.matter++;
+      const m = op.mat?.[op.matter - 1], live = m && items.includes(m);
+      const froms = live ? [{ ...chaosPosOf(m, g), text: m.text, feed: m.feed }] : grab(() => true, 1);
+      if (live) items.splice(items.indexOf(m), 1);
+      const title = froms[0]?.text || headOf(pickFeed(cfg.feeds));
+      addRow("o:" + op.matter, "matter", title, froms[0]?.feed || "", froms.length ? froms : [fromVP(title)]);
+    }
+    if (t >= T.claim && !op.claimed) { op.claimed = true; op.done = true; op.onClaim(); }
+  }
+  /* the turn: a few headlines in flight join the lane at even spacing, the rest fade where they are */
+  function turn() {
+    op.turned = true;
+    const cand = items.filter(it => it.kind === "chaos" && !it.tag && it.z > 1.3 && it.z < 6).sort((a, b) => a.z - b.z);
+    const s0 = Math.ceil((0.2 + lanePos) / GAP);
+    const kept = [];
+    for (const it of cand) { if (kept.length >= 6) break; if (!kept.length || Math.log(it.z) - Math.log(kept[kept.length - 1].z) > 0.15) kept.push(it); }
+    kept.forEach((it, i) => { it.join = { q: (s0 + i) * GAP, j: 0 }; it.text = cut(it.text, geo().fs * 1.5, W - 32); });
+    const seen = new Set(kept.map(it => it.text));
+    op.mat = items.filter(it => it.kind === "chaos" && !it.tag && !it.join && it.z > 0.9 && it.z < 3.2 && Math.abs(chaosPosOf(it, geo()).x - W / 2) < W * 0.35)
+      .sort((a, b) => a.z - b.z).filter(it => !seen.has(it.text) && seen.add(it.text)).slice(0, 3);
+    op.mat.forEach(it => it.matter = true);
+    lastSlot = Math.floor((U_FAR + lanePos) / GAP);
+    for (let s = s0 + kept.length; s <= lastSlot; s++) if (rnd() < fillP()) items.push(laneItem(s * GAP, pickFeed(cfg.feeds), { fi: 0 }));
+  }
+
+  /* ---- drawing ---- */
+  function drawItem(it, p, g) {
+    if (p.a <= 0.01 || p.f < 2.5) return;
+    cx.globalAlpha = Math.min(1, p.a);
+    if (it.kind === "chaos" && it.tag) {
+      cx.font = `500 ${p.f * 0.85}px ${MONO}`; cx.fillStyle = it.bright ? C["--text"] : C["--text-dim"];
+      cx.fillText(it.text.toUpperCase(), p.x, p.y); return;
+    }
+    const strong = it.kind === "chaos" ? it.bright || it.matter : it.lit || it.hi > 0 || (!cfg.lit && cfg.held.includes(it.feed));
+    cx.font = `${strong ? 600 : 500} ${p.f}px ${SANS}`;
+    cx.fillStyle = it.lit && fate === "more" ? C["--accent"] : strong ? C["--text"] : C["--text-dim"];
+    cx.fillText(it.text, p.x, p.y);
+    if (it.feed && p.f >= 7) {
+      cx.font = `500 ${p.f * 0.62}px ${MONO}`; cx.fillStyle = it.hi > 0 ? C["--text-dim"] : C["--text-faint"];
+      cx.fillText(it.feed, p.x, p.y - p.f * 1.15);
+    }
+  }
+  function drawRows(g) {
+    const rw = Math.min(W - 32, 560), x0 = (W - rw) / 2;
+    const live = rows.filter(r => !r.gone), shown = live.slice(-4);
+    shown.forEach((r, i) => { const ty = g.shelfTop + i * g.rowH; r.y = r.y === null ? ty : r.y + (ty - r.y) * 0.15; });
+    for (const r of rows) {
+      if (!r.gone && !shown.includes(r)) continue;
+      if (r.y === null) continue;
+      const e = ease(r.t), h = g.rowH - 4, ty = r.y + h / 2 + 4;
+      cx.globalAlpha = e * r.ga;
+      cx.fillStyle = C["--bg-elev"]; cx.fillRect(x0, r.y, rw, h);
+      cx.strokeStyle = C["--border"]; cx.lineWidth = 1; cx.strokeRect(x0 + 0.5, r.y + 0.5, rw - 1, h - 1);
+      cx.fillStyle = r.kind === "held" ? C["--accent"] : C["--text"]; cx.fillRect(x0 + 10, r.y + h / 2 - 3, 6, 6);
+      cx.textAlign = "left"; cx.font = `500 14px ${SANS}`; cx.fillStyle = C["--text"];
+      cx.fillText(r.title, x0 + 26, ty);
+      if (r.label) {
+        cx.textAlign = "right"; cx.font = `500 10px ${MONO}`; cx.fillStyle = C["--text-dim"];
+        let l = r.label; while ([...l].length > 4 && cx.measureText(l).width > 100) l = [...l].slice(0, -2).join("") + "…";
+        cx.fillText(l.toUpperCase(), x0 + rw - 10, ty);
+      }
+      cx.textAlign = "center";
+      if (e < 1) {
+        const tx = x0 + 26 + Math.min(rw - 140, cx.measureText(r.title).width) / 2;
+        for (const f of r.froms) {
+          cx.globalAlpha = (1 - e) * Math.max(0.6, f.a) * r.ga;
+          const fs = f.f + (14 - f.f) * e;
+          cx.font = `600 ${fs}px ${SANS}`; cx.fillStyle = C["--text"];
+          cx.fillText(f.text, f.x + (tx - f.x) * e, f.y + (ty - f.y) * e);
+        }
+      }
+    }
+    cx.globalAlpha = 1;
+  }
+  function draw() {
+    if (!size()) return;
+    const g = geo(); if (yR === null) yR = g.yRt;
+    cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    cx.fillStyle = C["--bg"]; cx.fillRect(0, 0, W, H);
+    if (mode === "none") return;
+    /* the lane's two edges, meeting at the vanishing point */
+    if (laneA > 0.01) {
+      cx.globalAlpha = laneA; cx.strokeStyle = C["--border"]; cx.lineWidth = 1;
+      const spread = Math.min(W * 0.42, 380);
+      cx.beginPath(); cx.moveTo(g.vx, g.vy); cx.lineTo(g.vx - spread, H); cx.moveTo(g.vx, g.vy); cx.lineTo(g.vx + spread, H); cx.stroke();
+      cx.globalAlpha = 1;
+    }
+    cx.textAlign = "center"; cx.textBaseline = "alphabetic";
+    /* far first, so nearer headlines draw over farther ones */
+    const drawn = items.map(it => ({ it, p: screenOf(it, g) }));
+    for (const d of drawn) if (d.it.join) { const l = lanePosOf({ ...d.it, kind: "lane", q: d.it.join.q, du: 0, side: 1, fi: 1, fa: 1 }, g), e = ease(d.it.join.j);
+      d.p = { x: d.p.x + (l.x - d.p.x) * e, y: d.p.y + (l.y - d.p.y) * e, f: d.p.f + (l.f - d.p.f) * e, a: Math.max(d.p.a, 0.5) * (1 - e) + l.a * e }; }
+    drawn.sort((a, b) => a.p.f - b.p.f);
+    for (const d of drawn) drawItem(d.it, d.p, g);
+    cx.globalAlpha = 1;
+    drawRows(g);
+  }
+
+  function frame(ts) {
+    const raw = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+    const target = performance.now() < calmUntil ? 0.12 : 1;
+    pace += (target - pace) * Math.min(1, raw * 4);
+    tick(raw * pace, op && !op.done ? raw : raw * pace);
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+  /* reduced motion: everything at the place it was going, drawn once */
+  function settle() {
+    for (const it of items) if (it.kind === "chaos" && it.join) { Object.assign(it, laneItem(it.join.q, it.feed || "", { text: it.text })); delete it.join; }
+    items = items.filter(it => it.kind === "lane" && !it.recede);
+    for (const it of items) { it.fi = 1; it.hi = 0; }
+    rows = rows.filter(r => !r.gone); rows.forEach(r => { r.t = 1; r.y = null; });
+    yR = null; laneA = 1; draw();
+  }
+  function kick() {
+    if (RM.matches || mode === "none") { cancelAnimationFrame(raf); raf = 0; if (mode !== "none") requestAnimationFrame(settle); else draw(); return; }
+    if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
+  }
+
+  api.mode = m => {
+    if (m !== mode) { if (m === "none" || mode === "opening" && op && !op.done) { items = []; rows = []; } }
+    if (m !== "opening") op = op && op.done ? op : null;
+    mode = m; kick();
+  };
+  api.opening = ({ instant, onLogo, onClaim }) => {
+    size(); mode = "opening"; items = []; rows = []; lanePos = 0; fate = null; yR = null;
+    cfg = { feeds: FEEDS.map(f => f.name), held: [], more: [], stories: [], lit: null, everything: true };
+    if (instant || RM.matches) {
+      op = { done: true, t: T.claim }; chaosAmt = 0; laneA = 1;
+      seedLane();
+      [["報導者", 0], ["Stratechery", 1], ["The Economist", 2]].forEach(([f, i]) => { const t = headOf(f); const r = addRow("o:" + i, "matter", t, f, [fromVP(t)]); r.t = 1; });
+      onLogo(); onClaim(); kick(); return;
+    }
+    op = { t: 0, acc: 0, turned: false, logo: false, matter: 0, claimed: false, done: false, onLogo, onClaim };
+    chaosAmt = 1; laneA = 0;
+    size();
+    for (let i = 0; i < 26; i++) items.push(chaosItem(1.5 + rnd() * 6));
+    kick();
+  };
+  api.skipIntro = () => {
+    if (!op || op.done) return;
+    const { onLogo, onClaim } = op;
+    api.opening({ instant: true, onLogo, onClaim });
+  };
+  /* the lane follows the answers: new feeds join, dropped ones drift back, kept ones come forward */
+  api.lane = (next, added) => {
+    size();
+    const was = mode; mode = "lane";
+    if (op && !op.done) op = null;
+    const litChanged = cfg.lit !== (next.lit || null);
+    if (litChanged) fate = null;
+    cfg = { held: [], more: [], stories: [], lit: null, ...next, everything: false };
+    if (was !== "lane") { chaosAmt = 0; laneA = 1; rows = rows.filter(r => r.kind !== "matter"); }
+    for (const it of items) if (it.kind === "chaos" || (!cfg.feeds.includes(it.feed) && !it.lit) || (it.lit && it.text && litChanged)) it.recede = true;
+    if (!items.some(it => !it.recede)) seedLane();
+    if (litChanged && cfg.lit) for (let i = 0; i < 3; i++) inject(pickFeed(cfg.feeds), { lit: true });
+    if (added && cfg.feeds.includes(added)) inject(added);
+    syncRows();
+    kick();
+  };
+  /* more: the topic's nearest headline comes forward to stay; less: its headlines fall back and fade */
+  api.fate = f => {
+    fate = f;
+    if (f === "more" && cfg.lit) {
+      const froms = grab(it => it.lit, 1);
+      const title = froms[0]?.text || stanceHead(cfg.lit);
+      addRow("m:" + cfg.lit, "held", title, "More", froms.length ? froms : [fromVP(title)]);
+    }
+    if (f === "less") for (const it of items) if (it.lit) it.recede = true;
+    kick();
+  };
+  api.calm = ms => { if (ms > 0) calmUntil = performance.now() + ms; };
+  Object.defineProperty(api, "t", { get: () => op ? op.t : -1 });
+  new ResizeObserver(() => { if (size() && (RM.matches || !raf)) draw(); }).observe(canvas);
+  RM.addEventListener?.("change", kick);
+  return api;
+}
+const SC = createScene();
+
+function render() {
+  clearTimers();
+  let step = location.hash.slice(1);
+  if (!STEPS.includes(step)) step = "opening";
+  ensure(step);
+  document.body.classList.remove("intro");
+  document.querySelector(".top .skip-intro")?.remove();
+  document.getElementById("progress").textContent = (STEPS.indexOf(step) + 1) + " of " + STEPS.length;
+  const stage = document.getElementById("stage");
+  stage.classList.remove("leaving"); stage.textContent = "";
+  VIEW[step](stage);
+}
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>
