@@ -170,6 +170,7 @@ select.blank option { font-family: var(--font-sans); font-size: 16px; background
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.hint.lead { margin: 0 0 var(--s-4); }
 </style>
 </head>
 <body>
@@ -430,7 +431,7 @@ const VIEW = {
     all.addEventListener("click", () => { S.filter = []; syncFilters(); drawList(); });
     fBtns.forEach(b => b.addEventListener("click", () => {
       const id = b.dataset.id;
-      S.filter = S.filter.includes(id) ? S.filter.filter(x => x !== id) : [...S.filter, id];
+      S.filter = [id];
       syncFilters(); drawList();
     }));
     filters.append(all, ...fBtns); syncFilters();
@@ -459,7 +460,7 @@ const VIEW = {
   lanes(stage) {
     const feeds = pickedFeeds();
     if (S.whole === null) S.whole = {};
-    const back = () => { if (S.lIdx > 0) { S.lIdx--; go("lanes", false); } else go("feeds", false); };
+    const back = () => go("feeds", false);
     if (!feeds.length) {
       speak(stage, sentence(["Nothing to hand you yet."]));
       stage.append(hint("You picked no feeds. Go Back to pick some, or go on and add them later in Settings."));
@@ -467,32 +468,29 @@ const VIEW = {
       SC.mode("none");
       return;
     }
-    if (S.lIdx >= feeds.length) S.lIdx = feeds.length - 1;
-    const f = feeds[S.lIdx];
-    const answer = v => () => {
-      S.whole[f] = v; lock(stage);
-      whole.setAttribute("aria-pressed", String(v)); line.setAttribute("aria-pressed", String(!v));
-      SC.trays(feeds.filter(g => g in S.whole), null, [f]);
-      later(() => { if (S.lIdx + 1 < feeds.length) { S.lIdx++; go("lanes", true); } else next("lanes"); }, 900);
-    };
-    const whole = blankBtn("the whole piece", S.whole[f] === true, answer(true));
-    const line = blankBtn("a line", S.whole[f] === false, answer(false));
-    speak(stage, sentence([span(f), ": I’ll hand you ", whole, " or ", line, "?"]));
-    const rest = feeds.slice(S.lIdx).filter(g => !(g in S.whole));
-    if (rest.length > 1) {
-      const p = el("p", "shortcut-row"); const b = el("button", "shortcut", "The rest: a line."); b.type = "button";
-      b.addEventListener("click", () => {
-        const fresh = feeds.filter(g => !(g in S.whole));
-        fresh.forEach(g => S.whole[g] = false); lock(stage);
-        SC.trays(feeds, null, fresh); later(() => next("lanes"), 1000);
+    /* one question over all picked feeds: a tapped feed drops into pebble, the rest stay skimmed */
+    feeds.forEach(g => { if (!(g in S.whole)) S.whole[g] = false; });
+    const label = () => wholeFeeds().length ? "These, whole" : "None, skim them all";
+    const go_on = btn(label(), "primary", () => next("lanes"));
+    speak(stage, sentence(["Is there a source you never want to miss?"]));
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Sources you never want to miss");
+    for (const f of feeds) {
+      const c = el("button", "chip"); c.type = "button"; c.append(span(f));
+      c.setAttribute("aria-pressed", String(S.whole[f] === true));
+      c.addEventListener("click", () => {
+        S.whole[f] = !S.whole[f];
+        c.setAttribute("aria-pressed", String(S.whole[f]));
+        SC.trays(feeds, null, [f]);
+        go_on.textContent = label();
       });
-      p.append(b); stage.append(p);
+      list.append(c);
     }
+    stage.append(list);
+    stage.append(hint("I’ll hand you these whole, as pebbles. The rest I’ll skim for you: sand when several tell one story, water when one does."));
     const box = el("div", "funnel"); box.append(SC.canvas); stage.append(box);
     SC.mode("trays");
-    SC.trays(feeds.filter(g => g in S.whole), f, []);
-    stage.append(hint((S.lIdx + 1) + " of " + feeds.length + ". Unanswered means a line."));
-    stage.append(nav("lanes", null, back));
+    SC.trays(feeds, null, []);
+    stage.append(nav("lanes", go_on, back));
   },
 
   fetch(stage) {
@@ -535,6 +533,7 @@ const VIEW = {
     if (S.sIdx >= topics.length) S.sIdx = 0;
     const t = topics[S.sIdx];
     const topic = el("em", "", t); topic.lang = "";
+    if (S.sIdx === 0) stage.append(hint("I read your sources and found these topics in them. Tell me which to give more room, and which less.", "lead"));
     speak(stage, sentence(["More of ", topic, "?"]));
     const q = el("div", "quiet");
     const answer = v => b => {
@@ -552,7 +551,7 @@ const VIEW = {
     fb.set(n, toYou(n), "a day");
     fb.box.querySelector(".out .label:last-child").textContent = ", twice a day";
     SC.highlight(t, S.stances[t] || null);
-    stage.append(hint((S.sIdx + 1) + " of " + topics.length + ", from what I just read. The bright dots are " + t + ". No answer counts for nothing."));
+    stage.append(hint((S.sIdx + 1) + " of " + topics.length + ", found in the sources you picked. The bright dots are " + t + ". No answer counts for nothing."));
     stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
   },
 
