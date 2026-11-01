@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attention orbits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+/* POC only: the typographic motion and the canvas heights need values the spec has no token for. */
+:root { --t-word: 520ms; --t-leave: 260ms; --t-scene: 600ms; --orbit-h: 280px; --orbit-h-sticky: 190px; }
+@media (min-width: 720px) { :root { --orbit-h: 380px; --orbit-h-sticky: 300px; } }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: var(--measure-wide); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-12); min-height: 100vh; }
+@media (min-width: 720px) { .page { padding: var(--s-8) var(--s-6) var(--s-16); } }
+.top { display: flex; justify-content: space-between; align-items: center; height: var(--s-8); }
+.brand { display: flex; align-items: center; gap: var(--s-2); font-family: var(--font-mono); font-weight: 500;
+  font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text); }
+.brand i { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.stage { margin-top: var(--s-8); transition: opacity var(--t-leave) ease-in, transform var(--t-leave) ease-in; }
+.stage.leaving { opacity: 0; transform: translateY(calc(-1 * var(--s-6))); }
+
+/* the editor's sentence, assembled word by word (from e-stream-letter) */
+.say { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(30px, 5.2vw, 48px) * var(--type-scale));
+  line-height: 1.14; letter-spacing: -0.02em; margin: 0 auto; overflow-wrap: anywhere; text-align: center; max-width: var(--measure); }
+.say.dense { font-size: calc(clamp(24px, 3.9vw, 34px) * var(--type-scale)); line-height: 1.3; letter-spacing: -0.01em; }
+.say em { font-style: italic; color: var(--accent); }
+.say em[lang] { font-style: normal; }
+.w { display: inline-block; animation: assemble var(--t-word) ease-out both; }
+.say.still .w { animation: fade var(--t-leave) ease-out both; animation-delay: 0s !important; }
+@keyframes assemble { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.claim-slot { min-height: calc(3 * 1.14 * clamp(30px, 5.2vw, 48px)); display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 720px) { .claim-slot { min-height: calc(2 * 1.14 * clamp(30px, 5.2vw, 48px)); } }
+.blank { font: inherit; letter-spacing: inherit; color: var(--text-dim); background: none; border: 0;
+  border-bottom: 1px solid var(--border-strong); padding: 2px .06em; margin: 0; cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.blank:hover { color: var(--text); }
+.blank:active { opacity: .7; }
+.blank:disabled { cursor: default; }
+.blank[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+input.blank, select.blank { cursor: text; color: var(--accent); border-bottom-color: var(--accent-dim); border-radius: 0;
+  -webkit-appearance: none; appearance: none; text-align: center; }
+input.blank:focus, select.blank:focus { outline: none; border-bottom-color: var(--accent); }
+input.blank::placeholder { color: var(--text-dim); font-style: italic; }
+input.blank.hour { width: 1.6em; -moz-appearance: textfield; }
+input.blank.hour::-webkit-inner-spin-button, input.blank.hour::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.blank.wide { width: min(100%, 9em); }
+input.blank[aria-invalid="true"] { border-bottom-color: var(--warn); }
+select.blank { cursor: pointer; background: none; padding-right: .1em; max-width: 100%; }
+select.blank option { font-family: var(--font-sans); font-size: 16px; background: var(--bg-elev); color: var(--text); }
+.quiet { display: flex; gap: var(--s-8); margin-top: var(--s-5); flex-wrap: wrap; justify-content: center; }
+.hint { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: var(--s-4) auto 0; text-align: center; max-width: 34em; }
+.hint.warn { color: var(--warn); }
+.hint.lead { margin: 0 auto var(--s-4); }
+
+/* the orbits: the reader at the centre, three rings around them */
+.orbit { margin: var(--s-6) auto 0; max-width: var(--measure); background: var(--bg); }
+.orbit canvas { display: block; width: 100%; height: var(--orbit-h); }
+.orbit.sticky { position: sticky; top: 0; z-index: 1; margin-top: var(--s-4); border-bottom: 1px solid var(--border); }
+.orbit.sticky canvas { height: var(--orbit-h-sticky); }
+
+/* the feed picker: topic filters and feeds on one screen */
+.filters, .feeds { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.filters { margin-top: var(--s-5); }
+.feeds { margin-top: var(--s-4); }
+.chip { min-height: 36px; padding: 0 var(--s-3); border-radius: var(--r-tag); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-sans); font-size: calc(14px * var(--type-scale));
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast); }
+.chip:hover { color: var(--text); }
+.chip.filter { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; background: none; }
+.chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+.chip .n { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
+.own { display: flex; gap: var(--s-2); margin: var(--s-6) auto 0; max-width: 34em; flex-wrap: wrap; align-items: flex-end; }
+.own label { width: 100%; }
+.field { flex: 1; min-width: 0; height: 44px; padding: 0 var(--s-3); border-radius: var(--r-control); border: 1px solid var(--border-strong);
+  background: var(--bg-elev); color: var(--text); font-family: var(--font-mono); font-size: 16px; }
+.field:focus { outline: none; border-color: var(--accent); }
+.field[aria-invalid="true"] { border-color: var(--warn); }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-8); }
+.nav.sticky { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: var(--s-3) 0; margin-top: var(--s-6); z-index: 1; }
+.nav .grow { flex: 1; }
+.btn { height: 44px; padding: 0 var(--s-5); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; border-radius: var(--r-control); border: 1px solid transparent; cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* the first issue: read from the inner ring outward */
+.issue { margin-top: var(--s-4); }
+.issue.appear { animation: fade var(--t-scene) ease-out both; }
+.issue-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-4); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -0.04em; margin: 0; }
+.layer { margin-top: var(--s-12); }
+.layer-head { margin: 0 0 var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-2); }
+.marker svg { flex: none; width: 32px; height: 20px; }
+.layer-head p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); display: grid; gap: var(--s-1); }
+.item + .item { border-top: 0; }
+.item h3 { font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; margin: 0; }
+.item.deep h3 { font-size: calc(19px * var(--type-scale)); }
+.item p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item .more { color: var(--accent); }
+.frags { border: 1px solid var(--border); background: var(--bg-elev); }
+.frags div { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
+.frags div:last-child { border-bottom: 0; }
+.frags .label { flex: none; }
+.empty { font-size: calc(14px * var(--type-scale)); color: var(--text-dim); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top"><span class="brand"><i aria-hidden="true"></i>Cyris</span><span class="label" id="progress"></span></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+</main>
+<script>
+"use strict";
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/* ---- fake data: names and topics from src/cyris/onboarding_feeds.json ---- */
+const TOPICS = [
+  { id: "tech", label: "Technology" },
+  { id: "business", label: "Business & economy" },
+  { id: "world", label: "World" },
+  { id: "taiwan", label: "Taiwan" },
+  { id: "science", label: "Science & health" },
+  { id: "ideas", label: "Ideas & culture" },
+];
+const FEEDS = [
+  ["中央社即時新聞 政治新聞", ["taiwan"]], ["中央社即時新聞 科技新聞", ["tech", "taiwan"]], ["報導者", ["taiwan", "ideas"]],
+  ["公視新聞網", ["taiwan"]], ["自由時報", ["taiwan"]], ["關鍵評論網", ["taiwan", "ideas"]], ["iThome", ["tech"]],
+  ["科技新報", ["tech"]], ["INSIDE", ["tech", "business"]], ["BBC中文網 繁體", ["world"]], ["紐約時報中文網 繁體", ["world"]],
+  ["RFI 法國國際廣播電台 繁體", ["world"]], ["明報新聞網", ["world"]], ["RTHK 香港電台", ["world"]], ["經濟日報", ["business", "taiwan"]],
+  ["換日線", ["ideas", "world"]], ["電腦王阿達", ["tech"]], ["BBC News", ["world"]], ["The New York Times", ["world"]],
+  ["The Guardian", ["world"]], ["NPR", ["world"]], ["The Verge", ["tech"]], ["Ars Technica", ["tech"]],
+  ["The Economist", ["world", "business"]], ["Financial Times", ["business", "world"]], ["Bloomberg", ["business"]],
+  ["Hacker News", ["tech"]], ["Techmeme", ["tech"]], ["數位時代", ["tech", "business"]], ["Gea-Suan Lin's BLOG", ["tech"]],
+  ["Simon Willison's Weblog", ["tech"]], ["Daring Fireball", ["tech"]], ["Stratechery", ["tech", "business"]],
+  ["ChinaTalk", ["world", "tech"]], ["市場先生", ["business"]], ["股感 StockFeel", ["business"]], ["Marginal Revolution", ["business"]],
+  ["Noahpinion", ["business", "world"]], ["Paul Krugman", ["business"]], ["端傳媒", ["world", "taiwan"]],
+  ["Global Taiwan Institute", ["taiwan", "world"]], ["台灣事實查核中心", ["taiwan"]], ["Focus Taiwan (CNA English)", ["taiwan"]],
+  ["Taiwan Insight", ["taiwan"]], ["泛科學 PanSci", ["science"]], ["CASE 報科學", ["science"]], ["Quanta Magazine", ["science"]],
+  ["Nautilus", ["science", "ideas"]], ["Aeon", ["ideas", "science"]], ["Readmoo 閱讀最前線", ["ideas"]], ["OKAPI 閱讀生活誌", ["ideas"]],
+  ["The Marginalian", ["ideas"]], ["The Atlantic Ideas", ["ideas"]], ["Dezeen", ["ideas"]], ["Lenny's Newsletter", ["business", "tech"]],
+  ["Not Boring", ["business", "tech"]], ["Slow Boring", ["world"]], ["The Diplomat", ["world"]], ["Foreign Policy", ["world"]],
+  ["Kottke", ["ideas"]], ["Literary Hub", ["ideas"]], ["Terence Tao", ["science"]], ["The Conversation", ["science", "world"]],
+].map(([name, topics]) => ({ name, topics }));
+const STANCE_POOL = {
+  tech: ["台積電美國廠", "AI 代理", "開源授權"],
+  business: ["美國關稅", "央行利率", "輝達財報"],
+  world: ["烏克蘭停火談判", "美中晶片管制", "加薩人道走廊"],
+  taiwan: ["總預算審查", "罷免投票", "健保費率調整"],
+  science: ["登革熱疫情", "減重藥物", "韋伯望遠鏡"],
+  ideas: ["獨立書店", "長照人力", "AI 與著作權"],
+};
+const TITLES = {
+  tech: ["企業導入 AI 代理的第一年：權限管理成最大瓶頸", "亞利桑那二廠提前量產，良率仍落後台南", "開源授權改版爭議：社群為何出走"],
+  business: ["關稅上路三個月：台灣出口商怎麼調整供應鏈", "央行按兵不動，房市信用管制再收緊", "輝達財報優於預期，伺服器供應鏈訂單看到明年"],
+  world: ["停火談判第二輪：雙方在哪些條件上仍有分歧", "美中晶片管制再升級，東南亞封測廠受惠", "人道走廊重開，聯合國物資車隊進入北部"],
+  taiwan: ["山區部落的最後一哩路：偏鄉醫療的十年", "總預算審查卡關，地方建設經費延宕", "健保費率調整案：誰多付、誰少付"],
+  science: ["登革熱南部疫情升溫，專家：社區孳生源是關鍵", "減重藥物的長期數據：停藥後會怎樣", "韋伯望遠鏡看見最早的星系團"],
+  ideas: ["獨立書店的第三種活法", "長照人力缺口：移工之外還有什麼路", "生成式 AI 與著作權：法院怎麼看"],
+};
+const LANGS = ["Traditional Chinese", "Simplified Chinese", "English", "Japanese"];
+const LANG_TAG = { "Traditional Chinese": "zh-Hant", "Simplified Chinese": "zh-Hans", English: "en", Japanese: "ja" };
+const RING_NAMES = ["Deep reads", "Stories", "Fragments"];
+
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.codePointAt(0)) % 9973; return h; }
+/* a well-spread 0..1 from a key, so neighbouring keys land far apart on a ring */
+const rnd = s => { const x = Math.sin(hash(s) * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+const feedRec = name => FEEDS.find(f => f.name === name);
+const topicOf = name => feedRec(name)?.topics[0] || "tech";
+const isLatin = s => /^[\x00-\x7f’]+$/.test(s);
+const catOf = t => Object.keys(STANCE_POOL).find(k => STANCE_POOL[k].includes(t));
+
+/* ---- state; a step opened by hash fills in what the steps before it would have ---- */
+const STEPS = ["opening", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+function detectLang() {
+  const l = (navigator.language || "en").toLowerCase();
+  if (/^zh-(tw|hk|mo|hant)/.test(l)) return "Traditional Chinese";
+  if (l.startsWith("zh")) return "Simplified Chinese";
+  if (l.startsWith("ja")) return "Japanese";
+  return "English";
+}
+const S = {
+  filter: [], feeds: null, own: [], whole: null, fetched: false,
+  stances: {}, sIdx: 0, issued: false, done: false,
+  hours: [8, 18], lang: detectLang(),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", discord: "", email: "",
+};
+function ensure(step) {
+  const i = STEPS.indexOf(step);
+  if (i > 1 && S.feeds === null) S.feeds = ["報導者", "公視新聞網", "關鍵評論網", "iThome", "Stratechery", "數位時代"];
+  if (i > 2 && S.whole === null) S.whole = { "報導者": true, "Stratechery": true };
+  if (i > 3) S.fetched = true;
+  if (i > 5) S.issued = true;
+}
+const pickedFeeds = () => [...(S.feeds || []), ...S.own];
+const isWhole = f => !!(S.whole && S.whole[f] === true);
+const wholeFeeds = () => pickedFeeds().filter(isWhole);
+/* unanswered means skim; a skimmed feed tells stories when another skimmed feed shares its topic, else fragments */
+function trayOf(f) {
+  if (isWhole(f)) return "deep";
+  const c = topicOf(f);
+  return pickedFeeds().filter(g => topicOf(g) === c && !isWhole(g)).length >= 2 ? "story" : "fragment";
+}
+function stanceTopics() {
+  const ids = [...new Set(pickedFeeds().map(topicOf))];
+  if (!ids.length) ids.push("taiwan", "tech");
+  const out = [];
+  for (let r = 0; out.length < 6 && r < 3; r++) for (const id of ids) if (out.length < 6) out.push(STANCE_POOL[id][r]);
+  for (const t of TOPICS) for (const s of STANCE_POOL[t.id]) if (out.length < 6 && !out.includes(s)) out.push(s);
+  return out;
+}
+
+/* ---- the issue the answers make ---- */
+function issueParts() {
+  const feeds = pickedFeeds(), st = t => S.stances[t];
+  const deep = wholeFeeds().map((f, k) => ({ feed: f, title: TITLES[topicOf(f)][(hash(f) + k) % 3] }));
+  const stories = [], frags = [];
+  for (const c of [...new Set(feeds.map(topicOf))]) {
+    const skim = feeds.filter(f => topicOf(f) === c && !isWhole(f));
+    if (!skim.length) continue;
+    const pool = STANCE_POOL[c].filter(t => st(t) !== "less").sort((a, b) => (st(b) === "more") - (st(a) === "more"));
+    if (skim.length >= 2 && pool.length) {
+      stories.push({ topic: pool[0], more: st(pool[0]) === "more", sources: skim });
+      frags.push({ title: TITLES[c][(hash(c) + 1) % 3], feed: skim[skim.length - 1] });
+    } else skim.forEach((f, k) => frags.push({ title: TITLES[c][(hash(f) + k + 1) % 3], feed: f }));
+  }
+  /* a topic drawn in with "more" reaches the stories ring even when no two feeds shared it */
+  for (const t of Object.keys(S.stances)) if (st(t) === "more" && !stories.some(s => s.topic === t))
+    stories.unshift({ topic: t, more: true, sources: feeds.filter(f => topicOf(f) === catOf(t)) });
+  stories.sort((a, b) => b.more - a.more);
+  return { deep, stories, frags };
+}
+
+const pad = h => String(h).padStart(2, "0") + ":00";
+let timers = [];
+function later(fn, ms) { const t = setTimeout(fn, RM.matches ? 0 : ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+/* ---- a sentence that assembles word by word; nodes in it are single words ---- */
+function sentence(parts, cls) {
+  const el = document.createElement("p");
+  el.className = "say" + (cls ? " " + cls : "");
+  let n = 0;
+  const word = node => { const w = document.createElement("span"); w.className = "w"; w.style.animationDelay = (n++ * 45) + "ms"; w.append(node); el.append(w); };
+  for (const part of parts) {
+    if (typeof part === "string") part.split(/(\s+)/).forEach(tok => { if (!tok) return; if (/^\s+$/.test(tok)) el.append(" "); else word(document.createTextNode(tok)); });
+    else word(part);
+  }
+  el.assembledIn = RM.matches || (cls || "").includes("still") ? 0 : n * 45 + 520;
+  return el;
+}
+/* the orbits slow almost to a halt while a sentence assembles, so only one thing moves */
+function speak(parent, s) { parent.append(s); SC.calm(s.assembledIn); return s; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function blankBtn(text, pressed, onTap) {
+  const b = el("button", "blank", text); b.type = "button";
+  if (pressed !== null) b.setAttribute("aria-pressed", String(!!pressed));
+  b.addEventListener("click", () => onTap(b)); return b;
+}
+function btn(text, kind, onTap) { const b = el("button", "btn " + kind, text); b.type = "button"; b.addEventListener("click", onTap); return b; }
+function hint(text, cls) { return el("p", "hint" + (cls ? " " + cls : ""), text); }
+function span(t) { const s = el("span", "", t); if (!isLatin(t)) s.lang = ""; return s; }
+function sayBtn(t, pressed, fn) { const b = blankBtn(t, pressed, fn); b.classList.add("say", "dense"); return b; }
+const lock = stage => stage.querySelectorAll("button, input, select").forEach(b => b.disabled = true);
+function nav(step, primary, back, cls) {
+  const n = el("div", "nav" + (cls ? " " + cls : ""));
+  const i = STEPS.indexOf(step);
+  if (i > 0) n.append(btn("Back", "secondary", back || (() => go(STEPS[i - 1], false))));
+  if (step !== "settings") n.append(btn("Skip", "secondary", () => skip(step)));
+  n.append(el("span", "grow"));
+  if (primary) n.append(primary);
+  return n;
+}
+function orbitBox(sticky) { const b = el("div", "orbit" + (sticky ? " sticky" : "")); b.append(SC.canvas); return b; }
+
+/* ---- what the rings hold, derived from the answers so far ---- */
+const growthOf = n => 1 - Math.exp(-n / 5);
+/* ring 0 inner, 1 middle, 2 outer, 3 pushed past the edge */
+function feedDots({ whole = false, stories = false, lit = null } = {}) {
+  const out = [];
+  for (const f of pickedFeeds()) {
+    const n = 3 + hash(f) % 4, kind = trayOf(f);
+    for (let i = 0; i < n; i++) {
+      let ring = 2;
+      if (whole && kind === "deep") ring = 0;
+      else if (stories && kind === "story" && i === 0) ring = 1;
+      out.push({ key: f + "#" + i, ring, dim: lit ? !lit(f) : false, spawnR: 1.3 });
+    }
+  }
+  return out;
+}
+function stanceDots(hot) {
+  const out = [];
+  for (const t of stanceTopics()) {
+    const v = S.stances[t], ring = v === "more" ? 1 : v === "less" ? 3 : 2, a0 = (hash(t) % 628) / 100;
+    for (let i = 0; i < 3; i++) out.push({ key: "s:" + t + i, ring, hot: t === hot, a: a0 + i * 0.2 });
+  }
+  return out;
+}
+
+/* ---- moving between steps ---- */
+function go(step, fwd) {
+  const stage = document.getElementById("stage");
+  if (fwd && !RM.matches) { stage.classList.add("leaving"); setTimeout(() => setHash(step), 260); }
+  else setHash(step);
+}
+function setHash(step) { if (location.hash === "#" + step) render(); else location.hash = step; }
+function next(step) { go(STEPS[STEPS.indexOf(step) + 1], true); }
+function skip(step) {
+  if (step === "feeds" && S.feeds === null) S.feeds = [];
+  if (step === "lanes" && S.whole === null) S.whole = {};
+  if (step === "fetch") S.fetched = true;
+  if (step === "stances") S.sIdx = 0;
+  if (step === "issue") S.issued = true;
+  next(step);
+}
+
+/* ---- the steps ---- */
+const VIEW = {
+  /* articles swarm the reader, then sort into rings: few close in, many far out */
+  opening(stage) {
+    const slot = el("div", "claim-slot"); stage.append(slot);
+    stage.append(orbitBox());
+    SC.show(true);
+    const anon = (crowd) => Array.from({ length: 72 }, (_, k) => ({ key: "o" + k, ring: crowd ? "c" : k < 3 ? 0 : k < 14 ? 1 : 2, spawnR: 1.15 }));
+    const claim = () => speak(slot, sentence(["Only a few things fit close to you. I decide what earns the ", el("em", "", "inner ring."), ""]));
+    if (RM.matches) { SC.set(anon(false), { growth: 0.9 }); claim(); }
+    else {
+      SC.set(anon(true), { growth: 0.9, rings: false });
+      later(() => SC.set(anon(false), { growth: 0.9 }), 3000);
+      later(claim, 5600);
+    }
+    stage.append(nav("opening", btn("Show me how", "primary", () => next("opening"))));
+  },
+
+  /* every feed picked lands on the outer ring, which widens; the inner ring stays the size it was */
+  feeds(stage) {
+    if (S.feeds === null) S.feeds = [];
+    speak(stage, sentence(["What should I read for you?"]));
+    stage.append(orbitBox(true));
+    SC.show(true);
+    const refresh = (added) => {
+      SC.set(feedDots(), { growth: growthOf(pickedFeeds().length), flash: added || null });
+      status.textContent = pickedFeeds().length ? "Each one lands on the outer ring. Tap one again to remove it." : "Tap any feed. None is fine too.";
+    };
+    const filters = el("div", "filters"); filters.setAttribute("aria-label", "Show feeds about");
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Feeds");
+    const status = hint(""); status.setAttribute("aria-live", "polite");
+    const drawList = () => {
+      list.textContent = "";
+      const shown = FEEDS.filter(f => !S.filter.length || f.topics.some(t => S.filter.includes(t)));
+      for (const f of shown) {
+        const c = el("button", "chip"); c.type = "button";
+        c.append(span(f.name));
+        c.setAttribute("aria-pressed", String(S.feeds.includes(f.name)));
+        c.addEventListener("click", () => {
+          const on = !S.feeds.includes(f.name);
+          S.feeds = on ? [...S.feeds, f.name] : S.feeds.filter(x => x !== f.name);
+          c.setAttribute("aria-pressed", String(on));
+          S.whole = null; refresh(on ? f.name : null);
+        });
+        list.append(c);
+      }
+      for (const o of S.own) {
+        const c = el("button", "chip"); c.type = "button"; c.setAttribute("aria-pressed", "true");
+        c.append(el("span", "", o), el("span", "n", "yours"));
+        c.addEventListener("click", () => { S.own = S.own.filter(x => x !== o); S.whole = null; drawList(); refresh(); });
+        list.append(c);
+      }
+    };
+    const all = el("button", "chip filter", "All"); all.type = "button";
+    const fBtns = TOPICS.map(t => { const b = el("button", "chip filter", t.label); b.type = "button"; b.dataset.id = t.id; return b; });
+    const syncFilters = () => { all.setAttribute("aria-pressed", String(!S.filter.length)); fBtns.forEach(b => b.setAttribute("aria-pressed", String(S.filter.includes(b.dataset.id)))); };
+    all.addEventListener("click", () => { S.filter = []; syncFilters(); drawList(); });
+    fBtns.forEach(b => b.addEventListener("click", () => { S.filter = [b.dataset.id]; syncFilters(); drawList(); }));
+    filters.append(all, ...fBtns); syncFilters();
+    stage.append(filters, list, status);
+
+    const own = el("div", "own");
+    const lab = el("label", "label", "Or paste one of your own (optional)"); lab.htmlFor = "own-feed";
+    const inp = el("input", "field"); inp.id = "own-feed"; inp.type = "url"; inp.placeholder = "https://"; inp.autocomplete = "off";
+    const add = btn("Add", "secondary", () => {
+      const v = inp.value.trim();
+      if (!/^https?:\/\/[^\s.]+\.[^\s]+$/.test(v)) { inp.setAttribute("aria-invalid", "true"); err.textContent = "That doesn't look like a feed address. It starts with https://."; return; }
+      const h = new URL(v).hostname.replace(/^www\./, "");
+      if (!S.own.includes(h)) S.own.push(h);
+      inp.value = ""; S.whole = null; drawList(); refresh(h);
+    });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+    inp.addEventListener("input", () => { inp.removeAttribute("aria-invalid"); err.textContent = ""; });
+    const err = hint("", "warn"); err.setAttribute("role", "status");
+    own.append(lab, inp, add);
+    stage.append(own, err);
+    stage.append(nav("feeds", btn("Continue", "primary", () => next("feeds")), null, "sticky"));
+    drawList(); refresh();
+  },
+
+  /* one question over all picked feeds: a tapped feed's articles move to the inner ring */
+  lanes(stage) {
+    const feeds = pickedFeeds();
+    if (S.whole === null) S.whole = {};
+    const back = () => go("feeds", false);
+    if (!feeds.length) {
+      SC.show(false);
+      speak(stage, sentence(["Nothing on your rings yet."]));
+      stage.append(hint("You picked no feeds. Go Back to pick some, or go on and add them later in Settings."));
+      stage.append(nav("lanes", btn("Go on", "primary", () => next("lanes")), back));
+      return;
+    }
+    feeds.forEach(g => { if (!(g in S.whole)) S.whole[g] = false; });
+    const label = () => wholeFeeds().length ? "These, closest" : "None, skim them all";
+    const go_on = btn(label(), "primary", () => next("lanes"));
+    speak(stage, sentence(["Is there a source you never want to miss?"]));
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Sources you never want to miss");
+    for (const f of feeds) {
+      const c = el("button", "chip"); c.type = "button"; c.append(span(f));
+      c.setAttribute("aria-pressed", String(S.whole[f] === true));
+      c.addEventListener("click", () => {
+        S.whole[f] = !S.whole[f];
+        c.setAttribute("aria-pressed", String(S.whole[f]));
+        SC.set(feedDots({ whole: true }), { flash: f });
+        go_on.textContent = label();
+      });
+      list.append(c);
+    }
+    stage.append(list);
+    stage.append(hint("Tap one and its articles move into the inner ring: deep reads, handed to you whole. The rest stay further out, skimmed."));
+    stage.append(orbitBox());
+    SC.show(true);
+    SC.set(feedDots({ whole: true }), { growth: growthOf(feeds.length) });
+    stage.append(nav("lanes", go_on, back));
+  },
+
+  /* wait one: each feed lights up on its ring as it is read; skimmed feeds that share a topic form stories */
+  fetch(stage) {
+    const feeds = pickedFeeds();
+    const box = el("div"); stage.append(box);
+    const say = parts => { box.textContent = ""; box.append(sentence(parts, "still")); };
+    const goOn = () => btn("Go on", "primary", () => { S.fetched = true; next("fetch"); });
+    if (!feeds.length) {
+      SC.show(false);
+      box.append(sentence(["Nothing to read yet: no feeds picked."]));
+      stage.append(nav("fetch", goOn()));
+      return;
+    }
+    stage.append(orbitBox());
+    SC.show(true);
+    stage.append(nav("fetch", goOn()));
+    const g = growthOf(feeds.length);
+    const finish = () => {
+      S.fetched = true;
+      SC.set(feedDots({ whole: true, stories: true }), { growth: g, emph: 1 });
+      say(feeds.some(f => trayOf(f) === "story") ? ["Read. Where sources tell one story, it moves to the middle ring."] : ["Read. Nothing came in twice, so it all stays at the edge."]);
+    };
+    if (S.fetched || RM.matches) { finish(); return; }
+    const arrived = new Set();
+    SC.set(feedDots({ whole: true, lit: () => false }), { growth: g });
+    say(["Reading what you picked."]);
+    const per = 7000 / feeds.length;
+    feeds.forEach((f, k) => later(() => {
+      arrived.add(f);
+      SC.set(feedDots({ whole: true, lit: x => arrived.has(x) }), { flash: f });
+      say(["Reading ", span(f), "…"]);
+    }, 600 + k * per));
+    later(finish, 8000);
+  },
+
+  /* one topic at a time; more draws it one ring in, less pushes it one ring out */
+  stances(stage) {
+    const topics = stanceTopics();
+    if (S.sIdx >= topics.length) S.sIdx = 0;
+    const t = topics[S.sIdx];
+    const topic = el("em", "", t); topic.lang = "";
+    if (S.sIdx === 0) stage.append(hint(pickedFeeds().length
+      ? "I read the sources you picked and found these topics in them."
+      : "You picked no sources, so these are topics the whole list often carries.", "lead"));
+    speak(stage, sentence(["More of ", topic, "?"]));
+    const q = el("div", "quiet");
+    const dots = () => [...feedDots({ whole: true, stories: true }), ...stanceDots(t)];
+    const answer = v => b => {
+      S.stances[t] = v; lock(stage); b.setAttribute("aria-pressed", "true");
+      SC.set(dots());
+      later(() => { if (S.sIdx + 1 < topics.length) { S.sIdx++; go("stances", true); } else { S.sIdx = 0; next("stances"); } }, 2400);
+    };
+    q.append(sayBtn("More, please.", S.stances[t] === "more", answer("more")), sayBtn("Less.", S.stances[t] === "less", answer("less")));
+    stage.append(q);
+    stage.append(orbitBox());
+    SC.show(true);
+    SC.set(dots(), { growth: growthOf(pickedFeeds().length) });
+    stage.append(hint("The bright dots are " + t + ". More draws it one ring closer; less pushes it out. No answer leaves it where it is."));
+    stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
+  },
+
+  /* wait two: the rings are read from the edge inward, then the issue is laid out from the centre out */
+  issue(stage) {
+    const reveal = () => {
+      clearTimers(); S.issued = true; SC.show(false);
+      stage.textContent = "";
+      const issue = buildIssue(); if (!RM.matches) issue.classList.add("appear");
+      stage.append(issue);
+      stage.append(nav("issue", btn("One more thing", "primary", () => next("issue"))));
+      window.scrollTo(0, 0);
+    };
+    if (S.issued || RM.matches) { reveal(); return; }
+    const box = el("div"); stage.append(box);
+    const say = l => { box.textContent = ""; box.append(sentence(l, "still")); };
+    stage.append(orbitBox());
+    SC.show(true);
+    const dots = [...feedDots({ whole: true, stories: true }), ...stanceDots(null)];
+    const g = growthOf(pickedFeeds().length);
+    const p = issueParts();
+    const beats = [
+      [null, ["Laying out your issue, from the edge in."]],
+      [2, p.frags.length ? ["Fragments at the edge: a line each, for a glance."] : ["No fragments today."]],
+      [1, p.stories.length ? ["Stories in the middle: ", span(p.stories[0].topic), ", told once."] : ["No stories today: no two sources shared a topic."]],
+      [0, p.deep.length ? ["Deep reads, closest to you: ", span(p.deep[0].feed), ", whole."] : ["Nothing in the inner ring: you asked for nothing whole."]],
+      [null, ["Here is your first issue, from the centre out."]],
+    ];
+    beats.forEach(([ring, l], k) => later(() => { SC.set(dots, { growth: g, emph: ring }); say(l); }, k * 2400));
+    stage.append(nav("issue", btn("Show me now", "primary", reveal)));
+    later(() => location.hash === "#issue" && !S.issued && reveal(), 12000);
+  },
+
+  settings(stage) {
+    SC.show(false);
+    if (S.done) {
+      speak(stage, sentence(["Until ", span(pad(S.hours[0])), ", then."]));
+      stage.append(hint("This prototype ends here. In the product, Finish opens Settings."));
+      stage.append(nav("settings", btn("Change these", "secondary", () => { S.done = false; render(); })));
+      return;
+    }
+    const hourIn = k => {
+      const i = el("input", "blank hour"); i.type = "number"; i.min = "0"; i.max = "23"; i.inputMode = "numeric";
+      i.value = String(S.hours[k]); i.setAttribute("aria-label", k ? "Second publish hour" : "First publish hour");
+      i.addEventListener("input", () => { const v = Number(i.value); const ok = i.value !== "" && v >= 0 && v <= 23 && Number.isInteger(v); i.toggleAttribute("aria-invalid", !ok); if (ok) S.hours[k] = v; });
+      return i;
+    };
+    const sel = (opts, val, label, onPick) => {
+      const s = el("select", "blank"); s.setAttribute("aria-label", label);
+      opts.forEach(o => s.append(new Option(o, o, false, o === val)));
+      const fit = () => s.style.width = (s.value.length * 0.36 + 0.5) + "em";
+      s.addEventListener("change", () => { onPick(s.value); fit(); }); fit(); return s;
+    };
+    const zones = [...new Set([S.tz, "Asia/Taipei", "Asia/Tokyo", "Europe/London", "America/New_York", "America/Los_Angeles", "UTC"])];
+    const text = (type, ph, key, label) => {
+      const i = el("input", "blank wide"); i.type = type; i.placeholder = ph; i.value = S[key];
+      i.setAttribute("aria-label", label); i.addEventListener("input", () => S[key] = i.value.trim()); return i;
+    };
+    speak(stage, sentence(["P.S. Each day at ", hourIn(0), " and ", hourIn(1), ", in ",
+      sel(LANGS, S.lang, "Output language", v => S.lang = v), ", on ",
+      sel(zones, S.tz, "Timezone", v => S.tz = v), " time, I’ll write you what’s worth reading. I can also tell ",
+      text("url", "a Discord webhook", "discord", "Discord webhook"), " or ", text("email", "your email", "email", "Email"), "."], "dense"));
+    stage.append(hint("Language and timezone came from this browser. Everything here is optional."));
+    const err = hint("", "warn"); err.setAttribute("role", "status"); stage.append(err);
+    stage.append(nav("settings", btn("Finish", "primary", () => {
+      if (stage.querySelector("[aria-invalid]")) { err.textContent = "A publish hour is a whole number from 0 to 23."; return; }
+      S.done = true;
+      if (RM.matches) render(); else { stage.classList.add("leaving"); setTimeout(render, 260); }
+    })));
+  },
+};
+
+/* a small glyph of the three rings with one of them lit, so each layer says which ring it is */
+function ringGlyph(k) {
+  const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 32 20"); svg.setAttribute("aria-hidden", "true");
+  [[4, 2.5], [9.5, 6], [15, 9.4]].forEach(([rx, ry], i) => {
+    const e = document.createElementNS(ns, "ellipse");
+    e.setAttribute("cx", "16"); e.setAttribute("cy", "10"); e.setAttribute("rx", rx); e.setAttribute("ry", ry);
+    e.setAttribute("fill", "none"); e.setAttribute("stroke", i === k ? "var(--accent)" : "var(--border-strong)"); e.setAttribute("stroke-width", "1");
+    svg.append(e);
+  });
+  const c = document.createElementNS(ns, "circle"); c.setAttribute("cx", "16"); c.setAttribute("cy", "10"); c.setAttribute("r", "1.2"); c.setAttribute("fill", "var(--text)");
+  svg.append(c); return svg;
+}
+function buildIssue() {
+  const lang = LANG_TAG[S.lang] || "zh-Hant";
+  const sec = el("section", "issue"); sec.setAttribute("aria-label", "Your first issue");
+  const head = el("div", "issue-head");
+  head.append(el("h2", "issue-title", "Issue one"), el("span", "data", new Date().toISOString().slice(0, 10)));
+  sec.append(head);
+  const layer = (k, help) => {
+    const l = el("div", "layer"); const lh = el("div", "layer-head");
+    const m = el("h3", "marker label"); m.append(ringGlyph(k), RING_NAMES[k]);
+    lh.append(m, el("p", "", help)); l.append(lh); sec.append(l); return l;
+  };
+  const { deep, stories, frags } = issueParts();
+  const deepL = layer(0, "The inner ring: sources you never want to miss, each read whole.");
+  if (!deep.length) deepL.append(el("p", "empty", "Empty this time: you asked for nothing whole. Mark a source you never want to miss and it lands here."));
+  deep.forEach(({ feed, title }) => {
+    const it = el("article", "item deep");
+    const h = el("h3", "", title); h.lang = "";
+    const p = el("p", "", lang === "en" ? "A summary of the whole piece, written for you." : "整篇讀完後替你寫的摘要：重點、脈絡與值得細讀的段落。"); p.lang = lang;
+    it.append(el("span", "label", feed), h, p); deepL.append(it);
+  });
+  const storyL = layer(1, "The middle ring: several sources on one topic, told once.");
+  if (!stories.length) storyL.append(el("p", "empty", "Empty this time: no two skimmed sources shared a topic."));
+  stories.forEach(s => {
+    const it = el("article", "item");
+    const h = el("h3", "", s.topic); h.lang = lang;
+    const p = el("p", "", lang === "en" ? "Several outlets on one development, told once." : "幾家媒體報導同一進展，合成一段告訴你。"); p.lang = lang;
+    const lab = el("span", "label", s.sources.length ? s.sources.slice(0, 3).join(" · ") : "across your sources");
+    if (s.more) lab.append(el("span", "more", " · closer, as you asked"));
+    it.append(h, p, lab); storyL.append(it);
+  });
+  const fragL = layer(2, "The outer ring: single headlines you can let drift past.");
+  if (!frags.length) fragL.append(el("p", "empty", "Empty: pick a feed and its single headlines drift here."));
+  else {
+    const wl = el("div", "frags");
+    frags.forEach(r => { const row = el("div"); const t = el("span", "", r.title); t.lang = ""; row.append(t, el("span", "label", r.feed)); wl.append(row); });
+    fragL.append(wl);
+  }
+  return sec;
+}
+
+/* ================= the canvas: the reader at the centre, three slow rings around them ================= */
+function createScene() {
+  const canvas = document.createElement("canvas"); canvas.setAttribute("aria-hidden", "true");
+  const cx = canvas.getContext("2d");
+  const C = {}; for (const n of ["--bg", "--text", "--text-dim", "--text-faint", "--accent", "--border", "--border-strong"]) C[n] = getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const FLAT = 0.58, R1 = 0.2, R2 = 0.47;
+  let W = 0, H = 0, DPR = 1, on = false, raf = 0, last = 0, time = 0, pace = 1, calmUntil = 0;
+  let dots = new Map(), growth = 0, gNow = 0, ringsTo = 1, ringsA = 0, emph = null, flash = null;
+  const api = { canvas };
+
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return false;
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    if (W !== r.width || H !== r.height) { W = r.width; H = r.height; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); }
+    return true;
+  }
+  const geo = () => ({ ox: W / 2, oy: H / 2, R: Math.max(40, Math.min(W / 2 - 10, (H / 2 - 18) / FLAT)) });
+  const r3 = g => 0.6 + 0.3 * g, band = g => 0.03 + 0.08 * g;
+  function target(d) {
+    if (d.ring === "c") return 0.015 + 0.12 * Math.abs(d.jit);
+    if (d.ring === 0) return R1 + d.jit * 0.035;
+    if (d.ring === 1) return R2 + d.jit * 0.05;
+    if (d.ring === 2) return r3(gNow) + d.jit * band(gNow);
+    return 1.35;
+  }
+  const alphaTo = d => d.dead || d.ring === 3 ? 0 : d.dim ? 0.3 : 1;
+
+  function tick(dt) {
+    time += dt;
+    gNow += (growth - gNow) * Math.min(1, dt * 0.8);
+    ringsA += (ringsTo - ringsA) * Math.min(1, dt * 1.2);
+    for (const [k, d] of dots) {
+      d.r += (target(d) - d.r) * Math.min(1, dt * (d.ring === "c" ? 2.4 : 0.9));
+      d.a += (0.02 + 0.07 * Math.max(0, 1 - d.r)) * dt;
+      d.alpha += (alphaTo(d) - d.alpha) * Math.min(1, dt * (d.ring === 3 ? 0.7 : 1.6));
+      if (d.dead && d.alpha < 0.02) dots.delete(k);
+    }
+    if (flash) { flash.t += dt; if (flash.t > 2.6) flash = null; }
+  }
+
+  function ellipse(ox, oy, rx) { cx.beginPath(); cx.ellipse(ox, oy, rx, rx * FLAT, 0, 0, Math.PI * 2); cx.stroke(); }
+  function tag(text, x, y, col, align) {
+    cx.font = '500 10px "Geist Mono", ui-monospace, monospace'; cx.textBaseline = "middle"; cx.textAlign = align || "center";
+    const tw = cx.measureText(text).width, x0 = align === "left" ? x : x - tw / 2;
+    cx.fillStyle = C["--bg"]; cx.fillRect(x0 - 3, y - 7, tw + 6, 14);
+    cx.fillStyle = col; cx.fillText(text, x, y);
+  }
+  function draw() {
+    if (!size()) return;
+    cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    cx.fillStyle = C["--bg"]; cx.fillRect(0, 0, W, H);
+    const { ox, oy, R } = geo();
+    const radii = [R1, R2, r3(gNow)];
+    cx.lineWidth = 1;
+    cx.globalAlpha = ringsA;
+    radii.forEach((r, k) => { cx.strokeStyle = emph === k ? C["--text-dim"] : k === 2 ? C["--border"] : C["--border-strong"]; ellipse(ox, oy, r * R); });
+    cx.globalAlpha = 1;
+    /* dots: close in they are few, bright and large; far out they are many, faint and small */
+    for (const d of dots.values()) {
+      const wob = d.ring === "c" ? Math.sin(time * 1.4 + d.jit * 9) * 0.02 : 0;
+      const x = ox + Math.cos(d.a) * (d.r + wob) * R, y = oy + Math.sin(d.a) * (d.r + wob) * R * FLAT;
+      const near = d.r < (R1 + R2) / 2 && d.ring !== "c", mid = !near && d.r < (R2 + r3(gNow)) / 2 - 0.03;
+      let col = near ? C["--accent"] : mid ? C["--text-dim"] : C["--text-faint"], rad = near ? 3 : mid ? 2.3 : 1.6;
+      if (d.ring === "c") { col = C["--text-dim"]; rad = 2; }
+      if (d.hot) { col = d.ring === 1 ? C["--accent"] : C["--text"]; rad += 1.1; }
+      if (emph !== null && d.ring === emph) col = d.ring === 0 ? C["--accent"] : C["--text"];
+      cx.globalAlpha = Math.max(0, Math.min(1, d.alpha)); cx.fillStyle = col;
+      cx.beginPath(); cx.arc(x, y, rad, 0, Math.PI * 2); cx.fill();
+    }
+    cx.globalAlpha = 1;
+    /* the reader */
+    cx.fillStyle = C["--text"]; cx.beginPath(); cx.arc(ox, oy, 3.2, 0, Math.PI * 2); cx.fill();
+    /* ring names, below the inner two and above the outer */
+    if (ringsA > 0.05) {
+      cx.globalAlpha = ringsA;
+      const ly = [oy + R1 * R * FLAT + 9, oy + R2 * R * FLAT + 9, Math.max(8, oy - r3(gNow) * R * FLAT - 9)];
+      RING_NAMES.forEach((n, k) => tag(n.toUpperCase(), ox, ly[k], emph === k ? C["--text"] : C["--text-dim"]));
+      tag("YOU", ox + 7, oy, C["--text-dim"], "left");
+      cx.globalAlpha = 1;
+    }
+    if (flash) {
+      let t = flash.text; if ([...t].length > 26) t = [...t].slice(0, 25).join("") + "…";
+      cx.globalAlpha = Math.max(0, Math.min(1, 2.6 - flash.t, flash.t * 4));
+      tag(t, ox, H - 9, C["--text"]);
+      cx.globalAlpha = 1;
+    }
+  }
+
+  function frame(ts) {
+    const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+    const goal = performance.now() < calmUntil ? 0.1 : 1;
+    pace += (goal - pace) * Math.min(1, dt * 4);
+    tick(dt * pace); draw();
+    raf = on ? requestAnimationFrame(frame) : 0;
+  }
+  /* reduced motion: every dot at its place, drawn once */
+  function settle() {
+    gNow = growth; ringsA = ringsTo; flash = null;
+    for (const [k, d] of dots) { if (d.dead || d.ring === 3) { dots.delete(k); continue; } d.r = target(d); d.alpha = alphaTo(d); }
+    draw();
+  }
+  function kick() {
+    if (!on) return;
+    if (RM.matches) { cancelAnimationFrame(raf); raf = 0; requestAnimationFrame(settle); return; }
+    if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
+  }
+
+  api.show = v => { on = v; if (!v) { cancelAnimationFrame(raf); raf = 0; dots.clear(); flash = null; emph = null; } else kick(); };
+  api.set = (list, o = {}) => {
+    if (o.growth !== undefined) growth = o.growth;
+    ringsTo = o.rings === false ? 0 : 1;
+    emph = o.emph ?? null;
+    if (o.flash) flash = { text: o.flash, t: 0 };
+    const keep = new Set();
+    for (const e of list) {
+      keep.add(e.key);
+      const d = dots.get(e.key);
+      if (d) { d.ring = e.ring; d.hot = !!e.hot; d.dim = !!e.dim; d.dead = false; continue; }
+      const jit = rnd(e.key + "j") * 2 - 1;
+      const nd = { ring: e.ring, hot: !!e.hot, dim: !!e.dim, dead: false, jit, a: e.a ?? rnd(e.key + "a") * Math.PI * 2, r: 0, alpha: 0 };
+      nd.r = e.spawnR ?? target(nd);
+      if (e.spawnR) nd.alpha = 1;
+      dots.set(e.key, nd);
+    }
+    for (const [k, d] of dots) if (!keep.has(k)) d.dead = true;
+    kick();
+  };
+  api.calm = ms => { if (ms > 0) calmUntil = performance.now() + ms; };
+  new ResizeObserver(() => { if (size() && (RM.matches || !raf)) draw(); }).observe(canvas);
+  RM.addEventListener?.("change", kick);
+  return api;
+}
+const SC = createScene();
+
+function render() {
+  clearTimers();
+  let step = location.hash.slice(1);
+  if (!STEPS.includes(step)) step = "opening";
+  ensure(step);
+  document.getElementById("progress").textContent = (STEPS.indexOf(step) + 1) + " of " + STEPS.length;
+  const stage = document.getElementById("stage");
+  stage.classList.remove("leaving"); stage.textContent = "";
+  VIEW[step](stage);
+}
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>

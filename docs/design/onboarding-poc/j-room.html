@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crowded room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+/* POC only: the typographic motion and the room heights need values the spec has no token for. */
+:root { --t-word: 520ms; --t-leave: 260ms; --t-scene: 600ms;
+  --room-tall: 300px; --room-short: 150px; --room-mid: 230px; }
+@media (min-width: 720px) { :root { --room-tall: 380px; --room-short: 210px; --room-mid: 280px; } }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: var(--measure-wide); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-12); min-height: 100vh; }
+@media (min-width: 720px) { .page { padding: var(--s-8) var(--s-6) var(--s-16); } }
+.top { display: flex; justify-content: space-between; align-items: center; height: var(--s-8); }
+.brand { display: flex; align-items: center; gap: var(--s-2); font-family: var(--font-mono); font-weight: 500;
+  font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text); }
+.brand i { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.stage { margin-top: var(--s-8); transition: opacity var(--t-leave) ease-in, transform var(--t-leave) ease-in; }
+.stage.leaving { opacity: 0; transform: translateY(calc(-1 * var(--s-6))); }
+
+/* the editor's sentence, assembled word by word (from e-stream-letter) */
+.say { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(30px, 5.2vw, 48px) * var(--type-scale));
+  line-height: 1.14; letter-spacing: -0.02em; margin: 0 auto; overflow-wrap: anywhere; text-align: center; max-width: var(--measure); }
+.say.dense { font-size: calc(clamp(24px, 3.9vw, 34px) * var(--type-scale)); line-height: 1.3; letter-spacing: -0.01em; }
+.say em { font-style: italic; color: var(--accent); }
+.say em[lang] { font-style: normal; }
+.w { display: inline-block; animation: assemble var(--t-word) ease-out both; }
+.say.still .w { animation: fade var(--t-leave) ease-out both; animation-delay: 0s !important; }
+@keyframes assemble { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.claim .then { opacity: 0; transition: opacity var(--t-scene) ease-out; }
+.claim.cleared .then { opacity: 1; }
+.blank { font: inherit; letter-spacing: inherit; color: var(--text-dim); background: none; border: 0;
+  border-bottom: 1px solid var(--border-strong); padding: 2px .06em; margin: 0; cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.blank:hover { color: var(--text); }
+.blank:active { opacity: .7; }
+.blank:disabled { cursor: default; }
+.blank[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+input.blank, select.blank { cursor: text; color: var(--accent); border-bottom-color: var(--accent-dim); border-radius: 0;
+  -webkit-appearance: none; appearance: none; text-align: center; }
+input.blank:focus, select.blank:focus { outline: none; border-bottom-color: var(--accent); }
+input.blank::placeholder { color: var(--text-dim); font-style: italic; }
+input.blank.hour { width: 1.6em; -moz-appearance: textfield; }
+input.blank.hour::-webkit-inner-spin-button, input.blank.hour::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.blank.wide { width: min(100%, 9em); }
+input.blank[aria-invalid="true"] { border-bottom-color: var(--warn); }
+select.blank { cursor: pointer; background: none; padding-right: .1em; max-width: 100%; }
+select.blank option { font-family: var(--font-sans); font-size: 16px; background: var(--bg-elev); color: var(--text); }
+.quiet { display: flex; gap: var(--s-8); margin-top: var(--s-5); flex-wrap: wrap; justify-content: center; }
+.hint { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: var(--s-4) auto 0; text-align: center; max-width: 34em; }
+.hint.warn { color: var(--warn); }
+.hint.lead { margin: 0 auto var(--s-4); }
+
+/* the room: one canvas of voices, clear ones in front, the murmur behind */
+.room { margin: var(--s-6) auto 0; max-width: var(--measure-wide); background: var(--bg);
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.room canvas { display: block; width: 100%; height: var(--room-mid); }
+.room.tall canvas { height: var(--room-tall); }
+.room.short canvas { height: var(--room-short); }
+.room.sticky { position: sticky; top: 0; z-index: 1; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* the feed picker: topic filters and feeds on one screen */
+.filters, .feeds { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.filters { margin-top: var(--s-5); }
+.feeds { margin-top: var(--s-4); }
+.chip { min-height: 36px; padding: 0 var(--s-3); border-radius: var(--r-tag); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-sans); font-size: calc(14px * var(--type-scale));
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast); }
+.chip:hover { color: var(--text); }
+.chip.filter { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; background: none; }
+.chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+.chip .n { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
+.own { display: flex; gap: var(--s-2); margin: var(--s-6) auto 0; max-width: 34em; flex-wrap: wrap; align-items: flex-end; }
+.own label { width: 100%; }
+.field { flex: 1; min-width: 0; height: 44px; padding: 0 var(--s-3); border-radius: var(--r-control); border: 1px solid var(--border-strong);
+  background: var(--bg-elev); color: var(--text); font-family: var(--font-mono); font-size: 16px; }
+.field:focus { outline: none; border-color: var(--accent); }
+.field[aria-invalid="true"] { border-color: var(--warn); }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-8); }
+.nav.sticky { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: var(--s-3) 0; margin-top: var(--s-6); }
+.nav .grow { flex: 1; }
+.btn { height: 44px; padding: 0 var(--s-5); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; border-radius: var(--r-control); border: 1px solid transparent; cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* the first issue: the whole screen, three labelled layers (from e-stream-letter) */
+.issue { margin-top: var(--s-4); }
+.issue.appear { animation: fade var(--t-scene) ease-out both; }
+.issue-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-4); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -0.04em; margin: 0; }
+.layer { margin-top: var(--s-12); }
+.layer-head { margin: 0 0 var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-2); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.layer-head p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); display: grid; gap: var(--s-1); }
+.item + .item { border-top: 0; }
+.item h3 { font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; margin: 0; }
+.item.deep h3 { font-size: calc(19px * var(--type-scale)); }
+.item p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item .more { color: var(--accent); }
+.frags { border: 1px solid var(--border); background: var(--bg-elev); }
+.frags div { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
+.frags div:last-child { border-bottom: 0; }
+.frags .label { flex: none; }
+.empty { font-size: calc(14px * var(--type-scale)); color: var(--text-dim); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top"><span class="brand"><i aria-hidden="true"></i>Cyris</span><span class="label" id="progress"></span></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+</main>
+<script>
+"use strict";
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/* ---- fake data: names and topics from src/cyris/onboarding_feeds.json ---- */
+const TOPICS = [
+  { id: "tech", label: "Technology" },
+  { id: "business", label: "Business & economy" },
+  { id: "world", label: "World" },
+  { id: "taiwan", label: "Taiwan" },
+  { id: "science", label: "Science & health" },
+  { id: "ideas", label: "Ideas & culture" },
+];
+/* POC only: `voices` is how many headlines a feed says into the room, a rough guess at its volume; it is never shown. */
+const FEEDS = [
+  ["中央社即時新聞 政治新聞", ["taiwan"], 5], ["中央社即時新聞 科技新聞", ["tech", "taiwan"], 4], ["報導者", ["taiwan", "ideas"], 2],
+  ["公視新聞網", ["taiwan"], 5], ["自由時報", ["taiwan"], 6], ["關鍵評論網", ["taiwan", "ideas"], 4], ["iThome", ["tech"], 4],
+  ["科技新報", ["tech"], 4], ["INSIDE", ["tech", "business"], 3], ["BBC中文網 繁體", ["world"], 4], ["紐約時報中文網 繁體", ["world"], 3],
+  ["RFI 法國國際廣播電台 繁體", ["world"], 4], ["明報新聞網", ["world"], 5], ["RTHK 香港電台", ["world"], 5], ["經濟日報", ["business", "taiwan"], 6],
+  ["換日線", ["ideas", "world"], 2], ["電腦王阿達", ["tech"], 3], ["BBC News", ["world"], 5], ["The New York Times", ["world"], 5],
+  ["The Guardian", ["world"], 6], ["NPR", ["world"], 4], ["The Verge", ["tech"], 4], ["Ars Technica", ["tech"], 4],
+  ["The Economist", ["world", "business"], 3], ["Financial Times", ["business", "world"], 5], ["Bloomberg", ["business"], 5],
+  ["Hacker News", ["tech"], 4], ["Techmeme", ["tech"], 4], ["數位時代", ["tech", "business"], 3], ["Gea-Suan Lin's BLOG", ["tech"], 2],
+  ["Simon Willison's Weblog", ["tech"], 2], ["Daring Fireball", ["tech"], 2], ["Stratechery", ["tech", "business"], 2],
+  ["ChinaTalk", ["world", "tech"], 2], ["市場先生", ["business"], 2], ["股感 StockFeel", ["business"], 2], ["Marginal Revolution", ["business"], 2],
+  ["Noahpinion", ["business", "world"], 2], ["Paul Krugman", ["business"], 2], ["端傳媒", ["world", "taiwan"], 2],
+  ["Global Taiwan Institute", ["taiwan", "world"], 2], ["台灣事實查核中心", ["taiwan"], 2], ["Focus Taiwan (CNA English)", ["taiwan"], 4],
+  ["Taiwan Insight", ["taiwan"], 2], ["泛科學 PanSci", ["science"], 2], ["CASE 報科學", ["science"], 2], ["Quanta Magazine", ["science"], 2],
+  ["Nautilus", ["science", "ideas"], 2], ["Aeon", ["ideas", "science"], 2], ["Readmoo 閱讀最前線", ["ideas"], 2], ["OKAPI 閱讀生活誌", ["ideas"], 2],
+  ["The Marginalian", ["ideas"], 2], ["The Atlantic Ideas", ["ideas"], 2], ["Dezeen", ["ideas"], 3], ["Lenny's Newsletter", ["business", "tech"], 2],
+  ["Not Boring", ["business", "tech"], 2], ["Slow Boring", ["world"], 2], ["The Diplomat", ["world"], 3], ["Foreign Policy", ["world"], 3],
+  ["Kottke", ["ideas"], 2], ["Literary Hub", ["ideas"], 3], ["Terence Tao", ["science"], 2], ["The Conversation", ["science", "world"], 3],
+].map(([name, topics, voices]) => ({ name, topics, voices }));
+const STANCE_POOL = {
+  tech: ["台積電美國廠", "AI 代理", "開源授權"],
+  business: ["美國關稅", "央行利率", "輝達財報"],
+  world: ["烏克蘭停火談判", "美中晶片管制", "加薩人道走廊"],
+  taiwan: ["總預算審查", "罷免投票", "健保費率調整"],
+  science: ["登革熱疫情", "減重藥物", "韋伯望遠鏡"],
+  ideas: ["獨立書店", "長照人力", "AI 與著作權"],
+};
+/* what each topic's voices say in the room: headline fragments, all fake */
+const LINES = {
+  "台積電美國廠": ["台積電美國新廠提前量產，良率仍待追上", "亞利桑那廠人力吃緊，工程師輪調延長"],
+  "AI 代理": ["企業導入 AI 代理的第一年：權限管理成瓶頸", "AI 代理接手客服，退款爭議跟著變多"],
+  "開源授權": ["開源授權改版爭議：社群為何出走", "資料庫專案改授權，雲端業者另起分支"],
+  "美國關稅": ["關稅上路之後，出口商怎麼調整供應鏈", "關稅豁免清單出爐，電子業鬆一口氣"],
+  "央行利率": ["央行按兵不動，房市信用管制再收緊", "利率維持不變，壽險業匯損壓力未解"],
+  "輝達財報": ["輝達財報優於預期，伺服器訂單看到明年", "AI 伺服器出貨放緩？供應鏈說法不一"],
+  "烏克蘭停火談判": ["停火談判再開：雙方仍在哪些條件上分歧", "停火線劃定前，前線城鎮居民撤離"],
+  "美中晶片管制": ["美中晶片管制再升級，東南亞封測廠受惠", "出口管制新規上路，設備商下修展望"],
+  "加薩人道走廊": ["人道走廊重開，物資車隊進入北部", "援助組織：走廊開放時間仍不足"],
+  "總預算審查": ["總預算審查卡關，地方建設經費延宕", "立法院臨時會再議總預算，朝野各有盤算"],
+  "罷免投票": ["罷免投票前夕，雙方動員進入最後階段", "罷免投票率成焦點，選委會加開投票所"],
+  "健保費率調整": ["健保費率調整案：誰多付、誰少付", "健保財務吃緊，部分負擔改制再起爭論"],
+  "登革熱疫情": ["登革熱南部疫情升溫，社區孳生源是關鍵", "登革熱疫苗審查進度，專家看法分歧"],
+  "減重藥物": ["減重藥物的長期數據：停藥後會怎樣", "減重藥物缺貨，醫師提醒勿自行購買"],
+  "韋伯望遠鏡": ["韋伯望遠鏡看見最早的星系團", "韋伯新影像：系外行星大氣裡的水氣"],
+  "獨立書店": ["獨立書店的第三種活法", "書店結合咖啡與講座，能撐多久"],
+  "長照人力": ["長照人力缺口：移工之外還有什麼路", "照服員薪資調整，留任率仍低"],
+  "AI 與著作權": ["生成式 AI 與著作權：法院怎麼看", "出版社聯名提告，要求揭露訓練資料"],
+};
+const LANGS = ["Traditional Chinese", "Simplified Chinese", "English", "Japanese"];
+const LANG_TAG = { "Traditional Chinese": "zh-Hant", "Simplified Chinese": "zh-Hans", English: "en", Japanese: "ja" };
+
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.codePointAt(0)) % 9973; return h; }
+const feedRec = name => FEEDS.find(f => f.name === name);
+const topicOf = name => feedRec(name)?.topics[0] || "tech";
+const isLatin = s => /^[\x00-\x7f’]+$/.test(s);
+
+/* ---- state; a step opened by hash fills in what the steps before it would have ---- */
+const STEPS = ["opening", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+const STEP_NAME = { opening: "Welcome", feeds: "Sources", lanes: "Never miss", fetch: "Listening", stances: "Topics", issue: "First issue", settings: "Settings" };
+function detectLang() {
+  const l = (navigator.language || "en").toLowerCase();
+  if (/^zh-(tw|hk|mo|hant)/.test(l)) return "Traditional Chinese";
+  if (l.startsWith("zh")) return "Simplified Chinese";
+  if (l.startsWith("ja")) return "Japanese";
+  return "English";
+}
+const S = {
+  filter: [], feeds: null, own: [], whole: null, fetched: false,
+  stances: {}, sIdx: 0, issued: false, done: false,
+  hours: [8, 18], lang: detectLang(),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", discord: "", email: "",
+};
+function ensure(step) {
+  const i = STEPS.indexOf(step);
+  if (i > 1 && S.feeds === null) S.feeds = ["報導者", "公視新聞網", "關鍵評論網", "iThome", "Stratechery", "數位時代"];
+  if (i > 2 && S.whole === null) S.whole = { "報導者": true, "Stratechery": true };
+  if (i > 3) S.fetched = true;
+  if (i > 5) S.issued = true;
+}
+const pickedFeeds = () => [...(S.feeds || []), ...S.own];
+const isWhole = f => !!(S.whole && S.whole[f] === true);
+const wholeFeeds = () => pickedFeeds().filter(isWhole);
+function stanceTopics() {
+  const ids = [...new Set(pickedFeeds().map(topicOf))];
+  if (!ids.length) ids.push("taiwan", "tech");
+  const out = [];
+  for (let r = 0; out.length < 6 && r < 3; r++) for (const id of ids) if (out.length < 6) out.push(STANCE_POOL[id][r]);
+  for (const t of TOPICS) for (const s of STANCE_POOL[t.id]) if (out.length < 6 && !out.includes(s)) out.push(s);
+  return out;
+}
+
+/* ---- voices: each feed says a few headlines into the room, keyed so a voice is the same voice on every step ---- */
+function feedVoices(f) {
+  const n = feedRec(f)?.voices ?? 2, pool = STANCE_POOL[topicOf(f)], h = hash(f), out = [];
+  for (let k = 0; k < n; k++) {
+    const topic = pool[(h + k) % 3], lines = LINES[topic];
+    out.push({ key: f + "#" + k, feed: f, topic, text: lines[(h + Math.floor(k / 3)) % lines.length] });
+  }
+  return out;
+}
+const firstVoice = f => feedVoices(f)[0];
+const allVoices = () => pickedFeeds().flatMap(feedVoices);
+/* topics with no voice among the picked feeds still get two, so a stance always has lines to move */
+function fillerVoices(topics, have) {
+  const seen = new Set(have.map(v => v.topic));
+  return topics.filter(t => !seen.has(t)).flatMap(t => LINES[t].map((text, k) => ({ key: "x:" + t + k, feed: "", topic: t, text })));
+}
+/* the editor's own pick of what speaks first, before the reader has said anything */
+function editorPicks(skip) {
+  const st = t => S.stances[t];
+  return pickedFeeds().filter(f => !skip.has(f)).map(firstVoice)
+    .filter(v => st(v.topic) !== "less")
+    .sort((a, b) => (st(b.topic) === "more") - (st(a.topic) === "more")).slice(0, 2);
+}
+
+/* ---- the issue the answers make ---- */
+function issueParts() {
+  const feeds = pickedFeeds(), st = t => S.stances[t];
+  const deep = wholeFeeds().map(f => ({ feed: f, title: firstVoice(f).text, key: firstVoice(f).key }));
+  const stories = [], frags = [];
+  for (const c of [...new Set(feeds.map(topicOf))]) {
+    const skim = feeds.filter(f => topicOf(f) === c && !isWhole(f));
+    if (!skim.length) continue;
+    const pool = STANCE_POOL[c].filter(t => st(t) !== "less").sort((a, b) => (st(b) === "more") - (st(a) === "more"));
+    const voices = skim.flatMap(feedVoices);
+    if (skim.length >= 2 && pool.length) {
+      const topic = pool[0];
+      let members = voices.filter(v => v.topic === topic);
+      if (members.length < 2) members = skim.map(firstVoice);
+      stories.push({ topic, cat: c, more: st(topic) === "more", sources: skim, members });
+      const rest = voices.find(v => !members.includes(v) && st(v.topic) !== "less");
+      if (rest) frags.push({ title: rest.text, feed: rest.feed, key: rest.key });
+    } else skim.forEach(f => { const v = feedVoices(f).find(x => st(x.topic) !== "less"); if (v) frags.push({ title: v.text, feed: f, key: v.key }); });
+  }
+  return { deep, stories, frags };
+}
+
+const pad = h => String(h).padStart(2, "0") + ":00";
+let timers = [];
+function later(fn, ms) { const t = setTimeout(fn, RM.matches ? 0 : ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+/* ---- a sentence that assembles word by word; nodes in it are single words ---- */
+function sentence(parts, cls) {
+  const el = document.createElement("p");
+  el.className = "say" + (cls ? " " + cls : "");
+  let n = 0;
+  const word = node => { const w = document.createElement("span"); w.className = "w"; w.style.animationDelay = (n++ * 45) + "ms"; w.append(node); el.append(w); };
+  for (const part of parts) {
+    if (typeof part === "string") part.split(/(\s+)/).forEach(tok => { if (!tok) return; if (/^\s+$/.test(tok)) el.append(" "); else word(document.createTextNode(tok)); });
+    else word(part);
+  }
+  el.assembledIn = RM.matches || (cls || "").includes("still") ? 0 : n * 45 + 520;
+  return el;
+}
+/* the room holds near still while a sentence assembles */
+function speak(stage, s) { stage.append(s); ROOM.calm(s.assembledIn); return s; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function blankBtn(text, pressed, onTap) {
+  const b = el("button", "blank", text); b.type = "button";
+  if (pressed !== null) b.setAttribute("aria-pressed", String(!!pressed));
+  b.addEventListener("click", () => onTap(b)); return b;
+}
+function btn(text, kind, onTap) { const b = el("button", "btn " + kind, text); b.type = "button"; b.addEventListener("click", onTap); return b; }
+function hint(text, cls) { return el("p", "hint" + (cls ? " " + cls : ""), text); }
+function span(t) { const s = el("span", "", t); if (!isLatin(t)) s.lang = ""; return s; }
+function sayBtn(t, pressed, fn) { const b = blankBtn(t, pressed, fn); b.classList.add("say", "dense"); return b; }
+const lock = stage => stage.querySelectorAll("button, input, select").forEach(b => b.disabled = true);
+function nav(step, primary, back, cls) {
+  const n = el("div", "nav" + (cls ? " " + cls : ""));
+  const i = STEPS.indexOf(step);
+  if (i > 0) n.append(btn("Back", "secondary", back || (() => go(STEPS[i - 1], false))));
+  if (step !== "settings") n.append(btn("Skip", "secondary", () => skip(step)));
+  n.append(el("span", "grow"));
+  if (primary) n.append(primary);
+  return n;
+}
+/* the room block: the canvas plus one sentence that says in words what the canvas shows */
+function roomBlock(size, sticky) {
+  const box = el("div", "room " + size + (sticky ? " sticky" : ""));
+  const desc = el("p", "sr");
+  box.append(ROOM.canvas, desc);
+  return { box, describe: t => desc.textContent = t };
+}
+
+/* ---- moving between steps ---- */
+function go(step, fwd) {
+  clearTimers();
+  const stage = document.getElementById("stage");
+  if (fwd && !RM.matches) { stage.classList.add("leaving"); setTimeout(() => setHash(step), 260); }
+  else setHash(step);
+}
+function setHash(step) { if (location.hash === "#" + step) render(); else location.hash = step; }
+function next(step) { go(STEPS[STEPS.indexOf(step) + 1], true); }
+function skip(step) {
+  if (step === "feeds" && S.feeds === null) S.feeds = [];
+  if (step === "lanes" && S.whole === null) S.whole = {};
+  if (step === "fetch") S.fetched = true;
+  if (step === "stances") S.sIdx = 0;
+  if (step === "issue") S.issued = true;
+  next(step);
+}
+
+/* the usual room after the reader has answered: whole feeds and the editor's picks in front,
+   topics asked for more raised out of the murmur, topics asked for less faded under it */
+function roomSpecs(opts = {}) {
+  const st = t => S.stances[t];
+  const whole = new Set(wholeFeeds());
+  const front = [...whole].map(f => ({ ...firstVoice(f), tier: "front", label: f, mark: true }));
+  const picks = opts.noPicks ? [] : editorPicks(whole).map(v => ({ ...v, tier: "front", label: v.feed }));
+  const frontKeys = new Set([...front, ...picks].map(v => v.key));
+  let voices = allVoices();
+  if (opts.fillTopics) voices = voices.concat(fillerVoices(opts.fillTopics, voices));
+  const raisedCount = {};
+  const rest = voices.filter(v => !frontKeys.has(v.key)).map(v => {
+    const s = st(v.topic);
+    if (s === "more" && (raisedCount[v.topic] = (raisedCount[v.topic] || 0) + 1) <= 2) return { ...v, tier: "raised" };
+    if (s === "less") return { ...v, tier: "gone" };
+    return { ...v, tier: "murmur", hi: v.topic === opts.hi };
+  });
+  return [...front, ...picks, ...rest];
+}
+
+/* ---- the steps ---- */
+const VIEW = {
+  opening(stage) {
+    const claim = el("p", "say claim");
+    claim.append(el("span", "", "Everyone is talking. "), el("span", "then", "I let what matters speak first."));
+    stage.append(claim);
+    const rb = roomBlock("tall"); stage.append(rb.box);
+    const voices = ["o:", "p:"].flatMap(rep => Object.entries(LINES).flatMap(([topic, lines]) => lines.map((text, k) => ({ key: rep + topic + k, topic, text }))));
+    const FRONT = { "o:罷免投票0": "公視新聞網", "o:美中晶片管制0": "BBC中文網 繁體", "o:減重藥物0": "泛科學 PanSci" };
+    const frontKeys = Object.keys(FRONT);
+    const cleared = () => voices.map(v => FRONT[v.key]
+      ? { ...v, tier: "front", label: FRONT[v.key] } : { ...v, tier: "murmur" })
+      .sort((a, b) => (b.tier === "front") - (a.tier === "front") || frontKeys.indexOf(a.key) - frontKeys.indexOf(b.key));
+    rb.describe("Many headlines talk over each other until three come forward, clear, and the rest drop to a quiet murmur behind them.");
+    if (RM.matches) { claim.classList.add("cleared"); ROOM.show(cleared()); }
+    else {
+      ROOM.show(voices.map(v => ({ ...v, tier: "loud" })), { instant: true });
+      later(() => { claim.classList.add("cleared"); ROOM.show(cleared()); }, 2800);
+    }
+    stage.append(nav("opening", btn("Show me how", "primary", () => next("opening"))));
+  },
+
+  feeds(stage) {
+    if (S.feeds === null) S.feeds = [];
+    speak(stage, sentence(["Who should I listen to for you?"]));
+    const rb = roomBlock("short", true);
+    stage.append(rb.box);
+    const refresh = (added) => {
+      const specs = roomSpecs().map(v => added && v.feed === added && v.tier === "murmur" ? { ...v, shout: true } : v);
+      ROOM.show(specs, { empty: "An empty room" });
+      const n = pickedFeeds().length;
+      rb.describe(n ? "Each source you pick adds its voice to the murmur at the back of the room; the few lines in front stay clear." : "The room is empty.");
+      status.textContent = n ? "Each one adds a voice to the room. Tap one again to remove it." : "Tap any source. None is fine too.";
+    };
+    const filters = el("div", "filters"); filters.setAttribute("aria-label", "Show sources about");
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Sources");
+    const status = hint(""); status.setAttribute("aria-live", "polite");
+    const drawList = () => {
+      list.textContent = "";
+      const shown = FEEDS.filter(f => !S.filter.length || f.topics.some(t => S.filter.includes(t)));
+      for (const f of shown) {
+        const c = el("button", "chip"); c.type = "button";
+        const nm = el("span", "", f.name); if (!isLatin(f.name)) nm.lang = "";
+        c.append(nm);
+        c.setAttribute("aria-pressed", String(S.feeds.includes(f.name)));
+        c.addEventListener("click", () => {
+          const on = !S.feeds.includes(f.name);
+          S.feeds = on ? [...S.feeds, f.name] : S.feeds.filter(x => x !== f.name);
+          c.setAttribute("aria-pressed", String(on));
+          S.whole = null; refresh(on ? f.name : null);
+        });
+        list.append(c);
+      }
+      for (const o of S.own) {
+        const c = el("button", "chip"); c.type = "button"; c.setAttribute("aria-pressed", "true");
+        c.append(el("span", "", o), el("span", "n", "yours"));
+        c.addEventListener("click", () => { S.own = S.own.filter(x => x !== o); S.whole = null; drawList(); refresh(); });
+        list.append(c);
+      }
+    };
+    const all = el("button", "chip filter", "All"); all.type = "button";
+    const fBtns = TOPICS.map(t => { const b = el("button", "chip filter", t.label); b.type = "button"; b.dataset.id = t.id; return b; });
+    const syncFilters = () => { all.setAttribute("aria-pressed", String(!S.filter.length)); fBtns.forEach(b => b.setAttribute("aria-pressed", String(S.filter.includes(b.dataset.id)))); };
+    all.addEventListener("click", () => { S.filter = []; syncFilters(); drawList(); });
+    fBtns.forEach(b => b.addEventListener("click", () => { S.filter = [b.dataset.id]; syncFilters(); drawList(); }));
+    filters.append(all, ...fBtns); syncFilters();
+    stage.append(filters, list, status);
+
+    const own = el("div", "own");
+    const lab = el("label", "label", "Or paste one of your own (optional)"); lab.htmlFor = "own-feed";
+    const inp = el("input", "field"); inp.id = "own-feed"; inp.type = "url"; inp.placeholder = "https://"; inp.autocomplete = "off";
+    const add = btn("Add", "secondary", () => {
+      const v = inp.value.trim();
+      if (!/^https?:\/\/[^\s.]+\.[^\s]+$/.test(v)) { inp.setAttribute("aria-invalid", "true"); err.textContent = "That doesn't look like a feed address. It starts with https://."; return; }
+      const h = new URL(v).hostname.replace(/^www\./, "");
+      if (!S.own.includes(h)) S.own.push(h);
+      inp.value = ""; S.whole = null; drawList(); refresh(h);
+    });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+    inp.addEventListener("input", () => { inp.removeAttribute("aria-invalid"); err.textContent = ""; });
+    const err = hint("", "warn"); err.setAttribute("role", "status");
+    own.append(lab, inp, add);
+    stage.append(own, err);
+    stage.append(nav("feeds", btn("Continue", "primary", () => next("feeds")), null, "sticky"));
+    drawList(); refresh();
+  },
+
+  /* one question over all picked feeds: a tapped feed's voice steps forward, the rest stay in the murmur */
+  lanes(stage) {
+    const feeds = pickedFeeds();
+    if (S.whole === null) S.whole = {};
+    const back = () => go("feeds", false);
+    if (!feeds.length) {
+      speak(stage, sentence(["Nothing to hear yet."]));
+      stage.append(hint("You picked no sources. Go Back to pick some, or go on and add them later in Settings."));
+      stage.append(nav("lanes", btn("Go on", "primary", () => next("lanes")), back));
+      ROOM.show([]);
+      return;
+    }
+    feeds.forEach(g => { if (!(g in S.whole)) S.whole[g] = false; });
+    const label = () => wholeFeeds().length ? "These, whole" : "None, skim them all";
+    const go_on = btn(label(), "primary", () => next("lanes"));
+    speak(stage, sentence(["Is there a source you never want to miss?"]));
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Sources you never want to miss");
+    const rb = roomBlock("mid");
+    const update = () => {
+      ROOM.show(roomSpecs({ noPicks: true }));
+      const w = wholeFeeds();
+      rb.describe(w.length ? "In front, clear: " + w.join(", ") + ". Everything else stays in the murmur behind." : "Every source is in the murmur; none is in front yet.");
+    };
+    for (const f of feeds) {
+      const c = el("button", "chip"); c.type = "button"; c.append(span(f));
+      c.setAttribute("aria-pressed", String(S.whole[f] === true));
+      c.addEventListener("click", () => {
+        S.whole[f] = !S.whole[f];
+        c.setAttribute("aria-pressed", String(S.whole[f]));
+        go_on.textContent = label();
+        update();
+      });
+      list.append(c);
+    }
+    stage.append(list);
+    stage.append(hint("Tap one and its voice steps to the front: I’ll give you its pieces whole, as Deep reads. The rest I’ll listen to for you."));
+    stage.append(rb.box);
+    update();
+    stage.append(nav("lanes", go_on, back));
+  },
+
+  fetch(stage) {
+    const feeds = pickedFeeds();
+    const box = el("div"); stage.append(box);
+    const say = parts => { box.textContent = ""; box.append(sentence(parts, "still")); };
+    if (!feeds.length) {
+      box.append(sentence(["Nothing to listen to yet: no sources picked."]));
+      ROOM.show([]);
+      stage.append(nav("fetch", btn("Go on", "primary", () => { S.fetched = true; next("fetch"); })));
+      return;
+    }
+    const rb = roomBlock("mid"); stage.append(rb.box);
+    stage.append(nav("fetch", btn("Go on", "primary", () => { S.fetched = true; next("fetch"); })));
+    const finish = () => {
+      S.fetched = true;
+      ROOM.show(roomSpecs());
+      rb.describe("Every source is talking. A few clear lines stand in front; the rest is a murmur behind.");
+      say(["I heard what your sources said today."]);
+    };
+    if (S.fetched || RM.matches) { finish(); return; }
+    rb.describe("Your sources come into the room one at a time.");
+    const arrived = new Set();
+    ROOM.show([]);
+    const per = 8000 / feeds.length;
+    feeds.forEach((f, k) => later(() => {
+      arrived.add(f);
+      ROOM.show(allVoices().filter(v => arrived.has(v.feed)).map(v => ({ ...v, tier: "murmur", shout: v.feed === f })));
+      say(["Listening to ", span(f), "…"]);
+    }, k * per));
+    later(finish, 8000);
+  },
+
+  /* one topic per sentence; more raises its lines out of the murmur, less fades them further */
+  stances(stage) {
+    const topics = stanceTopics();
+    if (S.sIdx >= topics.length) S.sIdx = 0;
+    const t = topics[S.sIdx];
+    const topic = el("em", "", t); topic.lang = "";
+    if (S.sIdx === 0) stage.append(hint(pickedFeeds().length
+      ? "I listened to the sources you picked and found these topics in them. Tell me which to let speak up, and which to quiet."
+      : "You picked no sources, so these are topics most rooms talk about. Tell me which to let speak up, and which to quiet.", "lead"));
+    speak(stage, sentence(["More of ", topic, "?"]));
+    const q = el("div", "quiet");
+    const rb = roomBlock("mid");
+    const draw = () => {
+      ROOM.show(roomSpecs({ fillTopics: topics, hi: t, noPicks: true }));
+      const s = S.stances[t];
+      rb.describe(s === "more" ? t + " rises out of the murmur." : s === "less" ? t + " fades further into the murmur." : "The lines about " + t + " are lit in the murmur.");
+    };
+    const answer = v => b => {
+      S.stances[t] = v; lock(stage); b.setAttribute("aria-pressed", "true");
+      draw();
+      later(() => { if (S.sIdx + 1 < topics.length) { S.sIdx++; go("stances", true); } else { S.sIdx = 0; next("stances"); } }, 2200);
+    };
+    q.append(sayBtn("More, please.", S.stances[t] === "more", answer("more")), sayBtn("Less.", S.stances[t] === "less", answer("less")));
+    stage.append(q, rb.box);
+    draw();
+    stage.append(hint("The lit lines are " + t + ". No answer counts for nothing."));
+    stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
+  },
+
+  /* the wait: the room sorts itself into the issue's three layers and names them */
+  issue(stage) {
+    const reveal = () => {
+      clearTimers(); S.issued = true;
+      stage.textContent = "";
+      const issue = buildIssue(); if (!RM.matches) issue.classList.add("appear");
+      stage.append(issue);
+      stage.append(nav("issue", btn("One more thing", "primary", () => next("issue"))));
+      window.scrollTo(0, 0);
+    };
+    if (S.issued) { reveal(); return; }
+    const box = el("div"); stage.append(box);
+    const say = l => { box.textContent = ""; box.append(sentence(l, "still")); };
+    const rb = roomBlock("tall"); stage.append(rb.box);
+    const p = issueParts();
+    const labels = { front: "Deep reads", story: "Stories", frag: "Fragments" };
+    const deepKeys = new Set(p.deep.map(d => d.key));
+    const story = p.stories[0], mergeKeys = new Set(story ? story.members.map(v => v.key) : []);
+    const fragKeys = new Set(p.frags.slice(0, 3).map(f => f.key));
+    const stage1 = () => roomSpecs({ noPicks: true }).map(v => ({ ...v, label: v.tier === "front" ? v.feed : v.label }));
+    const stage2 = () => stage1().map(v => mergeKeys.has(v.key) ? { ...v, tier: "merge", group: "story:" + story.topic } : v)
+      .concat(story ? [{ key: "story:" + story.topic, text: story.topic + "，幾個來源說的同一件事", topic: story.topic, tier: "story", feed: "" }] : []);
+    const stage3 = () => stage2().map(v => fragKeys.has(v.key) && v.tier === "murmur" ? { ...v, tier: "frag" } : v);
+    const steps = [
+      [() => ROOM.show(stage1(), { labels: { front: labels.front } }),
+        p.deep.length ? ["Deep reads: ", span(p.deep[0].feed), ", the whole piece."] : ["No Deep reads today: you asked for nothing whole."]],
+      [() => ROOM.show(stage2(), { labels: { front: labels.front, story: labels.story } }),
+        story ? ["Stories: several voices on ", span(story.topic), ", told once."] : ["No Stories today: no two sources talked about one thing."]],
+      [() => ROOM.show(stage3(), { labels }),
+        p.frags.length ? ["Fragments: single lines I overheard."] : ["No Fragments today: nothing else to overhear."]],
+      [null, ["Here is your first issue."]],
+    ];
+    rb.describe("The room sorts into three layers: Deep reads, the clear voices in front; Stories, several voices on one thing told once; Fragments, single lines overheard from the murmur.");
+    stage.append(nav("issue", btn("Show me now", "primary", reveal)));
+    ROOM.show(roomSpecs({ noPicks: true }));
+    if (RM.matches) { steps[2][0](); say(steps[3][1]); return; }
+    say(["Listening for what matters to you."]);
+    steps.forEach(([act, line], k) => later(() => { if (act) act(); say(line); }, (k + 1) * 2400));
+    later(() => location.hash === "#issue" && !S.issued && reveal(), 12000);
+  },
+
+  settings(stage) {
+    ROOM.show([]);
+    if (S.done) {
+      speak(stage, sentence(["Until ", span(pad(S.hours[0])), ", then."]));
+      stage.append(hint("This prototype ends here. In the product, Finish opens Settings."));
+      stage.append(nav("settings", btn("Change these", "secondary", () => { S.done = false; render(); })));
+      return;
+    }
+    const hourIn = k => {
+      const i = el("input", "blank hour"); i.type = "number"; i.min = "0"; i.max = "23"; i.inputMode = "numeric";
+      i.value = String(S.hours[k]); i.setAttribute("aria-label", k ? "Second publish hour" : "First publish hour");
+      i.addEventListener("input", () => { const v = Number(i.value); const ok = i.value !== "" && v >= 0 && v <= 23 && Number.isInteger(v); i.toggleAttribute("aria-invalid", !ok); if (ok) S.hours[k] = v; });
+      return i;
+    };
+    const sel = (opts, val, label, onPick) => {
+      const s = el("select", "blank"); s.setAttribute("aria-label", label);
+      opts.forEach(o => s.append(new Option(o, o, false, o === val)));
+      const fit = () => s.style.width = (s.value.length * 0.36 + 0.5) + "em";
+      s.addEventListener("change", () => { onPick(s.value); fit(); }); fit(); return s;
+    };
+    const zones = [...new Set([S.tz, "Asia/Taipei", "Asia/Tokyo", "Europe/London", "America/New_York", "America/Los_Angeles", "UTC"])];
+    const text = (type, ph, key, label) => {
+      const i = el("input", "blank wide"); i.type = type; i.placeholder = ph; i.value = S[key];
+      i.setAttribute("aria-label", label); i.addEventListener("input", () => S[key] = i.value.trim()); return i;
+    };
+    speak(stage, sentence(["P.S. Each day at ", hourIn(0), " and ", hourIn(1), ", in ",
+      sel(LANGS, S.lang, "Output language", v => S.lang = v), ", on ",
+      sel(zones, S.tz, "Timezone", v => S.tz = v), " time, I’ll write you what’s worth hearing. I can also tell ",
+      text("url", "a Discord webhook", "discord", "Discord webhook"), " or ", text("email", "your email", "email", "Email"), "."], "dense"));
+    stage.append(hint("Language and timezone came from this browser. Everything here is optional."));
+    const err = hint("", "warn"); err.setAttribute("role", "status"); stage.append(err);
+    stage.append(nav("settings", btn("Finish", "primary", () => {
+      if (stage.querySelector("[aria-invalid]")) { err.textContent = "A publish hour is a whole number from 0 to 23."; return; }
+      S.done = true;
+      if (RM.matches) render(); else { stage.classList.add("leaving"); setTimeout(render, 260); }
+    })));
+  },
+};
+
+function buildIssue() {
+  const lang = LANG_TAG[S.lang] || "zh-Hant";
+  const sec = el("section", "issue"); sec.setAttribute("aria-label", "Your first issue");
+  const head = el("div", "issue-head");
+  head.append(el("h2", "issue-title", "Issue one"), el("span", "data", new Date().toISOString().slice(0, 10)));
+  sec.append(head);
+  const layer = (name, help) => {
+    const l = el("div", "layer"); const lh = el("div", "layer-head");
+    lh.append(el("h3", "marker label", name), el("p", "", help));
+    l.append(lh); sec.append(l); return l;
+  };
+  const { deep, stories, frags } = issueParts();
+  const deepL = layer("Deep reads", "The voices you never want to miss, given to you whole. They speak first.");
+  if (!deep.length) deepL.append(el("p", "empty", "None: you asked for nothing whole. Mark a source you never want to miss and it speaks here."));
+  deep.forEach(({ feed, title }) => {
+    const it = el("article", "item deep");
+    const h = el("h3", "", title); h.lang = "";
+    const p = el("p", "", lang === "en" ? "A summary of the whole piece, written for you." : "整篇讀完後替你寫的摘要：重點、脈絡與值得細讀的段落。"); p.lang = lang;
+    it.append(el("span", "label", feed), h, p); deepL.append(it);
+  });
+  const storyL = layer("Stories", "Several voices on one thing, summed up once.");
+  if (!stories.length) storyL.append(el("p", "empty", "None this time: no two skimmed sources talked about one thing."));
+  stories.forEach(s => {
+    const it = el("article", "item");
+    const h = el("h3", "", s.topic); h.lang = lang;
+    const p = el("p", "", lang === "en" ? "Several outlets on one development, told once." : "幾個來源報導同一進展，合成一段話告訴你。"); p.lang = lang;
+    const lab = el("span", "label", s.sources.join(" · "));
+    if (s.more) lab.append(el("span", "more", " · more, as you asked"));
+    it.append(h, p, lab); storyL.append(it);
+  });
+  const fragL = layer("Fragments", "Single lines overheard from the rest of the room. Let them run past.");
+  if (!frags.length) fragL.append(el("p", "empty", "None: pick a source and the lines it says in passing land here."));
+  else {
+    const wl = el("div", "frags");
+    frags.forEach(r => { const row = el("div"); const t = el("span", "", r.title); t.lang = ""; row.append(t, el("span", "label", r.feed)); wl.append(row); });
+    fragL.append(wl);
+  }
+  return sec;
+}
+
+/* ================= the room: one canvas of voices ================= */
+/* a small seeded generator, so a voice keeps its place in the room across steps */
+function rand(seed) { let a = seed * 2654435761 >>> 0; return () => { a = a + 0x6D2B79F5 >>> 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function createRoom() {
+  const canvas = document.createElement("canvas"); canvas.setAttribute("aria-hidden", "true");
+  const cx = canvas.getContext("2d");
+  const C = {}; for (const n of ["--bg", "--text", "--text-dim", "--text-faint", "--accent", "--border", "--border-strong"]) C[n] = getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let W = 0, H = 0, DPR = 1, raf = 0, last = 0, time = 0, pace = 1, calmUntil = 0;
+  let voices = new Map(), order = [], labels = null, bandLabels = [], empty = null, stack = null;
+  const api = { canvas };
+
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return false;
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    if (W !== r.width || H !== r.height) { W = r.width; H = r.height; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); layout(); }
+    return true;
+  }
+  const narrow = () => W < 520;
+  const FRONT_H = () => narrow() ? 40 : 44, ROW_H = () => narrow() ? 24 : 26;
+  /* rows for the clear tiers, stacked and centred in the room; whatever does not fit stays unshown */
+  function layout() {
+    const padX = narrow() ? 12 : 20, bands = ["front", "raised", "story", "frag"];
+    const rows = []; let y = 0; bandLabels = [];
+    for (const b of bands) {
+      const members = order.map(k => voices.get(k)).filter(v => !v.dying && v.tier === b);
+      if (!members.length) continue;
+      if (labels && labels[b]) { bandLabels.push({ text: labels[b], y }); y += 18; }
+      for (const v of members) { rows.push({ v, y }); y += b === "front" ? FRONT_H() : ROW_H(); }
+      y += 6;
+    }
+    const room = H - 16, off = Math.max(8, (H - Math.min(y, room)) / 2);
+    bandLabels.forEach(l => l.y += off);
+    stack = rows.length || bandLabels.length ? { top: off - 6, bot: off + Math.min(y, room) } : null;
+    for (const { v, y: ry } of rows) {
+      const fits = ry + (v.tier === "front" ? FRONT_H() : ROW_H()) <= room + 8;
+      v.row = { x: padX, y: ry + off, show: fits };
+    }
+    for (const v of voices.values()) if (v.tier === "merge") {
+      const g = voices.get(v.group); v.row = g && g.row ? { ...g.row } : { x: padX, y: H / 2, show: true };
+    }
+  }
+  function target(v) {
+    if (v.dying) return { ...(v.cur || { x: 0, y: 0, s: 12 }), a: 0 };
+    const loud = v.tier === "loud" || (v.loudUntil && v.loudUntil > time && !RM.matches);
+    if (loud) return { x: -0.3 * W + v.u2 * 1.0 * W, y: 14 + v.v2 * (H - 34), s: (narrow() ? 17 : 21) + (v.h % 6), a: 1 };
+    /* the murmur fills the room around the clear lines, so it stays visible behind them */
+    const mx = -0.15 * W + v.u * 1.1 * W;
+    let my = 8 + v.v * (H - 22);
+    if (stack) {
+      const lenT = Math.max(0, stack.top - 18), lenB = Math.max(0, H - 18 - stack.bot), p = v.v * (lenT + lenB);
+      if (lenT + lenB > 0) my = p < lenT ? 4 + p : stack.bot + 2 + (p - lenT);
+    }
+    if (v.tier === "murmur") return { x: mx, y: my, s: 12, a: v.hi ? 1 : 0.42 };
+    if (v.tier === "gone") return { x: mx, y: my, s: 11, a: 0.07 };
+    const r = v.row || { x: 12, y: H / 2, show: false };
+    if (v.tier === "merge") return { x: r.x, y: r.y, s: 13, a: 0 };
+    const s = v.tier === "front" ? (narrow() ? 15 : 17) : (narrow() ? 13 : 14);
+    return { x: r.x, y: r.y, s, a: r.show ? 1 : 0 };
+  }
+
+  api.show = (specs, opts = {}) => {
+    labels = opts.labels || null; empty = opts.empty || null;
+    size();
+    const keep = new Set();
+    order = specs.map(s => s.key);
+    for (const s of specs) {
+      keep.add(s.key);
+      let v = voices.get(s.key);
+      if (!v) {
+        const h = hash(s.key), r = rand(h);
+        v = { h, u: r(), v: r(), u2: r(), v2: r(), ph: r() * 360 };
+        voices.set(s.key, v);
+        v.isNew = true;
+      }
+      Object.assign(v, { text: s.text, label: s.label || "", tier: s.tier, hi: !!s.hi, mark: !!s.mark, group: s.group, dying: false, fit: null });
+      if (s.shout) v.loudUntil = time + 1.1;
+    }
+    for (const [k, v] of voices) if (!keep.has(k)) v.dying = true;
+    if (W) layout();
+    for (const v of voices.values()) if (v.isNew) {
+      v.isNew = false;
+      const t = target(v);
+      v.cur = { ...t, a: opts.instant ? t.a : 0 };
+    }
+    kick();
+  };
+  api.calm = ms => { if (ms > 0) calmUntil = performance.now() + ms; };
+
+  function tick(dt) {
+    time += dt;
+    const k = 1 - Math.exp(-dt * 3.2);
+    for (const [key, v] of voices) {
+      const t = target(v);
+      if (!v.cur) v.cur = { ...t };
+      for (const p of ["x", "y", "s", "a"]) v.cur[p] += (t[p] - v.cur[p]) * k;
+      if (v.dying && v.cur.a < 0.02) voices.delete(key);
+    }
+  }
+  function fitText(v, font, maxW) {
+    if (v.fit && v.fit.w === maxW && v.fit.font === font) return v.fit.str;
+    cx.font = font; let s = v.text;
+    if (cx.measureText(s).width > maxW) { const ch = [...s]; while (ch.length && cx.measureText(ch.join("") + "…").width > maxW) ch.pop(); s = ch.join("") + "…"; }
+    v.fit = { w: maxW, font, str: s }; return s;
+  }
+  const SANS = '"Geist", system-ui, sans-serif', MONO = '"Geist Mono", ui-monospace, monospace';
+  function draw() {
+    if (!size()) return;
+    cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    cx.fillStyle = C["--bg"]; cx.fillRect(0, 0, W, H);
+    cx.textBaseline = "top"; cx.textAlign = "left";
+    const still = RM.matches;
+    const list = [...voices.values()];
+    if (!list.length && empty) {
+      cx.font = '500 11px ' + MONO; cx.fillStyle = C["--text-dim"]; cx.textAlign = "center";
+      cx.fillText(empty.toUpperCase(), W / 2, H / 2 - 6); cx.textAlign = "left";
+    }
+    /* the murmur at the back */
+    for (const v of list) {
+      if (!["murmur", "gone", "merge"].includes(v.tier) || (v.loudUntil > time && !still)) continue;
+      const drift = still ? 0 : Math.sin(time * 0.22 + v.ph) * 10;
+      cx.globalAlpha = Math.max(0, v.cur.a);
+      cx.font = '400 ' + v.cur.s.toFixed(1) + 'px ' + SANS;
+      cx.fillStyle = v.hi ? C["--text-dim"] : C["--text-faint"];
+      cx.fillText(v.text, v.cur.x + drift, v.cur.y);
+    }
+    /* loud voices, talking over each other */
+    for (const v of list) {
+      if (!(v.tier === "loud" || (v.loudUntil > time && !still))) continue;
+      const jx = still ? 0 : Math.sin(time * 19 + v.ph) * 1.6, jy = still ? 0 : Math.cos(time * 23 + v.ph) * 1.2;
+      cx.globalAlpha = Math.max(0, v.cur.a);
+      cx.font = '600 ' + v.cur.s.toFixed(1) + 'px ' + SANS; cx.fillStyle = C["--text"];
+      cx.fillText(v.text, v.cur.x + jx, v.cur.y + jy);
+    }
+    /* clear lines in front, each on its own strip of background */
+    const maxW = W - (narrow() ? 24 : 40);
+    for (const v of list) {
+      if (!["front", "raised", "story", "frag"].includes(v.tier) || v.dying && v.cur.a < 0.05) continue;
+      const a = Math.max(0, Math.min(1, v.cur.a)); if (a < 0.01) continue;
+      const front = v.tier === "front", h = front ? FRONT_H() : ROW_H();
+      cx.globalAlpha = a; cx.fillStyle = C["--bg"]; cx.fillRect(0, v.cur.y - 5, W, h);
+      let x = v.cur.x, y = v.cur.y;
+      if (front) {
+        cx.font = '500 10px ' + MONO; cx.fillStyle = v.mark ? C["--accent"] : C["--text-dim"];
+        cx.fillText((v.label || "").toUpperCase(), x, y); y += 14;
+        const font = '600 ' + v.cur.s.toFixed(1) + 'px ' + SANS;
+        cx.font = font; cx.fillStyle = C["--text"]; cx.fillText(fitText(v, font, maxW), x, y);
+      } else {
+        if (v.tier === "raised") { cx.fillStyle = C["--accent"]; cx.fillRect(x, y + 5, 6, 6); x += 14; }
+        const font = (v.tier === "story" ? '600 ' : '400 ') + v.cur.s.toFixed(1) + 'px ' + SANS;
+        cx.font = font; cx.fillStyle = v.tier === "frag" ? C["--text-dim"] : C["--text"];
+        cx.fillText(fitText(v, font, maxW - (x - v.cur.x)), x, y);
+      }
+    }
+    cx.globalAlpha = 1;
+    /* the names of the layers, once the room has sorted into them */
+    for (const l of bandLabels) {
+      cx.fillStyle = C["--bg"]; cx.fillRect(0, l.y - 3, W, 18);
+      cx.fillStyle = C["--accent"]; cx.fillRect(narrow() ? 12 : 20, l.y + 6, 16, 1);
+      cx.font = '500 11px ' + MONO; cx.fillStyle = C["--text-dim"];
+      cx.fillText(l.text.toUpperCase(), (narrow() ? 12 : 20) + 24, l.y);
+    }
+  }
+  function frame(ts) {
+    const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+    const tgt = performance.now() < calmUntil ? 0.15 : 1;
+    pace += (tgt - pace) * Math.min(1, dt * 4);
+    tick(dt * pace);
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+  /* reduced motion: every voice jumps to where it is going, drawn once */
+  function settle() {
+    for (const [key, v] of voices) { if (v.dying) { voices.delete(key); continue; } v.loudUntil = 0; v.cur = target(v); }
+    draw();
+  }
+  function kick() {
+    if (RM.matches) { cancelAnimationFrame(raf); raf = 0; requestAnimationFrame(settle); return; }
+    if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
+  }
+  new ResizeObserver(() => { if (size() && RM.matches) settle(); }).observe(canvas);
+  RM.addEventListener?.("change", kick);
+  document.fonts?.ready.then(() => { for (const v of voices.values()) v.fit = null; if (RM.matches) settle(); });
+  return api;
+}
+const ROOM = createRoom();
+
+function render() {
+  clearTimers();
+  let step = location.hash.slice(1);
+  if (!STEPS.includes(step)) step = "opening";
+  ensure(step);
+  document.getElementById("progress").textContent = STEP_NAME[step];
+  const stage = document.getElementById("stage");
+  stage.classList.remove("leaving"); stage.textContent = "";
+  VIEW[step](stage);
+}
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>

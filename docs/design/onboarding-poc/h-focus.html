@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+/* POC only: the lens needs depth, card size and a focus-pull duration the spec has no token for. */
+:root { --t-word: 520ms; --t-leave: 260ms; --t-scene: 600ms; --t-focus: 900ms;
+  --lens-h: 230px; --card-w: 168px; --card-h: 56px;
+  --blur-near: 1px; --blur-mid: 2.5px; --blur-far: 5px; --blur-farther: 9px; }
+@media (min-width: 720px) { :root { --lens-h: 320px; --card-w: 200px; } }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: var(--measure-wide); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-12); min-height: 100vh; }
+@media (min-width: 720px) { .page { padding: var(--s-8) var(--s-6) var(--s-16); } }
+.top { display: flex; justify-content: space-between; align-items: center; height: var(--s-8); }
+.brand { display: flex; align-items: center; gap: var(--s-2); font-family: var(--font-mono); font-weight: 500;
+  font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; color: var(--text); }
+.brand i { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.stage { margin-top: var(--s-8); transition: opacity var(--t-leave) ease-in, transform var(--t-leave) ease-in; }
+.stage.leaving { opacity: 0; transform: translateY(calc(-1 * var(--s-6))); }
+
+/* the editor's sentence, assembled word by word (from e-stream-letter) */
+.say { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(30px, 5.2vw, 48px) * var(--type-scale));
+  line-height: 1.14; letter-spacing: -0.02em; margin: 0 auto; overflow-wrap: anywhere; text-align: center; max-width: var(--measure); }
+.say.dense { font-size: calc(clamp(24px, 3.9vw, 34px) * var(--type-scale)); line-height: 1.3; letter-spacing: -0.01em; }
+.say em { font-style: italic; color: var(--accent); }
+.say em[lang] { font-style: normal; }
+.w { display: inline-block; animation: assemble var(--t-word) ease-out both; }
+.say.still .w { animation: fade var(--t-leave) ease-out both; animation-delay: 0s !important; }
+@keyframes assemble { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.blank { font: inherit; letter-spacing: inherit; color: var(--text-dim); background: none; border: 0;
+  border-bottom: 1px solid var(--border-strong); padding: 2px .06em; margin: 0; cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.blank:hover { color: var(--text); }
+.blank:active { opacity: .7; }
+.blank:disabled { cursor: default; }
+.blank[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+input.blank, select.blank { cursor: text; color: var(--accent); border-bottom-color: var(--accent-dim); border-radius: 0;
+  -webkit-appearance: none; appearance: none; text-align: center; }
+input.blank:focus, select.blank:focus { outline: none; border-bottom-color: var(--accent); }
+input.blank::placeholder { color: var(--text-dim); font-style: italic; }
+input.blank.hour { width: 1.6em; -moz-appearance: textfield; }
+input.blank.hour::-webkit-inner-spin-button, input.blank.hour::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.blank.wide { width: min(100%, 9em); }
+input.blank[aria-invalid="true"] { border-bottom-color: var(--warn); }
+select.blank { cursor: pointer; background: none; padding-right: .1em; max-width: 100%; }
+select.blank option { font-family: var(--font-sans); font-size: 16px; background: var(--bg-elev); color: var(--text); }
+.quiet { display: flex; gap: var(--s-8); margin-top: var(--s-5); flex-wrap: wrap; justify-content: center; }
+.hint { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: var(--s-4) auto 0; text-align: center; max-width: 34em; }
+.hint.warn { color: var(--warn); }
+.hint.lead { margin: 0 auto var(--s-4); }
+
+/* the lens: one field of headline cards; depth is blur, size and opacity, never a shadow */
+.lens { position: relative; overflow: hidden; height: var(--lens-h); margin: var(--s-6) auto 0; max-width: var(--measure);
+  background: var(--bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.lens.sticky { position: sticky; top: 0; z-index: 7; }
+.card { position: absolute; left: 0; top: 0; width: var(--card-w); height: var(--card-h); padding: var(--s-2) var(--s-3);
+  background: var(--bg-elev); border: 1px solid var(--border); display: grid; align-content: center; gap: var(--s-1);
+  transform-origin: center; pointer-events: none;
+  transition: transform var(--t-focus) cubic-bezier(.3,.7,.2,1), filter var(--t-focus) ease-out, opacity var(--t-focus) ease-out, border-color var(--t-scene); }
+.card b { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card span { font-size: calc(14px * var(--type-scale)); line-height: 1.3; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card[data-depth="noise"] { z-index: 2; }
+.card[data-depth="focus"] { z-index: 6; background: var(--surface); border-color: var(--border-strong); }
+.card[data-depth="near"] { z-index: 5; filter: blur(var(--blur-near)); opacity: .9; }
+.card[data-depth="mid"] { z-index: 3; filter: blur(var(--blur-mid)); opacity: .7; }
+.card[data-depth="far"] { z-index: 1; filter: blur(var(--blur-far)); opacity: .6; }
+.card[data-depth="farther"] { z-index: 0; filter: blur(var(--blur-farther)); opacity: .28; }
+.card.hi { border-color: var(--text-dim); }
+.card.more { border-color: var(--accent); }
+.card.enter { opacity: 0; }
+.frame { position: absolute; z-index: 4; pointer-events: none; display: grid; place-items: center;
+  transition: opacity var(--t-scene) ease-out; }
+.frame.off { opacity: 0; }
+.frame i { position: absolute; width: var(--s-3); height: var(--s-3); border: 0 solid var(--text-dim); }
+.frame i:nth-child(1) { left: 0; top: 0; border-left-width: 1px; border-top-width: 1px; }
+.frame i:nth-child(2) { right: 0; top: 0; border-right-width: 1px; border-top-width: 1px; }
+.frame i:nth-child(3) { left: 0; bottom: 0; border-left-width: 1px; border-bottom-width: 1px; }
+.frame i:nth-child(4) { right: 0; bottom: 0; border-right-width: 1px; border-bottom-width: 1px; }
+.frame .label { opacity: 0; transition: opacity var(--t-scene); text-align: center; padding: 0 var(--s-3); }
+.frame.empty .label { opacity: 1; }
+
+/* the three depths, named before the issue uses them */
+.depths { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2) var(--s-5); margin: var(--s-3) auto 0; }
+.depths span { display: inline-flex; align-items: center; gap: var(--s-2); }
+.depths i { width: var(--s-3); height: var(--s-3); background: var(--text); }
+.depths i.mid { filter: blur(1px); opacity: .7; }
+.depths i.far { filter: blur(2px); opacity: .5; }
+
+/* the feed picker: topic filters and feeds on one screen */
+.filters, .feeds { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.filters { margin-top: var(--s-5); }
+.feeds { margin-top: var(--s-4); }
+.chip { min-height: 36px; padding: 0 var(--s-3); border-radius: var(--r-tag); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-sans); font-size: calc(14px * var(--type-scale));
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast); }
+.chip:hover { color: var(--text); }
+.chip.filter { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); letter-spacing: .1em; text-transform: uppercase; background: none; }
+.chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+.chip .n { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
+.own { display: flex; gap: var(--s-2); margin: var(--s-6) auto 0; max-width: 34em; flex-wrap: wrap; align-items: flex-end; }
+.own label { width: 100%; }
+.field { flex: 1; min-width: 0; height: 44px; padding: 0 var(--s-3); border-radius: var(--r-control); border: 1px solid var(--border-strong);
+  background: var(--bg-elev); color: var(--text); font-family: var(--font-mono); font-size: 16px; }
+.field:focus { outline: none; border-color: var(--accent); }
+.field[aria-invalid="true"] { border-color: var(--warn); }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-8); }
+.nav.sticky { position: sticky; bottom: 0; z-index: 7; background: var(--bg); border-top: 1px solid var(--border); padding: var(--s-3) 0; margin-top: var(--s-6); }
+.nav .grow { flex: 1; }
+.btn { height: 44px; padding: 0 var(--s-5); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; border-radius: var(--r-control); border: 1px solid transparent; cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* the first issue: the lens's depth order read top to bottom */
+.issue { margin-top: var(--s-4); }
+.issue.appear { animation: fade var(--t-scene) ease-out both; }
+.issue-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-4); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -0.04em; margin: 0; }
+.layer { margin-top: var(--s-12); }
+.layer-head { margin: 0 0 var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-2); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.layer.mid .marker::before { filter: blur(1px); }
+.layer.far .marker::before { filter: blur(2px); background: var(--text-dim); }
+.layer-head p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); display: grid; gap: var(--s-1); }
+.item + .item { border-top: 0; }
+.item h3 { font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; margin: 0; }
+.item.deep { background: var(--surface); border-color: var(--border-strong); padding: var(--s-5); }
+.item.deep h3 { font-size: calc(22px * var(--type-scale)); }
+.item p { margin: 0; font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.item .more { color: var(--accent); }
+.water { border: 1px solid var(--border); background: var(--bg-elev); }
+.water div { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.water div:last-child { border-bottom: 0; }
+.water .label { flex: none; }
+.empty { font-size: calc(14px * var(--type-scale)); color: var(--text-dim); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top"><span class="brand"><i aria-hidden="true"></i>Cyris</span><span class="label" id="progress"></span></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+</main>
+<script>
+"use strict";
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/* ---- fake data: names and topics from src/cyris/onboarding_feeds.json ---- */
+const TOPICS = [
+  { id: "tech", label: "Technology" },
+  { id: "business", label: "Business & economy" },
+  { id: "world", label: "World" },
+  { id: "taiwan", label: "Taiwan" },
+  { id: "science", label: "Science & health" },
+  { id: "ideas", label: "Ideas & culture" },
+];
+const FEEDS = [
+  ["中央社即時新聞 政治新聞", ["taiwan"]], ["中央社即時新聞 科技新聞", ["tech", "taiwan"]], ["報導者", ["taiwan", "ideas"]],
+  ["公視新聞網", ["taiwan"]], ["自由時報", ["taiwan"]], ["關鍵評論網", ["taiwan", "ideas"]], ["iThome", ["tech"]],
+  ["科技新報", ["tech"]], ["INSIDE", ["tech", "business"]], ["BBC中文網 繁體", ["world"]], ["紐約時報中文網 繁體", ["world"]],
+  ["RFI 法國國際廣播電台 繁體", ["world"]], ["明報新聞網", ["world"]], ["RTHK 香港電台", ["world"]], ["經濟日報", ["business", "taiwan"]],
+  ["換日線", ["ideas", "world"]], ["電腦王阿達", ["tech"]], ["BBC News", ["world"]], ["The New York Times", ["world"]],
+  ["The Guardian", ["world"]], ["NPR", ["world"]], ["The Verge", ["tech"]], ["Ars Technica", ["tech"]],
+  ["The Economist", ["world", "business"]], ["Financial Times", ["business", "world"]], ["Bloomberg", ["business"]],
+  ["Hacker News", ["tech"]], ["Techmeme", ["tech"]], ["數位時代", ["tech", "business"]], ["Gea-Suan Lin's BLOG", ["tech"]],
+  ["Simon Willison's Weblog", ["tech"]], ["Daring Fireball", ["tech"]], ["Stratechery", ["tech", "business"]],
+  ["ChinaTalk", ["world", "tech"]], ["市場先生", ["business"]], ["股感 StockFeel", ["business"]], ["Marginal Revolution", ["business"]],
+  ["Noahpinion", ["business", "world"]], ["Paul Krugman", ["business"]], ["端傳媒", ["world", "taiwan"]],
+  ["Global Taiwan Institute", ["taiwan", "world"]], ["台灣事實查核中心", ["taiwan"]], ["Focus Taiwan (CNA English)", ["taiwan"]],
+  ["Taiwan Insight", ["taiwan"]], ["泛科學 PanSci", ["science"]], ["CASE 報科學", ["science"]], ["Quanta Magazine", ["science"]],
+  ["Nautilus", ["science", "ideas"]], ["Aeon", ["ideas", "science"]], ["Readmoo 閱讀最前線", ["ideas"]], ["OKAPI 閱讀生活誌", ["ideas"]],
+  ["The Marginalian", ["ideas"]], ["The Atlantic Ideas", ["ideas"]], ["Dezeen", ["ideas"]], ["Lenny's Newsletter", ["business", "tech"]],
+  ["Not Boring", ["business", "tech"]], ["Slow Boring", ["world"]], ["The Diplomat", ["world"]], ["Foreign Policy", ["world"]],
+  ["Kottke", ["ideas"]], ["Literary Hub", ["ideas"]], ["Terence Tao", ["science"]], ["The Conversation", ["science", "world"]],
+].map(([name, topics]) => ({ name, topics }));
+const STANCE_POOL = {
+  tech: ["台積電美國廠", "AI 代理", "開源授權"],
+  business: ["美國關稅", "央行利率", "輝達財報"],
+  world: ["烏克蘭停火談判", "美中晶片管制", "加薩人道走廊"],
+  taiwan: ["總預算審查", "罷免投票", "健保費率調整"],
+  science: ["登革熱疫情", "減重藥物", "韋伯望遠鏡"],
+  ideas: ["獨立書店", "長照人力", "AI 與著作權"],
+};
+const TITLES = {
+  tech: ["企業導入 AI 代理的第一年：權限管理成最大瓶頸", "亞利桑那二廠提前量產，良率仍落後台南", "開源授權改版爭議：社群為何出走"],
+  business: ["關稅上路三個月：台灣出口商怎麼調整供應鏈", "央行按兵不動，房市信用管制再收緊", "輝達財報優於預期，伺服器供應鏈訂單看到明年"],
+  world: ["停火談判第二輪：雙方在哪些條件上仍有分歧", "美中晶片管制再升級，東南亞封測廠受惠", "人道走廊重開，聯合國物資車隊進入北部"],
+  taiwan: ["山區部落的最後一哩路：偏鄉醫療的十年", "總預算審查卡關，地方建設經費延宕", "健保費率調整案：誰多付、誰少付"],
+  science: ["登革熱南部疫情升溫，專家：社區孳生源是關鍵", "減重藥物的長期數據：停藥後會怎樣", "韋伯望遠鏡看見最早的星系團"],
+  ideas: ["獨立書店的第三種活法", "長照人力缺口：移工之外還有什麼路", "生成式 AI 與著作權：法院怎麼看"],
+};
+const LANGS = ["Traditional Chinese", "Simplified Chinese", "English", "Japanese"];
+const LANG_TAG = { "Traditional Chinese": "zh-Hant", "Simplified Chinese": "zh-Hans", English: "en", Japanese: "ja" };
+
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.codePointAt(0)) % 9973; return h; }
+const feedRec = name => FEEDS.find(f => f.name === name);
+const topicOf = name => feedRec(name)?.topics[0] || "tech";
+const isLatin = s => /^[\x00-\x7f’]+$/.test(s);
+
+/* ---- state; a step opened by hash fills in what the steps before it would have ---- */
+const STEPS = ["opening", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+function detectLang() {
+  const l = (navigator.language || "en").toLowerCase();
+  if (/^zh-(tw|hk|mo|hant)/.test(l)) return "Traditional Chinese";
+  if (l.startsWith("zh")) return "Simplified Chinese";
+  if (l.startsWith("ja")) return "Japanese";
+  return "English";
+}
+const S = {
+  filter: [], feeds: null, own: [], whole: null, fetched: false,
+  stances: {}, sIdx: 0, issued: false, done: false,
+  hours: [8, 18], lang: detectLang(),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", discord: "", email: "",
+};
+function ensure(step) {
+  const i = STEPS.indexOf(step);
+  if (i > 1 && S.feeds === null) S.feeds = ["報導者", "公視新聞網", "關鍵評論網", "iThome", "Stratechery", "數位時代"];
+  if (i > 2 && S.whole === null) S.whole = { "報導者": true, "Stratechery": true };
+  if (i > 3) S.fetched = true;
+  if (i > 5) S.issued = true;
+}
+const pickedFeeds = () => [...(S.feeds || []), ...S.own];
+const isWhole = f => !!(S.whole && S.whole[f] === true);
+const wholeFeeds = () => pickedFeeds().filter(isWhole);
+/* unanswered means skim; a skimmed feed tells a story when another skimmed feed shares its topic, else a fragment */
+function trayOf(f) {
+  if (isWhole(f)) return "deep";
+  const c = topicOf(f);
+  return pickedFeeds().filter(g => topicOf(g) === c && !isWhole(g)).length >= 2 ? "story" : "fragment";
+}
+function stanceTopics() {
+  const ids = [...new Set(pickedFeeds().map(topicOf))];
+  if (!ids.length) ids.push("taiwan", "tech");
+  const out = [];
+  for (let r = 0; out.length < 6 && r < 3; r++) for (const id of ids) if (out.length < 6) out.push(STANCE_POOL[id][r]);
+  for (const t of TOPICS) for (const s of STANCE_POOL[t.id]) if (out.length < 6 && !out.includes(s)) out.push(s);
+  return out;
+}
+const catOfStance = t => Object.keys(STANCE_POOL).find(k => STANCE_POOL[k].includes(t)) || "tech";
+
+/* ---- the issue the answers make (from e-stream-letter) ---- */
+function issueParts() {
+  const feeds = pickedFeeds(), st = t => S.stances[t];
+  const whole = wholeFeeds().map(f => ({ feed: f, title: TITLES[topicOf(f)][hash(f) % 3] }));
+  const sand = [], water = [];
+  for (const c of [...new Set(feeds.map(topicOf))]) {
+    const skim = feeds.filter(f => topicOf(f) === c && !isWhole(f));
+    if (!skim.length) continue;
+    const pool = STANCE_POOL[c].filter(t => st(t) !== "less").sort((a, b) => (st(b) === "more") - (st(a) === "more"));
+    if (skim.length >= 2 && pool.length) {
+      sand.push({ topic: pool[0], cat: c, more: st(pool[0]) === "more", sources: skim });
+      water.push({ title: TITLES[c][(hash(c) + 1) % 3], feed: skim[skim.length - 1] });
+    } else skim.forEach((f, k) => water.push({ title: TITLES[c][(hash(f) + k + 1) % 3], feed: f }));
+  }
+  return { whole, sand, water };
+}
+
+const pad = h => String(h).padStart(2, "0") + ":00";
+let timers = [];
+function later(fn, ms) { const t = setTimeout(fn, RM.matches ? 0 : ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+/* ---- a sentence that assembles word by word; nodes in it are single words ---- */
+function sentence(parts, cls) {
+  const el = document.createElement("p");
+  el.className = "say" + (cls ? " " + cls : "");
+  let n = 0;
+  const word = node => { const w = document.createElement("span"); w.className = "w"; w.style.animationDelay = (n++ * 45) + "ms"; w.append(node); el.append(w); };
+  for (const part of parts) {
+    if (typeof part === "string") part.split(/(\s+)/).forEach(tok => { if (!tok) return; if (/^\s+$/.test(tok)) el.append(" "); else word(document.createTextNode(tok)); });
+    else word(part);
+  }
+  el.assembledIn = RM.matches || (cls || "").includes("still") ? 0 : n * 45 + 520;
+  return el;
+}
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function blankBtn(text, pressed, onTap) {
+  const b = el("button", "blank", text); b.type = "button";
+  if (pressed !== null) b.setAttribute("aria-pressed", String(!!pressed));
+  b.addEventListener("click", () => onTap(b)); return b;
+}
+function btn(text, kind, onTap) { const b = el("button", "btn " + kind, text); b.type = "button"; b.addEventListener("click", onTap); return b; }
+function hint(text, cls) { return el("p", "hint" + (cls ? " " + cls : ""), text); }
+function span(t) { const s = el("span", "", t); if (!isLatin(t)) s.lang = ""; return s; }
+function sayBtn(t, pressed, fn) { const b = blankBtn(t, pressed, fn); b.classList.add("say", "dense"); return b; }
+const lock = stage => stage.querySelectorAll("button, input, select").forEach(b => b.disabled = true);
+function nav(step, primary, back, cls) {
+  const n = el("div", "nav" + (cls ? " " + cls : ""));
+  const i = STEPS.indexOf(step);
+  if (i > 0) n.append(btn("Back", "secondary", back || (() => go(STEPS[i - 1], false))));
+  if (step !== "settings") n.append(btn("Skip", "secondary", () => skip(step)));
+  n.append(el("span", "grow"));
+  if (primary) n.append(primary);
+  return n;
+}
+function lensBox(sticky) { LENS.root.classList.toggle("sticky", !!sticky); return LENS.root; }
+function depthsLegend() {
+  const d = el("div", "depths"); d.setAttribute("aria-hidden", "true");
+  [["", "Deep reads, in focus"], ["mid", "Stories, middle distance"], ["far", "Fragments, background"]].forEach(([c, t]) => {
+    const s = el("span", "label"); s.append(el("i", c), document.createTextNode(t)); d.append(s);
+  });
+  return d;
+}
+
+/* ---- cards: each feed brings two headlines; depth says how near the focus each sits ---- */
+const feedCards = f => [0, 1].map(k => ({ key: f + "#" + k, src: f, title: TITLES[topicOf(f)][(hash(f) + k) % 3] }));
+/* what the editor would put in focus from a plain list: the same few, however many come in */
+const editorPick = cards => {
+  const seen = new Set();
+  return new Set(cards.slice().sort((a, b) => hash(a.key) - hash(b.key)).filter(c => !seen.has(c.src) && seen.add(c.src)).slice(0, 3).map(c => c.key));
+};
+function answeredCards(stage) {
+  /* stage: 0 all sharp (noise), 1 deep reads in focus, 2 stories to the middle, 3 fragments to the back */
+  const out = [];
+  for (const f of pickedFeeds()) {
+    const tray = trayOf(f);
+    feedCards(f).forEach((c, k) => {
+      let d = "noise";
+      if (tray === "deep" && stage >= 1) d = k === 0 ? "focus" : "mid";
+      else if (tray === "story" && stage >= 2) d = "mid";
+      else if (stage >= 3) d = "far";
+      out.push({ ...c, depth: d });
+    });
+  }
+  return out;
+}
+
+/* ---- moving between steps ---- */
+function go(step, fwd) {
+  const stage = document.getElementById("stage");
+  if (fwd && !RM.matches) { stage.classList.add("leaving"); setTimeout(() => setHash(step), 260); }
+  else setHash(step);
+}
+function setHash(step) { if (location.hash === "#" + step) render(); else location.hash = step; }
+function next(step) { go(STEPS[STEPS.indexOf(step) + 1], true); }
+function skip(step) {
+  if (step === "feeds" && S.feeds === null) S.feeds = [];
+  if (step === "lanes" && S.whole === null) S.whole = {};
+  if (step === "fetch") S.fetched = true;
+  if (step === "stances") S.sIdx = 0;
+  if (step === "issue") S.issued = true;
+  next(step);
+}
+
+/* ---- the steps ---- */
+const OPEN_CARDS = (() => {
+  const srcs = ["自由時報", "BBC News", "iThome", "經濟日報", "The Verge", "公視新聞網", "Bloomberg", "報導者", "泛科學 PanSci", "The Guardian", "明報新聞網", "Techmeme"];
+  const all = [];
+  Object.keys(TITLES).forEach((c, ci) => TITLES[c].forEach((t, k) => all.push({ key: "o" + ci + k, src: srcs[(ci * 3 + k) % srcs.length], title: t })));
+  ["颱風動態", "股市收盤", "演唱會門票", "手機新品", "交通事故", "選舉民調"].forEach((t, k) => all.push({ key: "x" + k, src: srcs[(k * 5) % srcs.length], title: t }));
+  return all;
+})();
+const VIEW = {
+  opening(stage) {
+    const s = sentence(["Your attention has ", el("em", "", "one"), " focus. I keep what matters in it."]);
+    stage.append(s, lensBox());
+    const focus = new Set(["o30", "o02", "o51"]);
+    LENS.set(OPEN_CARDS.map(c => ({ ...c, depth: "noise" })), { frame: false });
+    later(() => LENS.set(OPEN_CARDS.map(c => ({ ...c, depth: focus.has(c.key) ? "focus" : "far" })), { frame: true }), s.assembledIn + 900);
+    stage.append(nav("opening", btn("Show me how", "primary", () => next("opening"))));
+  },
+
+  feeds(stage) {
+    if (S.feeds === null) S.feeds = [];
+    stage.append(sentence(["What should I read for you?"]));
+    stage.append(lensBox(true));
+    const refresh = () => {
+      const cards = pickedFeeds().flatMap(feedCards);
+      const pick = editorPick(cards);
+      LENS.set(cards.map(c => ({ ...c, depth: pick.has(c.key) ? "focus" : "far" })), { frame: true, empty: "Nothing in focus yet" });
+      status.textContent = pickedFeeds().length ? "Each feed joins the background. The focus stays the same size. Tap one again to remove it." : "Tap any feed. None is fine too.";
+    };
+    const filters = el("div", "filters"); filters.setAttribute("aria-label", "Show feeds about");
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Feeds");
+    const status = hint(""); status.setAttribute("aria-live", "polite");
+    const drawList = () => {
+      list.textContent = "";
+      const shown = FEEDS.filter(f => !S.filter.length || f.topics.some(t => S.filter.includes(t)));
+      for (const f of shown) {
+        const c = el("button", "chip"); c.type = "button";
+        const nm = el("span", "", f.name); if (!isLatin(f.name)) nm.lang = "";
+        c.append(nm);
+        c.setAttribute("aria-pressed", String(S.feeds.includes(f.name)));
+        c.addEventListener("click", () => {
+          const on = !S.feeds.includes(f.name);
+          S.feeds = on ? [...S.feeds, f.name] : S.feeds.filter(x => x !== f.name);
+          c.setAttribute("aria-pressed", String(on));
+          S.whole = null; refresh();
+        });
+        list.append(c);
+      }
+      for (const o of S.own) {
+        const c = el("button", "chip"); c.type = "button"; c.setAttribute("aria-pressed", "true");
+        c.append(el("span", "", o), el("span", "n", "yours"));
+        c.addEventListener("click", () => { S.own = S.own.filter(x => x !== o); S.whole = null; drawList(); refresh(); });
+        list.append(c);
+      }
+    };
+    const all = el("button", "chip filter", "All"); all.type = "button";
+    const fBtns = TOPICS.map(t => { const b = el("button", "chip filter", t.label); b.type = "button"; b.dataset.id = t.id; return b; });
+    const syncFilters = () => { all.setAttribute("aria-pressed", String(!S.filter.length)); fBtns.forEach(b => b.setAttribute("aria-pressed", String(S.filter.includes(b.dataset.id)))); };
+    all.addEventListener("click", () => { S.filter = []; syncFilters(); drawList(); });
+    fBtns.forEach(b => b.addEventListener("click", () => { S.filter = [b.dataset.id]; syncFilters(); drawList(); }));
+    filters.append(all, ...fBtns); syncFilters();
+    stage.append(filters, list, status);
+
+    const own = el("div", "own");
+    const lab = el("label", "label", "Or paste one of your own (optional)"); lab.htmlFor = "own-feed";
+    const inp = el("input", "field"); inp.id = "own-feed"; inp.type = "url"; inp.placeholder = "https://"; inp.autocomplete = "off";
+    const add = btn("Add", "secondary", () => {
+      const v = inp.value.trim();
+      if (!/^https?:\/\/[^\s.]+\.[^\s]+$/.test(v)) { inp.setAttribute("aria-invalid", "true"); err.textContent = "That doesn't look like a feed address. It starts with https://."; return; }
+      const h = new URL(v).hostname.replace(/^www\./, "");
+      if (!S.own.includes(h)) S.own.push(h);
+      inp.value = ""; S.whole = null; drawList(); refresh();
+    });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+    inp.addEventListener("input", () => { inp.removeAttribute("aria-invalid"); err.textContent = ""; });
+    const err = hint("", "warn"); err.setAttribute("role", "status");
+    own.append(lab, inp, add);
+    stage.append(own, err);
+    stage.append(nav("feeds", btn("Continue", "primary", () => next("feeds")), null, "sticky"));
+    drawList(); refresh();
+  },
+
+  /* one question over all picked feeds: a tapped feed comes into focus, the rest stay further back */
+  lanes(stage) {
+    const feeds = pickedFeeds();
+    if (S.whole === null) S.whole = {};
+    const back = () => go("feeds", false);
+    if (!feeds.length) {
+      stage.append(sentence(["Nothing to focus on yet."]));
+      stage.append(hint("You picked no feeds. Go Back to pick some, or go on and add them later in Settings."));
+      stage.append(nav("lanes", btn("Go on", "primary", () => next("lanes")), back));
+      return;
+    }
+    feeds.forEach(g => { if (!(g in S.whole)) S.whole[g] = false; });
+    const label = () => wholeFeeds().length ? "These, in focus" : "None, skim them all";
+    const go_on = btn(label(), "primary", () => next("lanes"));
+    stage.append(sentence(["Is there a source you never want to miss?"]));
+    const draw = () => LENS.set(answeredCards(3), { frame: true, empty: "Tap a source to bring it into focus" });
+    const list = el("div", "feeds"); list.setAttribute("aria-label", "Sources you never want to miss");
+    for (const f of feeds) {
+      const c = el("button", "chip"); c.type = "button"; c.append(span(f));
+      c.setAttribute("aria-pressed", String(S.whole[f] === true));
+      c.addEventListener("click", () => {
+        S.whole[f] = !S.whole[f];
+        c.setAttribute("aria-pressed", String(S.whole[f]));
+        draw(); go_on.textContent = label();
+      });
+      list.append(c);
+    }
+    stage.append(list, lensBox(), depthsLegend());
+    stage.append(hint("What you tap comes into focus and I hand it to you whole. The rest I skim: stories when several feeds tell one, fragments when one does."));
+    draw();
+    stage.append(nav("lanes", go_on, back));
+  },
+
+  fetch(stage) {
+    const feeds = pickedFeeds();
+    const box = el("div"); stage.append(box);
+    const say = parts => { box.textContent = ""; box.append(sentence(parts, "still")); };
+    const go_on = () => { S.fetched = true; next("fetch"); };
+    if (!feeds.length) {
+      box.append(sentence(["Nothing to read yet: no feeds picked."]));
+      stage.append(nav("fetch", btn("Go on", "primary", go_on)));
+      return;
+    }
+    stage.append(lensBox());
+    stage.append(nav("fetch", btn("Go on", "primary", go_on)));
+    const finish = () => {
+      S.fetched = true;
+      LENS.set(answeredCards(3), { frame: true });
+      say(["I’ve read what’s new. Here is where it sits."]);
+    };
+    if (S.fetched || RM.matches) { finish(); return; }
+    const arrived = [];
+    LENS.set([], { frame: true, empty: "Reading" });
+    say(["Reading your feeds…"]);
+    const per = 6500 / feeds.length;
+    feeds.forEach((f, k) => later(() => {
+      arrived.push(f);
+      LENS.set(arrived.flatMap(feedCards).map(c => ({ ...c, depth: "far" })), { frame: true, empty: "Reading" });
+      say(["Reading ", span(f), "…"]);
+    }, k * per));
+    later(finish, 7500);
+  },
+
+  /* one topic per sentence; more pulls its cards toward the focus, less sends them further back */
+  stances(stage) {
+    const topics = stanceTopics();
+    if (S.sIdx >= topics.length) S.sIdx = 0;
+    const t = topics[S.sIdx];
+    const topic = el("em", "", t); topic.lang = "";
+    if (S.sIdx === 0) stage.append(hint("I read the sources you picked and found these topics in them.", "lead"));
+    stage.append(sentence(["More of ", topic, "?"]));
+    const q = el("div", "quiet");
+    const draw = () => {
+      const base = answeredCards(3).map(c => c.depth === "focus" ? c : { ...c, depth: c.depth === "mid" ? "far" : c.depth });
+      const srcs = pickedFeeds().filter(f => topicOf(f) === catOfStance(t));
+      const cards = topics.map(x => {
+        const v = S.stances[x];
+        const depth = v === "more" ? "near" : v === "less" ? "farther" : x === t ? "mid" : "far";
+        const n = x === t ? 2 : 1;
+        return Array.from({ length: n }, (_, k) => ({ key: "t:" + x + k, src: (x === t && srcs[k]) || "your sources", title: x, depth,
+          cls: x === t ? (v === "more" ? "more" : "hi") : v === "more" ? "more" : "" }));
+      }).flat();
+      LENS.set([...base, ...cards], { frame: true });
+    };
+    const answer = v => b => {
+      S.stances[t] = v; lock(stage); b.setAttribute("aria-pressed", "true");
+      draw();
+      later(() => { if (S.sIdx + 1 < topics.length) { S.sIdx++; go("stances", true); } else { S.sIdx = 0; next("stances"); } }, 2200);
+    };
+    q.append(sayBtn("More, please.", S.stances[t] === "more", answer("more")), sayBtn("Less.", S.stances[t] === "less", answer("less")));
+    stage.append(q, lensBox());
+    draw();
+    stage.append(hint("More pulls it up to the focus; less sends it further back. No answer counts for nothing."));
+    stage.append(nav("stances", null, () => { if (S.sIdx > 0) { S.sIdx--; go("stances", false); } else go("fetch", false); }));
+  },
+
+  issue(stage) {
+    const reveal = () => {
+      clearTimers(); S.issued = true;
+      stage.textContent = "";
+      const issue = buildIssue(); if (!RM.matches) issue.classList.add("appear");
+      stage.append(issue);
+      stage.append(nav("issue", btn("One more thing", "primary", () => next("issue"))));
+      window.scrollTo(0, 0);
+    };
+    if (S.issued || RM.matches) { reveal(); return; }
+    const box = el("div"); stage.append(box);
+    const say = l => { box.textContent = ""; box.append(sentence(l, "still")); };
+    stage.append(lensBox());
+    const w = wholeFeeds(), p = issueParts();
+    const lines = [
+      [["Everything that came in, all sharp at once."], 0],
+      [w.length ? ["Into focus: ", span(w[0]), ", read whole."] : ["Nothing in focus today: you asked for nothing whole."], 1],
+      [p.sand.length ? ["To the middle: ", span(p.sand[0].topic), ", one story."] : ["No stories this time: no two feeds shared a topic."], 2],
+      [["The rest to the background: fragments, a line each."], 3],
+      [["Here is your first issue."], 3],
+    ];
+    stage.append(nav("issue", btn("Show me now", "primary", reveal)));
+    lines.forEach(([l, st], k) => later(() => { say(l); LENS.set(answeredCards(st), { frame: st > 0, empty: "" }); }, k * 2400));
+    later(() => location.hash === "#issue" && !S.issued && reveal(), 12000);
+  },
+
+  settings(stage) {
+    if (S.done) {
+      stage.append(sentence(["Until ", span(pad(S.hours[0])), ", then."]));
+      stage.append(hint("This prototype ends here. In the product, Finish opens Settings."));
+      stage.append(nav("settings", btn("Change these", "secondary", () => { S.done = false; render(); })));
+      return;
+    }
+    const hourIn = k => {
+      const i = el("input", "blank hour"); i.type = "number"; i.min = "0"; i.max = "23"; i.inputMode = "numeric";
+      i.value = String(S.hours[k]); i.setAttribute("aria-label", k ? "Second publish hour" : "First publish hour");
+      i.addEventListener("input", () => { const v = Number(i.value); const ok = i.value !== "" && v >= 0 && v <= 23 && Number.isInteger(v); i.toggleAttribute("aria-invalid", !ok); if (ok) S.hours[k] = v; });
+      return i;
+    };
+    const sel = (opts, val, label, onPick) => {
+      const s = el("select", "blank"); s.setAttribute("aria-label", label);
+      opts.forEach(o => s.append(new Option(o, o, false, o === val)));
+      const fit = () => s.style.width = (s.value.length * 0.36 + 0.5) + "em";
+      s.addEventListener("change", () => { onPick(s.value); fit(); }); fit(); return s;
+    };
+    const zones = [...new Set([S.tz, "Asia/Taipei", "Asia/Tokyo", "Europe/London", "America/New_York", "America/Los_Angeles", "UTC"])];
+    const text = (type, ph, key, label) => {
+      const i = el("input", "blank wide"); i.type = type; i.placeholder = ph; i.value = S[key];
+      i.setAttribute("aria-label", label); i.addEventListener("input", () => S[key] = i.value.trim()); return i;
+    };
+    stage.append(sentence(["P.S. Each day at ", hourIn(0), " and ", hourIn(1), ", in ",
+      sel(LANGS, S.lang, "Output language", v => S.lang = v), ", on ",
+      sel(zones, S.tz, "Timezone", v => S.tz = v), " time, I’ll bring what matters into focus. I can also tell ",
+      text("url", "a Discord webhook", "discord", "Discord webhook"), " or ", text("email", "your email", "email", "Email"), "."], "dense"));
+    stage.append(hint("Language and timezone came from this browser. Everything here is optional."));
+    const err = hint("", "warn"); err.setAttribute("role", "status"); stage.append(err);
+    stage.append(nav("settings", btn("Finish", "primary", () => {
+      if (stage.querySelector("[aria-invalid]")) { err.textContent = "A publish hour is a whole number from 0 to 23."; return; }
+      S.done = true;
+      if (RM.matches) render(); else { stage.classList.add("leaving"); setTimeout(render, 260); }
+    })));
+  },
+};
+
+function buildIssue() {
+  const lang = LANG_TAG[S.lang] || "zh-Hant";
+  const sec = el("section", "issue"); sec.setAttribute("aria-label", "Your first issue");
+  const head = el("div", "issue-head");
+  head.append(el("h2", "issue-title", "Issue one"), el("span", "data", new Date().toISOString().slice(0, 10)));
+  sec.append(head);
+  const layer = (name, help, cls) => {
+    const l = el("div", "layer " + cls); const lh = el("div", "layer-head");
+    lh.append(el("h3", "marker label", name), el("p", "", help));
+    l.append(lh); sec.append(l); return l;
+  };
+  const { whole, sand, water } = issueParts();
+  const deep = layer("Deep reads", "In focus: the sources you never want to miss, read whole.", "near");
+  if (!whole.length) deep.append(el("p", "empty", "None: you asked for nothing whole. Tap a source you never want to miss and its pieces land here."));
+  whole.forEach(({ feed, title }) => {
+    const it = el("article", "item deep");
+    const h = el("h3", "", title); h.lang = "";
+    const p = el("p", "", lang === "en" ? "A summary of the whole piece, written for you." : "整篇讀完後替你寫的摘要：重點、脈絡與值得細讀的段落。"); p.lang = lang;
+    it.append(el("span", "label", feed), h, p); deep.append(it);
+  });
+  const storyL = layer("Stories", "The middle distance: several articles on one topic, told in a line.", "mid");
+  if (!sand.length) storyL.append(el("p", "empty", "None this time: no two skimmed feeds shared a topic."));
+  sand.forEach(s => {
+    const it = el("article", "item");
+    const h = el("h3", "", s.topic); h.lang = lang;
+    const p = el("p", "", lang === "en" ? "Several outlets on one development, told once." : "幾家媒體報導同一進展，合成一句話告訴你。"); p.lang = lang;
+    const lab = el("span", "label", s.sources.join(" · ")); lab.lang = "";
+    if (s.more) lab.append(el("span", "more", " · nearer, as you asked"));
+    it.append(h, p, lab); storyL.append(it);
+  });
+  const fragL = layer("Fragments", "The background: single headlines, still there when you want them.", "far");
+  if (!water.length) fragL.append(el("p", "empty", "None: pick a feed and its single headlines sit here."));
+  else {
+    const wl = el("div", "water");
+    water.forEach(r => { const row = el("div"); const t = el("span", "", r.title); t.lang = ""; row.append(t, el("span", "label", r.feed)); wl.append(row); });
+    fragL.append(wl);
+  }
+  return sec;
+}
+
+/* ================= the lens: headline cards at depths around one focal frame ================= */
+function createLens() {
+  const root = el("div", "lens"); root.setAttribute("aria-hidden", "true");
+  const frame = el("div", "frame off"); for (let i = 0; i < 4; i++) frame.append(el("i"));
+  const emptyLabel = el("span", "label", ""); frame.append(emptyLabel);
+  root.append(frame);
+  const nodes = new Map(); let list = [], opts = {};
+  const px = n => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n));
+  const SCALE = { noise: 0.86, mid: 0.8, far: 0.68, farther: 0.56 };
+
+  function layout() {
+    const W = root.clientWidth, H = root.clientHeight; if (!W) return;
+    const CW = px("--card-w"), CH = px("--card-h");
+    const fw = Math.min(W * 0.64, CW * 1.5), fh = H * 0.8, fx = (W - fw) / 2, fy = (H - fh) / 2;
+    Object.assign(frame.style, { left: fx + "px", top: fy + "px", width: fw + "px", height: fh + "px" });
+    /* the frame holds what is in focus, then what was pulled nearer it; more of them only makes each smaller */
+    const foc = [...list.filter(c => c.depth === "focus"), ...list.filter(c => c.depth === "near")];
+    const fit = cols => { const rows = Math.max(1, Math.ceil(foc.length / cols)); return Math.min(1.2, (fw / cols - 12) / CW, (fh / rows - 8) / CH); };
+    const cols = foc.length > 3 && fit(2) > fit(1) ? 2 : 1, rows = Math.max(1, Math.ceil(foc.length / cols));
+    const cw = fw / cols, ch = fh / rows;
+    const fs = fit(cols);
+    for (const c of list) {
+      const n = nodes.get(c.key);
+      let x, y, s;
+      if (c.depth === "focus" || c.depth === "near") {
+        const i = foc.indexOf(c);
+        x = fx + cw * (i % cols + 0.5); y = fy + ch * (Math.floor(i / cols) + 0.5); s = c.depth === "near" ? fs * 0.92 : fs;
+      } else {
+        const h = hash(c.key);
+        x = W * (0.04 + 0.92 * ((h * 13 % 997) / 997)); y = H * (0.1 + 0.8 * ((h * 7 % 991) / 991));
+        s = SCALE[c.depth] * (c.depth === "noise" ? 0.85 + (h % 7) * 0.05 : 1);
+      }
+      n.style.transform = `translate(${(x - CW / 2).toFixed(1)}px, ${(y - CH / 2).toFixed(1)}px) scale(${s.toFixed(3)})`;
+      n.dataset.depth = c.depth;
+      n.className = "card" + (c.cls ? " " + c.cls : "") + (n.classList.contains("enter") ? " enter" : "");
+    }
+    frame.classList.toggle("off", !opts.frame);
+    emptyLabel.textContent = opts.empty || "";
+    frame.classList.toggle("empty", !foc.length && !!opts.empty);
+  }
+
+  const api = { root };
+  api.set = (cards, o = {}) => {
+    opts = o; list = cards;
+    const keep = new Set(cards.map(c => c.key));
+    for (const [k, n] of nodes) if (!keep.has(k)) { n.remove(); nodes.delete(k); }
+    const fresh = [];
+    for (const c of cards) {
+      if (nodes.has(c.key)) continue;
+      const n = el("div", "card enter");
+      const b = el("b", "", c.src); if (!isLatin(c.src)) b.lang = "";
+      const t = el("span", "", c.title); t.lang = "";
+      n.append(b, t); root.append(n); nodes.set(c.key, n); fresh.push(n);
+    }
+    layout();
+    if (fresh.length) { void root.offsetWidth; requestAnimationFrame(() => fresh.forEach(n => n.classList.remove("enter"))); }
+  };
+  new ResizeObserver(layout).observe(root);
+  return api;
+}
+const LENS = createLens();
+
+function render() {
+  clearTimers();
+  let step = location.hash.slice(1);
+  if (!STEPS.includes(step)) step = "opening";
+  ensure(step);
+  document.getElementById("progress").textContent = (STEPS.indexOf(step) + 1) + " of " + STEPS.length;
+  const stage = document.getElementById("stage");
+  stage.classList.remove("leaving"); stage.textContent = "";
+  VIEW[step](stage);
+}
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>

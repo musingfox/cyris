@@ -17,6 +17,30 @@ data; no request leaves the page.
 | `d-reveal.html` | Setup stays light; the two waits become a live view of the editor at work, ending in the first issue | first-issue reveal |
 | `e-stream-letter.html` | C's editor speaks over A's stream, rendered in 3D as pebble, sand and water | opening, preference forming, first-issue reveal |
 | `f-attention-funnel.html` | One claim, then learn by doing: every feed you add raises what comes in while what reaches you stays about twelve | preference forming, opening |
+| `g-jar.html` | Your attention is a jar: sand and water first leave no room for the stones, stones first and everything fits; feeds pour in, never-miss sources turn to stones on the floor, and the turned-over jar is the issue | opening, preference forming, first-issue reveal |
+| `i-orbit.html` | The reader is a point at the centre; articles crowd it, then sort into a small inner ring (Deep reads), a middle ring (Stories) and a wide faint outer ring (Fragments). Picks widen the outer ring, never-miss pulls a source inward, stances move a topic one ring in or out | opening, preference forming |
+| `h-focus.html` | Attention is a lens with one focal plane: a field of headlines all sharp at once is noise, then the lens pulls a few into focus and the rest blur into a background that stays; feeds only thicken the background, a never-miss source comes into focus, stances pull a topic up to the focus or push it back, and the issue reads the depths top to bottom as Deep reads, Stories, Fragments | opening, preference forming |
+| `j-room.html` | Every source is a voice in a crowded room: headlines talk over each other unreadably until the editor lets a few speak clearly in front and the rest drop to a dim murmur that stays; feeds only thicken the murmur, a never-miss source steps to the front, stances raise a topic out of the murmur or quiet it, and the second wait sorts the room into Deep reads, Stories and Fragments before the issue shows them | opening, preference forming |
+
+## Owner's review after A–F (2026-11-01)
+
+These override the flow below for every POC from G on.
+
+- **The message.** Your attention is limited: what matters comes first, then the rest of the news.
+- **Open with one claim**, then teach use by doing; no multi-beat explainer.
+- **No step makes the reader go find a feed.** Feeds are one screen of the project's list; topics
+  are filter chips that switch between topics (one at a time, plus All), never add up; an own
+  feed address is optional.
+- **Read whole is one question:** "Is there a source you never want to miss?" Untapped feeds are
+  skimmed.
+- **Topic stances first say** the topics were found in the sources the reader just picked.
+- **No specific numbers.** No articles per day, no "about 12": nothing backs them, and the design
+  doc sets no output cap ("罐子不設大小", vault `pm/cyris/docs/digest-pebble-sand-water.md` §2).
+- **A metaphor is introduced before it is used.** Pebble, sand and water are the jar metaphor of
+  that doc §2 (the mind is a jar: stones first, then sand, then water); shown as bare layers they
+  read as arbitrary. On screen the three layers are named as the doc does: Deep reads, Stories,
+  Fragments.
+- 2D Canvas or SVG only; three.js was dropped for its weight.
 
 ## The flow every POC walks (owner, 2026-11-01)
 
