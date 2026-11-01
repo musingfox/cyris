@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cyris onboarding · A sieve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-sans); overflow: hidden; }
+body { -webkit-font-smoothing: antialiased; }
+canvas#sieve { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.band {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  background: var(--bg-elev); border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; max-height: 62vh;
+}
+.band-scroll { overflow-y: auto; overflow-x: hidden; flex: 1 1 auto; }
+.band-inner { max-width: var(--measure); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-3); }
+.band-nav { border-top: 1px solid var(--border); }
+.band-nav .band-inner { padding-top: var(--s-3); padding-bottom: var(--s-3); display: flex; gap: var(--s-2); align-items: center; }
+.band-nav .grow { flex: 1; }
+
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim); }
+.display { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(34px, 5.4vw, 56px) * var(--type-scale)); line-height: 1; letter-spacing: -.03em; margin: var(--s-2) 0 var(--s-3); }
+.display em { font-style: italic; color: var(--accent); }
+.heading { font-weight: 600; font-size: calc(24px * var(--type-scale)); line-height: 1.3; letter-spacing: -.015em; margin: var(--s-2) 0 var(--s-2); }
+.small { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: 0 0 var(--s-3); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; }
+
+.btn {
+  height: 44px; padding: 0 var(--s-5);
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em;
+  border: 1px solid transparent; border-radius: var(--r-control); cursor: pointer; text-decoration: none;
+  transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast);
+}
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:where(:not(:disabled)):hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:where(:not(:disabled)):hover { color: var(--text); }
+.btn:where(:not(:disabled)):active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: var(--s-2); margin-bottom: var(--s-3); }
+@media (max-width: 719px) { .tiles { grid-template-columns: 1fr 1fr; } }
+.tile {
+  position: relative; min-height: var(--s-16); padding: var(--s-3) var(--s-8) var(--s-3) var(--s-4);
+  background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--r-control);
+  color: var(--text); text-align: left; cursor: pointer; font-family: var(--font-sans);
+  display: flex; flex-direction: column; gap: var(--s-1); justify-content: center;
+}
+.tile .t-name { font-weight: 600; font-size: calc(18px * var(--type-scale)); line-height: 1.3; }
+.tile::after { content: ""; position: absolute; top: var(--s-3); right: var(--s-3); width: var(--s-3); height: var(--s-3); border: 1px solid var(--border-strong); }
+.tile:hover { background: var(--surface); }
+.tile:active { opacity: .7; }
+.tile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); }
+.tile[aria-pressed="true"] .label { color: var(--accent); }
+.tile[aria-pressed="true"]::after { background: var(--accent); border-color: var(--accent); }
+
+fieldset.checklist { border: 1px solid var(--border); background: var(--bg-elev); border-radius: var(--r-control); padding: 0; margin: 0 0 var(--s-3); min-width: 0; }
+fieldset.checklist legend { padding: 0 var(--s-2); margin-left: var(--s-2); }
+.row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); min-width: 0; }
+.row:last-child { border-bottom: 0; }
+label.row { cursor: pointer; }
+label.row:hover { background: var(--surface); }
+.row input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; flex: none; }
+.row .name { flex: 1; min-width: 0; font-weight: 500; font-size: calc(16px * var(--type-scale)); overflow-wrap: anywhere; }
+.row .state { font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim); }
+
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-control); overflow: hidden; flex: none; }
+.seg button { height: 44px; padding: 0 var(--s-4); background: transparent; border: 0; border-right: 1px solid var(--border-strong); color: var(--text-dim); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; border-bottom: 2px solid transparent; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--accent); border-bottom-color: var(--accent); }
+@media (max-width: 719px) { .seg button { padding: 0 var(--s-3); } .lanes .row { flex-wrap: wrap; } }
+
+.field { display: flex; flex-direction: column; gap: var(--s-2); margin-bottom: var(--s-4); min-width: 0; }
+.input { height: 48px; padding: 0 var(--s-4); background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--r-control); color: var(--text); font-family: var(--font-sans); font-size: 16px; width: 100%; min-width: 0; }
+.input:focus { border-color: var(--accent); outline: none; }
+.field .help { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: 0; }
+.own { display: flex; gap: var(--s-2); }
+.grid2 { display: grid; grid-template-columns: 1fr; gap: 0 var(--s-4); }
+@media (min-width: 720px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+.hours { display: flex; gap: var(--s-2); }
+
+.legend { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-3); align-items: center; margin: 0 0 var(--s-4); font-size: calc(14px * var(--type-scale)); color: var(--text-dim); line-height: 1.5; }
+.legend svg { display: block; }
+
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: var(--s-5) 0 var(--s-2); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.issue { border: 1px solid var(--border-strong); background: var(--surface); padding: var(--s-4) var(--s-5); }
+.issue-head { display: flex; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: var(--s-3); }
+.issue h3 { font-weight: 600; font-size: calc(18px * var(--type-scale)); line-height: 1.3; margin: 0; }
+.it { padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.it:last-child { border-bottom: 0; }
+.it .meta { margin-top: var(--s-1); }
+.wl { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text); padding: var(--s-1) 0; display: flex; gap: var(--s-2); }
+.wl .label { flex: none; }
+.accent { color: var(--accent); }
+.notice { border-left: 2px solid var(--accent); background: var(--accent-tint); padding: var(--s-2) var(--s-3); font-size: calc(14px * var(--type-scale)); color: var(--text); margin: 0 0 var(--s-3); }
+.dots { display: flex; gap: var(--s-1); margin: var(--s-2) 0 var(--s-3); }
+.dots i { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--border-strong); }
+.dots i.on { background: var(--accent); border-color: var(--accent); }
+.dots i.done { background: var(--text-dim); border-color: var(--text-dim); }
+</style>
+</head>
+<body>
+<canvas id="sieve" aria-hidden="true"></canvas>
+<p class="sr" role="status" id="sr"></p>
+<section class="band" id="band" aria-live="off">
+  <div class="band-scroll"><div class="band-inner" id="q"></div></div>
+  <div class="band-nav"><div class="band-inner" id="nav"></div></div>
+</section>
+
+<script>
+(() => {
+'use strict';
+
+// ---------- fake data (feed names and topics from src/cyris/onboarding_feeds.json) ----------
+const TOPICS = [
+  { id: 'tech', label: 'Technology', feeds: [['中央社即時新聞 科技新聞', 'news'], ['iThome', 'tech'], ['科技新報', 'tech'], ['The Verge', 'tech'], ['Simon Willison\'s Weblog', 'tech · opinion'], ['Stratechery', 'tech · opinion']] },
+  { id: 'business', label: 'Business & economy', feeds: [['經濟日報', 'news'], ['The Economist', 'analysis'], ['Financial Times', 'news'], ['市場先生', 'analysis'], ['Noahpinion', 'analysis · opinion']] },
+  { id: 'world', label: 'World', feeds: [['BBC中文網 繁體', 'news'], ['紐約時報中文網 繁體', 'news'], ['RFI 法國國際廣播電台 繁體', 'news'], ['換日線', 'opinion'], ['The Guardian', 'news']] },
+  { id: 'taiwan', label: 'Taiwan', feeds: [['中央社即時新聞 政治新聞', 'news'], ['報導者', 'investigative'], ['公視新聞網', 'news'], ['自由時報', 'news'], ['台灣事實查核中心', 'investigative']] },
+  { id: 'science', label: 'Science & health', feeds: [['泛科學 PanSci', 'analysis'], ['CASE 報科學', 'analysis'], ['Quanta Magazine', 'analysis'], ['Nautilus', 'analysis'], ['Terence Tao', 'analysis']] },
+  { id: 'ideas', label: 'Ideas & culture', feeds: [['Aeon', 'opinion'], ['Readmoo 閱讀最前線', 'opinion'], ['OKAPI 閱讀生活誌', 'opinion'], ['The Marginalian', 'opinion'], ['Literary Hub', 'opinion']] },
+];
+const SUBS = {
+  tech: [['AI 晶片', ['輝達新一代晶片延後出貨，台廠供應鏈調整產能', '台積電先進封裝產能明年再擴一倍', '晶片出口管制新規上路，伺服器廠重排交期']], ['開源模型', ['開源語言模型追上閉源前沿，企業部署成本下降', '一家歐洲新創釋出可商用的多語模型', '本地端模型跑進筆電，隱私成為賣點']]],
+  business: [['利率', ['聯準會按兵不動，市場押注明年首季降息', '央行理監事會後維持利率，房市信用管制續行', '美債殖利率回落，壽險業避險成本鬆一口氣']], ['電動車', ['中國電動車出口放緩，歐洲關稅效應浮現', '電池原料價格觸底，車廠重新談長約', '充電樁營運商整併，市占前三拿下七成']]],
+  world: [['美國選舉', ['期中選舉倒數，兩黨在搖擺州加碼投放廣告', '民調顯示年輕選民投票意願創新高', '選區重劃官司進入最高法院']], ['中東局勢', ['停火談判再啟，斡旋方提出分階段方案', '紅海航運恢復部分航線，運價回落', '援助車隊進入加薩北部，聯合國稱仍不足']]],
+  taiwan: [['能源政策', ['離岸風電第三階段開發商名單出爐', '夏季尖峰備轉容量率預估回到一成以上', '地熱發電首座商轉電廠併網']], ['國會', ['立法院三讀修正預算法，在野黨團提出覆議', '大法官受理國會職權案，年底前言詞辯論', '總預算審查進度落後，朝野協商破局']]],
+  science: [['氣候變遷', ['今年可能成為有紀錄以來最熱的一年', '北極海冰面積創九月同期新低', '珊瑚白化事件擴及印度洋']], ['量子計算', ['研究團隊以中性原子實現百位元糾錯', '量子電腦破解加密的時間表為何一再被高估', '超導量子晶片的良率問題']]],
+  ideas: [['閱讀', ['年度選書公布，翻譯文學占比創新高', '獨立書店的訂閱制實驗走到第三年', '有聲書市場十年長了五倍']], ['城市生活', ['老屋再生計畫把舊公寓變成共居空間', '捷運沿線租金三年漲了兩成，誰被擠出去了', '人行道改造後，騎樓的機車去哪了']]],
+};
+const STEPS = ['opening', 'topics', 'feeds', 'lanes', 'fetch', 'stances', 'issue', 'settings'];
+const STEP_NO = { opening: 1, topics: 2, feeds: 2, lanes: 3, fetch: 4, stances: 5, issue: 6, settings: 7 };
+const FETCH_S = 8, ISSUE_S = 12;
+
+const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.codePointAt(0), 16777619); return h >>> 0; };
+const feedCount = name => 6 + hash(name) % 22;
+const topicOf = id => TOPICS.find(t => t.id === id);
+
+// ---------- state ----------
+const S = { topics: [], feeds: [], own: [], lanes: {}, stances: {}, stanceIdx: 0, settings: null };
+
+function feedRecord(name) {
+  for (const t of TOPICS) for (const [n, tags] of t.feeds) if (n === name) return { name, tags, topic: firstChosenTopicOf(name) || t.id };
+  const o = S.own.find(f => f.name === name);
+  return o ? { name, tags: 'own feed', topic: S.topics[0] || 'tech' } : null;
+}
+function firstChosenTopicOf(name) {
+  for (const id of S.topics) if (topicOf(id).feeds.some(f => f[0] === name)) return id;
+  return null;
+}
+function pickedFeeds() { return S.feeds.map(feedRecord).filter(Boolean); }
+function laneOf(name) { return S.lanes[name] || 'skim'; }
+function skimShape(rec, feeds) {
+  const n = feeds.filter(f => f.topic === rec.topic && laneOf(f.name) === 'skim').length;
+  return n >= 2 ? 'grain' : 'water';
+}
+function stanceSubs() {
+  const ids = S.topics.length ? S.topics : ['tech', 'taiwan'];
+  const out = [];
+  for (let k = 0; k < 2; k++) for (const id of ids) if (out.length < 6) out.push({ topic: id, name: SUBS[id][k][0], titles: SUBS[id][k][1] });
+  return out;
+}
+function ensureDefaults(step) {
+  const i = STEPS.indexOf(step);
+  if (i >= STEPS.indexOf('feeds') && !S.topics.length) S.topics = ['tech', 'taiwan'];
+  if (i >= STEPS.indexOf('lanes') && !S.feeds.length) {
+    for (const id of S.topics) S.feeds.push(...topicOf(id).feeds.slice(0, 3).map(f => f[0]).filter(n => !S.feeds.includes(n)));
+    if (!Object.keys(S.lanes).length) S.lanes[S.feeds[S.feeds.length - 1]] = 'read';
+  }
+}
+
+// ---------- the issue the answers make ----------
+function buildIssue() {
+  const feeds = pickedFeeds();
+  const subs = stanceSubs();
+  const stance = n => S.stances[n] || 'none';
+  const stories = [], sand = [], water = [];
+  let inCount = 0;
+  for (const f of feeds) if (laneOf(f.name) !== 'read') inCount += feedCount(f.name);
+  for (const f of feeds.filter(f => laneOf(f.name) === 'read')) {
+    const n = Math.max(1, Math.round(feedCount(f.name) / 9));
+    const pool = SUBS[f.topic] || SUBS.tech;
+    for (let k = 0; k < n; k++) {
+      const sub = pool[k % 2];
+      stories.push({ title: sub[1][(hash(f.name) + k) % 3], source: f.name, sub: sub[0] });
+    }
+  }
+  const topicIds = [...new Set(feeds.map(f => f.topic))];
+  for (const id of topicIds) {
+    const skim = feeds.filter(f => f.topic === id && laneOf(f.name) === 'skim');
+    if (!skim.length) continue;
+    const pool = SUBS[id].filter(s => stance(s[0]) !== 'less');
+    pool.sort((a, b) => (stance(b[0]) === 'more') - (stance(a[0]) === 'more'));
+    if (!pool.length) continue;
+    if (skim.length >= 2) {
+      const [name, titles] = pool[0];
+      const count = Math.min(skim.length + 1 + (stance(name) === 'more' ? 2 : 0), 6);
+      sand.push({ name, count, sources: skim.map(f => f.name), titles });
+      for (const [n2, t2] of pool.slice(1)) water.push({ title: t2[0], source: skim[skim.length - 1].name });
+    } else {
+      water.push({ title: pool[0][1][1], source: skim[0].name });
+    }
+  }
+  inCount += stories.length;
+  const kept = stories.length + sand.reduce((a, b) => a + b.count, 0) + water.length;
+  return { stories, sand, water, inCount: Math.max(inCount, kept), kept, subs };
+}
+
+function estimate(step) {
+  const feeds = step === 'topics' ? S.topics.flatMap(id => topicOf(id).feeds.map(f => ({ name: f[0], topic: id }))) : pickedFeeds();
+  let inN = 0, kept = 0;
+  for (const f of feeds) {
+    const c = feedCount(f.name);
+    if (STEPS.indexOf(step) >= 3 && laneOf(f.name) === 'read') { const r = Math.max(1, Math.round(c / 9)); inN += r; kept += r; }
+    else { inN += c; kept += c * 0.12; }
+  }
+  if (step === 'stances') for (const s of stanceSubs()) { const v = S.stances[s.name]; if (v === 'more') kept += 2; if (v === 'less') kept -= 1.5; }
+  return { inN, kept: Math.max(0, Math.round(kept)) };
+}
+
+// ---------- the sieve (the page's one moving element) ----------
+const cv = document.getElementById('sieve');
+const cx = cv.getContext('2d');
+const band = document.getElementById('band');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = {};
+['--bg', '--text', '--text-dim', '--text-faint', '--accent', '--border-strong', '--border'].forEach(n => C[n] = css(n));
+
+let W = 0, H = 0, Hv = 0, DPR = 1;
+const sim = { step: 'opening', t: 0, parts: [], emit: [], bins: null, inN: 0, kept: 0, done: false, plan: null, gather: 0, current: null };
+
+function layout() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  if (W !== innerWidth || H !== innerHeight || cv.width !== Math.round(innerWidth * DPR)) {
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  }
+  Hv = H - band.getBoundingClientRect().height;
+}
+const meshY = () => Math.max(110, Math.round(Hv * 0.44));
+const floorY = () => Math.max(meshY() + 50, Hv - (sim.step === 'issue' || sim.step === 'settings' ? 34 : 14));
+const span = () => { const w = Math.min(W - 32, 860); return { l: (W - w) / 2, w }; };
+
+function setEmitters(list) {
+  const { l, w } = span();
+  const n = list.length || 1;
+  const old = sim.emit;
+  sim.emit = list.map((e, i) => ({ ...(old[i] && old[i].label === e.label ? old[i] : {}), ...e, x: l + (i + 0.5) * w / n, col: w / n }));
+}
+function emittersFor(step) {
+  if (step === 'opening') return Array.from({ length: 9 }, () => ({ label: '', rate: 4 }));
+  if (step === 'topics' || (step === 'feeds' && !S.feeds.length)) {
+    if (!S.topics.length) return [{ label: '', rate: 1.5 }];
+    return S.topics.map(id => ({ label: topicOf(id).label, topic: id, rate: topicOf(id).feeds.length * 1.4 }));
+  }
+  const feeds = pickedFeeds();
+  return feeds.map(f => ({ label: f.name, feed: f, topic: f.topic, rate: 0.6 + feedCount(f.name) / 9 }));
+}
+
+function resetSim(step) {
+  sim.step = step; sim.t = 0; sim.parts = []; sim.inN = 0; sim.kept = 0; sim.done = false; sim.gather = 0; sim.plan = null; sim.bins = null;
+  setEmitters(emittersFor(step === 'settings' ? 'issue' : step));
+  if (step === 'opening') {
+    const keep = new Set(); while (keep.size < 13) keep.add(Math.floor(Math.random() * 92));
+    sim.plan = Array.from({ length: 92 }, (_, i) => ({ at: i * 4.4 / 92 + Math.random() * 0.05, fate: keep.has(i) ? 'pass' : 'catch', kind: 'dot', e: i % sim.emit.length }));
+  } else if (step === 'fetch') {
+    const n = sim.emit.length;
+    sim.plan = [];
+    sim.emit.forEach((e, i) => {
+      e.arrive = (i + 0.3 + Math.random() * 0.5) * (FETCH_S - 1.5) / n;
+      const c = feedCount(e.label);
+      for (let k = 0; k < c; k++) sim.plan.push({ at: e.arrive + k * 1.2 / c, fate: 'gather', kind: 'dot', e: i });
+    });
+  } else if (step === 'issue' || step === 'settings') {
+    const iss = buildIssue();
+    sim.issue = iss;
+    sim.bins = { stories: [], sand: [], water: [] };
+    const plan = [];
+    const byFeed = new Map(sim.emit.map((e, i) => [e.label, i]));
+    const keptSpec = [
+      ...iss.stories.map(s => ({ kind: 'pebble', bin: 'stories', src: s.source })),
+      ...iss.sand.flatMap(b => Array.from({ length: b.count }, (_, k) => ({ kind: 'grain', bin: 'sand', src: b.sources[k % b.sources.length] }))),
+      ...iss.water.map(w => ({ kind: 'water', bin: 'water', src: w.source })),
+    ];
+    const catchN = Math.max(0, iss.inCount - keptSpec.length);
+    for (const k of keptSpec) plan.push({ ...k, fate: 'pass', e: byFeed.get(k.src) ?? 0 });
+    const skimIdx = sim.emit.map((e, i) => i).filter(i => !(sim.emit[i].feed && laneOf(sim.emit[i].feed.name) === 'read'));
+    for (let k = 0; k < catchN && skimIdx.length; k++) {
+      const e = skimIdx[k % skimIdx.length];
+      const f = sim.emit[e] && sim.emit[e].feed;
+      const sub = stanceSubs().filter(s => !f || s.topic === f.topic);
+      const s = sub.length ? sub[k % sub.length].name : null;
+      plan.push({ kind: 'grain', fate: S.stances[s] === 'less' ? 'bounce' : 'catch', e, sub: s });
+    }
+    plan.sort(() => Math.random() - 0.5);
+    plan.forEach((p, i) => p.at = 0.2 + i * (ISSUE_S - 2.5) / plan.length);
+    sim.plan = plan;
+  }
+}
+
+function fateFor(e) {
+  const st = sim.step;
+  if (!e.feed || STEPS.indexOf(st) < 3) return { kind: 'dot', fate: Math.random() < 0.15 ? 'pass' : 'catch' };
+  const feeds = pickedFeeds();
+  const read = laneOf(e.feed.name) === 'read';
+  const kind = read ? 'pebble' : skimShape(e.feed, feeds);
+  if (st === 'stances') {
+    const subs = SUBS[e.feed.topic] || SUBS.tech;
+    const sub = subs[Math.random() < 0.5 ? 0 : 1][0];
+    const v = S.stances[sub];
+    if (v === 'more') return { kind, fate: 'pass', sub, glow: true };
+    if (v === 'less') return { kind, fate: 'bounce', sub };
+    return { kind, fate: read || Math.random() < 0.15 ? 'pass' : 'catch', sub };
+  }
+  return { kind, fate: read || Math.random() < 0.15 ? 'pass' : 'catch' };
+}
+
+function spawn(e, spec) {
+  const r = { dot: 2.4, pebble: 4.5, grain: 1.4, water: 1.2 }[spec.kind];
+  sim.parts.push({
+    x: e.x + (Math.random() - 0.5) * Math.min(e.col * 0.6, 40), y: -6 - Math.random() * 20,
+    vx: 0, vy: 50 + Math.random() * 40, r, state: 'fall', age: 0, ...spec,
+  });
+}
+
+const continuous = st => ['topics', 'feeds', 'lanes', 'stances'].includes(st);
+
+function step(dt) {
+  sim.t += dt;
+  const st = sim.step, my = meshY(), fy = floorY();
+  if (continuous(st)) {
+    for (const e of sim.emit) { e.acc = (e.acc || 0) + dt * e.rate; while (e.acc >= 1) { e.acc -= 1; spawn(e, fateFor(e)); } }
+  } else if (sim.plan) {
+    while (sim.plan.length && sim.plan[0].at <= sim.t) { const p = sim.plan.shift(); const e = sim.emit[p.e]; if (e) spawn(e, p); }
+  }
+  for (const p of sim.parts) {
+    p.age += dt;
+    if (p.state === 'fall') {
+      p.vy = Math.min(p.vy + 90 * dt, 170); p.y += p.vy * dt;
+      if (p.y >= my - p.r) {
+        sim.inN++;
+        if (p.fate === 'pass') { p.state = 'below'; sim.kept++; p.vy *= 0.8; }
+        else if (p.fate === 'bounce') { p.state = 'bounce'; p.vy = -60 - Math.random() * 40; p.vx = (Math.random() - 0.5) * 120; p.age = 0; }
+        else if (p.fate === 'gather') { p.state = 'rest'; p.dy = -(p.r + Math.random() * Math.min(60, 6 + sim.gather++ * 0.25)); p.age = 0; }
+        else { p.state = 'rest'; p.dy = -(p.r + Math.random() * (st === 'issue' || st === 'settings' ? 34 : 8)); p.age = 0; }
+      }
+    } else if (p.state === 'bounce') {
+      p.vy += 200 * dt; p.y += p.vy * dt; p.x += p.vx * dt;
+      if (p.age > 1.1) p.state = 'gone';
+    } else if (p.state === 'below') {
+      if (p.bin) { const bx = binX(p.bin); p.x += (bx - p.x) * Math.min(1, dt * 2.2); }
+      p.vy = Math.min(p.vy + 120 * dt, 200); p.y += p.vy * dt;
+      if (p.y >= fy - p.r) {
+        if (p.bin) { sim.bins[p.bin].push(Math.random()); p.state = 'gone'; }
+        else { p.state = 'floor'; p.age = 0; p.fdy = -(p.r + (p.kind === 'grain' ? Math.random() * 6 : 0)); }
+      }
+    } else if (p.state === 'rest' && continuous(st) && p.age > 1.4) p.state = 'gone';
+    else if (p.state === 'floor' && continuous(st) && p.age > 3) p.state = 'gone';
+  }
+  sim.parts = sim.parts.filter(p => p.state !== 'gone');
+  if (!continuous(st) && !sim.done && sim.plan && !sim.plan.length && !sim.parts.some(p => p.state === 'fall' || p.state === 'below' || p.state === 'bounce')) {
+    sim.done = true; onSimDone();
+  }
+}
+
+function rnd(n) { const x = Math.sin(n) * 43758.5453; return x - Math.floor(x); }
+function binX(b) { const { l, w } = span(); return l + w * ({ stories: 1, sand: 3, water: 5 }[b]) / 6; }
+
+function draw() {
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx.fillStyle = C['--bg']; cx.fillRect(0, 0, W, H);
+  const st = sim.step, my = meshY(), fy = floorY();
+  const { l, w } = span();
+  // tributary labels
+  cx.font = '500 11px "Geist Mono", ui-monospace, monospace'; cx.textBaseline = 'top';
+  for (const e of sim.emit) {
+    if (!e.label) continue;
+    const arrived = st !== 'fetch' || sim.t >= e.arrive;
+    cx.fillStyle = arrived ? C['--text-dim'] : C['--text-faint'];
+    let t = e.label;
+    if (cx.measureText(t).width + 10 >= e.col && [...t].length > 14) t = [...t].slice(0, 13).join('') + '…';
+    const tw = cx.measureText(t).width;
+    if (tw + 10 < e.col) { cx.textAlign = 'center'; cx.fillText(t, e.x, 42); }
+    else {
+      if ([...t].length > 9) t = [...t].slice(0, 8).join('') + '…'; cx.save(); cx.translate(e.x - 6, 40); cx.rotate(Math.PI / 2); cx.textAlign = 'left'; cx.fillText(t, 0, 0); cx.restore(); }
+    cx.strokeStyle = C['--border']; cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(e.x + 0.5, 34); cx.lineTo(e.x + 0.5, 38); cx.stroke();
+  }
+  // counter
+  cx.textAlign = 'left'; cx.font = '400 14px "Geist Mono", ui-monospace, monospace';
+  const ctext = counterText();
+  cx.fillStyle = C['--text-dim']; cx.fillText(ctext[0], 16, 12);
+  if (ctext[1]) { const x = 16 + cx.measureText(ctext[0]).width; cx.fillStyle = C['--accent']; cx.fillText(ctext[1], x, 12); }
+  // the mesh
+  const closed = st === 'fetch';
+  cx.strokeStyle = C['--border-strong']; cx.lineWidth = 1;
+  cx.setLineDash(closed ? [] : [10, 5]);
+  cx.beginPath(); cx.moveTo(l, my + 0.5); cx.lineTo(l + w, my + 0.5); cx.stroke();
+  cx.setLineDash([]);
+  // bins
+  if (sim.bins) drawBins(fy);
+  // particles
+  for (const p of sim.parts) drawPart(p, my, fy);
+  // current stance subject
+  if (st === 'stances' && sim.current) {
+    cx.font = '500 12px "Geist Mono", ui-monospace, monospace'; cx.textAlign = 'right'; cx.textBaseline = 'bottom';
+    const v = S.stances[sim.current];
+    cx.fillStyle = v === 'more' ? C['--accent'] : C['--text-dim'];
+    cx.fillText(sim.current + (v === 'more' ? '  ↓ passes' : v === 'less' ? '  ↑ bounces' : ''), l + w, my - 6);
+    cx.textBaseline = 'top';
+  }
+}
+
+function drawPart(p, my, fy) {
+  let y = p.y, a = 1, col;
+  if (p.state === 'rest') { y = my + p.dy; a = continuous(sim.step) ? Math.max(0, 1 - p.age / 1.4) : 0.55; col = C['--text-faint']; }
+  else if (p.state === 'floor') { y = fy + p.fdy; a = continuous(sim.step) ? Math.max(0, 1 - p.age / 3) : 1; }
+  else if (p.state === 'bounce') { a = Math.max(0, 1 - p.age / 1.1); col = C['--text-dim']; }
+  if (!col) {
+    const below = p.state === 'below' || p.state === 'floor';
+    if (sim.step === 'stances' && p.sub === sim.current && p.state === 'fall') col = C['--text'];
+    else if (p.glow && below) col = C['--accent'];
+    else if (p.kind === 'dot') col = below ? C['--accent'] : C['--text-dim'];
+    else if (p.kind === 'pebble') col = C['--text'];
+    else col = C['--text-dim'];
+  }
+  cx.globalAlpha = a;
+  if (p.kind === 'water' && (p.state === 'below' || p.state === 'floor')) {
+    cx.strokeStyle = col; cx.lineWidth = 1;
+    cx.beginPath();
+    if (p.state === 'floor') { cx.moveTo(p.x - 9, fy - 1.5); cx.lineTo(p.x + 9, fy - 1.5); }
+    else { cx.moveTo(p.x, y - 14); cx.lineTo(p.x, y); }
+    cx.stroke();
+  } else {
+    cx.fillStyle = col; cx.beginPath(); cx.arc(p.x, y, p.r, 0, Math.PI * 2); cx.fill();
+  }
+  cx.globalAlpha = 1;
+}
+
+function drawBins(fy) {
+  const bw = span().w / 3 - 24;
+  const half = Math.min(bw / 2, 120);
+  cx.font = '500 11px "Geist Mono", ui-monospace, monospace'; cx.textAlign = 'center'; cx.textBaseline = 'top';
+  const names = { stories: 'Stories', sand: 'Topics', water: 'Headlines' };
+  for (const b of ['stories', 'sand', 'water']) {
+    const x = binX(b), items = sim.bins[b];
+    cx.strokeStyle = C['--border']; cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(x - half, fy + 0.5); cx.lineTo(x + half, fy + 0.5); cx.stroke();
+    cx.fillStyle = items.length ? C['--text-dim'] : C['--text-faint'];
+    cx.fillText(names[b].toUpperCase() + ' ' + items.length, x, fy + 8);
+    if (b === 'stories') {
+      const per = Math.max(1, Math.floor((half * 2) / 12));
+      cx.fillStyle = C['--text'];
+      items.forEach((_, i) => { const r = Math.floor(i / per), c = i % per; cx.beginPath(); cx.arc(x - (Math.min(items.length, per) - 1) * 6 + c * 12, fy - 6 - r * 11, 4.5, 0, Math.PI * 2); cx.fill(); });
+    } else if (b === 'sand') {
+      cx.fillStyle = C['--text-dim'];
+      items.forEach((seed, i) => {
+        for (let g = 0; g < 7; g++) {
+          const rr = rnd(seed * 1e6 + g * 7919), rr2 = rnd(seed * 3e6 + g * 104729);
+          const width = Math.min(half, 10 + Math.sqrt(i * 7 + g) * 5);
+          const dx = (rr - 0.5) * 2 * width;
+          const hgt = Math.max(1, (1 - Math.abs(dx) / width) * Math.sqrt(i * 7 + g) * 2.4);
+          cx.beginPath(); cx.arc(x + dx, fy - 1.5 - rr2 * hgt, 1.2, 0, Math.PI * 2); cx.fill();
+        }
+      });
+    } else {
+      cx.strokeStyle = C['--text-dim'];
+      items.forEach((_, i) => { cx.beginPath(); cx.moveTo(x - half * 0.7, fy - 4 - i * 6 + 0.5); cx.lineTo(x + half * 0.7, fy - 4 - i * 6 + 0.5); cx.stroke(); });
+    }
+  }
+}
+
+function counterText() {
+  const st = sim.step;
+  if (st === 'opening' || st === 'issue' || st === 'settings') return [`${sim.inN} in · `, `${sim.kept} kept`];
+  if (st === 'fetch') {
+    const n = sim.emit.length, k = sim.emit.filter(e => sim.t >= e.arrive).length;
+    return sim.done || k === n ? [`${n} feeds · ${sim.inN} articles in`, ''] : [`Fetching · ${k} of ${n} feeds · ${sim.inN} in`, ''];
+  }
+  const e = estimate(st);
+  if (!e.inN) return ['Pick a topic to open a stream', ''];
+  return [`≈ ${e.inN} a day in · `, `${e.kept} kept`];
+}
+
+let last = 0, raf = 0;
+function frame(ts) {
+  const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts;
+  step(dt); draw();
+  raf = requestAnimationFrame(frame);
+}
+function fastForward(seconds) {
+  for (let t = 0; t < seconds; t += 1 / 30) { step(1 / 30); if (sim.done) break; }
+  if (continuous(sim.step)) for (const p of sim.parts) if (p.state === 'rest' || p.state === 'floor') p.age = 0;
+  draw();
+}
+function startSim(step) {
+  cancelAnimationFrame(raf); raf = 0; last = 0;
+  resetSim(step);
+  if (reduce.matches) {
+    fastForward(step === 'fetch' ? FETCH_S + 6 : step === 'issue' || step === 'settings' ? ISSUE_S + 8 : step === 'opening' ? 10 : 5);
+  } else if (step === 'settings') {
+    fastForward(ISSUE_S + 8);
+  } else raf = requestAnimationFrame(frame);
+}
+function refreshSim() {
+  // a choice changed: reshape the stream in place
+  setEmitters(emittersFor(sim.step));
+  if (reduce.matches) { sim.parts = []; fastForward(5); }
+}
+function onSimDone() {
+  if (sim.step === 'opening') say('92 articles came in. 13 were kept.');
+  if (sim.step === 'fetch') { say('Every feed is in.'); render(); }
+  if (sim.step === 'issue') { cancelAnimationFrame(raf); raf = 0; draw(); revealed = true; render(); }
+}
+const say = t => { document.getElementById('sr').textContent = t; };
+
+// ---------- the band: one question at a time ----------
+const q = document.getElementById('q'), nav = document.getElementById('nav');
+let cur = 'opening', revealed = false;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const head = (title, desc) => `<div class="label">Step ${STEP_NO[cur]} of 7</div><h2 class="heading">${title}</h2>${desc ? `<p class="small">${desc}</p>` : ''}`;
+const glyph = k => ({
+  pebble: '<svg width="24" height="16" aria-hidden="true"><circle cx="12" cy="8" r="5" fill="var(--text)"/></svg>',
+  sand: '<svg width="24" height="16" aria-hidden="true" fill="var(--text-dim)"><circle cx="5" cy="13" r="1.3"/><circle cx="9" cy="11" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="15" cy="11" r="1.3"/><circle cx="19" cy="13" r="1.3"/><circle cx="12" cy="13" r="1.3"/></svg>',
+  water: '<svg width="24" height="16" aria-hidden="true"><line x1="2" y1="8.5" x2="22" y2="8.5" stroke="var(--text-dim)"/></svg>',
+}[k]);
+
+function render() {
+  const nb = (label, act, cls = 'secondary', dis = false) => `<button class="btn ${cls}" data-act="${act}"${dis ? ' disabled' : ''}>${label}</button>`;
+  let body = '', navh = '';
+  const std = (nextLabel = 'Next') => nb('Back', 'back') + '<span class="grow"></span>' + nb('Skip', 'skip') + nb(nextLabel, 'next', 'primary');
+  if (cur === 'opening') {
+    body = `<div class="label">Cyris</div><p class="display">Only what matters should reach your <em>brain.</em></p><p class="small">Many articles come in. A few pass. You shape the mesh.</p>`;
+    navh = '<span class="grow"></span>' + nb('Begin', 'next', 'primary');
+  } else if (cur === 'topics') {
+    body = head('What do you follow?', 'Each topic opens a stream above. Pick any; you can change them later.') +
+      `<div class="tiles" role="group" aria-label="Topics">${TOPICS.map(t => `<button type="button" class="tile" data-topic="${t.id}" aria-pressed="${S.topics.includes(t.id)}"><span class="t-name">${esc(t.label)}</span><span class="label">${t.feeds.length} feeds</span></button>`).join('')}</div>` +
+      (S.topics.length ? '' : '<p class="small">Pick topics to see their feeds. Next with none picked goes straight to adding your own feed.</p>');
+    navh = std();
+  } else if (cur === 'feeds') {
+    const shown = new Set();
+    let lists = '';
+    for (const id of S.topics) {
+      const rows = topicOf(id).feeds.filter(f => !shown.has(f[0]));
+      rows.forEach(f => shown.add(f[0]));
+      lists += `<fieldset class="checklist"><legend class="label">${esc(topicOf(id).label)}</legend>${rows.map(([n, tags]) => `<label class="row"><input type="checkbox" data-feed="${esc(n)}"${S.feeds.includes(n) ? ' checked' : ''}><span class="name">${esc(n)}</span><span class="state">${esc(tags)}</span></label>`).join('')}</fieldset>`;
+    }
+    const outside = S.feeds.filter(n => !shown.has(n));
+    if (outside.length) lists = `<fieldset class="checklist"><legend class="label">Picked, outside the chosen topics</legend>${outside.map(n => `<label class="row"><input type="checkbox" data-feed="${esc(n)}" checked><span class="name">${esc(n)}</span><span class="state">${esc(feedRecord(n)?.tags || '')}</span></label>`).join('')}</fieldset>` + lists;
+    body = head('Which feeds?', 'Each feed you check becomes a stream of its own above.') + lists +
+      `<p class="small" aria-live="polite">${S.feeds.length} feeds picked</p>
+       <div class="field"><label class="label" for="own">Add your own feed</label><div class="own"><input class="input" id="own" type="url" placeholder="https://example.com/feed.xml"><button class="btn secondary" data-act="own">Add</button></div><p class="help">Any RSS or Atom address.</p></div>`;
+    navh = std();
+  } else if (cur === 'lanes') {
+    const feeds = pickedFeeds();
+    body = head('Read whole, or skim?', 'Watch the stream change as you answer. Unanswered means skim.') +
+      `<div class="legend">${glyph('pebble')}<span><b>Read whole</b> turns a feed's articles into pebbles. They pass whole, each with its summary.</span>${glyph('sand')}<span><b>Skim</b> grinds them fine. When several skimmed articles share a topic, they pool as sand.</span>${glyph('water')}<span>When only one does, it runs through as water: a single headline line.</span></div>` +
+      (feeds.length ? `<div class="checklist lanes" style="border:1px solid var(--border);border-radius:var(--r-control);background:var(--bg-elev)">${feeds.map(f => { const v = laneOf(f.name); const shape = v === 'read' ? 'pebble' : skimShape(f, feeds) === 'grain' ? 'sand' : 'water'; return `<div class="row"><span class="name">${esc(f.name)}</span><span class="state">${shape}</span><span class="seg" role="group" aria-label="${esc(f.name)}"><button data-lane="${esc(f.name)}" data-v="read" aria-pressed="${v === 'read'}">Read whole</button><button data-lane="${esc(f.name)}" data-v="skim" aria-pressed="${v === 'skim'}">Skim</button></span></div>`; }).join('')}</div>` : '<p class="small">No feeds picked yet. Back adds some.</p>');
+    navh = std();
+  } else if (cur === 'fetch') {
+    const done = sim.step === 'fetch' && sim.done;
+    body = head(done ? 'Your feeds are in.' : 'Fetching your feeds', done ? 'Everything that arrived is resting on the mesh. Next, you tell it what to let through.' : 'Each stream lights up as its feed arrives. In production this takes about a minute for 12 feeds; you can go on while it runs.');
+    navh = std();
+  } else if (cur === 'stances') {
+    const subs = stanceSubs();
+    const i = Math.min(S.stanceIdx, subs.length - 1);
+    const s = subs[i]; sim.current = s.name;
+    const v = S.stances[s.name] || 'none';
+    body = head('More like this, or less?', `Topics found in what just arrived. ${i + 1} of ${subs.length}.`) +
+      `<div class="dots" aria-hidden="true">${subs.map((x, k) => `<i class="${k === i ? 'on' : S.stances[x.name] ? 'done' : ''}"></i>`).join('')}</div>
+       <p class="display" style="font-size:calc(clamp(32px,5vw,48px) * var(--type-scale))">${esc(s.name)}</p>
+       <p class="small">${esc(s.titles[0])}</p>
+       <span class="seg" role="group" aria-label="${esc(s.name)}">${[['less', 'Less'], ['none', 'No answer'], ['more', 'More like this']].map(([k, t]) => `<button data-stance="${k}" aria-pressed="${v === k}">${t}</button>`).join('')}</span>`;
+    navh = std(i < subs.length - 1 ? 'Next topic' : 'Next');
+  } else if (cur === 'issue') {
+    if (!revealed) {
+      body = head('Making your first issue', 'Everything that arrived runs through your mesh now. Up to 15 minutes in production; here, 12 seconds.');
+      navh = nb('Back', 'back') + '<span class="grow"></span>' + nb('Skip', 'skip') + nb('Show it now', 'reveal', 'primary');
+    } else {
+      body = head('Your first issue', 'What passed, in the order you read it: pebbles first, then sand, then water.') + issueHtml(sim.issue || buildIssue());
+      navh = std();
+    }
+  } else if (cur === 'settings') {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const lang = (navigator.language || 'en').toLowerCase().startsWith('zh') ? '繁體中文' : 'English';
+    body = head('The quiet settings', 'All optional. Detected from this browser, and not saved until Finish.') + (S.settings ? '<p class="notice">Saved. Your next issue arrives at ' + esc(S.settings) + '.</p>' : '') +
+      `<div class="grid2">
+        <div class="field"><label class="label" for="lang">Output language</label><select class="input" id="lang"><option${lang === '繁體中文' ? ' selected' : ''}>繁體中文</option><option${lang === 'English' ? ' selected' : ''}>English</option></select></div>
+        <div class="field"><label class="label" for="tz">Timezone</label><input class="input" id="tz" value="${esc(tz)}"><p class="help">Detected from this browser.</p></div>
+        <div class="field"><span class="label" id="hl">Publish hours</span><div class="hours" role="group" aria-labelledby="hl">${['h1', 'h2'].map((id, k) => `<select class="input" id="${id}" aria-label="${k ? 'Second issue' : 'First issue'}">${Array.from({ length: 24 }, (_, h) => `<option${h === (k ? 18 : 8) ? ' selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select>`).join('')}</div><p class="help">Two issues a day.</p></div>
+        <div class="field"><label class="label" for="dw">Discord webhook</label><input class="input" id="dw" type="url" placeholder="https://discord.com/api/webhooks/…"></div>
+        <div class="field"><label class="label" for="em">Email</label><input class="input" id="em" type="email" placeholder="you@example.com"></div>
+      </div>`;
+    navh = nb('Back', 'back') + '<span class="grow"></span>' + nb('Skip', 'finish') + nb('Finish', 'finish', 'primary');
+  }
+  q.innerHTML = body; nav.innerHTML = navh;
+  requestAnimationFrame(() => { const before = Hv; layout(); if (Math.abs(before - Hv) > 1) setEmitters(emittersFor(sim.step === 'settings' ? 'issue' : sim.step)); if (!raf || sim.done) draw(); });
+}
+
+function issueHtml(iss) {
+  const d = new Date();
+  const date = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const stories = iss.stories.slice(0, 3);
+  let h = `<div class="issue"><div class="issue-head"><span><span class="data">${esc(date)}</span> <span class="label">Morning</span></span><span class="data">${iss.inCount} in · <span class="accent">${iss.kept} kept</span></span></div>`;
+  h += `<div class="marker label">${glyph('pebble')}Stories · ${iss.stories.length}</div>`;
+  h += stories.length ? stories.map(s => `<div class="it"><h3>${esc(s.title)}</h3><div class="meta label">${esc(s.source)} · read whole</div></div>`).join('') + (iss.stories.length > 3 ? `<p class="small">+ ${iss.stories.length - 3} more stories</p>` : '')
+    : '<p class="small">No feed is read whole, so no pebbles. Back to Read whole, or skim to add one.</p>';
+  h += `<div class="marker label">${glyph('sand')}Topics · ${iss.sand.length}</div>`;
+  h += iss.sand.length ? iss.sand.map(b => `<div class="it"><h3>${esc(b.name)}</h3><p class="small" style="margin:4px 0 0">${esc(b.titles[0])}</p><div class="meta label">${b.count} articles · ${esc(b.sources.slice(0, 3).join(', '))}</div></div>`).join('') : '<p class="small">No topic shared by two skimmed feeds this time.</p>';
+  h += `<div class="marker label">${glyph('water')}Headlines · ${iss.water.length}</div>`;
+  h += iss.water.length ? iss.water.slice(0, 5).map(w => `<div class="wl"><span>${esc(w.title)}</span></div>`).join('') : '<p class="small">No single headlines this time.</p>';
+  return h + '</div>';
+}
+
+function go(step) { if (location.hash !== '#' + step) location.hash = step; else show(step); }
+function show(step) {
+  if (!STEPS.includes(step)) step = 'opening';
+  ensureDefaults(step);
+  cur = step; revealed = false;
+  if (step === 'stances') S.stanceIdx = Math.min(S.stanceIdx, stanceSubs().length - 1);
+  layout();
+  render();
+  layout();
+  startSim(step);
+  if (step === 'issue' && reduce.matches) { revealed = true; render(); }
+  q.parentElement.scrollTop = 0;
+}
+
+band.addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  const i = STEPS.indexOf(cur);
+  if (b.dataset.topic) {
+    const id = b.dataset.topic;
+    S.topics = S.topics.includes(id) ? S.topics.filter(x => x !== id) : [...S.topics, id].sort((a, c) => TOPICS.findIndex(t => t.id === a) - TOPICS.findIndex(t => t.id === c));
+    render(); refreshSim(); return;
+  }
+  if (b.dataset.lane) { S.lanes[b.dataset.lane] = b.dataset.v; render(); refreshSim(); return; }
+  if (b.dataset.stance) { const s = stanceSubs()[S.stanceIdx]; if (b.dataset.stance === 'none') delete S.stances[s.name]; else S.stances[s.name] = b.dataset.stance; render(); refreshSim(); return; }
+  const act = b.dataset.act;
+  if (act === 'own') {
+    const inp = document.getElementById('own'); const v = inp.value.trim();
+    if (!/^https?:\/\/\S+\.\S+/.test(v)) { inp.style.borderColor = 'var(--warn)'; inp.focus(); return; }
+    const name = new URL(v).hostname.replace(/^www\./, '');
+    if (!S.own.some(o => o.name === name)) { S.own.push({ name, url: v }); S.feeds.push(name); }
+    render(); refreshSim(); return;
+  }
+  if (act === 'back') {
+    if (cur === 'stances' && S.stanceIdx > 0) { S.stanceIdx--; render(); return; }
+    go(STEPS[Math.max(0, i - 1)]); return;
+  }
+  if (act === 'reveal') { cancelAnimationFrame(raf); raf = 0; fastForward(ISSUE_S + 8); revealed = true; render(); return; }
+  if (act === 'next' && cur === 'stances' && S.stanceIdx < stanceSubs().length - 1) { S.stanceIdx++; render(); return; }
+  if (act === 'next' || act === 'skip') { if (cur === 'stances') S.stanceIdx = act === 'next' ? S.stanceIdx : 0; go(STEPS[Math.min(STEPS.length - 1, i + 1)]); return; }
+  if (act === 'finish') { S.settings = document.getElementById('h1').value || '08:00'; render(); return; }
+});
+band.addEventListener('change', ev => {
+  const c = ev.target; if (!c.dataset.feed) return;
+  const n = c.dataset.feed;
+  S.feeds = c.checked ? [...new Set([...S.feeds, n])] : S.feeds.filter(x => x !== n);
+  if (!c.checked) delete S.lanes[n];
+  const sc = q.parentElement.scrollTop; render(); q.parentElement.scrollTop = sc; refreshSim();
+});
+
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+let rz = 0;
+addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { layout(); startSim(cur); if (cur === 'issue' && revealed) fastForward(ISSUE_S + 8); }, 150); });
+reduce.addEventListener?.('change', () => show(cur));
+show(location.hash.slice(1) || 'opening');
+})();
+</script>
+</body>
+</html>

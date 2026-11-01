@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Onboarding POC D: light questions, and two waits that show the editor at work, ending in the first issue.">
+<title>Onboarding D: the reveal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--font-sans); font-size: calc(18px * var(--type-scale)); line-height: 1.65;
+  overflow-x: clip;
+}
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+a { color: inherit; }
+[hidden] { display: none !important; }
+
+/* roles */
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim); }
+.small { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; }
+.display { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale));
+  line-height: 1; letter-spacing: -.03em; margin: 0; }
+.display em { font-style: italic; color: var(--accent); }
+.heading { font-weight: 600; font-size: calc(24px * var(--type-scale)); line-height: 1.3; letter-spacing: -.015em; margin: 0; }
+.title { font-weight: 600; font-size: calc(18px * var(--type-scale)); line-height: 1.3; }
+
+/* site bar */
+.site-bar { position: sticky; top: 0; z-index: 2; height: var(--bar-h); border-bottom: 1px solid var(--border);
+  background: rgba(7,7,10,.88); }
+.site-bar-inner { max-width: 1240px; margin: 0 auto; height: 100%; padding: 0 var(--s-4);
+  display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: var(--s-3); text-decoration: none; }
+.brand-mark { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.step-of { color: var(--text-dim); }
+
+/* page */
+main { padding: var(--s-12) var(--s-4) var(--s-16); }
+.col { max-width: var(--measure); margin: 0 auto; }
+.col-wide { max-width: 1240px; margin: 0 auto; }
+.step-head { margin-bottom: var(--s-8); }
+.step-head .heading { margin-top: var(--s-2); }
+.step-head p { margin: var(--s-2) 0 0; }
+
+/* buttons */
+.btn { height: 44px; padding: 0 var(--s-5); border-radius: var(--r-control); border: 1px solid transparent;
+  font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase;
+  letter-spacing: .1em; cursor: pointer; display: inline-flex; align-items: center; text-decoration: none;
+  transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn:disabled { opacity: .4; cursor: default; }
+.actions { display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-8); align-items: center; }
+.actions .spacer { flex: 1; }
+
+/* toggle tile */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: var(--s-2); }
+.tile { position: relative; min-height: var(--s-16); padding: var(--s-3) var(--s-8) var(--s-3) var(--s-4);
+  background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--r-control);
+  color: var(--text); text-align: left; cursor: pointer; font-family: var(--font-sans);
+  transition: background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.tile:hover:not([aria-pressed="true"]) { background: var(--surface); }
+.tile:active { opacity: .7; }
+.tile::after { content: ""; position: absolute; top: var(--s-3); right: var(--s-3); width: var(--s-3); height: var(--s-3);
+  border: 1px solid var(--border-strong); }
+.tile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); }
+.tile[aria-pressed="true"]::after { background: var(--accent); border-color: var(--accent); }
+.tile[aria-pressed="true"] .label { color: var(--accent); }
+.tile .title { display: block; }
+
+/* checklist */
+fieldset.checklist { margin: 0 0 var(--s-4); padding: 0; border: 1px solid var(--border); border-radius: var(--r-control);
+  background: var(--bg-elev); min-width: 0; }
+fieldset.checklist legend { padding: 0 var(--s-2); margin-left: var(--s-3); }
+.check-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border); cursor: pointer; transition: background-color var(--t-fast); }
+.check-row:last-child { border-bottom: 0; }
+.check-row:hover { background: var(--surface); }
+.check-row input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; flex: none; }
+.check-row .name { flex: 1; min-width: 0; }
+.pill { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); padding: 2px 10px;
+  border: 1px solid var(--border-strong); background: var(--surface-2); border-radius: var(--r-tag); color: var(--text-dim); }
+
+/* field */
+.field { display: flex; flex-direction: column; gap: var(--s-2); margin-bottom: var(--s-5); }
+.input { height: 48px; padding: 0 var(--s-4); background: var(--bg-elev); border: 1px solid var(--border-strong);
+  border-radius: var(--r-control); color: var(--text); font-family: var(--font-sans); font-size: 16px; width: 100%; min-width: 0;
+  transition: border-color var(--t-fast); }
+.input:focus { outline: none; border-color: var(--accent); }
+.inline { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.inline .input { flex: 1 1 220px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+
+/* notice */
+.notice { padding: var(--s-3) var(--s-4); border-left: 2px solid var(--accent); background: var(--accent-tint);
+  font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text); white-space: pre-wrap; margin-top: var(--s-4); }
+
+/* segmented control */
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-control); overflow: hidden; flex: none; }
+.seg button { height: 44px; padding: 0 var(--s-4); background: transparent; border: 0; border-left: 1px solid var(--border-strong);
+  color: var(--text-dim); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale));
+  text-transform: uppercase; letter-spacing: .1em; cursor: pointer; border-bottom: 2px solid transparent;
+  transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast); }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--accent); border-bottom-color: var(--accent); }
+
+/* panel and rows */
+.panel { background: var(--bg-elev); border: 1px solid var(--border); }
+.panel-head { background: var(--surface); border-bottom: 1px solid var(--border); padding: var(--s-3) var(--s-5);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); }
+.list-row { padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border); }
+.list-row:last-child { border-bottom: 0; }
+.choice-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; }
+.choice-row .name { min-width: 0; flex: 1 1 160px; }
+
+/* lane legend */
+.legend { display: grid; gap: var(--s-2); margin-bottom: var(--s-6); }
+.legend div { display: flex; gap: var(--s-3); align-items: baseline; }
+.legend .label { flex: none; width: 92px; color: var(--text); }
+
+/* wait one ledger */
+.tally { font-family: var(--font-serif); font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale)); line-height: 1;
+  letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.tally small { font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-dim); margin-left: var(--s-2); }
+.feed-row { display: flex; justify-content: space-between; gap: var(--s-3); align-items: baseline; }
+.feed-row .st { flex: none; }
+.feed-row .st.done { color: var(--accent); }
+
+/* wait two composition */
+.run-top { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-8); align-items: baseline; justify-content: space-between;
+  border-bottom: 1px solid var(--border); padding-bottom: var(--s-4); margin-bottom: var(--s-6); }
+.run-tally { font-family: var(--font-serif); font-size: calc(clamp(32px, 5vw, 56px) * var(--type-scale)); line-height: 1.1;
+  letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.run-tally .sep { color: var(--text-faint); padding: 0 var(--s-2); }
+.run-tally .kept { color: var(--accent); }
+.run-tally .out { color: var(--text-dim); }
+.run-tally i { font-style: normal; font-family: var(--font-mono); font-size: calc(12px * var(--type-scale));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); margin-left: var(--s-1); }
+.phase { text-align: right; }
+.run-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--s-8); align-items: start; }
+.stream { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.stream li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-1) var(--s-3); padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border); }
+.stream .src { grid-column: 1 / -1; }
+.stream .t { font-size: calc(16px * var(--type-scale)); line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.stream .v { font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); text-transform: uppercase;
+  letter-spacing: .1em; color: var(--text-dim); white-space: nowrap; align-self: start; padding-top: 2px; }
+.stream li.out .t { color: var(--text-dim); text-decoration: line-through; text-decoration-color: var(--text-faint); }
+.stream li.kept .t { color: var(--text); }
+.stream li.kept .v { color: var(--accent); }
+.stream-foot { margin-top: var(--s-3); }
+
+.forming .layer { margin-bottom: var(--s-6); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-3); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); flex: none; }
+.marker .what { text-transform: none; letter-spacing: 0; font-family: var(--font-sans); font-weight: 400; }
+.layer-empty { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); padding: var(--s-2) 0; border-top: 1px dashed var(--border-strong); }
+.peb { padding: var(--s-3) 0; border-top: 1px solid var(--border); }
+.peb .sum { margin: var(--s-1) 0 0; }
+.sand-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--s-3); }
+.sand { padding: var(--s-3) var(--s-4); border: 1px solid var(--border); background: var(--bg-elev); }
+.sand ul { margin: var(--s-2) 0 0; padding: 0; list-style: none; }
+.sand li { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.water { list-style: none; margin: 0; padding: 0; }
+.water li { display: grid; grid-template-columns: var(--s-6) minmax(0, 1fr); gap: var(--s-3); padding: var(--s-2) 0;
+  border-top: 1px solid var(--border); font-size: calc(16px * var(--type-scale)); line-height: 1.4; min-height: 44px; }
+.water .n { color: var(--text-dim); }
+.water .sum { display: block; margin-top: var(--s-1); overflow-wrap: anywhere; }
+
+/* reveal */
+.masthead { display: grid; grid-template-columns: minmax(0, 1fr) min(37vw, 320px); gap: var(--s-6); align-items: end;
+  overflow-x: clip; border-bottom: 1px solid var(--border); padding-bottom: var(--s-6); margin-bottom: var(--s-8); }
+.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale));
+  line-height: .92; letter-spacing: -.04em; margin: var(--s-3) 0 0; }
+.stats { border: 1px solid var(--border); background: var(--bg-elev); }
+.stats .row { display: flex; justify-content: space-between; padding: var(--s-2) var(--s-4); border-bottom: 1px solid var(--border); }
+.stats .row:last-child { border-bottom: 0; }
+.stats .row .data.kept { color: var(--accent); }
+.cover { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--s-8); }
+.reveal-actions { margin-top: var(--s-6); display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center; }
+
+/* read view */
+.read .section { margin-bottom: var(--s-12); }
+.featured-item { padding: var(--s-5) 0; border-bottom: 1px solid var(--border); max-width: var(--measure-wide); }
+.featured-item h3 { margin: 0; font-size: calc(19px * var(--type-scale)); }
+.featured-item p { margin: var(--s-2) 0; color: var(--text-dim); }
+.meta { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.news-cluster { padding: var(--s-4) 0; border-top: 1px solid var(--border); }
+.news-cluster h3 { margin: 0; }
+.news-cluster p { margin: var(--s-2) 0; color: var(--text-dim); max-width: var(--measure-wide); }
+details.src-fold summary { cursor: pointer; }
+details.src-fold ul { margin: var(--s-2) 0 0; padding-left: var(--s-5); }
+
+@media (max-width: 720px) {
+  main { padding-top: var(--s-8); }
+  .run-grid { grid-template-columns: minmax(0, 1fr); }
+  .phase { text-align: left; }
+  .masthead { grid-template-columns: minmax(0, 1fr); }
+  .brand .word { display: none; }
+  .two { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<header class="site-bar">
+  <div class="site-bar-inner">
+    <a class="brand" href="#opening"><span class="brand-mark" aria-hidden="true"></span><span class="label word" style="color:var(--text)">Cyris</span></a>
+    <span class="label step-of" id="stepOf"></span>
+  </div>
+</header>
+<main id="main"></main>
+
+<script>
+"use strict";
+
+const TOPICS = [
+  { id: "tech", label: "Technology" },
+  { id: "business", label: "Business & economy" },
+  { id: "world", label: "World" },
+  { id: "taiwan", label: "Taiwan" },
+  { id: "science", label: "Science & health" },
+  { id: "ideas", label: "Ideas & culture" },
+];
+
+const FEEDS = [
+  ["tech", "iThome", "tech"], ["tech", "科技新報", "tech"], ["tech", "The Verge", "tech"],
+  ["tech", "Hacker News", "tech"], ["tech", "Simon Willison's Weblog", ""],
+  ["business", "經濟日報", "news"], ["business", "Bloomberg", "news"], ["business", "Financial Times", "analysis"],
+  ["business", "Stratechery", "analysis"], ["business", "市場先生", ""],
+  ["world", "BBC中文網 繁體", "news"], ["world", "紐約時報中文網 繁體", "news"], ["world", "The Guardian", "news"],
+  ["world", "The Economist", "analysis"], ["world", "The Diplomat", "analysis"],
+  ["taiwan", "中央社即時新聞 政治新聞", "news"], ["taiwan", "公視新聞網", "news"], ["taiwan", "報導者", "investigative"],
+  ["taiwan", "自由時報", "news"], ["taiwan", "關鍵評論網", "news"],
+  ["science", "泛科學 PanSci", ""], ["science", "CASE 報科學", ""], ["science", "Quanta Magazine", ""],
+  ["science", "Nautilus", ""], ["science", "The Conversation", "analysis"],
+  ["ideas", "換日線", ""], ["ideas", "The Marginalian", ""], ["ideas", "Aeon", ""],
+  ["ideas", "The Atlantic Ideas", "opinion"], ["ideas", "Literary Hub", ""],
+].map(([topic, name, tag]) => ({ topic, name, tag }));
+
+const STORIES = [
+  { id: "chips", name: "AI 晶片出口管制", line: "美方擬擴大對高階 AI 晶片的出口限制，台廠評估對代工訂單的影響。",
+    titles: ["美商務部擬擴大 AI 晶片出口管制 涵蓋更多國家", "晶片禁令再升級，台積電：影響有限", "輝達回應出口新規：將調整中國特規產品", "出口管制新規上路前，伺服器廠急拉貨"] },
+  { id: "storm", name: "颱風與豪雨特報", line: "颱風外圍環流帶來豪雨，北部山區累積雨量可能超過 500 毫米。",
+    titles: ["氣象署發布海上颱風警報 北部嚴防豪雨", "颱風外圍環流影響 宜花山區豪雨特報", "各縣市停班停課一覽", "颱風遠離 午後雷陣雨仍需留意"] },
+  { id: "rates", name: "央行利率與房市", line: "央行理監事會維持利率不變，但再度收緊不動產貸款成數。",
+    titles: ["央行利率按兵不動 第八波信用管制出手", "選擇性信用管制再收緊 房市交易量恐續降", "央行總裁：通膨回落但仍需觀察", "房貸成數下修 首購族怎麼辦"] },
+  { id: "budget", name: "立法院總預算攻防", line: "總預算案付委審查，朝野對刪減幅度仍無共識。",
+    titles: ["總預算案付委 朝野協商破局", "立院預算刪減爭議 行政院將提覆議", "總預算延宕 地方補助款恐受影響"] },
+  { id: "gaza", name: "加薩停火談判", line: "停火談判進入第二階段，人質交換與援助通道仍是焦點。",
+    titles: ["加薩停火第二階段談判 卡達斡旋", "人道援助車隊獲准進入加薩北部", "以色列內閣表決停火延長案", "聯合國：加薩重建需要十年"] },
+  { id: "quantum", name: "量子電腦錯誤更正", line: "研究團隊發表新的錯誤更正實驗，邏輯量子位元的錯誤率首度低於實體位元。",
+    titles: ["量子錯誤更正新里程碑：邏輯位元優於實體位元", "量子電腦離實用還有多遠？", "新型量子晶片在低溫下穩定運作百小時"] },
+];
+const NOISE = ["藝人婚禮細節曝光", "本週五款超商新品試吃", "十大必去打卡咖啡廳", "手遊限時活動開跑", "星座運勢：本週財運大好",
+  "網紅開箱新款手機殼", "夜市排隊美食榜", "明星機場穿搭", "寵物爆紅影片", "演唱會門票秒殺"];
+const MINOR = ["市議會臨時會今召開", "某廠商發布季度新聞稿", "交通部公布連假疏運措施", "地方圖書館延長開放時間",
+  "新版 App 介面小幅更新", "中油下週汽油價格不調整", "公股銀行人事異動", "高鐵加開班次"];
+const SINGLES = [
+  { t: "日本央行宣布結束殖利率曲線控制", s: "日銀調整政策框架，日圓走強，亞洲股市早盤震盪。" },
+  { t: "開源資料庫授權改變引發社群分叉", s: "授權由寬鬆改為限制性條款，主要貢獻者另起新專案。" },
+  { t: "歐盟通過 AI 法案實施細則", s: "高風險系統的透明義務將在明年分階段生效。" },
+  { t: "南極海冰面積創同期新低", s: "研究人員指出連續三年偏低，影響全球洋流模型。" },
+  { t: "台灣出生數再創新低", s: "內政部統計前三季出生數不到十萬，人口負成長持續。" },
+  { t: "新一代 RISC-V 筆電開賣", s: "效能約為主流 x86 入門款，主打開放架構與長效電池。" },
+];
+const DEEP = [
+  { t: "為什麼我們越來越難讀完一篇長文", s: "作者從注意力經濟與介面設計談起，主張問題不在讀者的意志力，而在閱讀環境被切成碎片；文末提出三個重建專注的做法。" },
+  { t: "一座港口如何改變一個城市的命運", s: "以高雄港百年變遷為線索，梳理產業、移民與都市規劃之間的連動，指出港口轉型的關鍵在土地而非貨量。" },
+  { t: "大型語言模型的「理解」到底是什麼", s: "從可解釋性研究的最新結果出發，區分統計關聯與內部表徵，說明哪些能力已有證據、哪些仍是推測。" },
+  { t: "沒有人在看的公共建設", s: "深入追蹤三座閒置運動場館，從預算編列到驗收，拼出地方建設為何一再落空的制度原因。" },
+  { t: "數學家如何證明一件事永遠不會發生", s: "以一個百年猜想的新進展為例，解釋不可能性證明的思路，以及電腦輔助證明在其中扮演的角色。" },
+];
+
+const PERIODS = { morning: "Morning", evening: "Evening" };
+const STEPS = ["opening", "topics", "feeds", "lanes", "fetch", "stances", "issue", "settings"];
+const STEP_NO = { opening: 1, topics: 2, feeds: 2, lanes: 3, fetch: 4, stances: 5, issue: 6, settings: 7 };
+const DEFAULT_PICKS = ["iThome", "Stratechery", "BBC中文網 繁體", "公視新聞網", "報導者", "Quanta Magazine"];
+const FETCH_MS = 8000;
+const RUN_MS = 12000;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const state = {
+  topics: new Set(), picks: new Set(), own: [], lanes: {}, stances: {},
+  fetched: null, run: null, saved: false,
+};
+let timers = [];
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function picked() {
+  const names = [...state.picks, ...state.own.map(o => o.name)];
+  return names.length ? names : DEFAULT_PICKS;
+}
+const SAMPLE_READ = ["Stratechery", "報導者"];
+function laneOf(name) {
+  if (!state.picks.size && !state.own.length && state.lanes[name] === undefined && SAMPLE_READ.includes(name)) return "read";
+  return state.lanes[name] === "read" ? "read" : "skim";
+}
+function countFor(name) { return 10 + (hash(name) % 13); }
+
+const main = document.getElementById("main");
+const stepOf = document.getElementById("stepOf");
+
+function go(h) { if (location.hash === "#" + h) route(); else location.hash = h; }
+function actions(opts) {
+  const b = [];
+  if (opts.back) b.push(`<button class="btn secondary" data-go="${opts.back}">Back</button>`);
+  if (opts.skip) b.push(`<button class="btn secondary" data-go="${opts.skip}">Skip</button>`);
+  b.push(`<span class="spacer"></span>`);
+  if (opts.next) b.push(`<button class="btn primary" id="next" data-go="${opts.next}">${opts.nextLabel || "Next"}</button>`);
+  return `<div class="actions">${b.join("")}</div>`;
+}
+function head(label, title, desc) {
+  return `<div class="step-head"><div class="label">${label}</div><h1 class="heading">${title}</h1>${desc ? `<p class="small">${desc}</p>` : ""}</div>`;
+}
+main.addEventListener("click", e => {
+  const g = e.target.closest("[data-go]");
+  if (g) { e.preventDefault(); go(g.dataset.go); }
+});
+
+/* 1. opening */
+function opening() {
+  main.innerHTML = `<div class="col" style="padding-top:var(--s-12)">
+    <h1 class="display">Hundreds come in.<br><em>A few</em> reach you.</h1>
+    <p class="small" style="margin:var(--s-6) 0 0;max-width:var(--measure)">Cyris reads your feeds, drops what doesn't matter and keeps the rest in one issue. You steer what it keeps.</p>
+    <div class="actions"><button class="btn primary" data-go="topics">Begin</button></div>
+  </div>`;
+}
+
+/* 2a. topics */
+function topics() {
+  const counts = t => FEEDS.filter(f => f.topic === t).length;
+  main.innerHTML = `<div class="col">
+    ${head("Sources", "What do you follow?", "Pick topics to see their feeds. Next with none picked goes to adding your own.")}
+    <div class="label" id="topicsLabel" style="margin-bottom:var(--s-2)">Topics</div>
+    <div class="tiles" role="group" aria-labelledby="topicsLabel">
+      ${TOPICS.map(t => `<button type="button" class="tile" data-t="${t.id}" aria-pressed="${state.topics.has(t.id)}">
+        <span class="title">${t.label}</span><span class="label">${counts(t.id)} feeds</span></button>`).join("")}
+    </div>
+    ${actions({ back: "opening", skip: "lanes", next: "feeds" })}
+  </div>`;
+  main.querySelectorAll(".tile").forEach(b => b.addEventListener("click", () => {
+    const id = b.dataset.t; state.topics.has(id) ? state.topics.delete(id) : state.topics.add(id);
+    b.setAttribute("aria-pressed", state.topics.has(id));
+  }));
+}
+
+/* 2b. feeds */
+function feeds() {
+  const chosen = TOPICS.filter(t => state.topics.has(t.id));
+  const outside = [...state.picks].filter(n => !chosen.some(t => FEEDS.find(f => f.name === n && f.topic === t.id)));
+  const row = f => `<label class="check-row"><input type="checkbox" value="${esc(f.name)}" ${state.picks.has(f.name) ? "checked" : ""}>
+      <span class="name" lang="">${esc(f.name)}</span>${f.tag ? `<span class="pill">${f.tag}</span>` : ""}</label>`;
+  const lists = [];
+  if (outside.length) lists.push(`<fieldset class="checklist"><legend class="label">Picked, outside the chosen topics</legend>${outside.map(n => row(FEEDS.find(f => f.name === n))).join("")}</fieldset>`);
+  chosen.forEach(t => lists.push(`<fieldset class="checklist"><legend class="label">${t.label}</legend>${FEEDS.filter(f => f.topic === t.id).map(row).join("")}</fieldset>`));
+  if (state.own.length) lists.push(`<fieldset class="checklist"><legend class="label">Your feeds</legend>${state.own.map(o => `<label class="check-row"><input type="checkbox" checked disabled><span class="name" lang="">${esc(o.name)}</span></label>`).join("")}</fieldset>`);
+  main.innerHTML = `<div class="col">
+    ${head("Sources", "Which feeds?", chosen.length ? "Check the ones you want. You can add more later in Settings." : "No topic picked. Add a feed of your own, or go back and pick a topic.")}
+    ${lists.join("")}
+    <div class="field" style="margin-top:var(--s-6)">
+      <label class="label" for="ownUrl">Add your own feed</label>
+      <div class="inline"><input class="input" id="ownUrl" type="url" placeholder="https://example.com/feed.xml"><button class="btn secondary" id="ownAdd">Add</button></div>
+      <span class="small">Paste a feed's address or a site's home page.</span>
+    </div>
+    <div class="small" aria-live="polite" id="pickCount"></div>
+    ${actions({ back: "topics", skip: "lanes", next: "lanes" })}
+  </div>`;
+  const upd = () => { const n = state.picks.size + state.own.length; document.getElementById("pickCount").textContent = `${n} feed${n === 1 ? "" : "s"} picked`; };
+  upd();
+  main.querySelectorAll(".check-row input:not([disabled])").forEach(c => c.addEventListener("change", () => {
+    c.checked ? state.picks.add(c.value) : state.picks.delete(c.value); upd();
+  }));
+  const add = () => {
+    const v = document.getElementById("ownUrl").value.trim(); if (!v) return;
+    let host; try { host = new URL(v).host; } catch { host = v; }
+    state.own.push({ name: host.replace(/^www\./, "") }); feeds();
+  };
+  document.getElementById("ownAdd").addEventListener("click", add);
+  document.getElementById("ownUrl").addEventListener("keydown", e => { if (e.key === "Enter") add(); });
+}
+
+/* 3. read whole or skim */
+function lanes() {
+  const names = picked();
+  main.innerHTML = `<div class="col">
+    ${head("Reading", "Read whole, or skim?", "For each feed. Unanswered means skim.")}
+    <div class="legend small">
+      <div><span class="label">Read whole</span><span>Each article becomes a <b style="color:var(--text)">Story</b>, a pebble with its own summary.</span></div>
+      <div><span class="label">Skim</span><span>Several on one subject become a <b style="color:var(--text)">Topic</b> (sand); a lone one is a <b style="color:var(--text)">Headline</b>, one line (water).</span></div>
+    </div>
+    <div class="panel">
+      ${names.map(n => `<div class="list-row choice-row"><span class="name title" lang="">${esc(n)}</span>
+        <span class="seg" role="group" aria-label="${esc(n)}">
+          <button type="button" data-n="${esc(n)}" data-l="read" aria-pressed="${laneOf(n) === "read"}">Read whole</button>
+          <button type="button" data-n="${esc(n)}" data-l="skim" aria-pressed="${state.lanes[n] === "skim"}">Skim</button>
+        </span></div>`).join("")}
+    </div>
+    ${state.picks.size + state.own.length ? "" : `<p class="small">No feed picked yet, so these are six sample feeds.</p>`}
+    ${actions({ back: "feeds", skip: "fetch", next: "fetch" })}
+  </div>`;
+  main.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+    const n = b.dataset.n, l = b.dataset.l;
+    state.lanes[n] = state.lanes[n] === l ? undefined : l;
+    b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", state.lanes[n] === x.dataset.l));
+  }));
+}
+
+/* 4. wait one: fetching */
+function fetchStep() {
+  const names = picked();
+  const rows = names.map(n => ({ name: n, count: countFor(n), at: 600 + (hash(n + "t") % (FETCH_MS - 1200)) }));
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  main.innerHTML = `<div class="col">
+    ${head("Fetching", "Reading your feeds", "About a minute for twelve feeds. You can go on; it keeps reading.")}
+    <div class="tally" aria-live="off"><span id="tallyN">0</span><small>articles in</small></div>
+    <div class="panel" style="margin-top:var(--s-6)">
+      ${rows.map((r, i) => `<div class="list-row feed-row"><span class="name" lang="">${esc(r.name)}</span><span class="st label" id="st${i}">reading…</span></div>`).join("")}
+    </div>
+    <p class="small" id="fetchNote" role="status">${names.length} feeds, all read at once.</p>
+    ${actions({ back: "lanes", skip: "stances", next: "stances" })}
+  </div>`;
+  let sum = 0;
+  const finish = (r, i) => {
+    sum += r.count; document.getElementById("tallyN").textContent = sum;
+    const st = document.getElementById("st" + i); st.textContent = `${r.count} new`; st.classList.add("done");
+  };
+  state.fetched = { rows, total };
+  if (reduced) { rows.forEach(finish); document.getElementById("fetchNote").textContent = `${total} articles from ${names.length} feeds.`; return; }
+  rows.forEach((r, i) => later(() => finish(r, i), r.at));
+  later(() => { document.getElementById("fetchNote").textContent = `Done: ${total} articles from ${names.length} feeds.`; }, FETCH_MS - 500);
+}
+
+/* 5. topic stances */
+function stances() {
+  main.innerHTML = `<div class="col">
+    ${head("Topics", "More, or less?", "Topics found in what just came in. Leave any you don't mind either way.")}
+    <div class="panel">
+      ${STORIES.map(s => `<div class="list-row choice-row"><span class="name title" lang="zh-Hant">${s.name}</span>
+        <span class="seg" role="group" aria-label="${s.name}">
+          <button type="button" data-s="${s.id}" data-v="more" aria-pressed="${state.stances[s.id] === "more"}">More</button>
+          <button type="button" data-s="${s.id}" data-v="less" aria-pressed="${state.stances[s.id] === "less"}">Less</button>
+        </span></div>`).join("")}
+    </div>
+    ${actions({ back: "fetch", skip: "issue", next: "issue", nextLabel: "Make my first issue" })}
+  </div>`;
+  main.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+    const s = b.dataset.s, v = b.dataset.v;
+    state.stances[s] = state.stances[s] === v ? undefined : v;
+    b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", state.stances[s] === x.dataset.v));
+  }));
+}
+
+/* 6. wait two: the run */
+function buildRun() {
+  const rows = (state.fetched && state.fetched.rows) || picked().map(n => ({ name: n, count: countFor(n) }));
+  const queues = rows.map(r => {
+    const out = [];
+    for (let j = 0; j < r.count; j++) {
+      const k = hash(r.name + j);
+      if (laneOf(r.name) === "read" && j < 2) { out.push({ src: r.name, kind: "deep", ...DEEP[(k + j) % DEEP.length] }); continue; }
+      const roll = k % 20;
+      if (roll < 6) out.push({ src: r.name, kind: "noise", t: NOISE[k % NOISE.length] });
+      else if (roll < 11) out.push({ src: r.name, kind: "minor", t: MINOR[k % MINOR.length] });
+      else if (roll < 17) { const s = STORIES[k % STORIES.length]; out.push({ src: r.name, kind: "story", story: s, t: s.titles[(k >>> 3) % s.titles.length] }); }
+      else out.push({ src: r.name, kind: "single", ...SINGLES[k % SINGLES.length] });
+    }
+    return out;
+  });
+  const stream = [];
+  for (let i = 0; queues.some(q => q.length); i++) { const q = queues[i % queues.length]; if (q.length) stream.push(q.shift()); }
+
+  const seen = new Set(), issue = { pebbles: [], sand: [], water: [] }, byStory = {};
+  let singles = 0;
+  for (const a of stream) {
+    if (a.kind === "noise") { a.v = "off-topic"; continue; }
+    if (a.kind === "minor") { a.v = "minor"; continue; }
+    if (seen.has(a.t)) { a.v = "duplicate"; continue; }
+    seen.add(a.t);
+    if (a.kind === "deep") { if (issue.pebbles.length < 4) { a.v = "kept"; a.layer = "Stories"; } else a.v = "minor"; continue; }
+    if (a.kind === "noise") { a.v = "off-topic"; continue; }
+    if (a.kind === "minor") { a.v = "minor"; continue; }
+    if (a.kind === "story") {
+      const st = state.stances[a.story.id];
+      if (st === "less") { a.v = "less: you said so"; continue; }
+      const n = (byStory[a.story.id] = (byStory[a.story.id] || 0) + 1);
+      if (n > (st === "more" ? 3 : 2)) { a.v = "duplicate"; continue; }
+      a.v = "kept"; a.layer = n === 1 ? "Headlines" : "Topics"; continue;
+    }
+    if (singles < 3) { singles++; a.v = "kept"; a.layer = "Headlines"; } else a.v = "minor";
+  }
+  return stream;
+}
+
+function issueModel(stream, upto) {
+  const m = { pebbles: [], sand: [], water: [] };
+  const story = {};
+  for (let i = 0; i < upto; i++) {
+    const a = stream[i]; if (a.v !== "kept") continue;
+    if (a.kind === "deep") m.pebbles.push(a);
+    else if (a.kind === "single") m.water.push({ t: a.t, s: a.s });
+    else {
+      const id = a.story.id;
+      if (!story[id]) { story[id] = { story: a.story, members: [] }; }
+      story[id].members.push(a);
+    }
+  }
+  for (const id in story) {
+    const g = story[id];
+    if (g.members.length >= 2) m.sand.push(g);
+    else m.water.unshift({ t: g.story.name, s: g.story.line });
+  }
+  return m;
+}
+
+function formingHTML(m) {
+  const peb = m.pebbles.length ? m.pebbles.map(p => `<div class="peb"><div class="title" lang="">${esc(p.t)}</div><div class="label">${esc(p.src)}</div></div>`).join("")
+    : `<div class="layer-empty">Feeds you read whole land here.</div>`;
+  const sand = m.sand.length ? `<div class="sand-grid">${m.sand.map(g => `<div class="sand"><div class="title" lang="zh-Hant">${g.story.name}</div><ul>${g.members.map(x => `<li lang="">${esc(x.t)}</li>`).join("")}</ul></div>`).join("")}</div>`
+    : `<div class="layer-empty">Two skimmed articles on one subject make a topic.</div>`;
+  const water = m.water.length ? `<ol class="water">${m.water.map((w, i) => `<li><span class="n data">${i + 1}</span><span lang="zh-Hant">${esc(w.t)}</span></li>`).join("")}</ol>`
+    : `<div class="layer-empty">A lone skimmed article is one line.</div>`;
+  return `
+    <div class="layer"><h2 class="marker label">Stories <span class="what small">pebble · ${m.pebbles.length}</span></h2>${peb}</div>
+    <div class="layer"><h2 class="marker label">Topics <span class="what small">sand · ${m.sand.length}</span></h2>${sand}</div>
+    <div class="layer"><h2 class="marker label">Headlines <span class="what small">water · ${m.water.length}</span></h2>${water}</div>`;
+}
+
+function tallyHTML(total, out, kept) {
+  return `<span>${total}</span><i>in</i><span class="sep">·</span><span class="out">${out}</span><i>out</i><span class="sep">·</span><span class="kept">${kept}</span><i>kept</i>`;
+}
+
+function issueStep(sub) {
+  const stream = state.run || (state.run = buildRun());
+  const total = stream.length;
+  if (sub === "read") return readView(stream);
+  if (sub === "done" || reduced) return reveal(stream);
+  const elapsed = (ms) => { const s = Math.round(ms / RUN_MS * 15 * 60); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  main.innerHTML = `<div class="col-wide">
+    ${head("First issue", "Making your first issue", "Up to fifteen minutes. Watch, or leave it: it keeps going, and the issue so far stays here.")}
+    <div class="run-top">
+      <div class="run-tally" id="runTally">${tallyHTML(total, 0, 0)}</div>
+      <div class="phase"><div class="label" id="phase" role="status">Judging 0 of ${total}</div><div class="data small" id="clock">0:00 of about 15:00</div></div>
+    </div>
+    <div class="run-grid">
+      <section aria-label="Articles being judged">
+        <ol class="stream" id="stream"></ol>
+        <p class="small stream-foot" id="streamFoot">Each article gets a verdict. Struck through means it stays out.</p>
+      </section>
+      <section class="forming" aria-label="The issue so far" id="forming">${formingHTML(issueModel(stream, 0))}</section>
+    </div>
+    ${actions({ back: "stances", skip: "issue/done" })}
+  </div>`;
+  const list = document.getElementById("stream");
+  const SHOW = innerWidth < 720 ? 4 : 8, judgeMs = (RUN_MS - 2400) / total;
+  let out = 0, kept = 0;
+  const step = i => {
+    const a = stream[i];
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="src label" lang="">${esc(a.src)}</span><span class="t" lang="">${esc(a.t)}</span><span class="v">reading…</span>`;
+    list.prepend(li);
+    while (list.children.length > SHOW) list.lastChild.remove();
+    const prev = stream[i - 1];
+    if (prev) {
+      const pli = list.children[1];
+      pli.classList.add(prev.v === "kept" ? "kept" : "out");
+      pli.querySelector(".v").textContent = prev.v === "kept" ? `→ ${prev.layer}` : prev.v;
+      prev.v === "kept" ? kept++ : out++;
+      document.getElementById("runTally").innerHTML = tallyHTML(total, out, kept);
+      if (prev.v === "kept") document.getElementById("forming").innerHTML = formingHTML(issueModel(stream, i));
+    }
+    document.getElementById("phase").textContent = `Judging ${i + 1} of ${total}`;
+    document.getElementById("clock").textContent = `${elapsed(i * judgeMs)} of about 15:00`;
+  };
+  for (let i = 0; i < total; i++) later(() => step(i), i * judgeMs);
+  later(() => {
+    const last = stream[total - 1], li = list.children[0];
+    li.classList.add(last.v === "kept" ? "kept" : "out");
+    li.querySelector(".v").textContent = last.v === "kept" ? `→ ${last.layer}` : last.v;
+    last.v === "kept" ? kept++ : out++;
+    document.getElementById("runTally").innerHTML = tallyHTML(total, out, kept);
+    document.getElementById("forming").innerHTML = formingHTML(issueModel(stream, total));
+    const m = issueModel(stream, total);
+    document.getElementById("phase").textContent = `Writing ${m.pebbles.length} summaries`;
+    document.getElementById("streamFoot").textContent = "Every article judged. Summaries for the stories come last.";
+  }, total * judgeMs);
+  later(() => { document.getElementById("phase").textContent = "Laying out the issue"; document.getElementById("clock").textContent = "14:30 of about 15:00"; }, RUN_MS - 1000);
+  later(() => go("issue/done"), RUN_MS);
+}
+
+function issueDate() {
+  const d = new Date(), h = d.getHours();
+  const period = h >= 18 ? "evening" : h >= 8 ? "morning" : "evening";
+  if (h < 8) d.setDate(d.getDate() - 1);
+  return { date: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }), iso: d.toISOString().slice(0, 10), period };
+}
+
+function stats(stream) {
+  const kept = stream.filter(a => a.v === "kept").length;
+  const why = {}; stream.forEach(a => { if (a.v !== "kept") why[a.v] = (why[a.v] || 0) + 1; });
+  return { kept, out: stream.length - kept, why };
+}
+
+function reveal(stream) {
+  const m = issueModel(stream, stream.length), s = stats(stream), d = issueDate();
+  main.innerHTML = `<div class="col-wide">
+    <div class="masthead">
+      <div><div class="label"><span class="data">${d.iso}</span> · ${PERIODS[d.period]} · your first issue</div>
+        <h1 class="issue-title">${d.date}</h1>
+        <p class="small" style="margin:var(--s-4) 0 0">${s.kept} of ${stream.length} made it, laid out stone, sand, water.</p>
+        <div class="reveal-actions">
+          <button class="btn primary" data-go="issue/read" id="readIt">Read it</button>
+          <button class="btn secondary" data-go="stances">Back</button>
+          <button class="btn secondary" data-go="settings">Skip</button>
+        </div></div>
+      <div class="stats">
+        <div class="row"><span class="label">In</span><span class="data">${stream.length}</span></div>
+        ${Object.entries(s.why).map(([k, v]) => `<div class="row"><span class="label">${k}</span><span class="data">${v}</span></div>`).join("")}
+        <div class="row"><span class="label">Kept</span><span class="data kept">${s.kept}</span></div>
+      </div>
+    </div>
+    <div class="cover forming">${formingHTML(m)}</div>
+  </div>`;
+  document.getElementById("readIt").focus({ preventScroll: true });
+}
+
+function readView(stream) {
+  const m = issueModel(stream, stream.length), d = issueDate();
+  main.innerHTML = `<div class="col-wide read">
+    <div class="label"><span class="data">${d.iso}</span> · ${PERIODS[d.period]}</div>
+    <h1 class="issue-title" style="margin-bottom:var(--s-8)">${d.date}</h1>
+    ${m.pebbles.length ? `<section class="section"><h2 class="marker label">Stories</h2>${m.pebbles.map(p => `<article class="featured-item"><h3 class="title" lang="">${esc(p.t)}</h3><p lang="zh-Hant">${esc(p.s)}</p><div class="meta label"><span lang="">${esc(p.src)}</span><span>↗</span></div></article>`).join("")}</section>` : ""}
+    ${m.sand.length ? `<section class="section"><h2 class="marker label">Topics</h2>${m.sand.map(g => `<div class="news-cluster"><h3 class="title" lang="zh-Hant">${g.story.name}</h3><p lang="zh-Hant">${g.story.line}</p><details class="src-fold label"><summary>${g.members.length} articles</summary><ul>${g.members.map(x => `<li class="small" lang="">${esc(x.t)} · ${esc(x.src)}</li>`).join("")}</ul></details></div>`).join("")}</section>` : ""}
+    ${m.water.length ? `<section class="section"><h2 class="marker label">Headlines</h2><ol class="water">${m.water.map((w, i) => `<li><span class="n data">${i + 1}</span><span lang="zh-Hant">${esc(w.t)}<span class="sum small">${esc(w.s)}</span></span></li>`).join("")}</ol></section>` : ""}
+    ${actions({ back: "issue/done", next: "settings" })}
+  </div>`;
+}
+
+/* 7. quiet settings */
+function settings() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const lang = navigator.language || "en";
+  main.innerHTML = `<div class="col">
+    ${head("Settings", "Last, the quiet ones", "All optional. Detected from this browser, and saved only with Finish.")}
+    <div class="two">
+      <div class="field"><label class="label" for="lang">Output language</label>
+        <select class="input" id="lang"><option>${esc(lang)}</option><option>zh-Hant</option><option>en</option><option>ja</option></select></div>
+      <div class="field"><label class="label" for="tz">Timezone</label>
+        <select class="input" id="tz"><option>${esc(tz)}</option><option>Asia/Taipei</option><option>UTC</option></select></div>
+      <div class="field"><label class="label" for="h1">Morning issue</label><input class="input" id="h1" type="time" value="08:00"></div>
+      <div class="field"><label class="label" for="h2">Evening issue</label><input class="input" id="h2" type="time" value="18:00"></div>
+    </div>
+    <div class="field"><label class="label" for="hook">Discord webhook</label><input class="input" id="hook" type="url" placeholder="https://discord.com/api/webhooks/…"><span class="small">Posts each issue's link to a channel.</span></div>
+    <div class="field"><label class="label" for="mail">Email</label><input class="input" id="mail" type="email" placeholder="you@example.com"><span class="small">Sends each issue as a mail.</span></div>
+    <div id="saved" role="status">${state.saved ? `<div class="notice">Saved. Your next issue is at the next publish hour.</div>` : ""}</div>
+    <div class="actions"><button class="btn secondary" data-go="issue/done">Back</button><button class="btn secondary" id="skipS">Skip</button><span class="spacer"></span><button class="btn primary" id="finish">Finish</button></div>
+  </div>`;
+  const done = msg => { state.saved = true; document.getElementById("saved").innerHTML = `<div class="notice">${msg}</div>`; };
+  document.getElementById("finish").addEventListener("click", () => done(`Saved. Next issue at ${document.getElementById("h2").value}, ${document.getElementById("tz").value}.`));
+  document.getElementById("skipS").addEventListener("click", () => done("Nothing saved. Change these any time in Settings."));
+}
+
+const VIEWS = { opening, topics, feeds, lanes, fetch: fetchStep, stances, issue: issueStep, settings };
+function route() {
+  clearTimers();
+  const [step, sub] = (location.hash.slice(1) || "opening").split("/");
+  const view = VIEWS[step] ? step : "opening";
+  if (view === "stances" || view === "lanes") state.run = null;
+  stepOf.textContent = `Step ${STEP_NO[view]} of 7`;
+  VIEWS[view](sub);
+  window.scrollTo(0, 0);
+}
+addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cyris onboarding B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* backgrounds, deepest to lightest */
+  --bg: #07070a;
+  --bg-elev: #0d0d12;
+  --surface: #11111a;
+  --surface-2: #161622;
+  /* lines */
+  --border: #1f1f2e;
+  --border-strong: #2a2a40;
+  /* text */
+  --text: #ebebf2;
+  --text-dim: #8a8aa0;
+  --text-faint: #62627a;
+  /* semantic */
+  --accent: #c6ff3d;
+  --accent-dim: #8aa829;
+  --warn: #ff5b8a;
+  --accent-tint: rgba(198, 255, 61, 0.07);
+  --warn-tint: rgba(255, 91, 138, 0.12);
+  --grid: rgba(198, 255, 61, 0.035);
+  /* spacing */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
+  /* fonts and the type scale multiplier */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --type-scale: 1;
+  /* shape, motion, layout */
+  --r-control: 6px;
+  --r-tag: 999px;
+  --t-fast: 150ms ease-out;
+  --bar-h: 60px;
+  --measure: 640px;
+  --measure-wide: 760px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); font-size: calc(16px * var(--type-scale)); line-height: 1.5; overflow-x: hidden; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.label { font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+.small { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); margin: 0; }
+.data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.bar { height: var(--bar-h); border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+.bar-inner { width: 100%; max-width: var(--measure-wide); margin: 0 auto; padding: 0 var(--s-4); display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: var(--s-2); }
+.brand-mark { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+
+main { max-width: var(--measure-wide); margin: 0 auto; padding: var(--s-8) var(--s-4) var(--s-16); }
+section[data-step] { display: none; }
+section[data-step].on { display: block; }
+h1 { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(40px, 7vw, 64px) * var(--type-scale)); line-height: 1; letter-spacing: -0.03em; margin: 0 0 var(--s-3); }
+h1 em { font-style: italic; color: var(--accent); }
+.lede { font-size: calc(18px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); margin: 0 0 var(--s-6); max-width: var(--measure); }
+
+.btn { height: 44px; padding: 0 var(--s-5); border-radius: var(--r-control); font-family: var(--font-mono); font-weight: 500; font-size: calc(12px * var(--type-scale)); text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; border: 1px solid transparent; transition: color var(--t-fast), background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #d4ff66; }
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
+.btn.secondary:hover { color: var(--text); }
+.btn:active { opacity: .7; }
+.btn.sm { height: 34px; padding: 0 var(--s-2); letter-spacing: 0.06em; position: relative; }
+.btn.sm::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
+.nav { display: flex; gap: var(--s-3); margin-top: var(--s-6); align-items: center; flex-wrap: wrap; }
+.nav .grow { flex: 1; }
+
+/* strata */
+.strata { position: relative; border: 1px solid var(--border); overflow: hidden; }
+.band { position: relative; border-top: 1px solid var(--border); padding: var(--s-3) var(--s-4); min-height: 96px; }
+.band:first-child { border-top: 0; }
+.band.pebble { background: var(--surface-2); }
+.band.sand { background: var(--surface); }
+.band.water { background: var(--bg-elev); }
+.band-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-3); min-height: 18px; }
+.band-name { transition: opacity var(--t-fast); }
+.band-name b { color: var(--text); font-weight: 500; }
+.band-items { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); align-items: flex-start; }
+.hidden-label .band-name { opacity: 0; }
+.surface-line { height: 0; border-top: 1px dashed var(--border-strong); }
+.sky { position: relative; height: 120px; }
+
+/* the three marks: a stone, grains of sand, a line of water */
+.stone { display: inline-flex; align-items: center; max-width: 100%; padding: var(--s-1) var(--s-3); border-radius: var(--r-tag); background: var(--border-strong); color: var(--text); font-size: calc(14px * var(--type-scale)); line-height: 1.4; }
+.grains { display: inline-flex; flex-direction: column; gap: var(--s-1); padding: var(--s-1) 0; max-width: 100%; }
+.grains .dots { display: flex; gap: 3px; }
+.grains .dots i, .dot { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+.grains span { font-size: calc(13px * var(--type-scale)); color: var(--text-dim); }
+.wline { display: block; width: 100%; border-top: 1px solid var(--border-strong); padding-top: var(--s-1); font-size: calc(13px * var(--type-scale)); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.faller { position: absolute; top: 0; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); pointer-events: none; }
+
+/* opening */
+.opening-stage { position: relative; overflow: hidden; }
+
+/* tiles and lists */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: var(--s-2); }
+.tile { position: relative; min-height: var(--s-16); padding: var(--s-3) var(--s-8) var(--s-3) var(--s-4); background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--r-control); text-align: left; color: var(--text); cursor: pointer; font-family: var(--font-sans); transition: background-color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.tile:hover { background: var(--surface); }
+.tile:active { opacity: .7; }
+.tile .name { display: block; font-weight: 600; font-size: calc(18px * var(--type-scale)); line-height: 1.3; }
+.tile::before { content: ""; position: absolute; top: var(--s-3); right: var(--s-3); width: var(--s-3); height: var(--s-3); border: 1px solid var(--border-strong); }
+.tile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); }
+.tile[aria-pressed="true"]::before { background: var(--accent); border-color: var(--accent); }
+.tile[aria-pressed="true"] .label { color: var(--accent); }
+
+.checklist { border: 1px solid var(--border); background: var(--bg-elev); border-radius: var(--r-control); margin: 0 0 var(--s-4); padding: 0; }
+.checklist legend { padding: 0; margin-bottom: var(--s-2); }
+.checklist label { display: flex; gap: var(--s-3); align-items: center; padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); cursor: pointer; transition: background-color var(--t-fast); }
+.checklist label:last-child { border-bottom: 0; }
+.checklist label:hover { background: var(--surface); }
+.checklist input { accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
+.checklist .fname { font-weight: 600; flex: 1; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: var(--s-2); margin-bottom: var(--s-4); }
+.input { height: 48px; padding: 0 var(--s-4); background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--r-control); color: var(--text); font-family: var(--font-sans); font-size: 16px; width: 100%; min-width: 0; }
+.input:focus { outline: none; border-color: var(--accent); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+
+/* feed tokens */
+.tray { display: flex; flex-wrap: wrap; gap: var(--s-2); min-height: 44px; padding: var(--s-3) 0; }
+.token { min-height: 34px; padding: var(--s-1) var(--s-3); border-radius: var(--r-tag); background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text); font-family: var(--font-sans); font-size: calc(14px * var(--type-scale)); cursor: grab; position: relative; touch-action: none; transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast), opacity var(--t-fast); }
+.token::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
+.token[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+.token.in-pebble { background: var(--border-strong); }
+.token.dragging { position: fixed; z-index: 10; pointer-events: none; opacity: .9; }
+.drop { width: 100%; border: 1px dashed transparent; min-height: 44px; transition: border-color var(--t-fast), background-color var(--t-fast); }
+.armed .drop, .drop.over { border-color: var(--border-strong); }
+.drop.over { border-color: var(--accent); background: var(--accent-tint); }
+.skimzone { position: relative; }
+.skimzone .band.sand { min-height: 120px; }
+
+/* stances */
+.stance-stage .band { min-height: 120px; }
+.focus-stone { display: inline-flex; padding: var(--s-2) var(--s-4); border-radius: var(--r-tag); background: var(--border-strong); border: 1px solid var(--text-faint); color: var(--text); font-weight: 600; font-size: calc(18px * var(--type-scale)); }
+.stone.more { background: var(--accent-tint); border: 1px solid var(--accent-dim); color: var(--text); }
+.stone.less { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); font-size: calc(12px * var(--type-scale)); }
+.stance-q { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-4); }
+.stance-count { margin-top: var(--s-3); }
+
+/* wait */
+.status { display: flex; justify-content: space-between; gap: var(--s-3); margin: var(--s-3) 0; flex-wrap: wrap; }
+.meter { height: 3px; background: var(--border-strong); margin-bottom: var(--s-3); }
+.meter i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+/* issue preview */
+.issue { border: 1px solid var(--border); }
+.issue-head { padding: var(--s-4); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: var(--s-2); }
+.issue-head .t { font-family: var(--font-serif); font-size: calc(36px * var(--type-scale)); line-height: 1; letter-spacing: -0.03em; }
+.issue .band { min-height: 0; padding: var(--s-4); }
+.marker { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-3); }
+.marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.p-item { padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.p-item:last-child { border-bottom: 0; }
+.p-item h3 { margin: 0 0 var(--s-1); font-size: calc(18px * var(--type-scale)); font-weight: 600; line-height: 1.3; }
+.p-item p { margin: 0; }
+.s-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--s-3) var(--s-6); }
+.w-row { display: flex; gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.w-row:last-child { border-bottom: 0; }
+.w-row .n { font-family: var(--font-mono); color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
+.why { color: var(--text-dim); font-family: var(--font-mono); font-size: calc(11px * var(--type-scale)); text-transform: uppercase; letter-spacing: 0.1em; }
+.why.up { color: var(--accent); }
+.compress { transform-origin: top; }
+
+.notice { border-left: 2px solid var(--accent); background: var(--accent-tint); padding: var(--s-3) var(--s-4); font-size: calc(14px * var(--type-scale)); margin-top: var(--s-4); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 720px) {
+  main { padding-top: var(--s-6); }
+  .row2 { grid-template-columns: 1fr; }
+  .band { padding: var(--s-3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<header class="bar"><div class="bar-inner">
+  <div class="brand"><span class="brand-mark"></span><span class="label" style="color:var(--text)">Cyris</span></div>
+  <span class="label" id="stepno"></span>
+</div></header>
+
+<main>
+<!-- 1 opening -->
+<section data-step="opening">
+  <h1>Many come in.<br><em>A few reach you.</em></h1>
+  <div class="opening-stage" id="openStage">
+    <div class="sky" id="openSky"></div>
+    <div class="strata hidden-label" id="openStrata">
+      <div class="band pebble"><div class="band-head"><span class="label band-name"><b>Pebble</b> · read whole</span></div><div class="band-items"></div></div>
+      <div class="band sand"><div class="band-head"><span class="label band-name"><b>Sand</b> · skimmed, several on one topic</span></div><div class="band-items"></div></div>
+      <div class="band water"><div class="band-head"><span class="label band-name"><b>Water</b> · skimmed, one line</span></div><div class="band-items" style="flex-direction:column"></div></div>
+    </div>
+  </div>
+  <div class="nav"><span class="grow"></span><button class="btn primary" data-next>Begin</button></div>
+</section>
+
+<!-- 2a topics -->
+<section data-step="topics">
+  <h1>What do you <em>follow?</em></h1>
+  <p class="lede">Pick topics to see their feeds.</p>
+  <div class="label" id="topicsLabel" style="margin-bottom:var(--s-2)">Topics</div>
+  <div class="tiles" role="group" aria-labelledby="topicsLabel" id="tiles"></div>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" data-next>Skip</button></div>
+</section>
+
+<!-- 2b feeds -->
+<section data-step="feeds">
+  <h1>Pick your <em>feeds.</em></h1>
+  <p class="lede">Each one you pick lands above the strata, unsorted.</p>
+  <div class="tray" id="feedTray" aria-label="Picked feeds"></div>
+  <div class="surface-line" style="margin-bottom:var(--s-6)"></div>
+  <div id="feedLists"></div>
+  <div class="field">
+    <label class="label" for="ownFeed">Add your own feed</label>
+    <div style="display:flex;gap:var(--s-2)"><input class="input" id="ownFeed" type="url" placeholder="https://example.com/feed.xml"><button class="btn secondary" id="addOwn">Add</button></div>
+  </div>
+  <p class="small" id="feedCount" aria-live="polite"></p>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" data-next>Skip</button></div>
+</section>
+
+<!-- 3 read whole or skim -->
+<section data-step="sort">
+  <h1>Read whole, <em>or skim?</em></h1>
+  <p class="lede">Drop each feed into a layer. Drag it, or tap it and tap a layer.</p>
+  <div class="tray" id="sortTray" aria-label="Unsorted feeds"></div>
+  <div class="strata" id="sortStrata">
+    <div class="band pebble">
+      <div class="band-head"><span class="label band-name"><b>Pebble</b> · read whole</span><button class="btn secondary sm" data-drop="read">Drop here</button></div>
+      <div class="band-items drop" data-zone="read"></div>
+    </div>
+    <div class="skimzone">
+      <div class="band sand">
+        <div class="band-head"><span class="label band-name"><b>Sand + water</b> · skim</span><button class="btn secondary sm" data-drop="skim">Drop here</button></div>
+        <div class="band-items drop" data-zone="skim"></div>
+      </div>
+      <div class="band water" style="min-height:48px"><p class="small">Several skimmed articles on one topic become sand; a lone one stays water.</p></div>
+    </div>
+  </div>
+  <p class="sr" aria-live="polite" id="sortLive"></p>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" data-next id="sortNext">Skip</button></div>
+</section>
+
+<!-- 4 wait one -->
+<section data-step="fetch">
+  <h1>Your feeds are <em>arriving.</em></h1>
+  <div class="meter"><i id="fetchMeter"></i></div>
+  <div class="status"><span class="data" id="fetchNow">Starting</span><span class="data" id="fetchCount"></span></div>
+  <div class="sky" id="fetchSky" style="height:72px"></div>
+  <div class="strata" id="fetchStrata">
+    <div class="band pebble"><div class="band-head"><span class="label band-name"><b>Pebble</b> · read whole</span><span class="data" data-n></span></div><div class="band-items"></div></div>
+    <div class="band sand"><div class="band-head"><span class="label band-name"><b>Sand</b> · several on one topic</span><span class="data" data-n></span></div><div class="band-items"></div></div>
+    <div class="band water"><div class="band-head"><span class="label band-name"><b>Water</b> · one line</span><span class="data" data-n></span></div><div class="band-items" style="flex-direction:column"></div></div>
+  </div>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" data-next id="fetchNext">Skip the wait</button></div>
+</section>
+
+<!-- 5 stances -->
+<section data-step="stances">
+  <h1>More of this, <em>or less?</em></h1>
+  <p class="lede" id="stanceLede">Topics from what just arrived. No answer counts for nothing.</p>
+  <div class="strata stance-stage" id="stanceStrata">
+    <div class="band pebble"><div class="band-head"><span class="label band-name"><b>More</b> · rises</span></div><div class="band-items" data-s="more"></div></div>
+    <div class="band sand"><div class="band-head"><span class="label band-name">Asking</span><span class="data" id="stanceIdx"></span></div><div class="band-items" id="stanceSlot" style="justify-content:center;min-height:56px;align-items:center"></div></div>
+    <div class="band water"><div class="band-head"><span class="label band-name"><b>Less</b> · sinks</span></div><div class="band-items" data-s="less"></div></div>
+  </div>
+  <div class="stance-q" id="stanceQ">
+    <button class="btn secondary" data-stance="more">More like this</button>
+    <button class="btn secondary" data-stance="less">Less</button>
+    <button class="btn secondary" data-stance="none">No answer</button>
+  </div>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" data-next id="stanceNext">Skip</button></div>
+</section>
+
+<!-- 6 wait two -->
+<section data-step="issue">
+  <h1 id="issueTitle">Making your <em>first issue.</em></h1>
+  <div class="meter"><i id="issueMeter"></i></div>
+  <div class="status"><span class="data" id="issueNow">Reading</span><span class="data" id="issueCount"></span></div>
+  <div id="issueWrap"></div>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" data-next id="issueNext">Skip the wait</button></div>
+</section>
+
+<!-- 7 settings -->
+<section data-step="settings">
+  <h1>Last, <em>the quiet part.</em></h1>
+  <p class="lede">All optional. Change any of it later in Settings.</p>
+  <div class="row2">
+    <div class="field"><label class="label" for="lang">Language</label><select class="input" id="lang"></select><p class="small">Detected from this browser.</p></div>
+    <div class="field"><label class="label" for="tz">Timezone</label><select class="input" id="tz"></select><p class="small">Detected from this browser.</p></div>
+    <div class="field"><label class="label" for="h1">Morning issue</label><input class="input" id="h1" type="time" value="08:00"></div>
+    <div class="field"><label class="label" for="h2">Evening issue</label><input class="input" id="h2" type="time" value="18:00"></div>
+  </div>
+  <div class="field"><label class="label" for="discord">Discord webhook</label><input class="input" id="discord" type="url" placeholder="https://discord.com/api/webhooks/…"></div>
+  <div class="field"><label class="label" for="email">Email</label><input class="input" id="email" type="email" placeholder="you@example.com"><p class="small">Each issue is also sent here.</p></div>
+  <div class="nav"><button class="btn secondary" data-back>Back</button><span class="grow"></span><button class="btn primary" id="finish">Finish</button></div>
+  <div class="notice" id="done" role="status" hidden></div>
+</section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var STEPS = ['opening', 'topics', 'feeds', 'sort', 'fetch', 'stances', 'issue', 'settings'];
+  var FLOWNO = { opening: 1, topics: 2, feeds: 2, sort: 3, fetch: 4, stances: 5, issue: 6, settings: 7 };
+
+  var TOPICS = [
+    { id: 'tech', label: 'Technology' }, { id: 'business', label: 'Business & economy' },
+    { id: 'world', label: 'World' }, { id: 'taiwan', label: 'Taiwan' },
+    { id: 'science', label: 'Science & health' }, { id: 'ideas', label: 'Ideas & culture' }
+  ];
+  var FEEDS = {
+    tech: ['iThome', '科技新報', 'INSIDE', 'The Verge', 'Hacker News', "Simon Willison's Weblog"],
+    business: ['經濟日報', 'Bloomberg', 'Financial Times', '市場先生', 'Marginal Revolution'],
+    world: ['BBC中文網 繁體', '紐約時報中文網 繁體', 'The Guardian', 'The Economist', 'Foreign Policy'],
+    taiwan: ['中央社即時新聞 政治新聞', '報導者', '公視新聞網', '自由時報', '台灣事實查核中心'],
+    science: ['泛科學 PanSci', 'CASE 報科學', 'Quanta Magazine', 'Nautilus'],
+    ideas: ['關鍵評論網', '換日線', 'Aeon', 'The Marginalian', 'Readmoo 閱讀最前線']
+  };
+  // Stories each topic's feeds talk about: [heading, members]. members > 1 becomes sand.
+  var STORIES = {
+    tech: [['台積電 2 奈米量產進度', 3], ['OpenAI 發表新推理模型', 4], ['歐盟數位市場法開罰蘋果', 2], ['iThome：企業導入 AI 代理的資安風險', 1], ['Rust 進入 Linux 核心主線', 1]],
+    business: [['央行維持利率不變', 3], ['美國 10 月非農就業數據', 2], ['台股外資連三日賣超', 1], ['黃金價格創新高', 1]],
+    world: [['COP31 氣候峰會開幕', 3], ['美國期中選舉倒數', 4], ['加薩停火談判', 2], ['日本新首相首次出訪', 1]],
+    taiwan: [['立法院總預算審查', 3], ['颱風康芮過境花東', 4], ['國防特別預算爭議', 2], ['事實查核：網傳停水訊息', 1], ['公視：偏鄉醫師短缺', 1]],
+    science: [['韋伯望遠鏡新發現系外行星大氣', 2], ['mRNA 癌症疫苗二期試驗', 1], ['Quanta：一個古老猜想的證明', 1]],
+    ideas: [['AI 寫作與作者身分', 2], ['換日線：在柏林當移工', 1], ['Aeon: on boredom', 1], ['獨立書店的第三個十年', 1]]
+  };
+  var ARTICLE = {
+    pebble: ['為什麼晶片戰爭的下一步是封裝', 'The quiet cost of a free API', '一位查核記者的十年', 'How a lone mathematician cracked it', '長照 2.0 走到第八年'],
+    lines: { '台積電 2 奈米量產進度': '良率傳達六成，蘋果與輝達搶首批產能。', 'OpenAI 發表新推理模型': '新模型在程式與數學評測領先，API 價格下調。', '央行維持利率不變': '理事會一致決議，房市信用管制再加碼。', 'COP31 氣候峰會開幕': '各國首度提交 2035 減碳目標，資金缺口仍大。', '立法院總預算審查': '朝野協商破局，十項預算凍結待院會表決。', '颱風康芮過境花東': '花蓮累積雨量破千毫米，蘇花公路預警性封閉。', '美國期中選舉倒數': '民調顯示參議院席次差距在三席以內。' }
+  };
+
+  var state = {
+    topics: [], feeds: [], own: [], lane: {}, stances: {}, stanceAt: 0, fetched: false, issued: false
+  };
+  function seed() {
+    if (!state.topics.length) state.topics = ['tech', 'taiwan'];
+    if (!state.feeds.length) state.feeds = ['iThome', 'The Verge', 'Hacker News', '報導者', '公視新聞網', '中央社即時新聞 政治新聞'];
+    if (!Object.keys(state.lane).length && state.feeds.length) state.lane['報導者'] = 'read';
+  }
+  function feedTopic(name) {
+    for (var t in FEEDS) if (FEEDS[t].indexOf(name) >= 0) return t;
+    return 'tech';
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function anim(node, frames, opts) {
+    if (reduce || !node.animate) return Promise.resolve();
+    return node.animate(frames, opts).finished.catch(function () {});
+  }
+  function zh(node) { node.setAttribute('lang', ''); return node; }
+
+  var timers = [];
+  function later(fn, ms) { var t = setTimeout(fn, ms); timers.push(t); return t; }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  // ---- routing ----
+  var current = null;
+  function show(step) {
+    if (STEPS.indexOf(step) < 0) step = 'opening';
+    clearTimers();
+    current = step;
+    $$('section[data-step]').forEach(function (s) { s.classList.toggle('on', s.dataset.step === step); });
+    $('#stepno').textContent = 'Step ' + FLOWNO[step] + ' of 7';
+    window.scrollTo(0, 0);
+    ({ opening: runOpening, topics: renderTopics, feeds: renderFeeds, sort: renderSort, fetch: runFetch, stances: renderStances, issue: runIssue, settings: renderSettings })[step]();
+  }
+  function go(step) { if (location.hash === '#' + step) show(step); else location.hash = step; }
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+  document.addEventListener('click', function (e) {
+    var n = e.target.closest('[data-next]'), b = e.target.closest('[data-back]');
+    if (n) { leave(current).then(function () { go(STEPS[STEPS.indexOf(current) + 1]); }); }
+    if (b) go(STEPS[STEPS.indexOf(current) - 1]);
+  });
+  function leave(step) {
+    if (step === 'sort') return sinkUnsorted();
+    return Promise.resolve();
+  }
+
+  // ---- 1 opening: many fall, most dissolve, a few settle ----
+  function runOpening() {
+    var sky = $('#openSky'), strata = $('#openStrata'), stage = $('#openStage');
+    sky.innerHTML = '';
+    $$('.band-items', strata).forEach(function (b) { b.innerHTML = ''; });
+    strata.classList.add('hidden-label');
+    var settle = [
+      { band: 0, make: function () { return zh(el('span', 'stone', '為什麼晶片戰爭的下一步是封裝')); } },
+      { band: 1, make: function () { return grains('颱風康芮過境花東', 4); } },
+      { band: 2, make: function () { return zh(el('span', 'wline', '台股外資連三日賣超')); } },
+      { band: 1, make: function () { return grains('立法院總預算審查', 3); } },
+      { band: 0, make: function () { return zh(el('span', 'stone', 'The quiet cost of a free API')); } },
+      { band: 2, make: function () { return zh(el('span', 'wline', '事實查核：網傳停水訊息')); } }
+    ];
+    function place(s) {
+      var bands = $$('.band', strata);
+      $('.band-items', bands[s.band]).appendChild(s.make());
+      bands[s.band].querySelector('.band-name').style.opacity = 1;
+    }
+    if (reduce) { settle.forEach(place); strata.classList.remove('hidden-label'); return; }
+    $$('.band-name', strata).forEach(function (n) { n.style.opacity = 0; });
+    strata.classList.remove('hidden-label');
+    var W = stage.clientWidth, N = 36, keep = [3, 9, 15, 21, 27, 33];
+    var surf = sky.offsetHeight;
+    for (var i = 0; i < N; i++) (function (i) {
+      var d = el('i', 'faller');
+      var x = Math.round((W - 16) * ((i * 37 % 100) / 100)) + 4;
+      d.style.left = x + 'px';
+      sky.appendChild(d);
+      var k = keep.indexOf(i);
+      var delay = i * 110;
+      if (k < 0) {
+        anim(d, [{ transform: 'translateY(-10px)', opacity: 1 }, { transform: 'translateY(' + (surf - 8) + 'px)', opacity: 1, offset: .8 }, { transform: 'translateY(' + (surf + 4) + 'px)', opacity: 0 }],
+          { duration: 1300, delay: delay, easing: 'ease-in', fill: 'both' });
+      } else {
+        var s = settle[k];
+        var band = $$('.band', strata)[s.band];
+        var dy = surf + band.offsetTop + 30;
+        anim(d, [{ transform: 'translateY(-10px)', opacity: 1 }, { transform: 'translateY(' + dy + 'px)', opacity: 1 }],
+          { duration: 1500, delay: delay, easing: 'ease-in', fill: 'both' }).then(function () {
+          if (current !== 'opening') return;
+          d.remove();
+          place(s);
+        });
+      }
+    })(i);
+  }
+  function grains(title, n) {
+    var g = el('span', 'grains'), dots = el('span', 'dots');
+    for (var i = 0; i < n; i++) dots.appendChild(el('i'));
+    g.appendChild(dots); g.appendChild(zh(el('span', null, title + ' · ' + n)));
+    return g;
+  }
+
+  // ---- 2a topics ----
+  function renderTopics() {
+    var box = $('#tiles'); box.innerHTML = '';
+    TOPICS.forEach(function (t) {
+      var b = el('button', 'tile'); b.type = 'button';
+      b.setAttribute('aria-pressed', state.topics.indexOf(t.id) >= 0);
+      b.appendChild(el('span', 'name', t.label));
+      b.appendChild(el('span', 'label', FEEDS[t.id].length + ' feeds'));
+      b.onclick = function () {
+        var i = state.topics.indexOf(t.id);
+        if (i >= 0) state.topics.splice(i, 1); else state.topics.push(t.id);
+        b.setAttribute('aria-pressed', i < 0);
+        nextLabel();
+      };
+      box.appendChild(b);
+    });
+    function nextLabel() { $('section[data-step=topics] [data-next]').textContent = state.topics.length ? 'Next' : 'Skip'; }
+    nextLabel();
+  }
+
+  // ---- 2b feeds ----
+  function renderFeeds() {
+    var lists = $('#feedLists'); lists.innerHTML = '';
+    var shown = {};
+    state.topics.forEach(function (tid) {
+      var t = TOPICS.filter(function (x) { return x.id === tid; })[0];
+      var fs = el('fieldset', 'checklist'), lg = el('legend', 'label', t.label);
+      fs.appendChild(lg);
+      FEEDS[tid].forEach(function (name) {
+        if (shown[name]) return; shown[name] = 1;
+        var l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = state.feeds.indexOf(name) >= 0;
+        c.onchange = function () {
+          var i = state.feeds.indexOf(name);
+          if (c.checked && i < 0) state.feeds.push(name);
+          if (!c.checked && i >= 0) { state.feeds.splice(i, 1); delete state.lane[name]; }
+          tray();
+        };
+        l.appendChild(c); l.appendChild(zh(el('span', 'fname', name)));
+        fs.appendChild(l);
+      });
+      lists.appendChild(fs);
+    });
+    if (!state.topics.length) lists.appendChild(el('p', 'small', 'No topics picked. Add your own feed below, or go Back.'));
+    $('#addOwn').onclick = function () {
+      var v = $('#ownFeed').value.trim(); if (!v) return;
+      var name = v.replace(/^https?:\/\//, '').split('/')[0];
+      if (state.feeds.indexOf(name) < 0) { state.feeds.push(name); state.own.push(name); }
+      $('#ownFeed').value = ''; tray();
+    };
+    tray();
+    function tray() {
+      var t = $('#feedTray'); t.innerHTML = '';
+      state.feeds.forEach(function (n) { t.appendChild(zh(el('span', 'token', n))); });
+      if (!state.feeds.length) t.appendChild(el('span', 'small', 'Nothing picked yet.'));
+      $('#feedCount').textContent = state.feeds.length + ' feeds picked' + (state.feeds.length > 12 ? '. Fetching more than 12 takes longer than a minute.' : '');
+      $('section[data-step=feeds] [data-next]').textContent = state.feeds.length ? 'Next' : 'Skip';
+    }
+  }
+
+  // ---- 3 sort: drop each feed into pebble or skim ----
+  var armed = null;
+  function renderSort() {
+    seed();
+    armed = null;
+    $('#sortStrata').classList.remove('armed');
+    var tray = $('#sortTray'), zr = $('[data-zone=read]'), zs = $('[data-zone=skim]');
+    tray.innerHTML = ''; zr.innerHTML = ''; zs.innerHTML = '';
+    state.feeds.forEach(function (n) {
+      var b = zh(el('button', 'token', n)); b.type = 'button'; b.dataset.feed = n;
+      b.setAttribute('aria-pressed', 'false');
+      var l = state.lane[n];
+      (l === 'read' ? zr : l === 'skim' ? zs : tray).appendChild(b);
+      if (l === 'read') b.classList.add('in-pebble');
+      wireToken(b);
+    });
+    sortLabel();
+  }
+  function sortLabel() {
+    var left = $$('#sortTray .token').length;
+    $('#sortNext').textContent = left === state.feeds.length ? 'Skip' : 'Next';
+    if (!left && state.feeds.length) $('#sortTray').innerHTML = '<span class="small">All sorted.</span>';
+    if (!state.feeds.length) $('#sortTray').innerHTML = '<span class="small">No feeds picked. Go Back to pick some.</span>';
+  }
+  function arm(b) {
+    if (armed) armed.setAttribute('aria-pressed', 'false');
+    armed = armed === b ? null : b;
+    if (armed) armed.setAttribute('aria-pressed', 'true');
+    $('#sortStrata').classList.toggle('armed', !!armed);
+  }
+  function dropInto(b, zone) {
+    var n = b.dataset.feed;
+    state.lane[n] = zone;
+    b.setAttribute('aria-pressed', 'false');
+    b.classList.toggle('in-pebble', zone === 'read');
+    $('[data-zone=' + zone + ']').appendChild(b);
+    armed = null; $('#sortStrata').classList.remove('armed');
+    $('#sortLive').textContent = n + (zone === 'read' ? ': read whole, pebble.' : ': skim, sand or water.');
+    sortLabel();
+    b.focus();
+  }
+  function wireToken(b) {
+    var sx, sy, dragging = false, ox, oy, ph = null;
+    b.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      sx = e.clientX; sy = e.clientY; dragging = false;
+      b.setPointerCapture(e.pointerId);
+    });
+    b.addEventListener('pointermove', function (e) {
+      if (sx == null) return;
+      if (!dragging && Math.hypot(e.clientX - sx, e.clientY - sy) > 6) {
+        dragging = true;
+        var r = b.getBoundingClientRect(); ox = sx - r.left; oy = sy - r.top;
+        ph = el('span', 'token'); ph.style.visibility = 'hidden'; ph.textContent = b.textContent;
+        b.parentNode.insertBefore(ph, b);
+        b.style.width = r.width + 'px';
+        b.classList.add('dragging');
+      }
+      if (dragging) {
+        b.style.left = (e.clientX - ox) + 'px'; b.style.top = (e.clientY - oy) + 'px';
+        var z = zoneAt(e.clientX, e.clientY);
+        $$('.drop').forEach(function (d) { d.classList.toggle('over', d === z); });
+      }
+    });
+    b.addEventListener('pointerup', function (e) {
+      if (sx == null) return;
+      sx = null;
+      if (!dragging) { arm(b); return; }
+      var z = zoneAt(e.clientX, e.clientY);
+      b.classList.remove('dragging'); b.style.left = b.style.top = b.style.width = '';
+      if (ph) ph.remove(); ph = null;
+      $$('.drop').forEach(function (d) { d.classList.remove('over'); });
+      if (z) dropInto(b, z.dataset.zone);
+    });
+    b.addEventListener('pointercancel', function () { sx = null; });
+    b.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); arm(b); }
+    });
+  }
+  function zoneAt(x, y) {
+    var hit = null;
+    $$('.drop').forEach(function (d) {
+      var r = d.closest('.band').getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = d;
+    });
+    return hit;
+  }
+  $$('[data-drop]').forEach(function (btn) {
+    btn.onclick = function () { if (armed) dropInto(armed, btn.dataset.drop); else $('#sortLive').textContent = 'Tap a feed first.'; };
+  });
+  $$('.drop').forEach(function (d) {
+    d.addEventListener('click', function (e) { if (armed && !e.target.closest('.token')) dropInto(armed, d.dataset.zone); });
+  });
+  function sinkUnsorted() {
+    var left = $$('#sortTray .token');
+    if (!left.length) return Promise.resolve();
+    var zs = $('[data-zone=skim]');
+    var ps = left.map(function (b) {
+      var r0 = b.getBoundingClientRect();
+      state.lane[b.dataset.feed] = 'skim';
+      zs.appendChild(b);
+      var r1 = b.getBoundingClientRect();
+      return anim(b, [{ transform: 'translate(' + (r0.left - r1.left) + 'px,' + (r0.top - r1.top) + 'px)' }, { transform: 'none' }], { duration: 600, easing: 'ease-in' });
+    });
+    $('#sortLive').textContent = left.length + ' unsorted feeds sank to skim.';
+    return Promise.all(ps).then(function () { return new Promise(function (r) { setTimeout(r, reduce ? 0 : 250); }); });
+  }
+
+  // ---- articles from the picked feeds ----
+  function articles() {
+    seed();
+    var out = [], used = {}, pc = 0;
+    state.feeds.forEach(function (f, fi) {
+      var t = feedTopic(f), lane = state.lane[f] || 'skim';
+      if (lane === 'read') {
+        out.push({ feed: f, kind: 'pebble', title: ARTICLE.pebble[pc++ % ARTICLE.pebble.length], topic: t });
+        out.push({ feed: f, kind: 'pebble', title: ARTICLE.pebble[pc++ % ARTICLE.pebble.length], topic: t });
+      } else {
+        STORIES[t].forEach(function (s, si) {
+          if ((si + fi) % 2 && s[1] < 2) return;
+          if (used[s[0]]) return; used[s[0]] = 1;
+          out.push({ feed: f, kind: s[1] > 1 ? 'sand' : 'water', title: s[0], n: s[1], topic: t });
+        });
+      }
+    });
+    return out;
+  }
+  function mark(a) {
+    if (a.kind === 'pebble') return zh(el('span', 'stone', a.title));
+    if (a.kind === 'sand') return grains(a.title, a.n);
+    return zh(el('span', 'wline', a.title));
+  }
+
+  // ---- 4 wait one: articles rain into the strata ----
+  function runFetch() {
+    seed();
+    var list = articles(), strata = $('#fetchStrata'), bands = $$('.band', strata), sky = $('#fetchSky');
+    var idx = { pebble: 0, sand: 1, water: 2 }, counts = [0, 0, 0];
+    $$('.band-items', strata).forEach(function (b) { b.innerHTML = ''; });
+    $$('[data-n]', strata).forEach(function (n) { n.textContent = '0'; });
+    sky.innerHTML = '';
+    var feeds = state.feeds.length, total = 8000;
+    var per = Math.max(1, list.length);
+    function land(a) {
+      var k = idx[a.kind];
+      $('.band-items', bands[k]).appendChild(mark(a));
+      counts[k] += a.kind === 'sand' ? a.n : 1;
+      $('[data-n]', bands[k]).textContent = counts[k];
+    }
+    function finish() {
+      $('#fetchMeter').style.width = '100%';
+      $('#fetchNow').textContent = 'All feeds fetched';
+      $('#fetchCount').textContent = feeds + ' of ' + feeds + ' feeds · ' + (counts[0] + counts[1] + counts[2]) + ' articles';
+      $('#fetchNext').textContent = 'Next';
+      state.fetched = true;
+    }
+    if (reduce || state.fetched) { list.forEach(land); finish(); return; }
+    $('#fetchNext').textContent = 'Skip the wait';
+    list.forEach(function (a, i) {
+      later(function () {
+        $('#fetchNow').textContent = a.feed;
+        var fi = state.feeds.indexOf(a.feed) + 1;
+        $('#fetchCount').textContent = fi + ' of ' + feeds + ' feeds';
+        $('#fetchMeter').style.width = Math.round(100 * (i + 1) / per) + '%';
+        var d = el('i', 'faller');
+        d.style.left = (8 + (i * 53 % 90)) + '%';
+        sky.appendChild(d);
+        var dy = sky.offsetHeight + bands[idx[a.kind]].offsetTop + 30;
+        anim(d, [{ transform: 'translateY(0)' }, { transform: 'translateY(' + dy + 'px)' }], { duration: 700, easing: 'ease-in', fill: 'both' }).then(function () {
+          d.remove(); if (current === 'fetch') land(a);
+        });
+      }, Math.round(total * i / per));
+    });
+    later(finish, total + 800);
+  }
+  // pressing on mid-wait fills the strata at once
+  $('#fetchNext').addEventListener('click', function () { state.fetched = true; }, true);
+
+  // ---- 5 stances: one topic stone at a time ----
+  function stanceTopics() {
+    var s = articles().filter(function (a) { return a.kind !== 'pebble'; }).map(function (a) { return a.title; });
+    return s.slice(0, 6);
+  }
+  function renderStances() {
+    var topics = stanceTopics();
+    var more = $('[data-s=more]'), less = $('[data-s=less]');
+    more.innerHTML = ''; less.innerHTML = '';
+    topics.forEach(function (t) {
+      if (state.stances[t] === 'more') more.appendChild(zh(el('span', 'stone more', t)));
+      if (state.stances[t] === 'less') less.appendChild(zh(el('span', 'stone less', t)));
+    });
+    state.stanceAt = Math.min(state.stanceAt, topics.length);
+    ask();
+    function ask() {
+      var slot = $('#stanceSlot'); slot.innerHTML = '';
+      var i = state.stanceAt;
+      var answered = topics.filter(function (t) { return state.stances[t]; }).length;
+      $('#stanceNext').textContent = answered ? 'Next' : 'Skip';
+      if (i >= topics.length) {
+        $('#stanceIdx').textContent = topics.length + ' of ' + topics.length;
+        slot.appendChild(el('span', 'small', topics.length ? 'That is all of them.' : 'No topics yet.'));
+        $('#stanceQ').hidden = true;
+        $('#stanceNext').textContent = 'Next';
+        return;
+      }
+      $('#stanceQ').hidden = false;
+      $('#stanceIdx').textContent = (i + 1) + ' of ' + topics.length;
+      var stone = zh(el('span', 'focus-stone', topics[i]));
+      slot.appendChild(stone);
+      $$('[data-stance]').forEach(function (b) {
+        b.onclick = function () {
+          var v = b.dataset.stance, t = topics[i];
+          $$('[data-stance]').forEach(function (x) { x.disabled = true; });
+          var p;
+          if (v === 'none') { delete state.stances[t]; p = anim(stone, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'both' }); }
+          else {
+            state.stances[t] = v;
+            var target = v === 'more' ? more : less;
+            var r0 = stone.getBoundingClientRect(), tr = target.getBoundingClientRect();
+            var dy = (v === 'more' ? tr.top + 10 : tr.top + 10) - r0.top;
+            p = anim(stone, [{ transform: 'none' }, { transform: 'translateY(' + dy + 'px) scale(' + (v === 'more' ? 1.25 : 0.6) + ')', opacity: v === 'more' ? 1 : .5 }],
+              { duration: 650, easing: v === 'more' ? 'ease-out' : 'ease-in', fill: 'both' });
+            p = p.then(function () { target.appendChild(zh(el('span', 'stone ' + v, t))); });
+          }
+          p.then(function () {
+            $$('[data-stance]').forEach(function (x) { x.disabled = false; });
+            if (current !== 'stances') return;
+            state.stanceAt = i + 1; ask();
+          });
+        };
+      });
+    }
+  }
+
+  // ---- 6 wait two: the strata compress into a three-layer issue ----
+  function runIssue() {
+    seed();
+    var wrap = $('#issueWrap'); wrap.innerHTML = '';
+    var list = articles();
+    var strata = $('#fetchStrata').cloneNode(true); strata.id = ''; strata.classList.add('compress');
+    // rebuild contents (the fetch step may not have run)
+    var bands = $$('.band', strata), idx = { pebble: 0, sand: 1, water: 2 };
+    $$('.band-items', strata).forEach(function (b) { b.innerHTML = ''; });
+    $$('[data-n]', strata).forEach(function (n) { n.textContent = ''; });
+    list.forEach(function (a) {
+      var k = a.kind;
+      if (state.stances[a.title] === 'less') k = 'water';
+      $('.band-items', bands[idx[k]]).appendChild(mark(a));
+    });
+    var total = list.reduce(function (s, a) { return s + (a.n || 1); }, 0);
+    var steps = ['Reading ' + total + ' articles', 'Weighing your answers', 'Grouping topics', 'Writing summaries', 'Setting the issue'];
+    function reveal() {
+      wrap.innerHTML = ''; wrap.appendChild(issue(list));
+      $('#issueTitle').innerHTML = 'Your <em>first issue.</em>';
+      $('#issueNow').textContent = 'Ready'; $('#issueMeter').style.width = '100%';
+      $('#issueCount').textContent = 'from ' + total + ' articles';
+      $('#issueNext').textContent = 'Next';
+      state.issued = true;
+      anim(wrap.firstChild, [{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
+    }
+    if (reduce || state.issued) { reveal(); return; }
+    $('#issueTitle').innerHTML = 'Making your <em>first issue.</em>';
+    $('#issueNext').textContent = 'Skip the wait';
+    $('#issueMeter').style.width = '0';
+    wrap.appendChild(strata);
+    var T = 12000;
+    steps.forEach(function (s, i) { later(function () { $('#issueNow').textContent = s; $('#issueMeter').style.width = Math.round(100 * (i + 1) / steps.length) + '%'; }, T * i / steps.length); });
+    anim(strata, [{ transform: 'scaleY(1)', opacity: 1 }, { transform: 'scaleY(.35)', opacity: .9, offset: .92 }, { transform: 'scaleY(.3)', opacity: 0 }], { duration: T, easing: 'ease-in-out', fill: 'both' });
+    later(reveal, T);
+  }
+  $('#issueNext').addEventListener('click', function () { state.issued = true; }, true);
+  function issue(list) {
+    var box = el('div', 'issue');
+    var head = el('div', 'issue-head');
+    head.appendChild(el('span', 't', 'Cyris'));
+    var now = new Date();
+    head.appendChild(el('span', 'data', now.toISOString().slice(0, 10) + ' · Evening'));
+    box.appendChild(head);
+    var peb = list.filter(function (a) { return a.kind === 'pebble'; });
+    var rest = list.filter(function (a) { return a.kind !== 'pebble'; });
+    function rank(a) { var s = state.stances[a.title]; return s === 'more' ? 0 : s === 'less' ? 2 : 1; }
+    rest.sort(function (a, b) { return rank(a) - rank(b); });
+    var sand = rest.filter(function (a) { return a.kind === 'sand' && state.stances[a.title] !== 'less'; });
+    var water = rest.filter(function (a) { return sand.indexOf(a) < 0; });
+    function band(cls, name, count) {
+      var b = el('div', 'band ' + cls), m = el('div', 'marker'); m.appendChild(el('h2', 'label', name + ' · ' + count)); m.firstChild.style.margin = 0;
+      b.appendChild(m); box.appendChild(b); return b;
+    }
+    if (peb.length) {
+      var b1 = band('pebble', 'Stories', peb.length);
+      peb.forEach(function (a) {
+        var it = el('div', 'p-item'); it.appendChild(zh(el('h3', null, a.title)));
+        it.appendChild(el('p', 'small', 'Read whole · from ' + a.feed)); b1.appendChild(it);
+      });
+    }
+    if (sand.length) {
+      var b2 = band('sand', 'Topics', sand.length), g = el('div', 's-grid');
+      sand.forEach(function (a) {
+        var it = el('div', 'p-item'); it.appendChild(zh(el('h3', null, a.title)));
+        it.appendChild(zh(el('p', 'small', ARTICLE.lines[a.title] || '多家媒體跟進報導，重點整理於此。')));
+        var w = el('span', 'why' + (state.stances[a.title] === 'more' ? ' up' : ''), a.n + ' articles' + (state.stances[a.title] === 'more' ? ' · you asked for more' : ''));
+        it.appendChild(w); g.appendChild(it);
+      });
+      b2.appendChild(g);
+    }
+    if (water.length) {
+      var b3 = band('water', 'Headlines', water.length);
+      water.forEach(function (a, i) {
+        var r = el('div', 'w-row'); r.appendChild(el('span', 'n', String(i + 1).padStart(2, '0')));
+        var t = el('div'); t.appendChild(zh(el('div', null, a.title)));
+        if (state.stances[a.title] === 'less') t.appendChild(el('span', 'why', 'You asked for less: one line'));
+        r.appendChild(t); b3.appendChild(r);
+      });
+    }
+    return box;
+  }
+
+  // ---- 7 settings ----
+  function renderSettings() {
+    var lang = navigator.language || 'en', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    var ls = $('#lang'), ts = $('#tz');
+    if (!ls.options.length) {
+      var langs = [[lang, lang + ' (detected)'], ['zh-Hant', '繁體中文'], ['en', 'English'], ['ja', '日本語']];
+      langs.forEach(function (l, i) { if (i && l[0] === lang) return; var o = el('option', null, l[1]); o.value = l[0]; ls.appendChild(o); });
+      [tz, 'Asia/Taipei', 'UTC', 'America/New_York', 'Europe/London'].forEach(function (z, i) { if (i && z === tz) return; var o = el('option', null, z + (i ? '' : ' (detected)')); o.value = z; ts.appendChild(o); });
+    }
+    $('#done').hidden = true;
+    $('#finish').onclick = function () {
+      var d = $('#done'); d.hidden = false;
+      d.textContent = 'Done. Your next issue publishes at ' + ($('#h2').value || '18:00') + ', ' + ts.value + '.';
+    };
+  }
+
+  show(location.hash.slice(1) || 'opening');
+})();
+</script>
+</body>
+</html>
