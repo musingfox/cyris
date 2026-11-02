@@ -1254,8 +1254,9 @@ def test_the_labels_probe_runs_on_the_shared_core():
 
 # The checks `scripts/onboarding_probe.py` must carry: the opening shows with no
 # hash, plays to its sentence or skips there, hands focus on, draws its end at once
-# under reduced motion, never scrolls at 390px or 1280x800, and Show me how opens the
-# first step writing nothing; the frame walks, each
+# under reduced motion and stills when that is turned on mid-page, never scrolls at
+# 390px or 1280x800, and Show me how opens the first step writing nothing; the
+# frame walks, each
 # settings step writes what it was given, the language and timezone are selects
 # that keep a stored value neither lists and open on the browser's zone when none
 # is stored, the sources step shows its topics as toggle tiles on one screen and
@@ -1275,6 +1276,8 @@ EXPECTED_ONBOARDING_IDS = {
     "skip-intro-hands-focus-to-show-me-how",
     "the-opening-ends-on-its-own",
     "reduced-motion-draws-the-end-at-once",
+    "reduced-motion-turned-on-mid-play-stills-the-stage",
+    "reduced-motion-turned-on-after-the-claim-stills-the-stage",
     "the-opening-fits-390",
     "the-opening-fits-1280x800",
     "show-me-how-hands-focus-to-the-first-step",

@@ -374,12 +374,23 @@ function createStage() {
       started = false;
     },
     redraw() { if (!raf) draw(); },
+    // The reader changed the preference mid-page: turned on, the running loop
+    // stops and the end is drawn still, whichever beat it was in; turned off,
+    // the lane moves again.
+    motionChanged() {
+      if (!started) return;
+      if (REDUCED.matches) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        settle();
+      } else run();
+    },
   };
 }
 
 const STAGE = createStage();
 new ResizeObserver(() => STAGE.redraw()).observe($("o-canvas"));
-REDUCED.addEventListener("change", () => { if (REDUCED.matches) STAGE.finish(); });
+REDUCED.addEventListener("change", () => STAGE.motionChanged());
 
 // The sentence, then Show me how; Skip intro leaves, and a keyboard reader on
 // it is handed to Show me how rather than to a button no longer there.

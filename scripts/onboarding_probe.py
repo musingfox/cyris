@@ -691,6 +691,25 @@ window.matchMedia = (query) => query.includes("reduced-motion")
 }"""
 
 
+def reduced_motion_switch(heard: bool = True) -> str:
+    """A preload: reduced motion starts off, and `window.__reduce()` turns it on.
+
+    The reader changes the preference mid-page, as a system setting does. With
+    `heard` false the page is never told, a sabotage that leaves it moving.
+    """
+    return f"""{{
+const realMatch = window.matchMedia;
+const reduced = {{matches: false, media: "(prefers-reduced-motion: reduce)", listeners: []}};
+reduced.addEventListener = (type, fn) => {{ if (type === "change") reduced.listeners.push(fn); }};
+reduced.removeEventListener = () => {{}};
+window.matchMedia = (query) => query.includes("reduced-motion") ? reduced : realMatch(query);
+window.__reduce = () => {{
+  reduced.matches = true;
+  if ({json.dumps(heard)}) reduced.listeners.forEach((fn) => fn({{matches: true}}));
+}};
+}}"""
+
+
 def dead(button: str) -> str:
     """A sabotage: the button is swapped for a copy, which carries none of its listeners."""
     return f"""$("#{button}").replaceWith($("#{button}").cloneNode(true));"""
@@ -1066,6 +1085,41 @@ _CHECKS: list[Check] = [
             expect($("#o-canvas").toDataURL() === ctx.before, "the stage still moves");
         """,
         sabotage_preload=MOTION_ALLOWED,
+    ),
+    Check(
+        id="reduced-motion-turned-on-mid-play-stills-the-stage",
+        fixture="empty",
+        path=PAGE,
+        preload=reduced_motion_switch(),
+        act="""
+            await playing();
+            await sleep(300);
+            window.__reduce();
+            await sleep(100);
+            ctx.before = $("#o-canvas").toDataURL();
+            await sleep(400);
+        """,
+        script="""
+            expect(beat() === "claim" && claimShown(), `beat: ${beat()}`);
+            expect($("#o-canvas").toDataURL() === ctx.before, "the stage still moves");
+        """,
+        sabotage_preload=reduced_motion_switch(heard=False),
+    ),
+    Check(
+        id="reduced-motion-turned-on-after-the-claim-stills-the-stage",
+        fixture="empty",
+        path=PAGE,
+        preload=reduced_motion_switch(),
+        act="""
+            await toClaim();
+            await sleep(300);
+            window.__reduce();
+            await sleep(100);
+            ctx.before = $("#o-canvas").toDataURL();
+            await sleep(400);
+        """,
+        script="""expect($("#o-canvas").toDataURL() === ctx.before, "the stage still moves");""",
+        sabotage_preload=reduced_motion_switch(heard=False),
     ),
     Check(
         id="the-opening-fits-390",
