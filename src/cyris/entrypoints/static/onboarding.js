@@ -39,6 +39,9 @@ const loaded = new Map(FIELDS.map((id) => [id, $(id).value]));
 
 // The result of a save, shown on the step the reader moves to.
 let pending = null;
+// Why the stored settings could not be read: the opening may be showing when
+// it fails, so each step shows it again until the page is reloaded.
+let loadError = null;
 // Each setting's registry entry, by key, from GET /api/settings: a notice names
 // a field by the same label /settings gives it.
 let REGISTRY = {};
@@ -472,6 +475,7 @@ function route() {
   $("o-finish").hidden = !last;
   hideNotice();
   if (pending) show("ok", pending);
+  else if (loadError) show("err", loadError);
   pending = null;
   window.scrollTo(0, 0);
   drawScreen();
@@ -1486,8 +1490,9 @@ const SETTINGS_LOADED = fetch("/api/settings")
   .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
   .then(render)
   .catch((e) => {
-    show("err", e === SESSION_EXPIRED ? e.message
-      : `Could not load settings: ${e}. Reload the page to try again.`);
+    loadError = e === SESSION_EXPIRED ? e.message
+      : `Could not load settings: ${e}. Reload the page to try again.`;
+    show("err", loadError);
   })
   .finally(() => document.querySelectorAll(".step [data-loading]").forEach((el) => el.remove()));
 

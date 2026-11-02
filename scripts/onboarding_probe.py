@@ -685,6 +685,16 @@ window.fetch = (input, init) => String(input).endsWith("/api/onboarding/headline
   ? new Promise(() => {}) : realFetch(input, init);
 }"""
 
+
+def settings_load_fails(how: str) -> str:
+    """A preload: GET /api/settings answers with `how`, a promise for the response."""
+    return f"""{{
+const realFetch = window.fetch;
+window.fetch = (input, init) => String(input).endsWith("/api/settings")
+  ? {how} : realFetch(input, init);
+}}"""
+
+
 # A sabotage: no animation frame ever runs, so the stage never plays to its end.
 NO_FRAMES = """{
 window.requestAnimationFrame = () => 0;
@@ -1193,6 +1203,37 @@ _CHECKS: list[Check] = [
         """,
         script="""expect(window.__lane.length > 0, "the lane is empty");""",
         sabotage="""window.__lane.length = 0;""",
+    ),
+    *(
+        Check(
+            id=f"a-settings-load-{name}-shows-after-the-opening",
+            fixture="empty",
+            path=PAGE,
+            preload=settings_load_fails(how),
+            act="""
+                await toClaim();
+                press("o-show");
+                await waitFor(() => visible($(`.step[data-step="language"]`)), "the first step");
+            """,
+            script=f"""
+                const text = $("#o-result").textContent;
+                const shown = visible($("#o-result")) && text.includes({json.dumps(said)});
+                expect(shown, `notice: ${{text}}`);
+            """,
+            sabotage="""$("#o-result").hidden = true;""",
+        )
+        for name, how, said in (
+            (
+                "failure",
+                'Promise.reject(new TypeError("Failed to fetch"))',
+                "Could not load settings",
+            ),
+            (
+                "expired-session",
+                'Promise.resolve(new Response("", {status: 401}))',
+                "session has expired",
+            ),
+        )
     ),
     Check(
         id="reduced-motion-turned-on-mid-play-stills-the-stage",

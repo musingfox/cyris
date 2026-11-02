@@ -1282,6 +1282,8 @@ EXPECTED_ONBOARDING_IDS = {
     "reduced-motion-draws-the-end-at-once",
     "reduced-motion-end-shows-headlines-that-arrive-late",
     "reduced-motion-end-shows-headlines-already-here",
+    "a-settings-load-failure-shows-after-the-opening",
+    "a-settings-load-expired-session-shows-after-the-opening",
     "reduced-motion-turned-on-mid-play-stills-the-stage",
     "reduced-motion-turned-on-after-the-claim-stills-the-stage",
     "the-opening-fits-390",
