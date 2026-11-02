@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from cyris.domain.models import Article, DigestItem, DigestSection, Lane
-from cyris.domain.story_images import article_images, stamp_story_images
+from cyris.domain.story_images import article_images, stamp_story_images, stamp_topic_images
 
 pytestmark = pytest.mark.unit
 
@@ -69,3 +69,27 @@ def test_the_stamp_pictures_single_article_items_and_never_a_merged_one() -> Non
         None,
         None,
     ]
+
+
+def _member(article: Article) -> DigestItem:
+    return DigestItem(
+        title=article.title, summary="", sources=[article.source_name], urls=[article.url]
+    )
+
+
+def test_the_topic_stamp_pictures_each_member_with_its_own_picture_only() -> None:
+    articles = [
+        _article(1, "news", None),
+        _article(2, "news", LOGO),
+        _article(3, "news", "https://news.example/3.jpg"),
+        # Not in the topic: it shares the logo, which makes the logo the site's default.
+        _article(4, "news", LOGO),
+    ]
+    members = [_member(a) for a in articles[:3]]
+    vote = DigestItem(title="Topic", summary="", sources=["news"], urls=[a.url for a in articles])
+    topic = DigestSection(heading="Topic", items=[vote], members=members)
+
+    stamp_topic_images([topic], articles)
+
+    assert [m.image_url for m in members] == [None, None, "https://news.example/3.jpg"]
+    assert vote.image_url is None

@@ -22,7 +22,7 @@ from cyris.domain.selection import (
     order_by_preference,
     preference_moves,
 )
-from cyris.domain.story_images import stamp_story_images
+from cyris.domain.story_images import stamp_story_images, stamp_topic_images
 from cyris.domain.topics import stand_in_topics
 from cyris.service_layer.cluster_news import cluster_news, filter_news
 from cyris.service_layer.filtering import filter_articles
@@ -293,7 +293,8 @@ class DigestPipeline:
             )
         content = order_by_preference(laid_out, scores)
         moves = None if scores is None else preference_moves(laid_out, content)
-        # Only Stories show a picture: the sections `layer_by_lane` makes pebbles of.
+        # Stories show a picture, on the sections `layer_by_lane` makes pebbles of, and
+        # so do Topics, each from its members; Headlines never do.
         stamp_story_images(
             (
                 *content.featured_articles,
@@ -302,6 +303,7 @@ class DigestPipeline:
             ),
             articles,
         )
+        stamp_topic_images(content.news_clusters, articles)
         # Accepted means shown in this issue. What the summarizer left out of every
         # section stays pending for the next run in the window.
         accepted_urls = list(digest_urls(content))

@@ -192,6 +192,56 @@ class TestDigestPipeline:
             "https://group.example/4": None,
         }
 
+    async def test_a_topic_member_shows_its_feeds_picture_unless_its_source_shares_it(
+        self, sample_sources
+    ):
+        def article(n: int, image_url: str | None) -> Article:
+            return Article(
+                id=n,
+                title=f"News {n}",
+                url=f"https://news.example/{n}",
+                content="News content",
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+                source_name="Wire",
+                source_lane=Lane.SKIM,
+                source_tags=["news"],
+                image_url=image_url,
+            )
+
+        pipeline = DigestPipeline(
+            FakeLLM(
+                '{"clusters": ['
+                '{"heading": "A", "summary": "S", "article_ids": [0, 1, 2], "tags": []}, '
+                '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
+            ),
+            **pipeline_settings(),
+        )
+
+        result = await pipeline.process(
+            [
+                article(1, None),
+                article(2, "https://news.example/logo.png"),
+                article(3, "https://news.example/own.jpg"),
+                # In another topic, and still enough to make the logo the site's default.
+                article(4, "https://news.example/logo.png"),
+            ],
+            sample_sources,
+            period="morning",
+            timezone=TEST_SETTINGS["general.timezone"],
+        )
+
+        images = {
+            member.urls[0]: member.image_url
+            for section in result.content.news_clusters
+            for member in section.members
+        }
+        assert images == {
+            "https://news.example/1": None,
+            "https://news.example/2": None,
+            "https://news.example/3": "https://news.example/own.jpg",
+            "https://news.example/4": None,
+        }
+
     async def test_story_records_name_every_cluster_with_its_full_membership(self, sample_sources):
         """Story records carry every cluster's full URL list."""
         news = [
