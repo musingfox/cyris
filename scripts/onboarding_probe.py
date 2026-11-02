@@ -701,6 +701,24 @@ Object.defineProperty(CanvasRenderingContext2D.prototype, "font", {
 });
 }"""
 
+# The lane's headlines the stage draws, in `window.__lane`: a headline is centred
+# in sans and skipped when transparent, where a row's title is left-aligned and a
+# feed name is set in mono. The pool answers late, as a waking container does.
+LANE_TEXT = """{
+window.__lane = [];
+const fill = CanvasRenderingContext2D.prototype.fillText;
+CanvasRenderingContext2D.prototype.fillText = function (text, ...rest) {
+  if (this.textAlign === "center" && !this.font.includes("Mono") && this.globalAlpha > 0.01) {
+    window.__lane.push(text);
+  }
+  return fill.call(this, text, ...rest);
+};
+const realFetch = window.fetch;
+window.fetch = (input, init) => String(input).endsWith("/api/onboarding/headlines")
+  ? new Promise((done) => setTimeout(done, 600)).then(() => realFetch(input, init))
+  : realFetch(input, init);
+}"""
+
 # A sabotage: the page is told the reader asked for no reduced motion.
 MOTION_ALLOWED = """{
 const realMatch = window.matchMedia;
@@ -1146,6 +1164,35 @@ _CHECKS: list[Check] = [
             expect($("#o-canvas").toDataURL() === ctx.before, "the stage still moves");
         """,
         sabotage_preload=MOTION_ALLOWED,
+    ),
+    Check(
+        id="reduced-motion-end-shows-headlines-that-arrive-late",
+        fixture="empty",
+        path=PAGE,
+        media=(("prefers-reduced-motion", "reduce"),),
+        preload=LANE_TEXT,
+        act="""
+            await waitFor(() => beat() === "claim", "the end", 1000);
+            window.__lane.length = 0;
+            await poolDrawn();
+        """,
+        script="""expect(window.__lane.length > 0, "the lane is empty");""",
+        sabotage="""window.__lane.length = 0;""",
+    ),
+    Check(
+        id="reduced-motion-end-shows-headlines-already-here",
+        fixture="empty",
+        path=FIRST,
+        media=(("prefers-reduced-motion", "reduce"),),
+        preload=LANE_TEXT,
+        act="""
+            await poolDrawn();
+            window.__lane.length = 0;
+            location.hash = "";
+            await waitFor(() => beat() === "claim", "the end", 1000);
+        """,
+        script="""expect(window.__lane.length > 0, "the lane is empty");""",
+        sabotage="""window.__lane.length = 0;""",
     ),
     Check(
         id="reduced-motion-turned-on-mid-play-stills-the-stage",

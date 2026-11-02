@@ -1280,6 +1280,8 @@ EXPECTED_ONBOARDING_IDS = {
     "skip-intro-works-though-the-headlines-stall",
     "reduced-motion-draws-the-end-though-the-headlines-stall",
     "reduced-motion-draws-the-end-at-once",
+    "reduced-motion-end-shows-headlines-that-arrive-late",
+    "reduced-motion-end-shows-headlines-already-here",
     "reduced-motion-turned-on-mid-play-stills-the-stage",
     "reduced-motion-turned-on-after-the-claim-stills-the-stage",
     "the-opening-fits-390",

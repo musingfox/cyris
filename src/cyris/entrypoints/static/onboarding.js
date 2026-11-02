@@ -348,9 +348,8 @@ function createStage() {
     t = over + calm;
     turned = true;
     chaos = [];
-    lane = lane.map((it) => ({...it, fi: 1, from: null}));
-    rows.forEach((r) => { r.k = 1; });
     fillLane(g, 0.85);
+    lane = lane.map((it) => ({...it, fi: 1, from: null}));
     while (rows.length < ROWS && bringForward(g));
     rows.forEach((r) => { r.k = 1; });
     end();
