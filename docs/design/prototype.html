@@ -367,14 +367,34 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 #o-own .sources-check { margin-top: var(--s-4); }
 .opening { display: flex; flex-direction: column; gap: var(--s-5); height: calc(100svh - var(--bar-h) - var(--s-12) - var(--s-20)); }
 .opening-stage { position: relative; flex: 1; min-height: 0; }
-.opening-stage svg { display: block; width: 100%; height: 100%; }
-.opening-stage .lane { stroke: var(--border); fill: none; }
-.opening-stage .row { fill: var(--bg-elev); stroke: var(--border); }
-.opening-stage .head { fill: var(--text); font-family: var(--font-sans); font-weight: 500; text-anchor: middle; }
-.opening-stage .feed { fill: var(--text-dim); font-family: var(--font-mono); font-weight: 500; text-anchor: middle; }
-.opening-stage .row-title { fill: var(--text); font-family: var(--font-sans); font-weight: 500; font-size: 14px; }
-.opening-stage .row-feed { fill: var(--text-dim); font-family: var(--font-mono); font-weight: 500; font-size: 10px; text-anchor: end; text-transform: uppercase; }
-.opening-logo { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); padding: var(--s-2) var(--s-3); background: var(--bg); }
+/* The end frame in markup, so its text keeps §3's roles and the type scale: the
+   lane holds the vanishing point and the headlines, the rows sit under it on the
+   spacing scale, and each point is a line of no height that its text centres
+   on, or sits above, without a transform. */
+.opening-lane { position: absolute; top: 0; left: 0; right: 0; bottom: calc(3 * var(--s-8)); }
+.opening-lane svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; }
+.opening-lane path { stroke: var(--border); fill: none; vector-effect: non-scaling-stroke; }
+.opening-vp { position: absolute; left: 0; right: 0; height: 0; display: flex; align-items: center; justify-content: center; }
+.opening-vp.above { align-items: flex-end; }
+.opening-vp.at { top: 45%; }
+.opening-vp.far { top: 62%; }
+.opening-vp.mid { top: 76%; }
+.opening-vp.near { top: 95%; }
+.opening-head { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; max-width: 100%; padding-bottom: var(--s-1); }
+.opening-head span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opening-head .name { font-family: var(--font-sans); font-weight: 500; color: var(--text); }
+.opening-head .feed { font-family: var(--font-mono); font-weight: 500; color: var(--text-dim); }
+.opening-head.far .name { font-size: calc(7px * var(--type-scale)); }
+.opening-head.far .feed { font-size: calc(6px * var(--type-scale)); }
+.opening-head.mid .name { font-size: calc(10px * var(--type-scale)); }
+.opening-head.mid .feed { font-size: calc(9px * var(--type-scale)); }
+.opening-head.near .name { font-size: calc(14px * var(--type-scale)); }
+.opening-head.near .feed { font-size: calc(12px * var(--type-scale)); }
+.opening-rows { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-1); padding-bottom: var(--s-1); }
+.opening-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); height: calc(var(--s-8) - var(--s-1)); padding: 0 var(--s-3); background: var(--bg-elev); border: 1px solid var(--border); }
+.opening-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--type-scale)); color: var(--text); }
+.opening-row .label { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opening-logo { padding: var(--s-2) var(--s-3); background: var(--bg); }
 /* The site bar drops the name below 720px; the logo on the stage keeps it. */
 .opening-logo .brand-name { display: inline; }
 .opening-claim { text-wrap: balance; }
@@ -967,25 +987,18 @@ table.src td.areas-pos-cell { width: 1%; }
   <main class="page narrow" data-ostep="opening" hidden>
     <section class="opening">
       <div class="opening-stage" aria-hidden="true">
-        <svg viewBox="0 0 600 420" preserveAspectRatio="xMidYMid meet">
-          <path class="lane" d="M300 151 L48 330 M300 151 L552 330"/>
-          <text class="feed" x="300" y="198" font-size="4.3">Quanta Magazine</text>
-          <text class="head" x="300" y="205" font-size="7">A proof that took thirty years to check</text>
-          <text class="feed" x="300" y="235" font-size="6.5">報導者</text>
-          <text class="head" x="300" y="246" font-size="10.5">山區部落的最後一哩路：偏鄉醫療的十年</text>
-          <text class="feed" x="300" y="285" font-size="9.5">The Economist</text>
-          <text class="head" x="300" y="301" font-size="15.5">The quiet return of the industrial policy</text>
-          <rect class="row" x="0.5" y="330.5" width="599" height="25"/>
-          <text class="row-title" x="12" y="348">新台幣升值，出口業怎麼避險</text>
-          <text class="row-feed" x="588" y="348">經濟日報</text>
-          <rect class="row" x="0.5" y="360.5" width="599" height="25"/>
-          <text class="row-title" x="12" y="378">Taiwan's grid races to add storage before summer</text>
-          <text class="row-feed" x="588" y="378">Focus Taiwan (CNA…</text>
-          <rect class="row" x="0.5" y="390.5" width="599" height="25"/>
-          <text class="row-title" x="12" y="408">On attention, and who gets to spend it</text>
-          <text class="row-feed" x="588" y="408">The Atlantic Ideas</text>
-        </svg>
-        <span class="brand opening-logo"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></span>
+        <div class="opening-lane">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M50 45 L8 100 M50 45 L92 100"/></svg>
+          <div class="opening-vp above far"><div class="opening-head far"><span class="feed">Quanta Magazine</span><span class="name" lang="">A proof that took thirty years to check</span></div></div>
+          <div class="opening-vp above mid"><div class="opening-head mid"><span class="feed">報導者</span><span class="name" lang="">山區部落的最後一哩路：偏鄉醫療的十年</span></div></div>
+          <div class="opening-vp above near"><div class="opening-head near"><span class="feed">The Economist</span><span class="name" lang="">The quiet return of the industrial policy</span></div></div>
+          <div class="opening-vp at"><span class="brand opening-logo"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></span></div>
+        </div>
+        <div class="opening-rows">
+          <div class="opening-row"><span class="name" lang="">新台幣升值，出口業怎麼避險</span><span class="label">經濟日報</span></div>
+          <div class="opening-row"><span class="name" lang="">Taiwan's grid races to add storage before summer</span><span class="label">Focus Taiwan (CNA English)</span></div>
+          <div class="opening-row"><span class="name" lang="">On attention, and who gets to spend it</span><span class="label">The Atlantic Ideas</span></div>
+        </div>
       </div>
       <p class="heading opening-claim">Too much, too fast. I’ll hold it for you; <em>you</em> say what matters.</p>
       <div class="opening-nav">

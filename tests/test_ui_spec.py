@@ -1250,6 +1250,22 @@ def test_no_font_size_escapes_the_type_scale(source: str) -> None:
     assert unscaled_font_sizes(_source(source)) == []
 
 
+def test_the_prototype_opening_follows_the_type_scale() -> None:
+    """The reference opening is held to §3 as the wizard is; the rest of the prototype not yet."""
+    found = unscaled_font_sizes(PROTOTYPE.read_text())
+    assert [rule for rule in found if "opening" in rule.split(" | ")[0]] == []
+
+
+_SIZE_ATTRIBUTE = re.compile(r'<[^>]*\sfont-size="[^"]*"')
+
+
+@pytest.mark.parametrize("source", [*GUARDED, "prototype", "website"])
+def test_no_markup_sizes_text_outside_the_stylesheet(source: str) -> None:
+    """An SVG `font-size` attribute escapes every CSS guard, and the type scale with it."""
+    text = {"prototype": PROTOTYPE, "website": WEBSITE}.get(source)
+    assert _SIZE_ATTRIBUTE.findall(text.read_text() if text else _source(source)) == []
+
+
 @pytest.mark.parametrize(
     "css",
     [

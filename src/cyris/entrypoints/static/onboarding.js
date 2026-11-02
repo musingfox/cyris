@@ -125,16 +125,20 @@ function createStage() {
     return true;
   }
   function geo() {
-    // Canvas text follows the reader's type size, as every font-size does (§3).
+    // Canvas text takes §3's roles times the reader's type size: a headline at
+    // its nearest and a row's title are the small role, a feed name the label
+    // role. Rows sit on the spacing scale.
     const scale = parseFloat(token("--type-scale")) || 1;
-    const fs = (W >= 600 ? 14 : 12.5) * scale;
-    const rowH = W >= 600 ? 34 : 30;
+    const space = (n) => parseFloat(token(`--s-${n}`));
+    const fs = 14 * scale;
+    const rowH = space(8);
     const shelf = H - ROWS * rowH;
     const vy = Math.min(H * 0.36, shelf * 0.5);
-    return {fs, row: 14 * scale, tag: 10 * scale, rowH, shelf, vx: W / 2, vy, yR: shelf - fs * 2};
+    return {fs, row: fs, tag: 12 * scale, rowH, gap: space(1), inset: space(3), shelf,
+      vx: W / 2, vy, yR: shelf - fs * 2};
   }
-  function cut(text, f, maxW) {
-    cx.font = `500 ${f}px ${SANS}`;
+  function cut(text, f, maxW, family = SANS) {
+    cx.font = `500 ${f}px ${family}`;
     if (cx.measureText(text).width <= maxW) return text;
     const chars = [...text];
     while (chars.length > 2 && cx.measureText(chars.join("") + "…").width > maxW) chars.pop();
@@ -208,7 +212,7 @@ function createStage() {
     const h = near ? near[0] : fresh();
     if (!h) return false;
     const from = near ? near[1] : {x: g.vx, y: g.vy, f: 2, a: 0};
-    rows.push({key: h.key, title: cut(h.title, g.row, W - 140), feed: h.feed, from, k: 0});
+    rows.push({key: h.key, title: cut(h.title, g.row, W * 0.7 - 2 * g.inset), feed: h.feed, from, k: 0});
     return true;
   }
 
@@ -252,14 +256,15 @@ function createStage() {
     cx.fillStyle = it.bright || it.q !== undefined ? C.text : C.dim;
     cx.fillText(it.title, p.x, p.y);
     if (p.f >= 7) {
-      cx.font = `500 ${p.f * 0.62}px ${MONO}`;
+      cx.font = `500 ${p.f * 12 / 14}px ${MONO}`;
       cx.fillStyle = C.dim;
       cx.fillText(it.feed, p.x, p.y - p.f * 1.15);
     }
   }
   function drawRows(g) {
     rows.forEach((r, i) => {
-      const y = g.shelf + i * g.rowH, h = g.rowH - 4, ty = y + h / 2 + 4, e = ease(r.k);
+      const y = g.shelf + i * g.rowH, h = g.rowH - g.gap, ty = y + h / 2 + g.row * 0.35;
+      const e = ease(r.k);
       cx.globalAlpha = e;
       cx.fillStyle = C.elev;
       cx.fillRect(0, y, W, h);
@@ -267,13 +272,14 @@ function createStage() {
       cx.lineWidth = 1;
       cx.strokeRect(0.5, y + 0.5, W - 1, h - 1);
       cx.textAlign = "left";
-      cx.font = `500 ${g.row}px ${SANS}`;
+      cx.font = `400 ${g.row}px ${SANS}`;
       cx.fillStyle = C.text;
-      cx.fillText(r.title, 12, ty);
+      cx.fillText(r.title, g.inset, ty);
       cx.textAlign = "right";
+      const tag = cut(r.feed.toUpperCase(), g.tag, W * 0.3, MONO);
       cx.font = `500 ${g.tag}px ${MONO}`;
       cx.fillStyle = C.dim;
-      cx.fillText(cut(r.feed, g.tag, 100).toUpperCase(), W - 12, ty);
+      cx.fillText(tag, W - g.inset, ty);
       cx.textAlign = "center";
       if (e < 1) {
         cx.globalAlpha = (1 - e) * Math.max(0.6, r.from.a);
@@ -311,7 +317,7 @@ function createStage() {
     drawn.sort((a, b) => a[1].f - b[1].f).forEach(([it, p]) => headline(it, p));
     cx.globalAlpha = 1;
     drawRows(g);
-    logo.style.top = `${g.vy}px`;
+    logo.parentElement.style.top = `${g.vy}px`;
     logo.style.opacity = String(ease(clamp(calmed / 0.4)));
   }
 

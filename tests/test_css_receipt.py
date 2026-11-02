@@ -1283,6 +1283,7 @@ EXPECTED_ONBOARDING_IDS = {
     "reduced-motion-turned-on-mid-play-stills-the-stage",
     "reduced-motion-turned-on-after-the-claim-stills-the-stage",
     "the-opening-fits-390",
+    "the-opening-stage-text-follows-the-type-scale",
     "the-opening-fits-1280x800",
     "show-me-how-hands-focus-to-the-first-step",
     "opens-on-the-first-step",

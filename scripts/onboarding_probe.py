@@ -43,6 +43,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from aiohttp import web
 from cdp_probe import (
+    LARGEST_TYPE_SCALE,
     NO_SITE_BAR_AREAS,
     Check,
     at_largest_type_scale,
@@ -689,6 +690,17 @@ NO_FRAMES = """{
 window.requestAnimationFrame = () => 0;
 }"""
 
+# Every font the stage's canvas is given, in `window.__fonts`, so a check can read
+# the sizes it draws at.
+CANVAS_FONTS = """{
+window.__fonts = [];
+const font = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "font");
+Object.defineProperty(CanvasRenderingContext2D.prototype, "font", {
+  get() { return font.get.call(this); },
+  set(value) { window.__fonts.push(value); font.set.call(this, value); },
+});
+}"""
+
 # A sabotage: the page is told the reader asked for no reduced motion.
 MOTION_ALLOWED = """{
 const realMatch = window.matchMedia;
@@ -1184,6 +1196,29 @@ _CHECKS: list[Check] = [
             expect(!problem, problem);
         """,
         sabotage="""$("#o-opening").style.height = "1200px";""",
+    ),
+    Check(
+        id="the-opening-stage-text-follows-the-type-scale",
+        fixture="empty-largest",
+        path=PAGE,
+        preload=CANVAS_FONTS,
+        act="""
+            await toClaim();
+            await poolDrawn();
+            window.__fonts.length = 0;
+            await sleep(300);
+        """,
+        script=f"""
+            const row = `400 ${{14 * {LARGEST_TYPE_SCALE}}}px`;
+            const label = `500 ${{12 * {LARGEST_TYPE_SCALE}}}px`;
+            const drawn = new Set(window.__fonts.map((f) => f.split(" ").slice(0, 2).join(" ")));
+            expect(drawn.has(row) && drawn.has(label), `drawn: ${{[...drawn].join(", ")}}`);
+        """,
+        sabotage="""
+            document.documentElement.style.setProperty("--type-scale", "1");
+            window.__fonts.length = 0;
+            await sleep(300);
+        """,
     ),
     Check(
         id="the-opening-fits-1280x800",
