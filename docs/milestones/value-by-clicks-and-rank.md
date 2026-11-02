@@ -1,10 +1,12 @@
 ---
-status: accepted
+status: superseded
 delivered:
 depends: [clef-preference-order]
 ---
 
 # 辨識有價值的資訊：點開劃出上下層，排序取代刪除
+
+**2026-11-02 被 [ADR-0023](../decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md) 與 [digest-pebble-sand-water.md](digest-pebble-sand-water.md) 取代。** ADR-0023 讓分層只看 lane 與這一期的成員數，不從點開學；它也拿掉輸出上限，所以沒有「只顯示上限內的項目」；S7 的領域配額隨領域骨架退場。Q2 到 Q8 不再回答。之後若要收點開紀錄，另開一份里程碑。以下內容是當時的決定，保留作為歷史。
 
 2026-10-11 經兩層設計討論定案，起點是「cyris 要怎麼辨識出對讀者有價值的資訊」。同日第二場討論從「tier 分層還有沒有必要」出發，把版面和分類拆成另一份里程碑 `digest-by-topic-and-area.md`，並回答了這裡的 Q1，拆開了 Q8，把 Q7 從候選題升成新聞 lane 的前置。其餘的 Q2 到 Q7 還沒有答案。
 
