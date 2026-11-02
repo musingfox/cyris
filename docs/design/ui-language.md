@@ -198,7 +198,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **reading progress** | Only on the digest. A 3px strip fixed along the bottom edge of the site bar, inside its box, so it covers none of its links and nothing the bar does not already cover; it takes no pointer events and is hidden from assistive technology. It spans the site bar's inner column, at most 1240px with `--s-4` inside each end as `.site-bar-inner` has, so it starts under the brand and ends under the last link rather than at the window's edges; the digest probe's `progress-in-column-*` checks hold it at 1440 and 2000px. One segment per layer of the issue (§6 *digest*), as wide as that layer's share of the issue's items (a Tracking hit is not an item, so it adds no width), divided by a 1px `--bg` hairline, so the strip reads as one line with small dividers rather than a broken one, as `--s-1` gaps made it until 2026-10-29; each is `--border-strong`. An issue with no layer, only the masthead and Tracking, still draws the strip, as one segment that is that page's whole (owner, 2026-10-31). A layer before the one shown is filled `--accent`, a layer after it is empty, and the one shown fills as far as the bottom of the window has passed through it. Widths come from item counts, not heights, because only one layer is laid out at a time. It moves only with the scroll and the layer switch, with no transition. Without script it is not drawn |
 | **layer dock** | Only on the digest, and only with script: a bar fixed along the bottom of the window, full width, `--bg-elev` with a 1px `--border` on top, its content in the site bar's inner column, height `--s-12`. The page takes the same height as bottom padding, so the dock never covers the last item or a vote. On the left, a back control `↑ Stories` naming the previous layer (a small secondary button, hidden on the first layer), then the layer shown and its count in the label role, `Topics · 20`, which is how a reader mid-layer knows where they are. On the right, `Skip to 14 Headlines ↓`, a small secondary button naming the next layer and its count, hidden on the last. Skip and back switch layers as a pull does (§4 *Interaction*, *Layers*). On a phone the `Skip to` words are hidden and the button keeps the layer and count |
 | **layer edge** | The fade at the edge of a layer that has a neighbour, only with script: a gradient from `--bg` to transparent over the window's bottom `--s-16` while a next layer exists, and over its top `--s-12`, under the site and issue bars, while a previous one exists. It takes no pointer events, so a vote under it still takes its tap. While a reader pulls at the edge (§4 *Interaction*, *Layers*) it deepens by up to `--s-12` and holds a 1px `--accent` line that fills with the pull, beside one line in the label role: `Keep scrolling for 20 Topics`, or `Press ↓ again for 20 Topics` once a key has armed the switch |
-| **story image** | A pebble's article image (§6 *digest*): `1200 / 630`, `object-fit: cover`, square corners, a 1px `--border`, on `--surface` while it loads, so a late image moves nothing. At rest it is greyscale at opacity .55, because a full-colour photograph was the loudest thing on the dark page (owner, 2026-10-31); hovering or focusing within its item restores its colour and full opacity, except where a layer switch made by pointer put focus on the item itself, which keeps its ring hidden too (§4 *Interaction*, *Layers*; owner, 2026-10-31). It is decorative (`alt=""`), since the title beside it names the article, and loads with `loading="lazy"`, `decoding="async"` and `referrerpolicy="no-referrer"`. An image that fails to load removes its box, and an item with no image has no box at all, never a placeholder. The image is the one the article's feed supplied (`docs/architecture.md` §4); the page fetches nothing else. An image URL that two or more articles of one source share in the issue is the site's default picture, not the article's, and is not shown: on 2026-10-30 one news site gave the same logo as the og:image of 29 of its 73 links, and a feed can repeat a picture the same way |
+| **story image** | A pebble's article image, and a Topics card's (§6 *digest*): `1200 / 630`, `object-fit: cover`, square corners, a 1px `--border`, on `--surface` while it loads, so a late image moves nothing. A Topics card's image is the card's first child and spans its full width, its negative margins taking back the card's `--s-6` padding, so it keeps only the 1px `--border` along its bottom edge, with `--s-5` below it. At rest it is greyscale at opacity .55, because a full-colour photograph was the loudest thing on the dark page (owner, 2026-10-31); hovering or focusing within its item restores its colour and full opacity, except where a layer switch made by pointer put focus on the item itself, which keeps its ring hidden too (§4 *Interaction*, *Layers*; owner, 2026-10-31). It is decorative (`alt=""`), since the title beside or below it names the article or topic, and loads with `loading="lazy"`, `decoding="async"` and `referrerpolicy="no-referrer"`. An image that fails to load removes its box, and an item with no image has no box at all, never a placeholder. The image is the one the article's feed supplied (`docs/architecture.md` §4); the page fetches nothing else. An image URL that two or more articles of one source share in the issue is the site's default picture, not the article's, and is not shown: on 2026-10-30 one news site gave the same logo as the og:image of 29 of its 73 links, and a feed can repeat a picture the same way. A Topics card shows the picture of its first member that has one of its own by that rule, and a card none of whose members has one shows no image (owner, 2026-11-02). Until then only Stories showed an image: the 2026-10-31 decision kept Topics as text, and its rule against fetching an article page's og:image still holds, so a topic made mostly of wire reports whose feeds carry no picture, as every CNA section feed is (measured 2026-10-31), usually has none, which the owner accepted. Headlines and the mail show no image |
 | **issue bar** | Shared by digest and raw, below the site bar, on `--bg-elev`. On the left, the date (data) and the period (label); on the right, the segmented control `Digest` / `All articles`. The two are two views of the same issue |
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em, and still takes taps over 44 × 44 (**tap area**). Pressed (`:active`) lowers opacity to .7 on top of whatever hover state the button already shows, and changes nothing else; .7 stays clear of disabled's .4, so a pressed button never reads as disabled. Disabled is always opacity .4, and a disabled button does not change on hover or press |
@@ -370,8 +370,14 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   beside the image was too narrow to read at 360px. Stories are the read lane's
   summarized articles in the content's order, then the read lane's low-score rows by score, then
   the follow lane.
-- **A sand block is one topic of two or more articles.** `.news-cluster`: the topic's heading, one
-  line saying what happened, its tags, then a meta row holding the fold and the votes. The fold is a
+- **A sand block is one topic of two or more articles.** `.news-cluster`, a card: its story image
+  (§4) when a member has one, the topic's heading, one line saying what happened, its tags, then a
+  meta row holding the fold and the votes. The card is a flex column on `--bg-elev` with a 1px
+  `--border`, which turns `--border-strong` on hover, and `--s-6` padding; the heading takes `--s-3`
+  below it, the line `--s-4`, and the tags none above and `--s-4` below. The meta row takes
+  `margin-top: auto`, so it sits on the card's bottom edge whatever the card holds above it. Until
+  2026-11-02 a block was text with a 2px `--border-strong` rule on its left that turned `--accent` on
+  hover; the owner found two columns of them read as a wall of text (owner, 2026-11-02). The fold is a
   `<details class="src-fold">` whose summary is `N articles` and which unfolds each member's title
   link with its source name. The line is a stand-in until the sand-what-happened ticket: the first
   member's excerpt of up to 80 characters, taken after a wire dateline in brackets at the very
@@ -383,7 +389,13 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   filter's sentence. A row is at least 44px tall, so a one-line row's vote tap area stops at its
   own edge. Each row is a number, the
   title link and, below the title, the one-sentence summary the filter wrote for that article, in the
-  small role (§3) under a title in `--text`; its tags follow, and the votes come last. The summary
+  small role's size and colour (§3) under a title in `--text`; its tags follow, and the votes come
+  last. The rows were too close to tell apart (owner, 2026-11-02), so they are spaced wider than
+  the small role: the list takes `--s-2` above and below, a row `--s-4` top and bottom and `--s-6`
+  at the sides, `--s-4` between the number, the text and the votes, and line height 1.6; the
+  summary takes `--s-2` above it at line height 1.65, the body role's, and the tags `--s-3` above
+  them. Until then a row was `--s-2` by `--s-5`, gapped `--s-3`, with the summary at the small role's
+  1.5, `--s-1` below the title. The summary
   takes `overflow-wrap: anywhere`: an unbroken run such as a URL breaks inside it rather than widen a
   row whose title column is narrow on a phone. A row with no summary is only the number and the title
   link. When the filter ran without an LLM, by choice under provider `none` or because the configured
@@ -395,7 +407,8 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   scoring returned for its article this run; an article scored in an earlier run shows none.
 - **The meta row.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the label role. A
   pebble's holds its source name, the original link and the vote group, in that order. A sand block's
-  holds the fold and the vote group. A water row has no meta row; its vote group ends the row. Sand
+  holds the fold and the vote group, and is the one meta row with a rule of its own, `margin-top:
+  auto`, which places it and sets nothing else of its look. A water row has no meta row; its vote group ends the row. Sand
   and water show no source, host or score outside the fold, and the fold is the only place a sand
   member's source is named. No item shows a score pill.
 - **Every item has exactly one vote group.** A pebble's and a water row's vote is for its article; a
@@ -407,14 +420,18 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   drawn on each row's right and bottom edges. Until 2026-10-31 pebbles were cards in a fluid
   `repeat(auto-fit, minmax(min(100%, 320px), 1fr))` grid; the owner found articles side by side
   read badly once they carried images (2026-10-31).
-- **Sand blocks fill the column as a grid:** `.sand-grid` holds them with
-  `repeat(auto-fit, minmax(min(100%, 480px), 1fr))` and an `--s-5` row and `--s-8` column gap, so the
-  1240px column holds two side by side and a phone one, with no column count and no breakpoint; a
-  window under about 1024px, whose column is under 992px, holds one. 480px
-  is the narrowest block that still reads as a paragraph, and three of them with their gaps would
-  need more than 1240px. Each block keeps the prose measure inside it. Until 2026-10-29 the blocks
-  were stacked, and at `--measure-wide` a block's line used about the left half of the column under a
-  two-column Stories grid. The digest probe's `sand-side-by-side-1440` and `sand-stacks-360` hold it.
+- **Sand cards fill the column as a grid:** `.sand-grid` holds them with
+  `repeat(auto-fill, minmax(min(100%, 340px), 1fr))`, an `--s-8` row and `--s-6` column gap and
+  `align-items: stretch`, so the 1240px column holds three side by side and a phone one, with no
+  column count and no breakpoint, and the cards of one row are one height: a card without an image
+  leaves the space above its meta row empty (owner, 2026-11-02). `auto-fill` keeps a lone card a
+  column wide rather than stretching it across the page. Each card keeps the prose measure inside it.
+  Until 2026-11-02 the blocks were `minmax(min(100%, 480px), 1fr)` with `auto-fit`, an `--s-5` row and
+  `--s-8` column gap and `align-items: start`, two to a desktop row, because 480px was then taken as
+  the narrowest block that still reads as a paragraph; as cards with an image on top, three to a row
+  read better. Until 2026-10-29 the blocks were stacked, and at `--measure-wide` a block's line used
+  about the left half of the column under a two-column Stories grid. The digest probe's
+  `sand-side-by-side-1440` and `sand-stacks-360` hold it.
 - The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
 - **Prose stops at `--measure-wide`.** Every summary and the empty or degraded
   note is at most `--measure-wide` wide, so a line stays readable when the container is 1240px; a card
@@ -702,7 +719,7 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   title link. A pebble is its title link, its summary and its source name, with no story image: a
   mail client may block a remote image, and one it loads tells the image's host who opened the
   mail. The mail shows every layer at once, as the page does without script. A sand block is its
-  heading, its line, then each member's title link with its source name, listed open because a mail
+  heading, its line, with no story image for the same reason, then each member's title link with its source name, listed open because a mail
   client cannot be trusted with `<details>`; that list is the only place outside a pebble where a
   source is named. No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page. The
   plain-text part holds the same blocks, each item a `- title — link` line with its text indented

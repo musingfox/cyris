@@ -750,7 +750,12 @@ def test_each_font_size_follows_the_role_table(row: int, page: str, key: str, ba
 
 def test_a_wire_summary_is_small_dim_prose_that_stops_at_the_measure() -> None:
     rules = set(_parsed("digest")[".headline-item .summary"])
-    assert {"color: var(--text-dim)", "line-height: 1.5", "max-width: var(--measure-wide)"} <= rules
+    # The small role's size and colour, at the looser line height of 2026-11-02 (spec section 6).
+    assert {
+        "color: var(--text-dim)",
+        "line-height: 1.65",
+        "max-width: var(--measure-wide)",
+    } <= rules
 
 
 def test_a_wire_summary_breaks_an_unbroken_token_on_the_page_and_in_the_prototype() -> None:
@@ -824,7 +829,9 @@ def test_every_item_title_takes_the_title_role_from_one_rule() -> None:
 
 def test_every_meta_row_is_one_base_rule() -> None:
     digest = _parsed("digest")
-    assert sorted(key for key in digest if ".meta" in key) == [".meta"]
+    # A sand card pins its meta row to the bottom, and nothing more (spec section 6).
+    assert sorted(key for key in digest if ".meta" in key) == [".meta", ".news-cluster > .meta"]
+    assert digest[".news-cluster > .meta"] == {"margin-top: auto"}
     layout = {"display: flex", "flex-wrap: wrap", "align-items: center", "gap: var(--s-3)"}
     # A meta row speaks in the one label voice, so its type is the .label rule's, exactly.
     assert digest[".meta"] == layout | digest[".label"]
@@ -887,6 +894,41 @@ def test_the_story_image_is_the_specs_greyscale_box() -> None:
         "grid-template-columns: 112px minmax(0, 1fr)"
         in digest["@media (max-width: 720px) | .featured-item:has(> .story-image)"]
     )
+
+
+def test_a_topic_card_spans_its_image_across_the_top_in_the_same_greyscale() -> None:
+    digest = _parsed("digest")
+    assert {
+        "margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) var(--s-5)",
+        "width: calc(100% + 2 * var(--s-6))",
+        "aspect-ratio: 1200 / 630",
+        "object-fit: cover",
+        "border-bottom: 1px solid var(--border)",
+        "background: var(--surface)",
+        "filter: grayscale(1)",
+        "opacity: .55",
+        "transition: filter var(--t-fast), opacity var(--t-fast)",
+    } <= digest[".news-cluster > .story-image"]
+    assert digest[".news-cluster:is(:hover, :focus-within:not(.quiet:focus)) > .story-image"] == {
+        "filter: none",
+        "opacity: 1",
+    }
+    assert {
+        "display: flex",
+        "flex-direction: column",
+        "background: var(--bg-elev)",
+        "border: 1px solid var(--border)",
+        "padding: var(--s-6)",
+    } <= digest[".news-cluster"]
+    assert digest[".news-cluster:hover"] == {"border-color: var(--border-strong)"}
+
+
+def test_topic_cards_of_one_row_are_one_height() -> None:
+    assert {
+        "grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
+        "gap: var(--s-8) var(--s-6)",
+        "align-items: stretch",
+    } <= _parsed("digest")[".sand-grid"]
 
 
 BODY_TRACKS = "grid-template-columns: minmax(0, 1fr)"

@@ -257,10 +257,18 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .featured-item:hover { background: var(--surface); }
 .featured-item h3 { margin-bottom: var(--s-3); }
 .featured-item .summary { margin-bottom: var(--s-4); }
-.sand-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: var(--s-5) var(--s-8); align-items: start; }
-.news-cluster { border-left: 2px solid var(--border-strong); padding: var(--s-4) 0 var(--s-4) var(--s-5); transition: border-color var(--t-fast); }
-.news-cluster:hover { border-left-color: var(--accent); }
-.news-cluster h3, .news-cluster .summary { margin-bottom: var(--s-2); }
+/* Sand is cards, three to a row and one on a phone; a row's cards are one height, so the meta row is
+   pinned to the bottom (owner, 2026-11-02). */
+.sand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: var(--s-8) var(--s-6); align-items: stretch; }
+.news-cluster { display: flex; flex-direction: column; background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-6); transition: background-color var(--t-fast), border-color var(--t-fast); }
+.news-cluster:hover { border-color: var(--border-strong); }
+.news-cluster h3 { margin-bottom: var(--s-3); }
+.news-cluster .summary { margin-bottom: var(--s-4); }
+.news-cluster .tags { margin-top: 0; margin-bottom: var(--s-4); }
+.news-cluster > .meta { margin-top: auto; }
+/* The image spans the card: its negative margins take back the card's padding. */
+.news-cluster > .story-image { margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) var(--s-5); width: calc(100% + 2 * var(--s-6)); aspect-ratio: 1200 / 630; object-fit: cover; border-bottom: 1px solid var(--border); background: var(--surface); filter: grayscale(1); opacity: .55; transition: filter var(--t-fast), opacity var(--t-fast); }
+.news-cluster:is(:hover, :focus-within) > .story-image { filter: none; opacity: 1; }
 .thematic-block { margin-bottom: var(--s-8); }
 .thematic-block h3 { display: flex; align-items: baseline; gap: var(--s-3); margin-bottom: var(--s-4); }
 .thematic-block h3::before { content: "▸"; color: var(--accent); font-size: calc(12px * var(--type-scale)); }
@@ -268,10 +276,11 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .article-item:last-child { border-bottom: 0; }
 .article-item h3, .article-item h4 { margin-bottom: var(--s-2); }
 .article-item .summary { margin-bottom: var(--s-3); }
-.headlines-compact { border: 1px solid var(--border); background: var(--bg-elev); padding: var(--s-1) 0; }
+/* Rows were too close to tell apart (owner, 2026-11-02), so they take more room. */
+.headlines-compact { border: 1px solid var(--border); background: var(--bg-elev); padding: var(--s-2) 0; }
 .headline-item {
-  display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-2) var(--s-5); min-height: 44px;
-  font-size: calc(14px * var(--type-scale)); line-height: 1.5; border-bottom: 1px dashed var(--border);
+  display: flex; align-items: baseline; gap: var(--s-4); padding: var(--s-4) var(--s-6); min-height: 44px;
+  font-size: calc(14px * var(--type-scale)); line-height: 1.6; border-bottom: 1px dashed var(--border);
   transition: background-color var(--t-fast);
 }
 .headline-item:hover { background: var(--surface); }
@@ -280,7 +289,8 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .headline-item .text { flex: 1; }
 .headline-item .text a { text-decoration: none; transition: color var(--t-fast); }
 .headline-item .text a:hover { color: var(--accent); }
-.headline-item .summary { font-size: calc(14px * var(--type-scale)); line-height: 1.5; margin-top: var(--s-1); overflow-wrap: anywhere; }
+.headline-item .summary { font-size: calc(14px * var(--type-scale)); line-height: 1.65; margin-top: var(--s-2); overflow-wrap: anywhere; }
+.headline-item .tags { margin-top: var(--s-3); }
 .src-fold { display: inline-block; }
 .src-fold > summary { cursor: pointer; list-style: none; color: var(--text-dim); text-decoration: underline dotted; text-underline-offset: 3px; }
 .src-fold > summary::-webkit-details-marker { display: none; }
@@ -699,6 +709,7 @@ table.src td.areas-pos-cell { width: 1%; }
       <h2 class="section-tag"><span class="label">Topics</span></h2>
       <div class="sand-grid">
       <div class="news-cluster" lang="zh-Hant">
+        <img class="story-image" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%20630'%3E%3Crect%20width='1200'%20height='630'%20fill='%231f2a3a'/%3E%3Cg%20fill='%23f2c14e'%3E%3Ccircle%20cx='600'%20cy='315'%20r='150'%20fill='none'%20stroke='%23f2c14e'%20stroke-width='16'/%3E%3Ccircle%20cx='600'%20cy='165'%20r='14'/%3E%3Ccircle%20cx='750'%20cy='315'%20r='14'/%3E%3Ccircle%20cx='600'%20cy='465'%20r='14'/%3E%3Ccircle%20cx='450'%20cy='315'%20r='14'/%3E%3C/g%3E%3Crect%20x='520'%20y='280'%20width='160'%20height='70'%20fill='%236c8ebf'/%3E%3C/svg%3E" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
         <h3 class="item-title lg">歐盟 AI 法案第二階段生效</h3>
         <p class="summary">通用模型提供者要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</p>
         <div class="tags"><span class="pill" lang="">EU</span><span class="pill" lang="">AI</span></div>
@@ -713,6 +724,14 @@ table.src td.areas-pos-cell { width: 1%; }
         <div class="tags"><span class="pill" lang="">Bun</span></div>
         <div class="meta">
           <details class="src-fold"><summary lang="en">2 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">Bun 1.3</a> <span class="source-tag">Bun Blog</span></span><span class="src-member"><a href="#digest">Bun ships a built-in Postgres client</a> <span class="source-tag">The Register</span></span></span></details>
+          <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
+        </div>
+      </div>
+      <div class="news-cluster" lang="zh-Hant">
+        <h3 class="item-title lg">颱風外圍環流影響北部降雨</h3>
+        <p class="summary">氣象署對北北基發布豪雨特報，部分山區累積雨量可能超過三百毫米。</p>
+        <div class="meta">
+          <details class="src-fold"><summary lang="en">2 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">颱風外圍環流 北北基豪雨特報</a> <span class="source-tag">中央社</span></span><span class="src-member"><a href="#digest">山區累積雨量恐破三百毫米</a> <span class="source-tag">公視新聞網</span></span></span></details>
           <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
       </div>

@@ -2596,11 +2596,44 @@ def test_a_pebble_with_a_picture_opens_with_its_image_box_and_one_without_has_no
     assert _by_class(plain, "story-image") == []
 
 
-def test_no_item_outside_stories_shows_a_picture() -> None:
+TOPIC_IMAGE = "https://wire-b.example.test/b.jpg"
+
+
+def test_a_topic_whose_member_has_a_picture_opens_its_card_with_that_image() -> None:
+    issue = _three_layer_issue()
+    issue.news_clusters[0].members[1].image_url = TOPIC_IMAGE
+    root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(issue)).root
+
+    (sand,) = _by_class(root, "news-cluster")
+    (image,) = _by_class(sand, "story-image")
+    assert sand.children[0] is image
+    assert image.tag == "img"
+    assert image.attrs == {
+        "class": "story-image",
+        "src": TOPIC_IMAGE,
+        "alt": "",
+        "loading": "lazy",
+        "decoding": "async",
+        "referrerpolicy": "no-referrer",
+    }
+
+
+def test_a_topic_with_no_pictured_member_has_no_image_box() -> None:
+    _, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    assert _by_class(sand, "story-image") == []
+    assert sand.find_all(lambda n: n.tag == "img") == []
+
+
+def test_no_item_outside_stories_and_topics_shows_a_picture() -> None:
     issue = _pictured_issue()
     for section in (*issue.news_clusters, *issue.tracked_topics):
         for item in section.items:
             item.image_url = STORY_IMAGE
+    # A topic of one article is a water row, whose member's picture stays unshown.
+    for member in issue.news_clusters[1].members:
+        member.image_url = STORY_IMAGE
     for item in issue.filtered_headlines:
         item.image_url = STORY_IMAGE
     root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(issue)).root
