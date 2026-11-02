@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-10-31
+updated: 2026-11-02
 ---
 
 # cyris UI design spec
@@ -593,6 +593,41 @@ sources live in a file the app never writes, has no wizard at all: this page sen
 - **Six steps, in order:** language and timezone, publish hours, sources, votes, notifications, first
   issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the
   place: the Worker's `PROTECTED` matches `/onboarding` exactly, and a hash never leaves the browser.
+  With no hash the first step shows, and the opening (below) once it is built.
+- **Opening — specified 2026-11-02, not built yet.** Neither the wizard nor `prototype.html` has it.
+  Before asking anything, the page shows what cyris does: too many headlines, then a few, with the
+  reader steering. The direction is POC K,
+  `docs/design/onboarding-poc/k-overload.html` on the unmerged branch `poc/onboarding-immersive`
+  (b1ba209d; owner, 2026-11-01). Its timings, curves and the finer shape of the motion are still to be
+  designed, so this bullet fixes only what the screen holds, in what order, and how a reader leaves.
+  - It is not a step. The page head, the step list and `Step N of 6` are not on it, and no hash
+    names it, so a reload on a step keeps that step. Its primary button, `Show me how`, opens the
+    first step and saves nothing; the first step still has no `Back`.
+  - One stage, a canvas marked `aria-hidden`, spans the page's column. The stage, the sentence and
+    the buttons fit the viewport with no page scroll at every width from 390px, and at 1280×800,
+    where K overflows. The stage runs three beats in order:
+    1. **Overload.** Headlines, each under its feed's name, fly out of a vanishing point toward the
+       reader, first person, faster and denser until they talk over each other and none can be read.
+    2. **Calm.** The brand square and `CYRIS` fade in on the vanishing point. Most headlines fade
+       where they are, and a few join one lane: two `--border` lines meeting behind the logo, along
+       which headlines come out evenly spaced at one slow speed. A few more leave the flow and come
+       to rest in front as rows (`--bg-elev`, a 1px `--border`, square): what reaches the reader. At
+       phone width the lane is narrow, and these rows carry the reading.
+    3. **Claim.** One sentence below the stage, and only then `Show me how`. K's sentence is "Too
+       much, too fast. I'll hold it for you; *you* say what matters." A rewrite keeps its rules: no
+       number nothing backs, no metaphor before it is introduced, and never cyris deciding what
+       matters for the reader, since the reader's choices decide it.
+  - The stage is the screen's only moving element: if the sentence is drawn in rather than shown
+    whole, the lane all but stops while it is. Headlines are `--text` and `--text-dim`; `--accent` is `Show me how` alone.
+  - `Skip intro`, a secondary button, shows while the first two beats run and jumps to the end of
+    the third; it leaves once the sentence shows. Under reduced motion the screen is drawn once at
+    that end, with the logo, the still lane, the rows in front, the sentence and `Show me how`, and
+    no `Skip intro`.
+  - The headlines come from a sample pool the app ships as data beside
+    `src/cyris/onboarding_feeds.json`, because a new deployment has no articles yet. A title is never
+    on screen twice at once; K's small pool repeats titles.
+  - The motion's durations become §2 tokens when it is built. For scale, K shows the sentence about
+    6.5 seconds in.
 - The page is `--measure` wide, one column, with settings' gutters. Below the page head (the label
   `Step N of 6`, the display title and a small description) the step list names every step in order,
   each with a 6px dot: `--accent` dot and `--accent` text for the step open now, a `--text-dim` dot
