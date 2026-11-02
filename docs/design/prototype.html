@@ -39,6 +39,8 @@
   --r-control: 6px;
   --r-tag: 999px;
   --t-fast: 150ms ease-out;
+  --t-opening-overload: 3.6s;
+  --t-opening-calm: 2.9s;
   --bar-h: 60px;
   --measure: 640px;
   --measure-wide: 760px;
@@ -363,6 +365,40 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .add-feed { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .add-feed .input { flex: 1 1 14em; width: auto; min-width: 0; }
 #o-own .sources-check { margin-top: var(--s-4); }
+.opening { display: flex; flex-direction: column; gap: var(--s-5); height: calc(100svh - var(--bar-h) - var(--s-12) - var(--s-20)); }
+.opening-stage { position: relative; flex: 1; min-height: 0; }
+/* The end frame in markup, so its text keeps §3's roles and the type scale: the
+   lane holds the vanishing point and the headlines, the rows sit under it on the
+   spacing scale, and each point is a line of no height that its text centres
+   on, or sits above, without a transform. */
+.opening-lane { position: absolute; top: 0; left: 0; right: 0; bottom: calc(3 * var(--s-8)); }
+.opening-lane svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; }
+.opening-lane path { stroke: var(--border); fill: none; vector-effect: non-scaling-stroke; }
+.opening-vp { position: absolute; left: 0; right: 0; height: 0; display: flex; align-items: center; justify-content: center; }
+.opening-vp.above { align-items: flex-end; }
+.opening-vp.at { top: 45%; }
+.opening-vp.far { top: 62%; }
+.opening-vp.mid { top: 76%; }
+.opening-vp.near { top: 95%; }
+.opening-head { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; max-width: 100%; padding-bottom: var(--s-1); }
+.opening-head span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opening-head .name { font-family: var(--font-sans); font-weight: 500; color: var(--text); }
+.opening-head .feed { font-family: var(--font-mono); font-weight: 500; color: var(--text-dim); }
+.opening-head.far .name { font-size: calc(7px * var(--type-scale)); }
+.opening-head.far .feed { font-size: calc(6px * var(--type-scale)); }
+.opening-head.mid .name { font-size: calc(10px * var(--type-scale)); }
+.opening-head.mid .feed { font-size: calc(9px * var(--type-scale)); }
+.opening-head.near .name { font-size: calc(14px * var(--type-scale)); }
+.opening-head.near .feed { font-size: calc(12px * var(--type-scale)); }
+.opening-rows { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-1); padding-bottom: var(--s-1); }
+.opening-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); height: calc(var(--s-8) - var(--s-1)); padding: 0 var(--s-3); background: var(--bg-elev); border: 1px solid var(--border); }
+.opening-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--type-scale)); color: var(--text); }
+.opening-row .label { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opening-logo { padding: var(--s-2) var(--s-3); background: var(--bg); }
+/* The site bar drops the name below 720px; the logo on the stage keeps it. */
+.opening-logo .brand-name { display: inline; }
+.opening-claim { text-wrap: balance; }
+.opening-nav { display: flex; align-items: center; gap: var(--s-4); }
 
 .form { display: grid; gap: var(--s-6); max-width: var(--measure); }
 .field { display: grid; gap: var(--s-2); }
@@ -578,7 +614,7 @@ table.src td.areas-pos-cell { width: 1%; }
 
 <div class="proto-strip">
   <span>PROTOTYPE · sample data ·</span>
-  <a href="#system">system</a><a href="#archive">archive</a><a href="#interest">interest</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a><a href="#onboarding">onboarding</a><a href="#onboarding/feeds">onboarding feeds</a><a href="#onboarding/votes">onboarding votes</a><a href="#onboarding/first-issue">onboarding first issue</a>
+  <a href="#system">system</a><a href="#archive">archive</a><a href="#interest">interest</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a><a href="#onboarding/opening">onboarding opening</a><a href="#onboarding">onboarding</a><a href="#onboarding/feeds">onboarding feeds</a><a href="#onboarding/votes">onboarding votes</a><a href="#onboarding/first-issue">onboarding first issue</a>
   <label><input type="checkbox" id="authorized" checked> signed in (shows Settings, votes, List/Triage; off shows Sign in)</label>
 </div>
 
@@ -942,8 +978,35 @@ table.src td.areas-pos-cell { width: 1%; }
      those feeds, one marked each way and one left alone, with the feed that gave
      no article named. #onboarding/first-issue is the last step before the morning
      hour, after a run that failed: its plan, yesterday's evening, the run's reason,
-     and Try again beside Finish. -->
+     and Try again beside Finish. #onboarding/opening is the opening a visit with no
+     hash shows before the first step, drawn at the end of its third beat, as reduced
+     motion draws it: the logo on the vanishing point, the still lane, three rows in
+     front, the sentence and Show me how. The wizard animates the beats on a canvas;
+     this frame is their end. -->
 <section data-view="onboarding" hidden>
+  <main class="page narrow" data-ostep="opening" hidden>
+    <section class="opening">
+      <div class="opening-stage" aria-hidden="true">
+        <div class="opening-lane">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M50 45 L8 100 M50 45 L92 100"/></svg>
+          <div class="opening-vp above far"><div class="opening-head far"><span class="feed">Quanta Magazine</span><span class="name" lang="">A proof that took thirty years to check</span></div></div>
+          <div class="opening-vp above mid"><div class="opening-head mid"><span class="feed">報導者</span><span class="name" lang="">山區部落的最後一哩路：偏鄉醫療的十年</span></div></div>
+          <div class="opening-vp above near"><div class="opening-head near"><span class="feed">The Economist</span><span class="name" lang="">The quiet return of the industrial policy</span></div></div>
+          <div class="opening-vp at"><span class="brand opening-logo"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></span></div>
+        </div>
+        <div class="opening-rows">
+          <div class="opening-row"><span class="name" lang="">新台幣升值，出口業怎麼避險</span><span class="label">經濟日報</span></div>
+          <div class="opening-row"><span class="name" lang="">Taiwan's grid races to add storage before summer</span><span class="label">Focus Taiwan (CNA English)</span></div>
+          <div class="opening-row"><span class="name" lang="">On attention, and who gets to spend it</span><span class="label">The Atlantic Ideas</span></div>
+        </div>
+      </div>
+      <p class="heading opening-claim">Too much, too fast. I’ll hold it for you; <em>you</em> say what matters.</p>
+      <div class="opening-nav">
+        <a class="btn primary" href="#onboarding">Show me how</a>
+      </div>
+    </section>
+  </main>
+
   <main class="page narrow" data-ostep="sources">
     <div class="page-head">
       <span class="label">Step 3 of 6</span>

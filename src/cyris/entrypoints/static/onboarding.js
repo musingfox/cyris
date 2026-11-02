@@ -39,6 +39,9 @@ const loaded = new Map(FIELDS.map((id) => [id, $(id).value]));
 
 // The result of a save, shown on the step the reader moves to.
 let pending = null;
+// Why the stored settings could not be read: the opening may be showing when
+// it fails, so each step shows it again until the page is reloaded.
+let loadError = null;
 // Each setting's registry entry, by key, from GET /api/settings: a notice names
 // a field by the same label /settings gives it.
 let REGISTRY = {};
@@ -66,7 +69,390 @@ function show(kind, text) {
   el.hidden = false;
 }
 
+// The opening (ui-language.md §6 onboarding) shows while the hash is empty: it
+// is not a step, so a reload on a step keeps that step. Its stage runs three
+// beats, overload, calm and claim, whose lengths are the §2 tokens; the motion
+// inside each beat is a first cut, and its finer shape is still to be designed.
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
+const onOpening = () => location.hash.slice(1) === "";
+
+// The sample headlines, the server's grade-A pool. A failed read leaves the
+// stage without headlines; the opening still ends on its sentence and button.
+const HEADLINES = fetch("/api/onboarding/headlines")
+  .then((r) => (r.ok ? r.json() : {headlines: []}))
+  .then((data) => data.headlines || [])
+  .catch(() => []);
+
+function createStage() {
+  const canvas = $("o-canvas");
+  const logo = $("o-logo");
+  const cx = canvas.getContext("2d");
+  const root = getComputedStyle(document.documentElement);
+  const token = (name) => root.getPropertyValue(name).trim();
+  const seconds = (name) => {
+    const value = token(name);
+    return value.endsWith("ms") ? parseFloat(value) / 1000 : parseFloat(value);
+  };
+  const C = {elev: token("--bg-elev"), border: token("--border"),
+    text: token("--text"), dim: token("--text-dim")};
+  const SANS = '"Geist", "PingFang TC", "Noto Sans TC", system-ui, sans-serif';
+  const MONO = '"Geist Mono", ui-monospace, monospace';
+  // Depth is u = ln z: a headline at depth z is drawn at 1/z of its size, so
+  // equal steps in u read as equal steps in time, and the calm lane is a
+  // lattice in u moving toward the reader at one slow speed.
+  const ROWS = 3;
+  const GAP = 0.3;
+  const U_FAR = Math.log(9);
+  const LANE_SPEED = 0.15;
+  const JOINING = 5;
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const ease = (x) => x * x * (3 - 2 * x);
+  let seed = 3;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  let W = 0, H = 0, raf = 0, last = 0, t = 0, thrown = 0;
+  let pool = [], chaos = [], lane = [], rows = [], lanePos = 0, turned = false;
+  let over = 3.6, calm = 2.9, onEnd = () => {}, ended = false, started = false;
+  const beat = (name) => { $("o-opening").dataset.beat = name; };
+
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    if (W !== r.width || H !== r.height) {
+      W = r.width;
+      H = r.height;
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+    }
+    return true;
+  }
+  function geo() {
+    // Canvas text takes §3's roles times the reader's type size: a headline at
+    // its nearest and a row's title are the small role, a feed name the label
+    // role. Rows sit on the spacing scale.
+    const scale = parseFloat(token("--type-scale")) || 1;
+    const space = (n) => parseFloat(token(`--s-${n}`));
+    const fs = 14 * scale;
+    const rowH = space(8);
+    const shelf = H - ROWS * rowH;
+    const vy = Math.min(H * 0.36, shelf * 0.5);
+    return {fs, row: fs, tag: 12 * scale, rowH, gap: space(1), inset: space(3), shelf,
+      vx: W / 2, vy, yR: shelf - fs * 2};
+  }
+  function cut(text, f, maxW, family = SANS) {
+    cx.font = `500 ${f}px ${family}`;
+    if (cx.measureText(text).width <= maxW) return text;
+    const chars = [...text];
+    while (chars.length > 2 && cx.measureText(chars.join("") + "…").width > maxW) chars.pop();
+    return chars.join("") + "…";
+  }
+  // A title already on screen is not drawn again until it leaves (§6), so the
+  // pool's size bounds how many headlines the stage holds at once.
+  function fresh() {
+    const shown = new Set([...chaos, ...lane, ...rows].map((h) => h.key));
+    const left = pool.filter((h) => !shown.has(h.title));
+    if (!left.length) return null;
+    const h = left[Math.floor(rnd() * left.length)];
+    return {key: h.title, title: h.title, feed: h.feed};
+  }
+
+  // ---- overload: headlines thrown at the reader from the vanishing point ----
+  function throwOne(z) {
+    const h = fresh();
+    if (!h) return;
+    const m = Math.min(W, H);
+    chaos.push({...h, z, ang: rnd() * Math.PI * 2, rho: m * (0.1 + 0.5 * Math.sqrt(rnd())),
+      sz: 0.85 + rnd() * 0.4, bright: rnd() < 0.3, fade: 1});
+  }
+  function chaosAt(it, g) {
+    const s = 1 / it.z;
+    const f = g.fs * s * it.sz;
+    return {x: g.vx + Math.cos(it.ang) * it.rho * s, y: g.vy + Math.sin(it.ang) * it.rho * s * 0.8,
+      f, a: clamp((7.5 - it.z) / 2.5) * clamp((60 - f) / 26) * it.fade};
+  }
+
+  // ---- calm: one lane, evenly spaced, at one slow speed ----
+  const taken = (q) => lane.some((it) => Math.abs(it.q - q) < 1e-6);
+  function laneItem(h, q, g) {
+    return {...h, q, title: cut(h.title, g.fs * 1.5, W - 32), fi: 0};
+  }
+  function fillLane(g, chance) {
+    const far = Math.floor((U_FAR + lanePos) / GAP);
+    for (let s = Math.ceil((0.25 + lanePos) / GAP); s <= far; s++) {
+      if (taken(s * GAP) || rnd() > chance) continue;
+      const h = fresh();
+      if (h) lane.push(laneItem(h, s * GAP, g));
+    }
+  }
+  function laneAt(it, g) {
+    const u = it.q - lanePos;
+    const s = Math.exp(-u);
+    const p = {x: g.vx, y: g.vy + (g.yR - g.vy) * s, f: g.fs * s,
+      a: clamp((U_FAR - u) / 0.8) * clamp(u / 0.25) * it.fi};
+    if (!it.from) return p;
+    const e = ease(it.j);
+    return {x: it.from.x + (p.x - it.from.x) * e, y: it.from.y + (p.y - it.from.y) * e,
+      f: it.from.f + (p.f - it.from.f) * e, a: it.from.a * (1 - e) + p.a * e};
+  }
+  // The turn: a few headlines in flight join the lane, the rest fade where they are.
+  function turn(g) {
+    turned = true;
+    const s0 = Math.ceil((0.4 + lanePos) / GAP);
+    const joining = chaos.filter((it) => it.z > 1.3 && it.z < 6).sort((a, b) => a.z - b.z)
+      .slice(0, JOINING);
+    joining.forEach((it, i) => {
+      const item = laneItem(it, (s0 + i) * GAP, g);
+      lane.push({...item, fi: 1, from: chaosAt(it, g), j: 0});
+    });
+    chaos = chaos.filter((it) => !joining.includes(it));
+  }
+  // What reaches the reader: a headline comes forward and rests in front as a row.
+  function bringForward(g) {
+    const near = chaos.filter((it) => it.fade > 0.2).map((it) => [it, chaosAt(it, g)])
+      .filter(([, p]) => p.a > 0.1 && Math.abs(p.x - g.vx) < W * 0.35).sort((a, b) => b[1].f - a[1].f)[0];
+    if (near) chaos.splice(chaos.indexOf(near[0]), 1);
+    const h = near ? near[0] : fresh();
+    if (!h) return false;
+    const from = near ? near[1] : {x: g.vx, y: g.vy, f: 2, a: 0};
+    rows.push({key: h.key, title: cut(h.title, g.row, W * 0.7 - 2 * g.inset), feed: h.feed, from, k: 0});
+    return true;
+  }
+
+  function tick(dt) {
+    t += dt;
+    const g = geo();
+    if (t < over) {
+      beat("overload");
+      const p = t / over;
+      for (thrown += dt * (10 + 40 * p ** 1.6); thrown >= 1; thrown--) throwOne(7 + rnd() * 1.5);
+    } else {
+      if (!turned) turn(g);
+      if (!ended) beat("calm");
+      lanePos += LANE_SPEED * dt;
+      fillLane(g, 0.85);
+      const at = (t - over) / calm;
+      while (rows.length < ROWS && at >= 0.45 + rows.length * 0.14 && bringForward(g));
+      if (t >= over + calm) end();
+    }
+    const k = t < over ? 0.8 + 2.2 * clamp(t / over) ** 1.4 : 3 * (1 - 0.8 * ease(clamp((t - over) / calm)));
+    for (const it of chaos) {
+      it.z *= Math.exp(-k * dt);
+      if (turned) it.fade = Math.max(0, it.fade - dt / 0.7);
+    }
+    chaos = chaos.filter((it) => {
+      const p = chaosAt(it, g);
+      return it.z > 0.12 && p.f < 60 && it.fade > 0 && Math.abs(p.x - g.vx) < W / 2 + p.f * 12;
+    });
+    for (const it of lane) {
+      it.fi = Math.min(1, it.fi + dt / 0.6);
+      if (it.from) it.j = Math.min(1, it.j + dt / 1.5);
+    }
+    lane = lane.filter((it) => it.q - lanePos > 0);
+    for (const r of rows) r.k = Math.min(1, r.k + dt / 0.9);
+  }
+
+  function headline(it, p) {
+    if (p.a <= 0.01 || p.f < 2.5) return;
+    cx.globalAlpha = Math.min(1, p.a);
+    cx.font = `${it.bright ? 600 : 500} ${p.f}px ${SANS}`;
+    cx.fillStyle = it.bright || it.q !== undefined ? C.text : C.dim;
+    cx.fillText(it.title, p.x, p.y);
+    if (p.f >= 7) {
+      cx.font = `500 ${p.f * 12 / 14}px ${MONO}`;
+      cx.fillStyle = C.dim;
+      cx.fillText(it.feed, p.x, p.y - p.f * 1.15);
+    }
+  }
+  function drawRows(g) {
+    rows.forEach((r, i) => {
+      const y = g.shelf + i * g.rowH, h = g.rowH - g.gap, ty = y + h / 2 + g.row * 0.35;
+      const e = ease(r.k);
+      cx.globalAlpha = e;
+      cx.fillStyle = C.elev;
+      cx.fillRect(0, y, W, h);
+      cx.strokeStyle = C.border;
+      cx.lineWidth = 1;
+      cx.strokeRect(0.5, y + 0.5, W - 1, h - 1);
+      cx.textAlign = "left";
+      cx.font = `400 ${g.row}px ${SANS}`;
+      cx.fillStyle = C.text;
+      cx.fillText(r.title, g.inset, ty);
+      cx.textAlign = "right";
+      const tag = cut(r.feed.toUpperCase(), g.tag, W * 0.3, MONO);
+      cx.font = `500 ${g.tag}px ${MONO}`;
+      cx.fillStyle = C.dim;
+      cx.fillText(tag, W - g.inset, ty);
+      cx.textAlign = "center";
+      if (e < 1) {
+        cx.globalAlpha = (1 - e) * Math.max(0.6, r.from.a);
+        cx.font = `600 ${r.from.f + (g.row - r.from.f) * e}px ${SANS}`;
+        cx.fillStyle = C.text;
+        cx.fillText(r.title, r.from.x + (W / 2 - r.from.x) * e, r.from.y + (ty - r.from.y) * e);
+      }
+    });
+    cx.globalAlpha = 1;
+  }
+  function draw() {
+    if (!size()) return;
+    const g = geo();
+    const dpr = canvas.width / W;
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx.globalAlpha = 1;
+    cx.clearRect(0, 0, W, H);
+    const calmed = ended ? 1 : clamp((t - over) / calm);
+    const laneA = ease(clamp(calmed * 2));
+    if (laneA > 0.01) {
+      const spread = Math.min(W * 0.42, 300);
+      cx.globalAlpha = laneA;
+      cx.strokeStyle = C.border;
+      cx.lineWidth = 1;
+      cx.beginPath();
+      cx.moveTo(g.vx, g.vy);
+      cx.lineTo(g.vx - spread, g.shelf);
+      cx.moveTo(g.vx, g.vy);
+      cx.lineTo(g.vx + spread, g.shelf);
+      cx.stroke();
+    }
+    cx.textAlign = "center";
+    cx.textBaseline = "alphabetic";
+    const drawn = [...chaos.map((it) => [it, chaosAt(it, g)]), ...lane.map((it) => [it, laneAt(it, g)])];
+    drawn.sort((a, b) => a[1].f - b[1].f).forEach(([it, p]) => headline(it, p));
+    cx.globalAlpha = 1;
+    drawRows(g);
+    logo.parentElement.style.top = `${g.vy}px`;
+    logo.style.opacity = String(ease(clamp(calmed / 0.4)));
+  }
+
+  function frame(ts) {
+    const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0;
+    last = ts;
+    if (size()) tick(dt);
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+  function run() {
+    if (!raf && !REDUCED.matches) {
+      last = 0;
+      raf = requestAnimationFrame(frame);
+    }
+  }
+  function end() {
+    if (ended) return;
+    ended = true;
+    beat("claim");
+    onEnd();
+  }
+  // The end of the third beat, drawn at once: the logo, the lane, the rows in
+  // front. Under reduced motion it is drawn once and stays still.
+  function settle() {
+    size();
+    const g = geo();
+    t = over + calm;
+    turned = true;
+    chaos = [];
+    fillLane(g, 0.85);
+    lane = lane.map((it) => ({...it, fi: 1, from: null}));
+    while (rows.length < ROWS && bringForward(g));
+    rows.forEach((r) => { r.k = 1; });
+    end();
+    draw();
+  }
+
+  return {
+    play(then) {
+      onEnd = then;
+      over = seconds("--t-opening-overload");
+      calm = seconds("--t-opening-calm");
+      t = 0; thrown = 0; chaos = []; lane = []; rows = []; lanePos = 0;
+      turned = false; ended = false; started = true;
+      beat("overload");
+      if (REDUCED.matches) settle();
+      run();
+    },
+    finish() {
+      if (!started || ended) return;
+      settle();
+      run();
+    },
+    stop() {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      started = false;
+    },
+    redraw() { if (!raf) draw(); },
+    // The pool arrives whenever its request answers: a beat still running draws
+    // from it at once, and an end already drawn is drawn again with it.
+    supply(headlines) {
+      pool = headlines;
+      if (started && ended) settle();
+    },
+    // The reader changed the preference mid-page: turned on, the running loop
+    // stops and the end is drawn still, whichever beat it was in; turned off,
+    // the lane moves again.
+    motionChanged() {
+      if (!started) return;
+      if (REDUCED.matches) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        settle();
+      } else run();
+    },
+  };
+}
+
+const STAGE = createStage();
+new ResizeObserver(() => STAGE.redraw()).observe($("o-canvas"));
+REDUCED.addEventListener("change", () => STAGE.motionChanged());
+
+// The sentence, then Show me how; Skip intro leaves, and a keyboard reader on
+// it is handed to Show me how rather than to a button no longer there.
+function claim() {
+  const skip = $("o-skip-intro");
+  const had = document.activeElement === skip;
+  $("o-claim").removeAttribute("data-held");
+  skip.hidden = true;
+  $("o-show").hidden = false;
+  if (had) $("o-show").focus();
+}
+
+// The opening never waits on its headlines: they are optional samples, and a
+// request stalled behind a waking container must not keep a reader out of the
+// wizard. The beats start at once and draw from the pool once it arrives.
+function openOpening() {
+  $("o-claim").setAttribute("data-held", "");
+  $("o-show").hidden = true;
+  $("o-skip-intro").hidden = REDUCED.matches;
+  STAGE.play(claim);
+}
+
+HEADLINES.then((pool) => STAGE.supply(pool));
+
+$("o-skip-intro").addEventListener("click", () => {
+  STAGE.finish();
+  claim();
+});
+
+// Show me how saves nothing; it opens the first step and hands focus to its
+// heading, so the reader is not left on a button that has gone.
+let focusStep = false;
+$("o-show").addEventListener("click", () => {
+  focusStep = true;
+  location.hash = STEPS[0];
+});
+
+const STEP_CHROME = [".page-head", "#o-steps", ".step-nav"];
+
 function route() {
+  const opening = onOpening();
+  $("o-opening").hidden = !opening;
+  STEP_CHROME.forEach((selector) => { document.querySelector(selector).hidden = opening; });
+  if (opening) {
+    document.querySelectorAll(".step").forEach((panel) => { panel.hidden = true; });
+    openOpening();
+    return;
+  }
+  STAGE.stop();
   const step = stepOf();
   const index = STEPS.indexOf(step);
   document.querySelectorAll(".step").forEach((panel) => {
@@ -89,9 +475,16 @@ function route() {
   $("o-finish").hidden = !last;
   hideNotice();
   if (pending) show("ok", pending);
+  else if (loadError) show("err", loadError);
   pending = null;
   window.scrollTo(0, 0);
   drawScreen();
+  if (focusStep) {
+    focusStep = false;
+    const heading = document.querySelector(`.step[data-step="${step}"] h2`);
+    heading.tabIndex = -1;
+    heading.focus();
+  }
   if (step === "votes") loadCards();
   if (last) loadIssue();
 }
@@ -1097,8 +1490,9 @@ const SETTINGS_LOADED = fetch("/api/settings")
   .then((r) => (r.status === 401 ? Promise.reject(SESSION_EXPIRED) : r.json()))
   .then(render)
   .catch((e) => {
-    show("err", e === SESSION_EXPIRED ? e.message
-      : `Could not load settings: ${e}. Reload the page to try again.`);
+    loadError = e === SESSION_EXPIRED ? e.message
+      : `Could not load settings: ${e}. Reload the page to try again.`;
+    show("err", loadError);
   })
   .finally(() => document.querySelectorAll(".step [data-loading]").forEach((el) => el.remove()));
 

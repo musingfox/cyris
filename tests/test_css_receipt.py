@@ -1252,7 +1252,12 @@ def test_the_labels_probe_runs_on_the_shared_core():
     assert labels_probe.Check is cdp_probe.Check
 
 
-# The checks `scripts/onboarding_probe.py` must carry: the frame walks, each
+# The checks `scripts/onboarding_probe.py` must carry: the opening shows with no
+# hash, plays to its sentence or skips there even while its headlines stall, hands
+# focus on, draws its end at once
+# under reduced motion and stills when that is turned on mid-page, never scrolls at
+# 390px or 1280x800, and Show me how opens the first step writing nothing; the
+# frame walks, each
 # settings step writes what it was given, the language and timezone are selects
 # that keep a stored value neither lists and open on the browser's zone when none
 # is stored, the sources step shows its topics as toggle tiles on one screen and
@@ -1267,6 +1272,24 @@ def test_the_labels_probe_runs_on_the_shared_core():
 # why it failed, and starts none when skipped, a skip writes nothing but that switch, only the
 # right deployment sees the wizard and its list, and the page fits a phone.
 EXPECTED_ONBOARDING_IDS = {
+    "the-opening-shows-with-no-hash",
+    "skip-intro-jumps-to-the-claim",
+    "skip-intro-hands-focus-to-show-me-how",
+    "the-opening-ends-on-its-own",
+    "the-opening-ends-though-the-headlines-stall",
+    "skip-intro-works-though-the-headlines-stall",
+    "reduced-motion-draws-the-end-though-the-headlines-stall",
+    "reduced-motion-draws-the-end-at-once",
+    "reduced-motion-end-shows-headlines-that-arrive-late",
+    "reduced-motion-end-shows-headlines-already-here",
+    "a-settings-load-failure-shows-after-the-opening",
+    "a-settings-load-expired-session-shows-after-the-opening",
+    "reduced-motion-turned-on-mid-play-stills-the-stage",
+    "reduced-motion-turned-on-after-the-claim-stills-the-stage",
+    "the-opening-fits-390",
+    "the-opening-stage-text-follows-the-type-scale",
+    "the-opening-fits-1280x800",
+    "show-me-how-hands-focus-to-the-first-step",
     "opens-on-the-first-step",
     "the-step-list-names-every-step",
     "next-walks-to-the-next-step",

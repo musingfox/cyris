@@ -169,6 +169,12 @@ def load_onboarding_topics() -> list[dict[str, str]]:
     return _onboarding_catalog()["topics"]
 
 
+def load_onboarding_headlines() -> list[dict[str, str]]:
+    """The opening's sample headlines, as `onboarding_headlines.json` holds them (grade A)."""
+    raw = (files("cyris") / "onboarding_headlines.json").read_text(encoding="utf-8")
+    return json.loads(raw)["headlines"]
+
+
 async def _revalidate_static(request: web.Request, response: web.StreamResponse) -> None:
     """Make the browser ask before reusing a page's CSS or JS.
 
@@ -276,6 +282,7 @@ class TriageServer:
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
         self._app.router.add_get("/api/onboarding/feeds", self._handle_get_onboarding_feeds)
+        self._app.router.add_get("/api/onboarding/headlines", self._handle_get_headlines)
         self._app.router.add_post("/api/onboarding/feed-check", self._handle_post_feed_check)
         self._app.router.add_post("/api/onboarding/cards", self._handle_post_onboarding_cards)
         self._app.router.add_post("/api/onboarding/votes", self._handle_post_onboarding_votes)
@@ -875,6 +882,14 @@ class TriageServer:
                 "feeds": load_onboarding_feeds() if awaiting else [],
             }
         )
+
+    async def _handle_get_headlines(self, request: web.Request) -> web.Response:
+        """The opening's sample headlines, whatever the `sources` table holds.
+
+        The opening plays on any visit with no hash, a deployment with sources
+        included, so unlike the feed list this is not tied to an empty table.
+        """
+        return web.json_response({"headlines": load_onboarding_headlines()})
 
     async def _handle_post_feed_check(self, request: web.Request) -> web.Response:
         """Check a feed the reader pasted, or the feed a pasted home page links; writes nothing.
