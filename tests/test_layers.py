@@ -255,3 +255,19 @@ def test_tracking_passes_through_untouched() -> None:
     topic = DigestSection(heading="Tracked", items=[_item("hit")])
 
     assert layer_by_lane(_content(tracked_topics=[topic])).tracking == (topic,)
+
+
+def test_a_sand_block_shows_its_first_pictured_members_picture() -> None:
+    topic = _cluster("pic", 3)
+    topic.members[1].image_url = "https://example.test/1.jpg"
+    topic.members[2].image_url = "https://example.test/2.jpg"
+
+    (sand,) = layer_by_lane(_content(news_clusters=[topic])).sand
+
+    assert sand.image_url == "https://example.test/1.jpg"
+
+
+def test_a_sand_block_with_no_pictured_member_has_no_picture() -> None:
+    (sand,) = layer_by_lane(_content(news_clusters=[_cluster("plain", 2)])).sand
+
+    assert sand.image_url is None

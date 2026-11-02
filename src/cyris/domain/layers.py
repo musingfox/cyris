@@ -30,6 +30,8 @@ class Sand:
     vote: DigestItem
     tags: tuple[str, ...]
     story_id: str | None
+    # The first member's own feed picture, if any has one (`domain.story_images`).
+    image_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,15 +76,17 @@ def layer_by_lane(content: DigestContent) -> Layers:
             continue
         # Stored before members: the cluster's own summary is the only line it has.
         first = section.members[0] if section.members else vote
+        members = tuple(section.members or _members_of(vote))
         sand.append(
             Sand(
                 heading=section.heading,
                 line=first.summary,
                 line_untranslated=first.passed_through,
-                members=tuple(section.members or _members_of(vote)),
+                members=members,
                 vote=vote,
                 tags=tags,
                 story_id=section.story_id,
+                image_url=next((m.image_url for m in members if m.image_url), None),
             )
         )
     water += [

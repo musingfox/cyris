@@ -482,8 +482,12 @@ def off_spec_transitions(
     return found
 
 
-def box_shadows(css_source: str) -> list[str]:
-    """Name every shadow drawn outside the brand mark, whose glow is the spec's only one."""
+def box_shadows(css_source: str, exempt: frozenset[tuple[str, str]] = frozenset()) -> list[str]:
+    """Name every shadow drawn outside the brand mark, whose glow the spec allows.
+
+    ``exempt`` lets through exact ``(rule key, declaration)`` pairs the spec allows
+    by name, the digest's hover focus glow, and nothing near them.
+    """
     return [
         f"{key} | {declaration}"
         for key, declarations in _rules(css_source).items()
@@ -491,6 +495,7 @@ def box_shadows(css_source: str) -> list[str]:
         for declaration in declarations
         if declaration.split(":", 1)[0].strip() == "box-shadow"
         and declaration.split(":", 1)[1].strip() != "none"
+        and (key, declaration) not in exempt
     ]
 
 

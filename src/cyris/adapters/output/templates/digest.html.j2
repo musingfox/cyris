@@ -218,36 +218,55 @@
         }
 
         /* === NEWS CLUSTERS === */
-        /* Sand fills the column as the pebble grid does: 480px is the narrowest block
-           that still reads as a paragraph, and two of them with the gap are the most
-           the 1240px column holds, so it is two columns on a desktop and one on a phone. */
+        /* Sand is cards, three to a 1240px row and one on a phone (owner, 2026-11-02): two
+           columns of text with a left rule read as a wall. A row's cards are one height, so
+           a card without an image leaves its space above the meta row, pinned to the bottom. */
         .sand-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
-            gap: var(--s-5) var(--s-8);
-            /* A block's left rule ends with its own text, not the row's taller neighbour. */
-            align-items: start;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+            gap: var(--s-8) var(--s-6);
+            align-items: stretch;
         }
 
         .news-cluster {
-            border-left: 2px solid var(--border-strong);
-            padding: var(--s-4) 0 var(--s-4) var(--s-5);
-            transition: border-color var(--t-fast);
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-elev);
+            border: 1px solid var(--border);
+            padding: var(--s-6);
+            transition: background-color var(--t-fast), border-color var(--t-fast);
         }
 
         .news-cluster:hover {
-            border-left-color: var(--accent);
+            border-color: var(--border-strong);
         }
 
-        .news-cluster h3 { margin-bottom: var(--s-2); }
+        .news-cluster h3 { margin-bottom: var(--s-3); }
 
         .news-cluster .summary {
             font-size: calc(18px * var(--type-scale));
             color: var(--text-dim);
             line-height: 1.65;
-            margin-bottom: var(--s-2);
+            margin-bottom: var(--s-4);
             max-width: var(--measure-wide);
         }
+
+        .news-cluster .tags { margin-top: 0; margin-bottom: var(--s-4); }
+        .news-cluster > .meta { margin-top: auto; }
+
+        /* The image spans the card: its negative margins take back the card's padding. */
+        .news-cluster > .story-image {
+            margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) var(--s-5);
+            width: calc(100% + 2 * var(--s-6));
+            aspect-ratio: 1200 / 630;
+            object-fit: cover;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            filter: grayscale(1);
+            opacity: .55;
+            transition: filter var(--t-fast), opacity var(--t-fast);
+        }
+        .news-cluster:is(:hover, :focus-within:not(.quiet:focus)) > .story-image { filter: none; opacity: 1; }
 
         /* === TRACKING === */
         .thematic-block {
@@ -277,21 +296,22 @@
         .article-item h4 { margin-bottom: var(--s-2); }
 
         /* === HEADLINES (compact terminal-list) === */
+        /* Rows were too close to tell apart (owner, 2026-11-02), so they take more room. */
         .headlines-compact {
             border: 1px solid var(--border);
             background: var(--bg-elev);
-            padding: var(--s-1) 0;
+            padding: var(--s-2) 0;
         }
 
         .headline-item {
             display: flex;
             align-items: baseline;
-            gap: var(--s-3);
-            padding: var(--s-2) var(--s-5);
+            gap: var(--s-4);
+            padding: var(--s-4) var(--s-6);
             /* The vote buttons' 44px tap area: a one-line row must not let it reach the next row's. */
             min-height: 44px;
             font-size: calc(14px * var(--type-scale));
-            line-height: 1.5;
+            line-height: 1.6;
             border-bottom: 1px dashed var(--border);
             transition: background-color var(--t-fast);
         }
@@ -320,11 +340,13 @@
         .headline-item .summary {
             font-size: calc(14px * var(--type-scale));
             color: var(--text-dim);
-            line-height: 1.5;
-            margin-top: var(--s-1);
+            line-height: 1.65;
+            margin-top: var(--s-2);
             max-width: var(--measure-wide);
             overflow-wrap: anywhere;
         }
+
+        .headline-item .tags { margin-top: var(--s-3); }
 
         /* === FOOTER === */
         {% include "_footer.css.j2" %}
@@ -341,6 +363,40 @@
         }
 
         :where(main) a:hover { color: var(--text); }
+
+        /* === HOVER FOCUS === */
+        /* With a fine pointer, the item under it comes forward and the rest of its layer
+           recedes (owner, 2026-11-02; spec section 4, Interaction). The condition is on the
+           container, so crossing the gap between two items does not flicker. Its timings are
+           section 2's literal exceptions. */
+        @media (hover: hover) and (pointer: fine) {
+            .featured-item, .news-cluster, .headline-item {
+                transition: filter 250ms ease-out, opacity 250ms ease-out,
+                    transform 250ms cubic-bezier(.2, .8, .2, 1.2), box-shadow 200ms ease-out,
+                    background-color var(--t-fast), border-color var(--t-fast);
+            }
+            .featured-grid:hover > .featured-item:not(:hover), .sand-grid:hover > .news-cluster:not(:hover), .headlines-compact:hover > .headline-item:not(:hover) {
+                filter: blur(1.5px) grayscale(.3);
+                opacity: .6;
+                transform: scale(.985);
+            }
+            /* A scattered accent glow, wider and fainter outwards, with no accent edge. */
+            .featured-item:hover, .news-cluster:hover, .headline-item:hover {
+                position: relative;
+                z-index: 2;
+                transform: translateY(-3px) scale(1.01);
+                background: var(--surface);
+                box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 12%, transparent),
+                    0 0 44px 6px color-mix(in srgb, var(--accent) 7%, transparent),
+                    0 0 96px 16px color-mix(in srgb, var(--accent) 4%, transparent),
+                    0 14px 32px -16px rgba(0,0,0,.55);
+            }
+            /* A headline row grows in place: lifted, it would cover the row above. */
+            .headline-item:hover { transform: scale(1.015); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .featured-item, .news-cluster, .headline-item { transform: none !important; }
+        }
 
         /* === RESPONSIVE === */
         @media (max-width: 720px) {
@@ -491,6 +547,7 @@
                 <div class="sand-grid">
                 {% for sand in layers.sand %}
                 <div class="news-cluster" id="topic-{{ loop.index }}" lang="{{ content_lang }}">
+                    {% if sand.image_url %}<img class="story-image" src="{{ sand.image_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
                     <h3 class="item-title lg">{{ sand.heading }}</h3>
                     {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
                     {{ tag_pills(sand.tags) }}

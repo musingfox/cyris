@@ -117,8 +117,9 @@ class DigestItem(BaseModel):
     # The tags scoring gave the article this run, shown on its card; only read-lane items
     # carry them, and an article scored in an earlier run carries none.
     tags: list[str] = Field(default_factory=list)
-    # A pebble's story image: its article's feed picture, unless the issue shows that
-    # picture is the source's default (`domain.story_images`).
+    # A pebble's story image, or a news cluster member's picture its sand block may show:
+    # its article's feed picture, unless the issue shows that picture is the source's
+    # default (`domain.story_images`).
     image_url: str | None = None
 
     @property
