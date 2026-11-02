@@ -676,11 +676,17 @@ window.fetch = (input, init) => {
 }"""
 
 
-# A sabotage: the pool never arrives, so the opening never plays to its end.
+# The pool never arrives, as a request stalled behind a waking container: the
+# opening must still reach its sentence and Show me how without it.
 NO_HEADLINES = """{
 const realFetch = window.fetch;
 window.fetch = (input, init) => String(input).endsWith("/api/onboarding/headlines")
   ? new Promise(() => {}) : realFetch(input, init);
+}"""
+
+# A sabotage: no animation frame ever runs, so the stage never plays to its end.
+NO_FRAMES = """{
+window.requestAnimationFrame = () => 0;
 }"""
 
 # A sabotage: the page is told the reader asked for no reduced motion.
@@ -805,6 +811,13 @@ const runEnded = () => waitFor(settled, "the run's outcome", RUN_READ_MS);
 const beat = () => $("#o-opening").dataset.beat;
 const claimShown = () => visible($("#o-claim")) && !$("#o-claim").hasAttribute("data-held");
 const playing = () => waitFor(beat, "the opening");
+// The pool has answered and been drawn: a still frame read before then would
+// change when it lands.
+const poolDrawn = async () => {
+  await waitFor(() => performance.getEntriesByType("resource")
+    .some((e) => e.name.endsWith("/api/onboarding/headlines")), "the headlines");
+  await sleep(100);
+};
 const toClaim = async () => {
   await playing();
   press("o-skip-intro");
@@ -1066,7 +1079,42 @@ _CHECKS: list[Check] = [
             expect(claimShown() && visible($("#o-show")), "no sentence or Show me how");
             expect(!visible($("#o-skip-intro")), "Skip intro outlasts the sentence");
         """,
-        sabotage_preload=NO_HEADLINES,
+        sabotage_preload=NO_FRAMES,
+    ),
+    Check(
+        id="the-opening-ends-though-the-headlines-stall",
+        fixture="empty",
+        path=PAGE,
+        preload=NO_HEADLINES,
+        act="""await waitFor(() => beat() === "claim", "the end of the third beat", 15000);""",
+        script="""expect(claimShown() && visible($("#o-show")), "no sentence or Show me how");""",
+        sabotage="""$("#o-show").hidden = true;""",
+    ),
+    Check(
+        id="skip-intro-works-though-the-headlines-stall",
+        fixture="empty",
+        path=PAGE,
+        preload=NO_HEADLINES,
+        act="""
+            await waitFor(() => visible($("#o-skip-intro")), "Skip intro");
+            press("o-skip-intro");
+            await waitFor(() => visible($("#o-show")), "Show me how", 1000);
+        """,
+        script="""expect(claimShown() && beat() === "claim", `beat: ${beat()}`);""",
+        sabotage="""$("#o-claim").setAttribute("data-held", "");""",
+    ),
+    Check(
+        id="reduced-motion-draws-the-end-though-the-headlines-stall",
+        fixture="empty",
+        path=PAGE,
+        media=(("prefers-reduced-motion", "reduce"),),
+        preload=NO_HEADLINES,
+        act="""await waitFor(() => visible($("#o-show")), "Show me how", 1000);""",
+        script="""
+            expect(claimShown() && beat() === "claim", `beat: ${beat()}`);
+            expect(getComputedStyle($("#o-logo")).opacity === "1", "the logo is not in");
+        """,
+        sabotage="""$("#o-claim").setAttribute("data-held", "");""",
     ),
     Check(
         id="reduced-motion-draws-the-end-at-once",
@@ -1075,6 +1123,7 @@ _CHECKS: list[Check] = [
         media=(("prefers-reduced-motion", "reduce"),),
         act="""
             await waitFor(() => beat() === "claim", "the end", 1000);
+            await poolDrawn();
             ctx.before = $("#o-canvas").toDataURL();
             await sleep(400);
         """,
@@ -1094,6 +1143,7 @@ _CHECKS: list[Check] = [
         act="""
             await playing();
             await sleep(300);
+            await poolDrawn();
             window.__reduce();
             await sleep(100);
             ctx.before = $("#o-canvas").toDataURL();
@@ -1113,6 +1163,7 @@ _CHECKS: list[Check] = [
         act="""
             await toClaim();
             await sleep(300);
+            await poolDrawn();
             window.__reduce();
             await sleep(100);
             ctx.before = $("#o-canvas").toDataURL();

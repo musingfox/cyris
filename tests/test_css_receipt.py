@@ -1253,7 +1253,8 @@ def test_the_labels_probe_runs_on_the_shared_core():
 
 
 # The checks `scripts/onboarding_probe.py` must carry: the opening shows with no
-# hash, plays to its sentence or skips there, hands focus on, draws its end at once
+# hash, plays to its sentence or skips there even while its headlines stall, hands
+# focus on, draws its end at once
 # under reduced motion and stills when that is turned on mid-page, never scrolls at
 # 390px or 1280x800, and Show me how opens the first step writing nothing; the
 # frame walks, each
@@ -1275,6 +1276,9 @@ EXPECTED_ONBOARDING_IDS = {
     "skip-intro-jumps-to-the-claim",
     "skip-intro-hands-focus-to-show-me-how",
     "the-opening-ends-on-its-own",
+    "the-opening-ends-though-the-headlines-stall",
+    "skip-intro-works-though-the-headlines-stall",
+    "reduced-motion-draws-the-end-though-the-headlines-stall",
     "reduced-motion-draws-the-end-at-once",
     "reduced-motion-turned-on-mid-play-stills-the-stage",
     "reduced-motion-turned-on-after-the-claim-stills-the-stage",

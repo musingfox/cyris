@@ -352,8 +352,7 @@ function createStage() {
   }
 
   return {
-    play(headlines, then) {
-      pool = headlines;
+    play(then) {
       onEnd = then;
       over = seconds("--t-opening-overload");
       calm = seconds("--t-opening-calm");
@@ -374,6 +373,12 @@ function createStage() {
       started = false;
     },
     redraw() { if (!raf) draw(); },
+    // The pool arrives whenever its request answers: a beat still running draws
+    // from it at once, and an end already drawn is drawn again with it.
+    supply(headlines) {
+      pool = headlines;
+      if (started && ended) settle();
+    },
     // The reader changed the preference mid-page: turned on, the running loop
     // stops and the end is drawn still, whichever beat it was in; turned off,
     // the lane moves again.
@@ -403,22 +408,19 @@ function claim() {
   if (had) $("o-show").focus();
 }
 
-let introSkipped = false;
-
+// The opening never waits on its headlines: they are optional samples, and a
+// request stalled behind a waking container must not keep a reader out of the
+// wizard. The beats start at once and draw from the pool once it arrives.
 function openOpening() {
   $("o-claim").setAttribute("data-held", "");
   $("o-show").hidden = true;
   $("o-skip-intro").hidden = REDUCED.matches;
-  introSkipped = false;
-  HEADLINES.then((pool) => {
-    if (!onOpening()) return;
-    STAGE.play(pool, claim);
-    if (introSkipped) STAGE.finish();
-  });
+  STAGE.play(claim);
 }
 
+HEADLINES.then((pool) => STAGE.supply(pool));
+
 $("o-skip-intro").addEventListener("click", () => {
-  introSkipped = true;
   STAGE.finish();
   claim();
 });
