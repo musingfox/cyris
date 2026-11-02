@@ -97,6 +97,8 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   --r-control: 6px;
   --r-tag: 999px;
   --t-fast: 150ms ease-out;
+  --t-opening-overload: 3.6s;
+  --t-opening-calm: 2.9s;
   --bar-h: 60px;
   --measure: 640px;
   --measure-wide: 760px;
@@ -593,16 +595,16 @@ sources live in a file the app never writes, has no wizard at all: this page sen
 - **Six steps, in order:** language and timezone, publish hours, sources, votes, notifications, first
   issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the
   place: the Worker's `PROTECTED` matches `/onboarding` exactly, and a hash never leaves the browser.
-  With no hash the first step shows, and the opening (below) once it is built.
-- **Opening — specified 2026-11-02, not built yet.** Neither the wizard nor `prototype.html` has it.
-  Before asking anything, the page shows what cyris does: too many headlines, then a few, with the
+  With no hash the opening (below) shows instead.
+- **Opening** (specified and built 2026-11-02). Before asking anything, the page shows what cyris does: too many headlines, then a few, with the
   reader steering. The direction is POC K,
   `docs/design/onboarding-poc/k-overload.html` on the unmerged branch `poc/onboarding-immersive`
   (b1ba209d; owner, 2026-11-01). Its timings, curves and the finer shape of the motion are still to be
   designed, so this bullet fixes only what the screen holds, in what order, and how a reader leaves.
   - It is not a step. The page head, the step list and `Step N of 6` are not on it, and no hash
     names it, so a reload on a step keeps that step. Its primary button, `Show me how`, opens the
-    first step and saves nothing; the first step still has no `Back`.
+    first step and saves nothing; the first step still has no `Back`. Focus then goes to that step's
+    heading, so it is not left on a button that has gone.
   - One stage, a canvas marked `aria-hidden`, spans the page's column. The stage, the sentence and
     the buttons fit the viewport with no page scroll at every width from 390px, and at 1280×800,
     where K overflows. The stage runs three beats in order:
@@ -619,15 +621,17 @@ sources live in a file the app never writes, has no wizard at all: this page sen
        matters for the reader, since the reader's choices decide it.
   - The stage is the screen's only moving element: if the sentence is drawn in rather than shown
     whole, the lane all but stops while it is. Headlines are `--text` and `--text-dim`; `--accent` is `Show me how` alone.
-  - `Skip intro`, a secondary button, shows while the first two beats run and jumps to the end of
-    the third; it leaves once the sentence shows. Under reduced motion the screen is drawn once at
+  - `Skip intro`, a secondary button, sits in the button row below the sentence, where `Show me how`
+    takes its place (owner, 2026-11-02). It shows while the first two beats run and jumps to the end
+    of the third; it leaves once the sentence shows, and focus on it moves to `Show me how`. Under reduced motion the screen is drawn once at
     that end, with the logo, the still lane, the rows in front, the sentence and `Show me how`, and
     no `Skip intro`.
-  - The headlines come from a sample pool the app ships as data beside
-    `src/cyris/onboarding_feeds.json`, because a new deployment has no articles yet. A title is never
-    on screen twice at once; K's small pool repeats titles.
-  - The motion's durations become §2 tokens when it is built. For scale, K shows the sentence about
-    6.5 seconds in.
+  - The headlines come from a sample pool the app ships as data,
+    `src/cyris/onboarding_headlines.json` (`docs/architecture.md` §5), because a new deployment has no
+    articles yet. A title is never on screen twice at once, so the pool's size bounds how many
+    headlines the stage holds.
+  - The beats' lengths are §2 tokens, `--t-opening-overload` and `--t-opening-calm`; the sentence
+    shows when both have run. The motion inside each beat is a first cut, still to be refined.
 - The page is `--measure` wide, one column, with settings' gutters. Below the page head (the label
   `Step N of 6`, the display title and a small description) the step list names every step in order,
   each with a 6px dot: `--accent` dot and `--accent` text for the step open now, a `--text-dim` dot

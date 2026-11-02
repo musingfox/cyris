@@ -28,6 +28,8 @@
     --r-control: 6px;
     --r-tag: 999px;
     --t-fast: 150ms ease-out;
+    --t-opening-overload: 3.6s;
+    --t-opening-calm: 2.9s;
     --bar-h: 60px;
     --measure: 640px;
     --measure-wide: 760px;

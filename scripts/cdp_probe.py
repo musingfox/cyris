@@ -157,6 +157,7 @@ class Check:
     script: str
     sabotage: str = ""
     width: int = 1440
+    height: int = HEIGHT
     act: str = ""
     preload: str = ""
     sabotage_preload: str = ""
@@ -611,7 +612,7 @@ def build_job(check: Check, base: str, sabotaged: bool, prelude: str) -> dict:
     return {
         "urls": [base + path for path in check.paths],
         "width": check.width,
-        "height": HEIGHT,
+        "height": check.height,
         "preloads": preloads,
         "reload": check.reload,
         "act": act_expression(check, sabotaged, prelude),

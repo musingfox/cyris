@@ -69,6 +69,8 @@ from cyris.entrypoints.triage_server import (
 from cyris.service_layer.prompts import _language_names
 
 PAGE = "/onboarding"
+# The first step by its own hash: with none the page opens on the opening.
+FIRST = f"{PAGE}#language"
 SETTINGS = "/settings"
 
 KINDS = (
@@ -674,6 +676,21 @@ window.fetch = (input, init) => {
 }"""
 
 
+# A sabotage: the pool never arrives, so the opening never plays to its end.
+NO_HEADLINES = """{
+const realFetch = window.fetch;
+window.fetch = (input, init) => String(input).endsWith("/api/onboarding/headlines")
+  ? new Promise(() => {}) : realFetch(input, init);
+}"""
+
+# A sabotage: the page is told the reader asked for no reduced motion.
+MOTION_ALLOWED = """{
+const realMatch = window.matchMedia;
+window.matchMedia = (query) => query.includes("reduced-motion")
+  ? realMatch("(min-width: 1000000px)") : realMatch(query);
+}"""
+
+
 def dead(button: str) -> str:
     """A sabotage: the button is swapped for a copy, which carries none of its listeners."""
     return f"""$("#{button}").replaceWith($("#{button}").cloneNode(true));"""
@@ -765,6 +782,21 @@ const issueRead = () => waitFor(
 const plan = () => $("#o-issue-plan").textContent;
 // The run's outcome, read from its row: the page reads one every few seconds.
 const runEnded = () => waitFor(settled, "the run's outcome", RUN_READ_MS);
+// The opening: the beat its stage is in, and whether its sentence shows.
+const beat = () => $("#o-opening").dataset.beat;
+const claimShown = () => visible($("#o-claim")) && !$("#o-claim").hasAttribute("data-held");
+const playing = () => waitFor(beat, "the opening");
+const toClaim = async () => {
+  await playing();
+  press("o-skip-intro");
+  await waitFor(() => beat() === "claim", "the claim");
+};
+// The page scrolls neither way: its document is no taller or wider than the window.
+const scrolls = () => {
+  const el = document.documentElement;
+  return el.scrollHeight > innerHeight || el.scrollWidth > el.clientWidth
+    ? `${el.scrollWidth}x${el.scrollHeight} in ${el.clientWidth}x${innerHeight}` : "";
+};
 """.replace("RUN_READ_MS", str(RUN_READ_MS))
 )
 
@@ -924,21 +956,147 @@ _CHECKS: list[Check] = [
         id="opens-on-the-first-step",
         fixture="empty",
         path=PAGE,
-        act="await loaded();",
+        act="""
+            await loaded();
+            press("o-skip-intro");
+            press("o-show");
+            await onStep("language");
+        """,
         script="""
             expect(same(shownSteps(), ["language"]), `shown: ${shownSteps()}`);
+            expect(location.hash === "#language", `hash: ${location.hash}`);
             expect(same(marked(), ["language"]), `marked: ${marked()}`);
             expect(progress() === "Step 1 of 6", `progress: ${progress()}`);
+            expect(!visible($("#o-opening")), "the opening still shows");
             expect(!visible($("#o-back")), "Back shows on the first step");
             expect(visible($("#o-next")) && visible($("#o-skip")), "Next or Skip is hidden");
             expect(!visible($("#o-finish")), "Finish shows before the last step");
         """,
         sabotage="""$('.step[data-step="schedule"]').hidden = false;""",
+        receipt=lambda fixture: _calls()(fixture) or _both_untouched(fixture),
+    ),
+    Check(
+        id="show-me-how-hands-focus-to-the-first-step",
+        fixture="empty",
+        path=PAGE,
+        act="""
+            await toClaim();
+            $("#o-show").focus();
+            press("o-show");
+            await onStep("language");
+        """,
+        script="""
+            const heading = $('.step[data-step="language"] h2');
+            expect(document.activeElement === heading, `focus on ${named(document.activeElement)}`);
+        """,
+        sabotage="""document.activeElement.blur();""",
+    ),
+    Check(
+        id="the-opening-shows-with-no-hash",
+        fixture="empty",
+        path=PAGE,
+        act="await playing();",
+        script="""
+            expect(visible($("#o-opening")), "the opening is hidden");
+            expect(location.hash === "", `hash: ${location.hash}`);
+            const shown = [".page-head", "#o-steps", ".step-nav"].filter((s) => visible($(s)));
+            expect(!shown.length, `on the opening: ${shown.join(" ")}`);
+            expect(!shownSteps().length, `steps shown: ${shownSteps()}`);
+            expect(visible($("#o-skip-intro")), "no Skip intro while it plays");
+            expect(!visible($("#o-show")) && !claimShown(), "the claim shows before its beat");
+            expect($("#o-stage").getAttribute("aria-hidden") === "true", "the stage is read aloud");
+        """,
+        sabotage="""$(".page-head").hidden = false;""",
+    ),
+    Check(
+        id="skip-intro-jumps-to-the-claim",
+        fixture="empty",
+        path=PAGE,
+        act="await toClaim();",
+        script="""
+            expect(claimShown(), "the sentence is hidden");
+            expect(visible($("#o-show")), "no Show me how");
+            expect(!visible($("#o-skip-intro")), "Skip intro still shows");
+            expect(visible($("#o-logo")) && getComputedStyle($("#o-logo")).opacity === "1",
+              `logo opacity ${getComputedStyle($("#o-logo")).opacity}`);
+        """,
+        sabotage="""$("#o-claim").setAttribute("data-held", "");""",
+    ),
+    Check(
+        id="skip-intro-hands-focus-to-show-me-how",
+        fixture="empty",
+        path=PAGE,
+        act="""
+            await playing();
+            $("#o-skip-intro").focus();
+            press("o-skip-intro");
+            await waitFor(claimShown, "the claim");
+        """,
+        script="""
+            expect(document.activeElement === $("#o-show"),
+              `focus on ${named(document.activeElement)}`);
+        """,
+        sabotage="""$("#o-show").blur();""",
+    ),
+    Check(
+        id="the-opening-ends-on-its-own",
+        fixture="empty",
+        path=PAGE,
+        act="""await waitFor(() => beat() === "claim", "the end of the third beat", 15000);""",
+        script="""
+            expect(claimShown() && visible($("#o-show")), "no sentence or Show me how");
+            expect(!visible($("#o-skip-intro")), "Skip intro outlasts the sentence");
+        """,
+        sabotage_preload=NO_HEADLINES,
+    ),
+    Check(
+        id="reduced-motion-draws-the-end-at-once",
+        fixture="empty",
+        path=PAGE,
+        media=(("prefers-reduced-motion", "reduce"),),
+        act="""
+            await waitFor(() => beat() === "claim", "the end", 1000);
+            ctx.before = $("#o-canvas").toDataURL();
+            await sleep(400);
+        """,
+        script="""
+            expect(claimShown() && visible($("#o-show")), "no sentence or Show me how");
+            expect(!visible($("#o-skip-intro")), "Skip intro shows under reduced motion");
+            expect(getComputedStyle($("#o-logo")).opacity === "1", "the logo is not in");
+            expect($("#o-canvas").toDataURL() === ctx.before, "the stage still moves");
+        """,
+        sabotage_preload=MOTION_ALLOWED,
+    ),
+    Check(
+        id="the-opening-fits-390",
+        fixture="empty",
+        path=PAGE,
+        width=390,
+        height=844,
+        act="await toClaim();",
+        script="""
+            const problem = scrolls();
+            expect(!problem, problem);
+        """,
+        sabotage="""$("#o-opening").style.height = "1200px";""",
+    ),
+    Check(
+        id="the-opening-fits-1280x800",
+        fixture="empty",
+        path=PAGE,
+        width=1280,
+        height=800,
+        act="await toClaim();",
+        script="""
+            const problem = scrolls();
+            expect(!problem, problem);
+        """,
+        sabotage="""$("#o-opening").style.height = "1200px";""",
     ),
     Check(
         id="the-step-list-names-every-step",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act="await loaded();",
         script="""
             const names = $$("#o-steps li").filter(visible).map((li) => li.dataset.step);
@@ -1318,7 +1476,7 @@ _CHECKS: list[Check] = [
     Check(
         id="sources-step-shows-no-feed-before-a-topic",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act="""
             await loaded();
             await skipTo("sources");
@@ -1673,7 +1831,7 @@ _CHECKS: list[Check] = [
     Check(
         id="sources-step-lists-every-entry",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act=f"""
             await loaded();
             await skipTo("sources");
@@ -2028,7 +2186,7 @@ _CHECKS: list[Check] = [
     Check(
         id="next-walks-to-the-next-step",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act="""
             await loaded();
             press("o-next");
@@ -2065,7 +2223,7 @@ _CHECKS: list[Check] = [
     Check(
         id="skip-walks-to-the-last-step",
         fixture="first-issue",
-        path=PAGE,
+        path=FIRST,
         act="""
             await loaded();
             await skipTo("first-issue");
@@ -2085,7 +2243,7 @@ _CHECKS: list[Check] = [
     Check(
         id="skip-writes-nothing",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act=f"""
             await loaded();
             {TYPE_LANGUAGE}
@@ -2099,7 +2257,7 @@ _CHECKS: list[Check] = [
     Check(
         id="language-step-saves-both-values",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act=f"""
             await loaded();
             {TYPE_LANGUAGE}
@@ -2121,7 +2279,7 @@ _CHECKS: list[Check] = [
     Check(
         id="language-step-sends-only-what-changed",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act=f"""
             await loaded();
             setValue($("#o-timezone"), {json.dumps(NEW_TIMEZONE)});
@@ -2141,7 +2299,7 @@ _CHECKS: list[Check] = [
     Check(
         id="an-untouched-step-writes-nothing",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act="await loaded();",
         # After the act, so the value is not one the page loaded with.
         sabotage=f"""setValue($("#o-timezone"), {json.dumps(NEW_TIMEZONE)});""",
@@ -2193,7 +2351,7 @@ _CHECKS: list[Check] = [
     Check(
         id="a-refused-value-is-marked-in-its-own-field",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act=f"""
             await loaded();
             offer($("#o-timezone"), {json.dumps(UNKNOWN_TIMEZONE)});
@@ -2213,7 +2371,7 @@ _CHECKS: list[Check] = [
     Check(
         id="language-step-offers-the-listed-languages-by-name",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act="await loaded();",
         script=f"""
             const field = $("#o-output-language");
@@ -2233,7 +2391,7 @@ _CHECKS: list[Check] = [
     Check(
         id="language-step-keeps-an-unlisted-stored-value",
         fixture="unlisted",
-        path=PAGE,
+        path=FIRST,
         act="await loaded();",
         script=f"""
             const language = $("#o-output-language"), zone = $("#o-timezone");
@@ -2254,7 +2412,7 @@ _CHECKS: list[Check] = [
     Check(
         id="language-step-leaves-an-unlisted-value-it-did-not-change",
         fixture="unlisted",
-        path=PAGE,
+        path=FIRST,
         act=f"""
             await loaded();
             setValue($("#o-timezone"), {json.dumps(NEW_TIMEZONE)});
@@ -2274,7 +2432,7 @@ _CHECKS: list[Check] = [
     Check(
         id="timezone-lists-the-browsers-zones-and-utc",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         act="await loaded();",
         script="""
             const field = $("#o-timezone");
@@ -2292,7 +2450,7 @@ _CHECKS: list[Check] = [
     Check(
         id="timezone-opens-on-the-stored-zone-not-the-browsers",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         preload=PIN_ZONE,
         act="await loaded();",
         script=f"""
@@ -2307,7 +2465,7 @@ _CHECKS: list[Check] = [
     Check(
         id="timezone-with-none-stored-opens-on-the-browsers-marked-detected",
         fixture="no-timezone",
-        path=PAGE,
+        path=FIRST,
         preload=PIN_ZONE,
         act="await loaded();",
         script=f"""
@@ -2323,7 +2481,7 @@ _CHECKS: list[Check] = [
     Check(
         id="timezone-detected-is-saved-by-next",
         fixture="no-timezone",
-        path=PAGE,
+        path=FIRST,
         preload=PIN_ZONE,
         act="""
             await loaded();
@@ -2343,7 +2501,7 @@ _CHECKS: list[Check] = [
     Check(
         id="timezone-detected-is-not-saved-by-skip",
         fixture="no-timezone",
-        path=PAGE,
+        path=FIRST,
         preload=PIN_ZONE,
         act="""
             await loaded();
@@ -2471,14 +2629,14 @@ _CHECKS: list[Check] = [
         act="await loaded();",
         script="""
             expect(location.pathname === "/onboarding", `landed on ${location.pathname}`);
-            expect(visible($("#o-steps")), "no step list");
+            expect(visible($("#o-opening")), "no opening");
         """,
-        sabotage="""$("#o-steps").hidden = true;""",
+        sabotage="""$("#o-opening").hidden = true;""",
     ),
     Check(
         id="has-sources-opens-the-wizard-without-the-list",
         fixture="has-sources",
-        path=PAGE,
+        path=FIRST,
         act="""
             await loaded();
             await skipTo("sources");
@@ -2523,7 +2681,7 @@ _CHECKS: list[Check] = [
     Check(
         id="fits-375",
         fixture="empty",
-        path=PAGE,
+        path=FIRST,
         width=375,
         act="await loaded();",
         script="""
@@ -2708,6 +2866,11 @@ _CHECKS += [
     for check in _CHECKS
     if check.id
     in ("fits-375", "fits-topics-375", "fits-sources-375", "fits-votes-375", "fits-own-feed-375")
+]
+_CHECKS += [
+    largest_twin(check, check.id + "-largest", "empty-largest")
+    for check in _CHECKS
+    if check.id in ("the-opening-fits-390", "the-opening-fits-1280x800")
 ]
 
 CHECKS = _CHECKS

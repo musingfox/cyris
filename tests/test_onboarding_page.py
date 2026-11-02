@@ -30,6 +30,7 @@ from cyris.domain.models import SourceConfig
 from cyris.entrypoints.triage_server import (
     TriageServer,
     load_onboarding_feeds,
+    load_onboarding_headlines,
     load_onboarding_topics,
     render_onboarding_page,
 )
@@ -501,6 +502,22 @@ class TestTheStepsWriteThroughTheExistingApi:
         assert response.status == 400
         assert (await response.json())["field"] == "general.timezone"
         assert settings.calls == []
+
+
+class TestTheOpening:
+    """The opening plays on any visit with no hash, so its headlines are served to any table."""
+
+    @pytest.mark.parametrize("table", [{}, {"Feed": A_SOURCE}, None])
+    async def test_every_deployment_is_sent_the_whole_pool(self, serve, table) -> None:
+        client = await serve(_server(table=table))
+
+        response = await client.get("/api/onboarding/headlines")
+
+        assert response.status == 200
+        assert await response.json() == {"headlines": load_onboarding_headlines()}
+
+    def test_the_script_reads_the_pool_from_the_server(self) -> None:
+        assert 'fetch("/api/onboarding/headlines")' in ONBOARDING_JS
 
 
 class TestThePickSourcesStep:

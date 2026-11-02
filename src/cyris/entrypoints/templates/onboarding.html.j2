@@ -36,11 +36,39 @@
     .add-feed { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
     .add-feed .input { flex: 1 1 14em; width: auto; min-width: 0; }
     #o-own .sources-check { margin-top: var(--s-4); }
+    /* The opening takes what the site bar and the page's gutters leave of the
+       viewport, so it never scrolls, and the stage takes what the sentence and
+       the buttons leave of that. The sentence holds its place while it is
+       hidden, so the stage does not jump when it shows. */
+    .opening { display: flex; flex-direction: column; gap: var(--s-5); height: calc(100svh - var(--bar-h) - var(--s-12) - var(--s-20)); }
+    .opening-stage { position: relative; flex: 1; min-height: 0; }
+    .opening-stage canvas { display: block; width: 100%; height: 100%; }
+    .opening-logo { position: absolute; left: 50%; transform: translate(-50%, -50%); padding: var(--s-2) var(--s-3); background: var(--bg); opacity: 0; }
+    /* The site bar drops the name below 720px; the logo on the stage keeps it. */
+    .opening-logo .brand-name { display: inline; }
+    .opening-claim { text-wrap: balance; }
+    .opening-claim[data-held] { visibility: hidden; }
+    .opening-nav { display: flex; align-items: center; gap: var(--s-4); }
   </style>
 </head>
 <body>
 {% with current="onboarding" %}{% include "_site_bar.html.j2" %}{% endwith %}
   <main class="page">
+    {# The opening is not a step: no hash names it, so a reload on a step keeps
+       that step. Its headlines are the server's sample pool
+       (GET /api/onboarding/headlines), and the script runs its three beats. #}
+    <section class="opening" id="o-opening" hidden>
+      <div class="opening-stage" id="o-stage" aria-hidden="true">
+        <canvas id="o-canvas"></canvas>
+        <span class="brand opening-logo" id="o-logo"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></span>
+      </div>
+      <p class="heading opening-claim" id="o-claim" data-held>Too much, too fast. I’ll hold it for you; <em>you</em> say what matters.</p>
+      <div class="opening-nav">
+        <button class="btn secondary" type="button" id="o-skip-intro">Skip intro</button>
+        <button class="btn primary" type="button" id="o-show" hidden>Show me how</button>
+      </div>
+    </section>
+
     <div class="page-head">
       <span class="label" id="o-progress">Step 1 of 6</span>
       <h1 class="display">Set up <em>cyris</em></h1>

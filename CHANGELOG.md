@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Onboarding opens with a short scene before its first step: headlines pour
+  in, then calm down into one lane and a few rows, and **Show me how** starts
+  the setup. **Skip intro** jumps to its end, and with reduced motion on it is
+  drawn still.
 - Articles from a source you follow can be explained too. With **Summarize
   follow articles** on (`/settings`, Digest), each follow article's card says
   what the article is, as a `read` article's does; off keeps the start of its
