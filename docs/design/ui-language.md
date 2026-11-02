@@ -26,8 +26,11 @@ page added later.
    (raw's triage view, settings) are compact. Both share the tokens and components and differ only in
    which part of the spacing scale they use.
 2. **Layers come from background and hairlines, not shadows.** From deepest to lightest the layers are
-   `--bg`, `--bg-elev`, `--surface` and `--surface-2`, and object edges are a 1px `--border`. The only glow
-   is the brand square.
+   `--bg`, `--bg-elev`, `--surface` and `--surface-2`, and object edges are a 1px `--border`. The only
+   glows are the brand square and the digest's hover focus (§4 *Interaction*), whose accent glow and
+   drop shadow mark the one item under the pointer and are gone when it leaves (owner, 2026-11-02).
+   A resting surface still never casts a shadow, so the layers stay readable from their backgrounds
+   alone.
 3. **Controls are rounded, containers are square.** Buttons, inputs, selects, segmented controls and
    choice lists use `--r-control`; tags and pills use `--r-tag`. Panels, cards (triage cards included),
    tables and notices are always square.
@@ -106,8 +109,13 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   880–1160px) are solved with fluid rules such as `auto-fit`, `minmax` and `clamp`, never with a second
   breakpoint.
 - **Allowed literal exceptions:** the brand square's glow `rgba(198,255,61,.45)`, the site bar's
-  translucent background `rgba(7,7,10,.88)`, the primary button's hover background `#d4ff66`, and the dots'
-  `border-radius: 50%`. A new exception must be written into this bullet.
+  translucent background `rgba(7,7,10,.88)`, the primary button's hover background `#d4ff66`, the dots'
+  `border-radius: 50%`, and the digest hover focus's drop shadow `rgba(0,0,0,.55)` with its timings,
+  250ms `ease-out` for blur and opacity, 250ms `cubic-bezier(.2, .8, .2, 1.2)` for the lift and 200ms
+  `ease-out` for the glow (§4 *Interaction*; owner, 2026-11-02). The shadow is black because it has
+  to be darker than `--bg`, the deepest token, to show under an item lifted off it; the timings are
+  the values the owner settled on for this one effect, and nothing else on the site takes them, so
+  they are not tokens. A new exception must be written into this bullet.
 - **Text reaches 4.5:1 on every background.** Every text colour passes 4.5:1 against `--bg`,
   `--bg-elev`, `--surface` and `--surface-2`, so `--text-dim` is the dimmest text there is: labels,
   footers and the rejected state all use it. `--text-faint` is not a text colour; it is for non-text
@@ -229,12 +237,30 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
   Only inputs may remove the outline, showing focus by a border colour change instead.
 - **Transitions:** only `color`, `background-color`, `border-color` and `opacity` change, plus `filter` on
   the story image alone, over `--t-fast`,
-  and `transition: all` is never written. Transform is used only for the triage card's drag and fly-out,
-  on raw and on labels, and to rotate the feature flow's static chevrons.
-- **Hover** neither moves nor scales. The pressed state only lowers opacity, to the button's .7 (§4).
-  A disabled button neither hovers nor presses.
+  and `transition: all` is never written. The digest's hover focus is the one exception: it also moves
+  `filter`, `transform` and `box-shadow`, on its own timings (§2). Transform is used only for the triage
+  card's drag and fly-out, on raw and on labels, to rotate the feature flow's static chevrons, and for
+  the digest's hover focus.
+- **Hover** neither moves nor scales, except in the digest's hover focus (owner, 2026-11-02). The
+  pressed state only lowers opacity, to the button's .7 (§4). A disabled button neither hovers nor
+  presses.
+- **Hover focus:** on the digest, and only under `@media (hover: hover) and (pointer: fine)`, a reader
+  pointing at a pebble, a sand card or a water row sees it come forward and the rest of its layer
+  recede (owner, 2026-11-02, settled on a throwaway copy of the 2026-11-01 evening issue over five
+  rounds). The condition is on the container, `.featured-grid:hover > .featured-item:not(:hover)`
+  and its sand and water twins, so a pointer crossing the gap between two items changes nothing.
+  The other items take `filter: blur(1.5px) grayscale(.3)`, opacity .6 and `scale(.985)`. The one
+  pointed at takes `position: relative` and `z-index: 2`, `translateY(-3px) scale(1.01)` (a water row
+  `scale(1.015)` alone, since a lifted row would cover the one above), a `--surface` background and a
+  scattered glow: `box-shadow` of `0 0 18px 2px`, `0 0 44px 6px` and `0 0 96px 16px` in `--accent` at
+  12%, 7% and 4% (`color-mix(in srgb, var(--accent) N%, transparent)`), wider and fainter outwards,
+  over a `0 14px 32px -16px` drop shadow; it has no `--accent` border line. Blur and opacity move
+  over 250ms `ease-out`, the transform over 250ms `cubic-bezier(.2, .8, .2, 1.2)`, the shadow over
+  200ms `ease-out`, and background and border over `--t-fast`. Keyboard focus has no hover focus yet;
+  it keeps the ring and the story image's colour (§4 *story image*).
 - **Reduced motion:** `@media (prefers-reduced-motion: reduce)` cancels transitions, animations and smooth
-  scroll globally.
+  scroll globally. The hover focus drops every transform under it and keeps its blur, dimming and
+  glow, which then change at once.
 - **Layers:** the digest shows one layer at a time (§6 *digest*), and a reader crosses into the next
   one only on purpose. These are the rules, settled on throwaway pages on 2026-10-30 and 2026-10-31
   (vault `pm/cyris/docs/digest-pebble-sand-water/layers-2026-10-30/`, versions `b4-keys` and
@@ -432,7 +458,8 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   read better. Until 2026-10-29 the blocks were stacked, and at `--measure-wide` a block's line used
   about the left half of the column under a two-column Stories grid. The digest probe's
   `sand-side-by-side-1440` and `sand-stacks-360` hold it.
-- The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glow is the brand square.
+- The only breakpoint is 720px, all body spacing is on the §2 scale, and the only glows are the brand
+  square and the hover focus (§4 *Interaction*).
 - **Prose stops at `--measure-wide`.** Every summary and the empty or degraded
   note is at most `--measure-wide` wide, so a line stays readable when the container is 1240px; a card
   narrower than that is unaffected. Headings and meta rows take the full width. It is wider than
@@ -470,8 +497,8 @@ and switching does not reload.
 - A voted article shows its state in both views: the list's state text turns `accepted` for up and
   `rejected` for down. On a later visit, a vote this browser remembers changes only a row rendered
   `pending`, because each run applies the votes cast before it. Votes go through the existing promote Worker, with no new backend.
-- The drag and fly-out are the only transform motion on the site, besides labels' card, and are
-  cancelled under reduced motion.
+- The drag and fly-out are the only transform motion on the site, besides labels' card and the
+  digest's hover focus (§4 *Interaction*), and are cancelled under reduced motion.
 
 ### labels
 

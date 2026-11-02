@@ -161,6 +161,7 @@ def test_the_allowed_colours_are_the_spec_exceptions() -> None:
         "rgba(198,255,61,.45)",
         "rgba(7,7,10,.88)",
         "#d4ff66",
+        "rgba(0,0,0,.55)",
     }
 
 
@@ -211,16 +212,46 @@ async def test_settings_stops_motion_on_request(triage: TestClient) -> None:
     assert (await _served_rules(triage, "/static/style.css"))[REDUCED_MOTION] == STILL
 
 
-# Section 4 allows one transform: the triage card's drag and fly-out, on raw and on /labels.
+# Section 4 allows two transforms: the triage card's drag and fly-out, on raw and on /labels,
+# and the digest's hover focus, whose timings section 2 lists as literal exceptions.
 RAW_CARD_MOTION = frozenset(
     {(".card", "transition: border-color var(--t-fast), transform var(--t-fast)")}
 )
+HOVER_FOCUS = "@media (hover: hover) and (pointer: fine)"
+HOVER_FOCUS_ITEMS = ".featured-item, .news-cluster, .headline-item"
+HOVER_FOCUS_HOVERED = ".featured-item:hover, .news-cluster:hover, .headline-item:hover"
+HOVER_FOCUS_RECEDING = (
+    ".featured-grid:hover > .featured-item:not(:hover), "
+    ".sand-grid:hover > .news-cluster:not(:hover), "
+    ".headlines-compact:hover > .headline-item:not(:hover)"
+)
+HOVER_FOCUS_TRANSITION = (
+    "transition: filter 250ms ease-out, opacity 250ms ease-out, "
+    "transform 250ms cubic-bezier(.2, .8, .2, 1.2), box-shadow 200ms ease-out, "
+    "background-color var(--t-fast), border-color var(--t-fast)"
+)
+DIGEST_HOVER_MOTION = frozenset({(f"{HOVER_FOCUS} | {HOVER_FOCUS_ITEMS}", HOVER_FOCUS_TRANSITION)})
+HOVER_FOCUS_GLOW = (
+    "box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 12%, transparent), "
+    "0 0 44px 6px color-mix(in srgb, var(--accent) 7%, transparent), "
+    "0 0 96px 16px color-mix(in srgb, var(--accent) 4%, transparent), "
+    "0 14px 32px -16px rgba(0,0,0,.55)"
+)
+DIGEST_HOVER_GLOW = frozenset({(f"{HOVER_FOCUS} | {HOVER_FOCUS_HOVERED}", HOVER_FOCUS_GLOW)})
 
 
 @pytest.mark.parametrize("page", ["index", "digest", "raw", "settings", "labels", "onboarding"])
 def test_every_transition_changes_colour_over_the_fast_token(page: str) -> None:
-    exempt = RAW_CARD_MOTION if page in ("raw", "labels") else frozenset()
-    assert off_spec_transitions(_source(page), exempt) == []
+    exempt = {"raw": RAW_CARD_MOTION, "labels": RAW_CARD_MOTION, "digest": DIGEST_HOVER_MOTION}
+    assert off_spec_transitions(_source(page), exempt.get(page, frozenset())) == []
+
+
+def test_the_hover_focus_transition_is_off_spec_outside_its_exemption() -> None:
+    css = f"{HOVER_FOCUS} {{ {HOVER_FOCUS_ITEMS} {{ {HOVER_FOCUS_TRANSITION} }} }}"
+    assert len(off_spec_transitions(css)) == 1
+    assert off_spec_transitions(css, DIGEST_HOVER_MOTION) == []
+    bare = f"{HOVER_FOCUS_ITEMS} {{ {HOVER_FOCUS_TRANSITION} }}"
+    assert len(off_spec_transitions(bare, DIGEST_HOVER_MOTION)) == 1
 
 
 CARD_MOTION = ".card{transition:border-color var(--t-fast), transform var(--t-fast)}"
@@ -246,15 +277,46 @@ def test_the_card_exemption_covers_no_other_transition(css: str) -> None:
     assert len(off_spec_transitions(css, RAW_CARD_MOTION)) == 1
 
 
+# The digest's hover focus is the one hover that moves (spec section 4, Interaction).
+HOVER_FOCUS_MOVES = {
+    f"{HOVER_FOCUS} | {HOVER_FOCUS_RECEDING}",
+    f"{HOVER_FOCUS} | {HOVER_FOCUS_HOVERED}",
+    f"{HOVER_FOCUS} | .headline-item:hover",
+}
+
+
 @pytest.mark.parametrize("page", [0, 1, 2], ids=["index", "digest", "raw"])
-def test_no_hover_moves_anything(page: int) -> None:
+def test_no_hover_moves_anything_but_the_digest_hover_focus(page: int) -> None:
     rules = parse_style_block(receipt_fixtures()[page])
-    moved = [
+    moved = {
         key
         for key, declarations in rules.items()
         if ":hover" in key and _declared(declarations, "transform")
-    ]
-    assert moved == []
+    }
+    assert moved == (HOVER_FOCUS_MOVES if page == 1 else set())
+
+
+def test_the_hover_focus_recedes_the_rest_of_a_layer_and_lifts_the_item_under_the_pointer() -> None:
+    digest = _parsed("digest")
+    assert digest[f"{HOVER_FOCUS} | {HOVER_FOCUS_RECEDING}"] == {
+        "filter: blur(1.5px) grayscale(.3)",
+        "opacity: .6",
+        "transform: scale(.985)",
+    }
+    assert digest[f"{HOVER_FOCUS} | {HOVER_FOCUS_HOVERED}"] == {
+        "position: relative",
+        "z-index: 2",
+        "transform: translateY(-3px) scale(1.01)",
+        "background: var(--surface)",
+        HOVER_FOCUS_GLOW,
+    }
+    # A headline row grows in place: lifted, it would cover the row above.
+    assert digest[f"{HOVER_FOCUS} | .headline-item:hover"] == {"transform: scale(1.015)"}
+    assert digest[f"{HOVER_FOCUS} | {HOVER_FOCUS_ITEMS}"] == {HOVER_FOCUS_TRANSITION}
+    # Reduced motion keeps the blur and the dimming and drops every transform.
+    assert digest[f"@media (prefers-reduced-motion: reduce) | {HOVER_FOCUS_ITEMS}"] == {
+        "transform: none !important"
+    }
 
 
 @pytest.mark.parametrize(
@@ -662,10 +724,18 @@ def test_the_brand_mark_glow_is_the_spec_exception(page: int) -> None:
 
 
 @pytest.mark.parametrize("page", ["index", "digest", "raw"])
-def test_only_the_brand_mark_glows(page: str) -> None:
-    """Spec section 1.2: the only glow is the brand mark."""
+def test_only_the_brand_mark_and_the_hover_focus_glow(page: str) -> None:
+    """Spec section 1.2: the only glows are the brand mark and the digest's hover focus."""
     source = _source(page)
-    assert box_shadows(source) + gradient_glows(source) == []
+    exempt = DIGEST_HOVER_GLOW if page == "digest" else frozenset()
+    assert box_shadows(source, exempt) + gradient_glows(source) == []
+
+
+def test_the_hover_focus_glow_passes_only_with_its_exemption() -> None:
+    css = f"{HOVER_FOCUS} {{ {HOVER_FOCUS_HOVERED} {{ {HOVER_FOCUS_GLOW} }} }}"
+    assert len(box_shadows(css)) == 1
+    assert box_shadows(css, DIGEST_HOVER_GLOW) == []
+    assert len(box_shadows(".x{box-shadow:0 0 24px var(--accent)}", DIGEST_HOVER_GLOW)) == 1
 
 
 @pytest.mark.parametrize(
@@ -937,7 +1007,14 @@ BODY_TRACKS = "grid-template-columns: minmax(0, 1fr)"
 def test_stories_are_one_article_per_row_at_every_width() -> None:
     digest = _parsed("digest")
     assert BODY_TRACKS in digest[".featured-grid"]
-    narrowed = [key for key in digest if key.startswith("@media") and "featured-grid" in key]
+    # The hover focus names the grid under @media too, but sets no columns on it.
+    narrowed = [
+        key
+        for key, declarations in digest.items()
+        if key.startswith("@media")
+        and "featured-grid" in key
+        and _declared(declarations, "grid-template-columns")
+    ]
     assert narrowed == []
 
 
