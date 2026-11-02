@@ -136,6 +136,7 @@
         const forward = () => show(cur + 1, 'top', 'h2');
         const backward = () => show(cur - 1, 'end', 'last');
         const switchTo = (dir) => (dir > 0 ? forward() : backward());
+        const underBars = (target) => scrollTo({top: target.getBoundingClientRect().top + scrollY - $('.site-bar').getBoundingClientRect().bottom, behavior: 'instant'});
         // A link to an item in a hidden layer switches to that layer first, then brings the
         // item under the bars; an item already shown is left to the browser's own jump.
         const toHash = () => {
@@ -148,8 +149,9 @@
             if (i < 0 && after.some((e) => e.contains(target))) i = layers.length - 1;
             if (i < 0 || i === cur) return;
             show(i, null, null);
-            scrollTo({top: target.getBoundingClientRect().top + scrollY - $('.site-bar').getBoundingClientRect().bottom, behavior: 'instant'});
+            underBars(target);
             render();
+            return target;
         };
         const armIdle = () => { clearTimeout(idle); idle = setTimeout(() => { pull = 0; pullDir = 0; pushed = 0; render(); }, IDLE_MS); };
         const disarm = () => { armed = 0; clearTimeout(armedIdle); };
@@ -217,7 +219,22 @@
         back.addEventListener('click', backward);
         skip.addEventListener('click', forward);
         show(0, null, null, false);
-        toHash();
+        // The jump on load runs while the page still grows after it (the vote buttons, the
+        // fonts, the pictures), and a layer that outgrows the window only then could not yet
+        // scroll that far. So each growth brings the item under the bars again, until the
+        // reader moves; the load event alone came too early (probe layer-hash-on-load-360).
+        const landed = toHash();
+        if (landed) {
+            let y = scrollY;
+            const settle = new ResizeObserver(() => {
+                if (scrollY !== y) return settle.disconnect();
+                underBars(landed);
+                y = scrollY;
+                render();
+            });
+            settle.observe(view);
+            for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) addEventListener(type, () => settle.disconnect(), {capture: true, passive: true, once: true});
+        }
         requestAnimationFrame(render);
     })();
     </script>
