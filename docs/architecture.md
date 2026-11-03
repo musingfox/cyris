@@ -187,7 +187,7 @@ test.
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `TopicRepository` (`D1TopicStore`, `JsonTopicStore`), `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -378,6 +378,21 @@ lives once, as the live-hold query in `adapters/store/suppressions.py`. On D1, e
 candidate it judged also leaves a row in `vote_similarity_shadow` naming its nearest upvoted and
 downvoted article and both cosines (§4), a record that changes nothing the run selects.
 
+After the holds and before the pipeline, a run reads each **teaser's page**
+(`Deps.lengthen_articles`, `adapters/fetch/article_page.py`): an RSS article whose text is shorter
+than `digest.summarize_snippet_length` has its own page fetched and its body extracted with
+trafilatura, and the longer of the two texts goes to the pipeline. Scoring has already read the
+feed's text, and the page's text is never stored, so a later run or a rerun fetches it again. A page
+that fails, times out, answers non-2xx or says less leaves the feed text. On the first address and
+every redirect hop, only `http(s)` is asked, and a host written as a non-public IP address (in any
+IPv4 spelling a resolver reads, such as `127.1` or `2130706433`) or as `localhost` or a name under
+it is refused. Names are not resolved, so a hostname whose DNS points at a private address is still
+asked: the owner accepted that risk on 2026-11-03, since the Cloudflare run container has nothing
+listening locally and no private network, and resolving names here would break
+`docs/spec/outbound-http-honours-environment.md`. An article linking to a video (`media_links` in
+`adapters/fetch/keywords.json`) gets no page read: a video page's text is the site's navigation, not the video. Pages are read
+eight at a time, ten seconds each, so a run's added time is at most ceil(teasers / 8) × 10s (§5).
+
 **Areas** are the reader's closed set of topics (D1 `areas`, §4, §5). Scoring is offered the active
 names and returns each article's pick; a name the model suggests because no active area fits is
 counted on a proposed `areas` row for the reader to confirm, and never changes the scores. After the digest is built, each item gets the name of its first article's pick or else its
@@ -549,7 +564,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
-| Article store | **D1 `stored_articles`** | same | `content` is written as plain text for every source (newsletter bodies already were; an RSS entry's HTML is converted by `CloudflareRssSource`, or by `RssSource` on the direct-polling path, through `adapters/fetch/html_text.py`). Rows stored before RSS content was converted keep their HTML: `INSERT OR IGNORE` never rewrites them, and a pending row or a rerun turns them back into articles as they are. `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}`. Besides a run's save, the onboarding votes step (§6) stores each card the reader marked and then accepts or rejects it with `triaged_at`, as a `/labels` answer is written; a card left alone gets no row and stays in the buffer for the first run |
+| Article store | **D1 `stored_articles`** | same | `content` is written as plain text for every source (newsletter bodies already were; an RSS entry's HTML is converted by `CloudflareRssSource`, or by `RssSource` on the direct-polling path, through `adapters/fetch/html_text.py`). Rows stored before RSS content was converted keep their HTML: `INSERT OR IGNORE` never rewrites them, and a pending row or a rerun turns them back into articles as they are. `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}`. Besides a run's save, the onboarding votes step (§6) stores each card the reader marked and then accepts or rejects it with `triaged_at`, as a `/labels` answer is written; a card left alone gets no row and stays in the buffer for the first run. A teaser's page text (§3.2) is the run's alone and is never written here |
 | Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
 | Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window |
@@ -630,6 +645,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Propose title length | A | `TITLE_MAX_CHARS` = 80 in `adapters/store/source_titles.py` | unchanged — a headline fits in 80 characters; a longer title is mostly a dek the model does not need. `tests/test_area_source_titles.py` holds the value to this row |
 | Propose title lookback | A | `TITLE_LOOKBACK_DAYS` = 30 in `adapters/store/source_titles.py` | unchanged — the window `feed_health.py`'s `QUIET_DAYS` uses: a source silent that long is quiet, not described. `tests/test_area_source_titles.py` holds the value to this row |
 | RSS Worker read ceiling | A | `WORKER_ROW_CEILING` in `adapters/fetch/rss_worker_source.py`, mirroring the clamp on `GET /articles` in `workers/rss/src/index.js` | done 2026-10-02 — a memory bound, not the run cap: every row carries full feed content. It is sent by value because the Worker's default without one is lower; `tests/test_rss_worker_source.py` holds the two equal |
+| Teaser page reads: 8 at once, 10s per page (redirects and body included), 5 MiB a page, and the User-Agent `cyris (+https://github.com/musingfox/cyris)` | A | `PAGE_CONCURRENCY`, `PAGE_TIMEOUT_SECONDS`, `MAX_PAGE_BYTES`, `USER_AGENT` in `adapters/fetch/article_page.py` | added 2026-11-03 — about a third of an issue's hundred articles are teasers, so eight at once reads them in about five waves and a run's added time stays under a minute, against a run container capped at 900s; a deployment has nothing to tune, and a site that refuses the honest User-Agent leaves the feed text. Which article is a teaser is the grade-D `digest.summarize_snippet_length`, not a constant of its own |
 | Interest map limits: 60 nodes, layout iterations and margin, drawing box | A | `MAX_INTEREST_NODES` in `domain/interest_graph.py`; `ITERATIONS` and `MARGIN` in `domain/graph_layout.py`; `INTEREST_MAP_WIDTH` and `INTEREST_MAP_HEIGHT` in `adapters/output/html_digest.py` | done 2026-10-17 — display limits, each with its reason beside it in code; a reader sets none of them |
 | Feed health thresholds: unhealthy at 3 consecutive failed polls, or no stored article for 30 days (never included) | A | `UNHEALTHY_FAILURE_STREAK`, `QUIET_DAYS` in `adapters/store/feed_health.py` | done 2026-10-08 — one Substack 429 is routine, three hourly polls failing in a row is not; feeds publish weekly or monthly, so a shorter silence is noise. `cyris doctor` and `/settings` both judge through `FeedHealth.problems`, so neither copies a number |
 | Pages publish timing: the 180s budget and 120s run reserve, the 120s verify budget of a publishing rerun, the stage and alias poll counts and intervals, the 20s per-request timeout and a deploy attempt's worst case | A | `adapters/output/publish.py`, `adapters/output/pages_deploy.py` | unchanged — reasons in the comments beside each constant; `tests/test_publish.py` pins the budget against `RUN_SLEEP_AFTER` in `workers/app/src/index.js`, and what the budget does not cover is in *Publishing* (§6) |
@@ -1309,4 +1325,5 @@ on main after the change lands, citing the hash it landed as.
 Across local, container, and cloud, `service_layer/` and `domain/` are untouched. Every difference
 lives in `adapters/` and in `bootstrap.build_deps()`. That is the payoff of the Protocol +
 composition-root design, and the reason the D1 store landed without a single line changing in the
-pipeline.
+pipeline. The one exception is an optional `Deps` callable that `run_digest` calls, its IO in
+`adapters/` and None leaving the run unchanged: `lengthen_articles`.
