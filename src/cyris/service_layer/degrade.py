@@ -40,8 +40,10 @@ def strip_dateline(text: str) -> str:
 def excerpt(content: str, length: int = 200, *, drop_dateline: bool = False) -> str:
     """Plain-text excerpt from the start of the content — the no-LLM stand-in for a summary.
 
-    Feed content is raw HTML; strip tags and decode entities so fallbacks
-    never leak markup into the digest. `drop_dateline` strips a leading wire
+    Content is plain text, or HTML for a row stored before feed content was
+    converted to text; stripping tags and decoding entities keeps markup out of the
+    digest for both, at a cost on plain text: a literal `<word>` (`Vec<String>`) is
+    dropped and an already-decoded `&amp;` is decoded again. `drop_dateline` strips a leading wire
     dateline from the plain text before it is cut, so it costs none of `length`.
     """
     text = re.sub(r"<[^>]+>", " ", content or "")

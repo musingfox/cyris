@@ -1,6 +1,8 @@
 """Tests for CloudflareRssSource — reads the RSS Worker's D1 buffer."""
 
+import asyncio
 import re
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -8,6 +10,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 import respx
+from captioned_post import CAPTIONED_IMAGE, FIRST_SENTENCE, POST_HTML
 
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.domain.models import Lane, SourceConfig
@@ -210,3 +213,69 @@ async def test_entities_left_in_a_buffered_title_are_decoded():
 
     assert route.call_count == 1
     assert articles[0].title == "Highly & Readwise: We're"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_markup_ahead_of_the_body_does_not_reach_article_content():
+    """Prompts cut `content[:snippet_length]`; HTML that opens with a long picture block
+    used to fill the whole snippet, so the model never saw the first paragraph."""
+    assert len(CAPTIONED_IMAGE) > 4000
+    rows = [{**ROW, "content": POST_HTML}]
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=rows))
+
+    (article,) = await CloudflareRssSource(WORKER, "tok").fetch_articles(
+        after=AFTER, before=BEFORE, sources={}
+    )
+
+    assert route.call_count == 1
+    assert article.content.startswith(FIRST_SENTENCE)
+    assert "<" not in article.content
+    assert "srcset" not in article.content
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_content_trafilatura_finds_nothing_in_falls_back_to_stripped_text():
+    rows = [{**ROW, "content": "<p>Tom &amp; Jerry</p>"}]
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=rows))
+
+    (article,) = await CloudflareRssSource(WORKER, "tok").fetch_articles(
+        after=AFTER, before=BEFORE, sources={}
+    )
+
+    assert route.call_count == 1
+    assert article.content == "Tom & Jerry"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_a_batch_is_converted_off_the_event_loop_in_one_thread_call(monkeypatch):
+    """A read of up to WORKER_ROW_CEILING rows is converted off the event loop."""
+    loop_thread = threading.get_ident()
+    converted_on: list[int] = []
+    to_thread_calls: list[object] = []
+    real_to_thread = asyncio.to_thread
+
+    def recording_plain_text(markup: str) -> str:
+        converted_on.append(threading.get_ident())
+        return markup
+
+    async def recording_to_thread(func, /, *args, **kwargs):
+        to_thread_calls.append(func)
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr("cyris.adapters.fetch.rss_worker_source.plain_text", recording_plain_text)
+    monkeypatch.setattr(asyncio, "to_thread", recording_to_thread)
+    rows = [{**ROW, "url": f"https://a.test/{n}", "guid": f"g{n}"} for n in range(3)]
+    route = respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=rows))
+
+    articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
+        after=AFTER, before=BEFORE, sources={}
+    )
+
+    assert route.call_count == 1
+    assert len(articles) == 3
+    assert len(converted_on) == 3
+    assert loop_thread not in converted_on
+    assert len(to_thread_calls) == 1

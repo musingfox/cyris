@@ -1,10 +1,13 @@
 """Tests for RssSource — the direct-polling feed adapter."""
 
+import asyncio
+import threading
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import feed_image_cases
 import pytest
+from captioned_post import CAPTIONED_IMAGE, FIRST_SENTENCE, POST_HTML
 
 from cyris.adapters.fetch.rss_source import RssSource
 from cyris.domain.models import Lane, SourceConfig
@@ -204,3 +207,81 @@ async def test_an_entry_takes_the_image_its_feed_names(name):
     )
 
     assert article.image_url == wanted
+
+
+@pytest.mark.asyncio
+async def test_markup_ahead_of_the_body_does_not_reach_article_content():
+    """The same Substack-shaped body as the Worker path: prompts cut `content[:1000]`."""
+    item = (
+        "<item><title>T</title><link>https://a.test/1</link>"
+        "<pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate>"
+        f"<description><![CDATA[{POST_HTML}]]></description></item>"
+    )
+    source = RssSource(_http_returning(_feed(item)))
+
+    (article,) = await source.fetch_articles(
+        after=AFTER,
+        before=BEFORE,
+        sources={"F": SourceConfig(name="F", url="https://a.test/feed")},
+    )
+
+    assert len(CAPTIONED_IMAGE) > 4000
+    assert article.content.startswith(FIRST_SENTENCE)
+    assert "<" not in article.content
+    assert "srcset" not in article.content
+
+
+@pytest.mark.asyncio
+async def test_the_image_is_read_from_the_html_before_it_becomes_text():
+    item = (
+        "<item><title>T</title><link>https://a.test/1</link>"
+        "<pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate>"
+        f"<description><![CDATA[{POST_HTML}]]></description></item>"
+    )
+    source = RssSource(_http_returning(_feed(item)))
+
+    (article,) = await source.fetch_articles(
+        after=AFTER,
+        before=BEFORE,
+        sources={"F": SourceConfig(name="F", url="https://a.test/feed")},
+    )
+
+    assert article.image_url == "https://img.test/w_1456.png"
+
+
+@pytest.mark.asyncio
+async def test_the_conversion_runs_in_the_thread_that_parses_the_feed(monkeypatch):
+    """A feed's entries are converted off the event loop."""
+    loop_thread = threading.get_ident()
+    converted_on: list[int] = []
+    to_thread_calls: list[object] = []
+    real_to_thread = asyncio.to_thread
+
+    def recording_plain_text(markup: str) -> str:
+        converted_on.append(threading.get_ident())
+        return markup
+
+    async def recording_to_thread(func, /, *args, **kwargs):
+        to_thread_calls.append(func)
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr("cyris.adapters.fetch.rss_source.plain_text", recording_plain_text)
+    monkeypatch.setattr(asyncio, "to_thread", recording_to_thread)
+    items = "".join(
+        f"<item><title>T{n}</title><link>https://a.test/{n}</link>"
+        "<pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate>"
+        "<description>body</description></item>"
+        for n in range(3)
+    )
+    source = RssSource(_http_returning(_feed(items)))
+
+    articles = await source.fetch_articles(
+        after=AFTER,
+        before=BEFORE,
+        sources={"F": SourceConfig(name="F", url="https://a.test/feed")},
+    )
+
+    assert len(articles) == 3
+    assert len(converted_on) == 3
+    assert loop_thread not in converted_on
+    assert len(to_thread_calls) == 1

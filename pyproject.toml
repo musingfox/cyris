@@ -20,6 +20,7 @@ dependencies = [
     "pyyaml>=6.0",
     "feedparser>=6.0.14",
     "blake3>=1.0.9",
+    "trafilatura>=2.3.1",
 ]
 
 [project.scripts]
