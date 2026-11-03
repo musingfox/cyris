@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Save production's reader content as a seed, and restore a trial to it.
 
-A release is checked on a trial before production gets its image
-(docs/operations.md). `reset_trial.py` takes a trial back to no sources; this
+A release is checked on a trial after a push to main has deployed it to
+production (docs/operations.md). `reset_trial.py` takes a trial back to no sources; this
 takes it back to a known state with real content instead, so the same check can
 be run again from the same start.
 

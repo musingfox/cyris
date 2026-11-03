@@ -1,6 +1,8 @@
 """Release-image invariants that cannot be exercised by the application suite."""
 
+import math
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -108,12 +110,314 @@ def test_release_workflow_runs_checks_before_building() -> None:
     assert {"actions/checkout@v4", "astral-sh/setup-uv@v5", "oven-sh/setup-bun@v2"} <= actions
 
 
-def test_release_workflow_is_dispatch_only() -> None:
-    workflow = yaml.safe_load((ROOT / ".github/workflows/release-image.yml").read_text())
-    triggers = workflow.get("on", workflow.get(True))
-    assert set(triggers) == {"workflow_dispatch"}
-    assert "push" not in triggers
-    assert "pull_request" not in triggers
+def _release_workflow() -> dict:
+    return yaml.safe_load((ROOT / ".github/workflows/release-image.yml").read_text())
+
+
+def test_release_workflow_runs_on_every_push_to_main_and_on_dispatch() -> None:
+    """Every push to main releases; no path filter decides which pushes count (ADR 0024)."""
+    workflow = _release_workflow()
+    # PyYAML reads a bare `on:` key as the boolean True.
+    triggers = workflow[True]
+    assert set(triggers) == {"push", "workflow_dispatch"}
+    assert triggers["push"] == {"branches": ["main"]}
+    deploy = triggers["workflow_dispatch"]["inputs"]["deploy"]
+    assert deploy["type"] == "boolean"
+    assert deploy["default"] is True
+
+
+def _truthy(value: object) -> bool:
+    """GitHub's falsy values: false, 0, -0, "", null and NaN."""
+    if isinstance(value, float) and math.isnan(value):
+        return False
+    return value not in (False, 0, "", None)
+
+
+def _github_expression(expression: str, context: dict) -> object:
+    """Evaluate the subset of GitHub's expression syntax a job condition uses here.
+
+    The rules are the documented ones
+    (docs.github.com/en/actions/reference/workflows-and-actions/expressions): a
+    comparison of two types converts both to numbers, null and false both to 0;
+    strings compare case-insensitively; `&&` and `||` return an operand, not a
+    boolean. A property that does not exist, `inputs.deploy` on a push, is an empty
+    string (docs.github.com/en/actions/reference/workflows-and-actions/contexts).
+    """
+    body = expression.strip()
+    if body.startswith("${{") and body.endswith("}}"):
+        body = body[3:-2]
+    tokens = re.findall(r"'(?:[^']|'')*'|==|!=|&&|\|\||[!()]|[\w.-]+", body)
+    position = 0
+
+    def number(value: object) -> float:
+        if value is None:
+            return 0.0
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, str):
+            if value == "":
+                return 0.0
+            if re.fullmatch(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?", value.strip()):
+                return float(value)
+            return math.nan
+        return float(value)
+
+    def equal(left: object, right: object) -> bool:
+        if type(left) is type(right) and isinstance(left, str):
+            return left.lower() == right.lower()
+        if type(left) is type(right) and not isinstance(left, float):
+            return left == right
+        return number(left) == number(right)
+
+    def atom() -> object:
+        nonlocal position
+        token = tokens[position]
+        position += 1
+        if token == "(":
+            value = either()
+            position += 1
+            return value
+        if token == "!":
+            return not _truthy(atom())
+        if token.startswith("'"):
+            return token[1:-1].replace("''", "'")
+        if token in ("true", "false", "null"):
+            return {"true": True, "false": False, "null": None}[token]
+        if re.fullmatch(r"-?\d+(\.\d+)?", token):
+            return float(token)
+        value: object = context
+        for part in token.split("."):
+            value = value.get(part, "") if isinstance(value, dict) else ""
+        return value
+
+    def comparison() -> object:
+        nonlocal position
+        left = atom()
+        while position < len(tokens) and tokens[position] in ("==", "!="):
+            operator = tokens[position]
+            position += 1
+            left = equal(left, atom()) == (operator == "==")
+        return left
+
+    def both() -> object:
+        nonlocal position
+        left = comparison()
+        while position < len(tokens) and tokens[position] == "&&":
+            position += 1
+            right = comparison()
+            left = right if _truthy(left) else left
+        return left
+
+    def either() -> object:
+        nonlocal position
+        left = both()
+        while position < len(tokens) and tokens[position] == "||":
+            position += 1
+            right = both()
+            left = left if _truthy(left) else right
+        return left
+
+    value = either()
+    assert position == len(tokens), f"unparsed tail in {expression!r}"
+    return value
+
+
+RELEASED = "1" * 40
+NEWER = "2" * 40
+
+
+def _guarded(context: dict, current: str = "true", attempt: str = "1") -> dict:
+    """`context` once the head guard has answered: run outputs are strings."""
+    return {
+        **context,
+        "github": {**context["github"], "sha": RELEASED, "run_attempt": "1"},
+        "needs": {"current": {"outputs": {"current": current, "attempt": attempt}}},
+    }
+
+
+PUSH = {"github": {"event_name": "push"}, "inputs": {}}
+
+
+def _dispatch(deploy: bool) -> dict:
+    return {"github": {"event_name": "workflow_dispatch"}, "inputs": {"deploy": deploy}}
+
+
+def test_the_expression_model_reproduces_the_null_equals_false_pitfall() -> None:
+    """Red fixture: the condition that reads naturally skips the deploy on every push."""
+    assert not _truthy(_github_expression("inputs.deploy != false", PUSH))
+    assert _truthy(_github_expression("inputs.deploy == false", PUSH))
+    assert _truthy(_github_expression("${{ github.event_name == 'PUSH' }}", PUSH))
+
+
+def _deploy_job() -> dict:
+    return _release_workflow()["jobs"]["deploy"]
+
+
+def test_release_workflow_deploys_only_after_a_successful_release() -> None:
+    """A separate job, so a red build and a red deploy stay two different red Xs."""
+    job = _deploy_job()
+    assert job["uses"] == "./.github/workflows/deploy.yml"
+    assert set(job["needs"]) == {"release", "current"}
+    assert _current_job()["needs"] in ("release", ["release"])
+    # A status function would replace the implicit success() that holds the deploy back.
+    for condition in (job["if"], _current_job()["if"]):
+        assert not re.search(r"\b(always|failure|cancelled)\(", condition)
+
+
+def test_release_workflow_deploys_on_push_and_by_default_skipping_only_on_false() -> None:
+    condition = _deploy_job()["if"]
+    assert _truthy(_github_expression(condition, _guarded(PUSH)))
+    assert _truthy(_github_expression(condition, _guarded(_dispatch(True))))
+    assert not _truthy(_github_expression(condition, _guarded(_dispatch(False))))
+
+
+def _current_job() -> dict:
+    return _release_workflow()["jobs"]["current"]
+
+
+def test_release_workflow_asks_for_the_head_only_when_a_deploy_is_wanted() -> None:
+    """A dispatch that unticks `deploy` has nothing for the guard to hold back."""
+    condition = _current_job()["if"]
+    assert _truthy(_github_expression(condition, PUSH))
+    assert _truthy(_github_expression(condition, _dispatch(True)))
+    assert not _truthy(_github_expression(condition, _dispatch(False)))
+
+
+def test_release_workflow_deploys_only_while_its_commit_is_the_head_of_its_ref() -> None:
+    """A re-run keeps its GITHUB_SHA, and the release queue's order is not guaranteed.
+
+    Either can bring an older commit to the deploy job after a newer one; the guard's
+    answer holds it back on a push and on a dispatch alike.
+    """
+    condition = _deploy_job()["if"]
+    for wanted in (PUSH, _dispatch(True)):
+        assert _truthy(_github_expression(condition, _guarded(wanted)))
+        assert not _truthy(_github_expression(condition, _guarded(wanted, current="false")))
+        assert not _truthy(_github_expression(condition, _guarded(wanted, current="")))
+
+
+def test_release_workflow_ignores_a_head_answer_from_an_earlier_attempt() -> None:
+    """Re-running only `deploy` would leave `current` as an earlier attempt answered it.
+
+    That answer was given when the commit was still the head; it says nothing about now.
+    """
+    condition = _deploy_job()["if"]
+    assert not _truthy(_github_expression(condition, _guarded(PUSH, attempt="0")))
+    assert not _truthy(_github_expression(condition, _guarded(PUSH, attempt="")))
+
+
+def test_release_workflow_reads_the_head_of_its_ref_from_the_remote() -> None:
+    job = _current_job()
+    assert job["permissions"] == {"contents": "read"}
+    steps = job["steps"]
+    # checkout leaves the job's token on `origin`, which ls-remote then reads.
+    assert steps[0]["uses"] == "actions/checkout@v4"
+    [head] = [step for step in steps if step.get("id") == "head"]
+    assert 'git ls-remote origin "$GITHUB_REF"' in head["run"]
+    assert job["outputs"] == {
+        "current": "${{ steps.head.outputs.current }}",
+        "attempt": "${{ steps.head.outputs.attempt }}",
+    }
+
+
+def _run_head_step(
+    tmp_path: Path, ls_remote: str, ref: str = "refs/heads/main", fails: bool = False
+) -> tuple[int, str, str, str]:
+    """Run the guard's head step with `git` stubbed to answer `ls_remote`."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    answer = tmp_path / "ls-remote"
+    answer.write_text(ls_remote)
+    (bin_dir / "git").write_text(
+        "#!/bin/sh\n"
+        + ('echo "fatal: unable to access" >&2; exit 128\n' if fails else "")
+        + '[ "$1 $2" = "ls-remote origin" ] || exit 2\n'
+        + f'cat "{answer}"\n'
+    )
+    (bin_dir / "git").chmod(0o755)
+    output, summary = tmp_path / "output", tmp_path / "summary"
+    output.touch()
+    summary.touch()
+    [head] = [step for step in _current_job()["steps"] if step.get("id") == "head"]
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_SHA": RELEASED,
+        "GITHUB_REF": ref,
+        "GITHUB_RUN_ATTEMPT": "3",
+        "GITHUB_OUTPUT": str(output),
+        "GITHUB_STEP_SUMMARY": str(summary),
+    }
+    result = subprocess.run(
+        ["bash", "-e", "-c", head["run"]], env=env, capture_output=True, text=True
+    )
+    return result.returncode, output.read_text(), summary.read_text(), result.stdout
+
+
+def test_release_workflow_guard_passes_the_head_of_its_ref(tmp_path: Path) -> None:
+    code, output, summary, stdout = _run_head_step(tmp_path, f"{RELEASED}\trefs/heads/main\n")
+    assert code == 0
+    assert "current=true\n" in output and "attempt=3\n" in output
+    assert "::notice::" not in stdout
+
+
+def test_release_workflow_guard_skips_a_commit_the_ref_has_moved_past(tmp_path: Path) -> None:
+    """Skipped, not failed: the newer head deploys from its own run. Visible all the same."""
+    code, output, summary, stdout = _run_head_step(tmp_path, f"{NEWER}\trefs/heads/main\n")
+    assert code == 0
+    assert "current=false\n" in output and "current=true" not in output
+    [notice] = [line for line in stdout.splitlines() if line.startswith("::notice::")]
+    assert RELEASED in notice and NEWER in notice
+    assert RELEASED in summary and NEWER in summary
+
+
+def test_release_workflow_guard_skips_when_the_ref_is_gone(tmp_path: Path) -> None:
+    code, output, _, stdout = _run_head_step(tmp_path, "", ref="refs/heads/gone")
+    assert code == 0
+    assert "current=false\n" in output
+    assert "::notice::" in stdout
+
+
+def test_release_workflow_guard_matches_the_ref_exactly(tmp_path: Path) -> None:
+    """ls-remote matches a pattern against a ref's tail, so other refs can answer too."""
+    answer = f"{RELEASED}\trefs/heads/feature/refs/heads/main\n{NEWER}\trefs/heads/main\n"
+    code, output, _, _ = _run_head_step(tmp_path, answer)
+    assert code == 0
+    assert "current=false\n" in output
+
+
+def test_release_workflow_guard_peels_an_annotated_tag(tmp_path: Path) -> None:
+    """A tag's ls-remote line names the tag object; `^{}` names the commit."""
+    answer = f"{NEWER}\trefs/tags/v1\n{RELEASED}\trefs/tags/v1^{{}}\n"
+    code, output, _, _ = _run_head_step(tmp_path, answer, ref="refs/tags/v1")
+    assert code == 0
+    assert "current=true\n" in output
+
+
+def test_release_workflow_guard_fails_when_the_head_cannot_be_read(tmp_path: Path) -> None:
+    """An unreadable head is red, not a quiet skip that looks like a newer push."""
+    code, output, _, _ = _run_head_step(tmp_path, "", fails=True)
+    assert code != 0
+    assert "current=true" not in output
+
+
+def test_release_workflow_deploys_the_commit_it_released_never_a_pinned_image() -> None:
+    """No `with`: deploy.yml's resolve then reads `image/<sha7>` of the caller's commit.
+
+    A called workflow's `github` context is the caller's, so GITHUB_SHA there is the
+    commit this release just tagged, not whatever main's head has become since.
+    """
+    job = _deploy_job()
+    assert "with" not in job
+    assert job["permissions"] == {"contents": "read"}
+    assert job["secrets"] == {
+        name: f"${{{{ secrets.{name} }}}}"
+        for name in (
+            "CLOUDFLARE_CONTAINERS_TOKEN",
+            "CYRIS_ACCESS_CLIENT_ID",
+            "CYRIS_ACCESS_CLIENT_SECRET",
+        )
+    }
 
 
 def test_release_workflow_pushes_annotated_image_tag() -> None:

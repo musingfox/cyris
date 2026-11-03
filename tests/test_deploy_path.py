@@ -93,22 +93,43 @@ def _deploy_steps() -> dict[str, tuple[int, dict]]:
     return {s["id"]: (i, s) for i, s in enumerate(steps) if "id" in s}
 
 
-def test_the_deploy_workflow_is_dispatch_only_and_defaults_to_no_tag() -> None:
-    """Chaining it to the build would collapse two different failures into one."""
+def test_the_deploy_workflow_is_dispatchable_with_a_tag_and_callable_without_one() -> None:
+    """Dispatch is how a person pins an image; the release calls it to deploy its own commit.
+
+    The call takes no input, so the release cannot hand it a tag: a called deploy always
+    resolves the `image/<sha7>` the release recorded for the caller's commit.
+    """
     workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
     # PyYAML reads a bare `on:` key as the boolean True.
     triggers = workflow[True]
     image_tag = triggers["workflow_dispatch"]["inputs"]["image_tag"]
 
-    assert set(triggers) == {"workflow_dispatch"}
+    assert set(triggers) == {"workflow_dispatch", "workflow_call"}
     assert image_tag["required"] is False
     assert image_tag.get("default", "") == ""
+    assert "inputs" not in (triggers["workflow_call"] or {})
 
 
-def test_the_deploy_workflow_serialises_dispatches() -> None:
+def test_the_called_deploy_declares_each_secret_its_steps_read() -> None:
+    """A called workflow sees only the secrets its caller passes and it declares."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    declared = workflow[True]["workflow_call"]["secrets"]
+    text = (ROOT / ".github/workflows/deploy.yml").read_text()
+
+    assert set(declared) == set(re.findall(r"secrets\.([A-Z_]+)", text))
+    # Not required: a missing one fails in the step that names it, legibly.
+    assert all(spec["required"] is False for spec in declared.values())
+
+
+def test_the_deploy_workflow_serialises_dispatches_and_calls() -> None:
+    """On the job, where it holds when the release calls it as well as on a dispatch."""
     workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
 
-    assert workflow["concurrency"]["cancel-in-progress"] is False
+    assert "concurrency" not in workflow
+    assert workflow["jobs"]["deploy"]["concurrency"] == {
+        "group": "deploy-app",
+        "cancel-in-progress": False,
+    }
 
 
 def test_the_account_id_is_required_before_anything_is_rendered() -> None:

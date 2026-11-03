@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Deploy the image a release recorded to one trial, and check the trial serves it.
 
-The staging step of a release (docs/operations.md): after "Release container
-image" has run on a commit, this deploys that commit's image to the trial before
-anyone deploys production. The digest comes from the commit's `image/<sha7>` tag,
+The trial step of a release (docs/operations.md): after "Release container
+image" has run on a commit, and a push to main has deployed it to production, this
+deploys that commit's image to the trial. The digest comes from the commit's `image/<sha7>` tag,
 read the way `.github/workflows/deploy.yml` reads it: the tag is fetched by name,
 and the digest is taken only from a message naming this exact commit.
 

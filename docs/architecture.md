@@ -944,17 +944,22 @@ Cloudflare
 ```
 
 **The release image is built by CI, not by a workstation.** `.github/workflows/release-image.yml`
-is dispatched by hand, bakes the commit into the image and pushes it to the Cloudflare registry
-under `:<sha>` and `:release`. A plain `wrangler deploy` against the tracked `wrangler.toml` still
-builds `./Dockerfile` locally — that config stays fork-neutral by
+runs on every push to `main` and on dispatch. It bakes the commit into the image and pushes it to
+the Cloudflare registry under `:<sha>` and `:release`. A plain `wrangler deploy` against the
+tracked `wrangler.toml` still builds `./Dockerfile` locally — that config stays fork-neutral by
 `docs/spec/wrangler-toml-stays-fork-neutral.md`, so the registry image is deployed through a
 *derived* config instead: `.github/workflows/deploy.yml` renders it with
-`scripts/derive-wrangler-config.sh` and passes it as `--config`. That workflow is dispatch-only
-and separate from the build, because building and deploying fail differently and because
-pinning is its job. With no input it deploys the digest the release recorded in the dispatched
+`scripts/derive-wrangler-config.sh` and passes it as `--config`. A release that succeeds calls
+that workflow as a second job, so a push deploys production, as long as the released commit is
+still the head of the ref it ran for; an older one skips the deploy. A dispatch of the release deploys
+too, unless its `deploy` input is unticked. The deploy lands whatever the hour; the hourly cron is
+not avoided ([ADR-0024](decisions/0024-a-push-to-main-releases-and-deploys.md)). It stays a
+job of its own because building and deploying fail differently, and it stays dispatchable because
+pinning is its job. With no input it deploys the digest the release recorded in the workflow
 commit's `image/<short-sha>` git tag, never `:release`, which the registry has answered stale for
-over 50 seconds after a push; `image_tag` takes a `sha256:…` digest, which is how a deploy goes
-back to an image already published. Going back is a reference to an image already in the
+over 50 seconds after a push. When the release calls it, that commit is the one just released,
+not a newer head of `main`. `image_tag` takes a `sha256:…` digest, which is how a deploy goes
+back to an image already published; the next push to `main` deploys over it. Going back is a reference to an image already in the
 registry, never a rebuild of the old commit — the workflow refuses to republish a commit because
 the image is not reproducible — and the platform's own rollback does not move that reference:
 `docs/spec/revert-carries-the-image.md` holds the rule, and `docs/operations.md` *Going back*

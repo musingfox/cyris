@@ -1,14 +1,15 @@
 name: Deploy the container Worker
 
-# Dispatch-only, and separate from the image build on purpose. Building and
-# deploying fail in different ways — "the image cannot be made" and "the image
-# cannot go live" — and chaining them would collapse both into one red X.
-# Separate also means the timing is chosen: `wrangler.toml` runs a cron every
-# hour, and a deploy rolls the container, so landing one at 07:59 is a choice
-# nobody should make by accident.
+# release-image.yml calls this after every release that succeeds, as a job of its
+# own, and a person can still dispatch it (ADR 0024). It stays a separate job from
+# the image build on purpose: building and deploying fail in different ways — "the
+# image cannot be made" and "the image cannot go live" — and steps of one job would
+# collapse both into one red X. A deploy lands whatever the hour: the hourly cron
+# in `wrangler.toml` is not avoided, and a digest-hour run that the roll kills is
+# retried by the next ticks' catch-up (architecture.md §5, CATCH_UP_HOURS).
 #
 # With no input it deploys the image release-image.yml recorded for the
-# dispatched commit in the `image/<sha7>` git tag, never the registry's
+# workflow's commit in the `image/<sha7>` git tag, never the registry's
 # `:release`: on 2026-10-08 the registry went on answering the previous
 # `:release` for over 50 seconds after the push that moved it, in three
 # releases of four, while the sha tag always read back right.
@@ -22,19 +23,25 @@ name: Deploy the container Worker
 # digest recorded before then names an image in the previous repository and no
 # longer resolves, and the resolve step says so rather than deploying something
 # older.
+#
+# Called, it takes no input, so the release cannot hand it a tag, and its github
+# context is the caller's: GITHUB_SHA is the commit that release just recorded.
+# The secrets are declared one by one because a called workflow sees only what it
+# declares; none is required, so a missing one fails in the step that names it.
 on:
   workflow_dispatch:
     inputs:
       image_tag:
         description: 'Empty: the image the release recorded for this commit. Or a sha256:… digest to pin one exact image'
         required: false
-
-# Two dispatches would race each other's `wrangler deploy` and the container
-# rollout behind it. Serialise rather than cancel: cancelling mid-deploy is
-# what would leave the Worker and its container application disagreeing.
-concurrency:
-  group: deploy-app
-  cancel-in-progress: false
+  workflow_call:
+    secrets:
+      CLOUDFLARE_CONTAINERS_TOKEN:
+        required: false
+      CYRIS_ACCESS_CLIENT_ID:
+        required: false
+      CYRIS_ACCESS_CLIENT_SECRET:
+        required: false
 
 env:
   # Must equal `[[containers]] name` in wrangler.toml: that is the repository a
@@ -46,6 +53,17 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Two deploys would race each other's `wrangler deploy` and the container
+    # rollout behind it. Serialise rather than cancel: cancelling mid-deploy is
+    # what would leave the Worker and its container application disagreeing.
+    # On the job, not the workflow. The workflow-syntax docs' jobs.<job_id>.concurrency
+    # admits one job at a time to a group, whoever runs it; the reusable-workflow page
+    # lists that key only for the calling job, and only its warning against sharing a
+    # group with the caller implies a called job's own group applies. That it holds a
+    # release's call as it holds a dispatch is unverified until a real run shows it.
+    concurrency:
+      group: deploy-app
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

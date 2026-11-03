@@ -16,8 +16,10 @@ bunx wrangler deploy --env-file /dev/null
 It rebuilds the image locally and rolls the container. A deploy replaces running
 instances, so avoid landing one just before a publish hour.
 
-**The GitHub Actions release path.** Two workflows, both started by hand
-(`workflow_dispatch`), never on push:
+**The GitHub Actions release path.** Every push to `main` releases and then deploys
+production, with no person involved and no path filter
+([ADR-0024](decisions/0024-a-push-to-main-releases-and-deploys.md)). The deploy lands
+whatever the hour, a publish hour included. Two workflows do it:
 
 - `.github/workflows/release-image.yml` ("Release container image") runs
   `scripts/check.sh`, builds a `linux/amd64` image with the commit baked in
@@ -26,12 +28,45 @@ instances, so avoid landing one just before a publish hour.
   skips the build and push for a commit it has already published, because the image
   is not reproducible. If the registry still answers the previous `:release` after a
   minute, the run ends with a warning and records the digest anyway; nothing deploys
-  from `:release`.
+  from `:release`. It runs on every push to `main`, and can be started by hand
+  (`workflow_dispatch`). When the release succeeds, its second job, `deploy`, runs
+  `deploy.yml` on the same commit. A push always gets that job. A run started by hand
+  gets it unless its `deploy` box is unticked, which publishes the image without
+  deploying it. A red check stops the release, so the deploy never runs.
 - `.github/workflows/deploy.yml` ("Deploy the container Worker") deploys an image that
-  is already in the registry. With its `image_tag` input left empty, it deploys the
-  digest recorded in the dispatched commit's `image/<short-sha>` tag, and fails if
-  that commit has not been released. A `sha256:…` digest pins one exact image instead.
-  It refuses a tag name such as `release`.
+  is already in the registry. The release calls it, and it can also be started by hand.
+  With its `image_tag` input left empty, it deploys the digest recorded in that
+  commit's `image/<short-sha>` tag, and fails if that commit has not been released. A
+  `sha256:…` digest pins one exact image instead. It refuses a tag name such as
+  `release`.
+
+Releases run one at a time, and each run's deploy finishes before the next release
+starts. Only one release waits at a time: any release that queues behind it replaces
+it, whether a newer push or a run started by hand, even one with `deploy` unticked or on
+another branch. A push whose waiting release is replaced that way is never released, so
+it never deploys, and of three quick pushes the middle one may be lost like this. To
+recover, start "Release container image" by hand on `main` with `deploy` ticked; it
+releases and deploys `main`'s head.
+
+GitHub's docs say the queue runs first-in-first-out by when each run started waiting,
+"Since the actual start time of a job or run may vary, ordering is not guaranteed." That
+no longer decides what reaches production. Before its deploy, a release checks that its
+commit is still the head of the ref (branch or tag) it ran for. If the ref has moved on, the run
+skips its deploy with a notice naming both commits and stays green; the newer commit
+deploys from its own release, and if that release fails, neither deploys and production
+keeps what it had. Re-running an old release run skips its deploy the same way, because
+a re-run keeps the commit it first ran on.
+
+To retry a deploy that failed, re-run all jobs of the newest release run, or start
+"Deploy the container Worker" by hand. Re-running only the failed `deploy` job skips it,
+with no notice: the head check counts only from the attempt that made it.
+
+A deploy started by hand waits for a deploy in progress. Only one deploy waits at a
+time, and the release's deploy shares that queue: a deploy started by hand queued behind
+a release's waiting deploy cancels it, and the other way round. That the release's
+deploy joins this queue is unverified until a real run shows it (ADR-0024). If a release's deploy is
+cancelled this way, production gets what the deploy started by hand deploys; to bring
+`main`'s head back, start the release on `main` again.
 
 On a fork they need, under Settings → Secrets and variables → Actions:
 
@@ -50,22 +85,21 @@ On a fork they need, under Settings → Secrets and variables → Actions:
 Both paths push to the same registry repository, named by `[[containers]] name` in
 `wrangler.toml`, so whichever deployed last is what runs.
 
-### Staging first, production after
+### The trial deployment, after production
 
-On the release path, a release runs on a trial deployment
-([trial-deployment.md](trial-deployment.md)) before it reaches production. This project
-stages on `trial1`.
+A push to `main` deploys production straight after its release, so a release reaches the
+trial deployment ([trial-deployment.md](trial-deployment.md)) after production, not
+before it. This project's trial is `trial1`.
 
-1. Merge to `main`.
-2. Run "Release container image" on that commit.
-3. From the checkout that provisioned the trial, with that commit checked out, run
+1. Merge to `main`. The release runs, and its deploy job deploys production.
+2. From the checkout that provisioned the trial, with that commit checked out, run
    `scripts/deploy_trial.py`. It deploys the image the release recorded, and fails
    unless the trial reports that commit. To check onboarding from its first step,
    clear the trial with `scripts/reset_trial.py` first. To check it from real content,
    restore a seed of production's with `scripts/seed_trial.py` first. Each script
    describes itself under `--help`.
-4. Check the release on the trial.
-5. The owner runs "Deploy the container Worker" for production.
+3. Check the release on the trial. If it is wrong, take production back as *Going back*
+   describes.
 
 The rss and vote Workers deploy outside any workflow. `deploy_trial.py` deploys the
 trial's copies when their code changed, and production's copies then need the same
@@ -143,6 +177,9 @@ gh workflow run "Deploy the container Worker" -f image_tag=sha256:<digest>
 ```
 
 The workflow's `verify` step confirms the rollout; `cyris doctor --deployment` answers the same question by hand, allowing for the warm-instance lag above.
+
+A pin lasts until the next push to `main`, whose release deploys that push's commit over
+it. A push made before the fault is fixed on `main` puts the fault back.
 
 **On the `wrangler deploy` path**, there is no recorded digest: check out the older
 commit and `bunx wrangler deploy --env-file /dev/null` again. That builds a new image

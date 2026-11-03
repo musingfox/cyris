@@ -1,12 +1,25 @@
 name: Release container image
 
+# Every push to main releases, and a release that succeeds deploys the commit it
+# released (ADR 0024). A dispatch does the same unless `deploy` is unticked, which
+# is how an image is published without going live. There is no path filter: the
+# owner has not decided which pushes may skip a release, so none do.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy the released commit to production once its image is recorded'
+        type: boolean
+        default: true
 
 # Two mutable remote tags are written here (`:release` in the registry, and nothing
-# else). Overlapping dispatches would interleave their pushes and could leave
-# `:release` on the older commit, so the job is serialised rather than cancelled —
-# cancelling mid-push is what would leave a half-moved tag.
+# else). Overlapping runs would interleave their pushes and could leave
+# `:release` on the older commit, so the run is serialised rather than cancelled —
+# cancelling mid-push is what would leave a half-moved tag. The group spans the
+# deploy job too, so a newer release waits for the older one's deploy to finish.
 concurrency:
   group: release-image
   cancel-in-progress: false
@@ -203,3 +216,69 @@ jobs:
           git tag -a "$tag" "${{ github.sha }}" \
             -m "This commit has an image. commit=${{ github.sha }} digest=$digest"
           git push origin "$tag"
+  # Only the head of the run's ref deploys on its own. A re-run keeps the run's
+  # original GITHUB_SHA, and the release queue's order is not guaranteed, so either
+  # can bring an older commit here after a newer one went live. The test is equality
+  # with the ref's head as read now, not ancestry: an older commit is always an
+  # ancestor of the head. A stale commit skips the deploy with a notice and leaves the
+  # run green. It is a job of its own because `deploy` calls a workflow and has no
+  # steps, and deploy.yml dispatched by hand (a pin by digest) must not pass through it.
+  current:
+    needs: release
+    if: github.event_name == 'push' || inputs.deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      current: ${{ steps.head.outputs.current }}
+      attempt: ${{ steps.head.outputs.attempt }}
+    steps:
+      # checkout leaves the job's token on `origin`, as git_tag's push and deploy.yml's
+      # tag fetch already rely on, so ls-remote can read a private repository's refs.
+      - uses: actions/checkout@v4
+      # The assignment is apart from the awk so a failed read fails the job: a head
+      # that cannot be read is red, not a quiet skip. An annotated tag lists its tag
+      # object under its name and the commit it points at under `<ref>^{}`; ls-remote
+      # matches a pattern against a ref's tail, so the name is compared exactly.
+      - id: head
+        run: |
+          refs=$(git ls-remote origin "$GITHUB_REF" "$GITHUB_REF^{}")
+          head=$(printf '%s\n' "$refs" | awk -v ref="$GITHUB_REF" '
+            $2 == ref { head = $1 }
+            $2 == ref "^{}" { peeled = $1 }
+            END { print (peeled != "" ? peeled : head) }')
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "$GITHUB_SHA is the head of $GITHUB_REF; deploying it"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            message="not deploying $GITHUB_SHA: $GITHUB_REF is now at ${head:-nothing}. Only the head of a ref deploys after its release; dispatch deploy.yml to deploy another image."
+            echo "::notice::$message"
+            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+          fi
+  # A job of its own, not steps of `release`, so "the image cannot be made" and "the
+  # image cannot go live" stay two different red jobs. `needs` holds it back unless
+  # the release and the head guard succeeded; the implicit success() is why the
+  # condition names no status. No `with`: the called workflow sees this run's github
+  # context, so its resolve step reads the `image/<sha7>` that git_tag just recorded
+  # for this run's commit, never `:release` and never a newer head of main.
+  #
+  # `inputs.deploy` does not exist on a push, so it evaluates to an empty string, and
+  # GitHub compares '' and false as 0 and 0: `inputs.deploy != false` would skip every
+  # push. The event is named instead, and on a dispatch the boolean input decides.
+  # The guard's answer counts only from this attempt: re-running just this job would
+  # otherwise reuse a `current` given when an older commit was still the head.
+  deploy:
+    needs: [release, current]
+    if: >-
+      (github.event_name == 'push' || inputs.deploy)
+      && needs.current.outputs.current == 'true'
+      && needs.current.outputs.attempt == github.run_attempt
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deploy.yml
+    secrets:
+      CLOUDFLARE_CONTAINERS_TOKEN: ${{ secrets.CLOUDFLARE_CONTAINERS_TOKEN }}
+      CYRIS_ACCESS_CLIENT_ID: ${{ secrets.CYRIS_ACCESS_CLIENT_ID }}
+      CYRIS_ACCESS_CLIENT_SECRET: ${{ secrets.CYRIS_ACCESS_CLIENT_SECRET }}

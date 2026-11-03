@@ -12,9 +12,11 @@ path, and a fork can run the whole pipeline that way. It fetches articles from R
 ## Commands
 
 Setup, the gate and test subsets are in `CONTRIBUTING.md`. Run `scripts/check.sh` before you
-push: `main` has no branch protection, so a red CI run stops nothing from landing. Only the app
-Worker deploys through a workflow; the `rss`, `promote` and `newsletter` Workers deploy outside
-any workflow, with no gate, so a merged change to them is not live until someone deploys it.
+push: `main` has no branch protection, so a red CI run stops nothing from landing. A push to
+`main` also deploys the app Worker to production once the release's own `scripts/check.sh`
+passes (ADR 0024). Only the app Worker deploys through a workflow; the `rss`, `promote` and
+`newsletter` Workers deploy outside any workflow, with no gate, so a merged change to them is not
+live until someone deploys it.
 
 ## Architecture
 
