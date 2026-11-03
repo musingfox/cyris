@@ -296,8 +296,8 @@ class TestScoreArticlesBatch:
 
     @pytest.mark.parametrize(
         "reply",
-        [{}, {"scores": [{"id": 9, "score": 80}]}],
-        ids=["no scores key", "unknown ids"],
+        [{}, {"scores": None}, {"scores": [{"id": 9, "score": 80}]}],
+        ids=["no scores key", "null scores", "unknown ids"],
     )
     async def test_a_batch_scoring_nothing_warns(self, sample_articles, reply, caplog):
         from cyris.service_layer.scoring import score_articles_batch
@@ -310,7 +310,7 @@ class TestScoreArticlesBatch:
 
         assert scores == {}
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
-        assert f"{len(reply.get('scores', []))} entries" in record.getMessage()
+        assert f"{len(reply.get('scores') or [])} entries" in record.getMessage()
 
     async def test_a_batch_scoring_some_does_not_warn(self, sample_articles, caplog):
         from cyris.service_layer.scoring import score_articles_batch
