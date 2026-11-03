@@ -95,6 +95,14 @@ def is_share_link(hostname: str, path: str) -> bool:
     )
 
 
+def is_media_link(hostname: str, path: str) -> bool:
+    """A video's own page, whose text is the site's navigation rather than the video."""
+    return any(
+        host_matches(hostname, rule["host"]) and _path_matches(rule, path)
+        for rule in _vocabulary()["media_links"]
+    )
+
+
 def is_rejected_path(path: str) -> bool:
     """Paths that disqualify a link wherever it is hosted."""
     vocab = _vocabulary()

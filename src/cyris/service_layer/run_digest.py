@@ -689,6 +689,18 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         summary["status"] = "no_pending"
         return RunReport(status="no_pending", failed_sources=failed_sources)
 
+    # After scoring and the holds, so only what this issue summarizes is fetched and
+    # the score stays on the feed's text; the longer text is never saved.
+    if deps.lengthen_articles is not None:
+        try:
+            digest_articles = await deps.lengthen_articles(
+                digest_articles,
+                summarize_snippet_length=cfg.app.digest.summarize_snippet_length,
+            )
+        except Exception as e:
+            logger.error("Reading article pages failed, the run keeps feed text: %s", e)
+            summary["article_pages_error"] = str(e)
+
     # Process all articles through digest pipeline
     digest_pipeline = DigestPipeline(
         deps.llm,

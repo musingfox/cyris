@@ -2,7 +2,7 @@
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import cache, partial
 from importlib.resources import files
@@ -19,6 +19,7 @@ from cyris.adapters.promotions import SyncResult, sync_promotions
 from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
+from cyris.domain.models import Article
 from cyris.service_layer.ports import (
     ArticleRepository,
     AskClef,
@@ -376,6 +377,11 @@ class Deps:
     send_discord_alert: Callable[..., Any] = send_discord_alert
     # None without a Workers AI (or embedding) token and an account id.
     ask_clef: AskClef | None = None
+    # Takes the run's articles and `summarize_snippet_length`, and returns them with
+    # each RSS teaser on its page's longer body, for this run only. None unless
+    # `build_deps` was asked for it: `run` (a `--dry-run` too) and a `regenerate`
+    # rerun fetch pages; a rerender and the comparison commands fetch none.
+    lengthen_articles: Callable[..., Awaitable[list[Article]]] | None = None
 
 
 def build_promotion_sync(
@@ -441,9 +447,15 @@ def build_feed_checker() -> Any:
 
 
 def build_deps(
-    cfg: Config, on_progress: Callable[[str], None] | None = None, dry_run: bool = False
+    cfg: Config,
+    on_progress: Callable[[str], None] | None = None,
+    dry_run: bool = False,
+    fetch_pages: bool = False,
 ) -> Deps:
     """Wire the run's IO. `dry_run` decides it here, not deeper.
+
+    `fetch_pages` wires `lengthen_articles`; only a digest run asks for it, so a
+    command that merely builds the run's wiring sends no request to a publisher.
 
     A preview skips the writes inside `run_digest`, but two of the edges wired
     below consume rather than read: the newsletter queue deletes what it hands
@@ -546,6 +558,12 @@ def build_deps(
     topic_store = build_topic_store(cfg, d1)
     sync = None if dry_run else build_promotion_sync(cfg, store, topic_store)
 
+    lengthen_articles = None
+    if fetch_pages:
+        from cyris.adapters.fetch.article_page import lengthen_articles as _lengthen
+
+        lengthen_articles = partial(_lengthen, sources=cfg.sources)
+
     return Deps(
         cfg=cfg,
         store=store,
@@ -577,4 +595,5 @@ def build_deps(
         send_email=build_send_email(),
         send_email_alert=build_send_email_alert(),
         ask_clef=build_ask_clef(),
+        lengthen_articles=lengthen_articles,
     )

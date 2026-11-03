@@ -261,7 +261,7 @@ def run(
     if output is not None:
         typer.echo(f"Store backend: {cfg.app.store.backend}")
     try:
-        deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run)
+        deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run, fetch_pages=True)
     except Exception as e:
         if if_due and not dry_run:
             _alert_could_not_start(cfg, e)
@@ -352,7 +352,9 @@ def regenerate(
         raise typer.Exit(1)
 
     rerun = mode == "rerun"
-    deps = build_deps(cfg, on_progress=typer.echo if rerun else None, dry_run=True)
+    deps = build_deps(
+        cfg, on_progress=typer.echo if rerun else None, dry_run=True, fetch_pages=rerun
+    )
     if publish and deps.publish_site is None:
         typer.echo("Cannot publish: publishing is not configured", err=True)
         raise typer.Exit(1)

@@ -1,9 +1,9 @@
-"""Tests for `plain_text`, the feed-entry HTML to body-text conversion."""
+"""Tests for `plain_text` and `page_text`, feed-entry and web-page HTML to body text."""
 
 import pytest
 from captioned_post import FIRST_SENTENCE, POST_HTML
 
-from cyris.adapters.fetch.html_text import plain_text
+from cyris.adapters.fetch.html_text import page_text, plain_text
 
 pytestmark = pytest.mark.unit
 
@@ -84,3 +84,21 @@ def test_a_parser_assertion_falls_back_instead_of_failing_the_read(monkeypatch):
 
     monkeypatch.setattr("cyris.adapters.fetch.html_text._TextCollector.feed", older_parser_feed)
     assert plain_text("<p>Tom &amp; Jerry</p>") == "Tom & Jerry"
+
+
+def test_a_page_with_no_article_reads_as_no_text_not_its_tags():
+    """A whole page has no fallback: stripped, its markup would be navigation and footer."""
+    page = "<html><body><script>var x = 1;</script></body></html>"
+
+    assert plain_text(page) != ""
+    assert page_text(page) == ""
+
+
+def test_a_page_given_as_bytes_is_decoded_by_its_own_meta_charset():
+    body = "這一段正文說明了別人制定的標準，如何塑造我們選擇去做的工作。" * 6
+    page = (
+        '<html><head><meta charset="big5"></head><body>'
+        f"<article><p>{body}</p></article></body></html>"
+    ).encode("big5")
+
+    assert body[:30] in page_text(page)

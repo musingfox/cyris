@@ -39,7 +39,8 @@ code is worse than none, because it is still trusted. Two more doc rules:
 ### Where IO goes
 
 When adding or swapping IO, work in `adapters/` and `bootstrap.build_deps()` — never touch
-`service_layer/` or `domain/` (architecture.md §8). Only a genuine IO boundary gets a Protocol in
+`service_layer/` or `domain/` (architecture.md §8), except to call an optional `Deps` callable from
+`run_digest` whose IO lives in `adapters/` and whose None changes nothing. Only a genuine IO boundary gets a Protocol in
 `ports.py`; a single-implementation component is injected directly. Vote similarity
 suppresses by a relative outlier cutoff, `OUTLIER_MARGIN` in `src/cyris/domain/similarity.py`, not
 a per-model cosine: a hold lasts `SUPPRESSION_CLOCK_DAYS` (ADR-0017), and ADR-0006 is the history of

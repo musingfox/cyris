@@ -6,7 +6,9 @@ from email.utils import format_datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+import respx
 from fakes import settings_toml
 from typer.testing import CliRunner
 
@@ -133,7 +135,12 @@ class TestRunPipelineE2E:
             ],
         }
 
-        with _patch_feeds(feeds):
+        with _patch_feeds(feeds), respx.mock:
+            # Every article is a teaser, so the run asks for each one's page once;
+            # a 404 keeps the feed's text.
+            pages = respx.get(url__regex=r"https://(reuters|stratechery)\.com/.+").mock(
+                return_value=httpx.Response(404)
+            )
             # Mock Claude API for news clustering
             cluster_response = _make_claude_response(
                 json.dumps(
@@ -200,6 +207,7 @@ class TestRunPipelineE2E:
 
         # Assertions
         assert result.exit_code == 0, f"Run failed: {result.stdout}"
+        assert pages.call_count == 3
         assert "HTML digest written to" in result.stdout
 
         # Verify digest file exists (date comes from the real clock)

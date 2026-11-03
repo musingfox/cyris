@@ -162,6 +162,7 @@ def test_the_example_config_builds_every_settings_table():
 
 
 def _grade_d_parameters():
+    from cyris.adapters.fetch import article_page
     from cyris.service_layer import (
         cluster_news,
         digest_pipeline,
@@ -198,6 +199,7 @@ def _grade_d_parameters():
         (prompts.build_filter_system_prompt, "style_prompt"),
         (prompts.build_summarize_system_prompt, "style_prompt"),
         (prompts.build_news_cluster_system_prompt, "style_prompt"),
+        (article_page.lengthen_articles, "summarize_snippet_length"),
     ]
 
 

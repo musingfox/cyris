@@ -37,6 +37,12 @@
     ".svg",
     ".webp"
   ],
+  "_comment_media_links": "A feed item linking here is a video (docs/milestones/multimedia-sources-podcast-youtube.md: an item linking to youtube.com/watch is a YouTube video; channel feeds also link /shorts/ and youtu.be), so no teaser page is read for it: a video page's text is its navigation. Same host and path keys as share_links.",
+  "media_links": [
+    { "host": "youtube.com", "path_segment_prefix": "/watch" },
+    { "host": "youtube.com", "path_segment_prefix": "/shorts" },
+    { "host": "youtu.be", "path_contains": "/" }
+  ],
   "share_links": [
     { "host": "facebook.com", "path_contains": "sharer" },
     { "host": "linkedin.com", "path_segment_prefix": "/share" },

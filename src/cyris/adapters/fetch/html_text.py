@@ -1,4 +1,4 @@
-"""Feed-entry HTML to the body text prompts and language detection read."""
+"""Feed-entry and article-page HTML to the body text prompts and language detection read."""
 
 from __future__ import annotations
 
@@ -61,12 +61,29 @@ def plain_text(markup: str) -> str:
     """
     if not markup:
         return ""
-    extracted = trafilatura.extract(
-        markup, favor_recall=True, include_comments=False, include_tables=True
-    )
+    extracted = _extract(markup)
     if extracted:
-        return extracted.strip()
+        return extracted
     # trafilatura returns None for a fragment too short or too bare to look like an
     # article (a one-line teaser); an empty content would read as "no body" to the
     # summary prompt, so keep the words the old way instead.
     return _strip_tags(markup)
+
+
+def page_text(markup: str | bytes) -> str:
+    """The body text of a whole web page, or "" when trafilatura finds no article in it.
+
+    No tag-stripping fallback, unlike `plain_text`: on a page that would be the
+    navigation and footer, which only looks longer than a feed's teaser. Bytes are
+    decoded by trafilatura, which reads the page's own `<meta charset>`.
+    """
+    if not markup:
+        return ""
+    return _extract(markup)
+
+
+def _extract(markup: str | bytes) -> str:
+    extracted = trafilatura.extract(
+        markup, favor_recall=True, include_comments=False, include_tables=True
+    )
+    return extracted.strip() if extracted else ""
