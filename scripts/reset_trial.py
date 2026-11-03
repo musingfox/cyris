@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Clear one trial deployment back to no sources, waiting for onboarding.
 
-A trial is verified after each release before production gets the image
-(docs/operations.md), and a verification that walks /onboarding needs a trial
+A trial is verified after each release, once a push to main has deployed it to
+production (docs/operations.md), and a verification that walks /onboarding needs a trial
 that has not been onboarded yet. This empties the trial's reader content and
 resets the settings the onboarding wizard asks for, so its tester (or the owner)
 walks the wizard again from the first step.

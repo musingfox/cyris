@@ -5,6 +5,7 @@ fake that records its arguments. Its stdin is closed unless a test types answers
 stage that would wait for a key reads end-of-file instead: a "no" at every y/N gate.
 """
 
+import json
 import re
 import shutil
 import stat
@@ -105,6 +106,7 @@ for ((i = 0; i < ${#args[@]}; i++)); do
   fi
 done
 case " $* " in
+  *" whoami "*) echo "${FAKE_WHOAMI:-}" ;;
   *" --dry-run "*) ;;
   *" deploy "*)
     case "$*" in
@@ -933,3 +935,80 @@ def test_the_hand_over_copies_no_token_to_the_clipboard(rig) -> None:
     assert "pbcopy" not in run.calls
     assert "password manager" not in run.out
     assert "Access one-time PIN" in run.out
+
+
+# gh answers from JSON fixtures through the wizard's own -q filter, so the filter is what is
+# tested. Its list key is the workflow file, its view key the run id.
+FAKE_GH = r"""#!/bin/bash
+echo "gh $*" >> "$CALLS"
+q=""; prev=""
+for a in "$@"; do [[ "$prev" == -q ]] && q="$a"; prev="$a"; done
+case "$1 $2" in
+  "run list") key="list-$4" ;;
+  "run view") key="view-$3" ;;
+  *) exit 0 ;;
+esac
+jq -r "$q" "$FAKE_DIR/gh-$key.json"
+"""
+
+RELEASED_SHA, MANUAL_SHA, SKIPPED_SHA = "1" * 40, "2" * 40, "3" * 40
+
+
+def _deploy_history(rig, tmp_path: Path, manual_at: str) -> Run:
+    """Stage 2 with a release that deployed, a newer one the head guard skipped, and a
+    deploy.yml dispatch finished at `manual_at`."""
+    if shutil.which("jq", path="/usr/bin:/bin") is None:
+        pytest.skip("jq is not in /usr/bin or /bin")
+    r = rig("1", state={"IMAGE_TAG": None, "IMAGE_DIGEST": None}, FAKE_WHOAMI=ACCOUNT)
+    fake = tmp_path / "fake"
+
+    def job(name: str, conclusion: str, at: str) -> dict:
+        return {"name": name, "conclusion": conclusion, "completedAt": at}
+
+    fixtures = {
+        "list-release-image.yml": [
+            {"databaseId": 102, "headSha": SKIPPED_SHA},
+            {"databaseId": 101, "headSha": RELEASED_SHA},
+        ],
+        "list-deploy.yml": [{"databaseId": 201, "headSha": MANUAL_SHA}],
+        "view-101": {
+            "jobs": [
+                job("release", "success", "2026-11-03T10:00:00Z"),
+                job("current", "success", "2026-11-03T10:01:00Z"),
+                job("deploy / deploy", "success", "2026-11-03T10:20:00Z"),
+            ]
+        },
+        "view-102": {
+            "jobs": [
+                job("release", "success", "2026-11-03T11:00:00Z"),
+                job("current", "success", "2026-11-03T11:01:00Z"),
+                job("deploy / deploy", "skipped", "2026-11-03T11:01:00Z"),
+            ]
+        },
+        "view-201": {"jobs": [job("deploy", "success", manual_at)]},
+    }
+    for key, body in fixtures.items():
+        (fake / f"gh-{key}.json").write_text(json.dumps(body))
+    bin_dir = tmp_path / "bin"
+    (bin_dir / "gh").write_text(FAKE_GH)
+    (bin_dir / "git").write_text(
+        FAKE_GIT
+        + 'case "$*" in\n'
+        + '  "tag -l image/* --sort=-creatordate") echo image/1111111 ;;\n'
+        + f'  "tag -l --format=%(contents) image/1111111") echo "digest=sha256:{"b" * 64}" ;;\n'
+        + "esac\n"
+    )
+    return r.run(stdin=START)
+
+
+def test_the_last_deploy_note_counts_a_release_that_deployed(rig, tmp_path: Path) -> None:
+    """A release deploys inside its own run, so deploy.yml's runs alone miss it."""
+    run = _deploy_history(rig, tmp_path, manual_at="2026-11-02T09:00:00Z")
+    assert f"Production's last deploy: {RELEASED_SHA} (finished 2026-11-03T10:20:00Z)" in run.out
+    assert "Pick the image production runs" in run.out
+
+
+def test_the_last_deploy_note_counts_a_later_deploy_started_by_hand(rig, tmp_path: Path) -> None:
+    run = _deploy_history(rig, tmp_path, manual_at="2026-11-03T12:00:00Z")
+    assert f"Production's last deploy: {MANUAL_SHA} (finished 2026-11-03T12:00:00Z)" in run.out
+    assert SKIPPED_SHA not in run.out

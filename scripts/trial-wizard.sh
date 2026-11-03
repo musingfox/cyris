@@ -307,6 +307,29 @@ derive_names() {
   eval "$out"
 }
 
+# production_last_deploy prints the commit production last deployed and when, from GitHub's
+# run history. A release deploys by calling deploy.yml as a job of its own run, so that deploy
+# has no deploy.yml run: both workflows' runs are read, and a run counts only if its deploy job
+# succeeded (a release's is skipped by an unticked box or by the head guard). The wizard holds
+# only the trial's service token, so it cannot ask production's /api/build itself.
+production_last_deploy() {
+  command -v gh >/dev/null 2>&1 || { echo "gh unavailable"; return 0; }
+  local found
+  found=$(
+    for workflow in release-image.yml deploy.yml; do
+      gh run list --workflow "$workflow" --limit 10 --json databaseId,headSha \
+        -q '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null || true
+    done | while read -r id sha; do
+      at=$(gh run view "$id" --json jobs -q '[.jobs[]
+        | select(.conclusion == "success" and (.name == "deploy" or (.name | endswith("/ deploy"))))
+        | .completedAt] | max // empty' 2>/dev/null || true)
+      [[ -n "$at" ]] && echo "$at $sha"
+    done | sort -r | head -1
+  ) || true
+  if [[ -n "$found" ]]; then echo "${found#* } (finished ${found%% *})"
+  else echo "none in the last 10 runs of release-image.yml or deploy.yml"; fi
+}
+
 # access_header_file writes the service-token headers to a private temp file and prints its
 # path, so the secret reaches curl through a file and never through argv.
 access_header_file() {
@@ -470,7 +493,7 @@ stage_2() {
     IMAGE_DIGEST=$(git tag -l --format='%(contents)' "$IMAGE_TAG" | grep -o 'sha256:[0-9a-f]\{64\}' || true)
     [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || die "No sha256 digest in tag $IMAGE_TAG."
     say "Newest image: $IMAGE_TAG ($IMAGE_DIGEST)"
-    note "Production's last deploy: $(gh run list --workflow deploy.yml --limit 1 --json headSha,conclusion -q '.[0] | "\(.headSha) \(.conclusion)"' 2>/dev/null || echo 'gh unavailable')"
+    note "Production's last deploy: $(production_last_deploy)"
     note "The tag's short sha must prefix that commit."
     confirm "Is $IMAGE_TAG the image production runs?" || die "Pick the image production runs before deploying a trial."
     write_env IMAGE_TAG "$IMAGE_TAG"
