@@ -7,6 +7,7 @@ crashed digest simply reads the same window again.
 
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import math
@@ -14,6 +15,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from cyris.adapters.fetch.html_text import plain_text
 from cyris.domain.models import Article, Lane, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,36 @@ def poll_timeout_seconds(feeds: int) -> float:
 
 def _worker_bound(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _articles_from_rows(rows: list[dict], sources: dict[str, SourceConfig]) -> list[Article]:
+    """Map the Worker's rows onto Articles, skipping a malformed row.
+
+    Blocking: `fetch_articles` runs it in a worker thread.
+    """
+    articles = []
+    for row in rows:
+        source = sources.get(row.get("source_name", ""))
+        try:
+            articles.append(
+                Article(
+                    id=row.get("guid") or row["url"],
+                    # The Worker's parser, like feedparser, leaves a CDATA title's
+                    # entities as text, and the page would escape them again.
+                    title=html.unescape(row.get("title", "")),
+                    url=row["url"],
+                    content=plain_text(row.get("content", "")),
+                    author=row.get("author") or None,
+                    published_at=row["published_at"],
+                    source_name=row.get("source_name", ""),
+                    source_lane=source.lane if source else Lane.SKIM,
+                    source_tags=source.tags if source else [],
+                    image_url=row.get("image_url") or None,
+                )
+            )
+        except (KeyError, ValueError):
+            logger.warning("Skipping malformed row: %s", row.get("url"), exc_info=True)
+    return articles
 
 
 class CloudflareRssSource:
@@ -87,28 +119,9 @@ class CloudflareRssSource:
                 WORKER_ROW_CEILING,
             )
 
-        articles = []
-        for row in rows:
-            source = sources.get(row.get("source_name", ""))
-            try:
-                articles.append(
-                    Article(
-                        id=row.get("guid") or row["url"],
-                        # The Worker's parser, like feedparser, leaves a CDATA title's
-                        # entities as text, and the page would escape them again.
-                        title=html.unescape(row.get("title", "")),
-                        url=row["url"],
-                        content=row.get("content", ""),
-                        author=row.get("author") or None,
-                        published_at=row["published_at"],
-                        source_name=row.get("source_name", ""),
-                        source_lane=source.lane if source else Lane.SKIM,
-                        source_tags=source.tags if source else [],
-                        image_url=row.get("image_url") or None,
-                    )
-                )
-            except (KeyError, ValueError):
-                logger.warning("Skipping malformed row: %s", row.get("url"), exc_info=True)
+        # `plain_text` parses each entry and a read holds up to WORKER_ROW_CEILING
+        # rows: build the whole batch off the event loop in one hop.
+        articles = await asyncio.to_thread(_articles_from_rows, rows, sources)
 
         logger.info("Read %d buffered entries from the RSS worker", len(articles))
         return articles

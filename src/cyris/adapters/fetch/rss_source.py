@@ -22,6 +22,7 @@ from urllib.parse import urljoin, urlsplit
 import feedparser
 
 from cyris.adapters.fetch.email_parser import strip_tracking_params
+from cyris.adapters.fetch.html_text import plain_text
 from cyris.adapters.http_client import HttpClient
 from cyris.domain.models import Article, Lane, SourceConfig
 
@@ -48,6 +49,54 @@ def _entry_published(entry: Mapping[str, object]) -> datetime | None:
         if parsed:
             return datetime(*parsed[:6], tzinfo=UTC)
     return None
+
+
+def _articles_from_feed(
+    body: bytes, source: SourceConfig, after: datetime, before: datetime
+) -> list[Article]:
+    """Parse a feed body and map the entries inside the window onto Articles.
+
+    Blocking: `fetch_articles` runs it in a worker thread.
+    """
+    # feedparser.parse(url) would do its own blocking urllib fetch — hand it the body
+    # so the shared client's User-Agent and redirect handling apply. As a stream:
+    # bare bytes that name a path are opened as that local file.
+    parsed = feedparser.parse(io.BytesIO(body))
+
+    articles = []
+    for entry in parsed.entries:
+        published_at = _entry_published(entry)
+        if published_at is None:
+            logger.debug("Entry without date skipped: %s", getattr(entry, "link", ""))
+            continue
+        if not (after <= published_at < before):
+            continue
+
+        # Without stripping, the same article arrives under two URLs and
+        # defeats the store's URL primary key.
+        link = getattr(entry, "link", "")
+        url = strip_tracking_params(link)
+        if not url:
+            continue
+
+        content = _entry_content(entry)
+
+        articles.append(
+            Article(
+                id=getattr(entry, "id", "") or url,
+                # A CDATA title keeps its entities as text, and the page escapes it again.
+                title=html.unescape(getattr(entry, "title", "")),
+                url=url,
+                content=plain_text(content),
+                author=getattr(entry, "author", None) or None,
+                published_at=published_at,
+                source_name=source.name,
+                source_lane=source.lane or Lane.SKIM,
+                source_tags=source.tags,
+                image_url=_entry_image(entry, link),
+            )
+        )
+    return articles
 
 
 class RssSource:
@@ -93,45 +142,9 @@ class RssSource:
     ) -> list[Article]:
         response = await self._http.get(source.url or "")
         response.raise_for_status()
-        # feedparser.parse(url) would do its own blocking urllib fetch — hand it the body
-        # so the shared client's User-Agent and redirect handling apply. As a stream:
-        # bare bytes that name a path are opened as that local file.
-        parsed = await asyncio.to_thread(feedparser.parse, io.BytesIO(response.content))
-
-        articles = []
-        for entry in parsed.entries:
-            published_at = _entry_published(entry)
-            if published_at is None:
-                logger.debug("Entry without date skipped: %s", getattr(entry, "link", ""))
-                continue
-            if not (after <= published_at < before):
-                continue
-
-            # Without stripping, the same article arrives under two URLs and
-            # defeats the store's URL primary key.
-            link = getattr(entry, "link", "")
-            url = strip_tracking_params(link)
-            if not url:
-                continue
-
-            content = _entry_content(entry)
-
-            articles.append(
-                Article(
-                    id=getattr(entry, "id", "") or url,
-                    # A CDATA title keeps its entities as text, and the page escapes it again.
-                    title=html.unescape(getattr(entry, "title", "")),
-                    url=url,
-                    content=content,
-                    author=getattr(entry, "author", None) or None,
-                    published_at=published_at,
-                    source_name=source.name,
-                    source_lane=source.lane or Lane.SKIM,
-                    source_tags=source.tags,
-                    image_url=_entry_image(entry, link),
-                )
-            )
-        return articles
+        # Parsing and the HTML-to-text conversion both burn CPU, so they share one
+        # thread call and the event loop stays free for the other feeds.
+        return await asyncio.to_thread(_articles_from_feed, response.content, source, after, before)
 
     async def health_check(self) -> bool:
         return True
