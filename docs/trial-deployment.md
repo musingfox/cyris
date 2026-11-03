@@ -61,7 +61,8 @@ Either works; the first trial (2026-10-06) runs on production's.
 - **The first image is production's.** The wizard takes the newest `image/*` tag the
   release workflow writes (see [operations.md](operations.md)) and asks you to confirm
   it is the one production runs, so the trial tests the code the tester will keep
-  getting. After that, a trial staged on gets each release before production does.
+  getting. After that, a push to `main` deploys production first, and a trial staged on
+  gets each release after it.
 - **The trial has its own API token**, with the permissions of
   [install step 3](install-cloudflare.md#3-create-an-api-token) and no more, so it can be
   revoked alone. Only on an account of its own does a leak reach nothing but the trial.
@@ -102,8 +103,8 @@ Either works; the first trial (2026-10-06) runs on production's.
 
 ## After each release
 
-A release runs on a trial before production; the flow is in
-[operations.md](operations.md#staging-first-production-after). From the checkout that
+A push to `main` deploys production first, and the trial gets the release after it; the
+flow is in [operations.md](operations.md#the-trial-deployment-after-production). From the checkout that
 provisioned the trial, `scripts/deploy_trial.py` puts the release on it, and
 `scripts/reset_trial.py` first clears it back to waiting for onboarding when the release
 is to be checked from the wizard's first step. `scripts/seed_trial.py` instead restores

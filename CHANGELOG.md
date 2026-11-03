@@ -52,6 +52,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A push to `main` deploys production.** The release workflow now runs on
+  every push to `main`. A release that passes its checks deploys the commit it
+  released, as a separate job, so a failed build and a failed deploy still show
+  apart. Only a commit that is still the head of its ref deploys; a re-run
+  of an old release, or an older release finishing after a newer push, skips
+  its deploy. A release started by hand deploys too, unless its
+  `deploy` box is unticked. "Deploy the container Worker" can still be run by hand to pin an
+  image by digest, until the next push deploys over it.
 - **Every `read` article gets a summary.** An article scored under
   **Summary score** used to show the first 80 characters of its text, which for
   a newsletter was often its subscribe pitch; it is now summarized with the rest
