@@ -94,9 +94,27 @@ async def _refuse_private(request: httpx.Request) -> None:
         raise _PageRefusedError(f"private address {request.url.host}")
 
 
+async def _last_hop(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """The streamed response at the end of `url`'s redirects, its body not yet read.
+
+    Each redirect is closed unread. httpx's `follow_redirects` reads every hop's
+    body whole, decompressed, before the caller sees the final response, so no cap
+    here could count it.
+    """
+    request = client.build_request("GET", url)
+    for _ in range(client.max_redirects + 1):
+        response = await client.send(request, stream=True)
+        if response.next_request is None:
+            return response
+        await response.aclose()
+        request = response.next_request
+    raise _PageRefusedError(f"more than {client.max_redirects} redirects")
+
+
 async def _fetch(client: httpx.AsyncClient, url: str) -> str:
     """The body text of the page at `url`; raises when there is none to read."""
-    async with client.stream("GET", url) as response:
+    response = await _last_hop(client, url)
+    try:
         if not response.is_success:
             # No retry: a 4xx will not change, and a 5xx falls back to the feed text.
             raise _PageRefusedError(f"HTTP {response.status_code}")
@@ -113,6 +131,8 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> str:
             if len(body) > MAX_PAGE_BYTES:
                 raise _PageRefusedError(f"larger than {MAX_PAGE_BYTES} bytes")
         markup = _markup(bytes(body), response.charset_encoding)
+    finally:
+        await response.aclose()
     # Off the event loop: a page can be megabytes of markup.
     return await asyncio.to_thread(page_text, markup)
 
@@ -186,7 +206,6 @@ async def lengthen_articles(
     outcomes: Counter = Counter()
     async with httpx.AsyncClient(
         timeout=PAGE_TIMEOUT_SECONDS,
-        follow_redirects=True,
         # Uncompressed, so `MAX_PAGE_BYTES` counts what arrives, not what one chunk
         # inflates to.
         headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"},

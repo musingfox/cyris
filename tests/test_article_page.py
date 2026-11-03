@@ -234,6 +234,32 @@ async def test_an_address_that_is_not_a_public_web_page_is_never_fetched(url: st
     assert out.content == TEASER
 
 
+class _WatchedBody(httpx.AsyncByteStream):
+    def __init__(self) -> None:
+        self.read = False
+
+    async def __aiter__(self):
+        self.read = True
+        yield b"x" * 1024
+
+
+async def test_a_redirects_own_body_is_never_read() -> None:
+    # httpx's own redirect following reads each hop's body whole, before any cap.
+    url = "https://pjwu.test/writing/moved/"
+    moved = "https://pjwu.test/writing/others-standards/"
+    hop_body = _WatchedBody()
+    async with respx.mock:
+        hop = respx.get(url).mock(
+            return_value=httpx.Response(302, headers={"Location": moved}, stream=hop_body)
+        )
+        page = respx.get(moved).mock(return_value=_html())
+        (out,) = await _lengthen([_article(url)])
+
+    assert (hop.call_count, page.call_count) == (1, 1)
+    assert not hop_body.read
+    assert "Paragraph 11" in out.content
+
+
 async def test_a_redirect_to_a_private_address_is_not_followed() -> None:
     url = "https://pjwu.test/writing/moved/"
     async with respx.mock:
