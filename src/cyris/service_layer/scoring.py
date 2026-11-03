@@ -92,7 +92,7 @@ async def score_articles_batch(
     result: dict[str, tuple[float, str]] = {}
     url_to_tags: dict[str, list[str]] = {}
     picks: dict[str, AreaPick] = {}
-    entries = data.get("scores", [])
+    entries = data.get("scores") or []
     for entry in entries:
         article_id = entry["id"]
         score = float(entry["score"])
