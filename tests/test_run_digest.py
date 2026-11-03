@@ -3263,3 +3263,89 @@ def test_deps_carries_no_cutoff_field() -> None:
     from dataclasses import fields
 
     assert "embedding_threshold" not in {f.name for f in fields(Deps)}
+
+
+def _teaser_deps(tmp_path: Path, articles: list[Article], llm: FakeLLM | None = None):
+    """Deps whose `lengthen_articles` prefixes each article it is handed, and records them."""
+    handed: list[tuple[list[str], int]] = []
+
+    async def lengthen(articles, *, summarize_snippet_length):
+        handed.append(([a.url for a in articles], summarize_snippet_length))
+        return [a.model_copy(update={"content": f"PAGE BODY {a.content}"}) for a in articles]
+
+    deps, _ = make_deps(tmp_path, llm or FakeLLM(), FakeSource(articles))
+    recorded: list[dict] = []
+    deps = replace(deps, lengthen_articles=lengthen, record_run=recorded.append)
+    return deps, handed, recorded
+
+
+async def test_a_teaser_is_summarized_from_its_page_but_scored_and_stored_as_its_feed(
+    tmp_path: Path,
+) -> None:
+    article = Article(
+        id=1,
+        title="Enterprise AI Adoption",
+        url="https://example.com/ai",
+        content="Enterprises accelerate AI adoption.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_lane=Lane.READ,
+        source_tags=["tech"],
+    )
+    llm = FakeLLM(
+        [
+            json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]}),
+            json.dumps({"sections": []}),
+        ]
+    )
+    deps, handed, _ = _teaser_deps(tmp_path, [article], llm)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert handed == [(["https://example.com/ai"], deps.cfg.app.digest.summarize_snippet_length)]
+    scoring, summarize = llm.calls[0]["prompt"], llm.calls[-1]["prompt"]
+    assert "Enterprises accelerate" in scoring and "PAGE BODY" not in scoring
+    assert "PAGE BODY Enterprises accelerate" in summarize
+    [stored] = deps.store.get_by_urls(["https://example.com/ai"])
+    assert stored.content == "Enterprises accelerate AI adoption."
+
+
+async def test_only_the_articles_left_after_the_cap_and_the_holds_are_lengthened(
+    tmp_path: Path,
+) -> None:
+    articles = [
+        _published("newest", "S", 1),
+        _published("held", "S", 2),
+        _published("capped", "S", 30),
+    ]
+    deps, handed, _ = _teaser_deps(tmp_path, articles)
+    deps.cfg.app.digest.max_articles_per_digest = 2
+    deps.cfg.app.vote_similarity.enabled = True
+
+    class Holds:
+        def active(self, at):
+            return {"https://example.com/held": object()}
+
+    deps = replace(deps, suppressions=Holds())
+
+    await run_digest(deps, RunOptions())
+
+    assert [urls for urls, _ in handed] == [["https://example.com/newest"]]
+
+
+async def test_a_failed_lengthening_keeps_the_feed_text_and_the_run(tmp_path: Path) -> None:
+    async def broken(articles, *, summarize_snippet_length):
+        raise RuntimeError("pages down")
+
+    article = _published("only", "S", 1).model_copy(update={"source_lane": Lane.READ})
+    llm = FakeLLM(json.dumps({"sections": []}))
+    deps, _, recorded = _teaser_deps(tmp_path, [article], llm)
+    deps = replace(deps, lengthen_articles=broken)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    [summary] = recorded
+    assert summary["article_pages_error"] == "pages down"
+    assert "only body" in llm.calls[-1]["prompt"]

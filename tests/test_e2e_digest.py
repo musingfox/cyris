@@ -330,6 +330,8 @@ EXPECTED_ROUTES = {
     "newsletter_ack": 1,
     "promote_list": 1,
     "promote_ack": 1,
+    # Every RSS article is shorter than the summarize window, so each one's page is asked.
+    "article_page": len(ARTICLES),
 }
 
 # Derived from the code paths of one first publish, in the order they run:
@@ -414,6 +416,18 @@ def test_every_route_receives_exactly_its_requests(receipts) -> None:
 
 def test_d1_receives_exactly_these_statements_in_this_order(receipts) -> None:
     assert [statement_kind(s["sql"]) for s in d1_statements(receipts.records)] == EXPECTED_D1
+
+
+def test_each_rss_teasers_page_is_asked_once_under_cyris_own_name(receipts) -> None:
+    """The letters' pages are never asked: their host is no route's, so one would be unclaimed."""
+    pages = by_route(receipts.records, "article_page")
+
+    assert sorted(f"https://{r['host']}{r['path']}" for r in pages) == sorted(
+        a["url"] for a in ARTICLES.values()
+    )
+    for r in pages:
+        assert "cyris" in r["headers"]["user-agent"]
+        assert "mozilla" not in r["headers"]["user-agent"].lower()
 
 
 def _within_run(r: "Receipts", iso: str) -> bool:

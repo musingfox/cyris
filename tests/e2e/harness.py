@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fakes import TEST_SETTINGS, SqliteD1
 
@@ -282,7 +283,13 @@ def _write_script(run_dir: Path, scenario: Scenario) -> Path:
                 "routes_out": str(run_dir / "routes.json"),
                 "ready": str(run_dir / "proxy.ready"),
                 "d1_sqlite": str(run_dir / "d1.sqlite"),
-                "hosts": HOSTS,
+                # Where the RSS rows' articles live, which a run asks for a teaser's page.
+                "hosts": HOSTS
+                | {
+                    "article_hosts": sorted(
+                        {urlsplit(r["url"]).hostname for r in scenario.rss_rows}
+                    )
+                },
                 "pages_project": PAGES_PROJECT,
                 "pages_upload_jwt": PAGES_UPLOAD_JWT,
                 "worker_domains": WORKER_DOMAINS,

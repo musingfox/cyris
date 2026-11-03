@@ -22,6 +22,8 @@ The APIs mirrored here, by route name:
   finds in the system prompt, from rules the test scripts (see `_llm_answer`).
 - `rss_articles`, `newsletter_*`, `promote_*`: the three Workers cyris pulls from,
   on the hosts the test configured, as `workers/*/src/index.js` answers.
+- `article_page`: a feed article's own page, on the hosts of the scenario's RSS rows.
+  Every page is gone (404), so a run keeps each article's feed text.
 
 Every route refuses a missing or wrong credential, as its service does: the script
 names the one header and value each route requires, and Discord's webhook path.
@@ -189,17 +191,19 @@ class Fakes:
             ("newsletter_ack", "POST", "newsletter_host", r"/ack", self.newsletter_ack),
             ("promote_list", "GET", "promote_host", r"/promotions", self.promotions),
             ("promote_ack", "POST", "promote_host", r"/ack", self.promote_ack),
+            ("article_page", "GET", "article_hosts", r"/.*", self.article_page),
         ]
 
     def _claim(self, request):
-        """The route that answers this request, or None. A host key names a scripted host."""
+        """The route that answers this request, or None. A host key names a scripted host,
+        or a list of them."""
         dropped = set(self.script.get("drop", []))
         for name, method, host, path, handler in self.routes:
-            host = self.script["hosts"].get(host, host)
+            hosts = self.script["hosts"].get(host, host)
             if (
                 name not in dropped
                 and request.method == method
-                and request.pretty_host == host
+                and request.pretty_host in (hosts if isinstance(hosts, list) else [hosts])
                 and re.fullmatch(path, request.path.split("?", 1)[0])
             ):
                 return name, handler
@@ -384,6 +388,9 @@ class Fakes:
         rows = [{k: r[k] for k in RSS_COLUMNS if k in r} for r in rows]
         # The Worker binds the limit into SQL, and SQLite reads a negative one as none.
         return _json(200, rows if limit < 0 else rows[:limit])
+
+    def article_page(self, request, entry):
+        return 404, b"<html><body>Not found</body></html>", "text/html"
 
     def newsletters(self, request, entry):
         return _json(200, [_worker_item(Path(p)) for p in self.script["newsletters"]])
