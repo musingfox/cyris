@@ -10,7 +10,7 @@ from test_run_digest import FakeSource, make_deps
 
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
-from cyris.domain.models import Article, DigestContent, Lane, UsageStats
+from cyris.domain.models import Article, ArticleState, DigestContent, Lane, UsageStats
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -37,6 +37,10 @@ async def _republish(tmp_path: Path, *, raw_page: bool, record, articles=(), sto
     if store_cls is not None:
         deps = replace(deps, store=store_cls(tmp_path / "agent-vault"))
     deps.store.save(list(articles))
+    # The issue being republished judged these rows; left pending, this run would judge them again.
+    deps.store.update_states(
+        {a.url: (ArticleState.ACCEPTED, None) for a in articles}, digest_date=DATE
+    )
     db = SqliteD1()
     digests = D1DigestStore(db)
     digests.save(

@@ -115,7 +115,12 @@ async def test_a_failed_fetch_is_an_ingest_status_of_its_own(
     assert events[0]["status"] == "failed"
 
 
-async def test_what_an_earlier_hour_stored_reaches_the_digest(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "at_digest_time", [[article(2)], []], ids=["feed-has-others", "feed-empty"]
+)
+async def test_what_an_earlier_hour_stored_reaches_the_digest(
+    tmp_path: Path, at_digest_time: list[Article]
+) -> None:
     """The feed dropped story 1 before the digest hour; the digest still carries it."""
     cfg, vault = config(tmp_path)
     store = ArticleStore(vault)
@@ -130,7 +135,7 @@ async def test_what_an_earlier_hour_stored_reaches_the_digest(tmp_path: Path) ->
         cfg=cfg,
         store=store,
         llm=FakeLLM([]),
-        fetch_sources=[FakeSource([article(2)])],
+        fetch_sources=[FakeSource(at_digest_time)],
         html_writer=HtmlDigestWriter(html_dir),
         publish=None,
         sync_promotions=None,
@@ -142,7 +147,7 @@ async def test_what_an_earlier_hour_stored_reaches_the_digest(tmp_path: Path) ->
     assert report.status == "ok"
     page = next(html_dir.glob("*-morning.html")).read_text()
     assert "https://example.com/1" in page
-    assert "https://example.com/2" in page
+    assert all(a.url in page for a in at_digest_time)
 
 
 def write_config(tmp_path: Path) -> tuple[Path, Path]:

@@ -280,7 +280,8 @@ remains as the no-Worker fallback and is correct only for slow feeds.
 **A local install buffers in its own store.** Without the Worker, `cyris ingest`
 (`service_layer/ingest.py`) polls through `RssSource` every hour and saves what it gets, with no
 LLM and no output; the run reads its window by `first_seen_at`, so an entry an earlier hour
-stored reaches the digest after its feed has dropped it. It filters by publish date over the
+stored reaches the digest after its feed has dropped it, even when the digest's own fetch comes
+back empty. It filters by publish date over the
 digest window, as `RssSource` does at digest time, so a blog's old history is not stamped as
 new. The Worker needs Workers Paid; the 2026-10-04 objection to polling from the cyris process,
 that the container would wake every hour, does not apply to a machine that is already on.
