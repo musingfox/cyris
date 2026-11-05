@@ -125,11 +125,17 @@ class RssSource:
         results = await asyncio.gather(*(one(s) for s in feeds), return_exceptions=True)
 
         articles: list[Article] = []
+        failed: list[str] = []
         for source, result in zip(feeds, results, strict=True):
             if isinstance(result, BaseException):
                 logger.warning("Feed failed: %s (%s): %s", source.name, source.url, result)
+                failed.append(source.name)
                 continue
             articles.extend(result)
+        # One dead feed is the run's to absorb; all of them is a failed fetch, not a
+        # quiet hour, and `fetch_all_articles` reports it as one.
+        if len(failed) == len(feeds):
+            raise RuntimeError(f"every feed failed: {', '.join(failed)}")
 
         logger.info("Fetched %d entries from %d feeds", len(articles), len(feeds))
         return articles
