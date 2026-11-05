@@ -450,7 +450,10 @@ def ingest_command(
 
     try:
         cfg = load_effective_config(config_path, sources_path)
-        cfg.validate_required_keys()
+        # Not `validate_required_keys`: it also wants the LLM's key, and a poll calls
+        # no LLM, so a missing key must not stop the buffer while it is restored.
+        if missing := cfg.missing_store_keys():
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
         cfg.require_complete_settings()
         cfg.require_sources()
     except (FileNotFoundError, ValueError) as e:

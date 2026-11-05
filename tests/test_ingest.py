@@ -189,3 +189,21 @@ def test_cli_stores_what_the_feed_holds(tmp_path: Path, monkeypatch: pytest.Monk
     assert result.exit_code == 0, result.output
     assert "Stored 1 new article" in result.output
     assert list((tmp_path / "agent-vault" / "articles").glob("*.json"))
+
+
+def test_cli_polls_without_the_llm_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path, sources_path = write_config(tmp_path)
+    config_path.write_text(
+        config_path.read_text()
+        .replace('\nprovider = "none"', '\nprovider = "anthropic"', 1)
+        .replace('\nmodel = ""', '\nmodel = "claude-haiku-5-5"', 1)
+    )
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg: FakeSource([article(1)]))
+
+    result = CliRunner().invoke(
+        app, ["ingest", "--config", str(config_path), "--sources", str(sources_path)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Stored 1 new article" in result.output
