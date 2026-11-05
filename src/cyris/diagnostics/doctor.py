@@ -625,9 +625,10 @@ async def _check_workers(cfg: Config) -> list[Check]:
             Check(
                 "rss buffer",
                 "warn",
-                "not configured — feeds are polled directly at digest time",
+                "not configured — the store holds only what this machine polls",
                 "A digest-time poll only sees each feed's current snapshot: measured, "
-                "it found 95 of the 179 articles the buffer held. Deploy workers/rss/.",
+                "it found 95 of the 179 articles the buffer held. Run `cyris ingest` "
+                "hourly (docker compose does), or deploy workers/rss/.",
             )
         )
 

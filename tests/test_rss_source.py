@@ -120,6 +120,22 @@ async def test_one_broken_feed_does_not_sink_the_run():
 
 
 @pytest.mark.asyncio
+async def test_every_feed_failing_is_a_failed_fetch_not_an_empty_one():
+    http = AsyncMock()
+    http.get.side_effect = [OSError("connection refused"), OSError("timed out")]
+
+    with pytest.raises(RuntimeError, match="every feed failed: A, B"):
+        await RssSource(http).fetch_articles(
+            after=AFTER,
+            before=BEFORE,
+            sources={
+                "A": SourceConfig(name="A", url="https://a.test/feed"),
+                "B": SourceConfig(name="B", url="https://b.test/feed"),
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_tracking_params_are_stripped():
     """Unstripped tracking params defeat the store's URL primary key."""
     http = _http_returning(

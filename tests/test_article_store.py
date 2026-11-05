@@ -91,6 +91,23 @@ def test_save_with_duplicates(store: ArticleStore, sample_articles: list[Article
     assert len(store.load_by_time_range(now - timedelta(hours=1), now + timedelta(hours=1))) == 2
 
 
+def test_a_local_time_window_finds_a_row_from_the_previous_utc_day(
+    store: ArticleStore, sample_articles: list[Article]
+) -> None:
+    """Partitions are named by UTC date; a window given in local time still reaches them."""
+    from zoneinfo import ZoneInfo
+
+    seen = datetime(2026, 11, 3, 23, 0, tzinfo=UTC)  # 07:00 on 11-04 in Taipei
+    store.save([sample_articles[0]], now=seen)
+    taipei = ZoneInfo("Asia/Taipei")
+
+    rows = store.load_by_time_range(
+        datetime(2026, 11, 4, 6, 0, tzinfo=taipei), datetime(2026, 11, 5, 6, 0, tzinfo=taipei)
+    )
+
+    assert [r.url for r in rows] == [sample_articles[0].url]
+
+
 def test_save_mixed_ids(store: ArticleStore) -> None:
     """Feed ids are ints, newsletter ids are strings; both must round-trip."""
     now = datetime.now(UTC)

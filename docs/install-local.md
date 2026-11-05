@@ -109,14 +109,17 @@ Everything is under `agent-vault/`, which git ignores:
 
 ## 7. Schedule it
 
-Pick one of the two. Both run hourly with `--if-due`, which does nothing except on
-the `digest_schedule` hours and picks `--period` from which hour it is.
+Pick one of the two. Both run hourly: `cyris ingest` stores what the feeds hold, then
+`cyris run --if-due` does nothing except on the `digest_schedule` hours and picks
+`--period` from which hour it is. A feed keeps only a few hours of entries, so without
+the hourly `ingest` a digest misses what a busy feed dropped since the last one. The two
+run in sequence on one line because the store has no locking.
 
 **cron.** Cron starts in your home directory with a minimal `PATH`, so change into the
 repo and give `uv` by its absolute path (`command -v uv` prints it):
 
 ```cron
-0 * * * * cd /path/to/cyris && /path/to/uv run cyris run --if-due >> "$HOME/cyris.log" 2>&1
+0 * * * * cd /path/to/cyris && { /path/to/uv run cyris ingest; /path/to/uv run cyris run --if-due; } >> "$HOME/cyris.log" 2>&1
 ```
 
 A fixed `cyris run` line per hour, without `--if-due` or `--period`, labels every issue
@@ -128,8 +131,8 @@ A fixed `cyris run` line per hour, without `--if-due` or `--period`, labels ever
 docker compose up -d
 ```
 
-This builds the image and runs supercronic inside it, which fires `cyris run --if-due`
-and `cyris promote-sync` every hour. The container reads `.env` (the file must exist)
+This builds the image and runs supercronic inside it, which fires `cyris ingest`, then
+`cyris run --if-due`, and `cyris promote-sync` every hour. The container reads `.env` (the file must exist)
 and bind-mounts `cyris.toml`, `sources.yaml` and `./agent-vault`, so the store and the
 HTML stay on your disk. After editing `cyris.toml` or `sources.yaml`, run
 `docker compose up -d --force-recreate`: a plain `up -d` keeps the container reading
@@ -158,10 +161,6 @@ here shows no Archive link.
   domain with Cloudflare Email Routing. Newsletters that publish RSS are ordinary feeds
   and work locally.
 - **An archive with a URL.** The archive is a file on your disk.
-- **The RSS buffer.** A feed only publishes its current snapshot, and a busy one holds
-  2–4 hours of it, so a digest-time poll misses part of a 24-hour window. The buffer
-  (`workers/rss`) closes that gap, but it reads its feed list from D1 and needs Workers
-  Paid, so it belongs to the Cloudflare track.
 
 ## Moving to Cloudflare later
 
@@ -212,6 +211,7 @@ A D1 deployment reads runtime settings from D1 only, and `cyris doctor` fails wh
 - **compose ignores an edit to `cyris.toml`**: `docker compose up -d --force-recreate`.
 - **`Promotion sync not configured` every hour in the compose log**: harmless; there is
   no vote Worker locally.
-- **doctor warns `rss buffer — not configured`**: informational on a local install.
+- **doctor warns `rss buffer — not configured`**: informational on a local install
+  that runs `cyris ingest` hourly, as step 7 schedules it.
 - **doctor says to set the Discord webhook on `/settings`**: locally it is
   `[notify] discord_webhook_url` in `cyris.toml`.

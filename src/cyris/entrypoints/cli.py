@@ -431,6 +431,51 @@ def promote_sync(
         typer.echo(f"Their topic votes were not written: {synced.topic_votes_failed}")
 
 
+@app.command("ingest")
+def ingest_command(
+    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
+        "cyris.toml"
+    ),
+    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
+        "sources.yaml"
+    ),
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
+) -> None:
+    """Poll the feeds and store new articles for the next digest (no LLM, no output)."""
+    _setup_logging(verbose)
+
+    from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
+    from cyris.bootstrap import build_rss_source, build_store, load_effective_config
+    from cyris.service_layer.ingest import ingest
+
+    try:
+        cfg = load_effective_config(config_path, sources_path)
+        # Not `validate_required_keys`: it also wants the LLM's key, and a poll calls
+        # no LLM, so a missing key must not stop the buffer while it is restored.
+        if missing := cfg.missing_store_keys():
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+        cfg.require_complete_settings()
+        cfg.require_sources()
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+
+    if cfg.awaiting_onboarding():
+        logger.info("%s", cfg.onboarding_wait())
+        return
+
+    source = build_rss_source(cfg)
+    if isinstance(source, CloudflareRssSource):
+        typer.echo("The RSS buffer Worker already polls hourly; nothing to ingest.")
+        return
+
+    report = asyncio.run(ingest(cfg, build_store(cfg), [source]))
+    typer.echo(f"Stored {report.saved} new article(s), {report.skipped} already stored.")
+    if report.status != "ok":
+        typer.echo(f"Fetch failed for: {', '.join(report.failed_sources)}", err=True)
+        raise typer.Exit(1)
+
+
 @app.command("vote-sim")
 def vote_sim(
     hours: Annotated[int, typer.Option("--hours", help="Window to judge")] = 24,

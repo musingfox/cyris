@@ -330,7 +330,8 @@ async def _send_failure_alert(
     started_at: datetime,
 ) -> None:
     """One alert per configured channel when a run raised, or fetched nothing
-    while at least one source failed.
+    while at least one source failed — also when the window's stored rows still
+    made an issue, since a dead source stays dead behind them.
 
     An empty window whose sources all answered is not an alert.
     """
@@ -341,7 +342,7 @@ async def _send_failure_alert(
         text = failure_alert_text(failure)
     else:
         failed = summary.get("failed_sources") or []
-        if summary.get("status") != "no_articles" or not failed:
+        if summary.get("fetched") != 0 or not failed:
             return
         headline = "Digest run fetched nothing"
         text = "Failed sources: " + ", ".join(failed)
@@ -478,14 +479,19 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         if failed_sources:
             progress(f"WARNING: fetch failed for: {', '.join(failed_sources)}")
 
-        if not articles:
+        # An empty fetch still leaves the window's stored rows to process: a local
+        # install's hourly `cyris ingest` stores what a feed dropped before this hour.
+        state_filter = None if options.force else ArticleState.PENDING
+        if not articles and not store.load_by_time_range(
+            start=window_start, end=datetime.now(UTC), state_filter=state_filter
+        ):
             logger.warning("No articles found in time window")
             progress("No articles found. Nothing to process.")
             summary["status"] = "no_articles"
             return RunReport(status="no_articles", failed_sources=failed_sources)
 
         # Save articles to store
-        if not options.dry_run:
+        if articles and not options.dry_run:
             save_result = store.save(articles)
             logger.info(
                 "Saved %d new articles to store (%d skipped duplicates)",
@@ -498,7 +504,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         # take a fresh end bound so this run's own articles are included.
         load_end = datetime.now(UTC)
         # Score unscored PENDING non-news articles
-        state_filter = None if options.force else ArticleState.PENDING
         pending_articles = _newest(
             store.load_by_time_range(start=window_start, end=load_end, state_filter=state_filter),
             cfg.app.digest.max_articles_per_digest,

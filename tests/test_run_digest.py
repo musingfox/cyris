@@ -2155,6 +2155,32 @@ async def test_a_dead_rss_buffer_alerts_as_a_failed_fetch(tmp_path: Path) -> Non
     assert len(mail_calls) == 1
 
 
+async def test_a_failed_fetch_alerts_even_when_stored_rows_make_an_issue(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps.store.save(
+        [
+            Article(
+                id=1,
+                title="Stored an hour ago",
+                url="https://example.com/stored",
+                content="Body.",
+                published_at=datetime.now(UTC) - timedelta(hours=2),
+                source_name="Blog",
+                source_lane=Lane.FOLLOW,
+                source_tags=[],
+            )
+        ]
+    )
+    deps = _with_alert_channels(replace(deps, fetch_sources=[BrokenSource()]), discord, mail)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert [c[2] for c in discord_calls] == ["Failed sources: BrokenSource"]
+    assert len(mail_calls) == 1
+
+
 async def test_a_run_that_fetched_nothing_names_the_failed_source(tmp_path: Path) -> None:
     report, discord_calls, mail_calls = await _fetch_failure_alerts(tmp_path, [BrokenSource()])
 
@@ -2447,6 +2473,19 @@ def _on(deps: Deps, site: _Site) -> Deps:
     return replace(deps, publish_site=site.publish, site_filenames=site.filenames)
 
 
+def _nothing_left_pending(deps: Deps) -> None:
+    """The fixture's summary names an unknown id, so its row stays pending; judge it.
+
+    A run with an empty fetch still processes the window's pending rows, so "nothing
+    new arrives" needs no pending row either.
+    """
+    store = deps.store
+    store.update_states(
+        {"https://example.com/notify": (ArticleState.REJECTED, None)},
+        digest_date=now_in_timezone(deps.cfg.app.general.timezone).strftime("%Y-%m-%d"),
+    )
+
+
 async def test_the_next_run_publishes_the_issue_whose_publish_failed(
     tmp_path: Path, caplog
 ) -> None:
@@ -2462,6 +2501,7 @@ async def test_the_next_run_publishes_the_issue_whose_publish_failed(
     site.up = True
     site.deploys.clear()
     # Nothing new arrives, so this run has no issue of its own to publish.
+    _nothing_left_pending(deps)
     deps = replace(deps, fetch_sources=[FakeSource([])])
     with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
         report = await run_digest(deps, RunOptions())
@@ -2487,6 +2527,7 @@ async def test_a_run_republishes_nothing_when_every_stored_issue_is_live(
     deps = _on(deps, site)
     await run_digest(deps, RunOptions())
     site.deploys.clear()
+    _nothing_left_pending(deps)
     deps = replace(deps, fetch_sources=[FakeSource([])])
 
     with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):

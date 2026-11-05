@@ -198,6 +198,9 @@ class ArticleStore:
             start = start.replace(tzinfo=UTC)
         if end.tzinfo is None:
             end = end.replace(tzinfo=UTC)
+        # `save` names partitions by UTC date; a window in local time must be walked in UTC.
+        start = start.astimezone(UTC)
+        end = end.astimezone(UTC)
 
         # Generate date range
         current_date = start.date()

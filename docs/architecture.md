@@ -277,6 +277,18 @@ Why a buffer rather than a poll at digest time, and why it has no ack:
 [ADR-0001](decisions/0001-rss-arrives-through-an-hourly-buffer.md). `RssSource` (direct polling)
 remains as the no-Worker fallback and is correct only for slow feeds.
 
+**A local install buffers in its own store.** Without the Worker, `cyris ingest`
+(`service_layer/ingest.py`) polls through `RssSource` every hour and saves what it gets, with no
+LLM and no output; the run reads its window by `first_seen_at`, so an entry an earlier hour
+stored reaches the digest after its feed has dropped it, even when the digest's own fetch comes
+back empty. It filters by publish date over the
+digest window, as `RssSource` does at digest time, so a blog's old history is not stamped as
+new. The Worker needs Workers Paid; the 2026-10-04 objection to polling from the cyris process,
+that the container would wake every hour, does not apply to a machine that is already on.
+`docker/crontab` runs `ingest` and `run --if-due` in sequence on one line because the `json`
+store has no locking. `ingest` does nothing where the Worker is configured. No new state: the
+rows are ordinary rows of §4's article store.
+
 **Email — a queue, drained with an ack.** Cloudflare Email Routing delivers to the `email()` handler
 in `workers/newsletter`, which parses the message with PostalMime and stores
 `{from, subject, html, text, date}` in KV under `nl:<sha256(from|subject|date)>` — so a re-delivered

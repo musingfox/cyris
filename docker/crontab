@@ -5,6 +5,10 @@
 # hour is a digest hour, and derives --period from which of the two it is.
 # A fixed `0 8,20` line could not do that: this file is baked into the image, so
 # changing the times would mean a rebuild.
-0 * * * * cyris run --if-due --config /app/cyris.toml --sources /app/sources.yaml
+# `ingest` stores what the feeds hold every hour, so the store is the RSS buffer a
+# feed's few-hour snapshot cannot be (ADR-0001). It shares the digest's line because
+# the json store has no locking: two lines would run concurrently and overwrite each
+# other's writes. `;` rather than `&&`: a failed poll must not skip the digest.
+0 * * * * cyris ingest --config /app/cyris.toml --sources /app/sources.yaml; cyris run --if-due --config /app/cyris.toml --sources /app/sources.yaml
 # promote-sync: hourly
 0 * * * * cyris promote-sync --config /app/cyris.toml --sources /app/sources.yaml
