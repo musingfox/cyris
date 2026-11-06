@@ -13,6 +13,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 from cyris.diagnostics.config_show import IDENTITY, SECRETS
 
@@ -107,6 +108,17 @@ def test_only_the_app_workers_code_sets_the_setting_that_turns_the_check_off() -
     ]
     assert [p for p in elsewhere if _WORKER_SET in (ROOT / p).read_text(encoding="utf-8")] == []
     assert _WORKER_SET not in IDENTITY.values()
+
+
+def test_a_compose_install_publishes_its_ui_on_this_machine_only() -> None:
+    """The role listens on every address in the container, and nothing signs a reader in."""
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    ui = compose["services"]["ui"]
+    assert ui["ports"] == ["127.0.0.1:8766:8766"]
+    assert "CYRIS_ROLE=ui" in ui["environment"]
+    # The role's own default is d1, which a local install does not have.
+    assert "CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-json}" in ui["environment"]
+    assert "./agent-vault:/app/agent-vault:ro" in ui["volumes"]
 
 
 def test_the_setting_that_turns_the_check_off_is_graded_a() -> None:

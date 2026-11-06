@@ -132,15 +132,19 @@ A fixed `cyris run` line per hour, without `--if-due` or `--period`, labels ever
 docker compose up -d
 ```
 
-This builds the image and runs supercronic inside it, which fires `cyris ingest`, then
-`cyris run --if-due`, and `cyris promote-sync` every hour. The container reads `.env` (the file must exist)
-and bind-mounts `cyris.toml`, `sources.yaml` and `./agent-vault`, so the store and the
+This builds the image and starts two containers. `cyris` runs supercronic, which fires
+`cyris ingest`, then `cyris run --if-due`, and `cyris promote-sync` every hour. `ui` serves the
+archive and `/settings` (§8) at `http://127.0.0.1:8766/`, published on this machine only.
+Both read `.env` (the file must exist)
+and bind-mount `cyris.toml`, `sources.yaml` and `./agent-vault`, so the store and the
 HTML stay on your disk. After editing `cyris.toml` or `sources.yaml`, run
 `docker compose up -d --force-recreate`: a plain `up -d` keeps the container reading
 the old file. The compose `TZ` only changes log timestamps; the schedule follows
 `[general] timezone`.
 
 ## 8. The archive and `/settings`
+
+A compose install already runs this as its `ui` container. Without compose:
 
 ```sh
 uv run cyris triage-ui

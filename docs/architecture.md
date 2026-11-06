@@ -1108,7 +1108,9 @@ waiting for a sleep timer — `promote-sync` runs even when the run fails, and t
 the run's status. A SIGTERM ends the pass instead: it exits 143 and skips what has not started
 (below); `ui` serves `/settings`; the default is the
 supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` install. Compose
-bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate.
+bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate, and
+runs a second container in the `ui` role, published on `127.0.0.1` only, with that directory
+read-only.
 The two roles run as separate instances with separate idle timers, each set with the Durable
 Object's `ctx.container.setInactivityTimeout()`: `ui` sleeps after 5 minutes, and `run` gets
 `RUN_INACTIVITY_TIMEOUT_MS` (15 minutes) in `workers/app/src/index.js`, chosen from the Durable

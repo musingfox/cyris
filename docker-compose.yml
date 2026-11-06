@@ -7,11 +7,30 @@ services:
     volumes:
       # Single-file mounts bind an inode, and editors replace files by rename, so
       # editing either of these leaves the container reading a deleted inode
-      # (`-?????????`, ENOENT) until you `docker compose up -d --force-recreate cyris`.
+      # (`-?????????`, ENOENT) until you `docker compose up -d --force-recreate`.
       # Plain `up -d` won't do it: compose sees no config change and leaves it running.
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
       # The json store and the generated HTML. Inside the container they would go
       # with it on the next recreate.
       - ./agent-vault:/app/agent-vault
+    restart: unless-stopped
+
+  # The archive and /settings. The role listens on every address inside the container,
+  # so the published address is the boundary: this machine only. Publishing another address
+  # would hand them to the network, with no sign-in in front of them.
+  ui:
+    build: .
+    env_file: .env
+    environment:
+      - TZ=${TZ:-Asia/Taipei}
+      - CYRIS_ROLE=ui
+      # The role's default is the Cloudflare deployment's d1.
+      - CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-json}
+    ports:
+      - "127.0.0.1:8766:8766"
+    volumes:
+      - ./cyris.toml:/app/cyris.toml:ro
+      - ./sources.yaml:/app/sources.yaml:ro
+      - ./agent-vault:/app/agent-vault:ro
     restart: unless-stopped
