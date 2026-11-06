@@ -2,7 +2,11 @@
     // Capability probe: check if /api/vote is available before showing buttons and Settings.
     // Contract (do not follow Access redirects):
     // - Access redirect (opaqueredirect) → Sign in shows
-    // - 200 JSON {"authorized":true} → vote buttons, Settings and gated controls show
+    // - 200 JSON {"authorized":true} → vote buttons, Settings, the Archive link and gated controls show
+    // - 200 JSON {"authorized":true,"votes":false} (a local `cyris triage-ui`, which serves these
+    //   pages but takes no vote and has no interest map on its json store) → Settings and the
+    //   Archive link show; vote buttons and gated controls stay closed. The Worker's answer
+    //   carries no `votes` field, so only `votes === false` closes them.
     // - anything else (the Worker's 403, a non-ok status such as a 404 on a host with no
     //   Worker, a 200 that is not authorized JSON, a failed fetch) → nothing shows
     (async () => {
@@ -16,11 +20,14 @@
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.authorized !== true) return;
-            // Authorized: show vote buttons, the Settings link, and any control or link marked gated
-            document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
+            // Authorized: show the Settings link and the Archive link, and point the brand at the archive
             document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
-            document.querySelectorAll('.gated').forEach((g) => g.hidden = false);
+            document.querySelectorAll('.archive-link').forEach((a) => a.hidden = false);
             document.querySelectorAll('[data-gated-href]').forEach((a) => a.href = a.dataset.gatedHref);
+            // This server takes no vote: leave the vote buttons and the gated controls closed
+            if (data.votes === false) return;
+            document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
+            document.querySelectorAll('.gated').forEach((g) => g.hidden = false);
         } catch {
             // Parse error, network failure, or CORS → nothing shows; the controls stay hidden
         }

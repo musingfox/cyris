@@ -372,7 +372,7 @@ _CHECKS: list[Check] = [
         fixture="sample",
         path=PAGE,
         width=375,
-        act="""await waitFor(() => visible($(".site-nav a.gated")), "the archive link");""",
+        act="""await waitFor(() => visible($(".site-nav a.archive-link")), "the archive link");""",
         script="""expectTapTargets(".brand, .site-nav a");""",
         sabotage=NO_SITE_BAR_AREAS,
     ),

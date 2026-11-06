@@ -513,12 +513,6 @@ def build_fixture(kind: str) -> Fixture:
     if kind.endswith("-largest"):
         server._onboarding_page = at_largest_type_scale(server._onboarding_page)
 
-    # The app Worker's own route, which the container does not serve: without it
-    # the site bar's probe fails closed and its links stay hidden.
-    async def signed_in(_: web.Request) -> web.Response:
-        return web.json_response({"authorized": True})
-
-    server._app.router.add_get("/api/vote", signed_in)
     fixture = Fixture(server._app, settings, settings.calls, store, articles)
 
     # Each source body as it arrived, before the route reads it as a
@@ -3093,7 +3087,7 @@ _CHECKS: list[Check] = [
         fixture="empty",
         path=PAGE,
         width=375,
-        act="""await waitFor(() => visible($(".site-nav a.gated")), "the archive link");""",
+        act="""await waitFor(() => visible($(".site-nav a.archive-link")), "the archive link");""",
         script="""expectTapTargets(".brand, .site-nav a");""",
         sabotage=NO_SITE_BAR_AREAS,
     ),
