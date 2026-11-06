@@ -217,7 +217,8 @@ section { padding: var(--s-16) 0; border-top: 1px solid var(--border); }
 .edition.soon .ill { stroke: var(--text-faint); }
 .edition.soon .ill-a { fill: var(--text-faint); }
 .edition.soon .go { color: var(--text-dim); }
-.badge { display: inline-block; margin-left: var(--s-2); padding: 2px var(--s-2); border: 1px solid var(--warn); border-radius: var(--r-tag); color: var(--warn); font: 500 calc(11px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; vertical-align: middle; }
+.edition h3:has(.badge) { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s-2); }
+.badge { display: inline-block; padding: 2px var(--s-2); border: 1px solid var(--warn); border-radius: var(--r-tag); color: var(--warn); font: 500 calc(11px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; vertical-align: middle; }
 
 /* ---------- the closing row ---------- */
 .ctas { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-8); }
@@ -412,7 +413,7 @@ html[lang="zh-Hant"] em { font-style: normal; }
                         <rect class="ill-a" x="104" y="60" width="16" height="16"/>
                         <path class="ill" d="M112 100v12M96 112h32"/>
                     </g></svg>
-                    <h3 data-zh="你的 Cloudflare 帳號">Your Cloudflare account</h3>
+                    <h3 data-zh="你的 Cloudflare 帳號 &lt;span class=&quot;badge&quot;&gt;需付費方案&lt;/span&gt;">Your Cloudflare account <span class="badge">Paid plan</span></h3>
                     <p class="fig-cap where" data-zh="部署到你自己的帳號">deployed to your own account</p>
                     <p data-zh="按排程產生並發布每期摘要，不必開著電腦。它的容器需要 Workers 付費方案。要在摘要頁上投票，還需要選用的投票 Worker 並登入。">Makes and publishes each issue on schedule, without your computer. Its container needs the Workers Paid plan. Voting on an issue page also needs the optional vote Worker and a sign-in.</p>
                     <span class="go" data-zh="雲端安裝指南 &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Cloud setup guide <span aria-hidden="true">↗</span></span>
