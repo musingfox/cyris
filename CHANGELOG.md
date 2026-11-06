@@ -65,6 +65,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The landing page is rebuilt in English and Traditional Chinese: an opening
+  that brings a drift of fragments into focus around the logo, and one pinned
+  drawing that follows the steps as you scroll, reversing when you scroll back.
+  With reduced motion or no script it shows its finished state. The film and
+  its poster and captions are gone from the site for now.
 - **A push to `main` deploys production.** The release workflow now runs on
   every push to `main`. A release that passes its checks deploys the commit it
   released, as a separate job, so a failed build and a failed deploy still show

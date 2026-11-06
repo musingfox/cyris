@@ -1,6 +1,7 @@
 """Receipts that the reader-facing pages follow docs/design/ui-language.md."""
 
 import functools
+import json
 import re
 from collections.abc import AsyncIterator
 from html.parser import HTMLParser
@@ -1546,7 +1547,9 @@ def _website_tokens(selector: str) -> dict[str, str]:
 
 
 def test_the_websites_dark_tokens_are_the_page_tokens() -> None:
-    assert _website_tokens(":root") == {k: canonical_colour(v) for k, v in tokens().items()}
+    page = {k: canonical_colour(v) for k, v in tokens().items()}
+    # The logo mark's two tokens are the landing page's alone (ui-language.md §2).
+    assert _website_tokens(":root") == page | {"iris": "#c6ff3d", "iris-plate": "#07070a"}
 
 
 def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
@@ -1635,10 +1638,61 @@ def test_the_landing_h1_is_larger_than_every_h2(lang: str) -> None:
         override = rules.get(ZH + key) if lang == "zh-Hant" else None
         return _font_px(override or rules[key], viewport)
 
+    # The page's every h2, by the rule that sizes it, so an h2 added later has to be named here.
+    assert re.findall(r'<h2 class="([^"]*)"', WEBSITE.read_text()) == ["eyebrow", "say"]
     for viewport in (320, 360, 390, 720, 960, 1200, 1440, 1920):
         h1 = size(".hero h1", viewport)
-        for h2 in (".section-heading", ".how-heading h2"):
+        for h2 in (".eyebrow", "#editions h2"):
             assert h1 > size(h2, viewport), f"{lang} at {viewport}px: h1 {h1} vs {h2}"
+    assert size(".hero h1", 1920) == 36
+    hero = rules[".hero h1"]
+    assert "letter-spacing: -.01em" in hero
+    assert [d for d in hero if d.startswith("font:") and ")/1.2 " in d]
+
+
+def test_the_landing_page_stops_motion_on_request() -> None:
+    assert parse_style_block(WEBSITE.read_text())[REDUCED_MOTION] == STILL
+
+
+def _edition_cards() -> dict[str, str]:
+    page = WEBSITE.read_text()
+    local, cloud, hosted = re.findall(r'<a class="edition.*?</a>', page, re.DOTALL)
+    return {"local": local, "cloud": cloud, "hosted": hosted}
+
+
+async def test_the_local_card_says_its_issue_pages_take_no_vote() -> None:
+    # The server these pages are read on tells them to keep their vote buttons closed.
+    probe = await TriageServer()._handle_vote_probe(None)
+    assert json.loads(probe.text)["votes"] is False
+    card = _edition_cards()["local"]
+    assert "no vote buttons" in card
+    assert "沒有投票按鈕" in card
+
+
+def test_the_cloudflare_card_says_voting_on_a_page_needs_the_vote_worker() -> None:
+    # Without workers/promote the Worker still opens the buttons, and refuses every vote.
+    assert "promote worker not configured" in (REPO / "workers/app/src/router.js").read_text()
+    card = _edition_cards()["cloud"]
+    assert "optional vote Worker" in card
+    assert "選用的投票 Worker" in card
+
+
+@pytest.mark.parametrize(
+    "retired",
+    [
+        # A vote moves no published issue while topics last one issue (domain/topics.py).
+        "reorder",
+        "調整之後各期的排序",
+        "data-pre",
+        # News paragraphs are no longer written (ADR-0023): a Topics card lists its articles.
+        "cites each",
+        "引用每一篇",
+        # A new local install goes through the wizard (docs/install-local.md).
+        "sources.example.yaml",
+    ],
+)
+def test_the_landing_page_drops_a_claim_the_product_does_not_keep(retired: str) -> None:
+    assert retired not in WEBSITE.read_text()
 
 
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:

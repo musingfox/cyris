@@ -1364,7 +1364,7 @@ digest project, because either publisher would replace the other's files in a sh
 The launch film is not in the repository: it is served from the R2 bucket `musingfox-media` under
 `cyris/`, one immutable key per cut, because a Pages deploy is a full snapshot of `website/` and
 an untracked video there would vanish on the next deploy from a checkout without it. The bucket
-and its domain were created by hand; no deploy script touches them.
+and its domain were created by hand; no deploy script touches them. The site embeds no film for now.
 
 **Known failure mode.** Code is baked into the image; config is bind-mounted. The two can drift
 arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"` from a current

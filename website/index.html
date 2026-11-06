@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#07070a">
-<title>Cyris: A reading list with an end.</title>
-<meta name="description" content="Read selected articles from your RSS feeds and newsletters in one digest, with the full article list alongside. Run Cyris on your computer or deploy it to Cloudflare.">
+<title>Cyris: Put your attention on what really matters.</title>
+<meta name="description" content="Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.">
 <link rel="canonical" href="https://cyris.musingfox.com/">
-<meta property="og:title" content="Cyris: A reading list with an end.">
-<meta property="og:description" content="Read selected articles from your RSS feeds and newsletters in one digest, with the full article list alongside. Run Cyris on your computer or deploy it to Cloudflare.">
+<meta property="og:title" content="Cyris: Put your attention on what really matters.">
+<meta property="og:description" content="Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://cyris.musingfox.com/">
 <meta property="og:image" content="https://cyris.musingfox.com/assets/social.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Cyris: A reading list with an end.">
-<meta name="twitter:description" content="Read selected articles from your RSS feeds and newsletters in one digest, with the full article list alongside. Run Cyris on your computer or deploy it to Cloudflare.">
+<meta name="twitter:title" content="Cyris: Put your attention on what really matters.">
+<meta name="twitter:description" content="Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.">
 <meta name="twitter:image" content="https://cyris.musingfox.com/assets/social.png">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,6 +37,8 @@
     --type-scale: 1; --r-control: 6px; --r-tag: 999px; --t-fast: 150ms ease-out;
     --t-opening-overload: 3.6s; --t-opening-calm: 2.9s;
     --bar-h: 60px; --measure: 640px; --measure-wide: 760px;
+    /* The logo mark, the same in both themes (ui-language.md §2), so it is not var(--accent). */
+    --iris: #c6ff3d; --iris-plate: #07070a;
 }
 :root[data-theme="light"] {
     color-scheme: light;
@@ -48,24 +50,34 @@
 }
 :root[data-theme="light"] nav { background: var(--bg); }
 :root[data-theme="light"] .btn.primary:hover { background: var(--accent-hover); }
+/* The iris is 1.08:1 on the light --bg, so in light it sits on favicon.svg's plate. */
+.plate { display: none; fill: var(--iris-plate); }
+:root[data-theme="light"] .plate { display: block; }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: var(--bar-h); }
-body { margin: 0; background: var(--bg); color: var(--text); font: calc(18px * var(--type-scale))/1.65 var(--font-sans); }
+[hidden] { display: none !important; }
+html { scroll-padding-top: var(--bar-h); }
+body { margin: 0; background: var(--bg); color: var(--text); font: calc(18px * var(--type-scale))/1.65 var(--font-sans); overflow-x: clip; overflow-wrap: break-word; }
 a { color: inherit; text-underline-offset: 4px; }
 button { font: inherit; color: inherit; }
-a:focus-visible, button:focus-visible, summary:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-h1, h2, h3, p { margin: 0; }
+a:focus-visible, button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, h4, p, figure { margin: 0; }
 h1, h2, h3 { line-height: 1.3; }
-.wrap { width: min(960px, calc(100% - 32px)); margin-inline: auto; }
+img { max-width: 100%; }
+code { font-family: var(--font-mono); font-size: .9em; }
+.wrap { width: min(1120px, calc(100% - 32px)); margin-inline: auto; }
 .skip { position: fixed; top: var(--s-3); left: var(--s-3); z-index: 30; padding: var(--s-2) var(--s-4); opacity: 0; pointer-events: none; background: var(--accent); color: var(--bg); }
 .skip:focus { opacity: 1; pointer-events: auto; }
+.eyebrow { font: 500 calc(12px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.fig-cap, .nav-links a { font: 500 calc(12px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.fig-cap { color: var(--text-dim); letter-spacing: .08em; }
+
+/* nav */
 nav { position: sticky; top: 0; z-index: 20; height: var(--bar-h); background: rgba(7,7,10,.88); border-bottom: 1px solid var(--border); }
 .nav-inner, .nav-links, .brand { display: flex; align-items: center; }
 .nav-inner { height: 100%; justify-content: space-between; gap: var(--s-4); }
 .brand { gap: var(--s-3); text-decoration: none; font: 500 calc(12px * var(--type-scale))/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
-.brand-mark { width: 12px; height: 12px; display: block; flex: 0 0 auto; color: var(--accent); background: var(--accent); box-shadow: 0 0 12px rgba(198,255,61,.45); }
+.brand-mark { width: 16px; height: 16px; display: block; flex: 0 0 auto; fill: var(--iris); }
 .nav-links { gap: var(--s-5); }
-.nav-links a, .eyebrow, .setup summary { font: 500 calc(12px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .nav-links a { color: var(--text-dim); text-decoration: none; }
 .nav-links a:hover { color: var(--text); }
 .language-toggle, .theme-toggle, .icon-link, .btn { height: 44px; padding: 0 var(--s-5); border: 1px solid var(--border-strong); border-radius: var(--r-control); background: var(--surface-2); cursor: pointer; }
@@ -76,76 +88,167 @@ nav { position: sticky; top: 0; z-index: 20; height: var(--bar-h); background: r
 .theme-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .theme-toggle .icon-moon, .theme-toggle[data-theme="light"] .icon-sun { display: none; }
 .theme-toggle[data-theme="light"] .icon-moon { display: block; }
-.eyebrow { color: var(--text-dim); }
-.eyebrow.accent { color: var(--accent); }
-.hero { padding: var(--s-16) 0 var(--s-12); background-image: linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size: 32px 32px; }
-.hero-intro { text-align: center; }
-.hero h1 { margin: var(--s-4) 0 var(--s-6); font: 400 calc(clamp(56px,8.75vw,119px) * var(--type-scale))/.92 var(--font-serif); letter-spacing: -.04em; text-wrap: balance; }
-.hero h1 em, .section-heading em { color: var(--accent); font-family: var(--font-serif); font-weight: 400; }
-.hero-description { max-width: var(--measure); margin-inline: auto; color: var(--text-dim); text-wrap: pretty; }
-.hero-note { margin-top: var(--s-3); color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
-.proof { max-width: var(--measure); margin: var(--s-8) auto 0; padding-top: var(--s-4); border-top: 1px solid var(--border); color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
-.proof strong { color: var(--text); font-weight: 600; }
-.hero-shot { display: block; width: 100%; height: auto; margin-top: var(--s-12); border: 1px solid var(--border-strong); }
-.film video { display: block; width: 100%; height: auto; margin-top: var(--s-6); border: 1px solid var(--border-strong); background: var(--bg); }
+.language-toggle:hover, .theme-toggle:hover, .icon-link:hover { color: var(--text); border-color: var(--accent); }
+.btn:active, .language-toggle:active, .theme-toggle:active, .icon-link:active { opacity: .7; }
+
+
+/* ---------- hero: the opening ---------- */
+/* Fragments drift out of focus; the iris arrives from depth into focus, and focus clears outward from it as each
+   fragment aligns to a quiet grid above and below the mark and tagline. With no script, or under reduced motion,
+   the grid in HTML below is what shows; with motion it stays in the layout, hidden, as the canvas's slots. */
+.hero { position: relative; overflow: hidden; height: calc(100svh - var(--bar-h)); min-height: 560px; max-height: 1000px;
+  --cols: 3; --rows: 4; --mark-top: 38%; --iris-size: 64px; --clear-top: 24px; --clear-bottom: 167px; --clear-cue: 150px; --ink-calm: .16; }
+.hero > canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; transition: opacity .28s ease-out; }
+.hero.skipping > canvas { opacity: 0; }
+/* The grid keeps a band clear behind the mark and the tagline: half its fragments sit above it, half below. */
+.still { position: absolute; left: 0; right: 0; display: grid; align-content: space-between; column-gap: var(--s-6);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-flow: column; grid-template-rows: repeat(var(--rows), auto); }
+.still.top { top: 28px; bottom: calc(100% - var(--mark-top) + var(--clear-top)); }
+/* The lower band shares a short hero with the tagline and the arrow, so it keeps the rows that fit, filled row by row:
+   the rows past them have no height, and the fragments in them are hidden. */
+.still.bottom { top: calc(var(--mark-top) + var(--clear-bottom)); height: calc(100% - var(--mark-top) - var(--clear-bottom) - var(--clear-cue)); overflow: hidden;
+  grid-auto-flow: row; grid-template-rows: repeat(auto-fit, calc(30.2px * var(--type-scale))); grid-auto-rows: 0; }
+.still p { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 500 calc(13px * var(--type-scale))/1.3 var(--font-sans); color: var(--text); opacity: var(--ink-calm); }
+.still small { display: block; font: 500 calc(9.5px * var(--type-scale))/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+/* a greeked line: a fragment that reads as text without saying anything */
+.still .bar { display: block; width: var(--w); max-width: 100%; height: .42em; margin: .42em 0 .46em; border-radius: 999px; background: currentColor; }
+.hero.live .still { visibility: hidden; }
+.mark { position: absolute; left: 0; right: 0; top: var(--mark-top); z-index: 2; display: flex; justify-content: center; pointer-events: none; }
+.fly { position: relative; display: inline-flex; align-items: center; gap: var(--s-6); will-change: transform, opacity, filter; }
+.iris-box { display: block; }
+.iris { width: var(--iris-size); height: var(--iris-size); display: block; fill: var(--iris); overflow: visible; }
+.word { font: 500 calc(44px * var(--type-scale))/1 var(--font-mono); letter-spacing: .18em; color: var(--text); text-shadow: 0 0 18px var(--bg), 0 0 6px var(--bg); }
+.hero > .centre { position: absolute; left: 16px; right: 16px; top: calc(var(--mark-top) + var(--iris-size) + var(--s-8)); z-index: 2; text-align: center; }
+.hero h1 { margin-inline: auto; font: 400 calc(clamp(26px, 2.6vw, 36px) * var(--type-scale))/1.2 var(--font-serif); letter-spacing: -.01em; max-width: 20em; text-wrap: balance; text-shadow: 0 0 18px var(--bg), 0 0 6px var(--bg); }
+/* The arrow sits 40px above the fold, and fades away once the page has moved. */
+.scroll-cue { position: absolute; left: 50%; bottom: 40px; z-index: 3; transform: translateX(-50%); display: grid; place-items: center; width: 48px; height: 72px; border-radius: var(--r-control); transition: opacity .3s ease-out; }
+.scroll-cue.away { opacity: 0; pointer-events: none; }
+.scroll-cue svg { display: block; width: 24px; height: 64px; overflow: visible; animation: nudge 2.4s ease-in-out infinite; }
+@keyframes nudge { 50% { transform: translateY(6px); } }
+.hero[data-phase="open"] :is(h1, .scroll-cue) { visibility: hidden; }
+.hero[data-phase="calm"] h1 { animation: say 1s cubic-bezier(.2,.7,.2,1) both; }
+.hero[data-phase="calm"] .cue-in { display: block; animation: say 1s cubic-bezier(.2,.7,.2,1) both .6s; }
+@keyframes say { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---------- sections ---------- */
+section { padding: var(--s-16) 0; border-top: 1px solid var(--border); }
+
+/* ---------- the guided story: steps 2 to 7 move one drawing; step 8 is the editions ---------- */
+.story { padding-bottom: 0; }
+.story-grid { display: grid; grid-template-columns: minmax(0, min(520px, 50%)) minmax(0, 1fr); gap: clamp(var(--s-8), 5vw, var(--s-16)); margin-top: var(--s-6); }
+.pipeline { position: sticky; top: calc(var(--bar-h) + var(--s-6)); align-self: start; border: 1px solid var(--border); background: var(--bg-elev); padding: var(--s-4); }
+.pipeline svg { display: block; aspect-ratio: 360 / 474; height: min(calc(100svh - var(--bar-h) - 128px), 640px); width: auto; max-width: 100%; margin-inline: auto; overflow: visible; }
+.dg { fill: none; stroke: var(--text-dim); stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.dg text { fill: var(--text); stroke: none; font: 500 calc(13px * var(--type-scale)) var(--font-sans); }
+.dg text.mono { font: 500 calc(9px * var(--type-scale)) var(--font-mono); letter-spacing: .1em; fill: var(--text-dim); text-transform: uppercase; }
+.dg .box { fill: var(--surface); stroke: var(--border-strong); }
+.dg .pill { fill: var(--surface-2); stroke: var(--border-strong); }
+.dg .frame { fill: var(--bg); stroke: var(--accent-dim); }
+.dg .band { stroke: var(--border-strong); }
+.dg .band.b1 { fill: var(--accent-tint); }
+.dg .band.b2 { fill: var(--surface); }
+.dg .band.b3 { fill: var(--surface-2); }
+.dg .tray { fill: none; stroke: var(--border-strong); stroke-dasharray: 4 4; }
+.dg .edge { stroke: var(--text-faint); }
+.dg .loop { stroke: var(--accent); stroke-dasharray: 3 5; }
+.dg .loop-head, .dg .parcel { fill: var(--accent); stroke: none; }
+.dg .vote { font: 700 calc(8px * var(--type-scale)) var(--font-mono); fill: var(--accent); }
+.dg .ghost { fill: none; stroke: var(--text-faint); stroke-dasharray: 2 2; stroke-width: 1; }
+.dg .d-line { fill: var(--text-dim); }
+.dg .d-head { fill: var(--text); }
+.dg .d-img { fill: var(--accent-dim); opacity: .55; }
+.dg .d-card { fill: var(--bg-elev); stroke: var(--border-strong); stroke-width: .75; }
+.dg text.note { font: 500 calc(8.5px * var(--type-scale)) var(--font-sans); fill: var(--text-dim); }
+.dg .glow { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1.5; opacity: 0; pointer-events: none; }
+.dg .cursor { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0; }
+.dg .g { transition: opacity .6s ease-out; }
+.dg .g .edge { stroke-dasharray: 1; stroke-dashoffset: 0; transition: stroke-dashoffset .9s ease-out .15s; }
+.dg .sq { stroke: none; fill: var(--text-faint); }
+.dg .sq[data-l="d"], .dg .sq[data-l="w"] { fill: var(--accent); }
+.dg .sq[data-l="s"] { fill: var(--accent-dim); }
+.dg .sq[data-l="f"] { fill: var(--text-dim); }
+.dg .sq[data-l="x"] { fill: var(--border-strong); }
+.dg .sq.wait { fill: var(--text-faint); }
+/* JS arms the drawing; without JS nothing is armed: every part lit, every square where the story leaves it. */
+.pipeline.armed .g { opacity: .18; }
+.pipeline.armed .g .edge { stroke-dashoffset: 1; }
+.pipeline.armed.on2 .g2, .pipeline.armed.on3 .g3, .pipeline.armed.on4 .g4,
+.pipeline.armed.on6 .g6, .pipeline.armed.on7 .g7 { opacity: 1; }
+.pipeline.armed.on2 .g2 .edge, .pipeline.armed.on3 .g3 .edge, .pipeline.armed.on4 .g4 .edge,
+.pipeline.armed.on6 .g6 .edge, .pipeline.armed.on7 .g7 .edge { stroke-dashoffset: 0; }
+.pipeline.armed.on6 .loop { animation: march 1.6s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -16; } }
+
+.steps { list-style: none; margin: 0; padding: 0 0 18svh; }
+.steps > li { min-height: 72svh; display: flex; flex-direction: column; justify-content: center; padding-left: var(--s-6); border-left: 1px solid var(--border); transition: border-color .4s; }
+.steps > li.active { border-left-color: var(--accent); }
+.say { margin-top: var(--s-3); font: 400 calc(clamp(28px, 2.7vw, 38px) * var(--type-scale))/1.2 var(--font-serif); letter-spacing: -.01em; text-wrap: pretty; max-width: 18em; }
+.say em { color: var(--accent); }
+.lanes { margin: var(--s-6) 0 0; display: grid; gap: var(--s-3); max-width: 30em; }
+.lanes div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: var(--s-4); align-items: baseline; }
+.lanes dt { font: 500 calc(13px * var(--type-scale))/1.5 var(--font-mono); color: var(--accent); }
+.layers div { grid-template-columns: 88px minmax(0, 1fr); }
+.lanes dd { margin: 0; font-size: calc(16px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
+.guided .steps .say { color: var(--text-dim); transition: color .4s; }
+.guided .steps li.active .say { color: var(--text); }
+
+
+/* ---------- step 8: editions ---------- */
+/* Below the tagline, so the h1 stays the largest heading (ui-language.md §4 guided diagram). */
+#editions h2 { max-width: 22em; font-size: calc(clamp(24px, 2.4vw, 32px) * var(--type-scale)); }
+.editions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: var(--s-5); margin-top: var(--s-12); list-style: none; padding: 0; }
+.editions > li { display: flex; }
+.edition { flex: 1; display: flex; flex-direction: column; padding: var(--s-6); background: var(--bg-elev); border: 1px solid var(--border); text-decoration: none; transition: border-color var(--t-fast); }
+.edition:hover { border-color: var(--accent); }
+.edition svg { display: block; width: 100%; max-width: 220px; height: auto; margin: 0 auto var(--s-6); }
+.edition .ill { fill: none; stroke: var(--text-dim); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.edition .ill-a { fill: var(--accent); stroke: none; }
+.edition .ill-s { fill: var(--surface); }
+.edition .inner { transition: opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1); transform-origin: center; transform-box: fill-box; }
+.wait .edition .inner { opacity: .2; transform: scale(.9); }
+.editions > li:nth-child(2) .inner { transition-delay: .2s; }
+.editions > li:nth-child(3) .inner { transition-delay: .4s; }
+.edition h3 { font: 600 calc(19px * var(--type-scale))/1.3 var(--font-sans); }
+.edition .where { margin-top: var(--s-1); }
+.edition p { margin-top: var(--s-3); color: var(--text-dim); font-size: calc(15px * var(--type-scale)); line-height: 1.55; }
+.edition .go { margin-top: auto; padding-top: var(--s-5); font: 500 calc(12px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.edition.soon { border-style: dashed; background: transparent; }
+.edition.soon h3, .edition.soon p { color: var(--text-dim); }
+.edition.soon .ill { stroke: var(--text-faint); }
+.edition.soon .ill-a { fill: var(--text-faint); }
+.edition.soon .go { color: var(--text-dim); }
+.badge { display: inline-block; margin-left: var(--s-2); padding: 2px var(--s-2); border: 1px solid var(--warn); border-radius: var(--r-tag); color: var(--warn); font: 500 calc(11px * var(--type-scale))/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; vertical-align: middle; }
+
+/* ---------- the closing row ---------- */
 .ctas { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-8); }
-.hero .ctas { justify-content: center; }
 .btn { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s-2); text-decoration: none; font: 500 calc(12px * var(--type-scale))/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn.primary:hover { background: #d4ff66; }
 .btn.secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-dim); }
 .btn.secondary:where(:not(:disabled)):hover { color: var(--text); }
-.language-toggle:hover, .theme-toggle:hover, .icon-link:hover { color: var(--text); border-color: var(--accent); }
-.btn:active, .language-toggle:active, .theme-toggle:active, .icon-link:active { opacity: .7; }
-.how-heading { max-width: var(--measure); margin-bottom: var(--s-6); }
-.how-heading h2 { margin: var(--s-3) 0; font: 600 calc(24px * var(--type-scale))/1.3 var(--font-sans); }
-.how-heading p:not(.eyebrow) { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
-.feature-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-12); list-style: none; margin: var(--s-8) 0 0; padding: 0; }
-.feature-flow li { position: relative; min-width: 0; text-align: center; }
-.feature-flow li:not(:last-child)::after { content: ""; position: absolute; top: var(--s-20); right: calc(-1 * var(--s-8)); width: var(--s-3); height: var(--s-3); border-top: 1px solid var(--text-dim); border-right: 1px solid var(--text-dim); transform: rotate(45deg); }
-.feature-flow svg { display: block; width: 100%; height: calc(var(--s-20) * 2); margin-bottom: var(--s-6); color: var(--text-dim); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.feature-flow .result { color: var(--accent); }
-.feature-flow h3 { margin-bottom: var(--s-2); font: 600 calc(19px * var(--type-scale))/1.3 var(--font-sans); }
-.feature-flow p { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
-section { padding: var(--s-16) 0; border-top: 1px solid var(--border); }
-.section-heading { margin-top: var(--s-3); font: 400 calc(clamp(46px,7vw,84px) * var(--type-scale))/1 var(--font-serif); letter-spacing: -.03em; }
-.run-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--s-5); margin-top: var(--s-8); }
-.run-card { background: var(--bg-elev); border: 1px solid var(--border); padding: var(--s-6); }
-.run-card h3 { margin: var(--s-4) 0 var(--s-3); font-size: calc(19px * var(--type-scale)); font-weight: 600; }
-.control p, .run-card p, .run-card li { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); line-height: 1.5; }
-.control-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--s-12); }
-.controls { display: grid; gap: var(--s-5); }
-.control { padding-bottom: var(--s-5); border-bottom: 1px solid var(--border); }
-.control h3 { font-size: calc(19px * var(--type-scale)); font-weight: 600; }
-.symbol { color: var(--accent); font-family: var(--font-mono); margin-right: var(--s-2); }
-.provider-note { margin-top: var(--s-8); padding-top: var(--s-5); border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-8); }
-.providers { display: flex; flex-wrap: wrap; gap: var(--s-4); color: var(--text-dim); font: calc(14px * var(--type-scale))/1.5 var(--font-mono); }
-.run-card { display: flex; flex-direction: column; align-items: flex-start; }
-.run-card ul { padding-left: var(--s-5); margin: var(--s-4) 0 var(--s-6); }
-.run-card li + li { margin-top: var(--s-2); }
-.run-card .btn { margin-top: auto; }
-.setup { margin-top: var(--s-5); border: 1px solid var(--border); background: var(--bg-elev); }
-.setup summary { padding: var(--s-4) var(--s-5); cursor: pointer; }
-.setup-body { padding: 0 var(--s-5) var(--s-5); }
-.setup-body p, .setup-note { color: var(--text-dim); font-size: calc(14px * var(--type-scale)); }
-pre { overflow-x: auto; margin: 0; padding: var(--s-5); background: var(--bg); font: calc(14px * var(--type-scale))/1.5 var(--font-mono); }
-.comment { color: var(--text-dim); }
-.setup-note { margin-top: var(--s-4); }
-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-5); padding: var(--s-6) 0; border-top: 1px solid var(--border); color: var(--text-dim); font: calc(14px * var(--type-scale))/1.5 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
-html[lang="zh-Hant"] h1, html[lang="zh-Hant"] h2, html[lang="zh-Hant"] h3 { letter-spacing: -.02em; line-height: 1.25; }
-html[lang="zh-Hant"] .hero h1 { font-size: calc(clamp(56px,8.75vw,102px) * var(--type-scale)); }
-html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,serif; }
+
+/* ---------- footer ---------- */
+footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-5); padding: var(--s-6) 0; border-top: 1px solid var(--border); color: var(--text-dim); font: calc(13px * var(--type-scale))/1.5 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+footer a { text-decoration: none; }
+
 @media (max-width: 720px) {
-    .wrap { width: calc(100% - 32px); }
     .nav-links > a:not(.icon-link) { display: none; }
-    .hero { padding: var(--s-12) 0 var(--s-8); }
-    .control-grid, .run-options { grid-template-columns: minmax(0,1fr); gap: var(--s-6); }
-    .feature-flow { grid-template-columns: minmax(0, 1fr); gap: var(--s-16); }
-    .feature-flow li:not(:last-child)::after { top: auto; right: calc(50% - var(--s-2)); bottom: calc(-1 * var(--s-8)); transform: rotate(135deg); }
     section { padding: var(--s-12) 0; }
-    .brand { letter-spacing: 0; }
-    .brand-name { display: none; }
+    .editions { grid-template-columns: minmax(0, 1fr); }
+    .hero { min-height: 600px; --cols: 2; --rows: 6; --iris-size: 44px; --clear-top: 20px; --clear-bottom: 154px; --clear-cue: 136px; }
+    .still.top { top: 20px; }
+    .word { font-size: calc(30px * var(--type-scale)); }
+    .fly { gap: var(--s-4); }
+    .hero > .centre { top: calc(var(--mark-top) + var(--iris-size) + var(--s-6)); }
+    /* The drawing stays pinned under the bar; each step's sentence scrolls up beneath it. */
+    .story-grid { grid-template-columns: minmax(0, 1fr); gap: 0; margin-top: var(--s-3); }
+    .pipeline { top: var(--bar-h); z-index: 2; padding: var(--s-2) 0; border-width: 0 0 1px; }
+    .pipeline svg { height: min(48svh, 460px); }
+    .steps > li { min-height: 58svh; justify-content: flex-end; padding: var(--s-6) 0 var(--s-8) var(--s-4); }
+    .say { font-size: calc(26px * var(--type-scale)); }
 }
+html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,serif; }
+html[lang="zh-Hant"] em { font-style: normal; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
@@ -155,155 +258,205 @@ html[lang="zh-Hant"] { --font-serif: 'Songti TC','Noto Serif CJK TC',Georgia,ser
 <a class="skip" href="#main" data-zh="跳至內容">Skip to content</a>
 <nav aria-label="Main navigation" data-zh-label="主選單">
     <div class="wrap nav-inner">
-        <a class="brand" href="#top" aria-label="Cyris home" data-zh-label="Cyris 首頁"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Cyris</span></a>
+        <a class="brand" href="#top" aria-label="Cyris home" data-zh-label="Cyris 首頁"><svg class="brand-mark" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><rect class="plate" width="128" height="128" rx="24"/><path d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/><path transform="rotate(120 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/><path transform="rotate(240 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/><circle cx="64" cy="64" r="12"/></svg><span>Cyris</span></a>
         <div class="nav-links">
-            <a href="#how" data-zh="運作方式">How it works</a>
-            <a href="#control" data-zh="文章管理">Article review</a>
-            <a href="#start" data-zh="部署方式">Setup</a>
-            <button class="language-toggle" type="button" aria-label="Switch to Traditional Chinese">繁體中文</button>
-            <button class="theme-toggle" type="button" aria-label="Preview light theme" title="Preview light theme"><svg class="icon-sun" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg><svg class="icon-moon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"></path></svg></button>
-            <a class="icon-link" href="https://github.com/musingfox/cyris" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub"><svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg></a>
+            <a href="#story" data-zh="運作方式">How it works</a>
+            <a href="#editions" data-zh="使用形態">Editions</a>
+            <button class="language-toggle" type="button" aria-label="Switch to Traditional Chinese" hidden>繁體中文</button>
+            <button class="theme-toggle" type="button" aria-label="Preview light theme" title="Preview light theme" hidden><svg class="icon-sun" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg><svg class="icon-moon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"></path></svg></button>
+            <a class="icon-link" href="https://github.com/musingfox/cyris" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub"><svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
         </div>
     </div>
 </nav>
+
 <main id="main">
-<header class="hero" id="top">
-    <div class="wrap hero-intro">
-        <p class="eyebrow accent" data-zh="開放原始碼，可自行託管">Open source, self-hosted</p>
-        <h1 data-zh="&lt;em&gt;讀得完&lt;/em&gt;的閱讀清單">A reading list with <em>an end.</em></h1>
-        <p class="hero-description" data-zh="Cyris 讀完你訂閱的 RSS 與電子報，交給你一份只留下值得讀的文章、讀得完的摘要。你會精挑每一段送進模型 context window 的內容；Cyris 用同樣的方式替你的注意力把關。">Cyris reads your RSS feeds and newsletters and hands you one digest of the articles worth reading, short enough to finish. You pick every token that reaches your model’s context window; Cyris does the same for your attention.</p>
-        <div class="ctas">
-            <a class="btn primary" href="#start" data-zh="產生你的第一份摘要">Get your first digest</a>
-            <a class="btn secondary" href="https://cyris-digest.pages.dev/" target="_blank" rel="noopener" hreflang="zh-Hant" data-zh="看一期真實摘要 <span aria-hidden=&quot;true&quot;>↗</span>">See a live digest <span aria-hidden="true">↗</span></a>
-        </div>
-        <p class="hero-note" data-zh="免費、開源，不需要 AI 金鑰就能開始。真實摘要以繁體中文撰寫。">Free and open source. No AI key needed to start. The live digest is written in Traditional Chinese.</p>
-        <p class="proof" data-zh="維護者自己的部署，2026 年 8 月 28 日至 9 月 27 日共 56 期：平均每期收進 &lt;strong&gt;92 篇&lt;/strong&gt;文章，留下 &lt;strong&gt;13 篇&lt;/strong&gt;。">The maintainer’s own deployment, 56 issues from Aug 28 to Sep 27, 2026: an average issue took in <strong>92 articles</strong> and kept <strong>13</strong>.</p>
-        <img class="hero-shot" src="assets/digest.webp" width="2560" height="2000" alt="A Cyris digest: 8 sources, 92 articles received, 15 included, led by a top story on Cloudflare's infrastructure" data-zh-alt="一期 Cyris 摘要：8 個來源，收進 92 篇文章，留下 15 篇，以一則談 Cloudflare 基礎設施的頭條開場">
+<!-- The opening: with no script, or under reduced motion, the end state below is what
+     shows; with motion, the canvas plays the opening and the grid below stays in the layout as its slots. -->
+<header class="hero" id="top" data-phase="end">
+    <canvas id="canvas" aria-hidden="true"></canvas>
+    <div class="still top wrap" aria-hidden="true"><p><small>RSS</small>New post</p><p><small>Newsletter</small>Roundup</p><p><small>Blog</small><span class="bar" style="--w:50%"></span></p><p><small>電子報</small>精選</p><p><small>RSS</small>In case you missed it</p><p><small>Podcast</small><span class="bar" style="--w:38%"></span></p><p><small>Blog</small>Release notes</p><p><small>部落格</small>最新文章</p><p><small>RSS</small><span class="bar" style="--w:58%"></span></p><p><small>Newsletter</small>Read later</p><p><small>RSS</small>深度報導</p><p><small>電子報</small><span class="bar" style="--w:30%"></span></p></div>
+    <div class="still bottom wrap" aria-hidden="true"><p><small>Podcast</small>Podcast episode</p><p><small>RSS</small>快訊</p><p><small>Blog</small><span class="bar" style="--w:62%"></span></p><p><small>部落格</small>評論</p><p><small>部落格</small><span class="bar" style="--w:42%"></span></p><p><small>Blog</small>Long read</p><p><small>Newsletter</small><span class="bar" style="--w:46%"></span></p><p><small>RSS</small>Thread</p><p><small>Newsletter</small>Opinion</p><p><small>Blog</small>Notes from my reading</p><p><small>電子報</small>稍後閱讀</p><p><small>RSS</small><span class="bar" style="--w:34%"></span></p></div>
+    <div class="mark" aria-hidden="true">
+        <div class="fly" id="fly"><span class="iris-box" id="irisbox"><svg class="iris" id="iris" viewBox="0 0 128 128" focusable="false"><rect class="plate" width="128" height="128" rx="24"/><path d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/><path transform="rotate(120 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/><path transform="rotate(240 64 64)" d="M64 10A54 54 0 0 1 114.068 84.229L83.45 84.142A28 28 0 0 0 75.389 38.421Z"/><circle cx="64" cy="64" r="12"/></svg></span><span class="word" id="word">CYRIS</span></div>
     </div>
+    <div class="centre">
+        <h1 data-zh="把注意力放在真正重要的事情">Put your attention on what really matters.</h1>
+    </div>
+    <a class="scroll-cue" href="#story" aria-label="How it works" data-zh-label="運作方式">
+        <span class="cue-in"><svg viewBox="0 0 24 64" aria-hidden="true" focusable="false">
+            <defs><linearGradient id="cue-fade" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="64"><stop offset="0" style="stop-color:var(--accent);stop-opacity:0"/><stop offset="1" style="stop-color:var(--accent);stop-opacity:1"/></linearGradient></defs>
+            <path d="M12 2V60M1 48l11 12 11-12" style="fill:none;stroke:url(#cue-fade);stroke-width:2.75;stroke-linecap:round;stroke-linejoin:round"/>
+        </svg></span>
+    </a>
 </header>
-<section class="film" id="film" aria-labelledby="film-title">
+
+<section class="story" id="story" aria-labelledby="story-title">
     <div class="wrap">
-        <p class="eyebrow" data-zh="影片介紹">Watch</p>
-        <h2 class="section-heading" id="film-title" data-zh="38 秒看懂 Cyris。">Cyris in 38 seconds.</h2>
-        <video controls preload="none" playsinline width="1920" height="1080" poster="assets/launch-poster.webp" aria-label="Cyris launch film" data-zh-label="Cyris 介紹影片">
-            <source src="https://media.musingfox.com/cyris/launch-v8.mp4" type="video/mp4">
-            <track kind="captions" src="assets/launch-captions-en.vtt" srclang="en" label="English">
-            <track kind="captions" src="assets/launch-captions-zh-Hant.vtt" srclang="zh-Hant" label="繁體中文">
-        </video>
-    </div>
-</section>
-<section id="how" aria-labelledby="how-title">
-    <div class="wrap">
-        <div class="how-heading">
-            <p class="eyebrow" data-zh="運作方式">How it works</p>
-            <h2 id="how-title" data-zh="快速閱讀或深度檢視">Read the highlights or explore the details.</h2>
-            <p data-zh="選擇來源與處理深度，同一則新聞的多篇報導會整合成一則摘要。先讀摘要，再按需要查看完整清單。">Choose your sources and processing depth. Reports on the same news story merge into one summary. Start with the digest, then consult the full list when you need it.</p>
-        </div>
-        <ol class="feature-flow">
-            <li>
-                <svg viewBox="0 0 240 160" aria-hidden="true" focusable="false">
-                    <path d="M48 30h66v84H48zM58 20h66v84M62 92h36"/>
-                    <circle cx="65" cy="72" r="2"/>
-                    <path d="M63 57a17 17 0 0 1 17 17M63 45a29 29 0 0 1 29 29"/>
-                    <path d="M132 70h64v48h-64zM132 70l32 25 32-25M132 118l22-20M196 118l-22-20"/>
-                    <path d="M81 126v12h82v-8" stroke-dasharray="3 5"/>
-                </svg>
-                <h3 data-zh="匯入你的訂閱">Bring your subscriptions</h3>
-                <p data-zh="RSS 與電子報">RSS feeds and newsletters</p>
-            </li>
-            <li>
-                <svg viewBox="0 0 240 160" aria-hidden="true" focusable="false">
-                    <path d="M26 80h30M56 36v88M56 36h36M56 80h36M56 124h36"/>
-                    <path d="M100 24h36l-12 14v12h-12V38zM104 70h28M104 80h20M104 90h24M102 124h32m-10-10 10 10-10 10"/>
-                    <path d="M148 36h36M148 80h36M148 124h36M184 36v88M184 80h30"/>
-                </svg>
-                <h3 data-zh="依來源選擇處理">Set each source’s depth</h3>
-                <p data-zh="篩選重點、整理摘要或保留摘錄">Filter, summarize, or keep excerpts</p>
-            </li>
-            <li>
-                <svg viewBox="0 0 240 160" aria-hidden="true" focusable="false">
-                    <path d="M152 26h44v76M162 18h44v76M164 42h20M164 54h20M174 66h10"/>
-                    <g class="result">
-                        <path d="M36 62q30-12 60 2 30-14 60-2v68q-30-12-60 2-30-14-60-2zM96 64v68"/>
-                        <path d="M48 78q16-5 34 1M48 90q16-5 34 1M48 102q16-5 24-1M110 79q16-6 32-1M110 91q16-6 32-1M110 103q16-6 24-3"/>
+        <h2 class="eyebrow" id="story-title" data-zh="運作方式">How it works</h2>
+        <div class="story-grid">
+            <figure class="pipeline" id="pipeline" aria-hidden="true">
+                <!-- One drawing for every width. Decorative: each step's sentence carries its meaning. -->
+                <svg class="dg" viewBox="0 0 360 474" focusable="false">
+                    <g class="g g2">
+                        <text class="mono" x="20" y="14" data-zh="來源">Sources</text>
+                        <text class="mono" x="340" y="14" text-anchor="end" data-zh="收到的文章">Received</text>
+                        <rect class="box" x="20" y="22" width="150" height="34" rx="4"/>
+                        <text x="95" y="44" text-anchor="middle" data-zh="RSS 訂閱">RSS feeds</text>
+                        <rect class="box" x="190" y="22" width="150" height="34" rx="4"/>
+                        <text x="265" y="44" text-anchor="middle" data-zh="電子報">Newsletters</text>
                     </g>
+                    <g class="g g3">
+                        <path class="edge" pathLength="1" d="M180 104C180 112 70 110 70 118"/>
+                        <path class="edge" pathLength="1" d="M180 104V118"/>
+                        <path class="edge" pathLength="1" d="M180 104C180 112 290 110 290 118"/>
+                        <rect class="pill" x="20" y="118" width="100" height="90" rx="6"/>
+                        <text x="32" y="138">read</text><text class="note" id="read-note" x="64" y="138" data-zh="整理重點">summarized</text>
+                        <rect class="pill" x="130" y="118" width="100" height="90" rx="6"/>
+                        <text x="142" y="138">follow</text><text class="note" x="186" y="138" data-zh="原文">as written</text>
+                        <rect class="pill" x="240" y="118" width="100" height="90" rx="6"/>
+                        <text x="252" y="138">skim</text><text class="note" x="284" y="138" data-zh="篩選">filtered</text>
+                    </g>
+                    <rect class="glow" id="read-glow" x="20" y="118" width="100" height="90" rx="6"/>
+                    <g class="g g4">
+                        <path class="edge" pathLength="1" d="M70 208C70 218 126 214 126 224"/>
+                        <path class="edge" pathLength="1" d="M180 208C180 218 126 214 126 224"/>
+                        <path class="edge" pathLength="1" d="M262 208C262 218 226 214 226 224"/>
+                        <path class="edge" pathLength="1" d="M300 208V224"/>
+                        <rect class="frame" x="20" y="224" width="212" height="186" rx="5"/>
+                        <text class="mono" x="30" y="241" data-zh="摘要">Digest</text>
+                        <rect class="band b1" data-band="0" x="30" y="248" width="192" height="54" rx="3"/>
+                        <text data-band="0" x="40" y="262">Stories</text>
+                        <rect class="band b2" data-band="1" x="30" y="308" width="192" height="60" rx="3"/>
+                        <text data-band="1" x="40" y="322">Topics</text>
+                        <rect class="band b3" data-band="2" x="30" y="374" width="192" height="30" rx="3"/>
+                        <text data-band="2" x="40" y="393">Headlines</text>
+                        <rect class="tray" data-band="3" x="248" y="224" width="92" height="80" rx="4"/>
+                        <text class="mono" data-band="3" x="256" y="239" data-zh="完整清單">Full list</text>
+                    </g>
+                    <rect class="cursor" id="cursor" x="30" y="248" width="192" height="54" rx="3"/>
+                    <g class="g g6">
+                        <text class="mono" x="294" y="378" text-anchor="middle" style="fill:var(--accent)" data-zh="↑ ↓ 投票">↑ ↓ votes</text>
+                        <path class="loop" d="M232 386H352V163H346"/>
+                        <path class="loop-head" d="M341 163l8-5v10z"/>
+                    </g>
+                    <g id="skipped"><rect class="ghost" x="262" y="160" width="9" height="9"/><text class="mono" x="277" y="168" data-zh="略過">skipped</text></g>
+                    <g class="g g7">
+                        <path class="edge" pathLength="1" d="M126 410C126 420 95 420 95 430"/>
+                        <path class="edge" pathLength="1" d="M126 410C126 420 265 420 265 430"/>
+                        <rect class="box" x="20" y="430" width="150" height="34" rx="4"/>
+                        <text x="34" y="452" data-zh="&lt;tspan style=&quot;fill:var(--accent);font-family:var(--font-mono)&quot;&gt;@&lt;/tspan&gt;  信箱"><tspan style="fill:var(--accent);font-family:var(--font-mono)">@</tspan>  Email</text>
+                        <rect class="box" x="190" y="430" width="150" height="34" rx="4"/>
+                        <text x="204" y="452"><tspan style="fill:var(--accent);font-family:var(--font-mono)">#</tspan>  Discord</text>
+                    </g>
+                    <rect class="parcel" x="150" y="442" width="10" height="10"/>
+                    <rect class="parcel" x="320" y="442" width="10" height="10"/>
+                    <g data-band="0"><g class="deco" data-sq="3"><rect class="d-line" x="51" y="289" width="58" height="2" rx="1"/><rect class="d-line" x="51" y="293" width="40" height="2" rx="1" opacity=".6"/></g><g class="deco" data-sq="58"><rect class="d-line" x="139" y="269" width="58" height="2" rx="1"/><rect class="d-line" x="139" y="273" width="40" height="2" rx="1" opacity=".6"/></g><g class="deco" data-sq="83"><rect class="d-line" x="139" y="279" width="58" height="2" rx="1"/><rect class="d-line" x="139" y="283" width="40" height="2" rx="1" opacity=".6"/></g><g class="deco" data-sq="113"><rect class="d-line" x="51" y="269" width="58" height="2" rx="1"/><rect class="d-line" x="51" y="273" width="40" height="2" rx="1" opacity=".6"/></g><g class="deco" data-sq="115"><rect class="d-line" x="51" y="279" width="58" height="2" rx="1"/><rect class="d-line" x="51" y="283" width="40" height="2" rx="1" opacity=".6"/></g></g><g data-band="1"><g class="deco" data-sq="0"><rect class="d-card" x="40" y="327" width="31" height="17" rx="1.5"/><rect class="d-img" x="42" y="329" width="8" height="7" rx="1"/><rect class="d-head" x="52" y="330" width="16" height="2" rx="1"/><rect class="d-line" x="52" y="334" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="10"><rect class="d-card" x="75" y="327" width="31" height="17" rx="1.5"/><rect class="d-img" x="77" y="329" width="8" height="7" rx="1"/><rect class="d-head" x="87" y="330" width="16" height="2" rx="1"/><rect class="d-line" x="87" y="334" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="19"><rect class="d-card" x="110" y="327" width="31" height="17" rx="1.5"/><rect class="d-img" x="112" y="329" width="8" height="7" rx="1"/><rect class="d-head" x="122" y="330" width="16" height="2" rx="1"/><rect class="d-line" x="122" y="334" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="31"><rect class="d-card" x="145" y="327" width="31" height="17" rx="1.5"/><rect class="d-img" x="147" y="329" width="8" height="7" rx="1"/><rect class="d-head" x="157" y="330" width="16" height="2" rx="1"/><rect class="d-line" x="157" y="334" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="34"><rect class="d-card" x="180" y="327" width="31" height="17" rx="1.5"/><rect class="d-img" x="182" y="329" width="8" height="7" rx="1"/><rect class="d-head" x="192" y="330" width="16" height="2" rx="1"/><rect class="d-line" x="192" y="334" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="45"><rect class="d-card" x="40" y="347" width="31" height="17" rx="1.5"/><rect class="d-img" x="42" y="349" width="8" height="7" rx="1"/><rect class="d-head" x="52" y="350" width="16" height="2" rx="1"/><rect class="d-line" x="52" y="354" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="74"><rect class="d-card" x="75" y="347" width="31" height="17" rx="1.5"/><rect class="d-img" x="77" y="349" width="8" height="7" rx="1"/><rect class="d-head" x="87" y="350" width="16" height="2" rx="1"/><rect class="d-line" x="87" y="354" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="81"><rect class="d-card" x="110" y="347" width="31" height="17" rx="1.5"/><rect class="d-img" x="112" y="349" width="8" height="7" rx="1"/><rect class="d-head" x="122" y="350" width="16" height="2" rx="1"/><rect class="d-line" x="122" y="354" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="85"><rect class="d-card" x="145" y="347" width="31" height="17" rx="1.5"/><rect class="d-img" x="147" y="349" width="8" height="7" rx="1"/><rect class="d-head" x="157" y="350" width="16" height="2" rx="1"/><rect class="d-line" x="157" y="354" width="11" height="1.5" rx=".75"/></g><g class="deco" data-sq="87"><rect class="d-card" x="180" y="347" width="31" height="17" rx="1.5"/><rect class="d-img" x="182" y="349" width="8" height="7" rx="1"/><rect class="d-head" x="192" y="350" width="16" height="2" rx="1"/><rect class="d-line" x="192" y="354" width="11" height="1.5" rx=".75"/></g></g><g class="dots" data-geo='{"src": [176, 52], "grid": {"x": 20, "y": 68, "pitch": 9, "cols": 36, "size": 7}, "readQ": {"x": 32, "y": 150, "pitch": 10, "cols": 7, "size": 7}, "followQ": {"x": 142, "y": 150, "pitch": 10, "cols": 7, "size": 7}, "skimQ": {"x": 248, "y": 144, "pitch": 7, "cols": 13, "size": 5}, "via": {"d": [126, 226], "s": [226, 226], "x": [300, 216]}, "bands": [[30, 248, 192, 54], [30, 308, 192, 60], [30, 374, 192, 30]], "parcelFrom": [121, 396]}'><rect class="sq" data-l="s" x="42" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="45" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="48" y="339" width="2" height="2"/><rect class="sq" data-l="w" x="40" y="288" width="8" height="8"/><rect class="sq" data-l="s" x="51" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="54" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="57" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="60" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="63" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="66" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="77" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="256" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="80" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="264" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="83" y="339" width="2" height="2"/><rect class="sq" data-l="f" x="139" y="388.9" width="23" height="1.6"/><rect class="sq" data-l="f" x="139" y="379.0" width="23" height="1.6"/><rect class="sq" data-l="s" x="86" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="89" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="112" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="115" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="118" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="272" y="248" width="6" height="6"/><rect class="sq" data-l="x" x="280" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="121" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="124" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="288" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="127" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="130" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="133" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="136" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="147" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="150" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="296" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="182" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="185" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="304" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="188" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="191" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="194" y="339" width="2" height="2"/><rect class="sq" data-l="x" x="312" y="248" width="6" height="6"/><rect class="sq" data-l="f" x="166" y="379.0" width="23" height="1.6"/><rect class="sq" data-l="s" x="197" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="200" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="203" y="339" width="2" height="2"/><rect class="sq" data-l="s" x="42" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="45" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="48" y="359" width="2" height="2"/><rect class="sq" data-l="x" x="320" y="248" width="6" height="6"/><rect class="sq" data-l="s" x="51" y="359" width="2" height="2"/><rect class="sq" data-l="x" x="328" y="248" width="6" height="6"/><rect class="sq" data-l="x" x="256" y="256" width="6" height="6"/><rect class="sq" data-l="f" x="193" y="379.0" width="23" height="1.6"/><rect class="sq" data-l="x" x="264" y="256" width="6" height="6"/><rect class="sq" data-l="f" x="112" y="382.3" width="23" height="1.6"/><rect class="sq" data-l="f" x="139" y="382.3" width="23" height="1.6"/><rect class="sq down" data-l="f" style="opacity:.4" x="166" y="382.3" width="23" height="1.6"/><rect class="sq" data-l="f" x="193" y="382.3" width="23" height="1.6"/><rect class="sq" data-l="w" x="128" y="268" width="8" height="8"/><rect class="sq" data-l="x" x="272" y="256" width="6" height="6"/><rect class="sq" data-l="f" x="112" y="385.6" width="23" height="1.6"/><rect class="sq" data-l="x" x="280" y="256" width="6" height="6"/><rect class="sq" data-l="f" x="139" y="385.6" width="23" height="1.6"/><rect class="sq" data-l="x" x="288" y="256" width="6" height="6"/><rect class="sq" data-l="x" x="296" y="256" width="6" height="6"/><rect class="sq" data-l="f" x="166" y="385.6" width="23" height="1.6"/><rect class="sq" data-l="f" x="193" y="385.6" width="23" height="1.6"/><rect class="sq" data-l="x" x="304" y="256" width="6" height="6"/><rect class="sq" data-l="x" x="312" y="256" width="6" height="6"/><rect class="sq" data-l="x" x="320" y="256" width="6" height="6"/><rect class="sq" data-l="f" x="112" y="388.9" width="23" height="1.6"/><rect class="sq" data-l="x" x="328" y="256" width="6" height="6"/><rect class="sq" data-l="s" x="54" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="57" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="77" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="80" y="359" width="2" height="2"/><rect class="sq" data-l="x" x="256" y="264" width="6" height="6"/><rect class="sq" data-l="x" x="264" y="264" width="6" height="6"/><rect class="sq" data-l="s" x="83" y="359" width="2" height="2"/><rect class="sq" data-l="x" x="272" y="264" width="6" height="6"/><rect class="sq" data-l="x" x="280" y="264" width="6" height="6"/><rect class="sq" data-l="s" x="112" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="115" y="359" width="2" height="2"/><rect class="sq" data-l="w" x="128" y="278" width="8" height="8"/><rect class="sq up" data-l="f" x="112" y="379.0" width="23" height="1.6"/><rect class="sq" data-l="s" x="147" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="150" y="359" width="2" height="2"/><rect class="sq" data-l="s" x="182" y="359" width="2" height="2"/><rect class="sq" data-l="f" x="166" y="388.9" width="23" height="1.6"/><rect class="sq" data-l="x" x="288" y="264" width="6" height="6"/><rect class="sq" data-l="f" x="193" y="388.9" width="23" height="1.6"/><rect class="sq" data-l="f" x="112" y="392.2" width="23" height="1.6"/><rect class="sq" data-l="x" x="296" y="264" width="6" height="6"/><rect class="sq" data-l="x" x="304" y="264" width="6" height="6"/><rect class="sq" data-l="f" x="139" y="392.2" width="23" height="1.6"/><rect class="sq" data-l="f" x="166" y="392.2" width="23" height="1.6"/><rect class="sq" data-l="f" x="193" y="392.2" width="23" height="1.6"/><rect class="sq" data-l="x" x="312" y="264" width="6" height="6"/><rect class="sq" data-l="x" x="320" y="264" width="6" height="6"/><rect class="sq" data-l="f" x="112" y="395.5" width="23" height="1.6"/><rect class="sq" data-l="f" x="139" y="395.5" width="23" height="1.6"/><rect class="sq" data-l="f" x="166" y="395.5" width="23" height="1.6"/><rect class="sq" data-l="f" x="193" y="395.5" width="23" height="1.6"/><rect class="sq" data-l="x" x="328" y="264" width="6" height="6"/><rect class="sq" data-l="x" x="256" y="272" width="6" height="6"/><rect class="sq" data-l="x" x="264" y="272" width="6" height="6"/><rect class="sq" data-l="f" x="112" y="398.8" width="23" height="1.6"/><rect class="sq" data-l="f" x="139" y="398.8" width="23" height="1.6"/><rect class="sq" data-l="x" x="272" y="272" width="6" height="6"/><rect class="sq" data-l="f" x="166" y="398.8" width="23" height="1.6"/><rect class="sq" data-l="x" x="280" y="272" width="6" height="6"/><rect class="sq" data-l="x" x="288" y="272" width="6" height="6"/><rect class="sq" data-l="f" x="193" y="398.8" width="23" height="1.6"/><rect class="sq" data-l="d" x="40" y="268" width="8" height="8"/><rect class="sq" data-l="x" x="296" y="272" width="6" height="6"/><rect class="sq" data-l="d" x="40" y="278" width="8" height="8"/><rect class="sq" data-l="x" x="304" y="272" width="6" height="6"/><rect class="sq" data-l="s" x="185" y="359" width="2" height="2"/></g><text class="vote" id="vote-up" x="110.5" y="381.4" text-anchor="end">↑</text><text class="vote" id="vote-down" x="164.5" y="384.7" text-anchor="end">↓</text>
                 </svg>
-                <h3 data-zh="讀摘要，查完整清單">Read, then explore</h3>
-                <p data-zh="精選內容與本次處理、待處理的文章">Highlights, plus this run’s articles and pending items</p>
+            </figure>
+            <ol class="steps" id="steps">
+                <li id="step-2">
+                    <p class="say" data-zh="Cyris 讀完&lt;em&gt;你訂閱的&lt;/em&gt; RSS 與電子報，把它們寫成一份摘要。">Cyris reads the feeds and newsletters <em>you subscribe to</em> and writes one digest from them.</p>
+                </li>
+                <li>
+                    <p class="say" data-zh="你替每個來源選一條 lane，&lt;em&gt;lane 決定&lt;/em&gt; Cyris 怎麼處理它的文章。">You give each source a lane, and <em>the lane decides</em> what Cyris does with its articles.</p>
+                    <dl class="lanes">
+                        <div><dt>read</dt><dd data-zh="每篇文章都會整理重點並評分。">Each article is summarized and scored.</dd></div>
+                        <div><dt>follow</dt><dd data-zh="每篇文章都照原文送達，不評分。">Each article comes through as written and is never scored.</dd></div>
+                        <div><dt>skim</dt><dd data-zh="文章會經過篩選，同一主題的新聞會歸在一起。">Articles are filtered, and news on one topic is grouped together.</dd></div>
+                    </dl>
+                </li>
+                <li>
+                    <p class="say" data-zh="你選的 lane &lt;em&gt;決定每篇文章落在哪一層&lt;/em&gt;。">The lanes you chose <em>set each article's layer</em>.</p>
+                    <dl class="lanes layers">
+                        <div><dt>Stories</dt><dd data-zh="每篇 read 或 follow 的文章各占一列，附上圖片、重點或摘錄，以及來源。">Each read or follow article gets its own row, with its image, its summary or excerpt, and its source.</dd></div>
+                        <div><dt>Topics</dt><dd data-zh="同一個新聞主題有兩篇以上文章時，會合成一張附圖的卡片，附上一段摘錄和每一篇的連結。">A news topic with two or more articles becomes one card with an image, a short excerpt and a link to each of them.</dd></div>
+                        <div><dt>Headlines</dt><dd data-zh="只有一篇文章的主題或篩選後的標題，都會收成一行。篩選掉的文章仍留在完整清單上。">A topic with only one article, or a filtered headline, becomes a single line. What the filter leaves out stays on the full list.</dd></div>
+                    </dl>
+                </li>
+                <li>
+                    <p class="say" data-zh="你&lt;em&gt;一次讀一層&lt;/em&gt;：先讀 Stories，再讀 Topics，最後是 Headlines。">You read it <em>one layer at a time</em>: Stories first, then Topics, then Headlines.</p>
+                </li>
+                <li>
+                    <p class="say" data-zh="你投下的&lt;em&gt;贊成與反對票&lt;/em&gt;能讓之後的摘要略過與你否決的文章相近的內容。">Your <em>up and down votes</em> can let later issues skip articles like the ones you turned down.</p>
+                </li>
+                <li>
+                    <p class="say" data-zh="摘要會&lt;em&gt;寄到你的信箱&lt;/em&gt;，或以 Discord 訊息附上新一期的連結。">It arrives <em>by email</em>, or as a Discord message that links to the new issue.</p>
+                </li>
+            </ol>
+        </div>
+    </div>
+</section>
+
+<section id="editions" aria-labelledby="editions-title">
+    <div class="wrap">
+        <h2 class="say" id="editions-title" data-zh="&lt;em&gt;照你的方式&lt;/em&gt;執行：在自己的電腦上、在自己的 Cloudflare 帳號，或使用即將推出的託管版。">Run it <em>your way</em>: on your computer, in your own Cloudflare account, or hosted, which is coming soon.</h2>
+        <ul class="editions" id="edition-list">
+            <li>
+                <a class="edition" href="https://github.com/musingfox/cyris/blob/main/docs/install-local.md" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 220 120" aria-hidden="true" focusable="false"><g class="inner">
+                        <rect class="ill ill-s" x="46" y="12" width="128" height="80" rx="5"/>
+                        <path class="ill" d="M26 100h168l-10 10H36z"/>
+                        <rect class="ill-a" x="102" y="34" width="16" height="16"/>
+                        <path class="ill" d="M84 64h52M92 74h36"/>
+                    </g></svg>
+                    <h3 data-zh="在你的電腦上">On your computer</h3>
+                    <p class="fig-cap where" data-zh="docker compose 或 uv">docker compose or uv</p>
+                    <p data-zh="在你自己的機器上執行，每小時自動抓取 RSS。免費，LLM 金鑰的用量另計。摘要頁上沒有投票按鈕，投票要在設定精靈或命令列進行。">Runs on your own machine and fetches your RSS feeds every hour by itself. Free, apart from your LLM key's usage. Issue pages have no vote buttons here, so you vote in the setup wizard or from the command line.</p>
+                    <span class="go" data-zh="本機安裝指南 &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Local setup guide <span aria-hidden="true">↗</span></span>
+                </a>
             </li>
-        </ol>
+            <li>
+                <a class="edition" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 220 120" aria-hidden="true" focusable="false"><g class="inner">
+                        <path class="ill ill-s" d="M64 100h96a26 26 0 0 0 4-51.7A38 38 0 0 0 90 40a30 30 0 0 0-26 60z"/>
+                        <rect class="ill-a" x="104" y="60" width="16" height="16"/>
+                        <path class="ill" d="M112 100v12M96 112h32"/>
+                    </g></svg>
+                    <h3 data-zh="你的 Cloudflare 帳號">Your Cloudflare account</h3>
+                    <p class="fig-cap where" data-zh="部署到你自己的帳號">deployed to your own account</p>
+                    <p data-zh="按排程產生並發布每期摘要，不必開著電腦。它的容器需要 Workers 付費方案。要在摘要頁上投票，還需要選用的投票 Worker 並登入。">Makes and publishes each issue on schedule, without your computer. Its container needs the Workers Paid plan. Voting on an issue page also needs the optional vote Worker and a sign-in.</p>
+                    <span class="go" data-zh="雲端安裝指南 &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Cloud setup guide <span aria-hidden="true">↗</span></span>
+                </a>
+            </li>
+            <li>
+                <a class="edition soon" href="https://github.com/musingfox/cyris" target="_blank" rel="noopener" aria-label="Hosted, coming soon: Cyris on GitHub" data-zh-label="託管版即將推出：GitHub 上的 Cyris">
+                    <svg viewBox="0 0 220 120" aria-hidden="true" focusable="false"><g class="inner">
+                        <rect class="ill ill-s" x="60" y="18" width="100" height="22" rx="3"/>
+                        <rect class="ill ill-s" x="60" y="48" width="100" height="22" rx="3"/>
+                        <rect class="ill ill-s" x="60" y="78" width="100" height="22" rx="3"/>
+                        <circle class="ill" cx="74" cy="29" r="2"/><circle class="ill" cx="74" cy="59" r="2"/><circle class="ill" cx="74" cy="89" r="2"/>
+                        <circle class="ill ill-s" cx="160" cy="98" r="16"/>
+                        <path class="ill" d="M152 98l6 6 10-12"/>
+                    </g></svg>
+                    <h3 data-zh="託管版 &lt;span class=&quot;badge&quot;&gt;即將推出&lt;/span&gt;">Hosted <span class="badge">Coming soon</span></h3>
+                    <p class="fig-cap where" data-zh="尚未開放">not available yet</p>
+                    <p data-zh="同一套流程，直接替你執行。">The same pipeline, run for you.</p>
+                    <span class="go" data-zh="GitHub 上的 Cyris &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Cyris on GitHub <span aria-hidden="true">↗</span></span>
+                </a>
+            </li>
+        </ul>
+        <div class="ctas">
+            <a class="btn primary" href="https://github.com/musingfox/cyris/blob/main/docs/install-local.md" target="_blank" rel="noopener" data-zh="產生你的第一份摘要 &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Get your first digest <span aria-hidden="true">↗</span></a>
+            <a class="btn secondary" href="https://github.com/musingfox/cyris/releases/latest" target="_blank" rel="noopener" data-zh="最新版本 &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Latest release <span aria-hidden="true">↗</span></a>
+        </div>
     </div>
 </section>
-<section id="control" aria-labelledby="control-title">
-    <div class="wrap">
-        <div class="control-grid">
-            <div><p class="eyebrow accent" data-zh="文章管理">Article review</p><h2 class="section-heading" id="control-title" data-zh="篇幅很短，&lt;br&gt;&lt;em&gt;但一篇都不藏。&lt;/em&gt;">Nothing is hidden<br>to make it <em>short.</em></h2></div>
-            <div class="controls">
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↗</span>看它略過了什麼"><span class="symbol" aria-hidden="true">↗</span>See what it left out</h3><p data-zh="每期摘要都附上完整清單，沒入選的文章也在裡面。">Every issue links to the full list of what it collected, dropped articles included.</p></article>
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>↑↓</span>用投票教它"><span class="symbol" aria-hidden="true">↑↓</span>Teach it with a vote</h3><p data-zh="用 Upvote 或 Downvote 接受或拒絕文章。投票也能讓之後的執行略過相似的文章。">Upvote or downvote to accept or reject an article. Votes can also filter similar articles out of later runs.</p></article>
-            </div>
-        </div>
-        <div class="provider-note"><p class="eyebrow" data-zh="選擇 AI 供應商，或不使用 AI">Choose an AI provider, or none</p><div class="providers"><span>Anthropic</span><span>Google Gemini</span><span>OpenAI</span><span>Cloudflare Workers AI</span><span data-zh="None：原文摘錄">None: plain excerpts</span></div></div>
-    </div>
-</section>
-<section id="delivery" aria-labelledby="delivery-title">
-    <div class="wrap">
-        <div class="control-grid">
-            <div><p class="eyebrow accent" data-zh="接收方式">Delivery</p><h2 class="section-heading" id="delivery-title" data-zh="在信箱或 Discord&lt;br&gt;&lt;em&gt;收到摘要。&lt;/em&gt;">Get it in your<br><em>inbox or Discord.</em></h2></div>
-            <div class="controls">
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>@</span>在信箱讀摘要"><span class="symbol" aria-hidden="true">@</span>Read it in your inbox</h3><p data-zh="整期摘要會寄到你的信箱。">The whole digest arrives as an email.</p></article>
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>#</span>在 Discord 收到通知"><span class="symbol" aria-hidden="true">#</span>Get a Discord message</h3><p data-zh="每期摘要產生後，你會收到一則附上連結的訊息。">Get a message with a link to each new digest.</p></article>
-                <article class="control"><h3 data-zh="<span class=&quot;symbol&quot; aria-hidden=&quot;true&quot;>!</span>執行失敗時收到警示"><span class="symbol" aria-hidden="true">!</span>Hear when a run fails</h3><p data-zh="你設定的管道也會在執行失敗時通知你。">The channels you set up also tell you when a run fails.</p></article>
-            </div>
-        </div>
-    </div>
-</section>
-<section class="start" id="start" aria-labelledby="start-title">
-    <div class="wrap">
-        <p class="eyebrow" data-zh="部署方式">Deployment</p>
-        <h2 class="section-heading" id="start-title" data-zh="本機執行，或雲端自動發布。">Run on your computer<br>or publish on Cloudflare.</h2>
-        <div class="run-options">
-            <article class="run-card">
-                <h3 data-zh="本機執行">On your computer</h3>
-                <p data-zh="在電腦上執行指令，產生 HTML 摘要後用瀏覽器開啟。">Run a command to generate an HTML digest, then open it in your browser.</p>
-                <ul><li data-zh="需要 Python 3.12+ 與 uv">Requires Python 3.12+ and uv</li><li data-zh="手動執行，資料存在本機">Run on demand; keep data on disk</li><li data-zh="郵件匯入與網頁投票另需 Cloudflare Workers">Email ingestion and web voting need Cloudflare Workers</li></ul>
-                <a class="btn secondary" href="#local-setup" data-zh="本機安裝步驟 <span aria-hidden=&quot;true&quot;>↓</span>">Local setup <span aria-hidden="true">↓</span></a>
-            </article>
-            <article class="run-card cloud">
-                <h3 data-zh="Cloudflare 自動發布">Publish on Cloudflare</h3>
-                <p data-zh="設定發布時間，讓 Cyris 定時產生摘要，再到網站閱讀與管理。">Set publishing hours so Cyris can generate digests on schedule. Read them and manage your settings on the web.</p>
-                <ul><li data-zh="需要 Cloudflare Workers 付費方案（每月 US$5）、Docker 與 bun">Requires Cloudflare Workers Paid (US$5/month), Docker and bun</li><li data-zh="資料存於 D1，摘要發布至 Pages">Data in D1; digests on Pages</li><li data-zh="收發郵件另需自己的網域與 Email Routing">Email ingestion and delivery need your domain and Email Routing</li><li data-zh="安裝指南目前只在一個帳號上驗證過">The guide has so far been verified on one account only</li></ul>
-                <a class="btn secondary" href="https://github.com/musingfox/cyris/blob/main/docs/install-cloudflare.md" target="_blank" rel="noopener" data-zh="雲端部署步驟 <span aria-hidden=&quot;true&quot;>↗</span>">Cloud setup <span aria-hidden="true">↗</span></a>
-            </article>
-        </div>
-        <details class="setup" id="local-setup" open>
-            <summary data-zh="本機快速開始：從來源到摘要">Local quickstart: from source to digest</summary>
-            <div class="setup-body">
-                <p data-zh="複製範例檔案並填入來源。選一個 AI 供應商，或設定 <code>provider = &quot;none&quot;</code>，不需要 API 金鑰就能開始。">Copy the example files and add your sources. Pick an AI provider, or set <code>provider = "none"</code> to start without an API key.</p>
-<pre><code>git clone https://github.com/musingfox/cyris.git
-cd cyris
-uv sync
 
-cp cyris.toml.example cyris.toml
-cp .env.example .env
-cp sources.example.yaml sources.yaml
-
-<span class="comment" data-zh="# 編輯設定與來源；選擇 none，或填入所選 AI 供應商的憑證。"># Edit settings and sources; choose none or supply your AI provider credentials.</span>
-uv run cyris doctor
-uv run cyris run</code></pre>
-            </div>
-        </details>
-        <p class="setup-note" data-zh="<a href=&quot;https://github.com/musingfox/cyris/blob/main/docs/install-local.md&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;>閱讀完整安裝說明 ↗</a>"><a href="https://github.com/musingfox/cyris/blob/main/docs/install-local.md" target="_blank" rel="noopener">Read the full setup instructions ↗</a></p>
-    </div>
-</section>
 </main>
-<footer class="wrap"><span data-zh="Cyris · 開放原始碼，可自行託管。">Cyris · Open source, self-hosted.</span><a href="https://github.com/musingfox/cyris/releases/latest" target="_blank" rel="noopener" data-zh="最新版本 <span aria-hidden=&quot;true&quot;>↗</span>">Latest release <span aria-hidden="true">↗</span></a></footer>
+<div class="wrap"><footer><span data-zh="Cyris · 開放原始碼，可自行託管">Cyris · Open source, self-hosted</span><a href="https://github.com/musingfox/cyris" target="_blank" rel="noopener">github.com/musingfox/cyris <span aria-hidden="true">↗</span></a></footer></div>
+
 <script>
 (() => {
     const root = document.documentElement;
-    const themeToggle = document.querySelector('.theme-toggle');
-    const languageToggle = document.querySelector('.language-toggle');
+    const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
+    const clamp = (x) => Math.max(0, Math.min(1, x));
+    const ease = (x) => x * x * (3 - 2 * x);
+    const token = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+
+    // ---- theme and language ----
+    const toggle = document.querySelector('.theme-toggle');
     const metaTheme = document.querySelector('meta[name="theme-color"]');
+    const languageToggle = document.querySelector('.language-toggle');
     const translatable = [...document.querySelectorAll('[data-zh]')].map((element) => ({
         element, en: element.innerHTML, zh: element.getAttribute('data-zh') || ''
     }));
@@ -315,24 +468,24 @@ uv run cyris run</code></pre>
     }));
     const copy = {
         en: {
-            title: 'Cyris: A reading list with an end.',
-            description: 'Read selected articles from your RSS feeds and newsletters in one digest, with the full article list alongside. Run Cyris on your computer or deploy it to Cloudflare.',
-            ogTitle: 'Cyris: A reading list with an end.',
-            ogDescription: 'Read selected articles from your RSS feeds and newsletters in one digest, with the full article list alongside. Run Cyris on your computer or deploy it to Cloudflare.',
-            twitterTitle: 'Cyris: A reading list with an end.',
-            twitterDescription: 'Read selected articles from your RSS feeds and newsletters in one digest, with the full article list alongside. Run Cyris on your computer or deploy it to Cloudflare.',
+            title: 'Cyris: Put your attention on what really matters.',
+            description: 'Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.',
+            ogTitle: 'Cyris: Put your attention on what really matters.',
+            ogDescription: 'Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.',
+            twitterTitle: 'Cyris: Put your attention on what really matters.',
+            twitterDescription: 'Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.',
             language: '繁體中文',
             languageLabel: 'Switch to Traditional Chinese',
             lightTheme: 'Preview light theme',
             darkTheme: 'Preview dark theme'
         },
         'zh-Hant': {
-            title: 'Cyris: 讀得完的閱讀清單',
-            description: '用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。',
-            ogTitle: 'Cyris: 讀得完的閱讀清單',
-            ogDescription: '用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。',
-            twitterTitle: 'Cyris: 讀得完的閱讀清單',
-            twitterDescription: '用 Cyris 把訂閱的 RSS 與電子報整理成一份摘要，先讀精選文章，需要時再查完整清單。你可以在自己的電腦上執行，或部署到 Cloudflare。',
+            title: 'Cyris：把注意力放在真正重要的事情',
+            description: 'Cyris 讀完你訂閱的 RSS 與電子報，寫成一份讀得完的摘要，完整的文章清單就在旁邊。',
+            ogTitle: 'Cyris：把注意力放在真正重要的事情',
+            ogDescription: 'Cyris 讀完你訂閱的 RSS 與電子報，寫成一份讀得完的摘要，完整的文章清單就在旁邊。',
+            twitterTitle: 'Cyris：把注意力放在真正重要的事情',
+            twitterDescription: 'Cyris 讀完你訂閱的 RSS 與電子報，寫成一份讀得完的摘要，完整的文章清單就在旁邊。',
             language: 'English',
             languageLabel: '切換至英文',
             lightTheme: '預覽淺色主題',
@@ -344,14 +497,13 @@ uv run cyris run</code></pre>
         if (element) element.setAttribute(property, value);
     };
     const setThemeLabel = () => {
-        if (!themeToggle) return;
         const lang = root.lang === 'zh-Hant' ? 'zh-Hant' : 'en';
         const light = root.dataset.theme === 'light';
         const label = light ? copy[lang].darkTheme : copy[lang].lightTheme;
-        themeToggle.dataset.theme = light ? 'light' : 'dark';
-        themeToggle.setAttribute('aria-label', label);
-        themeToggle.title = label;
-        if (metaTheme) metaTheme.content = light ? '#f5f5ed' : '#07070a';
+        toggle.dataset.theme = light ? 'light' : 'dark';
+        toggle.setAttribute('aria-label', label);
+        toggle.title = label;
+        metaTheme.content = light ? '#f5f5ed' : '#07070a';
     };
     const setLanguage = (lang) => {
         const language = lang === 'zh-Hant' ? 'zh-Hant' : 'en';
@@ -365,25 +517,316 @@ uv run cyris run</code></pre>
         setMeta('meta[property="og:description"]', copy[language].ogDescription, 'content');
         setMeta('meta[name="twitter:title"]', copy[language].twitterTitle, 'content');
         setMeta('meta[name="twitter:description"]', copy[language].twitterDescription, 'content');
-        if (languageToggle) {
-            languageToggle.textContent = copy[language].language;
-            languageToggle.setAttribute('aria-label', copy[language].languageLabel);
-            languageToggle.title = copy[language].languageLabel;
-        }
+        languageToggle.textContent = copy[language].language;
+        languageToggle.setAttribute('aria-label', copy[language].languageLabel);
+        languageToggle.title = copy[language].languageLabel;
         setThemeLabel();
     };
-    root.dataset.theme = root.dataset.theme === 'light' ? 'light' : 'dark';
-    setLanguage(root.lang === 'zh-Hant' ? 'zh-Hant' : 'en');
-    document.addEventListener('click', (event) => {
-        const themeButton = event.target.closest('.theme-toggle');
-        if (themeButton) {
-            root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
-            setThemeLabel();
-            return;
+    root.dataset.theme = 'dark';
+    setLanguage('en');
+    // The toggles only work with script, so only script shows them.
+    toggle.hidden = false;
+    languageToggle.hidden = false;
+    let onTheme = () => {};
+
+    // ---- the opening: fragments come into focus around the iris ----
+    // Fragments arrive one by one until 2.3s; the iris flies in 2.4-4.8s on a slow ease-out; from 4.0s focus
+    // spreads out from it, and each fragment it reaches aligns to its slot in the grid; the tagline comes at
+    // 6.2s; by END everything has come to rest. The grid's slots are the HTML end state's own fragments.
+    const hero = document.getElementById('top');
+    if (!REDUCED.matches) {
+        const FLY_AT = 2.4, FLY = 2.4, ORDER_AT = 4.0, WAVE = 1.8, MOVE = 2.5, CALM_AT = 6.2, END = 8.4;
+        // the calm levers: drift at most DRIFT px/s, ink at most INK_HI
+        const DRIFT = 18, INK_HI = 0.42, INK_LO = 0.28, INK_CALM = 0.16, FADE_IN = 0.9, BLUR = 4.5;
+        const out3 = (x) => 1 - Math.pow(1 - x, 3);
+        const lerp = (a, b, x) => a + (b - a) * x;
+        const canvas = document.getElementById('canvas'), cx = canvas.getContext('2d');
+        // Where the canvas has no filter, an out-of-focus fragment is drawn as a few faint offset copies,
+        // so it still reads soft instead of turning sharp.
+        const CAN_BLUR = 'filter' in CanvasRenderingContext2D.prototype;
+        const fly = document.getElementById('fly'), iris = document.getElementById('iris'), box = document.getElementById('irisbox'), word = document.getElementById('word');
+        const SANS = token('--font-sans'), MONO = token('--font-mono');
+        const cells = [...hero.querySelectorAll('.still p')];
+        let seed = 7;
+        const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        let W = 0, H = 0, C = {}, L = null, t = 0, last = 0, raf = 0, done = false;
+        const colours = () => { C = {text: token('--text'), dim: token('--text-dim')}; };
+        const items = cells.map((p, i) => {
+            const dir = rnd() * Math.PI * 2, v = DRIFT * (0.45 + 0.55 * rnd());
+            const bar = p.querySelector('.bar');
+            return {i, label: p.querySelector('small').textContent, text: bar ? null : p.lastChild.textContent, bar: bar ? parseFloat(bar.style.getPropertyValue('--w')) / 100 : 0,
+                born: 0.1 + i * 0.09, ux: rnd(), uy: rnd(), vx: Math.cos(dir) * v, vy: Math.sin(dir) * v,
+                rot: (rnd() - 0.5) * 0.36, sz: 0.8 + 0.4 * rnd(), bright: rnd() < 0.35};
+        });
+        function cut(text, f, maxW) {
+            cx.font = `500 ${f}px ${SANS}`;
+            if (cx.measureText(text).width <= maxW) return text;
+            const ch = [...text];
+            while (ch.length > 2 && cx.measureText(ch.join('') + '…').width > maxW) ch.pop();
+            return ch.join('') + '…';
         }
-        const languageButton = event.target.closest('.language-toggle');
-        if (languageButton) setLanguage(root.lang === 'zh-Hant' ? 'en' : 'zh-Hant');
+        function mess(it, tt) {
+            return {x: it.mx + it.vx * tt, y: it.my + it.vy * tt, f: 14 * it.sz * (L.narrow ? 0.9 : 1), rot: it.rot, ink: it.bright ? INK_HI : INK_LO};
+        }
+        // where everything ends: the logo's centre, and each fragment's slot in the grid
+        function layout() {
+            const r = canvas.getBoundingClientRect();
+            W = r.width; H = r.height;
+            const dpr = Math.min(2, devicePixelRatio || 1);
+            canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+            const narrow = W <= 720, fs = narrow ? 12 : 13;
+            const hr = hero.getBoundingClientRect(), mr = fly.parentElement.getBoundingClientRect();
+            const lx = mr.left - hr.left + fly.offsetLeft + box.offsetLeft + box.offsetWidth / 2;
+            const ly = mr.top - hr.top + fly.offsetTop + box.offsetTop + box.offsetHeight / 2;
+            fly.style.transformOrigin = `${box.offsetLeft + box.offsetWidth / 2}px 50%`;
+            L = {lx, ly, fs, narrow, rmax: Math.hypot(Math.max(lx, W - lx), Math.max(ly, H - ly))};
+            const slots = cells.map((p) => { const b = p.getBoundingClientRect(); return {x: b.left - hr.left, y: b.bottom - hr.top - fs * 0.34, w: b.width, open: b.height >= 1}; });
+            const colW = slots[0].w;
+            items.forEach((it) => {
+                it.gone = !slots[it.i].open;
+                it.mx = W * (0.02 + 0.76 * it.ux); it.my = H * (0.08 + 0.8 * it.uy);
+                if (it.text) { it.shown = cut(it.text, fs, colW); cx.font = `500 ${fs}px ${SANS}`; it.w = cx.measureText(it.shown).width; }
+                else it.w = colW * it.bar;
+            });
+            // each fragment takes the slot nearest where it was when the order began: columns by x, rows by y
+            const centre = (it) => { const m = mess(it, ORDER_AT); return [m.x + it.w / 2, m.y]; };
+            const open = slots.filter((s) => s.open);
+            const columns = [...new Set(open.map((s) => Math.round(s.x)))].sort((a, b) => a - b)
+                .map((x) => open.filter((s) => Math.round(s.x) === x).sort((a, b) => a.y - b.y));
+            const byX = items.filter((it) => !it.gone).sort((p, q) => centre(p)[0] - centre(q)[0]);
+            let k = 0;
+            columns.forEach((col) => byX.slice(k, k += col.length).sort((p, q) => centre(p)[1] - centre(q)[1]).forEach((it, row) => { it.ox = col[row].x; it.oy = col[row].y; }));
+            items.forEach((it) => {
+                // the time focus reaches this fragment: when a wave growing from the logo meets it
+                const [x, y] = centre(it);
+                const d = Math.hypot(x - lx, y - ly) / L.rmax;
+                it.reach = ORDER_AT + WAVE * (1 - Math.cbrt(1 - Math.min(0.999, d)));
+            });
+        }
+        // how far a fragment has come from drifting to its slot, 0..1; the move eases in and out, so it starts
+        // from the drift without a jolt and peaks at three quarters of an ease-out's speed
+        function state(it) {
+            const m = mess(it, Math.min(t, END));
+            const u = ease(clamp((t - it.reach) / MOVE));
+            const fade = clamp((t - it.born) / FADE_IN);
+            // a fragment with no slot on this hero fades where it drifts, gone by END
+            if (it.gone) return {x: m.x, y: m.y, f: m.f, rot: m.rot, a: m.ink * (1 - u) * fade, blur: BLUR};
+            return {x: lerp(m.x, it.ox, u), y: lerp(m.y, it.oy, u), f: lerp(m.f, L.fs, u), rot: lerp(m.rot, 0, u), a: lerp(m.ink, INK_CALM, u) * fade, blur: BLUR * (1 - u)};
+        }
+        function glyphs(it, s) {
+            cx.font = `500 ${s.f}px ${SANS}`; cx.fillStyle = C.text;
+            if (it.text) cx.fillText(it.shown, 0, 0);
+            else { cx.globalAlpha *= 0.8; cx.beginPath(); const bar = [0, -s.f * 0.58, it.w * s.f / L.fs, s.f * 0.36]; if (cx.roundRect) cx.roundRect(...bar, s.f * 0.18); else cx.rect(...bar); cx.fill(); cx.globalAlpha /= 0.8; }
+            cx.globalAlpha *= 0.75; cx.fillStyle = C.dim;
+            cx.font = `500 ${s.f * 0.72}px ${MONO}`;
+            cx.fillText(it.label.toUpperCase(), 0, -s.f * 1.15);
+        }
+        const GHOSTS = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => [Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)]);
+        function draw() {
+            // Reduced motion turned on mid-page has left the end state in HTML; nothing draws over it.
+            if (!hero.classList.contains('live')) return;
+            const dpr = canvas.width / W;
+            cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            cx.clearRect(0, 0, W, H);
+            cx.textAlign = 'left'; cx.textBaseline = 'alphabetic';
+            for (const it of items) {
+                const s = state(it);
+                if (s.a <= 0.005) continue;
+                cx.save();
+                cx.translate(s.x, s.y); cx.rotate(s.rot);
+                if (s.blur > 0.05 && CAN_BLUR) cx.filter = `blur(${s.blur.toFixed(2)}px)`;
+                if (s.blur > 0.05 && !CAN_BLUR) {
+                    const o = s.blur * 0.75;
+                    for (const [gx, gy] of GHOSTS) { cx.save(); cx.translate(gx * o, gy * o); cx.globalAlpha = s.a * 0.1; glyphs(it, s); cx.restore(); }
+                } else { cx.globalAlpha = s.a; glyphs(it, s); }
+                cx.restore();
+            }
+            // the logo flies in from depth on a slow ease-out, coming into focus as it lands
+            const f = out3(clamp((t - FLY_AT) / FLY));
+            fly.style.transform = f >= 1 ? 'none' : `scale(${lerp(0.4, 1, f)})`;
+            fly.style.filter = f >= 1 ? 'none' : `blur(${(8 * (1 - f)).toFixed(2)}px)`;
+            iris.style.opacity = clamp((t - FLY_AT) / 0.8).toFixed(3);
+            word.style.opacity = clamp((t - (FLY_AT + FLY - 0.6)) / 1).toFixed(3);
+            hero.dataset.phase = t >= CALM_AT ? 'calm' : 'open';
+        }
+        function frame(ts) {
+            const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0;
+            last = ts; t += dt;
+            draw();
+            if (t >= END) { finishUp(); return; }
+            raf = requestAnimationFrame(frame);
+        }
+        // The listeners go first: nothing that goes wrong in the last draw can leave the page unable to scroll.
+        function finishUp() { inputs.forEach(([type, opt]) => removeEventListener(type, endEarly, opt)); cancelAnimationFrame(raf); done = true; raf = 0; t = END; draw(); }
+        // The first scroll, wheel, swipe or scrolling key during the opening settles it instead of moving the page;
+        // the canvas dips out for a moment so the end state arrives without a cut, and later input scrolls as usual.
+        // A key pressed on a focused link or button is that control's own, so it acts as usual and settles nothing.
+        const KEYS = [' ', 'ArrowDown', 'PageDown', 'End', 'Down', 'Spacebar'];
+        const inputs = [['wheel', {passive: false}], ['touchmove', {passive: false}], ['keydown', {}], ['scroll', {passive: true}]];
+        let skipping = false;
+        function endEarly(e) {
+            if (e.type === 'keydown' && (!KEYS.includes(e.key) || e.target.closest('a, button'))) return;
+            if (done) return;
+            // Every wheel, swipe or key until the settle ends is held too, so a stream of them cannot move the page.
+            if (e.cancelable && e.type !== 'scroll') e.preventDefault();
+            if (skipping) return;
+            skipping = true;
+            hero.classList.add('skipping');
+            setTimeout(() => { finishUp(); hero.classList.remove('skipping'); }, 280);
+        }
+        inputs.forEach(([type, opt]) => addEventListener(type, endEarly, opt));
+        hero.classList.add('live');
+        hero.dataset.phase = 'open';
+        colours(); layout(); draw();
+        raf = requestAnimationFrame(frame);
+        const relayout = () => { layout(); if (done) draw(); };
+        new ResizeObserver(relayout).observe(canvas);
+        if (document.fonts) document.fonts.ready.then(relayout);
+        onTheme = () => { colours(); if (done) draw(); };
+        // Turning reduced motion on mid-page: stop at the end state in HTML.
+        REDUCED.addEventListener('change', () => { if (REDUCED.matches) { finishUp(); hero.classList.remove('live'); hero.dataset.phase = 'end'; canvas.style.display = 'none'; } });
+    }
+    toggle.addEventListener('click', () => { root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light'; setThemeLabel(); onTheme(); });
+
+    // ---- the story: the step under the reading line is the active one ----
+    // Steps 2 to 7 drive one clock, P from 0 to 6: step k plays P from k-2 to k-1. Activating a step
+    // runs the clock to its end at one pace, forwards or back, so scrolling back reverses it.
+    // Each square's resting place is baked into the markup, so with no script every step's result shows.
+    const fig = document.getElementById('pipeline');
+    const svg = fig.querySelector('svg');
+    const o = JSON.parse(svg.querySelector('.dots').dataset.geo);
+    const slot = (g, k) => [g.x + (k % g.cols) * g.pitch, g.y + Math.floor(k / g.cols) * g.pitch];
+    const seg = (a, b, t) => a + (b - a) * t;
+    const BAND = {d: 0, w: 0, s: 1, f: 2, x: 3};
+    let nRead = 0, nFollow = 0, nSkim = 0, nx = 0, nk = 0;
+    const sq = [...svg.querySelectorAll('.sq')].map((el, i) => {
+        const l = el.dataset.l;
+        const q = {el, i, l, fx: +el.getAttribute('x'), fy: +el.getAttribute('y'), fw: +el.getAttribute('width'), fh: +el.getAttribute('height'),
+            up: el.classList.contains('up'), down: el.classList.contains('down')};
+        [q.gx, q.gy] = slot(o.grid, i);
+        const lane = l === 'd' ? o.readQ : l === 'w' ? o.followQ : o.skimQ;
+        [q.qx, q.qy] = slot(lane, l === 'd' ? nRead++ : l === 'w' ? nFollow++ : nSkim++);
+        q.qs = lane.size;
+        q.rank = l === 'x' ? nx++ : nk++;
+        return q;
     });
+    const N = sq.length;
+    const bandEls = [...svg.querySelectorAll('[data-band]')];
+    const cursor = document.getElementById('cursor');
+    const skipped = document.getElementById('skipped');
+    const readGlow = document.getElementById('read-glow'), readNote = document.getElementById('read-note');
+    const votes = [['vote-up', (q) => q.up], ['vote-down', (q) => q.down]].map(([id, f]) => ({el: document.getElementById(id), q: sq.find(f)}));
+    const parcels = [...svg.querySelectorAll('.parcel')].map((el) => ({el, x: +el.getAttribute('x'), y: +el.getAttribute('y')}));
+    const put = (el, x, y, w, h = w) => {
+        el.setAttribute('x', x.toFixed(1)); el.setAttribute('y', y.toFixed(1));
+        if (w !== undefined) { el.setAttribute('width', w.toFixed(2)); el.setAttribute('height', h.toFixed(2)); }
+    };
+    // a Stories row's lines and a Topics card's frame appear as the square they belong to lands
+    const decos = [...svg.querySelectorAll('.deco')].map((el) => ({el, q: sq[+el.dataset.sq]}));
+    // step 5: a frame reads down the layers, resting on each in turn; the others dim while it reads
+    const readAt = (f) => f < .15 ? 0 : f < .4 ? ease((f - .15) / .25) : f < .6 ? 1 : f < .85 ? 1 + ease((f - .6) / .25) : 2;
+    function show(P) {
+        [2, 3, 4, 6, 7].forEach((k) => fig.classList.toggle(`on${k}`, P > (k === 6 ? 4 : k === 7 ? 5 : k - 2) + 0.02));
+        const reading = clamp((P - 3) / 0.12) * (1 - clamp((P - 4.02) / 0.25));
+        const c = readAt(clamp(P - 3));
+        const dim = (b) => 1 - reading * 0.65 * (b > 2 ? 1 : 1 - clamp(1 - Math.abs(c - b)));
+        bandEls.forEach((el) => { el.style.opacity = dim(+el.dataset.band).toFixed(2); });
+        const b0 = o.bands[Math.floor(c)], b1 = o.bands[Math.ceil(c)], cf = c - Math.floor(c);
+        put(cursor, seg(b0[0], b1[0], cf), seg(b0[1], b1[1], cf));
+        cursor.setAttribute('height', seg(b0[3], b1[3], cf).toFixed(1));
+        cursor.style.opacity = reading.toFixed(2);
+        const voted = ease(clamp((P - 4.2) / 0.6));
+        const pulse = Math.sin(Math.PI * clamp((P - 1.4) / 0.45));
+        readGlow.style.opacity = (pulse * 0.9).toFixed(2);
+        readNote.style.opacity = (0.3 + 0.7 * clamp((P - 1.5) / 0.3)).toFixed(2);
+        for (const q of sq) {
+            // step 2: out of the sources into the received grid
+            const t0 = clamp((P - 0.5 * q.i / N) / 0.45), e0 = ease(t0);
+            let x = seg(o.src[0], q.gx, e0), y = seg(o.src[1], q.gy, e0), s = o.grid.size, h = null, a = t0 > 0 ? 0.25 + 0.75 * e0 : 0, wait = true;
+            const t2 = clamp((P - 2 - 0.5 * (q.l === 'x' ? q.rank / nx : q.rank / nk)) / 0.5);
+            // step 3: into the lane of its source
+            // read and follow articles reach their lanes first, so the read lane's pulse has its squares to work on
+            const t1 = q.l === 'd' || q.l === 'w' ? clamp((P - 1) / 0.35) : clamp((P - 1 - 0.5 * q.i / N) / 0.5);
+            if (t1 > 0) { const e = ease(t1); x = seg(q.gx, q.qx, e); y = seg(q.gy, q.qy, e); s = seg(o.grid.size, q.qs, e); }
+            // read articles are summarized and scored in their lane: they swell once and come out lit; follow ones pass untouched
+            if (q.l === 'd' && t2 <= 0) { const b = 3 * pulse; x -= b / 2; y -= b / 2; s += b; if (P > 1.6) wait = false; }
+            // step 4: out of the lane into its layer, or down to the full list
+            if (t2 > 0) {
+                const v = o.via[q.l === 'd' || q.l === 'w' ? 'd' : q.l === 'x' ? 'x' : 's'];
+                if (t2 < 0.4) { const e = ease(t2 / 0.4); x = seg(q.qx, v[0], e); y = seg(q.qy, v[1], e); }
+                else { const e = ease((t2 - 0.4) / 0.6); x = seg(v[0], q.fx, e); y = seg(v[1], q.fy, e); }
+                // landing, the square takes its layer's shape: a thumbnail, a citation, or a stretched line
+                const k = ease(clamp((t2 - 0.4) / 0.6)); h = seg(q.qs, q.fh, k); s = seg(q.qs, q.fw, k); wait = t2 < 0.9;
+            }
+            // step 6: the down-voted Headline dims
+            if (q.down) a *= 1 - 0.6 * voted;
+            a *= dim(BAND[q.l]);
+            put(q.el, x, y, s, h ?? s);
+            q.el.style.opacity = a.toFixed(2);
+            q.el.classList.toggle('wait', wait);
+            q.x = x; q.y = y; q.t2 = t2;
+        }
+        const glyph = ease(clamp((P - 4.02) / 0.2));
+        votes.forEach(({el, q}) => { el.setAttribute('x', (q.x - 1.5).toFixed(1)); el.setAttribute('y', (q.y + 2.4).toFixed(1)); el.style.opacity = glyph.toFixed(2); });
+        decos.forEach(({el, q}) => { el.style.opacity = ease(clamp((q.t2 - 0.75) / 0.25)).toFixed(2); });
+        skipped.style.opacity = ease(clamp((P - 4.55) / 0.35)).toFixed(2);
+        // step 7: the issue leaves the digest for each channel
+        parcels.forEach((p, j) => {
+            const t = clamp((P - 5.15 - j * 0.2) / 0.55), e = ease(t);
+            put(p.el, seg(o.parcelFrom[0], p.x, e), seg(o.parcelFrom[1], p.y, e));
+            p.el.style.opacity = t > 0 ? '1' : '0';
+        });
+    }
+    let P = 0, T = 0, raf = 0, lastTs = 0;
+    function run(ts) {
+        const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0;
+        lastTs = ts;
+        // one step in 1.6s; a longer jump is covered in at most 2s
+        const d = T - P, v = Math.max(1 / 1.6, Math.abs(d) / 2) * dt;
+        P = Math.abs(d) <= v ? T : P + Math.sign(d) * v;
+        show(P);
+        if (P === T) { raf = 0; lastTs = 0; } else raf = requestAnimationFrame(run);
+    }
+    function aim(target) {
+        T = target;
+        if (REDUCED.matches) { if (raf) cancelAnimationFrame(raf); raf = 0; P = T; show(P); return; }
+        if (!raf) raf = requestAnimationFrame(run);
+    }
+
+    const storyEl = document.getElementById('story');
+    const editions = document.getElementById('edition-list');
+    const stepEls = [hero, ...document.querySelectorAll('#steps > li'), document.getElementById('editions')];
+    const narrow = matchMedia('(max-width: 720px)');
+    let active = 0;
+    function locate() {
+        // the reading line sits below the pinned drawing on narrow screens
+        const line = innerHeight * (narrow.matches ? 0.72 : 0.55);
+        let k = 1;
+        // a step starts when its sentence reaches the line, by which time the drawing is pinned
+        stepEls.forEach((el, i) => { if (i && el.querySelector('.say').getBoundingClientRect().top <= line) k = i + 1; });
+        // on a tall screen the page can end before the editions' heading reaches the line, so the whole list in view, or the page's end, starts them too
+        if (editions.getBoundingClientRect().bottom <= innerHeight || scrollY + innerHeight >= root.scrollHeight - 1) k = stepEls.length;
+        if (k === active) return;
+        active = k;
+        stepEls.forEach((el, i) => el.classList.toggle('active', i + 1 === k));
+        follow();
+    }
+    // under reduced motion nothing moves, so at every step the drawing shows where it ends
+    function follow() {
+        aim(REDUCED.matches ? 6 : active === 1 ? 0 : Math.min(6, active - 1));
+        editions.classList.toggle('wait', !REDUCED.matches && active < stepEls.length);
+    }
+    REDUCED.addEventListener('change', follow);
+    // The sentences change height with the language, so the active step is found again.
+    languageToggle.addEventListener('click', () => { setLanguage(root.lang === 'zh-Hant' ? 'en' : 'zh-Hant'); locate(); });
+    fig.classList.add('armed');
+    storyEl.classList.add('guided');
+    const cue = hero.querySelector('.scroll-cue');
+    let queued = false;
+    addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; locate(); cue.classList.toggle('away', scrollY > 40); }); } }, {passive: true});
+    addEventListener('resize', locate);
+    show(0);
+    locate();
 })();
 </script>
 </body>
