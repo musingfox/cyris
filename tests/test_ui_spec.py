@@ -1639,10 +1639,6 @@ def test_the_landing_h1_is_larger_than_every_h2(lang: str) -> None:
         h1 = size(".hero h1", viewport)
         for h2 in (".section-heading", ".how-heading h2"):
             assert h1 > size(h2, viewport), f"{lang} at {viewport}px: h1 {h1} vs {h2}"
-    assert size(".hero h1", 1920) == (119 if lang == "en" else 102)
-    hero = rules[".hero h1"]
-    assert "letter-spacing: -.04em" in hero
-    assert [d for d in hero if d.startswith("font:") and ")/.92 " in d]
 
 
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:

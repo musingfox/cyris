@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-11-02
+updated: 2026-11-06
 ---
 
 # cyris UI design spec
@@ -118,6 +118,11 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   to be darker than `--bg`, the deepest token, to show under an item lifted off it; the timings are
   the values the owner settled on for this one effect, and nothing else on the site takes them, so
   they are not tokens. A new exception must be written into this bullet.
+- **`--iris: #c6ff3d` is the logo mark's colour, on the landing page only.** The landing page declares it
+  in its `:root` with `--iris-plate: #07070a` (§2 *Light palette*), and light replaces neither, so the
+  mark is the same colour in both themes. They stay out of the set above because the app's pages keep
+  the brand square and do not declare them. `--accent` is not the mark's colour, because the light
+  `--accent` is a dark lime (owner, 2026-11-06).
 - **Text reaches 4.5:1 on every background.** Every text colour passes 4.5:1 against `--bg`,
   `--bg-elev`, `--surface` and `--surface-2`, so `--text-dim` is the dimmest text there is: labels,
   footers and the rejected state all use it. `--text-faint` is not a text colour; it is for non-text
@@ -143,6 +148,10 @@ colour tokens above by name; every other token is shared.
   `--surface`, where the score pill sits, and the primary button's `--bg` label passes 4.5:1 on it.
 - **`--accent-hover` is light only.** It is the primary button's hover background, darker than
   `--accent` so the `--bg` label still passes 4.5:1. The dark hover stays the `#d4ff66` exception above.
+- **The logo sits on a plate in light.** `--iris` is 1.08:1 on the light `--bg`, so in light theme the
+  landing page's iris, in the site bar and in the hero, sits on the same dark rounded plate as
+  `website/assets/favicon.svg`: `--iris-plate`, `rx` 24 of the mark's 128. Dark theme has no plate
+  (owner, 2026-11-06).
 - The landing page's palette became the only one on 2026-10-02. The mail's former palette put its
   accent under 4.5:1 on `--surface-2` and on the pill's tint. `tests/test_email_digest.py` computes the
   ratios and holds the palette file to this table; `tests/test_ui_spec.py` holds the landing page's copy
@@ -187,8 +196,9 @@ original baseline was judged too large, and the multiplier's three steps are for
 
 | Role | Spec | Used for |
 |---|---|---|
-| display | Instrument Serif 400, clamp(46px, 7vw, 84px), line height 1, letter spacing −0.03em, `em` in italic `--accent` | Page titles (archive, raw, settings); the landing page's section headings (`h2`) |
-| issue title | Instrument Serif 400, clamp(56px, 8.75vw, 119px), line height .92, letter spacing −0.04em | The digest masthead title; the landing page's hero `h1`, so it stays larger than the section headings below it. Under `lang="zh-Hant"` its maximum is 102px, which keeps the 6/7 the earlier zh-Hant cap took (72px of 84px) and stays above display's 84px |
+| display | Instrument Serif 400, clamp(46px, 7vw, 84px), line height 1, letter spacing −0.03em, `em` in italic `--accent` | Page titles (archive, raw, settings) |
+| issue title | Instrument Serif 400, clamp(56px, 8.75vw, 119px), line height .92, letter spacing −0.04em | The digest masthead title |
+| tagline | Instrument Serif 400, clamp(26px, 2.6vw, 36px), line height 1.2, letter spacing −0.01em | The landing page's hero `h1`, which is the tagline under the logo and not a title. It stays larger than the page's `h2`s (§4 *guided diagram*) (owner, 2026-11-06) |
 | heading | Geist 600, 24px, line height 1.3, letter spacing −0.015em | Panel titles, settings category titles |
 | title | Geist 600, 18–19px, line height 1.3 | List items, source names; triage card title 26px |
 | body | Geist 400, 18px, line height 1.65, `--text-dim` | Descriptions, summaries |
@@ -231,7 +241,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **destructive confirm** | No `window.confirm`. On the first press, the danger button turns into `Confirm …` in place and takes an `--warn-tint` background; only a second press within 3 seconds acts, otherwise it reverts |
 | **section marker** | The label role, preceded by a 24px × 1px `--accent` line, spaced `--s-3` |
 | **footer** | `--s-16` above it, then a 1px `--border` and `--s-5` above its text, the same on archive, digest and raw; Geist Mono 12px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info, never site navigation. Its one link is the word `Cyris`, pointing to the project's site, so a page that reaches someone who has never heard of cyris says where it came from; the link takes the footer's colour. The mail (§6 *email*) is the one exception: it has no site bar, so its footer also carries the `Archive` · `Settings` links |
-| **feature flow** | Landing-page explanation, not an app mockup. An ordered list of three illustrated steps: subscriptions, per-source processing, reading. Three equal columns with `--s-12` gaps; one column with `--s-16` gaps at 720px. SVGs are decorative (`aria-hidden`, non-focusable), 100% wide and `2 × --s-20` high, followed by `--s-6`, a 19px title and 14px small text with `--s-2` between them. Text carries the full meaning without the drawings. Line art uses `--text-dim`; `--accent` marks the resulting digest only. Static chevrons point along reading order, right on desktop and down on phones; no animation, fake controls, dates or fictional articles. The `#system` prototype shows the same illustration |
+| **guided diagram** | Landing-page explanation, not an app mockup. One drawing stays pinned while an ordered list of sentences scrolls past it, one step each: sources, lanes, layers, reading a layer at a time, votes and delivery. On a phone the drawing is pinned under the site bar and the sentences scroll beneath it. The step whose sentence has reached the reading line is the active one: activating it plays that step's part of the drawing, and scrolling back reverses it. Script drives this from the scroll position. Text carries the full meaning without the drawings. The drawing is decorative (`aria-hidden`, non-focusable), and it has no fake controls. It may animate (§4 *Interaction*). Illustrative squares and generic text fragments are allowed; it shows no dates, counts or fictional articles. Line art uses `--text-dim`, and `--accent` marks what the step is about. Each sentence is Instrument Serif 400, clamp(28px, 2.7vw, 38px), line height 1.2, letter spacing −0.01em, `em` in `--accent`. Headings stay below the tagline (§3): the `h2` naming the steps is in the label role, and the `h2` opening the section after them is the same face at clamp(24px, 2.4vw, 32px). With no script, or under reduced motion, every part of the drawing shows where the story leaves it. `website/index.html` is its reference implementation (owner, 2026-11-06) |
 
 ### Interaction
 
@@ -240,9 +250,14 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 - **Transitions:** only `color`, `background-color`, `border-color` and `opacity` change, plus `filter` on
   the story image alone, over `--t-fast`,
   and `transition: all` is never written. The digest's hover focus is the one exception: it also moves
-  `filter`, `transform` and `box-shadow`, on its own timings (§2). Transform is used only for the triage
-  card's drag and fly-out, on raw and on labels, to rotate the feature flow's static chevrons, and for
-  the digest's hover focus.
+  `filter`, `transform` and `box-shadow`, on its own timings (§2). The landing page's opening, guided
+  diagram, scroll arrow and editions illustrations are a second exception, for that page only: they move
+  `transform` (the opening's logo, tagline and arrow, the arrow's nudge, the illustrations' scale), move
+  the diagram's squares by script and draw on a canvas, with the `opacity`, `filter`, `color`,
+  `border-color` and SVG stroke motion that goes with them, on their own timings (owner, 2026-11-06). The
+  digest and settings rules do not change, and neither does the reduced motion rule below. Transform is
+  used only for the triage card's drag and fly-out, on raw and on labels, for the
+  digest's hover focus, and for the landing page's opening, scroll arrow and editions illustrations.
 - **Hover** neither moves nor scales, except in the digest's hover focus (owner, 2026-11-02). The
   pressed state only lowers opacity, to the button's .7 (§4). A disabled button neither hovers nor
   presses.
