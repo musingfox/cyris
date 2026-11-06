@@ -73,6 +73,9 @@ score_threshold = 70                    # two articles on one topic at or above 
 # a run finishes ok and leaves nothing but store rows.
 enabled = true                          # or CYRIS_HTML_OUTPUT_ENABLED
 output_dir = "agent-vault/html"
+# Where you open the archive, for the Read online link in a notification: scheme, host and
+# port only. Empty sends no link. http://127.0.0.1:8766 opens only on the machine running Cyris.
+base_url = ""
 
 [promote]
 # Optional Cloudflare Worker for promote-button clicks (see workers/promote/).

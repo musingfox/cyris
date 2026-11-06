@@ -801,7 +801,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             logger.error("Failed to log usage: %s", e)
 
     report = RunReport(status="ok", failed_sources=failed_sources)
-    digest_url = ""  # online (Cloudflare Pages) URL, set after a successful publish
+    digest_url = ""  # online URL: a successful publish, or a written page and a base_url
     publish_failed = False
     raw_page = False
     if options.dry_run:
@@ -929,6 +929,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                         digest_url = f"https://{cfg.app.promote.pages_project}.pages.dev/{slug}"
                 else:
                     publish_failed = True
+            elif report.html_path is not None and cfg.app.html_output.base_url:
+                digest_url = f"{cfg.app.html_output.base_url}/{slug}"
 
     if not options.dry_run and not rerun:
         if not notify.discord_webhook_url:

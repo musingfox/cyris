@@ -16,14 +16,14 @@ from typing import Any
 
 from cyris.adapters.notify import mask_discord_webhook_url
 from cyris.bootstrap import default_models, embedding_defaults
-from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config
+from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, LOCAL_B_GRADE_ENV_VARS, Config
 
 _REGISTRY: dict[str, Any] = json.loads(
     (files("cyris.diagnostics") / "config_show.json").read_text(encoding="utf-8")
 )
 SOURCES: dict[str, str] = _REGISTRY["sources"]
 SECRETS: tuple[str, ...] = tuple(_REGISTRY["secrets"])
-IDENTITY: dict[str, str] = {**B_GRADE_ENV_VARS, **_REGISTRY["identity"]}
+IDENTITY: dict[str, str] = {**B_GRADE_ENV_VARS, **LOCAL_B_GRADE_ENV_VARS, **_REGISTRY["identity"]}
 _NONE = _REGISTRY["values"]["none"]
 
 # A style prompt or a webhook URL overflows its own row instead of pushing every

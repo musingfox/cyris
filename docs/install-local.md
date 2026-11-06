@@ -157,6 +157,9 @@ All articles page, from `[html_output] output_dir`, with `[digest] type_scale` f
 every runtime setting and the source list; the Settings and Archive links move between
 the two. The vote buttons and the Interest map stay hidden here (see below); an issue written by
 an earlier version still shows its vote buttons, and a click reports a failure.
+Set `[html_output] base_url = "http://127.0.0.1:8766"` and each notification carries a
+Read online link to its issue. That address opens only on this machine, so with it empty, the
+default, a notification has no link.
 With `[html_output] enabled = false` it serves no archive. On the `json` backend the page is read-only: `cyris.toml` and
 `sources.yaml` are the only place to change anything, and there is no onboarding wizard —
 `/onboarding` sends you back to `/settings`, because the wizard writes settings this

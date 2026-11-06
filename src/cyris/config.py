@@ -7,6 +7,7 @@ Sensitive values are injected from environment variables.
 import json
 import logging
 import os
+import re
 import tomllib
 import zoneinfo
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from functools import cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import (
@@ -22,6 +24,7 @@ from pydantic import (
     Field,
     TypeAdapter,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -80,6 +83,13 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
         if field not in data or data[field] == "":
             data[field] = env_val
     return data
+
+
+# Grade-B identity only a local install has. The Worker forwards `B_GRADE_ENV_VARS` into the
+# container, and a deployment it runs publishes, so it has no use for these.
+LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
+    "html_output.base_url": "CYRIS_HTML_OUTPUT_BASE_URL",
+}
 
 
 # Every grade-D setting (docs/architecture.md §5), as `table.field`, with the
@@ -247,14 +257,39 @@ class StoreConfig(BaseModel):
         return self.backend == "d1"
 
 
+BASE_URL = re.compile(r"https?://(?:[A-Za-z0-9][A-Za-z0-9.-]*|\[[0-9A-Fa-f:.]+\])(?::\d+)?/?")
+
+
 class HtmlOutputConfig(BaseModel):
     enabled: bool = False
     output_dir: str = "agent-vault/html"
+    # Where a reader opens these pages, for the notification's Read online link when nothing
+    # publishes them. Empty sends no link: localhost is wrong on every other device, so
+    # nothing here can guess it. A published issue's link comes from `[promote]` instead.
+    base_url: str = ""
 
     @model_validator(mode="before")
     @classmethod
     def inject_b_grade(cls, data: object) -> object:
-        return _fill_from_env(data, {"enabled": B_GRADE_ENV_VARS["html_output.enabled"]})
+        return _fill_from_env(
+            data,
+            {
+                "enabled": B_GRADE_ENV_VARS["html_output.enabled"],
+                "base_url": LOCAL_B_GRADE_ENV_VARS["html_output.base_url"],
+            },
+        )
+
+    @field_validator("base_url")
+    @classmethod
+    def base_url_is_an_address(cls, value: str) -> str:
+        if not value:
+            return value
+        # Scheme, host and port only: the mail and onboarding build further links from the
+        # host alone, so a path would be dropped from those and a query would swallow the slug.
+        if not BASE_URL.fullmatch(value):
+            raise ValueError(f"[html_output] base_url must be http(s)://host[:port], got {value!r}")
+        urlsplit(value).port  # noqa: B018 - raises ValueError out of range
+        return value.rstrip("/")
 
 
 class WorkerConfig(BaseModel):
