@@ -45,7 +45,7 @@
     "vote_similarity.min_outlier_window": "cyris.domain.similarity:MIN_OUTLIER_WINDOW",
     "vote_similarity.suppression_clock_days": "cyris.domain.suppression:SUPPRESSION_CLOCK_DAYS"
   },
-  "baked_env": ["CYRIS_GIT_SHA", "CYRIS_APP_WORKER_NAME"],
+  "baked_env": ["CYRIS_GIT_SHA", "CYRIS_APP_WORKER_NAME", "CYRIS_BEHIND_APP_WORKER"],
   "identity": {
     "store.account_id": "CLOUDFLARE_ACCOUNT_ID"
   },

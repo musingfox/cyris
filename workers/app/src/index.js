@@ -51,6 +51,14 @@ const present = (vars) =>
 
 const containerEnv = (role) => ({ ...present(SECRETS), ...present(DEPLOYMENT), CYRIS_ROLE: role });
 
+// What only a ui instance this Worker starts is told: the server behind it stops
+// checking Host and Origin, because router.js has checked the Access JWT and forward()
+// keeps the public URL. A literal rather than a binding, so a Preview, which inherits
+// no [vars], gets it, and nothing has to be provisioned. docs/architecture.md §5.
+const UI_ENV = {
+  CYRIS_BEHIND_APP_WORKER: "true",
+};
+
 const GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
 async function probeGemini(model) {
@@ -140,7 +148,7 @@ export class CyrisContainer extends DurableObject {
   // cloud would be a second scheduler racing the Workers Cron above.
   async fetch(request) {
     try {
-      await this.lifecycle.ready(containerEnv("ui"));
+      await this.lifecycle.ready({ ...containerEnv("ui"), ...UI_ENV });
     } catch (error) {
       console.log("container error:", error);
       return new Response(`Failed to start container: ${error}`, { status: 503 });

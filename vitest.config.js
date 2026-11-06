@@ -1,6 +1,12 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "cloudflare:workers": fileURLToPath(new URL("workers/app/test/cloudflare_workers_stub.js", import.meta.url)),
+    },
+  },
   test: {
     environment: "node",
     // The Worker's config lives at the repo root (see wrangler.toml), so this

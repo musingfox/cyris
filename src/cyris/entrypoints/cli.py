@@ -989,7 +989,10 @@ def _llm_from_values(values: dict):
 @app.command("triage-ui")
 def triage_ui(
     port: Annotated[int, typer.Option(help="Server port")] = 8766,
-    host: Annotated[str, typer.Option(help="Server host")] = "127.0.0.1",
+    host: Annotated[
+        str,
+        typer.Option(help="Server host. Requests must name this address or a loopback name"),
+    ] = "127.0.0.1",
     config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
         "cyris.toml"
     ),
@@ -1019,7 +1022,11 @@ def triage_ui(
         build_settings,
         load_effective_config,
     )
-    from cyris.entrypoints.triage_server import TriageServer
+    from cyris.entrypoints.triage_server import (
+        BEHIND_APP_WORKER_ENV,
+        BEHIND_APP_WORKER_VALUE,
+        TriageServer,
+    )
 
     try:
         cfg = load_effective_config(config_path, sources_path)
@@ -1050,6 +1057,7 @@ def triage_ui(
             digest_store=D1DigestStore(d1) if d1 else None,
             run_log=D1RunLog(d1, "") if d1 else None,
             interest_reader=D1InterestReader(d1).read if d1 else None,
+            behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
         )
         await server.start()
         typer.echo(f"Settings:  http://{host}:{port}/settings")

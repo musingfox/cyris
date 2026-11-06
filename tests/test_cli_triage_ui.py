@@ -76,6 +76,35 @@ def test_startup_names_the_settings_and_labels_urls(config: tuple[Path, Path]) -
     assert "Triage UI:" not in result.output
 
 
+def _built_behind_app_worker(config: tuple[Path, Path]) -> bool:
+    result = _run(config)
+    assert result.exit_code == 0, result.output
+    [(_, kwargs)] = FakeServer.calls
+    return kwargs["behind_app_worker"]
+
+
+def test_a_command_not_told_otherwise_keeps_the_request_check(
+    config: tuple[Path, Path], monkeypatch
+) -> None:
+    monkeypatch.delenv("CYRIS_BEHIND_APP_WORKER", raising=False)
+    assert _built_behind_app_worker(config) is False
+
+
+def test_the_app_workers_value_turns_the_request_check_off(
+    config: tuple[Path, Path], monkeypatch
+) -> None:
+    monkeypatch.setenv("CYRIS_BEHIND_APP_WORKER", "true")
+    assert _built_behind_app_worker(config) is True
+
+
+@pytest.mark.parametrize("value", ["", "false", "0", "1", "TRUE", "yes", "true "])
+def test_any_other_value_keeps_the_request_check(
+    config: tuple[Path, Path], monkeypatch, value: str
+) -> None:
+    monkeypatch.setenv("CYRIS_BEHIND_APP_WORKER", value)
+    assert _built_behind_app_worker(config) is False
+
+
 def test_a_json_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypatch) -> None:
     def refuse(*args, **kwargs):
         raise AssertionError("ui role opened an article store")
@@ -166,6 +195,15 @@ def test_a_stored_effort_reaches_the_page_as_itself(config: tuple[Path, Path], d
     assert result.exit_code == 0, result.output
     [(_args, kwargs)] = FakeServer.calls
     assert kwargs["values"]["llm_provider.reasoning_effort"] == "high"
+
+
+def test_a_d1_store_alone_keeps_the_request_check(
+    config: tuple[Path, Path], d1, monkeypatch
+) -> None:
+    # The cloud's store is no proof of the cloud's Worker: a compose install can use D1 too.
+    monkeypatch.delenv("CYRIS_BEHIND_APP_WORKER", raising=False)
+    seed_d1_settings(d1)
+    assert _built_behind_app_worker(config) is False
 
 
 def test_help_describes_the_settings_server() -> None:

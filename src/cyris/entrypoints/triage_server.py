@@ -1,9 +1,12 @@
 """The settings web server: /settings, /labels and the APIs they call."""
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
+import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -187,6 +190,113 @@ async def _revalidate_static(request: web.Request, response: web.StreamResponse)
         response.headers["Cache-Control"] = "no-cache"
 
 
+# Set by the app Worker's own code on the `ui` instance it starts, and by nothing else
+# (`docs/architecture.md` §5). Exactly this value turns the check below off; absent, or
+# anything else, leaves it on.
+BEHIND_APP_WORKER_ENV = "CYRIS_BEHIND_APP_WORKER"
+BEHIND_APP_WORKER_VALUE = "true"
+
+# The Host names this server answers on whatever it was bound to, in the form a
+# browser sends them. A rebinding page's Host is its own domain, so it is not here.
+LOOPBACK_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
+READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# `same-site` too: another port of this machine is the same site and another origin.
+REFUSED_FETCH_SITES = frozenset({"cross-site", "same-site"})
+DEFAULT_PORTS = {"http": 80, "https": 443}
+
+# A name or a bracketed IPv6 address, then a port. The characters left out are what
+# would make one header name two hosts, such as `127.0.0.1@evil.example`.
+_AUTHORITY = re.compile(r"(\[[0-9a-f:.]+\]|[^\[\]:/?#@\\\s]+)(?::(\d*))?", re.IGNORECASE)
+
+
+def _accepted_host_names(bound: str) -> frozenset[str]:
+    """Loopback, and the address given to `--host` unless it names every address.
+
+    `0.0.0.0` and `::` say where to listen, not what this server is called. A browser on
+    Linux or macOS reaches this machine at `http://0.0.0.0:8766`, so accepting the name
+    would leave a page one more way in.
+    """
+    try:
+        address = ipaddress.ip_address(bound.strip("[]"))
+    except ValueError:
+        return LOOPBACK_HOST_NAMES | ({bound.lower()} if bound else set())
+    if address.is_unspecified:
+        return LOOPBACK_HOST_NAMES
+    return LOOPBACK_HOST_NAMES | {f"[{address}]" if address.version == 6 else str(address)}
+
+
+def _authority(value: str) -> tuple[str, int | None] | None:
+    """A Host value's lowercase name and its port; None when it is not one."""
+    match = _AUTHORITY.fullmatch(value)
+    if match is None:
+        return None
+    name, port = match.groups()
+    return name.lower(), int(port) if port else None
+
+
+def _same_origin(origin: str, host: tuple[str, int | None], scheme: str) -> bool:
+    """Whether an Origin header's host and port are this request's Host's."""
+    origin_scheme, separator, rest = origin.partition("://")
+    named = _authority(rest) if separator else None
+    if named is None:
+        return False
+    return (named[0], named[1] or DEFAULT_PORTS.get(origin_scheme.lower())) == (
+        host[0],
+        host[1] or DEFAULT_PORTS.get(scheme),
+    )
+
+
+def _forbidden(error: str) -> web.Response:
+    return web.json_response({"ok": False, "error": error}, status=403)
+
+
+def _refuse_foreign_requests(bound: str) -> Callable[..., Awaitable[web.StreamResponse]]:
+    """The middleware that holds every route to this server's own Host and Origin.
+
+    A browser sends a cross-site `text/plain` POST without asking first, and a page on a
+    rebound domain reads this server as its own. Neither carries anything a handler
+    could tell from the reader's own page, so this runs before all of them, static
+    files and unrouted paths included. A client that sends no `Origin` and no
+    `Sec-Fetch-Site`, such as curl, is not a browser carrying someone else's page.
+    """
+    accepted = _accepted_host_names(bound)
+
+    @web.middleware
+    async def refuse_foreign_requests(
+        request: web.Request,
+        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+    ) -> web.StreamResponse:
+        # The header itself: `request.host` falls back to this machine's own name.
+        raw_host = request.headers.get("Host", "")
+        host = _authority(raw_host)
+        if host is None or host[0] not in accepted:
+            logger.warning("Refused %s %s: Host %r", request.method, request.path, raw_host)
+            return _forbidden(
+                f"Refused: this server answers on a loopback address or its --host address, "
+                f"and this request's Host is {raw_host!r}."
+            )
+        if request.method not in READ_METHODS:
+            origin = request.headers.get("Origin")
+            if origin is not None and not _same_origin(origin, host, request.scheme):
+                logger.warning("Refused %s %s: Origin %r", request.method, request.path, origin)
+                return _forbidden(
+                    f"Refused: a write from Origin {origin!r} cannot reach {raw_host}, "
+                    f"because only a page this server serves may write to it."
+                )
+            site = request.headers.get("Sec-Fetch-Site", "").lower()
+            if site in REFUSED_FETCH_SITES:
+                logger.warning(
+                    "Refused %s %s: Sec-Fetch-Site %r", request.method, request.path, site
+                )
+                return _forbidden(
+                    f"Refused: the browser marked this write Sec-Fetch-Site {site!r}, "
+                    f"and only a page this server serves may write to it."
+                )
+        return await handler(request)
+
+    return refuse_foreign_requests
+
+
 class TriageServer:
     """Serves /settings, /onboarding, /labels, /interest and the settings, sources, labels
     and build APIs."""
@@ -214,8 +324,13 @@ class TriageServer:
         run_log=None,
         interest_reader=None,
         clock=None,
+        behind_app_worker: bool = False,
     ) -> None:
         self._host = host
+        # The app Worker checked the Access JWT and forwards the original URL, so a Host
+        # here is not an address of this server. Off only when told so: a deployment
+        # that sets nothing gets the check.
+        self._behind_app_worker = behind_app_worker
         self._port = port
         # Without a settings store the page still renders, read-only: a
         # `backend = "json"` deployment has nowhere to put a runtime setting, so
@@ -268,7 +383,9 @@ class TriageServer:
         self._settings_page = render_settings_page()
         self._labels_page = render_labels_page()
         self._onboarding_page = render_onboarding_page()
-        self._app = web.Application()
+        self._app = web.Application(
+            middlewares=[] if behind_app_worker else [_refuse_foreign_requests(host)]
+        )
         self._app.router.add_get("/api/build", self._handle_build)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
@@ -1867,6 +1984,11 @@ class TriageServer:
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
         logger.info("Settings at http://%s:%d/settings", self._host, self._port)
+        if self._behind_app_worker:
+            logger.warning(
+                "%s is set: requests are not checked for a foreign Host or Origin",
+                BEHIND_APP_WORKER_ENV,
+            )
 
     async def stop(self) -> None:
         if self._runner:
