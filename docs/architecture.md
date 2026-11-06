@@ -614,7 +614,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
-| HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, and a raw page rebuilt from D1 `digest_inputs` with each article's state as it is now, so an issue recorded before `digest_inputs` has no raw page to rebuild |
+| HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is the no-D1 fallback only; a local `cyris triage-ui` serves it at `/`. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, and a raw page rebuilt from D1 `digest_inputs` with each article's state as it is now, so an issue recorded before `digest_inputs` has no raw page to rebuild |
 | Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`**; the launch film in **R2 `musingfox-media`** under `cyris/` | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose
@@ -885,7 +885,8 @@ each backend has exactly one home, with nothing overlaid:
 One key is also read outside a run: the app Worker reads `digest.type_scale` over REST to size
 every page it serves, and there a missing or invalid row, or any failed read, means 1 rather than an
 error — a page view is not a run and must never fail on a setting. A `json` deployment has no Worker
-read, so its pages stay at 1.
+read; its `cyris triage-ui` sizes the pages it serves from the value it holds, and a page opened
+from disk stays at 1.
 
 `cyris doctor` fails its `settings` check naming each missing key, warns on `sources` while the D1
 table is empty (waiting for onboarding), and on a `d1` deployment fails `file settings` when `cyris.toml` still sets a grade-D key
@@ -1190,6 +1191,19 @@ hostname rather than an address of this server. Nothing asserts the Host the run
 delivers, and the exemption does not depend on it. A deployment that sets nothing keeps the check,
 so the same `ui` role under compose has it on, on `0.0.0.0` and over D1 alike.
 
+**The local server serves the archive.** `cyris triage-ui` passes `TriageServer` the
+`[html_output] output_dir` as `html_dir` when `html_output.enabled`, and answers GET and HEAD for
+`/`, `/index.html`, `/<name>` and `/<name>.html` with that directory's `<name>.html`, so the archive,
+an issue, its All articles page and Settings link to one another on one origin. `<name>` is one
+path segment matching `[A-Za-z0-9][A-Za-z0-9_-]*`: no path with `..`, an encoded `/` or a second
+segment reaches the filesystem, only a `.html` file whose resolved path stays inside the directory
+is read, and anything else is `404`. aiohttp's resolver ranks a fixed path above these, so `/settings`, `/labels`,
+`/onboarding`, `/interest`, `/favicon.svg`, `/static/*` and `/api/*` keep their paths. `/` with no
+`index.html` (or no `html_dir`) is a plain-text `404` that says to run `cyris run --period morning`.
+A page is `text/html; charset=utf-8` with `Cache-Control: no-cache`, and carries the type size as the
+Worker does (below). The files on disk never change. In the cloud edition none of this is reachable:
+the Worker sends archive paths to Pages and answers `/api/vote` itself, ahead of the container.
+
 **The reader-facing surfaces share one hostname, split by path.** The Worker proxies
 `DIGEST_ORIGIN` for anything not on the protected list, at the cost of one Worker request; why the
 digest stays static is [ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md).
@@ -1260,7 +1274,12 @@ Votes go through the Worker's same-origin `POST /api/vote`, which attaches `CYRI
 server-side; no page carries the token. The vote buttons render only when a probe of
 `/api/vote` succeeds. The probe has three outcomes: a signed-in reader gets `200 {"authorized":true}`; a
 reader with no Access session is redirected (302) to the Access login; the Worker answers `403` JSON to a
-request that reaches it without a valid JWT. A `pages.dev` reader, where that path is not routed, sees none,
+request that reaches it without a valid JWT. A local `cyris triage-ui` answers `GET` and `HEAD`
+`{"authorized":true,"votes":false}`: the probe opens Settings and the site bar's Archive link on
+`authorized` and stops before the vote buttons, `#raw-views` and the Interest link when `votes` is
+`false`, because the local server has no vote route (`POST` is `405`) and `/interest` answers `409` on
+the `json` backend. The Worker's answer carries no `votes` field, so the cloud pages open all of
+them. A `pages.dev` reader, where that path is not routed, sees none,
 and a stranger cannot record a human verdict. Why the vote token
 is kept apart from the other bearers is
 [ADR-0008](decisions/0008-worker-bearers-split-by-published-versus-secret.md).
@@ -1270,7 +1289,9 @@ Every HTML page the Worker serves, Pages' and the container's, carries the reade
 other than 1, injects it into `<head>`; at 1 pages pass through byte for byte. A save clears the
 isolate's memo, and other isolates follow within a minute. How, and why injection:
 [ADR-0013](decisions/0013-reader-type-size-is-injected-by-the-worker.md). A page opened on
-`pages.dev` directly, and the mail, stay at 1.
+`pages.dev` directly, and the mail, stay at 1. The local server injects the same
+`<style>html:root{--type-scale:<value>}</style>` before a page's first `</head>` from its own
+`digest.type_scale` value, which a save updates at once; the Worker is not the only injector.
 
 **The marketing website is a second Pages project, outside the pipeline.** `website/` is
 published to `cyris-site` (`website/wrangler.toml`) by hand with `bun run deploy:website`, not

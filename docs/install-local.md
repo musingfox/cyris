@@ -103,7 +103,8 @@ Everything is under `agent-vault/`, which git ignores:
 - `agent-vault/html/<date>-<period>.html`: the digest
 - `agent-vault/html/<date>-<period>-raw.html`: every article the run judged, including
   what the digest dropped
-- `agent-vault/html/index.html`: the archive; open this one in a browser
+- `agent-vault/html/index.html`: the archive; read it at `http://127.0.0.1:8766/` while
+  `cyris triage-ui` runs (section 8), or open the file itself
 - `agent-vault/articles/`: the article store, and `agent-vault/usage.jsonl`, the LLM
   spend (written once a run calls an LLM, so absent with provider `none`)
 
@@ -139,19 +140,24 @@ HTML stay on your disk. After editing `cyris.toml` or `sources.yaml`, run
 the old file. The compose `TZ` only changes log timestamps; the schedule follows
 `[general] timezone`.
 
-## 8. `/settings`, read-only
+## 8. The archive and `/settings`
 
 ```sh
 uv run cyris triage-ui
 ```
 
-This serves `http://127.0.0.1:8766/settings`, which shows every runtime setting and the
-source list. On the `json` backend the page is read-only: `cyris.toml` and
+This serves the archive at `http://127.0.0.1:8766/`: the issue list, each issue and its
+All articles page, from `[html_output] output_dir`, with `[digest] type_scale` from
+`cyris.toml` applied (restart to pick up a change). Before the first run there is no issue, and `/` says so and names
+`cyris run --period morning`. It also serves `http://127.0.0.1:8766/settings`, which shows
+every runtime setting and the source list; the Settings and Archive links move between
+the two. The vote buttons and the Interest map stay hidden here (see below); an issue written by
+an earlier version still shows its vote buttons, and a click reports a failure.
+With `[html_output] enabled = false` it serves no archive. On the `json` backend the page is read-only: `cyris.toml` and
 `sources.yaml` are the only place to change anything, and there is no onboarding wizard —
 `/onboarding` sends you back to `/settings`, because the wizard writes settings this
-backend has nowhere to keep. It does not serve the digest
-pages, so the Settings link on a page opened from disk goes nowhere, and `/settings`
-here shows no Archive link.
+backend has nowhere to keep. A page opened from disk, rather than through this server, still
+has a Settings link that goes nowhere, and keeps the type size 1.
 
 The server answers only requests that name it, so a web page open in your browser cannot
 read your settings or spend your LLM key through it. A request whose `Host` is not
@@ -171,7 +177,9 @@ so another device reaching it gets the `403`.
 - **Email-only newsletters.** Receiving mail needs `workers/newsletter` and your own
   domain with Cloudflare Email Routing. Newsletters that publish RSS are ordinary feeds
   and work locally.
-- **An archive with a URL.** The archive is a file on your disk.
+- **An archive you can reach from anywhere.** `cyris triage-ui` serves the archive only while it
+  runs, at `127.0.0.1` by default, so another device cannot read it. `--host` with an address opens
+  the archive and `/settings` to everyone who can reach that address, with no sign-in.
 
 ## Moving to Cloudflare later
 
