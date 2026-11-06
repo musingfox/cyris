@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 from cyris.adapters.store import ArticleStore
 from cyris.domain.models import TopicVote
-from cyris.domain.triage import RejectReason
 from cyris.service_layer.ports import TopicRepository
 
 logger = logging.getLogger(__name__)
@@ -85,18 +84,14 @@ def ack_promotions(worker_url: str, token: str, urls: list[str]) -> None:
 def record_votes(
     store: ArticleStore, *, accepted: list[str], rejected: list[str], at: datetime
 ) -> None:
-    """Write votes as human decisions: rejected, accepted, then stamped `triaged_at`.
+    """Write votes as human decisions: state and `triaged_at` stamp in one write.
 
     The one way a reader's verdict reaches the store. `/labels` writes its up and
     down answers through it too, so a blind label seeds vote similarity exactly
-    as a digest vote does.
+    as a digest vote does. One write, because a run that landed between a verdict
+    and its stamp replaced the verdict, and the stamp then froze the wrong state.
     """
-    if rejected:
-        store.reject(rejected, reason=RejectReason.NOT_INTERESTED)
-    if accepted:
-        store.accept(accepted)
-    if rejected or accepted:
-        store.update_triage_timestamp(rejected + accepted, at)
+    store.record_verdicts(accepted=accepted, rejected=rejected, at=at)
 
 
 def topic_votes(

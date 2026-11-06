@@ -236,7 +236,7 @@ class TestAnswer:
 class BrokenStore(D1ArticleStore):
     """An article store whose vote write fails, as D1 does when it is unreachable."""
 
-    def accept(self, urls: list[str]) -> int:
+    def record_verdicts(self, **kwargs) -> int:
         raise RuntimeError("D1 is unreachable")
 
 
@@ -248,9 +248,9 @@ class CheckingStore(D1ArticleStore):
         self.db = db
         self.held_first: list[bool] = []
 
-    def accept(self, urls: list[str]) -> int:
-        self.held_first += [label_of(self.db, url) == "up" for url in urls]
-        return super().accept(urls)
+    def record_verdicts(self, *, accepted: list[str], **kwargs) -> int:
+        self.held_first += [label_of(self.db, url) == "up" for url in accepted]
+        return super().record_verdicts(accepted=accepted, **kwargs)
 
 
 class TestTheSampleDecides:

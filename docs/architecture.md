@@ -555,6 +555,10 @@ be one judgment rather than independent labels. The raw page's triage view is th
 across days is reachable only through `cyris articles`. `/labels` writes human verdicts too, through
 the same `record_votes` the vote sync calls and stamped at the answer's own time, but only on a drawn
 sample (§4 *Blind-label sample*): it measures the filter, and triages nothing a run would show.
+`record_votes` writes each verdict and its stamp in one statement (`record_verdicts`, one `UPDATE` per
+chunk of URLs on D1), because a run landing between a verdict and its stamp would replace the verdict
+and the stamp would then freeze the wrong state as a human decision; `cyris articles accept|reject` write
+through it too.
 
 A run whose provider is not `none` but whose scoring, filter or summarize step went on without
 the LLM's answer, because no client was built or its call failed, is *degraded*

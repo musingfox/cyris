@@ -358,7 +358,6 @@ EXPECTED_D1 = [
     # The vote: find the voted article, reject it, stamp it as a human verdict.
     "SELECT stored_articles",
     "UPDATE stored_articles SET state",
-    "UPDATE stored_articles SET triaged_at",
     # The voted URL's topic; a first run holds none, so no topic vote is written.
     "SELECT topic_members",
     # The save: the newsletter dedup read, then 11 articles at 17 columns, five rows a

@@ -111,6 +111,10 @@ class ArticleRepository(Protocol):
 
     def update_triage_timestamp(self, urls: list[str], triaged_at: datetime) -> int: ...
 
+    def record_verdicts(
+        self, *, accepted: list[str], rejected: list[str], at: datetime, reason: str = ...
+    ) -> int: ...
+
     def delete_articles(
         self, state: ArticleState | list[ArticleState], older_than_days: int | None = None
     ) -> int:
