@@ -65,7 +65,9 @@ details.more summary { cursor: pointer; font-family: var(--font-mono); font-size
 details.more summary::before { content: "+ "; }
 details.more[open] summary::before { content: "− "; }
 details.more p { margin-top: var(--s-2); }
-.choices { display: grid; border: 1px solid var(--border); border-radius: var(--r-control); overflow: hidden; background: var(--bg-elev); }
+/* The choice list (ui-language.md §4) clips none of its rows, like the checklist: a rounded
+   clip would take the first and last rows' corners from their taps (§4 tap area). */
+.choices { display: grid; border: 1px solid var(--border); border-radius: var(--r-control); background: var(--bg-elev); }
 .choices.invalid { border-color: var(--warn); }
 .choice { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-1) var(--s-3); align-items: center; padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); cursor: pointer; transition: background-color var(--t-fast); }
 .choice:last-child { border-bottom: 0; }

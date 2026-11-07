@@ -6,9 +6,11 @@ starts, so the set of files allowed to make one is pinned here rather than
 rediscovered by the next audit.
 
 The five backend fallbacks are the same shape: a backend the cloud path does not
-use, and under `[store] backend = "d1"` none of them runs. The fifth is the CLI's
-`--output` file, which an operator names on purpose and which holds a preview or a
-regenerated page, never state.
+use, and under `[store] backend = "d1"` none of them runs. The sixth is the
+`sqlite` backend's file, a local install's one home for state (ADR-0025), which
+no cloud deployment opens. The last is the CLI's `--output` file, which an
+operator names on purpose and which holds a preview or a regenerated page, never
+state.
 """
 
 import ast
@@ -26,6 +28,7 @@ ALLOWED = {
     "adapters/output/usage_log.py",  # usage.jsonl, the no-D1 fallback
     "adapters/store/article_store.py",  # the json store backend
     "adapters/store/json_topics.py",  # the json store backend's topics
+    "adapters/store/local_d1.py",  # the sqlite store backend's file, a local install only
     "diagnostics/doctor.py",  # the vault writability probe, skipped under D1
     "entrypoints/cli.py",  # the file `--output` names: a preview or a regenerated page
 }

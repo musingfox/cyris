@@ -3,12 +3,13 @@
 
 pytest holds the wizard's markup, its redirects and the shape of the bodies it
 sends, but not what its script does in a browser: which step a press opens, what
-a Next on a changed step writes, that a Skip writes nothing, and whether the page
-fits a phone. This runs those checks against a real `TriageServer` whose settings
-home, `sources` table and article store are in memory, so what a step wrote can
-be read back afterwards, with the Discord probe, the embedder probe and the mail
-send answered offline. The votes step's cards come from the real card reader
-and draw over a fake RSS edge, which answers each feed in the table with the
+a Next on a changed step writes, that a Skip writes nothing but what it names,
+what the model step opens on and saves, and whether the page fits a phone. This
+runs those checks against a real `TriageServer` whose settings home, `sources`
+table and article store are in memory, so what a step wrote can be read back
+afterwards, with the Discord, embedder and LLM probes and the mail send answered
+offline. The votes step's cards come from the real card reader and draw over a
+fake RSS edge, which answers each feed in the table with the
 same articles every time, as a buffer read again would. The first-issue step
 starts its run through a stand-in for the app Worker's `POST /run`, which records
 the period it was given and writes the run's row to an in-memory `digest_runs`,
@@ -59,7 +60,7 @@ from css_computed import find_browser
 from cyris.adapters.fetch.feed_check import FeedChecker
 from cyris.adapters.fetch.onboarding_cards import OnboardingArticles, draw_cards
 from cyris.adapters.fetch.rss_worker_source import POLL_CONCURRENCY, POLL_FEED_TIMEOUT_SECONDS
-from cyris.config import GRADE_D_KEYS
+from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS, STARTING_VALUES
 from cyris.diagnostics.doctor import Check as DoctorCheck
 from cyris.domain.models import Article, ArticleState, Lane, SourceConfig
 from cyris.entrypoints.triage_server import (
@@ -90,6 +91,11 @@ KINDS = (
     "first-issue-early",
     "no-timezone",
     "unlisted",
+    "fresh",
+    "fresh-largest",
+    "answered",
+    "trial",
+    "model-skipped",
 )
 
 # What the reader types, and what each step must then store.
@@ -140,12 +146,57 @@ _VALUES = {
     "vote_similarity.max_seeds": 200,
 }
 PROBE_VALUES = {key: _VALUES[key] for key in GRADE_D_KEYS}
-# Each fixture's stored values where they are not PROBE_VALUES.
+# What the first two steps store: the issue's language, its clock and its hours.
+ANSWERED_FIRST = ("digest.output_language", "general.timezone", "general.digest_schedule")
+# A store whose earlier steps were answered and whose model step was not: what the
+# model step's fold and the first-issue step's switch then start from.
+_ANSWERED = {k: v for k, v in PROBE_VALUES.items() if k not in STARTING_VALUES}
+# A cloud trial's first-boot push of some tuned settings (ADR-0020), each differing
+# from its starting value, so a write over one shows.
+TRIAL_PUSHED = {
+    "vote_similarity.provider": "gemini",
+    "vote_similarity.max_seeds": 50,
+    "digest.max_articles_per_digest": 12,
+    "digest.rank_by_preference": False,
+    "digest.style_prompt": "Short and dry.",
+}
+# Each fixture's stored values where they are not PROBE_VALUES. `fresh` is a store
+# nothing has written yet.
 FIXTURE_VALUES = {
     "no-timezone": {k: v for k, v in PROBE_VALUES.items() if k != "general.timezone"},
     "unlisted": PROBE_VALUES
     | {"digest.output_language": UNLISTED_LANGUAGE, "general.timezone": UNLISTED_TIMEZONE},
+    "fresh": {},
+    "fresh-largest": {},
+    "answered": {k: PROBE_VALUES[k] for k in ANSWERED_FIRST},
+    "trial": _ANSWERED | {"llm_provider.provider": "none", "llm_provider.model": ""} | TRIAL_PUSHED,
+    "model-skipped": _ANSWERED,
 }
+# The LLM key the probe's environment holds, and the ones it clears, so which
+# provider the model step offers does not depend on the reviewer's own shell.
+PROBE_LLM_KEY = "GEMINI_API_KEY"
+CLEARED_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "CLOUDFLARE_AI_TOKEN",
+    "CLOUDFLARE_AIG_TOKEN",
+    "CLOUDFLARE_EMBEDDING_API_TOKEN",
+)
+# What the model step's Next writes on a fresh store: the provider whose key is
+# present, then the embedder and its switch, then the plain tuned settings, each
+# at its starting value.
+_VOTE_KEYS = [k for k in STARTING_VALUES if SETTINGS_FIELDS[k]["route"] == "vote"]
+_PLAIN_KEYS = [k for k in STARTING_VALUES if SETTINGS_FIELDS[k]["route"] == "plain"]
+GEMINI_STORED = {"llm_provider.provider": "gemini", "llm_provider.model": ""}
+NONE_STORED = {"llm_provider.provider": "none", "llm_provider.model": ""}
+STARTING_VOTE = {k: STARTING_VALUES[k] for k in _VOTE_KEYS}
+STARTING_PLAIN = {k: STARTING_VALUES[k] for k in _PLAIN_KEYS}
+# On the `trial` store: the vote route is sent the pushed embedder and seeds as
+# stored, and the plain route only what was not pushed.
+TRIAL_VOTE = {k: TRIAL_PUSHED.get(k, STARTING_VALUES[k]) for k in _VOTE_KEYS}
+TRIAL_PLAIN = {k: v for k, v in STARTING_PLAIN.items() if k not in TRIAL_PUSHED}
+# What the first-issue step turns vote similarity on with when the model step was skipped.
+STARTING_ON = STARTING_VOTE | {"vote_similarity.enabled": True}
 # languages.json's languages, in its order, as the language field must offer them.
 LANGUAGES = list(_language_names().items())
 
@@ -482,7 +533,11 @@ def build_fixture(kind: str) -> Fixture:
     ones hold `A_SOURCE` and a clock pinned at `BETWEEN`, and their runs end as
     `RUN_ENDS` says; `first-issue-early`'s clock is at `EARLY`. `no-timezone`
     is `empty` with no zone stored, and `unlisted` stores a language and a zone
-    neither list holds (`FIXTURE_VALUES`).
+    neither list holds (`FIXTURE_VALUES`). `fresh` stores no setting at all, and
+    `fresh-largest` is it at the largest type size; `answered` stores only what the
+    first two steps save, so the first-issue step can read its key; `trial` has every step but the
+    model step answered and `TRIAL_PUSHED` stored, as a trial's first boot leaves it;
+    `model-skipped` has the same answers, none of the tuned settings and `A_SOURCE`.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
@@ -490,7 +545,7 @@ def build_fixture(kind: str) -> Fixture:
     table = {"Simon Willison": A_SOURCE} if kind == "has-sources" else {}
     if kind.startswith("cards"):
         table = dict(CARDS_TABLE)
-    if kind.startswith("first-issue"):
+    if kind.startswith("first-issue") or kind == "model-skipped":
         table = {A_SOURCE.name: A_SOURCE}
     run_log = None if kind == "json" else FakeRunLog()
     refuse = {REFUSED["name"]} if kind == "refuses-one" else set()
@@ -557,7 +612,8 @@ def build_fixture(kind: str) -> Fixture:
 
 @contextlib.contextmanager
 def probe_environment() -> Iterator[SimpleNamespace]:
-    """Answer the Discord and embedder probes and the mail send offline, from an empty directory.
+    """Answer the Discord, embedder and LLM probes and the mail send offline, from an empty
+    directory.
 
     Each route reaches a third party on a real save, and the mail route also
     needs this deployment's Cloudflare credentials to get that far. Yields the
@@ -566,10 +622,13 @@ def probe_environment() -> Iterator[SimpleNamespace]:
     offline = DoctorCheck(name="probe", status="ok", detail=OFFLINE_DETAIL)
     discord = mock.AsyncMock(return_value=offline)
     embedder = mock.AsyncMock(return_value=offline)
+    llm = mock.AsyncMock(return_value=offline)
+    egress = mock.AsyncMock(return_value={})
     mail = mock.AsyncMock(return_value="delivered")
     present = {
         "CLOUDFLARE_ACCOUNT_ID": "cyris-probe-account",
         "CLOUDFLARE_API_TOKEN": "cyris-probe-token",
+        PROBE_LLM_KEY: "cyris-probe-key",
     }
     with (
         tempfile.TemporaryDirectory(prefix="onboarding-probe-") as home,
@@ -577,9 +636,14 @@ def probe_environment() -> Iterator[SimpleNamespace]:
         mock.patch.dict(os.environ, present),
         mock.patch("cyris.entrypoints.triage_server.probe_discord", discord),
         mock.patch("cyris.entrypoints.triage_server.probe_embedder", embedder),
+        mock.patch("cyris.diagnostics.doctor.probe_llm", llm),
+        mock.patch("cyris.diagnostics.doctor.probe_egress", egress),
         mock.patch("cyris.adapters.mail.send_mail", mail),
     ):
-        yield SimpleNamespace(discord=discord, embedder=embedder, mail=mail)
+        # Restored with the rest of the environment when the patch ends.
+        for name in CLEARED_KEYS:
+            os.environ.pop(name, None)
+        yield SimpleNamespace(discord=discord, embedder=embedder, llm=llm, mail=mail)
 
 
 def rewrite_post(path: str, mutation: str) -> str:
@@ -791,7 +855,7 @@ const press = (id) => $(`#${id}`).click();
 // The stored settings arrived: the step's own values are in its fields.
 const loaded = () => waitFor(() => $("#o-timezone").value && !$("[data-loading]"), "the settings");
 const skipTo = async (step) => {
-  for (let left = 6; left > 0 && shownSteps()[0] !== step; left--) {
+  for (let left = 12; left > 0 && shownSteps()[0] !== step; left--) {
     press("o-skip");
     await sleep(25);
   }
@@ -873,6 +937,13 @@ const scrolls = () => {
   return el.scrollHeight > innerHeight || el.scrollWidth > el.clientWidth
     ? `${el.scrollWidth}x${el.scrollHeight} in ${el.clientWidth}x${innerHeight}` : "";
 };
+// The model step, read: its providers drawn, and its fold's fields, each read by
+// the page's own `tunedValue` as its route would store it.
+const modelDrawn = () => waitFor(() => $$("#o-providers .choice").length, "the providers");
+const providerRadio = (name) => $(`#o-providers input[value="${name}"]`);
+const foldFields = () => $$("#o-advanced [data-key]").filter((f) => !f.hidden);
+const foldKeys = () => foldFields().map((f) => f.dataset.key);
+const foldValue = (key) => tunedValue($(`#o-advanced [data-key="${key}"]`));
 """.replace("RUN_READ_MS", str(RUN_READ_MS))
 )
 
@@ -1022,6 +1093,26 @@ setValue($("#o-email-to"), {json.dumps(NEW_MAIL_TO)});
 setValue($("#o-email-from"), {json.dumps(NEW_MAIL_FROM)});
 """
 
+# GET /api/settings answers as though this machine held no LLM key, so only None is
+# ready; the server's own environment, and so its saves, are unchanged.
+NO_KEYS = """{
+const realFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const response = await realFetch(input, init);
+  if (!String(input).endsWith("/api/settings") || (init && init.method)) return response;
+  const body = await response.json();
+  body.providers.forEach((p) => { if (p.env_var) p.configured = false; });
+  return new Response(JSON.stringify(body), {status: response.status});
+};
+}"""
+
+# What the fold shows on a fresh store: every starting value but vote similarity's
+# switch, which the first-issue step turns on and has no field.
+FOLD_STARTING = {k: v for k, v in STARTING_VALUES.items() if k != "vote_similarity.enabled"}
+# A step's result notice is no error.
+NO_ERROR = """expect(!notice().classList.contains("err"), `an error: ${notice().textContent}`);"""
+
+
 LANGUAGE_STORED = {"digest.output_language": NEW_LANGUAGE, "general.timezone": NEW_TIMEZONE}
 HOURS_STORED = {"general.digest_schedule": ["07:00", "19:00"]}
 WEBHOOK_STORED = {"notify.discord_webhook_url": NEW_WEBHOOK}
@@ -1042,7 +1133,7 @@ _CHECKS: list[Check] = [
             expect(same(shownSteps(), ["language"]), `shown: ${shownSteps()}`);
             expect(location.hash === "#language", `hash: ${location.hash}`);
             expect(same(marked(), ["language"]), `marked: ${marked()}`);
-            expect(progress() === "Step 1 of 6", `progress: ${progress()}`);
+            expect(progress() === "Step 1 of 7", `progress: ${progress()}`);
             expect(!visible($("#o-opening")), "the opening still shows");
             expect(!visible($("#o-back")), "Back shows on the first step");
             expect(visible($("#o-next")) && visible($("#o-skip")), "Next or Skip is hidden");
@@ -1332,7 +1423,9 @@ _CHECKS: list[Check] = [
         act="await loaded();",
         script="""
             const names = $$("#o-steps li").filter(visible).map((li) => li.dataset.step);
-            const wanted = ["language", "schedule", "sources", "votes", "notify", "first-issue"];
+            const wanted = [
+              "language", "schedule", "sources", "votes", "notify", "model", "first-issue",
+            ];
             expect(same(names, wanted), `listed: ${names}`);
             const words = $$("#o-steps li").map((li) => li.textContent.trim());
             expect(words.every(Boolean), `an unnamed step: ${words.join("|")}`);
@@ -1941,7 +2034,7 @@ _CHECKS: list[Check] = [
             expect(!topicsScreen(), "the topics screen is still shown");
             expect(location.hash === "#sources/feeds", `hash: ${{location.hash}}`);
             expect(same(marked(), ["sources"]), `marked: ${{marked()}}`);
-            expect(progress() === "Step 3 of 6", `progress: ${{progress()}}`);
+            expect(progress() === "Step 3 of 7", `progress: ${{progress()}}`);
             const wanted = {json.dumps(shown_feeds([ONE_TOPIC]), ensure_ascii=False)};
             expect(same(shownFeeds(), wanted), `listed: ${{shownFeeds().join("|")}}`);
         """,
@@ -2426,7 +2519,7 @@ _CHECKS: list[Check] = [
         """,
         script="""
             expect(same(marked(), ["schedule"]), `marked: ${marked()}`);
-            expect(progress() === "Step 2 of 6", `progress: ${progress()}`);
+            expect(progress() === "Step 2 of 7", `progress: ${progress()}`);
             expect(location.hash === "#schedule", `hash: ${location.hash}`);
             expect(visible($("#o-back")), "Back is hidden off the first step");
             const done = $$("#o-steps li.done").map((li) => li.dataset.step);
@@ -2446,10 +2539,10 @@ _CHECKS: list[Check] = [
             await onStep("language");
         """,
         script="""
-            expect(progress() === "Step 1 of 6", `progress: ${progress()}`);
+            expect(progress() === "Step 1 of 7", `progress: ${progress()}`);
             expect(!visible($("#o-back")), "Back shows on the first step");
         """,
-        sabotage="""$("#o-progress").textContent = "Step 2 of 6";""",
+        sabotage="""$("#o-progress").textContent = "Step 2 of 7";""",
         receipt=_calls(),
     ),
     Check(
@@ -2463,7 +2556,7 @@ _CHECKS: list[Check] = [
             await voteSimilarity;
         """,
         script="""
-            expect(progress() === "Step 6 of 6", `progress: ${progress()}`);
+            expect(progress() === "Step 7 of 7", `progress: ${progress()}`);
             expect(!visible($("#o-next")), "Next still shows on the last step");
             expect(visible($("#o-start")) && visible($("#o-skip")),
               "Start or Skip is hidden on the last step");
@@ -2752,7 +2845,7 @@ _CHECKS: list[Check] = [
             await loaded();
             {TYPE_WEBHOOK}
             press("o-next");
-            await onStep("first-issue");
+            await onStep("model");
             await waitFor(settled, "the result notice");
         """,
         script="""
@@ -2774,7 +2867,7 @@ _CHECKS: list[Check] = [
             await loaded();
             {TYPE_MAIL}
             press("o-next");
-            await onStep("first-issue");
+            await onStep("model");
             await waitFor(settled, "the result notice");
         """,
         script="""
@@ -2794,7 +2887,7 @@ _CHECKS: list[Check] = [
             {TYPE_WEBHOOK}
             {TYPE_MAIL}
             press("o-next");
-            await onStep("first-issue");
+            await onStep("model");
             await waitFor(settled, "the result notice");
         """,
         script="""
@@ -2832,8 +2925,286 @@ _CHECKS: list[Check] = [
         act="await loaded();",
         sabotage=TYPE_WEBHOOK,
         gestures=({"press": "#o-next", "pointer": "mouse"}, {"release": True}),
-        script="""await onStep("first-issue");""",
+        script="""await onStep("model");""",
         receipt=_calls(),
+    ),
+    Check(
+        id="model-step-opens-on-a-provider-whose-key-is-present",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        script="""
+            expect(providerRadio("gemini").checked, "the keyed provider is not picked");
+            const off = $$("#o-providers input:disabled").map((i) => i.value);
+            expect(same(off, ["anthropic", "openai", "workers_ai", "ai_gateway"]), `off: ${off}`);
+            expect(!providerRadio("none").disabled, "None cannot be picked");
+            const missing = $$("#o-providers .key-missing").map((el) => el.textContent);
+            expect(missing.includes("ANTHROPIC_API_KEY missing"), `labels: ${missing}`);
+            expect(!visible($("#o-no-key")), "the no-key line shows with a key present");
+            expect(visible($("#o-check")), "no Check for a provider with a model");
+        """,
+        sabotage="""providerRadio("gemini").checked = false;""",
+        receipt=_calls(),
+    ),
+    Check(
+        id="model-step-with-no-key-names-every-variable",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        preload=NO_KEYS,
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        script="""
+            const line = $("#o-no-key");
+            expect(visible(line), "nothing says which variable to set");
+            for (const name of ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY",
+                                "CLOUDFLARE_AI_TOKEN", "CLOUDFLARE_AIG_TOKEN"]) {
+              expect(line.textContent.includes(name), `no ${name}: ${line.textContent}`);
+            }
+            expect(providerRadio("none").checked, "None is not the one choice");
+            expect(!visible($("#o-check")), "Check shows for None");
+        """,
+        sabotage="""$("#o-no-key").hidden = true;""",
+    ),
+    Check(
+        id="model-step-with-no-key-saves-none",
+        fixture="answered",
+        path=f"{PAGE}#model",
+        preload=NO_KEYS,
+        act="""
+            await loaded();
+            press("o-next");
+            await onStep("first-issue");
+        """,
+        script=NO_ERROR,
+        # On top of the check's own NO_KEYS: the page sends a provider it showed as keyless.
+        sabotage_preload=rewrite_post("/api/settings", 'body.provider = "gemini";'),
+        receipt=_calls(NONE_STORED, STARTING_VOTE, STARTING_PLAIN),
+    ),
+    Check(
+        id="model-step-check-asks-the-provider-and-stores-nothing",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+            press("o-check");
+            await waitFor(() => visible($("#o-check-result"))
+              && $("#o-check-result").getAttribute("aria-busy") !== "true", "the check");
+        """,
+        script=f"""
+            const text = $("#o-check-result").textContent;
+            expect(visible($("#o-check-result")), "the check's result is hidden");
+            expect(text.includes({json.dumps(OFFLINE_DETAIL)}), `result: ${{text}}`);
+            expect(same(shownSteps(), ["model"]), `shown: ${{shownSteps()}}`);
+        """,
+        sabotage="""$("#o-check-result").hidden = true;""",
+        receipt=_calls(),
+    ),
+    Check(
+        id="model-step-fold-starts-closed",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        script="""
+            const fold = $("#o-advanced");
+            expect(visible($("#o-advanced summary")), "no fold on a fresh store");
+            expect(!fold.open, "the fold opens on its own");
+            expect($("#o-advanced summary").textContent.startsWith("Advanced: "),
+              `summary: ${$("#o-advanced summary").textContent}`);
+        """,
+        sabotage="""$("#o-advanced").open = true;""",
+    ),
+    Check(
+        id="model-step-fold-opens-on-the-starting-values",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        script=f"""
+            const wanted = {json.dumps(FOLD_STARTING)};
+            expect(same(foldKeys().sort(), Object.keys(wanted).sort()), `shown: ${{foldKeys()}}`);
+            const off = Object.keys(wanted).filter((key) => !same(foldValue(key), wanted[key]));
+            const said = off.map((k) => `${{k}}=${{foldValue(k)}}`);
+            expect(!off.length, `not at its starting value: ${{said}}`);
+        """,
+        sabotage="""setValue($("#o-window-hours"), "25");""",
+    ),
+    Check(
+        id="model-step-saves-the-provider-and-every-starting-value",
+        fixture="answered",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+            press("o-next");
+            await onStep("first-issue");
+            await waitFor(settled, "the result notice");
+        """,
+        script="""
+            const text = notice().textContent;
+            expect(!notice().classList.contains("err"), `an error: ${text}`);
+            expect(text.includes("Advanced: 13 settings saved."), `notice: ${text}`);
+        """,
+        sabotage_preload=rewrite_post(
+            "/api/settings/values", 'body.values["digest.max_articles_per_digest"] = 7;'
+        ),
+        receipt=_calls(GEMINI_STORED, STARTING_VOTE, STARTING_PLAIN),
+    ),
+    Check(
+        id="model-step-shows-only-what-the-store-lacks",
+        fixture="trial",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        script=f"""
+            const pushed = {json.dumps(sorted(TRIAL_PUSHED))};
+            const shown = pushed.filter((key) => foldKeys().includes(key));
+            expect(!shown.length, `a stored setting is shown: ${{shown}}`);
+            expect(foldKeys().includes("digest.topic_lifetime_days"), `shown: ${{foldKeys()}}`);
+            expect(providerRadio("none").checked, "the stored provider is not the one picked");
+        """,
+        sabotage="""
+            $('#o-advanced [data-key="digest.max_articles_per_digest"]').hidden = false;
+        """,
+    ),
+    Check(
+        id="model-step-never-writes-over-a-stored-value",
+        fixture="trial",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+            press("o-next");
+            await onStep("first-issue");
+        """,
+        script=NO_ERROR,
+        sabotage_preload=rewrite_post(
+            "/api/settings/values", 'body.values["digest.max_articles_per_digest"] = 400;'
+        ),
+        # The stored provider is left alone, and the vote route is sent the stored
+        # embedder and seeds as they are, beside the starting values for the rest.
+        receipt=_calls(TRIAL_VOTE, TRIAL_PLAIN),
+    ),
+    Check(
+        id="model-step-untouched-on-a-complete-store-writes-nothing",
+        fixture="empty",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        # After the act, so the value is not one the page loaded with.
+        sabotage="""setValue($("#o-model"), "gemini-2.5-pro");""",
+        gestures=({"press": "#o-next", "pointer": "mouse"}, {"release": True}),
+        script="""
+            await onStep("first-issue");
+            expect(!visible($("#o-advanced")), "a fold on a complete store");
+        """,
+        receipt=_calls(),
+    ),
+    Check(
+        id="model-step-a-refused-value-is-marked-in-the-fold",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        act="""
+            await loaded();
+            await modelDrawn();
+            $("#o-advanced").open = true;
+            setValue($("#o-max-articles"), "");
+            $("#o-advanced").open = false;
+            press("o-next");
+            await waitFor(settled, "the refusal");
+        """,
+        script="""
+            const text = notice().textContent;
+            expect(notice().classList.contains("err"), `not an error: ${text}`);
+            expect(text.includes("Articles per run"), `notice: ${text}`);
+            expect(same(shownSteps(), ["model"]), `shown: ${shownSteps()}`);
+            expect($("#o-advanced").open, "the fold hides the refused field");
+            expect(same(marks(), ["o-max-articles"]), `marked: ${marks()}`);
+        """,
+        sabotage="""$("#o-advanced").open = false;""",
+        # The provider and the embedder saved; the refused plain part stored nothing.
+        receipt=_calls(GEMINI_STORED, STARTING_VOTE),
+    ),
+    Check(
+        id="notify-step-skipped-turns-off-what-was-never-set",
+        fixture="fresh",
+        path=f"{PAGE}#notify",
+        act=f"""
+            await loaded();
+            {TYPE_WEBHOOK}
+            press("o-skip");
+            await onStep("model");
+        """,
+        script=NO_ERROR,
+        # Skip pressing Next saves the typed webhook instead of turning it off.
+        sabotage_preload=SKIP_SAVES,
+        receipt=_calls(
+            {"notify.discord_webhook_url": ""}, {"notify.email_to": "", "notify.email_from": ""}
+        ),
+    ),
+    Check(
+        id="notify-step-skipped-keeps-what-is-stored",
+        fixture="trial",
+        path=f"{PAGE}#notify",
+        act=f"""
+            await loaded();
+            {TYPE_WEBHOOK}
+            press("o-skip");
+            await onStep("model");
+        """,
+        script="""expect(!visible(notice()), `a notice: ${notice().textContent}`);""",
+        sabotage_preload=SKIP_SAVES,
+        receipt=_calls(),
+    ),
+    Check(
+        id="notify-step-left-empty-on-a-fresh-store-turns-it-off",
+        fixture="fresh",
+        path=f"{PAGE}#notify",
+        act="""
+            await loaded();
+            press("o-next");
+            await onStep("model");
+            await waitFor(settled, "the result notice");
+        """,
+        script="""
+            const text = notice().textContent;
+            expect(!notice().classList.contains("err"), `an error: ${text}`);
+            expect(text.includes("Notifications are off."), `notice: ${text}`);
+        """,
+        sabotage_preload=rewrite_post("/api/settings/notify", "body.off = false;"),
+        receipt=_calls(
+            {"notify.discord_webhook_url": ""}, {"notify.email_to": "", "notify.email_from": ""}
+        ),
+    ),
+    Check(
+        id="first-issue-turns-on-vote-similarity-with-the-starting-embedder",
+        fixture="model-skipped",
+        path=f"{PAGE}#first-issue",
+        act="""
+            await loaded();
+            await issueRead();
+            await voteSimilarity;
+        """,
+        script="""
+            const line = $("#o-vote-similarity");
+            expect(!visible(line), `refused: ${line.textContent}`);
+        """,
+        sabotage_preload=rewrite_post("/api/settings/vote-similarity", "body.provider = null;"),
+        receipt=_calls(STARTING_ON),
     ),
     Check(
         id="finish-leaves-for-settings",
@@ -2988,6 +3359,36 @@ _CHECKS: list[Check] = [
         sabotage="""notice().style.minWidth = "600px";""",
     ),
     Check(
+        id="fits-model-375",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        width=375,
+        act="""
+            await loaded();
+            await modelDrawn();
+            $("#o-advanced").open = true;
+        """,
+        script="""
+            const problem = overflow("onboarding");
+            expect(!problem, problem);
+        """,
+        sabotage="""$("#o-advanced").style.minWidth = "600px";""",
+    ),
+    Check(
+        id="tap-model-375",
+        fixture="fresh",
+        path=f"{PAGE}#model",
+        width=375,
+        act="""
+            await loaded();
+            await modelDrawn();
+        """,
+        script="""expectTapTargets("#o-providers .choice, #o-check, #o-advanced summary");""",
+        sabotage=restyle(
+            "#o-providers .choice { padding: 0 !important; line-height: 1 !important; }"
+        ),
+    ),
+    Check(
         id="fits-own-feed-375",
         fixture="empty",
         path=f"{PAGE}#sources",
@@ -3097,7 +3498,14 @@ _CHECKS += [
     largest_twin(check, check.id.replace("fits-", "fits-largest-"), f"{check.fixture}-largest")
     for check in _CHECKS
     if check.id
-    in ("fits-375", "fits-topics-375", "fits-sources-375", "fits-votes-375", "fits-own-feed-375")
+    in (
+        "fits-375",
+        "fits-topics-375",
+        "fits-sources-375",
+        "fits-votes-375",
+        "fits-own-feed-375",
+        "fits-model-375",
+    )
 ]
 _CHECKS += [
     largest_twin(check, check.id + "-largest", "empty-largest")

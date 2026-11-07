@@ -1,0 +1,19 @@
+{
+  "vote_similarity.provider": "workers_ai",
+  "vote_similarity.model": "",
+  "vote_similarity.enabled": false,
+  "vote_similarity.max_seeds": 200,
+  "general.digest_window_hours": 24,
+  "digest.max_articles_per_digest": 400,
+  "routing.score_threshold": 70,
+  "digest.scoring_snippet_length": 1000,
+  "digest.summarize_snippet_length": 1000,
+  "digest.filter_snippet_length": 500,
+  "digest.style_prompt": "",
+  "digest.type_scale": 1,
+  "digest.rank_by_preference": true,
+  "digest.preference_source": "cosine",
+  "digest.summarize_follow": false,
+  "digest.vote_half_life_days": 7,
+  "digest.topic_lifetime_days": 7
+}

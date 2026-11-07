@@ -219,7 +219,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **field** | From top to bottom: the field name in the label role, the control, and help in the small role, spaced `--s-2`. Help is always in view and is one or two short sentences: it keeps the facts a reader decides by and leaves the background to the docs, so it is never folded away. A field whose setting does nothing until another holds a value has a **dependency**: while it is unmet, the control is disabled, and one line in the small role below the help says what it waits for, such as `Clef needs vote similarity on, under Model.` That line is the control's description (`aria-describedby`, beside any refusal notice), since a disabled control leaves the tab order and a screen reader would otherwise never hear why. The page reads the dependency from the values it holds, the other field's unsaved value included, and the line goes and the control returns the moment that field changes, with no reload. A dependency of one option, such as Clef's on vote similarity or on its token, disables that option alone and leaves the rest of the select in reach. A required setting is never locked out of being stored: a disabled control with no stored value shows the value a run takes while the dependency is unmet, such as `Off`, and its category's `Save` stores it, as a detected timezone is stored (§6 *settings*). It replaced help folded under `More` on 2026-10-20: readers took `More` for finer settings and found an explanation |
 | **settings fold** | `<details class="more">` that holds finer settings: what it unfolds has at least one control, and its summary names them, such as `Advanced: retry limits`, never a bare `More`. Help is never folded (**field**). The one fold without a control is a list that only reports, Areas' `Closed`. `tests/test_ui_spec.py` scans the settings and onboarding templates for any other |
 | **category list dots** | Two 6px dots on the right of each item in the settings category list: `--accent` means the category has unsaved changes, `--warn` means the category is missing a required value. Both can show at once, with the missing-value dot on the left |
-| **choice list** | Several options for a single choice (for example provider): `--bg-elev` background, 1px `--border` border, `--r-control`; each row has `--s-3` top and bottom and `--s-4` left and right, rows divided by a bottom line, `--surface` on hover. The right side shows the state in the label role; a state too long to sit beside the name moves to its own line below it, still on the right, and is never cut off. An unselectable row sets its radio and name to opacity .5, never the state text that says why. On failed validation the border turns `--warn`, with a notice below, as an input's does |
+| **choice list** | Several options for a single choice (for example provider): `--bg-elev` background, 1px `--border` border, `--r-control`; each row has `--s-3` top and bottom and `--s-4` left and right, rows divided by a bottom line, `--surface` on hover. The list clips none of its rows, so the first and last take taps into their corners (**tap area**). The right side shows the state in the label role; a state too long to sit beside the name moves to its own line below it, still on the right, and is never cut off. An unselectable row sets its radio and name to opacity .5, never the state text that says why. On failed validation the border turns `--warn`, with a notice below, as an input's does |
 | **checklist** | Several options that can be chosen together: a `fieldset` with its legend in the label role, `--bg-elev` background, 1px `--border` border and `--r-control`, and one row per option. Each row is laid out like a choice list's row, with a checkbox in `--accent` and the name in the name role; rows are divided by a bottom line and `--surface` on hover. Every option starts checked, except in onboarding's feed lists, where the reader picks from none (§6 onboarding). The fieldset takes no browser border or padding. An unselectable row sets its checkbox and name to opacity .5 |
 | **toggle tile** | Several options that can be chosen together, each a short name the reader picks at a glance rather than reads down a list: onboarding's topics. One press chooses a tile and the next unchooses it. A `role="group"` named by a line in the label role holds one `<button type="button" class="tile">` per option, carrying `aria-pressed`, in a grid of `repeat(auto-fill, minmax(min(100%, 160px), 1fr))` with `--s-2` gaps. A tile is at least `--s-16` high, with `--s-3` top and bottom, `--s-4` on the left and `--s-8` on the right; `--bg-elev` background, 1px `--border-strong` border, `--r-control`, its text left-aligned: the name in the title role at 18px, then a count or state in the label role. A `--s-3` square mark sits `--s-3` in from its top right corner, a 1px `--border-strong` outline while the tile is not pressed and filled `--accent` while it is, so the state never rests on colour alone. Pressed: `--accent` border, `--accent-tint` background, the label in `--accent`. Hover turns an unpressed tile `--surface`; pressing lowers it to opacity .7, as a button's `:active` does. It is a native button, so Tab reaches it and Enter or Space presses it, and it is its own tap target, over 44 × 44 at every width. It replaced a checklist for topics on 2026-10-20: two checklists one above the other read as one long list with no order between them |
 | **headline card** | Only for the archive's latest issue. `--surface` background, 1px `--border-strong` border, square corners, `--s-6` padding. From top to bottom: an `--accent` `Latest` label with the date (data) and the period (label); the title of the issue's first story, which is its group heading when that story is a group (title role); the article count (data); the titles of the two topics with the most members (small, joined by ` · `); and two small secondary buttons, `Digest` and `All articles`. A tap anywhere on the card outside `All articles` opens the digest, because `Digest` takes taps over the whole card (**tap area**); hovering or pressing the card hovers or presses the `Digest` button. A field with no data is left out, with no placeholder text |
@@ -592,8 +592,8 @@ reload on a later step must keep the reader in the wizard. A `backend = "json"` 
 sources live in a file the app never writes, has no wizard at all: this page sends it back to
 /settings. The same container serves it as serves settings, behind the same sign-in.
 
-- **Six steps, in order:** language and timezone, publish hours, sources, votes, notifications, first
-  issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the
+- **Seven steps, in order:** language and timezone, publish hours, sources, votes, notifications,
+  model, first issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the
   place: the Worker's `PROTECTED` matches `/onboarding` exactly, and a hash never leaves the browser.
   With no hash the opening (below) shows instead.
 - **Opening** (specified and built 2026-11-02). Before asking anything, the page shows what cyris does: too many headlines, then a few, with the
@@ -601,7 +601,7 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   `docs/design/onboarding-poc/k-overload.html` on the unmerged branch `poc/onboarding-immersive`
   (b1ba209d; owner, 2026-11-01). Its timings, curves and the finer shape of the motion are still to be
   designed, so this bullet fixes only what the screen holds, in what order, and how a reader leaves.
-  - It is not a step. The page head, the step list and `Step N of 6` are not on it, and no hash
+  - It is not a step. The page head, the step list and `Step N of 7` are not on it, and no hash
     names it, so a reload on a step keeps that step. Its primary button, `Show me how`, opens the
     first step and saves nothing; the first step still has no `Back`. Focus then goes to that step's
     heading, so it is not left on a button that has gone.
@@ -633,7 +633,7 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   - The beats' lengths are §2 tokens, `--t-opening-overload` and `--t-opening-calm`; the sentence
     shows when both have run. The motion inside each beat is a first cut, still to be refined.
 - The page is `--measure` wide, one column, with settings' gutters. Below the page head (the label
-  `Step N of 6`, the display title and a small description) the step list names every step in order,
+  `Step N of 7`, the display title and a small description) the step list names every step in order,
   each with a 6px dot: `--accent` dot and `--accent` text for the step open now, a `--text-dim` dot
   for one already passed, and a 1px `--border-strong` ring for one still to come. The list is a
   progress mark rather than navigation — it takes no taps, and the three buttons below it are what
@@ -646,7 +646,9 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   cannot tell the two pages apart.
 - **Back, Skip and Next** sit below the step in that order, two secondary buttons and one primary.
   `Next` saves what changed on this step and moves on; `Skip` moves on and saves nothing, so a
-  skipped setting keeps the value it had. `Back` is left out on the first step. On the last step
+  skipped setting keeps the value it had. The one exception is Notifications: leaving it by `Skip`,
+  or by `Next` with its fields empty, turns off the webhook and the mail pair where they were never
+  set, through settings' own Turn off and empty pair, because a run stops on a setting never set. `Back` is left out on the first step. On the last step
   `Next` is gone: the step's own primary button takes its place, and a primary `Finish` link leads
   to `/settings?from=onboarding` — the mark that lets a deployment whose table is still empty
   through, rather than sending it back here. `Skip` there leaves through that same link and starts
@@ -658,7 +660,7 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   publish hour is refused on the page, because padded it would reach the server as `00:00`.
 - **Sources** offers the project's feed list (`src/cyris/onboarding_feeds.json`), which the server
   sends with its topics (`GET /api/onboarding/feeds`), in two screens of the one step: topics, then
-  the chosen topics' feeds. The step list, `Step 3 of 6` and the heading stay the same on both; the
+  the chosen topics' feeds. The step list, `Step 3 of 7` and the heading stay the same on both; the
   description under the heading says what the open screen asks for. The hash names the screen,
   `#sources` for topics and `#sources/feeds` for feeds, so a reload keeps it, as it keeps the step.
   A topic is what a feed is about, never its form.
@@ -731,11 +733,26 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   article left its feed after the deal shows `No longer in the feed · not recorded` there instead, and
   the notice counts it; the other votes are still recorded. `Skip`, and `Next` with no card marked,
   write nothing.
+- **Model** comes right before the first issue. The `Provider` choice list (§4) holds the providers
+  `GET /api/settings` answers, as settings' Model category lists them: one without its key is
+  unselectable and shows `<VARIABLE> missing`, and `None — plain excerpts` says `No key needed`. The
+  step opens on the stored provider, or with none stored on the first whose key is present, or
+  `None`. With no key present, one small line names every variable to set in `.env`, and says to
+  keep `None` otherwise. The step never asks for a key. `Model` is settings' field, and a secondary
+  `Check` below it, hidden for `None`, asks the provider once (`POST /api/diagnostics/llm`), stores
+  nothing, and shows the answer in a notice of its own. A settings fold (§4), `Advanced: embedder,
+  digest and pipeline, defaults shown`, starts closed. It holds only the tuned settings the store
+  lacks, each in settings' own field and words, opened on its starting value from
+  `GET /api/settings`, so a reader who never opens it sends those values with one `Next`. A stored
+  setting is not shown, and the fold is not shown when none is left. `Next` saves the provider and
+  model through `POST /api/settings`, which checks them first, then the embedder through
+  `/api/settings/vote-similarity`, then the rest through `/api/settings/values`, each on its own. A
+  refusal marks its field, opening the fold when the field is inside it.
 - **First issue** builds an issue now rather than at the next publish hour. While the server says
   which issue it would be (`GET /api/onboarding/first-issue`), a small line marked `aria-busy` says
   so, and `Back` and `Skip` show. Once that answer names a source, the step turns vote similarity on
-  through `/api/settings/vote-similarity` with the embedder the deployment already stores, unless it
-  is on already, whether or not a card was voted on: later votes keep look-alikes out of an issue only
+  through `/api/settings/vote-similarity` with the embedder the deployment already stores, or the
+  Model step's starting one where it stores none, unless it is on already, whether or not a card was voted on: later votes keep look-alikes out of an issue only
   with it on, and the reader is not asked, so no `Skip` before or on this step keeps it off. `Start` waits
   for that save, since the run reads its settings as it starts. A refused save leaves `Start` in
   reach: one small line below the plan says vote similarity is still off, why, and that it is

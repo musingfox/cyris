@@ -3386,8 +3386,9 @@ document.addEventListener("click", (event) => {
         """,
         sabotage="""$(".settings-nav").style.display = "none";""",
     ),
-    # Clipping inside `.choices` or `.table-wrap` never widens the document, so
-    # the fits checks above cannot see it; these measure the boxes themselves.
+    # A state pushed past its `.choices` box, or clipping inside `.table-wrap`, need not
+    # widen the document, so the fits checks above cannot see it; these measure the
+    # boxes themselves.
     Check(
         id="fits-375-choice-states",
         fixture="writable",

@@ -1270,7 +1270,12 @@ def test_the_labels_probe_runs_on_the_shared_core():
 # refused, starts one run for the key it picked, today's
 # or yesterday's evening, shows it while it is out, says where its issue is or
 # why it failed, and starts none when skipped, a skip writes nothing but that switch, only the
-# right deployment sees the wizard and its list, and the page fits a phone.
+# right deployment sees the wizard and its list, and the page fits a phone. The model step
+# opens on a provider whose key is present, names every variable when none is, checks without
+# storing, opens its closed fold on the starting values of only what the store lacks, saves
+# them and the provider and never a stored value, and marks a refused field in the fold;
+# leaving Notifications turns off only what was never set; the first issue turns vote
+# similarity on with the starting embedder when the model step was skipped.
 EXPECTED_ONBOARDING_IDS = {
     "the-opening-shows-with-no-hash",
     "skip-intro-jumps-to-the-claim",
@@ -1384,6 +1389,24 @@ EXPECTED_ONBOARDING_IDS = {
     "own-feed-already-listed-checks-its-row",
     "fits-own-feed-375",
     "tap-own-feed-375",
+    "model-step-opens-on-a-provider-whose-key-is-present",
+    "model-step-with-no-key-names-every-variable",
+    "model-step-with-no-key-saves-none",
+    "model-step-check-asks-the-provider-and-stores-nothing",
+    "model-step-fold-starts-closed",
+    "model-step-fold-opens-on-the-starting-values",
+    "model-step-saves-the-provider-and-every-starting-value",
+    "model-step-shows-only-what-the-store-lacks",
+    "model-step-never-writes-over-a-stored-value",
+    "model-step-untouched-on-a-complete-store-writes-nothing",
+    "model-step-a-refused-value-is-marked-in-the-fold",
+    "notify-step-skipped-turns-off-what-was-never-set",
+    "notify-step-skipped-keeps-what-is-stored",
+    "notify-step-left-empty-on-a-fresh-store-turns-it-off",
+    "first-issue-turns-on-vote-similarity-with-the-starting-embedder",
+    "fits-model-375",
+    "fits-largest-model-375",
+    "tap-model-375",
 }
 
 

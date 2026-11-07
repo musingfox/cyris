@@ -63,7 +63,8 @@ def render(rows: list[Row]) -> str:
 
 
 def _shown(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    # default=str: a path setting (`store.sqlite_path`) prints as the path it names.
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 def _env_source(cfg: Config, name: str) -> str:
@@ -111,7 +112,10 @@ def _secrets(cfg: Config) -> list[Row]:
 
 
 def _runtime(cfg: Config) -> list[Row]:
-    home = SOURCES["d1"] if cfg.app.store.is_d1 else SOURCES["file"]
+    if cfg.app.store.is_sql:
+        home = SOURCES["d1"] if cfg.app.store.is_cloudflare else SOURCES["sqlite"]
+    else:
+        home = SOURCES["file"]
     values = cfg.present_settings()
     defaulted = cfg.defaulted_settings()
     rows = []

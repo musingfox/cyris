@@ -7,7 +7,9 @@ import logging
 import os
 import re
 import signal
+import subprocess
 import sys
+import threading
 from collections import Counter
 from datetime import UTC, datetime
 from functools import partial
@@ -29,7 +31,20 @@ def main() -> None:
 
 
 def _echo_d1_failure(error: Exception) -> None:
-    """What to say when D1 itself is unusable — all three keys can land you here."""
+    """What to say when the SQL store itself is unusable, and what to check for it.
+
+    On Cloudflare all three keys can land you here; a local install's SQLite file
+    has none of them, and the error names the file to look at instead.
+    """
+    from cyris.adapters.store.local_d1 import LocalD1Error
+
+    if isinstance(error, LocalD1Error):
+        typer.echo(f"✗ sqlite — {error}")
+        typer.echo(
+            f"  Check [store] sqlite_path: {error.path} must be a SQLite file this user "
+            "can read and write, or a path where one can be created."
+        )
+        return
     typer.echo(f"✗ d1 — {error}")
     typer.echo(
         "  Check [store] database_id, CLOUDFLARE_ACCOUNT_ID and "
@@ -215,6 +230,7 @@ def run(
             _usage_error(f"--date must be a real YYYY-MM-DD date, not {date!r}")
     _setup_logging(verbose)
 
+    from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import build_deps, load_effective_config
     from cyris.service_layer.run_digest import RunOptions, RunReport, run_digest
     from cyris.service_layer.schedule import due_period
@@ -230,6 +246,10 @@ def run(
         logger.error("Configuration error: %s", e)
         if if_due and not dry_run and cfg is not None:
             _alert_could_not_start(cfg, e)
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        # The store itself is unusable before any setting is read: say so on one line.
+        _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
     if cfg.awaiting_onboarding():
@@ -344,8 +364,11 @@ def regenerate(
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
-    if cfg.app.store.backend != "d1":
-        typer.echo(f"The store backend is {cfg.app.store.backend}; regenerate needs d1", err=True)
+    if not cfg.app.store.is_sql:
+        typer.echo(
+            f"The store backend is {cfg.app.store.backend}; regenerate needs d1 or sqlite",
+            err=True,
+        )
         raise typer.Exit(1)
     if not cfg.app.html_output.enabled:
         typer.echo("HTML output is disabled; regenerate needs [html_output] enabled", err=True)
@@ -1008,6 +1031,7 @@ def triage_ui(
 
     from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.blind_labels import D1BlindLabels
+    from cyris.adapters.store.d1 import D1Error
     from cyris.adapters.store.d1_store import D1ArticleStore
     from cyris.adapters.store.digests import D1DigestStore
     from cyris.adapters.store.feed_health import D1FeedHealth
@@ -1033,6 +1057,9 @@ def triage_ui(
         cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
     d1 = build_d1_client(cfg)
@@ -1060,6 +1087,7 @@ def triage_ui(
             interest_reader=D1InterestReader(d1).read if d1 else None,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
+            start_run=partial(_start_detached_run, config_path, sources_path),
         )
         await server.start()
         typer.echo(f"Archive:   http://{host}:{port}/")
@@ -1095,6 +1123,32 @@ def triage_ui(
         asyncio.run(_run())
     except KeyboardInterrupt:
         typer.echo("Shutting down")
+
+
+def _start_detached_run(
+    config_path: Path, sources_path: Path, period: str | None, date: str | None
+) -> None:
+    """Start `cyris run` on this server's own config, apart from the server.
+
+    What `docker/entrypoint.sh` runs for the app Worker's run container: a period runs
+    that issue whatever the hour, a date beside it names the issue's date, and neither
+    leaves it to `--if-due`. Its own session, so stopping the server does not stop a
+    run half way; its log goes where the server's does.
+    """
+    if period is None:
+        args = ["--if-due"]
+    else:
+        args = ["--period", period, *(["--date", date] if date else [])]
+    argv = [
+        sys.executable, "-m", "cyris", "run", *args,
+        "--config", str(config_path), "--sources", str(sources_path),
+    ]  # fmt: skip
+    logger.info("Starting %s", " ".join(argv[2:]))
+    run = subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True)
+    # Reaped by a thread of its own, so the run leaves no zombie behind and the
+    # request that started it is answered at once. Daemon: a server stopping
+    # mid-run does not wait for it, and the run carries on in its own session.
+    threading.Thread(target=run.wait, name=f"cyris-run-{run.pid}", daemon=True).start()
 
 
 # Articles management sub-app
@@ -1383,7 +1437,10 @@ def _blind_labels(config_path: Path, sources_path: Path):
         typer.echo(f"Configuration error: {e}")
         raise typer.Exit(1) from e
     if d1 is None:
-        typer.echo('Blind labels live in D1: set [store] backend = "d1".')
+        typer.echo(
+            'Blind labels live in the SQL store: set [store] backend = "sqlite" on a local '
+            'install, or "d1" on Cloudflare.'
+        )
         raise typer.Exit(1)
     return cfg, D1BlindLabels(d1)
 
@@ -1600,7 +1657,9 @@ def _force_d1_client(config_path: Path, sources_path: Path):
         _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
-    already_applied = cfg.app.store.is_d1  # load_effective_config built a client
+    # load_effective_config applied the schema to this very database only on Cloudflare:
+    # a sqlite install's was its local file, not the D1 the override below reaches.
+    already_applied = cfg.app.store.is_cloudflare
     cfg.app.store.backend = "d1"
     # After the override, so it asks the same question `build_d1_client` will —
     # the old check omitted CLOUDFLARE_ACCOUNT_ID and let it raise past the try.

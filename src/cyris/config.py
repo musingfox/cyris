@@ -86,9 +86,11 @@ def _fill_from_env(data: object, fields: dict[str, str]) -> object:
 
 
 # Grade-B identity only a local install has. The Worker forwards `B_GRADE_ENV_VARS` into the
-# container, and a deployment it runs publishes, so it has no use for these.
+# container, and a deployment it runs publishes and keeps its state in D1, so it has no use
+# for these.
 LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
     "html_output.base_url": "CYRIS_HTML_OUTPUT_BASE_URL",
+    "store.sqlite_path": "CYRIS_STORE_SQLITE_PATH",
 }
 
 
@@ -224,14 +226,20 @@ class StoreConfig(BaseModel):
 
     `json` is local partition files under the agent vault. `d1` puts the article
     store and the usage log in Cloudflare D1, so a dead local machine loses
-    nothing. Both read the same data model; run them side by side and diff with
-    `cyris store-diff` before switching.
+    nothing. `sqlite` keeps the same tables in one SQLite file on this machine,
+    a local install's home (ADR-0025). Each is a whole home, never overlaid on
+    another (ADR-0003); diff json against d1 with `cyris store diff` before
+    switching.
     """
 
-    backend: Literal["json", "d1"] = "json"
+    backend: Literal["json", "d1", "sqlite"] = "json"
     database_id: str = ""
     account_id: str = ""
     api_token: str = ""
+    # Relative to the working directory, as `[agent_vault] path` is. Never inside the
+    # vault: compose bind-mounts it, and a host process and a container on one SQLite
+    # file corrupt it (ADR-0025). AppConfig refuses such a path.
+    sqlite_path: Path = Path("state/cyris.sqlite3")
 
     @model_validator(mode="before")
     @classmethod
@@ -241,8 +249,15 @@ class StoreConfig(BaseModel):
             {
                 "backend": B_GRADE_ENV_VARS["store.backend"],
                 "database_id": B_GRADE_ENV_VARS["store.database_id"],
+                "sqlite_path": LOCAL_B_GRADE_ENV_VARS["store.sqlite_path"],
             },
         )
+
+    @field_validator("sqlite_path", mode="before")
+    @classmethod
+    def blank_path_is_the_default(cls, value: object) -> object:
+        # `sqlite_path = ""` is unset, as an empty grade-B value is everywhere else.
+        return cls.model_fields["sqlite_path"].default if value == "" else value
 
     @model_validator(mode="after")
     def inject_credentials(self) -> "StoreConfig":
@@ -253,8 +268,19 @@ class StoreConfig(BaseModel):
         return self
 
     @property
-    def is_d1(self) -> bool:
+    def is_sql(self) -> bool:
+        """State lives in the D1 tables, on Cloudflare or in the local SQLite file."""
+        return self.backend in ("d1", "sqlite")
+
+    @property
+    def is_cloudflare(self) -> bool:
+        """The tables are Cloudflare D1, reached over REST with Cloudflare credentials."""
         return self.backend == "d1"
+
+    @property
+    def sql_home(self) -> str:
+        """The SQL store as a reader names it: `D1`, or the local file."""
+        return "D1" if self.is_cloudflare else "the SQLite store"
 
 
 BASE_URL = re.compile(r"https?://(?:[A-Za-z0-9][A-Za-z0-9.-]*|\[[0-9A-Fa-f:.]+\])(?::\d+)?/?")
@@ -398,6 +424,44 @@ class AppConfig(BaseModel):
     store: StoreConfig = Field(default_factory=StoreConfig)
     vote_similarity: VoteSimilarityConfig | None
 
+    @model_validator(mode="after")
+    def sqlite_file_outside_the_vault(self) -> "AppConfig":
+        if self.store.backend != "sqlite":
+            return self
+        if _within(self.store.sqlite_path, self.agent_vault.path):
+            raise ValueError(
+                f"[store] sqlite_path {self.store.sqlite_path} is inside the agent vault "
+                f"{self.agent_vault.path}: docker compose bind-mounts the vault, and a host "
+                "process and a container on one SQLite file corrupt it. Put it elsewhere."
+            )
+        return self
+
+
+def _within(path: Path, directory: Path) -> bool:
+    """Whether `path` lies in `directory`, by the directory's identity on disk.
+
+    A string comparison misses a spelling the filesystem treats as the same directory:
+    `AGENT-VAULT/` on a case-insensitive APFS, or another Unicode normalization of the
+    name. So each existing parent of the resolved path is compared with the directory
+    by device and inode, which also covers a symlink and `..`. A directory that does not
+    exist yet has no identity, and is compared by its resolved path alone.
+    """
+    path, directory = path.resolve(), directory.resolve()
+    if path.is_relative_to(directory):
+        return True
+    try:
+        target = directory.stat()
+    except OSError:
+        return False
+    for parent in (path, *path.parents):
+        try:
+            found = parent.stat()
+        except OSError:
+            continue
+        if (found.st_dev, found.st_ino) == (target.st_dev, target.st_ino):
+            return True
+    return False
+
 
 _SETTINGS_TABLES: dict[str, type[BaseModel]] = {
     "general": GeneralConfig,
@@ -417,6 +481,16 @@ OPTIONAL_SETTINGS: dict[str, Any] = {
     for table, field in [key.split(".", 1)]
 }
 REQUIRED_KEYS: tuple[str, ...] = tuple(key for key in GRADE_D_KEYS if key not in OPTIONAL_SETTINGS)
+
+# What the onboarding wizard's Model step shows a required key at while the store lacks
+# it: the tuned values a new reader is not asked to choose, and vote similarity's switch,
+# which the vote route saves with them (ADR-0025). The reader confirms them with Next,
+# which writes them into the store once. Nothing reads them as a fallback: a key still
+# missing on a running deployment stays an error (ADR-0003). `cyris.toml.example` holds
+# the same values, and `tests/test_settings_starting_values.py` keeps the two equal.
+STARTING_VALUES: dict[str, Any] = json.loads(
+    (files("cyris") / "settings_starting_values.json").read_text(encoding="utf-8")
+)
 
 
 @cache
@@ -449,8 +523,8 @@ class SourcesConfig(BaseModel):
 
 
 def _missing_store_keys(app_config: "AppConfig") -> list[str]:
-    """Env vars a D1 store needs and does not have; empty when json or complete."""
-    if not app_config.store.is_d1:
+    """Env vars a Cloudflare D1 store needs and does not have; empty otherwise."""
+    if not app_config.store.is_cloudflare:
         return []
     missing = []
     if not app_config.store.database_id:
@@ -507,7 +581,7 @@ class Config(BaseModel):
         }
 
     def missing_store_keys(self) -> list[str]:
-        """Env vars a D1 store needs and does not have; empty when json or complete."""
+        """Env vars a Cloudflare D1 store needs and does not have; empty otherwise."""
         return _missing_store_keys(self.app)
 
     def require_complete_settings(self) -> None:
@@ -515,10 +589,15 @@ class Config(BaseModel):
         if not self.missing_settings:
             return
         keys = ", ".join(self.missing_settings)
-        if self.app.store.is_d1:
+        if self.app.store.is_cloudflare:
             raise IncompleteSettingsError(
                 f"Missing settings in D1: {keys}. Set them on /settings, or run "
                 "`cyris settings push` to copy them from cyris.toml."
+            )
+        if self.app.store.is_sql:
+            # Not `settings push`: it writes to Cloudflare D1, never to this file.
+            raise IncompleteSettingsError(
+                f"Missing settings in {self.app.store.sql_home}: {keys}. Set them on /settings."
             )
         raise IncompleteSettingsError(
             f"Missing from cyris.toml: {keys}. cyris.toml.example lists every key."
@@ -535,11 +614,13 @@ class Config(BaseModel):
 
     def onboarding_wait(self) -> str:
         """Why a run with no source does nothing, and where a source comes from."""
-        where = (
-            "Add one on /settings, or run `cyris sources push`."
-            if self.app.store.is_d1
-            else "Add feeds to sources.yaml."
-        )
+        if self.app.store.is_cloudflare:
+            where = "Add one on /settings, or run `cyris sources push`."
+        elif self.app.store.is_sql:
+            # Not `sources push`: it writes to Cloudflare D1, never to this file.
+            where = "Add one on /onboarding or /settings."
+        else:
+            where = "Add feeds to sources.yaml."
         return f"No sources yet, so this run has nothing to fetch: waiting for onboarding. {where}"
 
     def require_sources(self) -> None:
@@ -550,7 +631,7 @@ class Config(BaseModel):
         """
         if not self.sources or any(s.fetchable for s in self.sources.values()):
             return
-        home = "D1" if self.app.store.is_d1 else "sources.yaml"
+        home = self.app.store.sql_home if self.app.store.is_sql else "sources.yaml"
         names = ", ".join(sorted(self.sources))
         raise NoSourcesError(
             f"No fetchable sources in {home}: {names}. An RSS source needs a feed URL, "
