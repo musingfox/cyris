@@ -54,6 +54,14 @@ prototype opened every settings form, sources, tracked topics and votes with `se
 * `json` is removed before the project is announced, once `cyris store migrate` moves a `json`
   install across, `topics.json`, `usage.jsonl` and `[[tracked_topics]]` included. A public release
   then never has two local stores to choose between.
+* Grade-D keys now have shipped starting values, `src/cyris/settings_starting_values.json`, taken
+  from `cyris.toml.example`, which a guard test keeps equal to it. They cover the tuned keys a new
+  reader is not asked to choose. The onboarding wizard's Model step shows each key the store
+  lacks, pre-filled with its starting value, and its Next writes them into the store once. A key
+  the store already holds is neither shown nor written. ADR-0003's single home still holds: the
+  values reach a run only by being written into the store, and nothing reads them as a fallback,
+  so a key still missing on a running deployment is an error as before. The owner chose this on
+  2026-11-07, so that a reader who only walks the wizard gets a first issue.
 * The database holds recent state, not everything forever. The owner's direction for every edition
   is that old data rotates out to compressed files: on disk locally, and in object storage in the
   cloud, where the container has no disk. It is separate work with its own decision on what rotates
@@ -74,6 +82,11 @@ prototype opened every settings form, sources, tracked topics and votes with `se
   can silently lose recent writes, so backup goes through `.backup` or `VACUUM INTO`.
 * Bad, because ADR-0003's first-boot cost reaches local installs: `ingest` and `run` stop until the
   wizard or `cyris settings push` has filled the settings.
+* Good, because the wizard alone now fills them: its Model step writes the starting values of the
+  keys it does not ask about, and leaving Notifications turns off what was never set. Bad, because
+  the tuned values now have a second list beside `cyris.toml.example`, held equal by
+  `tests/test_settings_starting_values.py`, and a reader who never opens the Model step's fold
+  takes them without reading them.
 * Bad, because no path to Cloudflare D1 exists yet. `.dump` produced a 186889-byte line against
   D1's 100 KB statement limit, so moving to the cloud edition needs a copy tool, not tested yet.
 * Bad, because the wizard's last step, `POST /run`, exists only in the Worker and needs a local

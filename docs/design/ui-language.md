@@ -592,8 +592,8 @@ reload on a later step must keep the reader in the wizard. A `backend = "json"` 
 sources live in a file the app never writes, has no wizard at all: this page sends it back to
 /settings. The same container serves it as serves settings, behind the same sign-in.
 
-- **Six steps, in order:** language and timezone, publish hours, sources, votes, notifications, first
-  issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the
+- **Seven steps, in order:** language and timezone, publish hours, sources, votes, notifications,
+  model, first issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the
   place: the Worker's `PROTECTED` matches `/onboarding` exactly, and a hash never leaves the browser.
   With no hash the opening (below) shows instead.
 - **Opening** (specified and built 2026-11-02). Before asking anything, the page shows what cyris does: too many headlines, then a few, with the
@@ -601,7 +601,7 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   `docs/design/onboarding-poc/k-overload.html` on the unmerged branch `poc/onboarding-immersive`
   (b1ba209d; owner, 2026-11-01). Its timings, curves and the finer shape of the motion are still to be
   designed, so this bullet fixes only what the screen holds, in what order, and how a reader leaves.
-  - It is not a step. The page head, the step list and `Step N of 6` are not on it, and no hash
+  - It is not a step. The page head, the step list and `Step N of 7` are not on it, and no hash
     names it, so a reload on a step keeps that step. Its primary button, `Show me how`, opens the
     first step and saves nothing; the first step still has no `Back`. Focus then goes to that step's
     heading, so it is not left on a button that has gone.
@@ -633,7 +633,7 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   - The beats' lengths are §2 tokens, `--t-opening-overload` and `--t-opening-calm`; the sentence
     shows when both have run. The motion inside each beat is a first cut, still to be refined.
 - The page is `--measure` wide, one column, with settings' gutters. Below the page head (the label
-  `Step N of 6`, the display title and a small description) the step list names every step in order,
+  `Step N of 7`, the display title and a small description) the step list names every step in order,
   each with a 6px dot: `--accent` dot and `--accent` text for the step open now, a `--text-dim` dot
   for one already passed, and a 1px `--border-strong` ring for one still to come. The list is a
   progress mark rather than navigation — it takes no taps, and the three buttons below it are what
@@ -646,7 +646,9 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   cannot tell the two pages apart.
 - **Back, Skip and Next** sit below the step in that order, two secondary buttons and one primary.
   `Next` saves what changed on this step and moves on; `Skip` moves on and saves nothing, so a
-  skipped setting keeps the value it had. `Back` is left out on the first step. On the last step
+  skipped setting keeps the value it had. The one exception is Notifications: leaving it by `Skip`,
+  or by `Next` with its fields empty, turns off the webhook and the mail pair where they were never
+  set, through settings' own Turn off and empty pair, because a run stops on a setting never set. `Back` is left out on the first step. On the last step
   `Next` is gone: the step's own primary button takes its place, and a primary `Finish` link leads
   to `/settings?from=onboarding` — the mark that lets a deployment whose table is still empty
   through, rather than sending it back here. `Skip` there leaves through that same link and starts
@@ -658,7 +660,7 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   publish hour is refused on the page, because padded it would reach the server as `00:00`.
 - **Sources** offers the project's feed list (`src/cyris/onboarding_feeds.json`), which the server
   sends with its topics (`GET /api/onboarding/feeds`), in two screens of the one step: topics, then
-  the chosen topics' feeds. The step list, `Step 3 of 6` and the heading stay the same on both; the
+  the chosen topics' feeds. The step list, `Step 3 of 7` and the heading stay the same on both; the
   description under the heading says what the open screen asks for. The hash names the screen,
   `#sources` for topics and `#sources/feeds` for feeds, so a reload keeps it, as it keeps the step.
   A topic is what a feed is about, never its form.
@@ -731,11 +733,26 @@ sources live in a file the app never writes, has no wizard at all: this page sen
   article left its feed after the deal shows `No longer in the feed · not recorded` there instead, and
   the notice counts it; the other votes are still recorded. `Skip`, and `Next` with no card marked,
   write nothing.
+- **Model** comes right before the first issue. The `Provider` choice list (§4) holds the providers
+  `GET /api/settings` answers, as settings' Model category lists them: one without its key is
+  unselectable and shows `<VARIABLE> missing`, and `None — plain excerpts` says `No key needed`. The
+  step opens on the stored provider, or with none stored on the first whose key is present, or
+  `None`. With no key present, one small line names every variable to set in `.env`, and says to
+  keep `None` otherwise. The step never asks for a key. `Model` is settings' field, and a secondary
+  `Check` below it, hidden for `None`, asks the provider once (`POST /api/diagnostics/llm`), stores
+  nothing, and shows the answer in a notice of its own. A settings fold (§4), `Advanced: embedder,
+  digest and pipeline, defaults shown`, starts closed. It holds only the tuned settings the store
+  lacks, each in settings' own field and words, opened on its starting value from
+  `GET /api/settings`, so a reader who never opens it sends those values with one `Next`. A stored
+  setting is not shown, and the fold is not shown when none is left. `Next` saves the provider and
+  model through `POST /api/settings`, which checks them first, then the embedder through
+  `/api/settings/vote-similarity`, then the rest through `/api/settings/values`, each on its own. A
+  refusal marks its field, opening the fold when the field is inside it.
 - **First issue** builds an issue now rather than at the next publish hour. While the server says
   which issue it would be (`GET /api/onboarding/first-issue`), a small line marked `aria-busy` says
   so, and `Back` and `Skip` show. Once that answer names a source, the step turns vote similarity on
-  through `/api/settings/vote-similarity` with the embedder the deployment already stores, unless it
-  is on already, whether or not a card was voted on: later votes keep look-alikes out of an issue only
+  through `/api/settings/vote-similarity` with the embedder the deployment already stores, or the
+  Model step's starting one where it stores none, unless it is on already, whether or not a card was voted on: later votes keep look-alikes out of an issue only
   with it on, and the reader is not asked, so no `Skip` before or on this step keeps it off. `Start` waits
   for that save, since the run reads its settings as it starts. A refused save leaves `Start` in
   reach: one small line below the plan says vote similarity is still off, why, and that it is

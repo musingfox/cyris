@@ -698,6 +698,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote-similarity minimum window: 10 candidates | A | `MIN_OUTLIER_WINDOW` in `domain/similarity.py` | done 2026-10-17 — below about ten candidates the median and MAD rest on two or three articles, so one article moves the cut; production windows are hundreds of candidates. A floor on sample size, not a cosine, so it does not go stale as votes grow (ADR-0017) |
 | Suppression clock: 7 days | A | `SUPPRESSION_CLOCK_DAYS` in `domain/suppression.py` | done 2026-10-17 — a week is the cycle a reader's digests repeat over; a hold outlasting that would hide an article on votes the reader has since moved past (ADR-0017) |
 | Runtime-setting registry: each grade-D key's `/settings` category, label, controls, save route and whether a save applies live | A | `src/cyris/settings_fields.json` | unchanged — the one key list (see *Where grade D lives*); `tests/test_settings_fields.py` holds the page to it |
+| Onboarding starting values: the value the wizard's Model step shows each tuned grade-D key at while the store lacks it | A | `src/cyris/settings_starting_values.json` | added 2026-11-07 (ADR-0025) — a new reader confirms them with one Next rather than choosing 17 numbers. They are `cyris.toml.example`'s, which `tests/test_settings_starting_values.py` holds equal, and they reach a run only once written into the store (see *Where grade D lives*). A key the store holds is never offered, so a trial's first-boot push survives the wizard |
 | `cyris config show` registry: the rows it lists beyond `settings_fields.json` and `B_GRADE_ENV_VARS`, and every label it prints | A | `src/cyris/diagnostics/config_show.json` | done 2026-10-08 — the image ships `src/` only, so `.env.example` cannot be read at runtime; `tests/test_deploy_inputs.py` holds the secret list to it, and each code constant is named as `module:attribute` so the value shown is the one the code runs with |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
 | Wire dateline closing words (電, 報導), which the sand line's stand-in excerpt skips | A | `service_layer/datelines.json`, loaded by `degrade.py` | added 2026-10-29 — data so another wire's closing word is not a code edit, as `keywords.json` is; beside `languages.json` because the service layer may not read an adapter's file. The shape stays in code: a bracket pair at the very start of the text, at most `DATELINE_MAX_CHARS` = 40 characters before the closing word (A: an aside in brackets runs longer). Only the sand stand-in strips it (`cluster_news._member`) |
@@ -761,7 +762,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Discord webhook | D | **D1 `settings`**, written by `/settings`; `cyris.toml [notify]` for a `json` deployment | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the grade-C variables counted below; those are API tokens, which stay C. `""` means off: `/settings` stores it only through a confirmed Turn off, and an empty paste is refused. No environment variable supplies it |
 | Mail recipient + sender | D | **D1 `settings`** as `notify.email_to` and `.email_from`, written by `/settings` (Notifications); `cyris.toml [notify]` for a `json` deployment | done 2026-09-27, a prototype beside Discord — the channel-address rule the webhook set. The container sends through Cloudflare Email Service's REST API (`POST /accounts/{id}/email/sending/send`, Email Sending: Edit on `CLOUDFLARE_API_TOKEN`), no Worker in between. The recipient must be a verified Email Routing destination address, which is free on every plan and needs no onboarded sending domain; the sender must sit on a routing domain. `/settings` stores the pair only after a test message is delivered or queued, and an empty recipient turns mail off without a send. No environment variable supplies either |
 | Digest window | D | **D1 `settings`**, written by `/settings` (Pipeline); `cyris.toml [general]` for a `json` deployment | done 2026-09-19 |
-| Vote similarity on/off, `max_seeds` | D | **D1 `settings`**, written by `/settings` (Model) together with the embedder, and turned on by the onboarding first-issue step once there is a source, voted or not, through the same route with the embedder already stored; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 — turning it on checks the embedder first |
+| Vote similarity on/off, `max_seeds` | D | **D1 `settings`**, written by `/settings` (Model) together with the embedder, first stored off with the onboarding Model step's starting values, and turned on by the onboarding first-issue step once there is a source, voted or not, through the same route with the embedder stored, or its starting value; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 — turning it on checks the embedder first |
 | Reader type size | D | **D1 `settings`** as `digest.type_scale`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done — how pages get it: *The reader-facing surfaces*. The mail stays at the baseline: nothing serves it, so the Worker cannot inject the size |
 | Agent vault path, HTML output dir | A | `cyris.toml` | unchanged — the vault is the `json` backend's tree, and the HTML output dir is where a local install's pages go on `json` or `sqlite`; with Cloudflare D1 nothing is written there |
 | **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | partly ruled: a channel-address credential such as the Discord webhook is grade D (see its row above). API keys remain undecided: writing a key into D1 `settings` puts a secret in a readable D-grade row |
@@ -898,6 +899,15 @@ each backend has exactly one home, with nothing overlaid:
   code: the six table models have no defaults, and a table missing any of its keys is `None`.
   The one exception is the optional `llm_provider.reasoning_effort`, whose absence means the
   storable value `default` ([ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md)).
+- **Starting values are written once, never read.** `src/cyris/settings_starting_values.json`
+  (`config.STARTING_VALUES`) holds a starting value for each required key no wizard step asks the
+  reader for by name: the tuned digest and pipeline keys, the embedder with its seeds, and vote
+  similarity's switch. The values are `cyris.toml.example`'s, and
+  `tests/test_settings_starting_values.py` keeps the two equal. `GET /api/settings` answers
+  `starting` with only the keys the home lacks. The onboarding wizard's Model step pre-fills its
+  fold from that answer, and its Next writes the values into the home. No loader, run or
+  command reads the file, so a key still missing on a running deployment stops the run as above
+  ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md), owner, 2026-11-07).
 - **A missing key is an error, where it is read,** except the optional reasoning effort (ADR-0018). `run` (including `--if-due`), `articles score`,
   `vote-sim`, `embed-compare` and `llm-compare` stop before any work and name every missing key;
   `run` and `llm-compare` also stop when every source is unfetchable; an empty list is a
@@ -1301,7 +1311,8 @@ store*). A marked article the read no longer finds is left out and named back as
 when none is found does it record nothing.
 
 The first-issue step turns vote similarity on through `/api/settings/vote-similarity` once its
-answer names a source, whether or not a card was voted on, before any run it starts. It starts no run of its own: it posts `POST /run?period=&date=`,
+answer names a source, whether or not a card was voted on, before any run it starts. It sends the
+embedder and seeds the store holds, or their starting values where it holds none. It starts no run of its own: it posts `POST /run?period=&date=`,
 the manual-run route (§3.2), which the app Worker answers in the cloud and the local server answers
 on a local install (*The local server starts a manual run*, below), with the key `GET /api/onboarding/first-issue` picks
 (`first_issue_key` in `service_layer/schedule.py`). A scheduled run stores its issue over any other
@@ -1316,10 +1327,17 @@ source. Yesterday's evening is an ordinary key: the archive sorts it before toda
 carry its date; the notification subjects carry that date too. The same route reads the newest
 `digest_runs` row (§4), which the page polls until a row newer than the one it saw before posting
 says how the run ended: a link to the issue and the archive, or the status and the run's `error`.
-It needs the SQL store, D1 or a `sqlite` file, as the wizard does. The wizard sets only the
-language, the time zone, the publish hours and vote similarity's switch: on a store with no
-settings yet, the other grade-D keys are saved on `/settings` (on D1, also by `cyris settings push`)
-before its first issue can run.
+It needs the SQL store, D1 or a `sqlite` file, as the wizard does. The wizard alone leaves a store
+with no settings complete. Leaving the Notifications step, by Skip or by Next with its fields empty,
+stores the webhook off (`{"off": true}`) and the mail pair empty, each only while it is unset. The
+Model step, just before the first issue, offers the providers `GET /api/settings` answers and
+names the variable each one lacks. A key stays grade C in `.env`, and the step never asks for one.
+Its Check posts `POST /api/diagnostics/llm` and stores nothing, and its Next saves through
+`POST /api/settings`. Its fold, `Advanced`, shows only the tuned keys the store lacks, pre-filled
+with the starting values that answer sends (§5 *Where grade D lives*). Next saves them through
+`/api/settings/vote-similarity` and `/api/settings/values` in the bodies `/settings` sends. The
+first-issue step's switch then turns vote similarity on with the stored embedder, or the
+starting one. No route was added for any of this.
 
 Votes go through the Worker's same-origin `POST /api/vote`, which attaches `CYRIS_PROMOTE_TOKEN`
 server-side; no page carries the token. The vote buttons render only when a probe of

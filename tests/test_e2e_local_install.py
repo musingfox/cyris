@@ -2,14 +2,17 @@
 
 `cyris triage-ui` runs as a subprocess on an empty directory whose `cyris.toml` names the
 `sqlite` store and nothing else about it (ADR-0025). The test sends what the reader's
-browser sends: first the /settings saves for the keys the wizard has no field for, then
-the wizard's own requests in the order `static/onboarding.js` sends them, ending with
-`POST /run` and the first-issue poll. Every outgoing request of the server, and of the
-`cyris run` it starts, goes through the proxy and its fakes, which count it; the SQLite
-file is read afterwards for what landed (docs/spec/e2e-asserts-what-the-fakes-received.md).
+browser sends on the wizard alone, in the order `static/onboarding.js` sends it, and no
+/settings save: the reader answers each step, leaves Notifications empty, picks None
+and the embedder whose key is present on the Model step and keeps every other value
+it opens on, then starts the first issue and polls for it. Every outgoing request of the
+server, and of the `cyris run` it starts, goes through the proxy and its fakes, which
+count it; the SQLite file is read afterwards for what landed
+(docs/spec/e2e-asserts-what-the-fakes-received.md).
 """
 
 import json
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -22,27 +25,32 @@ from e2e import harness
 from e2e.receipts import assert_no_unclaimed, assert_route_counts, by_route, json_body
 
 from cyris.bootstrap import embedding_defaults
-from cyris.config import OPTIONAL_SETTINGS, REQUIRED_KEYS, SETTINGS_FIELDS
+from cyris.config import REQUIRED_KEYS, SETTINGS_FIELDS, STARTING_VALUES
 from cyris.diagnostics.doctor import EMBEDDING_PROBE_TEXT
+from cyris.entrypoints.triage_server import STATIC_DIR
 
 pytestmark = pytest.mark.e2e
 
-SETTINGS = harness.settings(
-    **{
-        "general.timezone": "Asia/Taipei",
-        "general.digest_window_hours": 24,
-        "llm_provider.provider": "none",
-        "vote_similarity.provider": "gemini",
-        "vote_similarity.model": "",
-    }
-)
-# The wizard's first step owns these two; every other plain key is a /settings field.
-WIZARD_VALUES = ("digest.output_language", "general.timezone")
-SETTINGS_VALUES = tuple(
-    key
-    for key, field in SETTINGS_FIELDS.items()
-    if field["route"] == "plain" and key not in WIZARD_VALUES and key not in OPTIONAL_SETTINGS
-)
+# What the reader answers on the steps that ask: the language step's two fields, the
+# publish hours, None on the Model step, and in its fold the embedder whose key the
+# install's .env holds. Every other setting is the starting value the wizard opens on.
+LANGUAGE = {"digest.output_language": "en", "general.timezone": "Asia/Taipei"}
+HOURS = ["08:00", "20:00"]
+EMBEDDER = "gemini"
+SETTINGS = {
+    **STARTING_VALUES,
+    **LANGUAGE,
+    "general.digest_schedule": HOURS,
+    "llm_provider.provider": "none",
+    "llm_provider.model": "",
+    # Left empty on the Notifications step, which turns both off.
+    "notify.discord_webhook_url": "",
+    "notify.email_to": "",
+    "notify.email_from": "",
+    "vote_similarity.provider": EMBEDDER,
+}
+# The tuned settings the Model step's fold saves through the values route.
+FOLD_VALUES = tuple(key for key in STARTING_VALUES if SETTINGS_FIELDS[key]["route"] == "plain")
 
 FEED_URL = "https://feeds.e2e.test/rss"
 # What the wizard posts for a picked feed: the catalog entry without its `topics`.
@@ -177,27 +185,14 @@ def install(tmp_path_factory) -> Install:
         env = harness.cyris_env(run_dir, proxy_url, ca_file)
         with harness.triage_ui(run_dir, env) as base, harness.local_client() as client:
             browser = _Browser(client, base)
-            browser.ok("GET", "/api/settings")
-            # /settings: the keys the wizard has no field for, each through its own form.
-            browser.ok("POST", "/api/settings", {"provider": "none", "model": ""})
-            plain = {k: SETTINGS[k] for k in SETTINGS_VALUES}
-            browser.ok("POST", "/api/settings/values", {"values": plain})
-            vote = {
-                "provider": SETTINGS["vote_similarity.provider"],
-                "model": SETTINGS["vote_similarity.model"],
-                "max_seeds": SETTINGS["vote_similarity.max_seeds"],
-            }
-            browser.ok("POST", "/api/settings/vote-similarity", {"enabled": False, **vote})
-            browser.ok("POST", "/api/settings/notify", {"off": True})
-            browser.ok("POST", "/api/settings/email", {"email_to": "", "email_from": ""})
-            # The wizard: language and timezone, the publish hours, a feed, its cards and votes.
-            browser.ok(
-                "POST", "/api/settings/values", {"values": {k: SETTINGS[k] for k in WIZARD_VALUES}}
-            )
-            browser.ok(
-                "POST", "/api/settings/schedule", {"times": SETTINGS["general.digest_schedule"]}
-            )
+            # The page loads: the opening's headlines, the stored settings, the feed list.
+            browser.ok("GET", "/api/onboarding/headlines")
+            state = browser.ok("GET", "/api/settings")
+            starting = state["starting"]
             browser.ok("GET", "/api/onboarding/feeds")
+            # Language and timezone, the publish hours, a feed, its cards and votes.
+            browser.ok("POST", "/api/settings/values", {"values": LANGUAGE})
+            browser.ok("POST", "/api/settings/schedule", {"times": HOURS})
             browser.ok("POST", "/api/sources", SOURCE)
             cards = browser.ok("POST", "/api/onboarding/cards", {})
             up, down = (card["url"] for card in cards["cards"][:2])
@@ -206,6 +201,21 @@ def install(tmp_path_factory) -> Install:
                 "/api/onboarding/votes",
                 {"votes": [{"url": up, "vote": "up"}, {"url": down, "vote": "down"}]},
             )
+            # Notifications left empty: Next turns off what was never set.
+            browser.ok("POST", "/api/settings/notify", {"off": True})
+            browser.ok("POST", "/api/settings/email", {"email_to": "", "email_from": ""})
+            # The model step: None, then the fold's embedder and its tuned settings, each
+            # as the fold opened it from the server's starting values but the embedder.
+            browser.ok("POST", "/api/settings", {"provider": "none", "model": ""})
+            vote = {
+                "provider": EMBEDDER,
+                "model": starting["vote_similarity.model"],
+                "max_seeds": starting["vote_similarity.max_seeds"],
+            }
+            enabled = starting["vote_similarity.enabled"]
+            browser.ok("POST", "/api/settings/vote-similarity", {"enabled": enabled, **vote})
+            fold = {key: starting[key] for key in FOLD_VALUES}
+            browser.ok("POST", "/api/settings/values", {"values": fold})
             # The first-issue step: its plan, vote similarity on, the plan again, the run.
             browser.ok("GET", "/api/onboarding/first-issue")
             browser.ok("POST", "/api/settings/vote-similarity", {"enabled": True, **vote})
@@ -242,6 +252,27 @@ def install(tmp_path_factory) -> Install:
         routes=json.loads((run_dir / "routes.json").read_text(encoding="utf-8")),
         log=(run_dir / "triage-ui.log").read_text(encoding="utf-8", errors="replace"),
     )
+
+
+def test_every_request_is_one_the_wizard_sends(install) -> None:
+    """No /settings save stands in for a step: each path is one onboarding.js requests."""
+    script = (STATIC_DIR / "onboarding.js").read_text(encoding="utf-8")
+    wizard = set(re.findall(r'(?:post|fetch|getJson)\(\s*[`"](/[^"`?$]+)', script))
+
+    sent = {path.split("?")[0] for _, path, _, _ in install.sent}
+
+    assert sent <= wizard, sent - wizard
+    # The bodies this walk sends where the settings page would otherwise have to: the
+    # notifications turned off, the model saved, and the fold opened on the server's values.
+    for body in (
+        'post("/api/settings/notify", {off: true})',
+        'post("/api/settings/email", {email_to: "", email_from: ""})',
+        'post("/api/settings", {provider: p.name, model})',
+        'post("/api/settings/vote-similarity", {',
+        'post("/api/settings/values", {values})',
+        "STARTING = state.starting || {};",
+    ):
+        assert body in script, body
 
 
 def test_every_request_the_page_sends_is_answered(install) -> None:

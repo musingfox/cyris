@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <title>Cyris Onboarding</title>
-  <meta name="description" content="The guided setup of a new Cyris deployment: language, publish hours, sources, votes, notifications and the first issue.">
+  <meta name="description" content="The guided setup of a new Cyris deployment: language, publish hours, sources, votes, notifications, the model and the first issue.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,6 +40,7 @@
        viewport, so it never scrolls, and the stage takes what the sentence and
        the buttons leave of that. The sentence holds its place while it is
        hidden, so the stage does not jump when it shows. */
+    .fold-fields { display: grid; gap: var(--s-6); margin-top: var(--s-4); }
     .opening { display: flex; flex-direction: column; gap: var(--s-5); height: calc(100svh - var(--bar-h) - var(--s-12) - var(--s-20)); }
     .opening-stage { position: relative; flex: 1; min-height: 0; }
     .opening-stage canvas { display: block; width: 100%; height: 100%; }
@@ -73,9 +74,9 @@
     </section>
 
     <div class="page-head">
-      <span class="label" id="o-progress">Step 1 of 6</span>
+      <span class="label" id="o-progress">Step 1 of 7</span>
       <h1 class="display">Set up <em>cyris</em></h1>
-      <p class="small">Six steps to your first issue. Skip any of them: a skipped step keeps its current value, and everything here can be changed later in Settings.</p>
+      <p class="small">Seven steps to your first issue. Skip any of them: a skipped step keeps its current value, and everything here can be changed later in Settings.</p>
     </div>
 
     <ol class="steps" id="o-steps">
@@ -84,6 +85,7 @@
       <li class="label" data-step="sources">Sources</li>
       <li class="label" data-step="votes">Votes</li>
       <li class="label" data-step="notify">Notifications</li>
+      <li class="label" data-step="model">Model</li>
       <li class="label" data-step="first-issue">First issue</li>
     </ol>
 
@@ -196,6 +198,117 @@
         <input class="input" id="o-email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
         <p class="small">An address on your Email Routing domain.</p>
       </div>
+    </section>
+
+    {# The providers are the ones GET /api/settings answers, each saying whether this
+       machine has its key; a key lives in .env, never here. Check asks
+       POST /api/diagnostics/llm and stores nothing; Next saves through
+       POST /api/settings, which checks again. The fold holds each tuned setting the
+       store still lacks, opened on its starting value (settings_starting_values.json),
+       and Next saves them through the routes /settings saves them with. A stored
+       setting's field stays hidden, so the wizard never writes over it. #}
+    <section class="step" data-step="model" hidden>
+      <div class="step-head">
+        <h2 class="heading">Model</h2>
+        <p class="small">The model that writes headlines and summaries, from the providers this machine has a key for. Keys stay in .env, never here.</p>
+        <p class="small" data-loading>Loading settings…</p>
+      </div>
+      <div class="field">
+        <span class="label" id="o-provider-label">Provider</span>
+        <div class="choices" id="o-providers" role="radiogroup" aria-labelledby="o-provider-label"></div>
+        <p class="small" id="o-no-key" hidden></p>
+      </div>
+      <div class="field">
+        <label class="label" for="o-model">Model</label>
+        <input class="input" id="o-model" type="text" autocomplete="off">
+        <p class="small" id="o-model-hint"></p>
+        <div><button class="btn secondary" type="button" id="o-check" hidden>Check</button></div>
+        <div class="notice" id="o-check-result" role="status" hidden></div>
+      </div>
+      <details class="more" id="o-advanced" hidden>
+        <summary>Advanced: embedder, digest and pipeline, defaults shown</summary>
+        <div class="fold-fields">
+          <div class="field" data-key="vote_similarity.provider">
+            <span class="label" id="o-embedding-provider-label">Embedding provider</span>
+            <div class="choices" id="o-embedding-providers" role="radiogroup" aria-labelledby="o-embedding-provider-label"></div>
+            <p class="small">The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here.</p>
+          </div>
+          <div class="field" data-key="vote_similarity.model">
+            <label class="label" for="o-embedding-model">Embedding model</label>
+            <input class="input" id="o-embedding-model" type="text" autocomplete="off" data-kind="text">
+            <p class="small">Checked with one real call when vote similarity is on.</p>
+          </div>
+          <div class="field" data-key="vote_similarity.max_seeds">
+            <label class="label" for="o-vote-seeds">Votes compared</label>
+            <input class="input" id="o-vote-seeds" type="number" min="1" autocomplete="off" data-kind="number">
+            <p class="small">How many of your most recent votes on each side a run compares against.</p>
+          </div>
+          <div class="field" data-key="general.digest_window_hours">
+            <label class="label" for="o-window-hours">Window (hours)</label>
+            <input class="input" id="o-window-hours" type="number" min="1" max="168" autocomplete="off" data-kind="number">
+            <p class="small">How far back a run looks for articles.</p>
+          </div>
+          <div class="field" data-key="digest.max_articles_per_digest">
+            <label class="label" for="o-max-articles">Articles per run</label>
+            <input class="input" id="o-max-articles" type="number" min="1" autocomplete="off" data-kind="number">
+            <p class="small">How many of the window's newest articles, by publish time, one run scores and digests across all sources.</p>
+          </div>
+          <div class="field" data-key="routing.score_threshold">
+            <label class="label" for="o-featured-threshold">Top story score</label>
+            <input class="input" id="o-featured-threshold" type="number" min="0" max="100" autocomplete="off" data-kind="number">
+            <p class="small">Two or more articles on one topic scoring at least this share the Top story.</p>
+          </div>
+          <div class="field" data-key="digest.scoring_snippet_length">
+            <label class="label" for="o-scoring-snippet">Characters read (Scoring)</label>
+            <input class="input" id="o-scoring-snippet" type="number" min="1" autocomplete="off" data-kind="number">
+            <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
+          </div>
+          <div class="field" data-key="digest.summarize_snippet_length">
+            <label class="label" for="o-summarize-snippet">Characters read (Summary)</label>
+            <input class="input" id="o-summarize-snippet" type="number" min="1" autocomplete="off" data-kind="number">
+          </div>
+          <div class="field" data-key="digest.filter_snippet_length">
+            <label class="label" for="o-filter-snippet">Characters read (News clustering and headlines)</label>
+            <input class="input" id="o-filter-snippet" type="number" min="1" autocomplete="off" data-kind="number">
+          </div>
+          <div class="field" data-key="digest.style_prompt">
+            <label class="label" for="o-style-prompt">Style</label>
+            <textarea class="input" id="o-style-prompt" rows="4" data-kind="prose"></textarea>
+            <p class="small">Your tone or focus for the summaries, in your own words; empty means none.</p>
+          </div>
+          <div class="field" data-key="digest.type_scale">
+            <label class="label" for="o-type-scale">Type size</label>
+            <select class="select" id="o-type-scale" data-kind="number"><option value="0.875">Smaller</option><option value="1">Default</option><option value="1.125">Larger</option></select>
+            <p class="small">How large the text is on every page. It applies within a minute, to issues already published too.</p>
+          </div>
+          <div class="field" data-key="digest.rank_by_preference">
+            <label class="label" for="o-rank-by-preference">Order by your votes</label>
+            <select class="select" id="o-rank-by-preference" data-kind="bool"><option value="false">Off</option><option value="true">On</option></select>
+            <p class="small">Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it.</p>
+          </div>
+          <div class="field" data-key="digest.preference_source">
+            <label class="label" for="o-preference-source">Order judged by</label>
+            <select class="select" id="o-preference-source" data-kind="text"><option value="cosine">Your topic votes</option><option value="clef">Clef</option></select>
+            <p class="small">Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes.</p>
+            <p class="small" id="o-clef-needs" hidden>Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN).</p>
+          </div>
+          <div class="field" data-key="digest.summarize_follow">
+            <label class="label" for="o-summarize-follow">Summarize follow articles</label>
+            <select class="select" id="o-summarize-follow" data-kind="bool"><option value="false">Off</option><option value="true">On</option></select>
+            <p class="small">Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text.</p>
+          </div>
+          <div class="field" data-key="digest.vote_half_life_days">
+            <label class="label" for="o-vote-half-life">Vote half-life (days)</label>
+            <input class="input" id="o-vote-half-life" type="number" min="1" max="365" autocomplete="off" data-kind="number">
+            <p class="small">A vote counts half as much after this many days, so a preference fades unless you vote again.</p>
+          </div>
+          <div class="field" data-key="digest.topic_lifetime_days">
+            <label class="label" for="o-topic-lifetime">Topic lifetime (days)</label>
+            <input class="input" id="o-topic-lifetime" type="number" min="1" max="365" autocomplete="off" data-kind="number">
+            <p class="small">Topics seen within this many days are current: a name many of them share counts for less in the order. A topic you voted up stays current longer.</p>
+          </div>
+        </div>
+      </details>
     </section>
 
     {# The run is the app Worker's own POST /run?period=&date=, the route any manual

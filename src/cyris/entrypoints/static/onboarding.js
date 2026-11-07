@@ -1,7 +1,11 @@
 // The onboarding wizard: one step at a time, moved through with Back, Next and
-// Skip, ending back on /settings. Three steps write settings, each through the
+// Skip, ending back on /settings. Four steps write settings, each through the
 // route /settings saves that field with, so what lands in the store is what the
-// settings form would have stored. The sources step shows the feed list's
+// settings form would have stored. The model step also checks a provider
+// through POST /api/diagnostics/llm, which stores nothing, and opens each tuned
+// setting the store lacks on its starting value, the one GET /api/settings
+// answers for it, so a reader who only presses Next leaves no setting a run
+// needs unset. The sources step shows the feed list's
 // topics on one screen, then the chosen topics' feeds on the next, and writes
 // each picked feed through POST /api/sources, the route the settings form adds
 // a source with; a feed the list lacks is checked by its address first
@@ -15,8 +19,8 @@
 // from that same route.
 const $ = (id) => document.getElementById(id);
 
-// The six steps, in order. Each one's hash opens it, so a reload keeps the place.
-const STEPS = ["language", "schedule", "sources", "votes", "notify", "first-issue"];
+// The seven steps, in order. Each one's hash opens it, so a reload keeps the place.
+const STEPS = ["language", "schedule", "sources", "votes", "notify", "model", "first-issue"];
 
 // The settings written through /api/settings/values, by the id of their control.
 // Each key and its route are src/cyris/settings_fields.json's own.
@@ -31,7 +35,17 @@ const WEBHOOK = "o-discord-webhook";
 // The mail pair, written through /api/settings/email, recipient first.
 const MAIL = {"o-email-to": "notify.email_to", "o-email-from": "notify.email_from"};
 
-const FIELDS = [...Object.keys(PLAIN), ...HOURS, WEBHOOK, ...Object.keys(MAIL)];
+// The model step's tuned settings, one field each in its fold, named by the key
+// it holds; the key's registry entry says which route saves it.
+const TUNED = [...document.querySelectorAll("#o-advanced [data-key]")];
+const keyOf = (field) => field.dataset.key;
+// A field's one control: a choice list, or its input, select or textarea.
+const controlOf = (field) => field.querySelector(".choices, input, select, textarea");
+
+const FIELDS = [
+  ...Object.keys(PLAIN), ...HOURS, WEBHOOK, ...Object.keys(MAIL),
+  "o-providers", "o-model", ...TUNED.map((field) => controlOf(field).id),
+];
 
 // What each control was loaded with: a step sends only what the reader changed,
 // as /settings does, so Next over an untouched step stores nothing.
@@ -580,8 +594,8 @@ async function saveSchedule() {
 }
 
 // Two routes, as the settings form's Notifications has: the webhook and the
-// mail pair, each tried on its own. An empty field is nothing to save rather
-// than an off switch — turning notifications off is its own action, on /settings.
+// mail pair, each tried on its own. An empty field saves nothing over a stored
+// value; what this deployment has never set is turned off instead, as Skip does.
 async function saveNotify() {
   const lines = [], problems = [];
   if (changed([WEBHOOK]).length && $(WEBHOOK).value.trim()) {
@@ -590,6 +604,7 @@ async function saveNotify() {
       // Sent as typed, as the settings form sends it; the server trims it.
       const data = await post("/api/settings/notify", {discord_webhook_url: $(WEBHOOK).value});
       keep([WEBHOOK]);
+      if (VALUES) VALUES["notify.discord_webhook_url"] = data.discord_webhook_url;
       lines.push(`${data.detail} ${data.note}`);
     } catch (err) {
       mark([WEBHOOK]);
@@ -608,6 +623,7 @@ async function saveNotify() {
     try {
       const data = await post("/api/settings/email", {email_to: to, email_from: from});
       keep(mail);
+      if (VALUES) Object.assign(VALUES, {"notify.email_to": to.trim(), "notify.email_from": from.trim()});
       lines.push(data.detail ? `${data.detail} ${data.note}` : data.note);
     } catch (err) {
       mark(err.field ? fieldOf(mail, MAIL, err.field) : mail);
@@ -615,8 +631,247 @@ async function saveNotify() {
     }
   }
   if (problems.length) throw new Error(problems.join("\n"));
+  lines.push(await notifyOffWhereUnset());
+  return lines.filter(Boolean).join("\n");
+}
+
+// A run stops on a notification setting that was never set, so leaving the step,
+// by Skip or by Next with its fields empty, turns off what is still unset, through
+// the settings form's own Turn off and empty mail pair. A stored value, off or
+// not, is left as it is.
+async function notifyOffWhereUnset() {
+  await SETTINGS_LOADED;
+  if (!VALUES) return "";
+  const lines = [];
+  if (VALUES["notify.discord_webhook_url"] == null) {
+    const data = await post("/api/settings/notify", {off: true});
+    VALUES["notify.discord_webhook_url"] = "";
+    lines.push(data.note);
+  }
+  if (VALUES["notify.email_to"] == null || VALUES["notify.email_from"] == null) {
+    const data = await post("/api/settings/email", {email_to: "", email_from: ""});
+    Object.assign(VALUES, {"notify.email_to": "", "notify.email_from": ""});
+    lines.push(data.note);
+  }
   return lines.join("\n");
 }
+
+// The model step. The providers and embedders are GET /api/settings' own lists,
+// each saying whether this machine has its key; the step opens on the stored
+// provider, or with none stored on the first whose key is present, None last.
+let PROVIDERS = [];
+let EMBEDDERS = [];
+// The starting value of each setting the store lacked when the page loaded, from
+// GET /api/settings; a stored setting has none, so its field stays hidden.
+let STARTING = {};
+// The settings still unset, which Next sends as their fields stand.
+const UNSET = new Set();
+// The provider and model the step was loaded with: Next sends them only changed,
+// or while no provider is stored.
+let llmLoaded = {provider: null, model: ""};
+// Each tuned field's value as loaded or last saved.
+const tunedLoaded = new Map();
+
+const chosenProvider = () => {
+  const el = document.querySelector("input[name=o-provider]:checked");
+  return el && PROVIDERS.find((p) => p.name === el.value);
+};
+
+function updateModelHint() {
+  const p = chosenProvider();
+  const none = p && p.name === "none";
+  $("o-model").disabled = !!none;
+  if (none) $("o-model").value = "";
+  $("o-model").placeholder = p && !none ? `Empty uses ${p.default_model}` : "";
+  $("o-model-hint").textContent = !p ? "Pick a provider whose key is present."
+    : none ? "No model is called: digests list plain excerpts."
+    : "Next makes one real call to the provider first, so a typo is refused here.";
+  $("o-check").hidden = !p || none;
+  $("o-check-result").hidden = true;
+}
+
+// Each provider as a choice, as the settings form lists them: one without its key
+// is shown with the variable it needs and cannot be picked.
+function drawProviders(stored) {
+  const ready = PROVIDERS.filter((p) => p.configured);
+  const opened = ready.find((p) => p.name === stored)
+    ?? (stored == null ? ready.find((p) => p.name !== "none") ?? ready[0] : null);
+  $("o-providers").replaceChildren(...PROVIDERS.map((p) => choice("o-provider", p, {
+    checked: p === opened,
+    disabled: !p.configured,
+    name: p.name === "none" ? "None — plain excerpts" : p.name,
+    side: p.name === "none" ? "No key needed" : p.configured ? "Key ready" : `${p.env_var} missing`,
+  })));
+  // With no key present, None is the one choice, and the line says what to set.
+  const keyed = PROVIDERS.filter((p) => p.env_var);
+  $("o-no-key").hidden = keyed.some((p) => p.configured);
+  $("o-no-key").textContent = `No provider has its key here. Set one of ` +
+    `${keyed.map((p) => p.env_var).join(", ")} in .env and restart cyris, or keep None.`;
+}
+
+function choice(group, option, {checked, disabled = false, name, side}) {
+  const label = document.createElement("label");
+  label.className = disabled ? "choice unavailable" : "choice";
+  const input = Object.assign(document.createElement("input"), {
+    type: "radio", name: group, value: option.name, checked, disabled,
+  });
+  const shown = Object.assign(document.createElement("span"), {className: "name", textContent: name});
+  const note = Object.assign(document.createElement("span"), {className: "label", textContent: side});
+  if (side.endsWith(" missing")) note.classList.add("key-missing");
+  label.append(input, shown, note);
+  return label;
+}
+
+// A tuned field's value as its route stores it: a number, a switch, the reader's
+// own words as typed, or a trimmed name.
+function tunedValue(field) {
+  const el = controlOf(field);
+  if (el.classList.contains("choices")) return el.querySelector("input:checked")?.value ?? null;
+  if (el.dataset.kind === "number") return el.value === "" ? null : Number(el.value);
+  if (el.dataset.kind === "bool") return {true: true, false: false}[el.value] ?? null;
+  return el.dataset.kind === "prose" ? el.value : el.value.trim();
+}
+
+const tunedKey = (field) => JSON.stringify(tunedValue(field));
+const tunedDue = (field) => UNSET.has(keyOf(field)) || tunedKey(field) !== tunedLoaded.get(field);
+const shownTuned = () => TUNED.filter((field) => !field.hidden);
+
+// Only a setting the store lacks is shown, opened on its starting value; with
+// none to show, the fold goes too.
+function drawTuned(state) {
+  EMBEDDERS = state.embedding_providers;
+  $("o-embedding-providers").replaceChildren(...EMBEDDERS.map((p) => choice("o-embedder", p, {
+    checked: p.name === STARTING["vote_similarity.provider"],
+    name: p.name,
+    side: p.configured ? "Key ready" : `${p.env_var} missing`,
+  })));
+  for (const field of TUNED) {
+    const key = keyOf(field);
+    field.hidden = !(key in STARTING);
+    const el = controlOf(field);
+    if (!field.hidden && !el.classList.contains("choices")) el.value = String(STARTING[key]);
+    tunedLoaded.set(field, tunedKey(field));
+  }
+  $("o-advanced").hidden = !shownTuned().length;
+  $("o-preference-source").querySelector('option[value="clef"]').disabled = !state.clef_ready;
+  $("o-clef-needs").hidden = !!state.clef_ready;
+}
+
+// A vote-similarity setting as the vote route takes it: the shown field, else the
+// stored value, else its starting value (the switch has no field of its own).
+function voteValue(key) {
+  const field = shownTuned().find((f) => keyOf(f) === key);
+  return field ? tunedValue(field) : VALUES?.[key] ?? STARTING[key];
+}
+
+// Marks the field a refusal names and opens the fold, so the reader sees it.
+function markTuned(key) {
+  const field = TUNED.find((f) => keyOf(f) === key);
+  if (!field) return;
+  $("o-advanced").open = true;
+  mark([controlOf(field).id]);
+}
+
+function markSaved(keys, values) {
+  for (const key of keys) {
+    UNSET.delete(key);
+    if (VALUES) VALUES[key] = values[key];
+  }
+  for (const field of TUNED) if (keys.includes(keyOf(field))) tunedLoaded.set(field, tunedKey(field));
+}
+
+// Three parts, each through its own route and tried on its own, as the settings
+// form's Model, Digest and Pipeline categories save them: the provider and model,
+// then the embedder with its switch, then the plain settings.
+async function saveModel() {
+  const lines = [], problems = [];
+  const p = chosenProvider();
+  const model = $("o-model").value.trim();
+  // A stored provider whose key has gone opens unpicked, which is no change.
+  const llmDue = llmLoaded.provider == null
+    || (!!p && (p.name !== llmLoaded.provider || model !== llmLoaded.model));
+  if (llmDue && !p) {
+    mark(["o-providers"]);
+    problems.push("Pick a provider whose key is present, or None.");
+  } else if (llmDue) {
+    show("busy", p.name === "none" ? "Saving…" : "Checking with the provider…");
+    try {
+      const data = await post("/api/settings", {provider: p.name, model});
+      llmLoaded = {provider: data.provider, model: data.model};
+      markSaved(["llm_provider.provider", "llm_provider.model"],
+        {"llm_provider.provider": data.provider, "llm_provider.model": data.model});
+      lines.push(`${data.detail} ${data.note}`);
+    } catch (err) {
+      mark(err.field === "llm_provider.provider" ? ["o-providers"] : ["o-model"]);
+      problems.push(err.message);
+    }
+  }
+  const voteKeys = Object.keys(REGISTRY).filter((key) => REGISTRY[key].route === "vote");
+  const voteDue = voteKeys.some((key) => UNSET.has(key))
+    || shownTuned().some((field) => voteKeys.includes(keyOf(field)) && tunedDue(field));
+  if (voteDue) {
+    show("busy", "Saving…");
+    try {
+      const data = await post("/api/settings/vote-similarity", {
+        enabled: voteValue("vote_similarity.enabled"),
+        provider: voteValue("vote_similarity.provider"),
+        model: voteValue("vote_similarity.model"),
+        max_seeds: voteValue("vote_similarity.max_seeds"),
+      });
+      markSaved(voteKeys, data.values);
+      lines.push(`Embedder: ${data.values["vote_similarity.provider"]}. ${data.note}`);
+    } catch (err) {
+      markTuned(err.field);
+      problems.push(err.message);
+    }
+  }
+  const plain = shownTuned()
+    .filter((field) => REGISTRY[keyOf(field)]?.route === "plain" && tunedDue(field));
+  if (plain.length) {
+    show("busy", "Saving…");
+    const values = Object.fromEntries(plain.map((field) => [keyOf(field), tunedValue(field)]));
+    try {
+      const data = await post("/api/settings/values", {values});
+      markSaved(Object.keys(data.values), data.values);
+      const count = plain.length === 1 ? "1 setting" : `${plain.length} settings`;
+      lines.push(`Advanced: ${count} saved. ${data.note}`);
+    } catch (err) {
+      markTuned(err.field);
+      problems.push(err.message);
+    }
+  }
+  if (problems.length) throw new Error(problems.join("\n"));
+  return lines.join("\n");
+}
+
+// Asks the provider with one real call from this deployment and stores nothing;
+// Next asks again before it saves.
+async function checkModel() {
+  const p = chosenProvider();
+  if (!p || p.name === "none") return;
+  const result = $("o-check-result");
+  const say = (kind, text) => {
+    result.className = kind === "err" ? "notice err" : "notice";
+    if (kind === "busy") result.setAttribute("aria-busy", "true");
+    else result.removeAttribute("aria-busy");
+    result.textContent = text;
+    result.hidden = false;
+  };
+  $("o-check").disabled = true;
+  say("busy", "Checking with the provider…");
+  try {
+    const data = await post("/api/diagnostics/llm", {provider: p.name, model: $("o-model").value.trim()});
+    say("ok", data.detail);
+  } catch (err) {
+    say("err", err.data?.detail || err.message);
+  } finally {
+    $("o-check").disabled = false;
+  }
+}
+
+$("o-check").addEventListener("click", checkModel);
+$("o-providers").addEventListener("change", updateModelHint);
+$("o-model").addEventListener("input", () => { $("o-check-result").hidden = true; });
 
 // The topic tiles, one per topic GET /api/onboarding/feeds sent, in its order,
 // and the feed list's rows, one per entry, in its order; both empty when the
@@ -1196,13 +1451,15 @@ async function turnOnVoteSimilarity() {
   await SETTINGS_LOADED;
   if (!VALUES) throw new Error("The settings did not load. Reload the page.");
   if (VALUES["vote_similarity.enabled"] === true) return;
-  // The embedder this deployment already names: which model it embeds with is
-  // the deployer's choice, under Model in Settings, and the wizard leaves it.
+  // The embedder this deployment already names, else the one the model step
+  // opens on: which model it embeds with is the deployer's choice, under Model
+  // in Settings or the model step's fold, and this step leaves it.
+  const stored = (key) => VALUES[key] ?? STARTING[key];
   const data = await post("/api/settings/vote-similarity", {
     enabled: true,
-    provider: VALUES["vote_similarity.provider"],
-    model: VALUES["vote_similarity.model"] ?? "",
-    max_seeds: VALUES["vote_similarity.max_seeds"],
+    provider: stored("vote_similarity.provider"),
+    model: stored("vote_similarity.model") ?? "",
+    max_seeds: stored("vote_similarity.max_seeds"),
   });
   Object.assign(VALUES, data.values);
 }
@@ -1359,6 +1616,13 @@ const SAVES = {
   sources: saveSources,
   votes: saveVotes,
   notify: saveNotify,
+  model: saveModel,
+};
+
+// What Skip saves on a step: nothing, except that leaving Notifications turns
+// off what was never set, so the run is not stopped by it.
+const SKIPS = {
+  notify: notifyOffWhereUnset,
 };
 
 // Only ever called from a step that has one after it: the last step shows
@@ -1395,11 +1659,25 @@ $("o-next").addEventListener("click", async () => {
   }
 });
 
-$("o-skip").addEventListener("click", () => {
+$("o-skip").addEventListener("click", async () => {
   unmark(FIELDS);
   // Skipping the last step leaves through Finish itself, starting nothing.
-  if (stepOf() === STEPS[STEPS.length - 1]) $("o-finish").click();
-  else advance();
+  if (stepOf() === STEPS[STEPS.length - 1]) return $("o-finish").click();
+  const skip = SKIPS[stepOf()];
+  if (skip) {
+    moving(true);
+    show("busy", "Saving…");
+    try {
+      pending = await skip();
+    } catch (err) {
+      moving(false);
+      show("err", err.message);
+      return;
+    }
+    moving(false);
+    hideNotice();
+  }
+  advance();
 });
 
 $("o-start").addEventListener("click", startIssue);
@@ -1474,6 +1752,15 @@ function render(state) {
   $("o-email-to").value = values["notify.email_to"] ?? "";
   $("o-email-from").value = values["notify.email_from"] ?? "";
   keep(FIELDS);
+  STARTING = state.starting || {};
+  Object.keys(STARTING).forEach((key) => UNSET.add(key));
+  PROVIDERS = state.providers;
+  const provider = values["llm_provider.provider"];
+  llmLoaded = {provider, model: values["llm_provider.model"] ?? ""};
+  drawProviders(provider);
+  $("o-model").value = values["llm_provider.model"] ?? "";
+  updateModelHint();
+  drawTuned(state);
   // With no stored zone the field opens on this browser's own, marked as
   // detected rather than stored: it differs from what was loaded, so Next
   // saves it and Skip leaves the setting unset.

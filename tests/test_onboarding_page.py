@@ -1,4 +1,4 @@
-"""/onboarding: who is sent to the wizard, its six steps, and what its five saves write.
+"""/onboarding: who is sent to the wizard, its seven steps, and what its six saves write.
 
 The last step starts no write of its own: it starts a run through the app
 Worker's `POST /run?period=&date=`, with the key `GET /api/onboarding/first-issue`
@@ -8,8 +8,11 @@ Each settings step posts the body the settings form posts, to the route
 `settings_fields.json` names for that field, and the sources step posts each
 picked feed to `POST /api/sources` as the list holds it, less the list's own
 `topics`. The votes step's own two routes are `tests/test_onboarding_votes.py`'s;
-here it is held to sending only marked cards. Vote similarity is turned on by
-the first-issue step, with the Model form's body, whether or not a card was voted on.
+here it is held to sending only marked cards. The model step saves the provider
+and the tuned settings the store lacks, each opened on its starting value, and
+Skip on the notifications step turns off what was never set. Vote similarity is
+turned on by the first-issue step, with the Model form's body, whether or not a
+card was voted on.
 What a browser actually sends is checked by `scripts/onboarding_probe.py`; here
 the shapes of those bodies are held to the settings page's own, and the stored
 sources to the list's entries.
@@ -25,7 +28,7 @@ from aiohttp.test_utils import TestClient, TestServer
 import cyris
 import cyris.entrypoints
 from cyris.adapters.fetch.rss_worker_source import POLL_CONCURRENCY, POLL_FEED_TIMEOUT_SECONDS
-from cyris.config import SETTINGS_FIELDS
+from cyris.config import SETTINGS_FIELDS, STARTING_VALUES
 from cyris.domain.models import SourceConfig
 from cyris.entrypoints.triage_server import (
     TriageServer,
@@ -50,10 +53,11 @@ def _as_posted(entry: dict) -> dict:
     return {key: value for key, value in entry.items() if key != "topics"}
 
 
-# The six steps, in the order the milestone sets: the three that write settings,
-# the one that writes sources, the one that writes votes, and the one that
-# starts the first issue.
-STEPS = ["language", "schedule", "sources", "votes", "notify", "first-issue"]
+# The seven steps, in the order the milestones set: the two that write settings,
+# the one that writes sources, the one that writes votes, the two more that write
+# settings, the model last so its fold is the final say before a run, and the one
+# that starts the first issue.
+STEPS = ["language", "schedule", "sources", "votes", "notify", "model", "first-issue"]
 
 
 class FakeSettings:
@@ -195,7 +199,7 @@ class TestTheFrame:
     def page(self) -> str:
         return render_onboarding_page()
 
-    def test_the_step_list_names_the_six_steps_in_order(self, page: str) -> None:
+    def test_the_step_list_names_the_seven_steps_in_order(self, page: str) -> None:
         listed = re.findall(r'<li class="label" data-step="([^"]+)">', page)
 
         assert listed == STEPS
@@ -243,6 +247,10 @@ class TestTheFrame:
 
     def test_the_page_is_served_with_its_own_script(self, page: str) -> None:
         assert '<script src="/static/onboarding.js"></script>' in page
+
+
+# The body of the Skip button's click handler.
+SKIP_HANDLER = r'\$\("o-skip"\)\.addEventListener\("click", async \(\) => \{(.*?)\n\}\);'
 
 
 def _body_keys(script: str) -> dict[str, list[set[str]]]:
@@ -299,6 +307,21 @@ WRITTEN = {
     "vote_similarity.provider": "vote",
     "vote_similarity.model": "vote",
     "vote_similarity.max_seeds": "vote",
+    "llm_provider.provider": "llm",
+    "llm_provider.model": "llm",
+    "general.digest_window_hours": "plain",
+    "digest.max_articles_per_digest": "plain",
+    "routing.score_threshold": "plain",
+    "digest.scoring_snippet_length": "plain",
+    "digest.summarize_snippet_length": "plain",
+    "digest.filter_snippet_length": "plain",
+    "digest.style_prompt": "plain",
+    "digest.type_scale": "plain",
+    "digest.rank_by_preference": "plain",
+    "digest.preference_source": "plain",
+    "digest.summarize_follow": "plain",
+    "digest.vote_half_life_days": "plain",
+    "digest.topic_lifetime_days": "plain",
 }
 
 
@@ -339,11 +362,7 @@ class TestItWritesWhatTheSettingsFormWrites:
         assert start[1].index("planIssue(ISSUE, retry)") < start[1].index("startRun(")
 
     def test_skipping_the_last_step_leaves_through_finish(self) -> None:
-        handler = re.search(
-            r'\$\("o-skip"\)\.addEventListener\("click", \(\) => \{(.*?)\n\}\);',
-            ONBOARDING_JS,
-            re.S,
-        )
+        handler = re.search(SKIP_HANDLER, ONBOARDING_JS, re.S)
         assert handler, "no Skip handler"
 
         assert '$("o-finish").click();' in handler[1]
@@ -359,11 +378,14 @@ class TestItWritesWhatTheSettingsFormWrites:
             "/api/onboarding/feed-check",
             "/api/onboarding/cards",
             "/api/onboarding/votes",
+            # The model step's Check, which stores nothing.
+            "/api/diagnostics/llm",
         }
         assert "/api/sources" in SETTINGS_JS
 
-    def test_the_wizard_posts_only_the_five_settings_routes(self) -> None:
+    def test_the_wizard_posts_only_the_six_settings_routes(self) -> None:
         assert set(_body_keys(ONBOARDING_JS)) == {
+            "/api/settings",
             "/api/settings/values",
             "/api/settings/schedule",
             "/api/settings/vote-similarity",
@@ -388,15 +410,33 @@ class TestItWritesWhatTheSettingsFormWrites:
 
         assert padded in ONBOARDING_JS and padded in SETTINGS_JS
 
-    def test_skipping_a_step_sends_nothing(self) -> None:
-        handler = re.search(
-            r'\$\("o-skip"\)\.addEventListener\("click", \(\) => \{(.*?)\n\}\);',
-            ONBOARDING_JS,
-            re.S,
-        )
+    def test_skipping_a_step_sends_only_what_its_skip_names(self) -> None:
+        handler = re.search(SKIP_HANDLER, ONBOARDING_JS, re.S)
         assert handler, "no Skip handler"
 
         assert "post(" not in handler[1] and "fetch(" not in handler[1]
+        assert "const skip = SKIPS[stepOf()];" in handler[1]
+
+    def test_only_the_notifications_skip_saves(self) -> None:
+        """A run stops on a notification never set, so leaving the step turns it off."""
+        skips = re.search(r"const SKIPS = \{(.*?)\};", ONBOARDING_JS, re.S)
+        assert skips, "no SKIPS in onboarding.js"
+
+        assert skips[1].split() == ["notify:", "notifyOffWhereUnset,"]
+
+    def test_skipping_notifications_turns_off_only_what_was_never_set(self) -> None:
+        """Through the settings form's own Turn off and empty pair; a stored value stays."""
+        off = _function("notifyOffWhereUnset")
+
+        assert 'if (VALUES["notify.discord_webhook_url"] == null) {' in off
+        assert 'post("/api/settings/notify", {off: true})' in off
+        assert 'VALUES["notify.email_to"] == null || VALUES["notify.email_from"] == null' in off
+        assert 'post("/api/settings/email", {email_to: "", email_from: ""})' in off
+
+    def test_next_on_notifications_turns_off_what_it_left_unset(self) -> None:
+        save = _function("saveNotify")
+
+        assert save.index("problems.length") < save.index("await notifyOffWhereUnset()")
 
 
 class TestTheVotesStep:
@@ -446,14 +486,16 @@ class TestVoteSimilarityIsOnByTheFirstIssue:
     def test_it_waits_on_no_recorded_vote(self) -> None:
         assert "recorded" not in _function("turnOnVoteSimilarity")
 
-    def test_it_is_turned_on_with_the_stored_embedder(self) -> None:
-        """Which model embeds is the deployer's, under Model; the wizard does not choose one."""
+    def test_it_is_turned_on_with_the_stored_or_starting_embedder(self) -> None:
+        """Which model embeds is the deployer's, under Model or in the model step's fold;
+        on an empty store it is the one that step opened on, so the save is not refused."""
         turn_on = _function("turnOnVoteSimilarity")
 
         assert 'post("/api/settings/vote-similarity"' in turn_on
         assert "enabled: true," in turn_on
+        assert "const stored = (key) => VALUES[key] ?? STARTING[key];" in turn_on
         for key in ("provider", "model", "max_seeds"):
-            assert f'VALUES["vote_similarity.{key}"]' in turn_on
+            assert f'stored("vote_similarity.{key}")' in turn_on
 
     def test_the_first_issue_step_turns_it_on_once_there_is_a_source(self) -> None:
         assert "if (data.sources) voteSimilarityOn();" in _function("loadIssue")
@@ -463,6 +505,87 @@ class TestVoteSimilarityIsOnByTheFirstIssue:
         start = _function("startIssue")
 
         assert start.index("await voteSimilarityOn();") < start.index("await startRun(")
+
+
+def _fold(page: str) -> str:
+    fold = re.search(r'<details class="more" id="o-advanced" hidden>(.*?)</details>', page, re.S)
+    assert fold, "no fold on the model step"
+    return fold[1]
+
+
+class TestTheModelStep:
+    """The provider and model, then the tuned settings the store lacks, in one fold.
+
+    What the page sends from a browser is the probe's; here the fold is held to the
+    starting values the server sends and to the registry's labels and routes.
+    """
+
+    @pytest.fixture
+    def page(self) -> str:
+        return render_onboarding_page()
+
+    def test_it_comes_right_before_the_first_issue(self) -> None:
+        assert STEPS[-2:] == ["model", "first-issue"]
+
+    def test_next_on_the_model_step_saves_it(self) -> None:
+        assert "model: saveModel," in ONBOARDING_JS
+
+    def test_the_fold_has_a_field_for_every_starting_value_but_the_switch(self, page) -> None:
+        """Vote similarity's switch is the first-issue step's to turn on, so it has no field."""
+        keys = re.findall(r'<div class="field" data-key="([^"]+)">', _fold(page))
+
+        assert len(keys) == len(set(keys))
+        assert set(keys) == set(STARTING_VALUES) - {"vote_similarity.enabled"}
+
+    def test_each_field_is_labelled_as_settings_labels_it(self, page) -> None:
+        fields = re.findall(
+            r'<div class="field" data-key="([^"]+)">\s*<(?:label|span) class="label"[^>]*>([^<]+)<',
+            _fold(page),
+        )
+
+        assert fields and {key: label for key, label in fields} == {
+            key: SETTINGS_FIELDS[key]["label"] for key, _ in fields
+        }
+
+    def test_the_fold_writes_no_value_of_its_own(self, page) -> None:
+        """Every value comes from the server's starting values, so the page holds no second list."""
+        fold = _fold(page)
+
+        assert not re.search(r"<(?:input|textarea)[^>]*\bvalue=", fold)
+        assert " selected" not in fold and " checked" not in fold
+        assert "STARTING = state.starting || {};" in ONBOARDING_JS
+
+    def test_the_fold_is_a_settings_fold_that_names_its_settings(self, page) -> None:
+        summary = re.search(r'id="o-advanced" hidden>\s*<summary>([^<]+)</summary>', page)
+
+        assert summary and summary[1].startswith("Advanced: ")
+
+    def test_only_a_setting_the_store_lacks_is_shown(self) -> None:
+        draw = re.search(r"function drawTuned\(state\) \{(.*?)\n\}\n", ONBOARDING_JS, re.S)
+        assert draw, "no drawTuned in onboarding.js"
+
+        assert "field.hidden = !(key in STARTING);" in draw[1]
+        assert "shownTuned()" in _function_with_args("saveModel")
+
+    def test_check_asks_the_provider_and_stores_nothing(self) -> None:
+        check = _function("checkModel")
+
+        assert 'post("/api/diagnostics/llm", {provider: p.name, model:' in check
+        assert "/api/settings" not in check.replace("/api/diagnostics/llm", "")
+
+    def test_next_saves_the_provider_through_the_model_forms_route(self) -> None:
+        assert 'post("/api/settings", {provider: p.name, model})' in _function("saveModel")
+
+    def test_with_no_key_present_the_step_names_every_variable(self) -> None:
+        draw = re.search(r"function drawProviders\(stored\) \{(.*?)\n\}\n", ONBOARDING_JS, re.S)
+        assert draw, "no drawProviders in onboarding.js"
+
+        assert '$("o-no-key").hidden = keyed.some((p) => p.configured);' in draw[1]
+        assert '${keyed.map((p) => p.env_var).join(", ")}' in draw[1]
+
+
+def _function_with_args(name: str) -> str:
+    return _function(name)
 
 
 class TestTheStepsWriteThroughTheExistingApi:
@@ -629,11 +752,7 @@ class TestThePickSourcesStep:
 
     def test_skipping_the_step_saves_no_pick(self) -> None:
         """Only Next saves; Skip moves on with every checked feed left unwritten."""
-        handler = re.search(
-            r'\$\("o-skip"\)\.addEventListener\("click", \(\) => \{(.*?)\n\}\);',
-            ONBOARDING_JS,
-            re.S,
-        )
+        handler = re.search(SKIP_HANDLER, ONBOARDING_JS, re.S)
         assert handler, "no Skip handler"
 
         assert "SAVES" not in handler[1] and "saveSources" not in handler[1]
