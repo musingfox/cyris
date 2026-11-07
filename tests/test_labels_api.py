@@ -123,13 +123,14 @@ class TestRead:
             "item": None,
         }
 
-    async def test_a_deployment_without_d1_has_no_sample_to_read(self, serve) -> None:
+    async def test_a_deployment_without_a_sql_store_has_no_sample_to_read(self, serve) -> None:
         client = await serve(None)
 
         response = await client.get("/api/labels")
 
         assert response.status == 409
-        assert "D1" in (await response.json())["error"]
+        error = (await response.json())["error"]
+        assert '"sqlite"' in error and '"d1"' in error
 
 
 async def answer(client: TestClient, url: str, label: str):

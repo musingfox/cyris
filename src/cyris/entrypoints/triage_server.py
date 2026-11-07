@@ -351,6 +351,7 @@ class TriageServer:
         clock=None,
         behind_app_worker: bool = False,
         html_dir: Path | None = None,
+        start_run: Callable[[str | None, str | None], None] | None = None,
     ) -> None:
         self._host = host
         # Where `HtmlDigestWriter` wrote the archive; None serves no page. The app Worker
@@ -409,6 +410,10 @@ class TriageServer:
         self._interest_reader = interest_reader
         # The time the first issue's key is picked at; a probe pins it.
         self._clock = clock or (lambda: datetime.now(UTC))
+        # Starts `cyris run` apart from this server, given the period and the issue's date
+        # (either may be None). Behind the app Worker `POST /run` never reaches here: the
+        # Worker answers it and starts its own run container.
+        self._start_run = start_run
         self._settings_page = render_settings_page()
         self._labels_page = render_labels_page()
         self._onboarding_page = render_onboarding_page()
@@ -434,6 +439,8 @@ class TriageServer:
         self._app.router.add_post("/api/onboarding/cards", self._handle_post_onboarding_cards)
         self._app.router.add_post("/api/onboarding/votes", self._handle_post_onboarding_votes)
         self._app.router.add_get("/api/onboarding/first-issue", self._handle_get_first_issue)
+        if start_run is not None and not behind_app_worker:
+            self._app.router.add_post("/run", self._handle_post_run)
         self._app.router.add_get("/api/topics", self._handle_get_topics)
         self._app.router.add_post("/api/topics", self._handle_post_topic)
         self._app.router.add_delete("/api/topics/{name}", self._handle_delete_topic)
@@ -952,7 +959,11 @@ class TriageServer:
         """Add or edit one source, over the row `name` owns."""
         if self._source_store is None:
             return web.json_response(
-                {"ok": False, "error": "No writable source table (store backend is not D1)"},
+                {
+                    "ok": False,
+                    "error": "No writable source table "
+                    '(store backend is neither "sqlite" nor "d1")',
+                },
                 status=409,
             )
         try:
@@ -1099,7 +1110,7 @@ class TriageServer:
                 {
                     "ok": False,
                     "error": "This deployment has no article store to vote into "
-                    "(store backend is not D1).",
+                    '(store backend is neither "sqlite" nor "d1").',
                 },
                 status=409,
             )
@@ -1233,8 +1244,8 @@ class TriageServer:
         `today` is the deployment's own date, for the page to say which it is.
         `published` says an issue already holds that key, which a new run would
         replace. `run` is the newest recorded run, so the page can tell the one
-        it starts by its id. The run itself is started by the app Worker's
-        `POST /run?period=&date=`, as any manual run is; nothing here starts one.
+        it starts by its id. The run itself is started by `POST /run?period=&date=`,
+        as any manual run is: the app Worker's, or this server's own on a local install.
         """
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -1245,7 +1256,7 @@ class TriageServer:
                 {
                     "ok": False,
                     "error": "This deployment keeps no run log to wait on "
-                    "(store backend is not D1).",
+                    '(store backend is neither "sqlite" nor "d1").',
                 },
                 status=409,
             )
@@ -1285,10 +1296,75 @@ class TriageServer:
             }
         )
 
+    async def _handle_post_run(self, request: web.Request) -> web.Response:
+        """A manual run on a local install: the app Worker's `POST /run`, answered here.
+
+        The same query, refusals and answer as `workers/app/src/router.js` and
+        `startRun` in `workers/app/src/index.js`, so the wizard's last step works
+        unchanged. The run is `cyris run` started apart from this server, as the
+        Worker starts its run container, and this answers once it has started.
+        """
+        from cyris.service_layer.schedule import PERIOD_ORDER
+
+        period = request.query.get("period")
+        date = request.query.get("date")
+        if period is None:
+            # `cyris run --if-due` dates its issue by the run's own clock.
+            if date is not None:
+                return web.json_response({"error": "date needs a period"}, status=400)
+        elif period not in PERIOD_ORDER:
+            return web.json_response(
+                {"error": f"period must be one of {', '.join(PERIOD_ORDER)}"}, status=400
+            )
+        elif date is not None and (refused := self._refuse_run_date(date)) is not None:
+            status, error = refused
+            return web.json_response({"error": error}, status=status)
+        try:
+            self._start_run(period, date)
+        except OSError as e:
+            logger.warning("Could not start cyris run", exc_info=True)
+            return web.json_response({"error": f"could not start cyris run: {e}"}, status=500)
+        at = self._clock().astimezone(UTC).isoformat(timespec="milliseconds")
+        return web.json_response({"started": "run", "at": at.replace("+00:00", "Z")})
+
+    def _refuse_run_date(self, date: str) -> tuple[int, str] | None:
+        """Why a manual run's issue date is refused, as (status, error), or None to take it.
+
+        `refuseRunDate` in `workers/app/src/router.js`: a real YYYY-MM-DD, today or
+        yesterday in the deployment's time zone. Yesterday is the onboarding's first
+        issue before the morning hour; anything older would store over an issue
+        already published. A time zone that cannot be read refuses rather than takes.
+        """
+        from datetime import date as calendar_date
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            real = re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) and calendar_date.fromisoformat(date)
+        except ValueError:
+            real = None
+        if not real:
+            return 400, "date must be a real YYYY-MM-DD date"
+        timezone = self._values.get("general.timezone")
+        try:
+            today = self._clock().astimezone(ZoneInfo(str(timezone))).date()
+        except (ValueError, ZoneInfoNotFoundError):
+            timezone = None
+        if not timezone:
+            return 503, "could not read the deployment's time zone to check the date; try again"
+        yesterday = today - timedelta(days=1)
+        if real in (today, yesterday):
+            return None
+        return 400, f"date must be today or yesterday in {timezone} ({yesterday} or {today})"
+
     async def _handle_delete_source(self, request: web.Request) -> web.Response:
         if self._source_store is None:
             return web.json_response(
-                {"ok": False, "error": "No writable source table (store backend is not D1)"},
+                {
+                    "ok": False,
+                    "error": "No writable source table "
+                    '(store backend is neither "sqlite" nor "d1")',
+                },
                 status=409,
             )
         name = request.match_info["name"]
@@ -1328,7 +1404,7 @@ class TriageServer:
         return web.json_response(
             {
                 "ok": False,
-                "error": "No writable topic table (store backend is not D1): "
+                "error": 'No writable topic table (store backend is neither "sqlite" nor "d1"): '
                 "edit [[tracked_topics]] in cyris.toml instead.",
             },
             status=409,
@@ -1379,7 +1455,8 @@ class TriageServer:
         return web.json_response(
             {
                 "ok": False,
-                "error": 'Blind labels live in D1: this deployment\'s [store] backend is not "d1".',
+                "error": "Blind labels live in the SQL store: this deployment's [store] backend "
+                'is neither "sqlite" nor "d1".',
             },
             status=409,
         )
@@ -1865,7 +1942,7 @@ class TriageServer:
         return web.json_response(
             {
                 "ok": False,
-                "error": "No writable area table (store backend is not D1).",
+                "error": 'No writable area table (store backend is neither "sqlite" nor "d1").',
             },
             status=409,
         )
@@ -1996,8 +2073,8 @@ class TriageServer:
 
         if self._interest_reader is None:
             return web.Response(
-                text="The interest map reads votes and holds from D1: this deployment's "
-                '[store] backend is not "d1".',
+                text="The interest map reads votes and holds from the SQL store: this "
+                'deployment\'s [store] backend is neither "sqlite" nor "d1".',
                 status=409,
             )
         try:

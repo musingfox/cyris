@@ -7,7 +7,9 @@ import logging
 import os
 import re
 import signal
+import subprocess
 import sys
+import threading
 from collections import Counter
 from datetime import UTC, datetime
 from functools import partial
@@ -1085,6 +1087,7 @@ def triage_ui(
             interest_reader=D1InterestReader(d1).read if d1 else None,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
+            start_run=partial(_start_detached_run, config_path, sources_path),
         )
         await server.start()
         typer.echo(f"Archive:   http://{host}:{port}/")
@@ -1120,6 +1123,32 @@ def triage_ui(
         asyncio.run(_run())
     except KeyboardInterrupt:
         typer.echo("Shutting down")
+
+
+def _start_detached_run(
+    config_path: Path, sources_path: Path, period: str | None, date: str | None
+) -> None:
+    """Start `cyris run` on this server's own config, apart from the server.
+
+    What `docker/entrypoint.sh` runs for the app Worker's run container: a period runs
+    that issue whatever the hour, a date beside it names the issue's date, and neither
+    leaves it to `--if-due`. Its own session, so stopping the server does not stop a
+    run half way; its log goes where the server's does.
+    """
+    if period is None:
+        args = ["--if-due"]
+    else:
+        args = ["--period", period, *(["--date", date] if date else [])]
+    argv = [
+        sys.executable, "-m", "cyris", "run", *args,
+        "--config", str(config_path), "--sources", str(sources_path),
+    ]  # fmt: skip
+    logger.info("Starting %s", " ".join(argv[2:]))
+    run = subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True)
+    # Reaped by a thread of its own, so the run leaves no zombie behind and the
+    # request that started it is answered at once. Daemon: a server stopping
+    # mid-run does not wait for it, and the run carries on in its own session.
+    threading.Thread(target=run.wait, name=f"cyris-run-{run.pid}", daemon=True).start()
 
 
 # Articles management sub-app
@@ -1408,7 +1437,10 @@ def _blind_labels(config_path: Path, sources_path: Path):
         typer.echo(f"Configuration error: {e}")
         raise typer.Exit(1) from e
     if d1 is None:
-        typer.echo('Blind labels live in D1: set [store] backend = "d1".')
+        typer.echo(
+            'Blind labels live in the SQL store: set [store] backend = "sqlite" on a local '
+            'install, or "d1" on Cloudflare.'
+        )
         raise typer.Exit(1)
     return cfg, D1BlindLabels(d1)
 
