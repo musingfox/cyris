@@ -390,6 +390,16 @@ class FakeArticleStore:
     def update_triage_timestamp(self, urls: list[str], triaged_at: datetime) -> int:
         return self._set(urls, triaged_at=triaged_at.isoformat())
 
+    def record_verdicts(
+        self, *, accepted: list[str], rejected: list[str], at: datetime, reason: str = ""
+    ) -> int:
+        held = self._set(accepted, state=ArticleState.ACCEPTED.value, triaged_at=at.isoformat())
+        return held + self._set(
+            [url for url in rejected if url not in accepted],
+            state=ArticleState.REJECTED.value,
+            triaged_at=at.isoformat(),
+        )
+
 
 class FakeRunLog:
     """Stands in for `D1RunLog`: rows in the order they were recorded, the newest read back.

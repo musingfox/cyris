@@ -1170,16 +1170,7 @@ def articles_accept(
 
     store = build_store(cfg)
 
-    # Update state and collect accepted URLs
-    updated = 0
-    accepted_urls = []
-    for url in urls:
-        if store.accept([url]):
-            updated += 1
-            accepted_urls.append(url)
-
-    if accepted_urls:
-        store.update_triage_timestamp(accepted_urls, datetime.now(UTC))
+    updated = store.record_verdicts(accepted=urls, rejected=[], at=datetime.now(UTC))
 
     typer.echo(f"Accepted {updated} article(s).")
 
@@ -1211,9 +1202,7 @@ def articles_reject(
 
     store = build_store(cfg)
 
-    updated = store.reject(urls, reason=reason)
-    if updated:
-        store.update_triage_timestamp(urls, datetime.now(UTC))
+    updated = store.record_verdicts(accepted=[], rejected=urls, at=datetime.now(UTC), reason=reason)
 
     typer.echo(f"Rejected {updated} article(s).")
 

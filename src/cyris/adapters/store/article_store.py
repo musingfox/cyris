@@ -2,12 +2,13 @@
 
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from cyris.adapters.store.newsletter_dedup import Holders, resolve_stored_url
 from cyris.domain.language import language_sort_key
 from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
+from cyris.domain.triage import RejectReason
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +357,50 @@ class ArticleStore:
                 return True
 
         return False
+
+    def record_verdicts(
+        self,
+        *,
+        accepted: list[str],
+        rejected: list[str],
+        at: datetime,
+        reason: str = RejectReason.NOT_INTERESTED,
+    ) -> int:
+        """Write a human's verdicts: state and `triaged_at` together, on every row with the URL.
+
+        A URL can sit in more than one partition once it is older than the dedup scan.
+        Setting the state on the first row and the stamp on all of them left a newer
+        duplicate stamped and still pending. A URL in both lists is accepted, as the
+        last write wins in the two-step order. Returns how many distinct URLs were found.
+        """
+        accepted_set = set(accepted)
+        rejected_set = set(rejected) - accepted_set
+        if not accepted_set and not rejected_set:
+            return 0
+
+        today_str = date.today().isoformat()
+        found: set[str] = set()
+        for partition_path in self.articles_path.glob("*.json"):
+            articles = self._load_partition(partition_path)
+            modified = False
+            for article in articles:
+                if article.url in accepted_set:
+                    article.state = ArticleState.ACCEPTED
+                    article.rejection_reason = None
+                elif article.url in rejected_set:
+                    article.state = ArticleState.REJECTED
+                    article.rejection_reason = reason
+                else:
+                    continue
+                article.digest_date = today_str
+                article.triaged_at = at
+                found.add(article.url)
+                modified = True
+            if modified:
+                self._save_partition(partition_path, articles)
+
+        logger.info("Recorded verdicts for %d articles", len(found))
+        return len(found)
 
     def accept(self, urls: list[str]) -> int:
         """Mark articles as accepted. Returns count of updated articles."""

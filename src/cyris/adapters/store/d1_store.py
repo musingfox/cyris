@@ -26,6 +26,7 @@ from cyris.domain.models import (
     SaveResult,
     StoredArticle,
 )
+from cyris.domain.triage import RejectReason
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,48 @@ class D1ArticleStore:
         return sum(
             self.update_article_state(url, ArticleState.REJECTED, reason=reason) for url in urls
         )
+
+    def record_verdicts(
+        self,
+        *,
+        accepted: list[str],
+        rejected: list[str],
+        at: datetime,
+        reason: str = RejectReason.NOT_INTERESTED,
+    ) -> int:
+        """Write a human's verdicts, each row's state and `triaged_at` in one statement.
+
+        Two statements let a run land between them: `update_states` overwrites any row
+        with no stamp, so it replaced the reader's verdict and the stamp that followed
+        froze the wrong state as a human decision. Stamping first is no better: a kill
+        between the two leaves a stamped row still `pending`, which `update_states`
+        never touches. D1 has no `batch()` from Python, so this is one `UPDATE` per
+        chunk. It has no `triaged_at IS NULL` guard: a re-vote overwrites a stamped row.
+
+        A URL in both lists is accepted, as the last write wins in the two-step order.
+        Returns how many distinct URLs the store holds.
+        """
+        accepted = list(dict.fromkeys(accepted))
+        voted_up = set(accepted)
+        rejected = [url for url in dict.fromkeys(rejected) if url not in voted_up]
+        digest_date = date.today().isoformat()
+        found = 0
+        for state, why, urls in (
+            (ArticleState.REJECTED, reason, rejected),
+            (ArticleState.ACCEPTED, None, accepted),
+        ):
+            for i in range(0, len(urls), _URLS_PER_STATEMENT):
+                batch = urls[i : i + _URLS_PER_STATEMENT]
+                sql = (
+                    "UPDATE stored_articles "
+                    "SET state = ?, digest_date = ?, rejection_reason = ?, triaged_at = ? "
+                    f"WHERE url IN ({', '.join('?' * len(batch))})"
+                )
+                found += self._db.query(
+                    sql, [str(state), digest_date, why, _iso(at), *batch]
+                ).changes
+        logger.info("Recorded verdicts for %d articles", found)
+        return found
 
     def update_scores(
         self, url_to_score_lang: dict[str, tuple[float, str]], scan_days: int = 30
