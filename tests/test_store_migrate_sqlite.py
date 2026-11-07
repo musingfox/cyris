@@ -483,6 +483,34 @@ def test_store_diff_does_not_agree_over_an_unreadable_partition(install: Path) -
     assert "differing: 0" not in result.output
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("timestamp", None),
+        ("timestamp", ""),
+        ("model", 5),
+        ("api_calls", None),
+        ("input_tokens", "12"),
+        ("output_tokens", True),
+        ("estimated_cost_usd", "free"),
+    ],
+)
+def test_a_usage_record_the_table_cannot_take_stops_the_move_before_any_write(
+    install: Path, field: str, value: object
+) -> None:
+    log = install.parent / "agent-vault" / "usage.jsonl"
+    lines = log.read_text(encoding="utf-8").splitlines()
+    record = json.loads(lines[-1])
+    record[field] = value
+    log.write_text("\n".join([*lines[:-1], json.dumps(record)]) + "\n", encoding="utf-8")
+
+    result = _cli(install, "store", "migrate", "--to", "sqlite")
+
+    assert result.exit_code == 1, result.output
+    assert f"usage.jsonl:{len(lines)}:" in result.output and field in result.output
+    assert not (install.parent / "state" / "cyris.sqlite3").exists()
+
+
 def _file_with_schema(install: Path) -> LocalD1Client:
     from cyris.adapters.store.d1 import apply_schema
 

@@ -2094,8 +2094,41 @@ def _usage_records(path: Path) -> list[dict]:
         if not isinstance(record, dict) or "timestamp" not in record:
             typer.echo(f"{path}:{number}: not a usage record: no timestamp", err=True)
             raise typer.Exit(1)
+        if problem := _usage_record_problem(record):
+            typer.echo(f"{path}:{number}: not a usage record: {problem}", err=True)
+            raise typer.Exit(1)
         records.append(record)
     return records
+
+
+# What `usage_log` (schema.sql) takes for each field `_usage_row` reads. Checked
+# here because the local client commits per statement: a row the table refuses
+# would otherwise fail after the articles and settings were already written.
+_USAGE_TEXT = ("date", "period", "model")
+_USAGE_COUNTS = (
+    "articles_received",
+    "articles_included",
+    "api_calls",
+    "input_tokens",
+    "output_tokens",
+)
+
+
+def _usage_record_problem(record: dict) -> str | None:
+    """Why `usage_log` would refuse this record, or None when it takes it."""
+    if not isinstance(record["timestamp"], str) or not record["timestamp"]:
+        return "timestamp must be a non-empty string"
+    for field in _USAGE_TEXT:
+        if field in record and not isinstance(record[field], str | None):
+            return f"{field} must be a string or null"
+    for field in _USAGE_COUNTS:
+        value = record.get(field, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return f"{field} must be a whole number of at least 0"
+    cost = record.get("estimated_cost_usd")
+    if cost is not None and (isinstance(cost, bool) or not isinstance(cost, int | float)):
+        return "estimated_cost_usd must be a number or null"
+    return None
 
 
 @store_app.command("diff")
