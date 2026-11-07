@@ -210,3 +210,27 @@ def test_help_describes_the_settings_server() -> None:
     result = runner.invoke(app, ["triage-ui", "--help"])
     assert result.exit_code == 0
     assert "article classification" not in result.output
+
+
+def _with_html_output(config: tuple[Path, Path], enabled: bool) -> None:
+    config_path, _ = config
+    with config_path.open("a") as toml:
+        toml.write(f'\n[html_output]\nenabled = {str(enabled).lower()}\noutput_dir = "site"\n')
+
+
+def test_the_command_hands_the_server_its_pages_and_names_the_archive(config) -> None:
+    _with_html_output(config, True)
+
+    result = _run(config)
+
+    assert result.exit_code == 0, result.output
+    assert FakeServer.calls[0][1]["html_dir"] == Path("site")
+    assert "Archive:   http://127.0.0.1:8766/" in result.output
+
+
+def test_with_html_output_off_the_command_gives_the_server_no_pages(config) -> None:
+    _with_html_output(config, False)
+
+    _run(config)
+
+    assert FakeServer.calls[0][1]["html_dir"] is None

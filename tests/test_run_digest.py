@@ -13,6 +13,7 @@ import httpx
 import pytest
 import respx
 from fakes import FakeLLM, make_config
+from pydantic import ValidationError
 
 from cyris.adapters.clef import ClefClient, ClefError
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
@@ -22,6 +23,7 @@ from cyris.adapters.store.json_topics import JsonTopicStore
 from cyris.bootstrap import Deps
 from cyris.config import (
     AgentVaultConfig,
+    HtmlOutputConfig,
 )
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -394,11 +396,16 @@ async def test_publish_outcome_reaches_discord(
             return path
 
     async def run_with(
-        publish_ok: bool, run_dir: Path, custom_domain: str = "", worker_domains=None
+        publish_ok: bool,
+        run_dir: Path,
+        custom_domain: str = "",
+        worker_domains=None,
+        base_url: str = "",
     ) -> dict:
         deps, _ = make_deps(run_dir, _llm(), FakeSource([_article()]))
         deps.cfg.app.promote.pages_project = "cyris-digest"
         deps.cfg.app.promote.custom_domain = custom_domain
+        deps.cfg.app.html_output.base_url = base_url
         sent: dict = {}
 
         async def capture(
@@ -419,6 +426,13 @@ async def test_publish_outcome_reaches_discord(
 
     failed = await run_with(False, tmp_path / "failed")
     assert failed == {"digest_url": "", "publish_failed": True}
+
+    # A local address never stands in for the published site, or hides a failed publish.
+    local = "http://127.0.0.1:8766"
+    failed_local = await run_with(False, tmp_path / "failed-local", base_url=local)
+    assert failed_local == {"digest_url": "", "publish_failed": True}
+    published_local = await run_with(True, tmp_path / "ok-local", base_url=local)
+    assert published_local["digest_url"].startswith("https://cyris-digest.pages.dev/")
 
     ok = await run_with(True, tmp_path / "ok")
     assert ok["publish_failed"] is False
@@ -450,6 +464,112 @@ async def test_publish_outcome_reaches_discord(
         failed_lookup = await run_with(True, tmp_path / "denied", worker_domains=denied)
     assert failed_lookup["digest_url"].startswith("https://cyris-digest.pages.dev/")
     assert "Authentication error" in caplog.text
+
+
+async def _read_online_link(tmp_path: Path, base_url: str, *, writes: bool = True) -> str:
+    """The Read online link of one run with nothing publishing, and its page on disk."""
+    llm = FakeLLM(
+        [
+            json.dumps({"scores": [{"id": 3, "score": 85, "language": "en"}]}),
+            json.dumps(
+                {
+                    "sections": [
+                        {
+                            "heading": "AI",
+                            "summary": "Summary",
+                            "articles": [{"id": 3, "title": "Local", "source": "TechSource"}],
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+    article = Article(
+        id=3,
+        title="Local",
+        url="https://example.com/local",
+        content="Body.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="TechSource",
+        source_lane=Lane.READ,
+        source_tags=["tech"],
+    )
+    deps, _ = make_deps(tmp_path, llm, FakeSource([article]))
+    deps.cfg.app.html_output.base_url = base_url
+    sent: list[str] = []
+
+    async def capture(webhook_url, content, digest_url="", publish_failed=False, degraded=False):
+        assert publish_failed is False
+        sent.append(digest_url)
+
+    deps = replace(deps, send_discord=capture)
+    if not writes:
+        # A file where the directory should be: the page cannot be written.
+        (tmp_path / "html").write_text("")
+    await run_digest(deps, RunOptions(period="morning"))
+    assert len(sent) == 1
+    return sent[0]
+
+
+async def test_read_online_links_the_written_page_at_the_base_url(tmp_path: Path) -> None:
+    link = await _read_online_link(tmp_path, "http://127.0.0.1:8766")
+    prefix, _, slug = link.rpartition("/")
+    assert prefix == "http://127.0.0.1:8766"
+    assert (tmp_path / "html" / f"{slug}.html").is_file()
+
+
+async def test_read_online_is_absent_without_a_base_url(tmp_path: Path) -> None:
+    assert await _read_online_link(tmp_path, "") == ""
+
+
+async def test_read_online_is_absent_when_the_page_was_not_written(tmp_path: Path) -> None:
+    assert await _read_online_link(tmp_path, "http://127.0.0.1:8766", writes=False) == ""
+
+
+@pytest.mark.parametrize(
+    ("given", "kept"),
+    [
+        ("", ""),
+        ("http://127.0.0.1:8766", "http://127.0.0.1:8766"),
+        ("http://127.0.0.1:8766/", "http://127.0.0.1:8766"),
+        ("https://reader.example/", "https://reader.example"),
+        ("http://[::1]:8766", "http://[::1]:8766"),
+    ],
+)
+def test_base_url_keeps_an_address_without_its_last_slash(given: str, kept: str) -> None:
+    assert HtmlOutputConfig(base_url=given).base_url == kept
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "127.0.0.1:8766",
+        "file:///etc/passwd",
+        "javascript:x",
+        "http://",
+        "http://:8766",
+        "http://a b",
+        " http://h",
+        "http://h:notaport",
+        "http://h:70000",
+        "http://h?x=1",
+        "http://h#top",
+        "http://h/cyris",
+        "http://user@h",
+        "http://h)",
+    ],
+)
+def test_base_url_refuses_what_is_not_an_address(given: str) -> None:
+    with pytest.raises(ValidationError, match="base_url"):
+        HtmlOutputConfig(base_url=given)
+
+
+def test_base_url_comes_from_the_environment_when_the_file_leaves_it_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CYRIS_HTML_OUTPUT_BASE_URL", "http://127.0.0.1:8766/")
+    assert HtmlOutputConfig().base_url == "http://127.0.0.1:8766"
+    assert HtmlOutputConfig(base_url="http://file.example").base_url == "http://file.example"
 
 
 def _fan_article(*, article_id: int, title: str, url: str) -> Article:

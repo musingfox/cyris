@@ -1419,8 +1419,8 @@ async def test_the_onboarding_probe_serves_the_real_wizard_and_its_script():
         await client.close()
     assert 'id="o-steps"' in page
     assert script.status == 200
-    # The app Worker's route, which the site bar's links wait on.
-    assert probe == {"authorized": True}
+    # The server's own answer, which the site bar's links wait on.
+    assert probe == {"authorized": True, "votes": False}
 
 
 @pytest.mark.parametrize(

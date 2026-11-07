@@ -713,7 +713,8 @@ ACCESS_NOT_SET_UP = (
     "Access setup, then reload the page."
 )
 
-# What the app Worker's /api/vote answers a signed-in reader; this server has no such route.
+# What the app Worker's /api/vote answers a signed-in reader. `TriageServer` answers the same
+# with `"votes": false` added, which leaves the vote controls closed.
 SIGNED_IN = (
     "Promise.resolve(new Response(JSON.stringify({authorized: true}), "
     '{headers: {"Content-Type": "application/json"}}))'
@@ -1991,13 +1992,14 @@ CHECKS: list[Check] = [
         receipt=_stored("Hacker News", tags=["news", "tech"]),
     ),
     Check(
-        id="settings-hides-the-archive-off-the-worker",
+        id="settings-hides-the-archive-when-the-probe-refuses",
         fixture="readonly",
         path="/settings",
+        preload=answer_get("/api/vote", ACCESS_OFF),
         act="await settingsLoaded();",
         script="""
             const archive = $$(".site-nav a").find((a) => a.textContent === "Archive");
-            expect(archive && !visible(archive), "Archive shows with no archive to link");
+            expect(archive && !visible(archive), "Archive shows on a refused probe");
             expect(!$(".brand").hasAttribute("href"), `brand links ${$(".brand").href}`);
             expect(visible($(".brand")), "the brand is gone");
         """,

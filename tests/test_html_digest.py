@@ -1761,20 +1761,22 @@ def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):
 
 
 def test_settings_links_the_archive_only_once_the_probe_says_signed_in(tmp_path):
-    """A local `cyris triage-ui` serves no archive, so /settings must not link a 404.
+    """/settings links the archive only once the /api/vote probe answers authorized.
 
-    Behind the app Worker the /api/vote probe answers authorized and restores both.
+    The Archive link has its own class, `archive-link`, so a probe that leaves `.gated`
+    closed (a local `cyris triage-ui` answers `votes: false`) still opens it.
     """
     env = HtmlDigestWriter(tmp_path).env
     wrapper = '{% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}'
 
     bar = env.from_string(wrapper).render()
 
-    assert '<a class="label gated" href="index.html" hidden>Archive</a>' in bar
+    assert '<a class="label archive-link" href="index.html" hidden>Archive</a>' in bar
     assert '<a class="brand" data-gated-href="index.html">' in bar
     assert ' href="index.html"><span class="brand-mark">' not in bar
     probe = env.get_template("_probe_script.html.j2").render()
     assert "document.querySelectorAll('.gated').forEach((g) => g.hidden = false);" in probe
+    assert "document.querySelectorAll('.archive-link').forEach((a) => a.hidden = false);" in probe
     assert "a.href = a.dataset.gatedHref" in probe
 
 

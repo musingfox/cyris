@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `cyris triage-ui` serves the archive. Open `http://127.0.0.1:8766/` to read the
+  issue list, an issue and its All articles page, and to move to Settings and back, with
+  `[digest] type_scale` applied. It needs `[html_output] enabled`. The vote buttons and
+  the Interest map stay hidden there, since a local install takes no vote.
 - Onboarding opens with a short scene before its first step: headlines pour
   in, then calm down into one lane and a few rows, and **Show me how** starts
   the setup. **Skip intro** jumps to its end, and with reduced motion on it is

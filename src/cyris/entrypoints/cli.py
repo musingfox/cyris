@@ -1002,7 +1002,8 @@ def triage_ui(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Start the settings web UI: LLM provider, digest hours, notifications, sources, topics;
-    /labels, the blind-label page; and /interest, the interest map."""
+    /labels, the blind-label page; /interest, the interest map; and, when [html_output] is
+    enabled, the archive pages in its output_dir."""
     _setup_logging(verbose)
 
     from cyris.adapters.store.areas import D1AreaStore
@@ -1058,8 +1059,10 @@ def triage_ui(
             run_log=D1RunLog(d1, "") if d1 else None,
             interest_reader=D1InterestReader(d1).read if d1 else None,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
+            html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
         )
         await server.start()
+        typer.echo(f"Archive:   http://{host}:{port}/")
         typer.echo(f"Settings:  http://{host}:{port}/settings")
         typer.echo(f"Labels:    http://{host}:{port}/labels")
         typer.echo(f"Interest:  http://{host}:{port}/interest")

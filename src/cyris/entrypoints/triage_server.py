@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from aiohttp import web
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescape
@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from cyris.adapters.output import html_digest
 from cyris.adapters.store.d1 import MAX_BOUND_PARAMS
 from cyris.adapters.store.feed_health import FeedHealth
-from cyris.config import SETTINGS_FIELDS
+from cyris.config import SETTINGS_FIELDS, DigestConfig
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
 from cyris.domain.areas import Area, AreaCatalog, is_unplaced_label, meets_birth_threshold
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
@@ -36,6 +36,31 @@ PLAIN_KEYS: tuple[str, ...] = tuple(
     key for key, field in SETTINGS_FIELDS.items() if field["route"] == "plain"
 )
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+# One path segment naming a digest page; `/<name>` and `/<name>.html` both serve
+# `<name>.html` in the pages directory. No dot, slash or leading dash: nothing that could
+# leave that directory or name a hidden file reaches the filesystem.
+PAGE_NAME = r"[A-Za-z0-9][A-Za-z0-9_-]*"
+PAGE_SUFFIX = ".html"
+INDEX_PAGE = "index"
+NO_ISSUE_YET = (
+    "No issue exists yet. Run `cyris run --period morning` to make the first one, "
+    "then reload this page."
+)
+NO_PAGES_WRITTEN = (
+    "This install writes no pages. Set `[html_output] enabled = true` in cyris.toml, restart, "
+    "and run `cyris run --period morning`."
+)
+TYPE_SCALE_KEY = "digest.type_scale"
+# The steps `DigestConfig.type_scale` allows; the app Worker's own list is `type_scale.js`'s.
+TYPE_SCALES = tuple(get_args(DigestConfig.model_fields["type_scale"].annotation))
+NEUTRAL_TYPE_SCALE = 1
+HEAD_END = b"</head>"
+
+
+def type_scale_style(scale: float) -> str:
+    """The `<style>` the app Worker injects (`workers/app/src/type_scale.js` `typeScaleStyle`)."""
+    return f"<style>html:root{{--type-scale:{scale}}}</style>"
 
 
 def _accepts_empty(key: str) -> bool:
@@ -325,8 +350,12 @@ class TriageServer:
         interest_reader=None,
         clock=None,
         behind_app_worker: bool = False,
+        html_dir: Path | None = None,
     ) -> None:
         self._host = host
+        # Where `HtmlDigestWriter` wrote the archive; None serves no page. The app Worker
+        # sends these paths to Pages, so only a local `cyris triage-ui` ever answers them.
+        self._html_dir = html_dir
         # The app Worker checked the Access JWT and forwards the original URL, so a Host
         # here is not an address of this server. Off only when told so: a deployment
         # that sets nothing gets the check.
@@ -387,6 +416,7 @@ class TriageServer:
             middlewares=[] if behind_app_worker else [_refuse_foreign_requests(host)]
         )
         self._app.router.add_get("/api/build", self._handle_build)
+        self._app.router.add_get("/api/vote", self._handle_vote_probe)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/diagnostics/llm", self._handle_diagnose_llm)
@@ -428,6 +458,10 @@ class TriageServer:
         # A local `cyris triage-ui` has no Pages behind it.
         self._app.router.add_get("/favicon.svg", self._handle_favicon)
         self._app.router.add_static("/static", STATIC_DIR)
+        # A fixed path outranks these in aiohttp's resolver, so a page cannot take a route's path.
+        self._app.router.add_get("/", self._handle_index)
+        self._app.router.add_get(f"/{{name:{PAGE_NAME}}}", self._handle_page)
+        self._app.router.add_get(f"/{{name:{PAGE_NAME}}}{PAGE_SUFFIX}", self._handle_page)
         self._app.on_response_prepare.append(_revalidate_static)
         self._runner: web.AppRunner | None = None
 
@@ -1922,7 +1956,7 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_labels_page(self, request: web.Request) -> web.Response:
-        return web.Response(text=self._labels_page, content_type="text/html")
+        return self._own_page(self._labels_page)
 
     def _awaiting_onboarding(self) -> bool:
         """Whether this deployment is waiting for onboarding: a writable, empty source table.
@@ -1943,7 +1977,7 @@ class TriageServer:
         key, value = ONBOARDING_EXIT_MARK
         if self._awaiting_onboarding() and request.query.get(key) != value:
             raise web.HTTPFound(ONBOARDING_PATH)
-        return web.Response(text=self._settings_page, content_type="text/html")
+        return self._own_page(self._settings_page)
 
     async def _handle_onboarding_page(self, request: web.Request) -> web.Response:
         """The wizard, on any deployment with a writable source table.
@@ -1954,7 +1988,7 @@ class TriageServer:
         """
         if self._source_store is None:
             raise web.HTTPFound("/settings")
-        return web.Response(text=self._onboarding_page, content_type="text/html")
+        return self._own_page(self._onboarding_page)
 
     async def _handle_interest_page(self, request: web.Request) -> web.Response:
         """The interest map, drawn from D1 as it is now."""
@@ -1977,6 +2011,79 @@ class TriageServer:
 
     async def _handle_favicon(self, request: web.Request) -> web.Response:
         return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")
+
+    async def _handle_vote_probe(self, request: web.Request) -> web.Response:
+        """The pages' capability probe: signed in, but this server takes no vote.
+
+        `votes: false` opens Settings and the Archive link and leaves the vote buttons and
+        `.gated` controls closed. The app Worker answers this path itself, without that
+        field, so the cloud edition's pages open all of them.
+        """
+        return web.json_response({"authorized": True, "votes": False})
+
+    def _type_scale(self) -> float:
+        """The deployment's type size; 1 for a value that is not one of the steps."""
+        value = self._values.get(TYPE_SCALE_KEY)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            return NEUTRAL_TYPE_SCALE
+        return value if value in TYPE_SCALES else NEUTRAL_TYPE_SCALE
+
+    def _sized(self, body: bytes) -> bytes:
+        """The page with this deployment's type size, as the app Worker serves it."""
+        scale = self._type_scale()
+        end = body.find(HEAD_END)
+        # The Worker sizes what passes through it, from the value it reads itself.
+        if self._behind_app_worker or scale == NEUTRAL_TYPE_SCALE or end < 0:
+            return body
+        return body[:end] + type_scale_style(scale).encode() + body[end:]
+
+    def _page_path(self, name: str) -> Path | None:
+        """`<name>.html` in the pages directory, or None unless it is a file that stays in it."""
+        if self._html_dir is None:
+            return None
+        try:
+            root = self._html_dir.resolve()
+            path = (root / f"{name}{PAGE_SUFFIX}").resolve()
+            # A name past the filesystem's limit raises here, not just on a read.
+            is_page = path.suffix == PAGE_SUFFIX and path.is_relative_to(root) and path.is_file()
+        except (OSError, RuntimeError):
+            return None
+        return path if is_page else None
+
+    def _serve_page(self, name: str) -> web.Response | None:
+        path = self._page_path(name)
+        if path is None:
+            return None
+        try:
+            body = path.read_bytes()
+        except OSError:
+            return None
+        return web.Response(
+            body=self._sized(body),
+            content_type="text/html",
+            charset="utf-8",
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    def _own_page(self, html: str) -> web.Response:
+        return web.Response(
+            body=self._sized(html.encode()), content_type="text/html", charset="utf-8"
+        )
+
+    def _no_page(self, name: str) -> web.Response:
+        """404. The archive address says what to do: links lead here on a new install."""
+        if name != INDEX_PAGE:
+            text = "Not found"
+        else:
+            text = NO_ISSUE_YET if self._html_dir is not None else NO_PAGES_WRITTEN
+        return web.Response(status=404, text=text, content_type="text/plain")
+
+    async def _handle_index(self, request: web.Request) -> web.Response:
+        return self._serve_page(INDEX_PAGE) or self._no_page(INDEX_PAGE)
+
+    async def _handle_page(self, request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        return self._serve_page(name) or self._no_page(name)
 
     async def start(self) -> None:
         self._runner = web.AppRunner(self._app)
