@@ -8,7 +8,7 @@ import respx
 from aiohttp.test_utils import TestClient, TestServer
 from fakes import TEST_SETTINGS
 
-from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS
+from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS, STARTING_VALUES
 from cyris.entrypoints.triage_server import PLAIN_KEYS, TriageServer
 from cyris.service_layer.prompts import _language_names
 
@@ -246,6 +246,34 @@ class TestEveryKeyReported:
         assert {"general.timezone", "digest.max_articles_per_digest"}.isdisjoint(
             data["may_be_empty"]
         )
+
+    async def test_an_empty_home_is_offered_every_starting_value(self, settings):
+        client = await _client(settings, {})
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["starting"] == STARTING_VALUES
+
+    async def test_a_stored_key_is_offered_no_starting_value(self, settings):
+        """The wizard pre-fills only what it offers, so it cannot write over a stored value."""
+        stored = {"digest.max_articles_per_digest": 12, "vote_similarity.provider": "gemini"}
+        client = await _client(settings, stored)
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["starting"] == {
+            key: value for key, value in STARTING_VALUES.items() if key not in stored
+        }
+
+    async def test_a_complete_home_is_offered_none(self, settings):
+        client = await _client(settings, dict(TEST_SETTINGS))
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["starting"] == {}
 
     async def test_embedding_readiness_follows_the_environment(self, settings, monkeypatch):
         monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", "t")

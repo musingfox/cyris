@@ -496,7 +496,7 @@ class TriageServer:
             default_models,
             embedding_defaults,
         )
-        from cyris.config import GRADE_D_KEYS, LLMProviderConfig
+        from cyris.config import GRADE_D_KEYS, STARTING_VALUES, LLMProviderConfig
         from cyris.service_layer.prompts import _language_names
 
         values = {key: self._values.get(key) for key in GRADE_D_KEYS}
@@ -538,6 +538,11 @@ class TriageServer:
                 "fields": SETTINGS_FIELDS,
                 "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
                 "may_be_empty": [key for key in GRADE_D_KEYS if _accepts_empty(key)],
+                # What the wizard pre-fills for each key it may write, only while the home
+                # lacks it: a stored key is never offered, so the wizard cannot write over it.
+                "starting": {
+                    key: value for key, value in STARTING_VALUES.items() if key not in self._values
+                },
                 "providers": providers,
                 "embedding_providers": embedding_providers,
                 # Whether a run could call Clef; the page disables it as a judge if not.

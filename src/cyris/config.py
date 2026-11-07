@@ -482,6 +482,16 @@ OPTIONAL_SETTINGS: dict[str, Any] = {
 }
 REQUIRED_KEYS: tuple[str, ...] = tuple(key for key in GRADE_D_KEYS if key not in OPTIONAL_SETTINGS)
 
+# What the onboarding wizard's Model step shows a required key at while the store lacks
+# it: the tuned values a new reader is not asked to choose, and vote similarity's switch,
+# which the vote route saves with them (ADR-0025). The reader confirms them with Next,
+# which writes them into the store once. Nothing reads them as a fallback: a key still
+# missing on a running deployment stays an error (ADR-0003). `cyris.toml.example` holds
+# the same values, and `tests/test_settings_starting_values.py` keeps the two equal.
+STARTING_VALUES: dict[str, Any] = json.loads(
+    (files("cyris") / "settings_starting_values.json").read_text(encoding="utf-8")
+)
+
 
 @cache
 def _setting_adapter(key: str) -> TypeAdapter:
