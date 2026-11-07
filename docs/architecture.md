@@ -1458,6 +1458,9 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-07 | `00b13980` | §3.2 says `record_votes` and `cyris articles accept\|reject` write a verdict and its stamp in one statement (`record_verdicts`), so a run landing between them cannot freeze the wrong state as a human decision. |
 | 2026-11-07 | `17618f92` | The local server checks Host and Origin (§6): a middleware on every route of `cyris triage-ui` answers 403 to a foreign Host or a cross-site write. §5 grades `CYRIS_BEHIND_APP_WORKER`, which only the app Worker's code sets and which turns the check off behind it, and the loopback Host names A. |
 | 2026-11-07 | `63bc646d`..`1d844d70` | A local install reads its digest in a browser: `cyris triage-ui` serves the archive and sizes its pages (§4, §6) and answers the probe with `votes:false`, compose gains a `ui` service published on loopback only, and §5 grades `[html_output] base_url` B for the local notification's Read online link. |
+| 2026-11-08 | `b4ea3922`..`ec0b974a` | A local install keeps its state in a SQLite file behind the D1 interface (ADR-0025): `[store] backend = "sqlite"` opens `LocalD1Client` at `sqlite_path` (§4; §5 grades it B, outside the agent vault). `is_d1` splits into `is_sql` and `is_cloudflare`, and §2 no longer calls a local file a defect for a local install. |
+| 2026-11-08 | `379475fd` | The local server answers the wizard's `POST /run` itself when it is not behind the app Worker (§6), with the Worker's validation, starting `cyris run` as a detached subprocess. |
+| 2026-11-08 | `cfd50ce2`..`a448a921` | Grade-D keys have shipped starting values (`settings_starting_values.json`, §5 grade A), which the wizard's Model step writes once into a store that lacks them and nothing reads as a fallback (§5, §6). |
 
 ## 8. Where the core never changes
 
