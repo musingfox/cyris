@@ -101,7 +101,8 @@ def _to_row(article: StoredArticle) -> list[Any]:
     ]
 
 
-def _from_row(row: dict[str, Any]) -> StoredArticle:
+def article_from_row(row: dict[str, Any]) -> StoredArticle:
+    """One `stored_articles` row as its article; a ValueError when the row is not one."""
     data = dict(row)
     data["source_tags"] = json.loads(row.get("source_tags") or "[]")
     data["ref_urls"] = json.loads(row.get("ref_urls") or "[]")
@@ -363,7 +364,7 @@ class D1ArticleStore:
             sql += " AND state = ?"
             params.append(str(state_filter))
         sql += " ORDER BY first_seen_at ASC"
-        return [_from_row(r) for r in self._db.query(sql, params).rows]
+        return [article_from_row(r) for r in self._db.query(sql, params).rows]
 
     def list_articles(
         self,
@@ -389,19 +390,23 @@ class D1ArticleStore:
         order = _SORT_EXPRESSIONS[sort_by].format(dir=direction)
         sql += f" ORDER BY {order} LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        return [_from_row(r) for r in self._db.query(sql, params).rows]
+        return [article_from_row(r) for r in self._db.query(sql, params).rows]
 
     def get_by_urls(self, urls: list[str]) -> list[StoredArticle]:
+        return [article_from_row(r) for r in self.rows_by_urls(urls)]
+
+    def rows_by_urls(self, urls: list[str]) -> list[dict[str, Any]]:
+        """The rows of `urls` as stored, unparsed, so a reader can name one that is invalid."""
         if not urls:
             return []
-        found: list[StoredArticle] = []
+        found: list[dict[str, Any]] = []
         for i in range(0, len(urls), _URLS_PER_STATEMENT):
             batch = urls[i : i + _URLS_PER_STATEMENT]
             sql = (
                 f"SELECT {', '.join(COLUMNS)} FROM stored_articles "
                 f"WHERE url IN ({', '.join('?' * len(batch))})"
             )
-            found.extend(_from_row(r) for r in self._db.query(sql, batch).rows)
+            found.extend(self._db.query(sql, batch).rows)
         return found
 
     def count_by_state(self) -> dict[ArticleState, int]:

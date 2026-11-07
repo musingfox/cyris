@@ -76,6 +76,46 @@ class D1TopicStore:
         self._db.query(f"DELETE FROM topics WHERE id IN ({orphan})")
         return written
 
+    def import_topics(self, rows: dict[str, list[dict]]) -> dict[str, int]:
+        """Copy topics, members and tags in as-is; how many of each were new.
+
+        `INSERT OR IGNORE`, as `D1ArticleStore.import_articles` is: a row the
+        database already holds is never overwritten, so a second copy writes nothing.
+        `rows` is `JsonTopicStore.rows()`, keyed by table, each row by column.
+        """
+        tables = {
+            "topics": ("id", "name", "first_seen", "last_seen"),
+            "topic_members": ("topic_id", "article_url", "digest_date", "period", "seen_at"),
+            "topic_tags": ("topic_id", "tag", "kind", "seen_at"),
+        }
+        given = {
+            "topics": rows["topics"],
+            "topic_members": rows["members"],
+            "topic_tags": rows["tags"],
+        }
+        written: dict[str, int] = {}
+        for table, columns in tables.items():
+            placeholders = "(" + ", ".join("?" * len(columns)) + ")"
+            written[table] = 0
+            for chunk in chunk_rows([[r[c] for c in columns] for r in given[table]], len(columns)):
+                sql = f"INSERT OR IGNORE INTO {table} ({', '.join(columns)}) VALUES " + ", ".join(
+                    placeholders for _ in chunk
+                )
+                written[table] += self._db.query(sql, [v for row in chunk for v in row]).changes
+        return written
+
+    def rows(self) -> dict[str, list[dict]]:
+        """The four tables as stored, in `JsonTopicStore.rows()`'s shape, for a migration."""
+        return {
+            key: self._db.query(f"SELECT {columns} FROM {table}").rows
+            for key, table, columns in (
+                ("topics", "topics", "id, name, first_seen, last_seen"),
+                ("members", "topic_members", "topic_id, article_url, digest_date, period, seen_at"),
+                ("tags", "topic_tags", "topic_id, tag, kind, seen_at"),
+                ("votes", "topic_votes", "topic_id, direction, clicked_at"),
+            )
+        }
+
     def topics_of_urls(self, urls: list[str]) -> dict[str, str]:
         found: dict[str, tuple[str, str]] = {}
         unique = list(dict.fromkeys(urls))
