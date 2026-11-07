@@ -185,6 +185,12 @@ it. A push made before the fault is fixed on `main` puts the fault back.
 commit and `bunx wrangler deploy --env-file /dev/null` again. That builds a new image
 from the old source, not the image that ran before.
 
+**After `wrangler rollback` past the commit that added `CYRIS_BEHIND_APP_WORKER`**, the old
+Worker starts the new image without that variable, so the next `ui` instance to start keeps its
+request check on and answers `403` naming the public hostname on every container path
+(`docs/architecture.md` §6). A warm instance keeps working until it sleeps. Roll forward, or
+bring the image back as above.
+
 Background: this was measured on a live deployment. The Worker was rolled back to a
 version created before the running image was ever deployed, and 37 minutes later the
 deployment still ran the newer image. `wrangler versions view --json` shows a

@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- `cyris triage-ui` refuses a request that does not name the server, and a write
+  from a page it did not serve: another site open in your browser could read your
+  settings, spend your LLM key and, on a writable store, save settings through it.
+  A local install answers on `127.0.0.1`, `localhost`, `[::1]` and the exact address
+  given to `--host`, and `--host 0.0.0.0` no longer answers other devices. A
+  Cloudflare deployment behaves as before.
+
 ### Added
 
 - Onboarding opens with a short scene before its first step: headlines pour

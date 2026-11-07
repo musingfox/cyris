@@ -76,6 +76,46 @@ def test_config_show_lists_every_name_the_container_can_read() -> None:
     assert set(SECRETS) <= _env_example()
 
 
+# Turns the local server's Host and Origin check off. The Worker's code sets it, so
+# merging deploys it and a Preview or a trial gets it, with nothing to provision.
+_WORKER_SET = "CYRIS_BEHIND_APP_WORKER"
+
+
+def test_only_the_app_workers_code_sets_the_setting_that_turns_the_check_off() -> None:
+    """A compose install runs the same `ui` role and must keep the check by having no way in.
+
+    A deploy-form field, a `[vars]` line or a default in the image would hand it to a
+    deployment that is not behind the Worker; a `[vars]` line would also miss a
+    Preview, which inherits none (`docs/architecture.md`, *Where a Preview's settings
+    live*), and refuse every request to it.
+    """
+    js = (ROOT / "workers/app/src/index.js").read_text(encoding="utf-8")
+    assert re.search(rf'^\s+{_WORKER_SET}: "true",?$', js, re.M)
+    elsewhere = [
+        ".env.example",
+        "cyris.toml.example",
+        "package.json",
+        "wrangler.toml",
+        "docker-compose.yml",
+        "Dockerfile",
+        "docker/entrypoint.sh",
+        "docker/crontab",
+        ".github/workflows/deploy.yml",
+        ".github/workflows/release-image.yml",
+        "scripts/provision_trial.py",
+        "scripts/deploy_trial.py",
+    ]
+    assert [p for p in elsewhere if _WORKER_SET in (ROOT / p).read_text(encoding="utf-8")] == []
+    assert _WORKER_SET not in IDENTITY.values()
+
+
+def test_the_setting_that_turns_the_check_off_is_graded_a() -> None:
+    doc = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    section = doc.split("### Every setting, graded", 1)[1].split("\n### ", 1)[0]
+    [row] = [line for line in section.splitlines() if _WORKER_SET in line]
+    assert row.split("|")[2].strip() == "A"
+
+
 def _wrangler_vars() -> dict[str, str]:
     return tomllib.loads((ROOT / "wrangler.toml").read_text(encoding="utf-8")).get("vars", {})
 

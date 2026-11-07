@@ -36,6 +36,11 @@ The Worker forwards its secrets into the container's environment, except
 which only the Worker reads (`src/index.js`). An unset or empty one is left out rather than passed as the
 string `undefined`.
 
+A `ui` instance is also told `CYRIS_BEHIND_APP_WORKER=true`, a literal in `src/index.js` and no
+setting of yours, because this Worker has already checked the Access JWT and keeps the public URL
+when it forwards. Without it, `cyris triage-ui` refuses any Host that does not name the
+server itself (`docs/architecture.md` §6).
+
 ## Auth
 
 Cloudflare Access is the only sign-in. Why this shape:

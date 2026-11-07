@@ -153,6 +153,17 @@ backend has nowhere to keep. It does not serve the digest
 pages, so the Settings link on a page opened from disk goes nowhere, and `/settings`
 here shows no Archive link.
 
+The server answers only requests that name it, so a web page open in your browser cannot
+read your settings or spend your LLM key through it. A request whose `Host` is not
+`127.0.0.1`, `localhost` or `[::1]` (any port), or the exact address given to `--host`, gets
+a `403` naming what was refused, and so does a write from a page this server did not serve.
+curl and scripts that send no `Origin` are not held to the second rule.
+
+`--host` takes one address: with `--host 192.168.1.5`, the server answers at
+`http://192.168.1.5:8766`, and a name for that machine, such as a Tailscale or `.local` name, gets
+the `403`. `--host 0.0.0.0` listens everywhere and still answers only on the three loopback names,
+so another device reaching it gets the `403`.
+
 ## What a local install cannot do
 
 - **Votes.** 👍/👎 go through the Cloudflare app Worker and `workers/promote`. Locally,
