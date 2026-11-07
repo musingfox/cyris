@@ -188,6 +188,38 @@ so another device reaching it gets the `403`.
   runs, at `127.0.0.1` by default, so another device cannot read it. `--host` with an address opens
   the archive and `/settings` to everyone who can reach that address, with no sign-in.
 
+## Moving a json install to SQLite
+
+An install whose `cyris.toml` says `[store] backend = "json"` moves its whole state into the
+SQLite file at `[store] sqlite_path` (default `state/cyris.sqlite3`, which may not sit inside
+`agent-vault/`) with one command: the articles, `topics.json`, `usage.jsonl`, the runtime settings
+and `[[tracked_topics]]` from `cyris.toml`, and `sources.yaml`. Run these on the host, from the
+repo root:
+
+1. Stop the scheduler and `cyris triage-ui`, so nothing writes the json files during the move.
+2. Copy and compare:
+
+   ```sh
+   uv run cyris store migrate --to sqlite   # everything into the file; safe to re-run
+   uv run cyris store diff --to sqlite      # they agree when only local and differing are 0
+   ```
+
+   The move only adds, and a second run writes nothing and says so. A row the file already
+   holds is kept, of every kind: settings, tracked topics, sources, articles, topics, topic
+   members, tags, votes and usage rows, except a settings row that cannot be read, which the
+   file's value replaces. A kept row that differs from the json side is named with
+   what differs; a kept row identical to the json side is only counted. Sources are copied only
+   into an empty table. An article, partition or row that cannot be read stops the move before
+   it writes anything, naming it. It changes nothing on the json side.
+3. Copy `agent-vault/`, `cyris.toml` and `sources.yaml` somewhere else, and do not delete them
+   yet: with `backend = "json"` the install reads them as before.
+4. In `cyris.toml`, set `backend = "sqlite"` under `[store]`.
+5. Run `uv run cyris doctor`. It fails `file settings` while `cyris.toml` still sets a runtime
+   setting the file now holds; delete the keys it names. The move's last lines name them too,
+   by section, with `[[tracked_topics]]`, which the SQLite install no longer reads either. From
+   here on `/settings` changes them, and `sources.yaml` is no longer read.
+6. Start the scheduler again.
+
 ## Moving to Cloudflare later
 
 The article store, the runtime settings and the source list can all be copied into D1.
