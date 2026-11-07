@@ -22,9 +22,9 @@ _DEFAULT_NEWSLETTER_FIXTURES = Path.home() / "cyris-newsletter-fixtures"
 
 @pytest.fixture(autouse=True)
 def _clear_b_grade_env(monkeypatch):
-    from cyris.config import B_GRADE_ENV_VARS
+    from cyris.config import B_GRADE_ENV_VARS, LOCAL_B_GRADE_ENV_VARS
 
-    for name in B_GRADE_ENV_VARS.values():
+    for name in (*B_GRADE_ENV_VARS.values(), *LOCAL_B_GRADE_ENV_VARS.values()):
         monkeypatch.delenv(name, raising=False)
 
 

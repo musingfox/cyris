@@ -211,7 +211,8 @@ class TestStoreBackendFromEnv:
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
         monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
         cfg = make_config()
-        assert cfg.app.store.is_d1 is True
+        assert cfg.app.store.is_sql is True
+        assert cfg.app.store.is_cloudflare is True
         assert cfg.app.store.database_id == "abc"
         assert type(build_store(cfg)).__name__ == "D1ArticleStore"
 
@@ -225,9 +226,114 @@ class TestStoreBackendFromEnv:
     def test_invalid_backend_raises(self, monkeypatch):
         from pydantic import ValidationError
 
-        monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "postgres")
         with pytest.raises(ValidationError, match="backend"):
             make_config()
+
+    def test_sqlite_is_the_sql_store_without_cloudflare(self, tmp_path, monkeypatch):
+        """The tables are shared; only Cloudflare's edges ask for Cloudflare's keys."""
+        from cyris import bootstrap
+        from cyris.adapters.store.local_d1 import LocalD1Client
+
+        monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+        path = tmp_path / "state" / "cyris.sqlite3"
+        cfg = make_config(store={"backend": "sqlite", "sqlite_path": str(path)})
+
+        assert cfg.app.store.is_sql is True
+        assert cfg.app.store.is_cloudflare is False
+        assert cfg.missing_store_keys() == []
+        client = bootstrap.build_d1_client(cfg)
+        assert isinstance(client, LocalD1Client)
+        assert client.path == path
+        assert type(bootstrap.build_store(cfg)).__name__ == "D1ArticleStore"
+
+    def test_a_sqlite_install_is_never_told_to_push(self):
+        """`settings push` and `sources push` force backend d1: on sqlite they reach Cloudflare."""
+        from cyris.config import IncompleteSettingsError
+
+        cfg = make_config(store={"backend": "sqlite"})
+        cfg.missing_settings = ["general.timezone"]
+
+        with pytest.raises(IncompleteSettingsError) as raised:
+            cfg.require_complete_settings()
+        assert "push" not in str(raised.value)
+        assert "/settings" in str(raised.value)
+        assert "push" not in cfg.onboarding_wait()
+        assert "/onboarding" in cfg.onboarding_wait()
+
+    def test_a_d1_deployment_is_still_offered_the_push_commands(self):
+        cfg = make_config(store={"backend": "d1"})
+        cfg.missing_settings = ["general.timezone"]
+
+        with pytest.raises(ValueError, match="cyris settings push"):
+            cfg.require_complete_settings()
+        assert "cyris sources push" in cfg.onboarding_wait()
+
+    def test_sqlite_path_defaults_beside_the_vault_not_in_it(self):
+        cfg = make_config(store={"backend": "sqlite"})
+        assert cfg.app.store.sqlite_path == Path("state/cyris.sqlite3")
+        assert not cfg.app.store.sqlite_path.resolve().is_relative_to(
+            cfg.app.agent_vault.path.resolve()
+        )
+
+    @pytest.mark.parametrize("value", ["", None])
+    def test_sqlite_path_comes_from_env_when_the_file_leaves_it_empty(
+        self, tmp_path, monkeypatch, value
+    ):
+        monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", str(tmp_path / "x.sqlite3"))
+        store = {"backend": "sqlite"} if value is None else {"backend": "sqlite", "sqlite_path": ""}
+        cfg = make_config(store=store)
+        assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
+
+    def test_blank_sqlite_path_is_the_default(self):
+        cfg = make_config(store={"backend": "sqlite", "sqlite_path": ""})
+        assert cfg.app.store.sqlite_path == Path("state/cyris.sqlite3")
+
+    @pytest.mark.parametrize("inside", ["agent-vault/cyris.sqlite3", "agent-vault/state/c.db"])
+    def test_sqlite_path_inside_the_vault_is_refused(self, inside):
+        """compose bind-mounts the vault; a host process and a container corrupt one file."""
+        with pytest.raises(ValueError, match="inside the agent vault"):
+            make_config(store={"backend": "sqlite", "sqlite_path": inside})
+
+    @staticmethod
+    def _vault_config(vault: Path, sqlite_path: Path):
+        return make_config(
+            store={"backend": "sqlite", "sqlite_path": str(sqlite_path)},
+            agent_vault={"path": str(vault)},
+        )
+
+    @pytest.mark.parametrize("spelling", ["AGENT-VAULT", "Agent-Vault"])
+    def test_the_vault_under_another_case_is_refused_where_the_filesystem_ignores_case(
+        self, tmp_path, spelling
+    ):
+        """macOS APFS: `AGENT-VAULT/x.sqlite3` is a file in `agent-vault/`. Vacuous on Linux."""
+        vault = tmp_path / "agent-vault"
+        vault.mkdir()
+        if not (tmp_path / spelling).exists():
+            pytest.skip("this filesystem tells the two spellings apart")
+        with pytest.raises(ValueError, match="inside the agent vault"):
+            self._vault_config(vault, tmp_path / spelling / "x.sqlite3")
+
+    def test_a_symlink_into_the_vault_is_refused(self, tmp_path):
+        vault = tmp_path / "agent-vault"
+        vault.mkdir()
+        (tmp_path / "state").symlink_to(vault)
+        with pytest.raises(ValueError, match="inside the agent vault"):
+            self._vault_config(vault, tmp_path / "state" / "x.sqlite3")
+
+    def test_a_path_that_climbs_back_into_the_vault_is_refused(self, tmp_path):
+        vault = tmp_path / "agent-vault"
+        (tmp_path / "state").mkdir()
+        with pytest.raises(ValueError, match="inside the agent vault"):
+            self._vault_config(vault, tmp_path / "state" / ".." / "agent-vault" / "x.sqlite3")
+
+    def test_a_directory_beside_the_vault_is_not_refused(self, tmp_path):
+        vault = tmp_path / "agent-vault"
+        vault.mkdir()
+        (tmp_path / "agent-vault-state").mkdir()
+        cfg = self._vault_config(vault, tmp_path / "agent-vault-state" / "x.sqlite3")
+        assert cfg.app.store.sqlite_path == tmp_path / "agent-vault-state" / "x.sqlite3"
 
     def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
@@ -279,6 +385,12 @@ class TestStoreBackendFromEnv:
 
         assert B_GRADE_ENV_VARS["store.backend"] == "CYRIS_STORE_BACKEND"
         assert B_GRADE_ENV_VARS["store.database_id"] == "CYRIS_STORE_DATABASE_ID"
+
+    def test_the_sqlite_path_is_local_identity_the_worker_never_forwards(self):
+        from cyris.config import B_GRADE_ENV_VARS, LOCAL_B_GRADE_ENV_VARS
+
+        assert LOCAL_B_GRADE_ENV_VARS["store.sqlite_path"] == "CYRIS_STORE_SQLITE_PATH"
+        assert "store.sqlite_path" not in B_GRADE_ENV_VARS
 
 
 class TestEmptyEnvIsUnset:

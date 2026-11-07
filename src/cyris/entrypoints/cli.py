@@ -29,7 +29,20 @@ def main() -> None:
 
 
 def _echo_d1_failure(error: Exception) -> None:
-    """What to say when D1 itself is unusable — all three keys can land you here."""
+    """What to say when the SQL store itself is unusable, and what to check for it.
+
+    On Cloudflare all three keys can land you here; a local install's SQLite file
+    has none of them, and the error names the file to look at instead.
+    """
+    from cyris.adapters.store.local_d1 import LocalD1Error
+
+    if isinstance(error, LocalD1Error):
+        typer.echo(f"✗ sqlite — {error}")
+        typer.echo(
+            f"  Check [store] sqlite_path: {error.path} must be a SQLite file this user "
+            "can read and write, or a path where one can be created."
+        )
+        return
     typer.echo(f"✗ d1 — {error}")
     typer.echo(
         "  Check [store] database_id, CLOUDFLARE_ACCOUNT_ID and "
@@ -215,6 +228,7 @@ def run(
             _usage_error(f"--date must be a real YYYY-MM-DD date, not {date!r}")
     _setup_logging(verbose)
 
+    from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import build_deps, load_effective_config
     from cyris.service_layer.run_digest import RunOptions, RunReport, run_digest
     from cyris.service_layer.schedule import due_period
@@ -230,6 +244,10 @@ def run(
         logger.error("Configuration error: %s", e)
         if if_due and not dry_run and cfg is not None:
             _alert_could_not_start(cfg, e)
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        # The store itself is unusable before any setting is read: say so on one line.
+        _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
     if cfg.awaiting_onboarding():
@@ -344,8 +362,11 @@ def regenerate(
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
-    if cfg.app.store.backend != "d1":
-        typer.echo(f"The store backend is {cfg.app.store.backend}; regenerate needs d1", err=True)
+    if not cfg.app.store.is_sql:
+        typer.echo(
+            f"The store backend is {cfg.app.store.backend}; regenerate needs d1 or sqlite",
+            err=True,
+        )
         raise typer.Exit(1)
     if not cfg.app.html_output.enabled:
         typer.echo("HTML output is disabled; regenerate needs [html_output] enabled", err=True)
@@ -1008,6 +1029,7 @@ def triage_ui(
 
     from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.blind_labels import D1BlindLabels
+    from cyris.adapters.store.d1 import D1Error
     from cyris.adapters.store.d1_store import D1ArticleStore
     from cyris.adapters.store.digests import D1DigestStore
     from cyris.adapters.store.feed_health import D1FeedHealth
@@ -1033,6 +1055,9 @@ def triage_ui(
         cfg = load_effective_config(config_path, sources_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
+        raise typer.Exit(1) from e
+    except D1Error as e:
+        _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
     d1 = build_d1_client(cfg)
@@ -1600,7 +1625,9 @@ def _force_d1_client(config_path: Path, sources_path: Path):
         _echo_d1_failure(e)
         raise typer.Exit(1) from e
 
-    already_applied = cfg.app.store.is_d1  # load_effective_config built a client
+    # load_effective_config applied the schema to this very database only on Cloudflare:
+    # a sqlite install's was its local file, not the D1 the override below reaches.
+    already_applied = cfg.app.store.is_cloudflare
     cfg.app.store.backend = "d1"
     # After the override, so it asks the same question `build_d1_client` will —
     # the old check omitted CLOUDFLARE_ACCOUNT_ID and let it raise past the try.

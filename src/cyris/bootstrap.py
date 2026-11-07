@@ -227,9 +227,13 @@ def build_ask_clef() -> AskClef | None:
 
 
 def build_d1_client(cfg: Config) -> Any | None:
-    """The D1 connection, or None when `[store] backend` is still json."""
-    if not cfg.app.store.is_d1:
+    """The D1 connection: Cloudflare's, the local SQLite file, or None for json."""
+    if not cfg.app.store.is_sql:
         return None
+    if not cfg.app.store.is_cloudflare:
+        from cyris.adapters.store.local_d1 import LocalD1Client
+
+        return LocalD1Client(cfg.app.store.sqlite_path)
 
     # Named here, not at the first request: a client built on blank credentials
     # retries four times and dies on `Bearer ` with nothing a reader can act on,
@@ -276,7 +280,7 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     # Grade-D keys from nowhere yet: this pass only has to know the store, and
     # must not fail on file values a D1 deployment is about to ignore.
     cfg = resolve_config(raw, d1_settings={})
-    if not cfg.app.store.is_d1:
+    if not cfg.app.store.is_sql:
         return resolve_config(raw)
 
     d1 = build_d1_client(cfg)

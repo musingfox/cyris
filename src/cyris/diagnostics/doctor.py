@@ -50,8 +50,11 @@ def _writable(path: Path) -> bool:
 
 
 def _check_sources(cfg: Config) -> Check:
-    if cfg.app.store.is_d1:
+    if cfg.app.store.is_cloudflare:
         home, fix = "D1", "Add one on /settings, or run `cyris sources push`."
+    elif cfg.app.store.is_sql:
+        # The push commands write to Cloudflare D1, never to a local install's file.
+        home, fix = cfg.app.store.sql_home, "Add one on /onboarding or /settings."
     else:
         home, fix = "sources.yaml", "Add feeds to sources.yaml (see sources.example.yaml)."
     if cfg.awaiting_onboarding():
@@ -76,7 +79,7 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
     if cfg.config_file_found:
         where = str(config_path) if config_path is not None else "cyris.toml"
         return Check("config file", "ok", where)
-    if cfg.app.store.is_d1:
+    if cfg.app.store.is_sql:
         return Check("config file", "ok", "not found — running from the environment")
     return Check(
         "config file",
@@ -89,15 +92,18 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
 def _check_settings(cfg: Config) -> Check:
     """Every runtime setting is in this deployment's one home, or the run stops."""
     missing = ", ".join(cfg.missing_settings)
-    if cfg.app.store.is_d1:
+    if cfg.app.store.is_sql:
+        home = cfg.app.store.sql_home
         if missing:
             return Check(
                 "settings",
                 "fail",
-                f"missing in D1: {missing}",
-                "Set them on /settings, or run `cyris settings push`.",
+                f"missing in {home}: {missing}",
+                "Set them on /settings, or run `cyris settings push`."
+                if cfg.app.store.is_cloudflare
+                else "Set them on /settings.",
             )
-        return Check("settings", "ok", _settings_ok(cfg, "D1"))
+        return Check("settings", "ok", _settings_ok(cfg, home))
     if missing:
         return Check(
             "settings",
@@ -119,12 +125,12 @@ def _settings_ok(cfg: Config, home: str) -> str:
 
 
 def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
-    """Runtime settings a D1 deployment's cyris.toml still sets, and so ignores.
+    """Runtime settings a SQL-store deployment's cyris.toml still sets, and so ignores.
 
     A value the deployment does not read, sitting where a reader would edit it,
     is the 2026-08-25 failure: the edit takes, and nothing changes.
     """
-    if not cfg.app.store.is_d1 or config_path is None or not config_path.exists():
+    if not cfg.app.store.is_sql or config_path is None or not config_path.exists():
         return []
     import tomllib
 
@@ -141,8 +147,11 @@ def _check_file_settings(cfg: Config, config_path: Path | None) -> list[Check]:
         Check(
             "file settings",
             "fail",
-            f"this deployment reads these from D1 and ignores cyris.toml's {', '.join(ignored)}",
-            "Delete them from cyris.toml. If D1 lacks any, run `cyris settings push` first.",
+            f"this deployment reads these from {cfg.app.store.sql_home} and ignores "
+            f"cyris.toml's {', '.join(ignored)}",
+            "Delete them from cyris.toml. If D1 lacks any, run `cyris settings push` first."
+            if cfg.app.store.is_cloudflare
+            else "Delete them from cyris.toml. Set any the SQLite store lacks on /settings first.",
         )
     ]
 
@@ -160,7 +169,7 @@ def _check_llm(cfg: Config) -> Check:
         if llm.provider == "workers_ai":
             hint += " CLOUDFLARE_EMBEDDING_API_TOKEN also works: the same Workers AI "
             hint += "permission covers text models."
-        where = "on /settings" if cfg.app.store.is_d1 else "in [llm_provider]"
+        where = "on /settings" if cfg.app.store.is_sql else "in [llm_provider]"
         hint += f' Or set the provider to "none" {where} for plain-excerpt digests.'
         return Check(
             "llm provider",
@@ -453,11 +462,12 @@ async def probe_egress(transport: httpx.AsyncBaseTransport | None = None) -> dic
 
 
 def _check_paths(cfg: Config) -> list[Check]:
-    # With D1 the vault has no writer left — articles are a table and spend goes
-    # to `usage_log` — so there is nothing to check. Probing anyway would *create*
+    # With Cloudflare D1 the vault has no writer left — articles are a table and spend
+    # goes to `usage_log` — so there is nothing to check. Probing anyway would *create*
     # the directory it asks about: a local-filesystem edge the cloud target spent
-    # M0–M4 removing, re-added by the health check itself.
-    if cfg.app.store.is_d1:
+    # M0–M4 removing, re-added by the health check itself. A sqlite install still
+    # writes its pages to `agent-vault/html/` (ADR-0025), so it is probed.
+    if cfg.app.store.is_cloudflare:
         return []
 
     checks = []
@@ -524,7 +534,7 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
         resolved = type(build_store(cfg)).__name__
     except Exception:  # noqa: BLE001 - reported by _check_store, with its detail
         return checks
-    expected = "D1ArticleStore" if cfg.app.store.is_d1 else "ArticleStore"
+    expected = "D1ArticleStore" if cfg.app.store.is_sql else "ArticleStore"
     checks.append(
         Check(
             "store wiring",
@@ -539,19 +549,22 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
 def _check_store(cfg: Config) -> Check:
     from cyris.bootstrap import build_store
 
-    backend = cfg.app.store.backend
+    store = cfg.app.store
+    backend = store.backend
+    # A local file is named by its path, so a reader can see which file this machine opened.
+    where = f" at {store.sqlite_path}" if store.is_sql and not store.is_cloudflare else ""
     try:
         counts = build_store(cfg).count_by_state()
     except Exception as e:  # noqa: BLE001 - any failure here is the answer
-        return Check(
-            f"article store ({backend})",
-            "fail",
-            str(e),
-            "Check [store] and CLOUDFLARE_API_TOKEN." if cfg.app.store.is_d1 else "",
-        )
+        fix = ""
+        if store.is_cloudflare:
+            fix = "Check [store] and CLOUDFLARE_API_TOKEN."
+        elif store.is_sql:
+            fix = "Check [store] sqlite_path names a file this user can write."
+        return Check(f"article store ({backend})", "fail", f"{str(e)}{where}", fix)
     total = sum(counts.values())
     summary = ", ".join(f"{state} {n}" for state, n in sorted(counts.items())) or "empty"
-    if not total and cfg.app.store.is_d1:
+    if not total and store.is_sql:
         # The tables are created on the way in, so an empty store no longer
         # distinguishes a first boot from a `database_id` pointing at the wrong
         # database — and the run after this one would write there, orphaning the
@@ -559,14 +572,15 @@ def _check_store(cfg: Config) -> Check:
         # says: a store emptied by `articles clean` is also legitimately empty,
         # and telling it its tables are new would send it to change the one
         # setting that causes the orphaning.
+        key = "database_id" if store.is_cloudflare else "sqlite_path"
         return Check(
             f"article store ({backend})",
             "warn",
-            "0 articles — nothing in this database",
-            "Expected on a first deploy. Otherwise check [store] database_id "
+            f"0 articles — nothing in this database{where}",
+            f"Expected on a first deploy. Otherwise check [store] {key} "
             "before the next run writes here.",
         )
-    return Check(f"article store ({backend})", "ok", f"{total} articles — {summary}")
+    return Check(f"article store ({backend})", "ok", f"{total} articles{where} — {summary}")
 
 
 def _check_feed_health(cfg: Config) -> Check:
@@ -582,6 +596,9 @@ def _check_feed_health(cfg: Config) -> Check:
     from cyris.adapters.store.feed_health import D1FeedHealth
 
     name = "feed health"
+    if cfg.app.store.is_sql and not cfg.app.store.is_cloudflare:
+        # workers/rss writes the table; a local install polls no Worker and keeps none.
+        return Check(name, "skip", "not recorded in the SQLite store: no rss Worker writes it")
     try:
         client = bootstrap.build_d1_client(cfg)
         if client is None:

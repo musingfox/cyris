@@ -77,6 +77,48 @@ async def test_the_vault_check_is_gone_on_d1_and_creates_no_directory(tmp_path: 
     assert not (tmp_path / "never-created").exists()
 
 
+def _sqlite_config(tmp_path: Path) -> Config:
+    cfg = _config(tmp_path, store={"backend": "sqlite"})
+    cfg.app.store.sqlite_path = tmp_path / "state" / "cyris.sqlite3"
+    return cfg
+
+
+async def test_a_sqlite_store_is_named_with_its_path_and_asks_cloudflare_nothing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A local install has no Cloudflare account: any REST call here is a request it cannot make."""
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    cfg = _sqlite_config(tmp_path)
+
+    with respx.mock:
+        anything = respx.route().respond(500)
+        checks = await doctor.run_checks(cfg)
+
+    assert anything.call_count == 0
+    store = _by_name(checks, "article store")
+    assert store.name == "article store (sqlite)"
+    assert f"at {cfg.app.store.sqlite_path}" in store.detail
+    assert "sqlite_path" in store.fix
+    assert _by_name(checks, "store wiring").status == "ok"
+    assert _by_name(checks, "settings").detail == "all 26 set in the SQLite store"
+    assert _by_name(checks, "feed health").status == "skip"
+    # Its pages are still files in the vault, so the vault is still probed.
+    assert _by_name(checks, "agent vault").status == "ok"
+
+
+async def test_an_unopenable_sqlite_file_fails_naming_the_path(tmp_path: Path) -> None:
+    cfg = _sqlite_config(tmp_path)
+    cfg.app.store.sqlite_path.parent.parent.mkdir(parents=True, exist_ok=True)
+    cfg.app.store.sqlite_path.parent.write_text("a file where the directory should be")
+
+    check = _by_name(await doctor.run_checks(cfg), "article store")
+
+    assert check.status == "fail"
+    assert str(cfg.app.store.sqlite_path) in check.detail
+    assert check.fix == "Check [store] sqlite_path names a file this user can write."
+
+
 def test_an_empty_d1_sources_table_waits_with_the_push_hint(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
@@ -1849,3 +1891,36 @@ async def test_a_plain_runtime_error_still_fails_the_probe(monkeypatch) -> None:
     check = await doctor.probe_llm(cfg)
 
     assert check.status == "fail"
+
+
+class TestASqliteInstallIsNeverToldToPush:
+    """`settings push` and `sources push` force backend d1: on sqlite they write to Cloudflare."""
+
+    def test_a_missing_setting_points_at_settings(self, tmp_path: Path) -> None:
+        cfg = _sqlite_config(tmp_path)
+        cfg.missing_settings = ["general.timezone"]
+
+        check = doctor._check_settings(cfg)
+
+        assert check.status == "fail"
+        assert "push" not in check.fix
+        assert "/settings" in check.fix
+
+    def test_no_source_points_at_onboarding(self, tmp_path: Path) -> None:
+        cfg = _sqlite_config(tmp_path)
+        cfg.sources = {}
+
+        check = doctor._check_sources(cfg)
+
+        assert "push" not in check.fix
+        assert "/onboarding" in check.fix
+
+    def test_ignored_file_settings_point_at_settings(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "cyris.toml"
+        config_path.write_text('[general]\ntimezone = "UTC"\n')
+
+        [check] = doctor._check_file_settings(_sqlite_config(tmp_path), config_path)
+
+        assert check.status == "fail"
+        assert "push" not in check.fix
+        assert "/settings" in check.fix

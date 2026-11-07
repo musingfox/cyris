@@ -5,6 +5,7 @@
     "default": "default (provider_defaults.json)",
     "file": "cyris.toml",
     "d1": "D1 settings",
+    "sqlite": "SQLite settings",
     "dotenv": ".env",
     "environment": "environment",
     "missing": "missing",
