@@ -1,10 +1,12 @@
-"""Run `cyris run` against the fakes in `tests/e2e/fakes.py`, and read what they received.
+"""Run cyris against the fakes in `tests/e2e/fakes.py`, and read what they received.
 
-The run is a subprocess whose environment is built from nothing: the venv's
-`cyris` on PATH, HOME and TMPDIR inside the run's directory, the proxy, and
+Each cyris process is a subprocess whose environment is built from nothing: the
+venv's `cyris` on PATH, HOME and TMPDIR inside the run's directory, the proxy, and
 `SSL_CERT_FILE` naming the proxy's own CA alone. Its `cyris.toml` and `.env`
 sit together in that directory with fake credentials, because cyris reads the
-`.env` beside its config (docs/spec/e2e-egress-fails-closed.md).
+`.env` beside its config (docs/spec/e2e-egress-fails-closed.md). `run_deployment`
+runs one `cyris run` on a Cloudflare deployment; `triage_ui` starts a local
+install's server, which the test then drives the way the reader's browser does.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 from fakes import TEST_SETTINGS, SqliteD1
 
 from cyris.adapters.store.d1 import SCHEMA_PATH
@@ -43,6 +46,7 @@ FAKES = Path(__file__).with_name("fakes.py")
 # The first `uvx` run installs mitmproxy; a warm cache starts it in about a second.
 PROXY_START_SECONDS = 180
 RUN_SECONDS = 180
+UI_START_SECONDS = 60
 
 ACCOUNT_ID = "e2e-account"
 DATABASE_ID = "e2e-database"
@@ -81,6 +85,7 @@ CREDENTIALS = {
     "workers_domains": _CF_AUTH,
     "email_send": _CF_AUTH,
     "gemini_generate": ("x-goog-api-key", GEMINI_KEY),
+    "gemini_embed": ("x-goog-api-key", GEMINI_KEY),
     "rss_articles": _WORKER_AUTH,
     "newsletter_list": _WORKER_AUTH,
     "newsletter_ack": _WORKER_AUTH,
@@ -104,6 +109,9 @@ class Scenario:
     stored: list[StoredArticle] = field(default_factory=list)
     # Rows of the `areas` table, as column name to value, inserted as they are.
     areas: list[dict[str, Any]] = field(default_factory=list)
+    # Publishers' own feeds, polled directly: feed URL -> its items, each a title, url,
+    # content and ISO `published_at`. An item's URL is an article page as well.
+    feeds: dict[str, list[dict]] = field(default_factory=dict)
 
 
 @dataclass
@@ -288,8 +296,15 @@ def _write_script(run_dir: Path, scenario: Scenario) -> Path:
                 | {
                     "article_hosts": sorted(
                         {urlsplit(r["url"]).hostname for r in scenario.rss_rows}
-                    )
+                        | {
+                            urlsplit(item["url"]).hostname
+                            for items in scenario.feeds.values()
+                            for item in items
+                        }
+                    ),
+                    "feed_hosts": sorted({urlsplit(url).hostname for url in scenario.feeds}),
                 },
+                "feeds": scenario.feeds,
                 "pages_project": PAGES_PROJECT,
                 "pages_upload_jwt": PAGES_UPLOAD_JWT,
                 "worker_domains": WORKER_DOMAINS,
@@ -326,33 +341,40 @@ def read_records(run_dir: Path) -> list[dict]:
     ]
 
 
+VENV_BIN = Path(sys.executable).parent
+
+
+def cyris_env(run_dir: Path, proxy_url: str, ca_file: Path) -> dict[str, str]:
+    """A cyris process's whole environment: the venv, the run's own HOME and TMPDIR, the proxy."""
+    home = run_dir / "home"
+    tmp = run_dir / "tmp"
+    home.mkdir(exist_ok=True)
+    tmp.mkdir(exist_ok=True)
+    return {
+        "PATH": os.pathsep.join([str(VENV_BIN), "/usr/bin", "/bin"]),
+        "HOME": str(home),
+        "TMPDIR": str(tmp),
+        "HTTPS_PROXY": proxy_url,
+        "HTTP_PROXY": proxy_url,
+        "SSL_CERT_FILE": str(ca_file),
+        "CYRIS_GIT_SHA": GIT_SHA,
+        # The container runs in UTC; without it the run takes the host's local zone.
+        "TZ": "UTC",
+    }
+
+
 def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning") -> Run:
     """Seed the fake D1, start the fakes, run `cyris run` once, and collect the record."""
     _seed_d1(run_dir / "d1.sqlite", scenario)
     seeded = {t: _rows(run_dir / "d1.sqlite", f"SELECT * FROM {t}") for t in READ_ONLY_TABLES}
     config = _write_deployment(run_dir)
-    home = run_dir / "home"
-    tmp = run_dir / "tmp"
-    home.mkdir()
-    tmp.mkdir()
-    venv_bin = Path(sys.executable).parent
 
     started_at = datetime.now(UTC)
     with fakes(run_dir, scenario) as (proxy_url, ca_file):
-        env = {
-            "PATH": os.pathsep.join([str(venv_bin), "/usr/bin", "/bin"]),
-            "HOME": str(home),
-            "TMPDIR": str(tmp),
-            "HTTPS_PROXY": proxy_url,
-            "HTTP_PROXY": proxy_url,
-            "SSL_CERT_FILE": str(ca_file),
-            "CYRIS_GIT_SHA": GIT_SHA,
-            # The container runs in UTC; without it the run takes the host's local zone.
-            "TZ": "UTC",
-        }
+        env = cyris_env(run_dir, proxy_url, ca_file)
         result = subprocess.run(
             [
-                str(venv_bin / "cyris"), "run",
+                str(VENV_BIN / "cyris"), "run",
                 "--period", period,
                 "--config", str(config),
                 "--sources", str(run_dir / "sources.yaml"),
@@ -377,3 +399,71 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
         scenario=scenario,
         finished_at=datetime.now(UTC),
     )
+
+
+# What a new local install's cyris.toml says (ADR-0025): the SQLite store and nothing else
+# about it, and pages written for its own server to serve. Every runtime setting and source
+# is saved through the server, as the reader's browser saves them.
+LOCAL_INSTALL_TOML = '[store]\nbackend = "sqlite"\n\n[html_output]\nenabled = true\n'
+# `[store] sqlite_path`'s default, relative to the directory the install runs in.
+LOCAL_SQLITE_PATH = Path("state/cyris.sqlite3")
+
+
+def write_local_install(run_dir: Path) -> Path:
+    """A local install's cyris.toml and .env, with fake credentials only. Returns the config."""
+    config = run_dir / "cyris.toml"
+    config.write_text(LOCAL_INSTALL_TOML, encoding="utf-8")
+    # The embedder's key: the wizard turns vote similarity on, which embeds.
+    (run_dir / ".env").write_text(f"GEMINI_API_KEY={GEMINI_KEY}\n", encoding="utf-8")
+    return config
+
+
+def local_client() -> httpx.Client:
+    """A client for the local server itself: never through the proxy the cyris processes use."""
+    return httpx.Client(trust_env=False, timeout=30)
+
+
+@contextmanager
+def triage_ui(run_dir: Path, env: dict[str, str]):
+    """`cyris triage-ui` on the local install in `run_dir`; yields its base URL.
+
+    Its output, and that of every `cyris run` it starts, is `triage-ui.log`.
+    """
+    port = _free_port()
+    log_path = run_dir / "triage-ui.log"
+    url = f"http://127.0.0.1:{port}"
+    with log_path.open("w") as log:
+        proc = subprocess.Popen(
+            [
+                str(VENV_BIN / "cyris"), "triage-ui",
+                "--port", str(port),
+                "--config", str(run_dir / "cyris.toml"),
+                "--sources", str(run_dir / "sources.yaml"),
+            ],
+            cwd=run_dir,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )  # fmt: skip
+        try:
+            deadline = time.monotonic() + UI_START_SECONDS
+            with local_client() as client:
+                while True:
+                    assert proc.poll() is None, log_path.read_text(encoding="utf-8")
+                    assert time.monotonic() < deadline, "cyris triage-ui did not start in time"
+                    try:
+                        client.get(f"{url}/api/build")
+                        break
+                    except httpx.TransportError:
+                        time.sleep(0.2)
+            yield url
+        finally:
+            with suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                with suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()

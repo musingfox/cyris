@@ -324,6 +324,8 @@ EXPECTED_ROUTES = {
     "email_send": 1,
     "discord_webhook": 1,
     "gemini_generate": 5,
+    # Vote similarity is off, and no feed is polled directly: the rss Worker buffers them.
+    "gemini_embed": 0,
     "workers_ai_clef": 0,
     "rss_articles": 1,
     "newsletter_list": 1,
@@ -332,6 +334,7 @@ EXPECTED_ROUTES = {
     "promote_ack": 1,
     # Every RSS article is shorter than the summarize window, so each one's page is asked.
     "article_page": len(ARTICLES),
+    "feed_xml": 0,
 }
 
 # Derived from the code paths of one first publish, in the order they run:

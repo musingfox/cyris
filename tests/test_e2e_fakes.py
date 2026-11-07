@@ -108,6 +108,14 @@ RSS_ROWS = RSS_CASES["rows"]
 PAGES = f"{CF}/accounts/{harness.ACCOUNT_ID}/pages/projects/{harness.PAGES_PROJECT}"
 JWT_AUTH = {"Authorization": f"Bearer {harness.PAGES_UPLOAD_JWT}"}
 SITE = f"https://{harness.HOSTS['pages_host']}"
+FEED_URL = "https://feeds.e2e.test/rss"
+FEED_ITEM = {
+    "title": "A <feed> & its item",
+    "url": "https://news.e2e.test/posts/one",
+    "content": "Feed text.",
+    "published_at": "2026-11-07T01:30:00+00:00",
+}
+GEMINI_EMBED = "https://generativelanguage.googleapis.com/v1beta/models/m:batchEmbedContents"
 
 
 @pytest.fixture(scope="module")
@@ -115,7 +123,13 @@ def service(tmp_path_factory):
     """One running proxy with a client that goes through it."""
     run_dir = tmp_path_factory.mktemp("e2e-fakes")
     scenario = harness.Scenario(
-        settings={}, sources=[], rss_rows=RSS_ROWS, newsletters=[], llm={}, pages_pending_reads=1
+        settings={},
+        sources=[],
+        rss_rows=RSS_ROWS,
+        newsletters=[],
+        llm={},
+        pages_pending_reads=1,
+        feeds={FEED_URL: [FEED_ITEM]},
     )
     with harness.fakes(run_dir, scenario) as (proxy_url, ca_file), _client(proxy_url, ca_file) as c:
         yield c
@@ -254,3 +268,31 @@ def test_pages_serves_what_was_uploaded_and_the_front_page_for_a_missing_path(se
     assert (icon.text, icon.headers["content-type"]) == ("<svg/>", "image/svg+xml")
     missing = service.get(f"{SITE}/2026-10-02-morning")
     assert (missing.status_code, missing.text) == (200, "<title>front</title>")
+
+
+def test_a_feed_is_served_as_rss_and_any_other_path_is_gone(service) -> None:
+    import feedparser
+
+    answer = service.get(FEED_URL)
+    assert answer.headers["content-type"] == "application/rss+xml"
+    [entry] = feedparser.parse(answer.content).entries
+    assert (entry.title, entry.link, entry.summary) == (
+        FEED_ITEM["title"],
+        FEED_ITEM["url"],
+        FEED_ITEM["content"],
+    )
+    assert entry.published == "Sat, 07 Nov 2026 01:30:00 +0000"
+    assert service.get("https://feeds.e2e.test/other").status_code == 404
+
+
+def test_embeddings_are_one_fixed_vector_per_text(service) -> None:
+    body = {"requests": [{"content": {"parts": [{"text": t}]}} for t in ("a", "b", "a")]}
+    headers = {"x-goog-api-key": harness.GEMINI_KEY}
+
+    first = service.post(GEMINI_EMBED, json=body, headers=headers).json()["embeddings"]
+    again = service.post(GEMINI_EMBED, json=body, headers=headers).json()["embeddings"]
+
+    assert len(first) == 3 and all(len(e["values"]) == 8 for e in first)
+    assert first[0] == first[2] != first[1]
+    assert first == again
+    assert service.post(GEMINI_EMBED, json=body, headers={"x-goog-api-key": "x"}).status_code == 400

@@ -20,6 +20,10 @@ The APIs mirrored here, by route name:
 - `discord_webhook`: a Discord webhook post, held to Discord's embed limits.
 - `gemini_generate`: Gemini's generateContent. It answers by the prompt kind it
   finds in the system prompt, from rules the test scripts (see `_llm_answer`).
+- `gemini_embed`: Gemini's batchEmbedContents, one fixed vector per text (`_vector`),
+  so a title embeds the same on every call.
+- `feed_xml`: a publisher's own RSS 2.0 feed, on the hosts of the scenario's feeds,
+  which a local install polls directly when no rss Worker is configured.
 - `rss_articles`, `newsletter_*`, `promote_*`: the three Workers cyris pulls from,
   on the hosts the test configured, as `workers/*/src/index.js` answers.
 - `article_page`: a feed article's own page, on the hosts of the scenario's RSS rows.
@@ -34,13 +38,15 @@ gets a 502 and the route `null`; one the addon fails on gets a 500 and an `error
 """
 
 import base64
+import hashlib
 import json
 import re
 import sqlite3
-from datetime import UTC
+from datetime import UTC, datetime
 from email import message_from_bytes, policy
-from email.utils import parsedate_to_datetime
+from email.utils import format_datetime, parsedate_to_datetime
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from mitmproxy import ctx, http
 
@@ -180,6 +186,13 @@ class Fakes:
                 self.gemini,
             ),
             (
+                "gemini_embed",
+                "POST",
+                GEMINI,
+                r"/v1beta/models/[^/:]+:batchEmbedContents",
+                self.gemini_embed,
+            ),
+            (
                 "workers_ai_clef",
                 "POST",
                 CF,
@@ -192,6 +205,7 @@ class Fakes:
             ("promote_list", "GET", "promote_host", r"/promotions", self.promotions),
             ("promote_ack", "POST", "promote_host", r"/ack", self.promote_ack),
             ("article_page", "GET", "article_hosts", r"/.*", self.article_page),
+            ("feed_xml", "GET", "feed_hosts", r"/.*", self.feed),
         ]
 
     def _claim(self, request):
@@ -392,6 +406,13 @@ class Fakes:
     def article_page(self, request, entry):
         return 404, b"<html><body>Not found</body></html>", "text/html"
 
+    def feed(self, request, entry):
+        """The scenario's feed at this address, as RSS 2.0; any other path is gone."""
+        items = self.script.get("feeds", {}).get(f"https://{request.pretty_host}{entry['path']}")
+        if items is None:
+            return 404, b"not found", "text/plain"
+        return 200, _rss(items).encode(), "application/rss+xml"
+
     def newsletters(self, request, entry):
         return _json(200, [_worker_item(Path(p)) for p in self.script["newsletters"]])
 
@@ -418,6 +439,12 @@ class Fakes:
         )
 
     # ---- Gemini ------------------------------------------------------------
+
+    def gemini_embed(self, request, entry):
+        requests = json.loads(request.get_text())["requests"]
+        texts = [r["content"]["parts"][0]["text"] for r in requests]
+        entry["embed"] = texts
+        return _json(200, {"embeddings": [{"values": _vector(t)} for t in texts]})
 
     def gemini(self, request, entry):
         body = json.loads(request.get_text())
@@ -459,9 +486,32 @@ class Fakes:
         )
 
 
+def _rss(items):
+    """An RSS 2.0 document of `items`: title, url, content and an ISO `published_at` each."""
+    entries = "".join(
+        "<item>"
+        f"<title>{escape(item['title'])}</title>"
+        f"<link>{escape(item['url'])}</link>"
+        f"<guid>{escape(item['url'])}</guid>"
+        f"<pubDate>{format_datetime(datetime.fromisoformat(item['published_at']))}</pubDate>"
+        f"<description>{escape(item['content'])}</description>"
+        "</item>"
+        for item in items
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<rss version="2.0"><channel><title>e2e feed</title>{entries}</channel></rss>'
+    )
+
+
+def _vector(text):
+    """Eight numbers from the text's hash: the same text always embeds the same."""
+    return [byte / 255 - 0.5 for byte in hashlib.sha256(text.encode()).digest()[:8]]
+
+
 def _refusal(route):
     """What each service answers a missing or wrong credential with."""
-    if route == "gemini_generate":
+    if route in ("gemini_generate", "gemini_embed"):
         error = {"code": 400, "status": "INVALID_ARGUMENT", "message": "API key not valid."}
         return _json(400, {"error": error})
     if route == "discord_webhook":
