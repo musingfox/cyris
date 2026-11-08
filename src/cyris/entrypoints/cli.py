@@ -1087,7 +1087,9 @@ def triage_ui(
             interest_reader=D1InterestReader(d1).read if d1 else None,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
-            start_run=partial(_start_detached_run, config_path, sources_path),
+            # Only a SQL store has the wizard this route serves. On json a run started
+            # here would write beside the scheduler's, which has no lock.
+            start_run=partial(_start_detached_run, config_path, sources_path) if d1 else None,
         )
         await server.start()
         typer.echo(f"Archive:   http://{host}:{port}/")
