@@ -6,8 +6,8 @@ file, so a tool that looks for either name reads the same document.
 ## Project Overview
 
 Cyris is an AI-powered information digest agent. The deployment is a Cloudflare Container
-fronted by a Worker; the `json` store plus `docker compose` remain the local development
-path, and a fork can run the whole pipeline that way. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic, Gemini, OpenAI or Cloudflare Workers AI) with lane-based filtering/summarization, and publishes an HTML digest to Cloudflare Pages.
+fronted by a Worker; `docker compose` on a SQLite file, or `uv` on the same file, is the local
+install, and a fork can run the whole pipeline that way. It fetches articles from RSS feeds and newsletters, processes them through an LLM (Anthropic, Gemini, OpenAI or Cloudflare Workers AI) with lane-based filtering/summarization, and publishes an HTML digest to Cloudflare Pages.
 
 ## Commands
 
