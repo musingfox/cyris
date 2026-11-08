@@ -134,13 +134,44 @@ docker compose up -d
 
 This builds the image and starts two containers. `cyris` runs supercronic, which fires
 `cyris ingest`, then `cyris run --if-due`, and `cyris promote-sync` every hour. `ui` serves the
-archive and `/settings` (§8) at `http://127.0.0.1:8766/`, published on this machine only.
-Both read `.env` (the file must exist)
-and bind-mount `cyris.toml`, `sources.yaml` and `./agent-vault`, so the store and the
-HTML stay on your disk. After editing `cyris.toml` or `sources.yaml`, run
-`docker compose up -d --force-recreate`: a plain `up -d` keeps the container reading
-the old file. The compose `TZ` only changes log timestamps; the schedule follows
-`[general] timezone`.
+archive and `/settings` (§8) at `http://127.0.0.1:8766/`, published on this machine only; set
+`CYRIS_UI_PORT` to publish another host port. Both read `.env` (the file must exist) and
+bind-mount `cyris.toml`, `sources.yaml` and `./agent-vault`, which holds the generated HTML. After
+editing `cyris.toml` or `sources.yaml`, run `docker compose up -d --force-recreate`: a plain
+`up -d` keeps the container reading the old file. The compose `TZ` only changes log timestamps;
+the schedule follows `[general] timezone`.
+
+*Where the state is.* With no `[store] backend` line in `cyris.toml`, or with `backend = "sqlite"`,
+both containers run on one SQLite file, `/app/state/cyris.sqlite3`, in the named volume
+`cyris-state`. The volume survives `docker compose down` and `up -d --force-recreate`; only
+`docker compose down -v` deletes it. Every command of a compose install runs in a container:
+
+```sh
+docker compose exec cyris cyris doctor
+docker compose exec cyris cyris run --period morning
+```
+
+Never open that file from the host, with `sqlite3`, a database browser or `cp` out of the
+volume's directory, and never bind-mount it: a macOS host process and a container on one file
+corrupt it, even when the host only reads
+([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)). Backup steps come in a
+later change; until then a `cp` of the file can lose recent writes.
+
+*A `cyris.toml` that names a backend wins over compose.* `cyris.toml.example` says
+`backend = "json"`, so a copy of it stays on json under compose, in both containers, with its
+state in `agent-vault/`. To move it to SQLite:
+
+```sh
+docker compose exec cyris cyris store migrate --to sqlite
+```
+
+then change the line to `backend = "sqlite"` (or delete it), and run
+`docker compose up -d --force-recreate`; the rest of
+[Moving a json install to SQLite](#moving-a-json-install-to-sqlite) applies, each command run as
+above. One thing changed for a compose install that stays on json: its `ui` vault is writable, so
+a vote cast on its archive pages now lands in the json files, with the risk of two writers on
+them that ADR-0025 measured, accepted because json is removed in a later milestone. Such an
+install has no wizard, and its server accepts no `POST /run`.
 
 ## 8. The archive and `/settings`
 
