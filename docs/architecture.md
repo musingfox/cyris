@@ -1490,6 +1490,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-08 | `b4ea3922`..`ec0b974a` | A local install keeps its state in a SQLite file behind the D1 interface (ADR-0025): `[store] backend = "sqlite"` opens `LocalD1Client` at `sqlite_path` (§4; §5 grades it B, outside the agent vault). `is_d1` splits into `is_sql` and `is_cloudflare`, and §2 no longer calls a local file a defect for a local install. |
 | 2026-11-08 | `379475fd` | The local server answers the wizard's `POST /run` itself when it is not behind the app Worker (§6), with the Worker's validation, starting `cyris run` as a detached subprocess. |
 | 2026-11-08 | `cfd50ce2`..`a448a921` | Grade-D keys have shipped starting values (`settings_starting_values.json`, §5 grade A), which the wizard's Model step writes once into a store that lacks them and nothing reads as a fallback (§5, §6). |
+| 2026-11-08 | `b5f80ad8`..`c412d259` | A json install moves into its SQLite file with `cyris store migrate --to sqlite`, and `cyris store diff --to sqlite` compares the two (§4 lists where each json file lands). The D1 stores gain add-only imports for topics and usage, and both sides are read and checked before the first write. |
 
 ## 8. Where the core never changes
 
