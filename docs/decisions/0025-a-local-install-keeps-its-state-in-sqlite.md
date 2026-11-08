@@ -84,7 +84,7 @@ prototype opened every settings form, sources, tracked topics and votes with `se
   wizard or `cyris settings push` has filled the settings.
 * Good, because the wizard alone now fills them: its Model step writes the starting values of the
   keys it does not ask about, and leaving Notifications turns off what was never set. Bad, because
-  the tuned values now have a second list beside `cyris.toml.example`, held equal by
+  the tuned values now have a second list beside `settings.example.toml`, held equal by
   `tests/test_settings_starting_values.py`, and a reader who never opens the Model step's fold
   takes them without reading them.
 * Bad, because no path to Cloudflare D1 exists yet. `.dump` produced a 186889-byte line against
