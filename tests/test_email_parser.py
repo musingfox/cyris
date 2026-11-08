@@ -357,7 +357,7 @@ def test_rss_worker_mirrors_base_tracking_params() -> None:
 
     A Worker bundle cannot import the Python package's data file, so the two
     lists are kept in step by hand. They key the same articles: the URL is D1's
-    primary key on the Worker side and the dedup key in the ArticleStore, so a
+    primary key on the Worker side and the dedup key in the article store, so a
     parameter stripped on one side and kept on the other stores one article twice.
     """
     import re

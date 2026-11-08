@@ -111,6 +111,16 @@ def seeded_sqlite(path: Any, *, omit: Iterable[str] = (), **overrides: Any) -> A
     return client
 
 
+def insert_stored(d1, articles: Iterable[Any]) -> None:
+    """Rows exactly as given, state and stamps included, for a test that starts mid-life."""
+    from cyris.adapters.store.d1_store import COLUMNS, _to_row
+
+    marks = ", ".join("?" * len(COLUMNS))
+    sql = f"INSERT INTO stored_articles ({', '.join(COLUMNS)}) VALUES ({marks})"
+    for article in articles:
+        d1.query(sql, _to_row(article))
+
+
 def seed_d1_settings(d1, *, omit: Iterable[str] = (), **overrides: Any) -> None:
     """Store every grade-D key but `omit` in D1 `settings`, keyed `table.field`."""
     from cyris.adapters.store.settings import D1Settings
@@ -197,6 +207,7 @@ class SqliteD1:
         # ProgrammingError: the other one it raises is a bound-parameter count
         # mismatch, which D1 answers with HTTP 400, and executescript would
         # quietly run it with NULLs — turning a real bug into a passing test.
+        before = self._conn.total_changes
         try:
             cursor = self._conn.execute(sql, params or [])
         except sqlite3.ProgrammingError as e:
@@ -212,7 +223,9 @@ class SqliteD1:
             return QueryResult(rows=[], changes=0)
         rows = [dict(row) for row in cursor.fetchall()]
         self._conn.commit()
-        return QueryResult(rows=rows, changes=max(cursor.rowcount, 0))
+        # Not `cursor.rowcount`: sqlite3 leaves it at -1 for a statement that opens with
+        # `WITH`, where D1 counts the rows `update_scores` wrote.
+        return QueryResult(rows=rows, changes=self._conn.total_changes - before)
 
 
 class RecordingD1(SqliteD1):

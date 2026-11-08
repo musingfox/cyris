@@ -28,9 +28,7 @@ from cyris.adapters.fetch.rss_source import RssSource
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.openai_client import OpenAIClient
-from cyris.adapters.store.article_store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
-from cyris.adapters.store.json_topics import JsonTopicStore
 from cyris.adapters.store.topics import D1TopicStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.service_layer.ports import (
@@ -44,10 +42,8 @@ from cyris.service_layer.ports import (
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 IMPLEMENTATIONS = [
-    (ArticleRepository, ArticleStore),
     (ArticleRepository, D1ArticleStore),
     (TopicRepository, D1TopicStore),
-    (TopicRepository, JsonTopicStore),
     (LLMClient, AnthropicClient),
     (LLMClient, GeminiClient),
     (LLMClient, OpenAIClient),
@@ -136,7 +132,6 @@ def test_a_store_missing_a_doctor_only_method_is_named() -> None:
 def test_no_store_offers_reset_to_pending() -> None:
     """Its only caller was the retired deck's undo."""
     assert "reset_to_pending" not in ArticleRepository.__protocol_attrs__
-    assert not hasattr(ArticleStore, "reset_to_pending")
     assert not hasattr(D1ArticleStore, "reset_to_pending")
 
 

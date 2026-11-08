@@ -1,4 +1,4 @@
-"""D1-specific behaviour. The shared contract lives in test_article_store.py."""
+"""D1-specific behaviour. The shared contract lives in test_d1_store_contract.py."""
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -49,7 +49,7 @@ def test_chunk_rows_respects_the_parameter_budget() -> None:
 
 
 def test_dedup_is_not_limited_to_a_window(store: D1ArticleStore) -> None:
-    """The JSON store only scans 8 days back; a URL primary key has no horizon."""
+    """A URL primary key has no horizon."""
     old = datetime.now(UTC) - timedelta(days=90)
     store.save([_article("https://example.com/a")], now=old)
 
@@ -271,8 +271,7 @@ def test_scores_survive_a_batch_past_d1s_compound_select_ceiling() -> None:
     urls = [f"https://example.com/{n}" for n in range(12)]
     store.save([_article(url, n) for n, url in enumerate(urls)])
 
-    # The scores themselves are the receipt, not the return count: stdlib
-    # sqlite3 reports rowcount 0 for `UPDATE ... FROM`, where D1 counts the rows.
+    # The scores themselves are the receipt: a count would pass with the wrong values.
     store.update_scores({url: (float(n), "en") for n, url in enumerate(urls)})
 
     stored = {a.url: a.score for a in store.list_articles(state=None, limit=100)}

@@ -1,28 +1,18 @@
-"""The article store contract, run against both backends.
-
-Every case here runs twice: once against the local JSON partitions and once
-against D1 (real SQL, stdlib sqlite3 — see `SqliteD1`). That is what makes the
-D1 store a drop-in rather than a lookalike.
-"""
+"""The article store contract, on D1ArticleStore over real SQL (stdlib sqlite3, `SqliteD1`)."""
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
-from fakes import SqliteD1
+from fakes import SqliteD1, insert_stored
 
-from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, ArticleState, Lane, StoredArticle
 
 pytestmark = pytest.mark.unit
 
 
-@pytest.fixture(params=["json", "d1"])
-def store(request, tmp_path: Path):
-    """The store under test, one instance per backend."""
-    if request.param == "json":
-        return ArticleStore(tmp_path)
+@pytest.fixture
+def store() -> D1ArticleStore:
     return D1ArticleStore(SqliteD1())
 
 
@@ -67,7 +57,7 @@ def sample_articles() -> list[Article]:
     ]
 
 
-def test_save_new_articles(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_save_new_articles(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """Contract 1: Save 3 new articles."""
     now = datetime.now(UTC)
     result = store.save(sample_articles, now=now)
@@ -76,7 +66,7 @@ def test_save_new_articles(store: ArticleStore, sample_articles: list[Article]) 
     assert result.skipped_count == 0
 
 
-def test_save_with_duplicates(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_save_with_duplicates(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """Contract 1: Save 2 articles where 1 URL already in store."""
     now = datetime.now(UTC)
 
@@ -92,9 +82,9 @@ def test_save_with_duplicates(store: ArticleStore, sample_articles: list[Article
 
 
 def test_a_local_time_window_finds_a_row_from_the_previous_utc_day(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
-    """Partitions are named by UTC date; a window given in local time still reaches them."""
+    """Rows are stamped in UTC; a window given in local time still reaches them."""
     from zoneinfo import ZoneInfo
 
     seen = datetime(2026, 11, 3, 23, 0, tzinfo=UTC)  # 07:00 on 11-04 in Taipei
@@ -108,7 +98,7 @@ def test_a_local_time_window_finds_a_row_from_the_previous_utc_day(
     assert [r.url for r in rows] == [sample_articles[0].url]
 
 
-def test_save_mixed_ids(store: ArticleStore) -> None:
+def test_save_mixed_ids(store: D1ArticleStore) -> None:
     """Feed ids are ints, newsletter ids are strings; both must round-trip."""
     now = datetime.now(UTC)
     articles = [
@@ -148,8 +138,8 @@ def test_save_mixed_ids(store: ArticleStore) -> None:
     assert {a.original_id for a in stored} == {101, "newsletter-123", 102}
 
 
-def test_save_preserves_ref_urls(store: ArticleStore) -> None:
-    """ref_urls survive save and read-back on both backends."""
+def test_save_preserves_ref_urls(store: D1ArticleStore) -> None:
+    """ref_urls survive save and read-back."""
     now = datetime.now(UTC)
     article = Article(
         id="newsletter-abc",
@@ -169,8 +159,8 @@ def test_save_preserves_ref_urls(store: ArticleStore) -> None:
     assert reloaded[0].ref_urls == ["https://example.com/a"]
 
 
-def test_save_keeps_the_feed_image_and_a_rerun_reads_it_back(store: ArticleStore) -> None:
-    """The image an article's feed named survives the store on both backends."""
+def test_save_keeps_the_feed_image_and_a_rerun_reads_it_back(store: D1ArticleStore) -> None:
+    """The image an article's feed named survives the store."""
     now = datetime.now(UTC)
     pictured = Article(
         id=1,
@@ -192,7 +182,7 @@ def test_save_keeps_the_feed_image_and_a_rerun_reads_it_back(store: ArticleStore
 
 
 def test_update_states_existing_articles(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """Contract 2: Update 5 URLs (3 exist, 2 don't)."""
     now = datetime.now(UTC)
@@ -212,7 +202,7 @@ def test_update_states_existing_articles(
 
 
 def test_update_states_with_rejection_reason(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """Contract 2: Update with state=REJECTED + rejection_reason."""
     now = datetime.now(UTC)
@@ -233,7 +223,7 @@ def test_update_states_with_rejection_reason(
 
 
 def test_update_states_overwrites_existing(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """Contract 2: Update existing article state (pending→accepted)."""
     now = datetime.now(UTC)
@@ -258,7 +248,9 @@ def test_update_states_overwrites_existing(
     assert articles[0].digest_date == "2026-03-31"
 
 
-def test_load_by_time_range_single_day(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_load_by_time_range_single_day(
+    store: D1ArticleStore, sample_articles: list[Article]
+) -> None:
     """Contract 3: Load single day."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -276,7 +268,7 @@ def test_load_by_time_range_single_day(store: ArticleStore, sample_articles: lis
     }
 
 
-def test_load_by_time_range_multiple_days(store: ArticleStore) -> None:
+def test_load_by_time_range_multiple_days(store: D1ArticleStore) -> None:
     """Contract 3: Load across multiple days."""
     day1 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
     day2 = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
@@ -305,7 +297,7 @@ def test_load_by_time_range_multiple_days(store: ArticleStore) -> None:
     assert [a.original_id for a in articles] == [101, 102, 103]  # Sorted by first_seen_at
 
 
-def test_load_by_time_range_excludes_older_rows(store: ArticleStore) -> None:
+def test_load_by_time_range_excludes_older_rows(store: D1ArticleStore) -> None:
     """A row first seen outside the window stays out of it."""
     now = datetime.now(UTC)
     article = Article(
@@ -324,7 +316,7 @@ def test_load_by_time_range_excludes_older_rows(store: ArticleStore) -> None:
 
 
 def test_load_by_time_range_with_state_filter(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """Contract 3: state_filter=PENDING → only pending articles."""
     now = datetime.now(UTC)
@@ -347,8 +339,8 @@ def test_load_by_time_range_with_state_filter(
     assert all(a.state == ArticleState.PENDING for a in pending)
 
 
-def test_load_by_time_range_empty(store: ArticleStore) -> None:
-    """Contract 3: Empty range (no files) → returns []."""
+def test_load_by_time_range_empty(store: D1ArticleStore) -> None:
+    """Contract 3: Empty range → returns []."""
     now = datetime.now(UTC)
     articles = store.load_by_time_range(now - timedelta(hours=1), now + timedelta(hours=1))
 
@@ -420,7 +412,7 @@ def test_stored_article_to_article() -> None:
 
 
 def test_update_states_preserves_human_votes(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """A triaged_at stamp marks a human vote, which a re-run must not overwrite."""
     now = datetime.now(UTC)
@@ -439,7 +431,7 @@ def test_update_states_preserves_human_votes(
 
 
 def test_returning_to_pending_clears_triage_stamp(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """Back to pending must drop triaged_at, or the update_states guard strands the row."""
     now = datetime.now(UTC)
@@ -460,11 +452,11 @@ def test_returning_to_pending_clears_triage_stamp(
     )
 
 
-def test_returning_an_unknown_url_to_pending_is_false(store: ArticleStore) -> None:
+def test_returning_an_unknown_url_to_pending_is_false(store: D1ArticleStore) -> None:
     assert store.update_article_state("https://nonexistent.com", ArticleState.PENDING) is False
 
 
-def test_update_states_invalid_date_format(store: ArticleStore) -> None:
+def test_update_states_invalid_date_format(store: D1ArticleStore) -> None:
     """update_states should raise ValueError for bad digest_date format."""
     with pytest.raises(ValueError, match="Invalid digest_date format"):
         store.update_states({}, digest_date="2026-13-99")
@@ -473,7 +465,9 @@ def test_update_states_invalid_date_format(store: ArticleStore) -> None:
 # --- Contract 1: list_articles ---
 
 
-def test_list_articles_filter_by_state(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_list_articles_filter_by_state(
+    store: D1ArticleStore, sample_articles: list[Article]
+) -> None:
     """list_articles with state=PENDING returns only pending."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -483,7 +477,9 @@ def test_list_articles_filter_by_state(store: ArticleStore, sample_articles: lis
     assert all(a.state == ArticleState.PENDING for a in result)
 
 
-def test_list_articles_multiple_states(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_list_articles_multiple_states(
+    store: D1ArticleStore, sample_articles: list[Article]
+) -> None:
     """list_articles with multiple states."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -492,7 +488,7 @@ def test_list_articles_multiple_states(store: ArticleStore, sample_articles: lis
     assert len(result) == 3
 
 
-def test_list_articles_limit(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_list_articles_limit(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """list_articles with limit."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -500,7 +496,7 @@ def test_list_articles_limit(store: ArticleStore, sample_articles: list[Article]
     assert len(result) == 2
 
 
-def test_list_articles_offset(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_list_articles_offset(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """list_articles with offset."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -508,7 +504,7 @@ def test_list_articles_offset(store: ArticleStore, sample_articles: list[Article
     assert len(result) == 1
 
 
-def test_list_articles_sort_by_title(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_list_articles_sort_by_title(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """list_articles sorted by title ascending."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -517,7 +513,7 @@ def test_list_articles_sort_by_title(store: ArticleStore, sample_articles: list[
     assert titles == sorted(titles)
 
 
-def test_list_articles_invalid_sort(store: ArticleStore) -> None:
+def test_list_articles_invalid_sort(store: D1ArticleStore) -> None:
     """list_articles with invalid sort_by raises ValueError."""
     with pytest.raises(ValueError, match="Invalid sort_by"):
         store.list_articles(sort_by="nonexistent")
@@ -526,7 +522,7 @@ def test_list_articles_invalid_sort(store: ArticleStore) -> None:
 # --- Contract 2: update_article_state ---
 
 
-def test_update_article_state_accept(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_update_article_state_accept(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """update_article_state pending→accepted."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -537,7 +533,7 @@ def test_update_article_state_accept(store: ArticleStore, sample_articles: list[
 
 
 def test_update_article_state_reject_with_reason(
-    store: ArticleStore, sample_articles: list[Article]
+    store: D1ArticleStore, sample_articles: list[Article]
 ) -> None:
     """update_article_state with rejection reason."""
     now = datetime.now(UTC)
@@ -551,13 +547,13 @@ def test_update_article_state_reject_with_reason(
     assert result[0].rejection_reason == "spam"
 
 
-def test_update_article_state_not_found(store: ArticleStore) -> None:
+def test_update_article_state_not_found(store: D1ArticleStore) -> None:
     """update_article_state for non-existent URL returns False."""
     success = store.update_article_state("https://nonexistent.com", ArticleState.ACCEPTED)
     assert success is False
 
 
-def test_accept_reject_semantics(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_accept_reject_semantics(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """accept/reject drive the article lifecycle."""
     from cyris.domain.triage import RejectReason
 
@@ -578,7 +574,7 @@ def test_accept_reject_semantics(store: ArticleStore, sample_articles: list[Arti
 # --- Contract 3: delete_articles ---
 
 
-def test_delete_articles_by_state(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_delete_articles_by_state(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """delete_articles deletes all articles with given state."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -595,10 +591,10 @@ def test_delete_articles_by_state(store: ArticleStore, sample_articles: list[Art
     assert len(remaining) == 1
 
 
-def test_delete_articles_older_than(store: ArticleStore) -> None:
+def test_delete_articles_older_than(store: D1ArticleStore) -> None:
     """delete_articles with older_than_days filter."""
     now = datetime.now(UTC)
-    # Old article: within update_states scan range (7 days) but older than delete threshold (5 days)
+    # Old article: older than the delete threshold (5 days)
     old_date = now - timedelta(days=6)
     new_date = now - timedelta(days=2)
     old_article = Article(
@@ -622,7 +618,6 @@ def test_delete_articles_older_than(store: ArticleStore) -> None:
     store.save([old_article], now=old_date)
     store.save([new_article], now=new_date)
 
-    # Use today as digest_date to ensure both articles are in scan range
     today_str = now.strftime("%Y-%m-%d")
     store.update_states(
         {
@@ -636,7 +631,7 @@ def test_delete_articles_older_than(store: ArticleStore) -> None:
     assert deleted == 1
 
 
-def test_delete_articles_preserves_triaged_rows(store: ArticleStore) -> None:
+def test_delete_articles_preserves_triaged_rows(store: D1ArticleStore) -> None:
     old = datetime.now(UTC) - timedelta(days=60)
     triaged = StoredArticle.from_article(
         Article(
@@ -666,16 +661,13 @@ def test_delete_articles_preserves_triaged_rows(store: ArticleStore) -> None:
     )
     untriaged.state = ArticleState.REJECTED
 
-    if isinstance(store, D1ArticleStore):
-        store.import_articles([triaged, untriaged])
-    else:
-        store._save_partition(store._partition_path(old), [triaged, untriaged])
+    insert_stored(store._db, [triaged, untriaged])
 
     assert store.delete_articles(ArticleState.REJECTED, 30) == 1
     assert [article.url for article in store.list_articles()] == ["https://example.com/triaged"]
 
 
-def test_delete_articles_negative_days(store: ArticleStore) -> None:
+def test_delete_articles_negative_days(store: D1ArticleStore) -> None:
     """delete_articles with negative older_than_days raises ValueError."""
     with pytest.raises(ValueError, match="older_than_days"):
         store.delete_articles(state=ArticleState.REJECTED, older_than_days=-1)
@@ -684,13 +676,13 @@ def test_delete_articles_negative_days(store: ArticleStore) -> None:
 # --- Contract 4: count_by_state ---
 
 
-def test_count_by_state_empty(store: ArticleStore) -> None:
+def test_count_by_state_empty(store: D1ArticleStore) -> None:
     """count_by_state on empty store returns empty dict."""
     counts = store.count_by_state()
     assert counts == {}
 
 
-def test_count_by_state_mixed_states(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_count_by_state_mixed_states(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """count_by_state returns correct counts for mixed states."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)
@@ -712,7 +704,7 @@ def test_count_by_state_mixed_states(store: ArticleStore, sample_articles: list[
     }
 
 
-def test_update_triage_timestamp(store: ArticleStore, sample_articles: list[Article]) -> None:
+def test_update_triage_timestamp(store: D1ArticleStore, sample_articles: list[Article]) -> None:
     """update_triage_timestamp updates triaged_at for matching articles."""
     now = datetime.now(UTC)
     store.save(sample_articles, now=now)

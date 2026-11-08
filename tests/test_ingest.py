@@ -12,14 +12,16 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from fakes import FakeLLM, make_config
+from fakes import FakeLLM, SqliteD1, make_config, seeded_sqlite
 from typer.testing import CliRunner
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
-from cyris.adapters.store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
+from cyris.adapters.store.local_d1 import LocalD1Client
+from cyris.adapters.store.source_store import D1SourceStore
 from cyris.bootstrap import Deps
 from cyris.config import AgentVaultConfig
-from cyris.domain.models import Article, ArticleState, Lane
+from cyris.domain.models import Article, ArticleState, Lane, SourceConfig
 from cyris.entrypoints.cli import app
 from cyris.service_layer.ingest import ingest
 from cyris.service_layer.run_digest import RunOptions, run_digest
@@ -62,12 +64,12 @@ def article(n: int) -> Article:
 def config(tmp_path: Path):
     vault = tmp_path / "agent-vault"
     vault.mkdir(exist_ok=True)
-    return make_config(agent_vault=AgentVaultConfig(path=vault)), vault
+    return make_config(agent_vault=AgentVaultConfig(path=vault))
 
 
 async def test_ingest_stores_pending_rows_and_calls_nothing_else(tmp_path: Path) -> None:
-    cfg, vault = config(tmp_path)
-    store = ArticleStore(vault)
+    cfg = config(tmp_path)
+    store = D1ArticleStore(SqliteD1())
 
     report = await ingest(cfg, store, [FakeSource([article(1), article(2)])])
 
@@ -87,8 +89,8 @@ async def test_ingest_stores_pending_rows_and_calls_nothing_else(tmp_path: Path)
 
 
 async def test_a_second_ingest_of_the_same_feed_saves_nothing(tmp_path: Path) -> None:
-    cfg, vault = config(tmp_path)
-    store = ArticleStore(vault)
+    cfg = config(tmp_path)
+    store = D1ArticleStore(SqliteD1())
     source = FakeSource([article(1)])
 
     await ingest(cfg, store, [source])
@@ -100,10 +102,10 @@ async def test_a_second_ingest_of_the_same_feed_saves_nothing(tmp_path: Path) ->
 async def test_a_failed_fetch_is_an_ingest_status_of_its_own(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    cfg, vault = config(tmp_path)
+    cfg = config(tmp_path)
 
     with caplog.at_level(logging.INFO, logger="cyris.service_layer.ingest"):
-        report = await ingest(cfg, ArticleStore(vault), [BrokenSource()])
+        report = await ingest(cfg, D1ArticleStore(SqliteD1()), [BrokenSource()])
 
     assert (report.status, report.failed_sources) == ("failed", ["BrokenSource"])
     events = [
@@ -122,8 +124,8 @@ async def test_what_an_earlier_hour_stored_reaches_the_digest(
     tmp_path: Path, at_digest_time: list[Article]
 ) -> None:
     """The feed dropped story 1 before the digest hour; the digest still carries it."""
-    cfg, vault = config(tmp_path)
-    store = ArticleStore(vault)
+    cfg = config(tmp_path)
+    store = D1ArticleStore(SqliteD1())
     await ingest(cfg, store, [FakeSource([article(1)])])
 
     html_dir = tmp_path / "html"
@@ -150,20 +152,15 @@ async def test_what_an_earlier_hour_stored_reaches_the_digest(
     assert all(a.url in page for a in at_digest_time)
 
 
-def write_config(tmp_path: Path) -> tuple[Path, Path]:
-    vault = tmp_path / "agent-vault"
-    vault.mkdir()
+def write_config(tmp_path: Path, **settings) -> tuple[Path, Path]:
+    state = tmp_path / "cyris.sqlite3"
+    blog = SourceConfig(name="Blog", url="https://example.com/feed")
+    D1SourceStore(seeded_sqlite(state, **settings)).upsert(blog)
     config_path = tmp_path / "cyris.toml"
-    example = (Path(__file__).resolve().parent.parent / "settings.example.toml").read_text()
     config_path.write_text(
-        example.replace('provider = "anthropic"', 'provider = "none"').replace(
-            'model = "claude-sonnet-4-6"', 'model = ""'
-        )
-        + f'\n[agent_vault]\npath = "{vault}"\n\n[store]\nbackend = "json"\n'
+        f'[store]\nsqlite_path = "{state}"\n\n[agent_vault]\npath = "{tmp_path / "vault"}"\n'
     )
-    sources_path = tmp_path / "sources.yaml"
-    sources_path.write_text('sources:\n  - {"name": "Blog", "url": "https://example.com/feed"}\n')
-    return config_path, sources_path
+    return config_path, tmp_path / "sources.yaml"
 
 
 def test_cli_exits_non_zero_when_the_fetch_failed(
@@ -189,15 +186,16 @@ def test_cli_stores_what_the_feed_holds(tmp_path: Path, monkeypatch: pytest.Monk
 
     assert result.exit_code == 0, result.output
     assert "Stored 1 new article" in result.output
-    assert list((tmp_path / "agent-vault" / "articles").glob("*.json"))
+    assert (
+        sum(D1ArticleStore(LocalD1Client(tmp_path / "cyris.sqlite3")).count_by_state().values())
+        == 1
+    )
 
 
 def test_cli_polls_without_the_llm_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config_path, sources_path = write_config(tmp_path)
-    config_path.write_text(
-        config_path.read_text()
-        .replace('\nprovider = "none"', '\nprovider = "anthropic"', 1)
-        .replace('\nmodel = ""', '\nmodel = "claude-haiku-5-5"', 1)
+    config_path, sources_path = write_config(
+        tmp_path,
+        **{"llm_provider.provider": "anthropic", "llm_provider.model": "claude-haiku-5-5"},
     )
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg: FakeSource([article(1)]))

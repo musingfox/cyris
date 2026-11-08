@@ -155,7 +155,7 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
 ) -> None:
     from typer.testing import CliRunner
 
-    from cyris.adapters.store import ArticleStore
+    from cyris.adapters.store.d1_store import D1ArticleStore
     from cyris.domain.models import Article
     from cyris.entrypoints.cli import app
 
@@ -165,7 +165,9 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
     config_path.write_text(f'[agent_vault]\npath = "{vault}"\n', encoding="utf-8")
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text("sources: []", encoding="utf-8")
-    store = ArticleStore(vault)
+    db = SqliteD1()
+    seed_d1_settings(db)
+    store = D1ArticleStore(db)
     now = datetime.now(UTC)
     store.save(
         [
@@ -181,8 +183,6 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
         ],
         now=now,
     )
-    db = SqliteD1()
-    seed_d1_settings(db)
     reply = json.dumps(
         {"scores": [{"id": 1, "score": 60, "language": "en", "suggest_area": "Space"}]}
     )
