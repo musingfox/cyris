@@ -264,7 +264,7 @@ async def test_every_saved_item_carries_its_area(tmp_path: Path) -> None:
     assert stamp["source"] >= 1
 
 
-async def test_a_json_run_stamps_no_area(tmp_path: Path) -> None:
+async def test_a_run_with_no_areas_stamps_no_area(tmp_path: Path) -> None:
     reply = json.dumps(
         {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
     )
@@ -333,7 +333,7 @@ async def test_a_dismissed_area_stays_out_of_the_saved_order(tmp_path: Path) -> 
     assert content.area_order == ["Tech"]
 
 
-async def test_a_json_run_saves_an_empty_area_order(tmp_path: Path) -> None:
+async def test_a_run_with_no_areas_saves_an_empty_area_order(tmp_path: Path) -> None:
     reply = json.dumps(
         {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
     )
@@ -447,7 +447,7 @@ async def test_a_failed_stamp_cuts_nothing_and_accepts_every_shown_article(
     assert digest_urls(content) == {a.url for a in articles}
 
 
-async def test_a_json_run_accepts_and_shows_every_article(tmp_path: Path) -> None:
+async def test_a_run_with_no_areas_accepts_and_shows_every_article(tmp_path: Path) -> None:
     articles = _radar_articles(7)
 
     _, content, states, _ = await _run_radar(tmp_path, articles)

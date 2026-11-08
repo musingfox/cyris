@@ -105,22 +105,32 @@ def test_any_other_value_keeps_the_request_check(
     assert _built_behind_app_worker(config) is False
 
 
-def test_a_json_ui_role_opens_no_article_store(config: tuple[Path, Path], monkeypatch) -> None:
+def test_a_sqlite_ui_role_wires_every_store_and_builds_no_run_store(
+    config: tuple[Path, Path], monkeypatch
+) -> None:
     def refuse(*args, **kwargs):
-        raise AssertionError("ui role opened an article store")
+        raise AssertionError("ui role built the run's article store")
 
-    config_path, _ = config
-    config_path.write_text('[store]\nbackend = "json"\n\n' + config_path.read_text())
     monkeypatch.setattr("cyris.bootstrap.build_store", refuse)
     result = _run(config)
     assert result.exit_code == 0, result.output
     [(args, kwargs)] = FakeServer.calls
     assert args == ()
     assert "sources_origin" not in kwargs
-    assert kwargs["source_store"] is None
-    assert kwargs["feed_health"] is None
-    assert kwargs["article_store"] is None
-    assert kwargs["blind_labels"] is None
+    assert kwargs["settings"] is not None
+    assert kwargs["source_store"] is not None
+    assert kwargs["feed_health"] is not None
+    assert kwargs["topic_store"] is not None
+    assert kwargs["blind_labels"] is not None
+    assert kwargs["article_store"] is not None
+    assert kwargs["area_store"] is not None
+    assert kwargs["source_titles"] is not None
+    assert kwargs["onboarding_articles"] is not None
+    assert kwargs["feed_checker"] is not None
+    assert kwargs["digest_store"] is not None
+    assert kwargs["run_log"] is not None
+    assert kwargs["interest_reader"] is not None
+    assert kwargs["start_run"] is not None
 
 
 def test_an_empty_d1_starts_the_page_with_only_the_defaulted_effort(
@@ -251,13 +261,13 @@ class _LocalServer(TriageServer):
         asyncio.get_running_loop().call_soon(signal.raise_signal, signal.SIGINT)
 
 
-def _post_run_status(config: tuple[Path, Path], monkeypatch, store: str) -> tuple[int, list]:
-    """The status `POST /run` gets from the server the command builds on `store`, and the
-    runs it started. The run itself is recorded, never spawned."""
+def _post_run_status(config: tuple[Path, Path], monkeypatch) -> tuple[int, list]:
+    """The status `POST /run` gets from the server the command builds, and the runs it
+    started. The run itself is recorded, never spawned."""
     config_path, _ = config
     with config_path.open("a") as toml:
         toml.write(
-            f'\n[store]\nbackend = "{store}"\n'
+            '\n[store]\nbackend = "sqlite"\n'
             f'sqlite_path = "{config_path.parent / "state" / "cyris.sqlite3"}"\n'
         )
     started: list[tuple[str | None, str | None]] = []
@@ -283,16 +293,8 @@ def _post_run_status(config: tuple[Path, Path], monkeypatch, store: str) -> tupl
     return asyncio.run(post()), started
 
 
-def test_a_json_server_has_no_post_run(config: tuple[Path, Path], monkeypatch) -> None:
-    """A json install has no wizard, and a run started here would write beside the scheduler's."""
-    status, started = _post_run_status(config, monkeypatch, "json")
-
-    assert status in (404, 405)
-    assert started == []
-
-
 def test_a_sqlite_server_still_accepts_post_run(config: tuple[Path, Path], monkeypatch) -> None:
-    status, started = _post_run_status(config, monkeypatch, "sqlite")
+    status, started = _post_run_status(config, monkeypatch)
 
     assert status == 200
     assert started == [("morning", None)]

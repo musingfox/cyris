@@ -16,8 +16,7 @@ from unittest import mock
 import pytest
 import yaml
 
-from cyris.bootstrap import load_effective_config
-from cyris.config import StoreConfig
+from cyris.config import JsonStoreRemovedError, StoreConfig, read_config_files, resolve_config
 
 pytestmark = [pytest.mark.integration, pytest.mark.guard]
 
@@ -139,7 +138,8 @@ def _backend_resolved(tmp_path: Path, service: str, toml: str, host_env=None) ->
     os.chdir(install)
     try:
         with mock.patch.dict(os.environ, process_env, clear=True):
-            cfg = load_effective_config(install / "cyris.toml", install / "sources.yaml")
+            raw = read_config_files(install / "cyris.toml", install / "sources.yaml")
+            cfg = resolve_config(raw, d1_settings={})
     finally:
         os.chdir(cwd)
     return cfg.app.store.backend
@@ -149,12 +149,11 @@ def _backend_resolved(tmp_path: Path, service: str, toml: str, host_env=None) ->
 @pytest.mark.parametrize(
     ("toml", "backend"),
     [
-        ('[store]\nbackend = "json"\n', "json"),
         ('[store]\nbackend = "sqlite"\n', "sqlite"),
         ("", "sqlite"),
         ("[store]\n", "sqlite"),
     ],
-    ids=["names-json", "names-sqlite", "names-none", "names-no-backend"],
+    ids=["names-sqlite", "names-none", "names-no-backend"],
 )
 def test_each_service_resolves_the_backend_the_file_names_else_sqlite(
     tmp_path: Path, service: str, toml: str, backend: str
@@ -166,12 +165,18 @@ def test_each_service_resolves_the_backend_the_file_names_else_sqlite(
 def test_a_backend_in_the_hosts_environment_beats_the_default_but_not_the_file(
     tmp_path: Path, service: str
 ) -> None:
-    host_env = {"CYRIS_STORE_BACKEND": "json"}
+    host_env = {"CYRIS_STORE_BACKEND": "d1"}
 
     named_in_file = '[store]\nbackend = "sqlite"\n'
 
-    assert _backend_resolved(tmp_path / "a", service, "", host_env) == "json"
+    assert _backend_resolved(tmp_path / "a", service, "", host_env) == "d1"
     assert _backend_resolved(tmp_path / "b", service, named_in_file, host_env) == "sqlite"
+
+
+@pytest.mark.parametrize("service", SERVICES)
+def test_a_host_still_naming_json_stops_each_service(tmp_path: Path, service: str) -> None:
+    with pytest.raises(JsonStoreRemovedError, match="json store was removed"):
+        _backend_resolved(tmp_path, service, "", {"CYRIS_STORE_BACKEND": "json"})
 
 
 def test_the_probe_builds_its_install_by_the_guides_own_copies() -> None:

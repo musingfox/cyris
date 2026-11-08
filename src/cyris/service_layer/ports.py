@@ -65,10 +65,10 @@ class ArticleRepository(Protocol):
     """Persistence boundary for the article store.
 
     Every method a caller actually uses belongs here, not just the ones the
-    digest run touches: `ArticleStore` and `D1ArticleStore` both satisfy this
-    structurally, and a replacement that covers less used to fail at the CLI or
-    the triage UI rather than at import — there is no type checker here to say
-    otherwise. `tests/test_protocol_conformance.py` is where it fails now.
+    digest run touches: `D1ArticleStore` satisfies this structurally, and a
+    replacement that covers less used to fail at the CLI or the triage UI rather
+    than at import — there is no type checker here to say otherwise.
+    `tests/test_protocol_conformance.py` is where it fails now.
     """
 
     def save(self, articles: list[Article], now: datetime | None = None): ...
@@ -134,7 +134,7 @@ class TopicRepository(Protocol):
     """Persistence boundary for topics, their members and tags, and the votes on them.
 
     Beside `ArticleRepository` rather than in it: a topic is not article state, and
-    both backends keep it apart from their articles (D1 tables, a json file).
+    the store keeps it apart from its articles, in tables of its own.
     """
 
     def save_topics(

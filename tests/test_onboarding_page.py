@@ -101,7 +101,7 @@ def _server(
     settings: FakeSettings | None = None,
     store: FakeSourceStore | None = None,
 ) -> TriageServer:
-    """A deployment whose `sources` table is `table`, or one with no table at all (`json`)."""
+    """A deployment whose `sources` table is `table`, or a partial server with no table at all."""
     return TriageServer(
         settings=settings,
         source_store=store or (None if table is None else FakeSourceStore(table)),
@@ -173,8 +173,8 @@ class TestWhoSeesTheWizard:
         assert (await client.get("/settings")).status == 200
 
     @pytest.mark.parametrize("path", ["/onboarding", "/settings"])
-    async def test_a_json_deployment_never_sees_the_wizard(self, serve, path: str) -> None:
-        """No writable table is a `json` deployment: its sources live in a file nothing writes."""
+    async def test_a_partial_server_never_sees_the_wizard(self, serve, path: str) -> None:
+        """With no writable table the wizard has nothing to write."""
         client = await serve(_server(table=None))
 
         response = await client.get(path, allow_redirects=False)
@@ -692,7 +692,7 @@ class TestThePickSourcesStep:
 
         assert await response.json() == {"awaiting": False, "topics": [], "feeds": []}
 
-    async def test_a_json_deployment_is_offered_no_list(self, serve) -> None:
+    async def test_a_partial_server_is_offered_no_list(self, serve) -> None:
         client = await serve(_server(table=None))
 
         response = await client.get("/api/onboarding/feeds")

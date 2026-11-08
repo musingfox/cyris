@@ -1,7 +1,7 @@
 """Tracked topics in D1, written row by row from /settings.
 
-A D1 deployment's only list; `cyris.toml` holds a `json` deployment's. An empty
-table is a deployment that tracks nothing, never a missing setting.
+A deployment's only list. An empty table is a deployment that tracks nothing, never
+a missing setting.
 """
 
 from __future__ import annotations

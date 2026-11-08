@@ -48,10 +48,6 @@ def test_an_image_built_without_a_sha_records_an_empty_one(tmp_path: Path, monke
     assert db.query("SELECT build_sha FROM digest_runs").rows == [{"build_sha": ""}]
 
 
-def test_a_json_backend_records_no_run(tmp_path: Path) -> None:
-    assert bootstrap.build_deps(_json_config(tmp_path)).record_run is None
-
-
 def test_a_d1_deployment_stores_its_digest_in_its_own_d1(tmp_path: Path, db) -> None:
     content = DigestContent(
         date="2026-09-24",
@@ -69,13 +65,10 @@ def test_a_d1_deployment_stores_its_digest_in_its_own_d1(tmp_path: Path, db) -> 
     ]
 
 
-def test_a_json_backend_has_no_digest_store(tmp_path: Path) -> None:
-    assert bootstrap.build_deps(_json_config(tmp_path)).digest_store is None
-
-
-def _json_config(tmp_path: Path) -> Config:
+def _sqlite_config(tmp_path: Path) -> Config:
     return make_config(
-        agent_vault=AgentVaultConfig(path=tmp_path / "vault"), store={"backend": "json"}
+        agent_vault=AgentVaultConfig(path=tmp_path / "vault"),
+        store={"backend": "sqlite", "sqlite_path": str(tmp_path / "state" / "cyris.sqlite3")},
     )
 
 
@@ -116,7 +109,7 @@ async def test_failure_mail_uses_the_account_token_not_the_ai_or_embedding_ones(
         )
     )
 
-    await bootstrap.build_deps(_json_config(tmp_path)).send_email_alert(
+    await bootstrap.build_deps(_sqlite_config(tmp_path)).send_email_alert(
         "me@example.org", "d@example.org", "S", "B"
     )
 
@@ -129,7 +122,7 @@ def test_failure_mail_is_unbound_without_the_api_token(
 ) -> None:
     _alert_mail_env(monkeypatch, account="acct-alert")
 
-    assert bootstrap.build_deps(_json_config(tmp_path)).send_email_alert is None
+    assert bootstrap.build_deps(_sqlite_config(tmp_path)).send_email_alert is None
 
 
 def test_failure_mail_is_unbound_without_the_account_id(
@@ -137,7 +130,7 @@ def test_failure_mail_is_unbound_without_the_account_id(
 ) -> None:
     _alert_mail_env(monkeypatch, token="tok-alert")
 
-    assert bootstrap.build_deps(_json_config(tmp_path)).send_email_alert is None
+    assert bootstrap.build_deps(_sqlite_config(tmp_path)).send_email_alert is None
 
 
 def test_failure_mail_is_one_field_and_ports_gain_no_sender_list() -> None:
@@ -168,5 +161,5 @@ def test_a_d1_deployment_records_the_similarity_pool_under_its_embedding_model(
     ]
 
 
-def test_a_json_backend_records_no_similarity_pool(tmp_path: Path) -> None:
-    assert bootstrap.build_deps(_json_config(tmp_path)).record_similarity is None
+def test_a_sqlite_install_records_its_similarity_pool(tmp_path: Path) -> None:
+    assert bootstrap.build_deps(_sqlite_config(tmp_path)).record_similarity is not None

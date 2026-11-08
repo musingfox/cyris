@@ -52,12 +52,8 @@ def _article() -> Article:
     )
 
 
-def _config(tmp_path: Path, *, d1: bool = True, promote: bool = False):
-    store = (
-        StoreConfig(backend="d1", database_id="db-ID-1", account_id="acct", api_token="tok")
-        if d1
-        else StoreConfig(backend="json")
-    )
+def _config(tmp_path: Path, *, promote: bool = False):
+    store = StoreConfig(backend="d1", database_id="db-ID-1", account_id="acct", api_token="tok")
     overrides = (
         {"promote": PromoteConfig(worker_url="https://promote.test", token="promote-tok")}
         if promote
@@ -197,18 +193,6 @@ def test_malformed_date_period_or_mode_is_a_usage_error(tmp_path: Path, wire) ->
     ]
 
     assert [r.exit_code for r in results] == [2, 2, 2, 2]
-
-
-def test_a_json_store_is_refused_by_name(tmp_path: Path, wire) -> None:
-    cfg = _config(tmp_path, d1=False)
-    wire(cfg)
-    out = tmp_path / "out.html"
-
-    result = _run(tmp_path, "2026-10-14", "evening", "--mode", "rerender", "--output", str(out))
-
-    assert result.exit_code == 1
-    assert "json" in result.stderr
-    assert not out.exists()
 
 
 def test_an_unknown_issue_names_itself(tmp_path: Path, wire) -> None:

@@ -1,7 +1,7 @@
 """The blind-label sample in D1: the filter pool it is drawn from, and each answer.
 
-D1 only, and outside `ArticleRepository`: a `json` deployment has no sample to
-keep, and every implementation of that Protocol would otherwise owe these reads.
+Outside `ArticleRepository`: a sample is not article state, and every implementation
+of that Protocol would otherwise owe these reads.
 """
 
 from __future__ import annotations

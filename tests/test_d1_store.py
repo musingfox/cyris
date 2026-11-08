@@ -7,7 +7,6 @@ import pytest
 from fakes import CompoundSelectLimitedD1, SqliteD1, insert_stored, make_config
 
 from cyris.adapters.output.usage_log import append_usage_d1
-from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.d1 import D1Client, D1Error, chunk_rows
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.bootstrap import build_store
@@ -179,10 +178,6 @@ def _config(tmp_path: Path, **store_kwargs) -> Config:
 
 def test_build_store_defaults_to_the_sqlite_file(tmp_path: Path) -> None:
     assert isinstance(build_store(_config(tmp_path)), D1ArticleStore)
-
-
-def test_build_store_returns_the_local_files_when_json_is_selected(tmp_path: Path) -> None:
-    assert isinstance(build_store(_config(tmp_path, backend="json")), ArticleStore)
 
 
 def test_build_store_returns_d1_when_selected(tmp_path: Path) -> None:

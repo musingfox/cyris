@@ -65,6 +65,21 @@ def _test_settings(omit: Iterable[str], overrides: dict[str, Any]) -> dict[str, 
     return {key: value for key, value in values.items() if key not in omitted}
 
 
+def stored_settings(*, omit: Iterable[str] = (), **overrides: Any) -> dict[str, Any]:
+    """Every grade-D key but `omit`, keyed `table.field`, as the store's rows hold them."""
+    return _test_settings(omit, overrides)
+
+
+def load_files(config_path: Any, sources_path: Any, settings: dict[str, Any] | None = None):
+    """The Config the two files describe, its store holding `settings` and nothing else.
+
+    What `load_effective_config` builds, for a test about the files with no store to open.
+    """
+    from cyris.config import read_config_files, resolve_config
+
+    return resolve_config(read_config_files(config_path, sources_path), d1_settings=settings or {})
+
+
 def settings_toml(*, omit: Iterable[str] = (), **overrides: Any) -> str:
     """A cyris.toml body holding every grade-D key but `omit`, keyed `table.field`."""
     tables: dict[str, list[str]] = {}

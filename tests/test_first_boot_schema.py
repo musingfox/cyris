@@ -60,7 +60,7 @@ def test_the_settings_read_finds_its_table_on_first_boot(tmp_path, monkeypatch) 
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: db)
-    # `load_config` reads `sources` through a client of its own before this gets
+    # `load_effective_config` reads `sources` through a client of its own before this gets
     # anywhere near D1; unpatched, the suite posts a bearer token to Cloudflare.
     monkeypatch.setattr(d1_module, "D1Client", lambda **_kwargs: db)
 

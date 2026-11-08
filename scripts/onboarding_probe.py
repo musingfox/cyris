@@ -80,7 +80,7 @@ KINDS = (
     "empty-largest",
     "refuses-one",
     "has-sources",
-    "json",
+    "partial",
     "cards",
     "cards-largest",
     "cards-slow",
@@ -508,9 +508,9 @@ class Fixture:
     app: web.Application
     settings: FakeSettings | None
     calls: list[dict] = field(default_factory=list)
-    # Every source the table stored, in order; None on a `json` deployment.
+    # Every source the table stored, in order; None on a `partial` server.
     sources: FakeSourceStore | None = None
-    # The article rows the votes step wrote; None on a `json` deployment.
+    # The article rows the votes step wrote; None on a `partial` server.
     articles: FakeArticleStore | None = None
     # The period of each POST /run, in order.
     runs: list[str] = field(default_factory=list)
@@ -524,10 +524,9 @@ def build_fixture(kind: str) -> Fixture:
     `empty` has a writable, empty source table, which is what waiting for
     onboarding is; `empty-largest` is that page at the largest type size, and
     `refuses-one` is that table turning `REFUSED` down once. `has-sources` has
-    one source, so the wizard opens without the feed list, and `json` has no
-    writable table at all, which is a `backend = "json"` deployment: it has no
-    wizard. `cards` holds `CARDS_TABLE`, so the votes step deals `CARDS` and
-    names `QUIET`; `cards-largest` is it at the largest type size, and
+    one source, so the wizard opens without the feed list, and `partial` has no
+    writable table at all, so it has no wizard. `cards` holds `CARDS_TABLE`, so the votes
+    step deals `CARDS` and names `QUIET`; `cards-largest` is it at the largest type size, and
     `cards-slow` takes `SLOW_SECONDS` to read its feeds, as `own-feed-slow`
     takes them to check a pasted address. The `first-issue`
     ones hold `A_SOURCE` and a clock pinned at `BETWEEN`, and their runs end as
@@ -547,21 +546,21 @@ def build_fixture(kind: str) -> Fixture:
         table = dict(CARDS_TABLE)
     if kind.startswith("first-issue") or kind == "model-skipped":
         table = {A_SOURCE.name: A_SOURCE}
-    run_log = None if kind == "json" else FakeRunLog()
+    run_log = None if kind == "partial" else FakeRunLog()
     refuse = {REFUSED["name"]} if kind == "refuses-one" else set()
-    store = None if kind == "json" else FakeSourceStore(table, refuse)
-    articles = None if kind == "json" else FakeArticleStore()
+    store = None if kind == "partial" else FakeSourceStore(table, refuse)
+    articles = None if kind == "partial" else FakeArticleStore()
     edge = FakeRssEdge(SLOW_SECONDS if kind == "cards-slow" else 0)
     server = TriageServer(
         settings=settings,
         values=dict(FIXTURE_VALUES.get(kind, PROBE_VALUES)),
         source_store=store,
         article_store=articles,
-        onboarding_articles=None if kind == "json" else OnboardingArticles(edge),
+        onboarding_articles=None if kind == "partial" else OnboardingArticles(edge),
         feed_checker=None
-        if kind == "json"
+        if kind == "partial"
         else FeedChecker(FakeHttp(SLOW_SECONDS if kind == "own-feed-slow" else 0)),
-        digest_store=None if kind == "json" else FakeDigestStore(),
+        digest_store=None if kind == "partial" else FakeDigestStore(),
         run_log=run_log,
         clock=(lambda: EARLY) if kind == "first-issue-early" else (lambda: BETWEEN),
     )
@@ -3270,8 +3269,8 @@ _CHECKS: list[Check] = [
         sabotage="""$('.step[data-step="votes"]').hidden = true;""",
     ),
     Check(
-        id="json-has-no-wizard",
-        fixture="json",
+        id="partial-has-no-wizard",
+        fixture="partial",
         path=PAGE,
         act="""await waitFor(() => $(".settings-nav"), "the settings page");""",
         script="""

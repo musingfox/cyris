@@ -56,15 +56,3 @@ def test_a_d1_boot_loads_every_area_row(tmp_path: Path, monkeypatch) -> None:
     cfg = _load(tmp_path, "d1", monkeypatch, db)
 
     assert [(a.id, a.name, a.status) for a in cfg.areas] == [(1, "Tech", "active")]
-
-
-def test_a_json_boot_has_no_areas_and_reads_none(tmp_path: Path, monkeypatch) -> None:
-    class Forbidden:
-        def query(self, sql, params=None):
-            raise AssertionError(f"json boot sent D1 statement: {sql}")
-
-    monkeypatch.setattr("cyris.adapters.store.d1.D1Client", lambda **_: Forbidden())
-
-    cfg = _load(tmp_path, "json", monkeypatch)
-
-    assert cfg.areas == []

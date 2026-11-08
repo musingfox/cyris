@@ -1358,7 +1358,7 @@ EXPECTED_ONBOARDING_IDS = {
     "votes-step-with-no-feed-says-so",
     "has-sources-opens-the-wizard-without-the-list",
     "has-sources-keeps-the-step-a-reload-opens",
-    "json-has-no-wizard",
+    "partial-has-no-wizard",
     "fits-375",
     "fits-largest-375",
     "fits-sources-375",
@@ -1450,7 +1450,7 @@ async def test_the_onboarding_probe_serves_the_real_wizard_and_its_script():
     ("kind", "path", "location"),
     [
         ("empty", "/settings", "/onboarding"),
-        ("json", "/onboarding", "/settings"),
+        ("partial", "/onboarding", "/settings"),
     ],
 )
 async def test_the_onboarding_probe_fixtures_redirect_as_the_container_does(

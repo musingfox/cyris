@@ -1,11 +1,8 @@
-"""D1-backed ArticleStore: the same 13 methods, one SQL query each — except `save`,
-which reads before it writes when the batch holds newsletter issues.
+"""ArticleRepository over D1: one SQL query per method — except `save`, which reads
+before it writes when the batch holds newsletter issues.
 
-Behaviour matches `ArticleStore` with one deliberate difference: dedup (URL, plus
-the `newsletter_dedup` re-key) is across the whole table, not across the last 8
-days of partitions. The window in
-the JSON store is a scan-cost optimisation, not a rule — a URL primary key does
-what it was approximating, and does it exactly.
+Dedup (URL, plus the `newsletter_dedup` re-key) is across the whole table: a URL
+primary key has no horizon.
 """
 
 from __future__ import annotations
@@ -59,11 +56,10 @@ _SORT_EXPRESSIONS = {
     "first_seen_at": "first_seen_at {dir}",
     "published_at": "published_at {dir}",
     "title": "title {dir}",
-    # `IS NULL ASC` is not a typo: unscored articles sort last in both
-    # directions, which is what the JSON store's ±inf sort key does.
+    # `IS NULL ASC` is not a typo: unscored articles sort last in both directions.
     "score": "score IS NULL ASC, score {dir}",
-    # Chinese first, built from LANGUAGE_SORT_ORDER so it cannot drift from the
-    # JSON store's key function.
+    # Chinese first, built from LANGUAGE_SORT_ORDER so it cannot drift from
+    # `language_sort_key`.
     "language": f"CASE language {_LANGUAGE_CASE} ELSE {len(LANGUAGE_SORT_ORDER)} END {{dir}}",
 }
 
@@ -266,7 +262,7 @@ class D1ArticleStore:
     def update_scores(
         self, url_to_score_lang: dict[str, tuple[float, str]], scan_days: int = 30
     ) -> int:
-        """Write scores back. `scan_days` is ignored — SQL has no partitions to scan."""
+        """Write scores back. `scan_days` is ignored — one SQL statement reaches every row."""
         del scan_days
         if not url_to_score_lang:
             return 0

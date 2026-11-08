@@ -288,11 +288,11 @@ class TestContainerRoleDefaultsToD1Store:
         recorded = _recorded_env(tmp_path, role="run", stub="cyris")
         assert recorded["CYRIS_STORE_BACKEND"] == "d1"
 
-    def test_run_keeps_preset_json_store(self, tmp_path: Path) -> None:
+    def test_run_keeps_preset_sqlite_store(self, tmp_path: Path) -> None:
         recorded = _recorded_env(
-            tmp_path, role="run", stub="cyris", extra_env={"CYRIS_STORE_BACKEND": "json"}
+            tmp_path, role="run", stub="cyris", extra_env={"CYRIS_STORE_BACKEND": "sqlite"}
         )
-        assert recorded["CYRIS_STORE_BACKEND"] == "json"
+        assert recorded["CYRIS_STORE_BACKEND"] == "sqlite"
 
     def test_ui_defaults_store_to_d1(self, tmp_path: Path) -> None:
         recorded = _recorded_env(tmp_path, role="ui", stub="cyris")

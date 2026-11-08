@@ -444,7 +444,6 @@ def _triage_ui_kwargs(tmp_path: Path, monkeypatch, d1) -> dict:
     config_path.write_text(
         f'[general]\ntimezone = "Asia/Taipei"\n\n[llm_provider]\napi_key = "test"\n'
         f'model = "test"\n\n[agent_vault]\npath = "{tmp_path / "agent-vault"}"\n'
-        + ("" if d1 else '\n[store]\nbackend = "json"\n')
     )
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text("sources: []")
@@ -474,12 +473,6 @@ def test_triage_ui_on_d1_reads_titles_from_d1(tmp_path: Path, monkeypatch) -> No
     kwargs = _triage_ui_kwargs(tmp_path, monkeypatch, SqliteD1())
 
     assert isinstance(kwargs["source_titles"], D1SourceTitles)
-
-
-def test_triage_ui_without_d1_has_no_title_reader(tmp_path: Path, monkeypatch) -> None:
-    kwargs = _triage_ui_kwargs(tmp_path, monkeypatch, None)
-
-    assert kwargs["source_titles"] is None
 
 
 async def test_the_propose_prompt_lists_active_then_proposed_areas_and_no_others(

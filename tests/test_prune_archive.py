@@ -206,7 +206,7 @@ def test_an_unknown_period_or_impossible_date_is_a_usage_error(world, slug):
 @pytest.mark.parametrize(
     "cfg_kwargs, named",
     [
-        ({"backend": "json"}, "d1"),
+        ({"backend": "sqlite"}, "d1"),
         ({"publish": False}, "Publishing is disabled"),
         ({"html": False}, "HTML output is disabled"),
         ({"pages_project": ""}, "pages_project"),
@@ -224,7 +224,7 @@ def test_a_config_that_cannot_prune_writes_nothing(world, capsys, cfg_kwargs, na
 
 def test_the_configuration_is_read_from_the_given_paths(world, monkeypatch, capsys):
     received = []
-    world.config = _cfg(backend="json")
+    world.config = _cfg(backend="sqlite")
     monkeypatch.setattr(
         prune,
         "load_effective_config",

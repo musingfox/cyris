@@ -364,12 +364,6 @@ def regenerate(
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
-    if not cfg.app.store.is_sql:
-        typer.echo(
-            f"The store backend is {cfg.app.store.backend}; regenerate needs d1 or sqlite",
-            err=True,
-        )
-        raise typer.Exit(1)
     if not cfg.app.html_output.enabled:
         typer.echo("HTML output is disabled; regenerate needs [html_output] enabled", err=True)
         raise typer.Exit(1)
@@ -928,10 +922,15 @@ def doctor(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
+    from cyris.config import JsonStoreRemovedError
     from cyris.diagnostics.doctor import run_checks
 
     try:
         cfg = load_effective_config(config_path, sources_path, local_file="if_created")
+    except JsonStoreRemovedError as e:
+        # The line says what to delete, so the pointers below would only bury it.
+        typer.echo(f"✗ config — {e}")
+        raise typer.Exit(1) from e
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
         typer.echo(
@@ -1076,25 +1075,23 @@ def triage_ui(
             settings=build_settings(cfg),
             values={**cfg.present_settings(), **cfg.defaulted_settings()},
             sources=cfg.sources,
-            source_store=D1SourceStore(d1) if d1 else None,
-            feed_health=D1FeedHealth(d1) if d1 else None,
+            source_store=D1SourceStore(d1),
+            feed_health=D1FeedHealth(d1),
             tracked_topics=cfg.tracked_topics,
-            topic_store=D1TrackedTopicStore(d1) if d1 else None,
-            blind_labels=D1BlindLabels(d1) if d1 else None,
-            article_store=D1ArticleStore(d1) if d1 else None,
-            area_store=D1AreaStore(d1) if d1 else None,
-            source_titles=D1SourceTitles(d1) if d1 else None,
+            topic_store=D1TrackedTopicStore(d1),
+            blind_labels=D1BlindLabels(d1),
+            article_store=D1ArticleStore(d1),
+            area_store=D1AreaStore(d1),
+            source_titles=D1SourceTitles(d1),
             llm_factory=_llm_from_values,
-            onboarding_articles=build_onboarding_articles(cfg) if d1 else None,
-            feed_checker=build_feed_checker() if d1 else None,
-            digest_store=D1DigestStore(d1) if d1 else None,
-            run_log=D1RunLog(d1, "") if d1 else None,
-            interest_reader=D1InterestReader(d1).read if d1 else None,
+            onboarding_articles=build_onboarding_articles(cfg),
+            feed_checker=build_feed_checker(),
+            digest_store=D1DigestStore(d1),
+            run_log=D1RunLog(d1, ""),
+            interest_reader=D1InterestReader(d1).read,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
-            # Only a SQL store has the wizard this route serves. On json a run started
-            # here would write beside the scheduler's, which has no lock.
-            start_run=partial(_start_detached_run, config_path, sources_path) if d1 else None,
+            start_run=partial(_start_detached_run, config_path, sources_path),
         )
         await server.start()
         typer.echo(f"Archive:   http://{host}:{port}/")
@@ -1358,13 +1355,10 @@ def articles_score(
     store = build_store(cfg, d1)
 
     # Same wiring as run_digest: the prompt asks for tags on every call, so
-    # persist them when D1 is available instead of paying for them and
-    # discarding them. JSON-only deployments keep the current behavior.
-    tag_store = None
-    if d1 is not None:
-        from cyris.adapters.store.tags import D1TagStore
+    # persist them instead of paying for them and discarding them.
+    from cyris.adapters.store.tags import D1TagStore
 
-        tag_store = D1TagStore(d1)
+    tag_store = D1TagStore(d1)
 
     # Get articles to score
     if force:
@@ -1391,14 +1385,11 @@ def articles_score(
             nonlocal total_updated
             total_updated += store.update_scores(url_to_score_lang)
 
-        persist_tags = None
-        if tag_store is not None:
-
-            def persist_tags(url_to_tags) -> None:
-                try:
-                    tag_store.save(url_to_tags)
-                except Exception as e:
-                    logger.warning("Failed to persist scoring tags: %s", e)
+        def persist_tags(url_to_tags) -> None:
+            try:
+                tag_store.save(url_to_tags)
+            except Exception as e:
+                logger.warning("Failed to persist scoring tags: %s", e)
 
         catalog = AreaCatalog(cfg.areas)
         total_usage, picks = await score_in_batches(
@@ -1410,13 +1401,12 @@ def articles_score(
             persist_tags=persist_tags,
             area_names=catalog.names(),
         )
-        if d1 is not None:
-            try:
-                counts = proposal_counts(picks, catalog)
-                if counts:
-                    D1AreaStore(d1).record_proposals(counts, None)
-            except Exception as e:
-                logger.warning("Recording area proposals failed: %s", type(e).__name__)
+        try:
+            counts = proposal_counts(picks, catalog)
+            if counts:
+                D1AreaStore(d1).record_proposals(counts, None)
+        except Exception as e:
+            logger.warning("Recording area proposals failed: %s", type(e).__name__)
 
         cost = total_usage.estimated_cost
         typer.echo(
@@ -1433,7 +1423,7 @@ app.add_typer(labels_app, name="labels")
 
 
 def _blind_labels(config_path: Path, sources_path: Path):
-    """The D1 blind-label store, or exit naming why there is none."""
+    """The blind-label store, or exit naming why it cannot be opened."""
     from cyris.adapters.store.blind_labels import D1BlindLabels
     from cyris.bootstrap import build_d1_client, load_effective_config
 
@@ -1443,12 +1433,6 @@ def _blind_labels(config_path: Path, sources_path: Path):
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"Configuration error: {e}")
         raise typer.Exit(1) from e
-    if d1 is None:
-        typer.echo(
-            'Blind labels live in the SQL store: set [store] backend = "sqlite" on a local '
-            'install, or "d1" on Cloudflare.'
-        )
-        raise typer.Exit(1)
     return cfg, D1BlindLabels(d1)
 
 

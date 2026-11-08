@@ -1,7 +1,6 @@
 """Reader-facing areas in D1, written from /settings.
 
-A D1 deployment's only list of areas; a `json` deployment has none, so the run places
-nothing and records nothing there.
+A deployment's only list of areas.
 """
 
 from __future__ import annotations

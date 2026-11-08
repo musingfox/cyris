@@ -69,9 +69,9 @@ def _server(
     issues: list | None = None,
     run_log=None,
     values: dict | None = None,
-    json_backend: bool = False,
+    partial: bool = False,
 ) -> TriageServer:
-    if json_backend:
+    if partial:
         return TriageServer(values=VALUES, clock=lambda: at)
     return TriageServer(
         values=VALUES if values is None else values,
@@ -163,8 +163,8 @@ async def test_an_empty_table_is_counted_as_no_source() -> None:
     assert body["sources"] == 0
 
 
-async def test_a_json_deployment_has_no_run_log_to_wait_on() -> None:
-    status, body = await _get(_server(at=_local(10), json_backend=True))
+async def test_a_partial_server_has_no_run_log_to_wait_on() -> None:
+    status, body = await _get(_server(at=_local(10), partial=True))
 
     assert status == 409
     assert body["ok"] is False

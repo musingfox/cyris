@@ -14,9 +14,8 @@ from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
 from cyris.adapters.notify import send_discord, send_discord_alert
 from cyris.adapters.openai_client import OpenAIClient
-from cyris.adapters.output.usage_log import append_usage, append_usage_d1
+from cyris.adapters.output.usage_log import append_usage_d1
 from cyris.adapters.promotions import SyncResult, sync_promotions
-from cyris.adapters.store import ArticleStore
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
 from cyris.domain.models import Article
@@ -226,10 +225,8 @@ def build_ask_clef() -> AskClef | None:
     return ClefClient(token, account_id).ask
 
 
-def build_d1_client(cfg: Config) -> Any | None:
-    """The D1 connection: Cloudflare's, the local SQLite file, or None for json."""
-    if not cfg.app.store.is_sql:
-        return None
+def build_d1_client(cfg: Config) -> Any:
+    """The D1 connection: Cloudflare's, or the local SQLite file."""
     if not cfg.app.store.is_cloudflare:
         from cyris.adapters.store.local_d1 import LocalD1Client
 
@@ -251,15 +248,11 @@ def build_d1_client(cfg: Config) -> Any | None:
     )
 
 
-def build_settings(cfg: Config, d1: Any | None = None) -> Any | None:
-    """The D1 settings store, or None when there is no D1 to read it from."""
-    d1 = d1 if d1 is not None else build_d1_client(cfg)
-    if d1 is None:
-        return None
-
+def build_settings(cfg: Config, d1: Any | None = None) -> Any:
+    """The settings store, on `d1` or on a client of its own."""
     from cyris.adapters.store.settings import D1Settings
 
-    return D1Settings(d1)
+    return D1Settings(d1 or build_d1_client(cfg))
 
 
 def load_effective_config(
@@ -270,10 +263,10 @@ def load_effective_config(
 ) -> Config:
     """The config a run actually uses, with grade-D settings from one home.
 
-    A json deployment reads them from cyris.toml; a D1 deployment from the D1
-    `settings` table alone, whatever the file says. Every entrypoint goes through
-    here, because a host run and a container run resolving settings differently
-    is the failure this exists to prevent — so a D1 read error propagates.
+    They come from the store's `settings` table alone, whatever the file says.
+    Every entrypoint goes through here, because a host run and a container run
+    resolving settings differently is the failure this exists to prevent — so a D1
+    read error propagates.
 
     `local_file` says what happens to a `sqlite` install's file. The server, the
     wizard and a run open it, which creates it on first use. A command that only
@@ -290,8 +283,6 @@ def load_effective_config(
     # Grade-D keys from nowhere yet: this pass only has to know the store, and
     # must not fail on file values a D1 deployment is about to ignore.
     cfg = resolve_config(raw, d1_settings={})
-    if not cfg.app.store.is_sql:
-        return resolve_config(raw)
     if cfg.app.store.backend == "sqlite" and (
         local_file == "never" or (local_file == "if_created" and cfg.app.store.sqlite_not_created)
     ):
@@ -305,7 +296,7 @@ def load_effective_config(
     # any check could name the cause. Idempotent, one POST.
     apply_schema(d1)
     cfg = resolve_config(raw, d1_settings=settings.all())
-    # The table alone, empty included: sources.yaml is not a D1 deployment's list.
+    # The table alone, empty included: sources.yaml is not a run's list.
     cfg.sources = D1SourceStore(d1).list_sources()
     cfg.tracked_topics = D1TrackedTopicStore(d1).list_topics()
     cfg.areas = D1AreaStore(d1).list_areas()
@@ -313,27 +304,17 @@ def load_effective_config(
 
 
 def build_store(cfg: Config, d1: Any | None = None) -> ArticleRepository:
-    """The article store, JSON files or D1 depending on `[store] backend`."""
-    d1 = d1 or build_d1_client(cfg)
-    if d1 is None:
-        return ArticleStore(cfg.app.agent_vault.path)
-
+    """The article store, on `d1` or on a client of its own."""
     from cyris.adapters.store.d1_store import D1ArticleStore
 
-    return D1ArticleStore(d1)
+    return D1ArticleStore(d1 or build_d1_client(cfg))
 
 
 def build_topic_store(cfg: Config, d1: Any | None = None) -> TopicRepository:
-    """Where topics and topic votes live: D1 tables, else `topics.json` in the vault."""
-    d1 = d1 or build_d1_client(cfg)
-    if d1 is None:
-        from cyris.adapters.store.json_topics import JsonTopicStore
-
-        return JsonTopicStore(cfg.app.agent_vault.path)
-
+    """Where topics and topic votes live, on `d1` or on a client of its own."""
     from cyris.adapters.store.topics import D1TopicStore
 
-    return D1TopicStore(d1)
+    return D1TopicStore(d1 or build_d1_client(cfg))
 
 
 @dataclass(frozen=True)
@@ -367,21 +348,18 @@ class Deps:
     # other model is skipped.
     embedding_model: str = ""
     # The reader's areas: where a run's and an articles score's suggestions are counted.
-    # None under json, which keeps no areas.
     area_store: Any | None = None
-    # Takes the final `run_summary` dict; None under json, where no run row is kept.
+    # Takes the final `run_summary` dict.
     record_run: Callable[[dict], None] | None = None
-    # Takes (run_at, period, verdicts) after a vote-similarity pass that embedded;
-    # None under json, which keeps no copy.
+    # Takes (run_at, period, verdicts) after a vote-similarity pass that embedded.
     record_similarity: Callable[..., None] | None = None
-    # The holds a run honours and records: D1Suppressions. None under json, which keeps none.
+    # The holds a run honours and records: D1Suppressions.
     suppressions: Any | None = None
-    # `{(date, period): articles_included}` for the archive's history rows; D1 only,
-    # so the json path's rows show no count.
+    # `{(date, period): articles_included}` for the archive's history rows.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
-    # Keeps each issue's final content in D1; None under json, whose pages are the record.
+    # Keeps each issue's final content in D1.
     digest_store: Any | None = None
-    # Each publishing run's input URLs, the record a rerun rebuilds from; D1 only.
+    # Each publishing run's input URLs, the record a rerun rebuilds from.
     digest_input_store: Any | None = None
     # The app Worker's custom domains, for the digest link when none is configured;
     # None where the Worker is unknown, as in a compose install.
@@ -411,8 +389,8 @@ def build_promotion_sync(
     """The vote pull bound to `store`, or None when no vote Worker is configured.
 
     Reads no runtime setting, so `promote-sync` can call it on an empty D1. With
-    no `store` it builds one, and only once a Worker is configured: the json
-    store creates its directory.
+    no `store` it builds one, and only once a Worker is configured: a SQLite store
+    creates its file.
     """
     promote = cfg.app.promote
     if not (promote.worker_url and promote.token):
@@ -483,46 +461,20 @@ def build_deps(
     sources that do not consume — which is a wiring decision, and this is where
     every other one lives.
     """
-    # Spend is logged beside the articles: the same D1 when D1 is on, else usage.jsonl.
+    from cyris.adapters.store.archive_meta import D1ArchiveMeta
+    from cyris.adapters.store.areas import D1AreaStore
+    from cyris.adapters.store.digest_inputs import D1DigestInputStore
+    from cyris.adapters.store.digests import D1DigestStore
+    from cyris.adapters.store.runs import D1RunLog
+    from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
+    from cyris.adapters.store.stories import D1StoryStore
+    from cyris.adapters.store.suppressions import D1Suppressions
+    from cyris.adapters.store.tags import D1TagStore
+
+    # Spend is logged beside the articles, in the same database.
     d1 = build_d1_client(cfg)
     store = build_store(cfg, d1)
-    log_usage = (
-        partial(append_usage_d1, client=d1)
-        if d1
-        else partial(append_usage, log_path=cfg.app.agent_vault.path / "usage.jsonl")
-    )
-    tag_store = None
-    story_store = None
-    area_store = None
-    record_run = None
-    record_similarity = None
-    suppressions = None
-    digest_store = None
-    digest_input_store = None
-    archive_counts: Callable[[], dict[tuple[str, str], int]] = dict
-    if d1 is not None:
-        from cyris.adapters.store.archive_meta import D1ArchiveMeta
-        from cyris.adapters.store.areas import D1AreaStore
-        from cyris.adapters.store.digest_inputs import D1DigestInputStore
-        from cyris.adapters.store.digests import D1DigestStore
-        from cyris.adapters.store.runs import D1RunLog
-        from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
-        from cyris.adapters.store.stories import D1StoryStore
-        from cyris.adapters.store.suppressions import D1Suppressions
-        from cyris.adapters.store.tags import D1TagStore
-
-        tag_store = D1TagStore(d1)
-        story_store = D1StoryStore(d1)
-        record_run = D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record
-        vote = cfg.app.vote_similarity
-        suppressions = D1Suppressions(d1, embedding_model(vote.provider, vote.model))
-        record_similarity = D1SimilarityShadow(
-            d1, embedding_model(vote.provider, vote.model)
-        ).record
-        archive_counts = D1ArchiveMeta(d1).article_counts
-        digest_store = D1DigestStore(d1)
-        digest_input_store = D1DigestInputStore(d1)
-        area_store = D1AreaStore(d1)
+    vote = cfg.app.vote_similarity
 
     fetch_sources: list[FetchSource] = []
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
@@ -539,7 +491,6 @@ def build_deps(
     fetch_sources.append(build_rss_source(cfg))
 
     html_writer = None
-    publish = None
     publish_site = None
     page_serves = None
     site_filenames: Callable[[], list[str]] = list
@@ -548,31 +499,22 @@ def build_deps(
 
         html_writer = HtmlDigestWriter(Path(cfg.app.html_output.output_dir))
         if cfg.app.promote.publish_enabled:
+            # The site's file list lives in D1, so the archive does not have
+            # to live on this machine.
+            from cyris.adapters.output.pages_manifest import D1PagesManifest
+            from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
             from cyris.adapters.output.publish import page_serves as _serves
-            from cyris.adapters.output.publish import publish_html_digest
             from cyris.adapters.output.publish import publish_site as _site
 
-            if d1 is not None:
-                # The site's file list lives in D1, so the archive does not have
-                # to live on this machine. Local files are the no-D1 fallback.
-                from cyris.adapters.output.pages_manifest import D1PagesManifest
-                from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
-
-                manifest = D1PagesManifest(d1)
-                publish_site = partial(
-                    _site,
-                    manifest_store=manifest,
-                    pages_project=cfg.app.promote.pages_project,
-                    receipt_store=D1PagesDeployReceipt(d1),
-                )
-                page_serves = partial(_serves, cfg.app.promote.pages_project)
-                site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
-            else:
-                publish = partial(
-                    publish_html_digest,
-                    Path(cfg.app.html_output.output_dir),
-                    cfg.app.promote.pages_project,
-                )
+            manifest = D1PagesManifest(d1)
+            publish_site = partial(
+                _site,
+                manifest_store=manifest,
+                pages_project=cfg.app.promote.pages_project,
+                receipt_store=D1PagesDeployReceipt(d1),
+            )
+            page_serves = partial(_serves, cfg.app.promote.pages_project)
+            site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
 
     topic_store = build_topic_store(cfg, d1)
     sync = None if dry_run else build_promotion_sync(cfg, store, topic_store)
@@ -589,27 +531,27 @@ def build_deps(
         llm=build_llm(cfg.app.llm_provider),
         fetch_sources=fetch_sources,
         html_writer=html_writer,
-        publish=publish,
+        publish=None,
         publish_site=publish_site,
         page_serves=page_serves,
         site_filenames=site_filenames,
         sync_promotions=sync,
-        log_usage=log_usage,
-        tag_store=tag_store,
-        story_store=story_store,
+        log_usage=partial(append_usage_d1, client=d1),
+        tag_store=D1TagStore(d1),
+        story_store=D1StoryStore(d1),
         topic_store=topic_store,
         on_progress=on_progress or (lambda _msg: None),
         embedder=build_embedder(cfg),
         embedding_model=embedding_model(
             cfg.app.vote_similarity.provider, cfg.app.vote_similarity.model
         ),
-        area_store=area_store,
-        record_run=record_run,
-        record_similarity=record_similarity,
-        suppressions=suppressions,
-        archive_counts=archive_counts,
-        digest_store=digest_store,
-        digest_input_store=digest_input_store,
+        area_store=D1AreaStore(d1),
+        record_run=D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record,
+        record_similarity=D1SimilarityShadow(d1, embedding_model(vote.provider, vote.model)).record,
+        suppressions=D1Suppressions(d1, embedding_model(vote.provider, vote.model)),
+        archive_counts=D1ArchiveMeta(d1).article_counts,
+        digest_store=D1DigestStore(d1),
+        digest_input_store=D1DigestInputStore(d1),
         worker_domains=build_worker_domains(),
         send_email=build_send_email(),
         send_email_alert=build_send_email_alert(),

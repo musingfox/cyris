@@ -1,9 +1,7 @@
-"""Usage log writer — appends each digest run's LLM stats to a JSONL file."""
+"""Usage log writer — appends each digest run's LLM stats to the `usage_log` table."""
 
-import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 
 from cyris.adapters.store.d1 import D1Queryable
 from cyris.domain.models import DigestContent
@@ -12,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def usage_record(content: DigestContent) -> dict:
-    """The one record a run's usage is, as `usage.jsonl` keeps it and D1 is given it."""
+    """The one record a run's usage is."""
     return {
         "timestamp": datetime.now(tz=UTC).isoformat(),
         "date": content.date,
@@ -30,25 +28,6 @@ def usage_record(content: DigestContent) -> dict:
             round(cost, 6) if (cost := content.usage.estimated_cost) is not None else None
         ),
     }
-
-
-def append_usage(content: DigestContent, log_path: Path) -> None:
-    """Append a usage record to the JSONL log file.
-
-    Args:
-        content: Digest content with usage stats.
-        log_path: Path to the usage.jsonl file.
-    """
-    if content.usage.api_calls == 0:
-        return
-
-    record = usage_record(content)
-
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_path, "a") as f:
-        f.write(json.dumps(record) + "\n")
-
-    logger.info("Usage logged to %s", log_path)
 
 
 def _usage_row(record: dict) -> tuple[list[str], list]:
@@ -86,7 +65,7 @@ def _usage_row(record: dict) -> tuple[list[str], list]:
 
 
 def append_usage_d1(content: DigestContent, client: D1Queryable) -> None:
-    """Append the same record to D1 instead of a local file."""
+    """Append the run's record to `usage_log`."""
     if content.usage.api_calls == 0:
         return
 

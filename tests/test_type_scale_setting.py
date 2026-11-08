@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from fakes import SqliteD1, settings_toml
+from fakes import SqliteD1, seed_d1_settings
 from typer.testing import CliRunner
 
 from cyris.adapters.store.settings import D1Settings
@@ -32,8 +32,10 @@ def test_no_value_is_refused_as_required() -> None:
         validate_setting(KEY, None)
 
 
-def test_run_stops_naming_it_when_cyris_toml_lacks_it(tmp_path: Path, caplog, monkeypatch) -> None:
-    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+def test_run_stops_naming_it_when_the_store_lacks_it(
+    tmp_path: Path, d1: SqliteD1, caplog, monkeypatch
+) -> None:
+    seed_d1_settings(d1, omit=[KEY])
     built: list[object] = []
 
     def fake_build_deps(cfg, *args, **kwargs):
@@ -42,11 +44,8 @@ def test_run_stops_naming_it_when_cyris_toml_lacks_it(tmp_path: Path, caplog, mo
 
     monkeypatch.setattr("cyris.bootstrap.build_deps", fake_build_deps)
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text(
-        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n\n' + settings_toml(omit=[KEY])
-    )
+    config_path.write_text(f'[agent_vault]\npath = "{tmp_path / "vault"}"\n')
     sources_path = tmp_path / "sources.yaml"
-    sources_path.write_text('sources:\n  - name: "Feed"\n    url: "https://a.test/feed"\n')
 
     result = runner.invoke(
         app, ["run", "--config", str(config_path), "--sources", str(sources_path)]

@@ -1,4 +1,4 @@
-"""A `json` deployment's refusals of the SQL-store features name both SQL backends.
+"""A partial server's refusals of the SQL-store features name both SQL backends.
 
 Blind labels, the interest map and the source, topic and area tables live in the
 D1 tables, which a local install keeps in a SQLite file. A refusal that names only
@@ -9,33 +9,15 @@ import json
 
 import pytest
 from aiohttp.test_utils import make_mocked_request
-from typer.testing import CliRunner
 
-from cyris.entrypoints.cli import app
 from cyris.entrypoints.triage_server import TriageServer
 
-pytestmark = pytest.mark.integration
+pytestmark = pytest.mark.unit
 
 
 def _names_both_sql_backends(text: str) -> None:
     assert '"sqlite"' in text, text
     assert '"d1"' in text, text
-
-
-def test_the_labels_command_names_sqlite(tmp_path, monkeypatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "cyris.toml").write_text('[store]\nbackend = "json"\n')
-    result = CliRunner().invoke(
-        app,
-        [
-            "labels", "draw", "--since", "2026-11-01T00:00:00+00:00", "--seed", "1",
-            "--config", str(tmp_path / "cyris.toml"),
-            "--sources", str(tmp_path / "sources.yaml"),
-        ],
-    )  # fmt: skip
-
-    assert result.exit_code == 1
-    _names_both_sql_backends(result.output)
 
 
 async def test_the_labels_api_names_sqlite() -> None:
