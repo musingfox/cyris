@@ -24,6 +24,7 @@ from pydantic import (
     Field,
     TypeAdapter,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -236,9 +237,10 @@ class StoreConfig(BaseModel):
     database_id: str = ""
     account_id: str = ""
     api_token: str = ""
-    # Relative to the working directory, as `[agent_vault] path` is. Never inside the
-    # vault: compose bind-mounts it, and a host process and a container on one SQLite
-    # file corrupt it (ADR-0025). AppConfig refuses such a path.
+    # Relative to the directory of cyris.toml, as `.env` is, and to the working directory
+    # with no file: `resolve_config` anchors it. Never inside the vault: compose bind-mounts
+    # it, and a host process and a container on one SQLite file corrupt it (ADR-0025).
+    # AppConfig refuses such a path.
     sqlite_path: Path = Path("state/cyris.sqlite3")
 
     @model_validator(mode="before")
@@ -423,6 +425,14 @@ class AppConfig(BaseModel):
     rss: RssConfig = Field(default_factory=RssConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
     vote_similarity: VoteSimilarityConfig | None
+
+    # Before the vault check below, which has to ask about the file that will be opened.
+    @model_validator(mode="after")
+    def anchor_sqlite_path(self, info: ValidationInfo) -> "AppConfig":
+        config_dir = (info.context or {}).get("config_dir")
+        if config_dir is not None:
+            self.store.sqlite_path = config_dir / self.store.sqlite_path
+        return self
 
     @model_validator(mode="after")
     def sqlite_file_outside_the_vault(self) -> "AppConfig":
@@ -673,6 +683,8 @@ class RawConfig:
     sources: dict[str, SourceConfig]
     config_file_found: bool
     dotenv_names: frozenset[str] = frozenset()
+    # Where a relative `[store] sqlite_path` starts: the file's directory. None with no file.
+    config_dir: Path | None = None
 
 
 def read_config_files(
@@ -717,6 +729,7 @@ def read_config_files(
         sources={s.name: s for s in sources_config.sources},
         config_file_found=config_file_found,
         dotenv_names=dotenv_names,
+        config_dir=config_path.parent if config_file_found else None,
     )
 
 
@@ -735,7 +748,8 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) ->
         settings_values, missing_settings = _stored_settings(d1_settings)
         tracked_topics = []
     app_config = AppConfig.model_validate(
-        _with_settings(raw.toml, settings_values, missing_settings)
+        _with_settings(raw.toml, settings_values, missing_settings),
+        context={"config_dir": raw.config_dir},
     )
     return Config(
         app=app_config,

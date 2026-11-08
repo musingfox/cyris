@@ -415,7 +415,8 @@ def test_store_diff_refuses_a_file_that_is_not_there_and_creates_none(
 
     assert result.exit_code == 1, result.output
     [line] = result.output.splitlines()
-    assert line.startswith("✗ No SQLite file at state/cyris.sqlite3"), line
+    path = install.parent / "state" / "cyris.sqlite3"
+    assert line.startswith(f"✗ No SQLite file at {path}"), line
     assert not (install.parent / "state").exists()
 
 
@@ -566,7 +567,7 @@ def test_an_unreadable_row_in_the_file_ends_the_move_on_one_line_before_any_writ
     assert result.exit_code == 1, result.output
     assert isinstance(result.exception, SystemExit), repr(result.exception)
     [line] = result.output.splitlines()
-    assert line.startswith(f"✗ {table} row {key!r} in state/cyris.sqlite3: "), line
+    assert line.startswith(f"✗ {table} row {key!r} in {path}: "), line
     assert _table_counts(path) == before
 
 

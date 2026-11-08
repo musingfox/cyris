@@ -335,6 +335,85 @@ class TestStoreBackendFromEnv:
         cfg = self._vault_config(vault, tmp_path / "agent-vault-state" / "x.sqlite3")
         assert cfg.app.store.sqlite_path == tmp_path / "agent-vault-state" / "x.sqlite3"
 
+    def test_a_relative_sqlite_path_in_the_file_starts_at_the_files_directory(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\nsqlite_path = "db/x.sqlite3"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "inst" / "db" / "x.sqlite3"
+
+    def test_a_relative_sqlite_path_from_the_environment_starts_there_too(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", "db/x.sqlite3")
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "inst" / "db" / "x.sqlite3"
+
+    def test_the_default_sqlite_path_starts_at_the_files_directory(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "inst" / "state" / "cyris.sqlite3"
+
+    def test_an_absolute_sqlite_path_is_kept(self, tmp_path):
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text(
+            f'[store]\nbackend = "sqlite"\nsqlite_path = "{tmp_path / "x.sqlite3"}"\n'
+        )
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
+
+    def test_with_no_config_file_a_relative_sqlite_path_starts_at_the_working_directory(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
+        monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", "db/x.sqlite3")
+
+        cfg = load_config(tmp_path / "inst" / "nope.toml", tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == Path("db/x.sqlite3")
+
+    def test_the_vault_path_still_starts_at_the_working_directory(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\n[agent_vault]\npath = "v"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.agent_vault.path == Path("v")
+
+    def test_the_vault_refusal_asks_about_the_anchored_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text(
+            f'[store]\nbackend = "sqlite"\nsqlite_path = "v/x.sqlite3"\n'
+            f'[agent_vault]\npath = "{tmp_path / "inst" / "v"}"\n'
+        )
+
+        with pytest.raises(ValueError, match="inside the agent vault"):
+            load_config(config_file, tmp_path / "nope.yaml")
+
     def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
         config_file = tmp_path / "cyris.toml"

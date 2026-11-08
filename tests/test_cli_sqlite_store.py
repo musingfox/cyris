@@ -81,3 +81,23 @@ def test_the_hint_names_the_sqlite_file_not_cloudflare(tmp_path, monkeypatch, co
     assert "[store] sqlite_path" in result.output
     for cloudflare in ("database_id", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
         assert cloudflare not in result.output
+
+
+def test_a_config_elsewhere_opens_the_file_beside_it_not_in_the_working_directory(
+    tmp_path, monkeypatch
+):
+    install = tmp_path / "inst"
+    install.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    config = install / "cyris.toml"
+    config.write_text('[store]\nbackend = "sqlite"\n')
+
+    result = runner.invoke(
+        app, ["ingest", "--config", str(config), "--sources", str(install / "sources.yaml")]
+    )
+
+    # The settings are not there yet, so the command stops; it has opened the store by then.
+    assert (install / "state" / "cyris.sqlite3").is_file(), result.output
+    assert not (elsewhere / "state").exists()

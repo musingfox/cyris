@@ -377,6 +377,6 @@ def test_doctor_names_the_sqlite_store_and_its_path_and_asks_cloudflare_nothing(
     out = install.doctor.stdout
     [line] = [line for line in out.splitlines() if "article store" in line]
     assert "article store (sqlite)" in line, out
-    assert f"at {harness.LOCAL_SQLITE_PATH}" in line, out
+    assert f"at {install.dir / harness.LOCAL_SQLITE_PATH}" in line, out
     # Nothing doctor did left this machine: no request reached the proxy while it ran.
     assert len(install.records) == install.records_before_doctor
