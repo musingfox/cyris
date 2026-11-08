@@ -243,8 +243,7 @@ class StoreConfig(BaseModel):
     a local install's home (ADR-0025). `d1` puts the same tables in Cloudflare D1,
     so a dead local machine loses nothing; `json` is local partition files under
     the agent vault, for an install that has not moved yet. Each is a whole home,
-    never overlaid on another (ADR-0003); diff json against d1 with `cyris store
-    diff` before switching.
+    never overlaid on another (ADR-0003).
     """
 
     backend: Literal["json", "d1", "sqlite"] = "sqlite"
@@ -462,28 +461,16 @@ class AppConfig(BaseModel):
 
     @model_validator(mode="after")
     def sqlite_file_outside_the_vault(self) -> "AppConfig":
-        if self.store.backend != "sqlite":
+        if self.store.backend != "sqlite" or not _within(
+            self.store.sqlite_path, self.agent_vault.path
+        ):
             return self
-        problem = sqlite_file_in_vault(self)
-        if problem:
-            raise ValueError(problem)
-        return self
-
-
-def sqlite_file_in_vault(app: AppConfig) -> str | None:
-    """Why `[store] sqlite_path` may not be used, or None when it may.
-
-    Asked by the load of a `sqlite` install, and by `cyris store migrate --to sqlite`,
-    which opens the file while the backend is still `json`.
-    """
-    if not _within(app.store.sqlite_path, app.agent_vault.path):
-        return None
-    return (
-        f"[store] sqlite_path {app.store.sqlite_path} is inside the agent vault "
-        f"{app.agent_vault.path}: docker compose bind-mounts the vault, and a host "
-        "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
-        "to a file outside the vault."
-    )
+        raise ValueError(
+            f"[store] sqlite_path {self.store.sqlite_path} is inside the agent vault "
+            f"{self.agent_vault.path}: docker compose bind-mounts the vault, and a host "
+            "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
+            "to a file outside the vault."
+        )
 
 
 def _within(path: Path, directory: Path) -> bool:

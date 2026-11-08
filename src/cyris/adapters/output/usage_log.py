@@ -85,22 +85,6 @@ def _usage_row(record: dict) -> tuple[list[str], list]:
     return columns, values
 
 
-def usage_log_row(record: dict) -> dict:
-    """The `usage_log` row one record becomes, every column, as the table then holds it."""
-    columns, values = _usage_row(record)
-    row = dict(zip(columns, values, strict=True))
-    row.setdefault("cost_usd", 0)  # the column's default, which an unpriced record leaves
-    return row
-
-
-def usage_rows_d1(client: D1Queryable) -> list[dict]:
-    """Every `usage_log` row as stored, for a migration to compare with."""
-    return client.query(
-        "SELECT logged_at, digest_date, period, articles_received, articles_included, model, "
-        "api_calls, input_tokens, output_tokens, cost_usd FROM usage_log"
-    ).rows
-
-
 def append_usage_d1(content: DigestContent, client: D1Queryable) -> None:
     """Append the same record to D1 instead of a local file."""
     if content.usage.api_calls == 0:
@@ -112,23 +96,3 @@ def append_usage_d1(content: DigestContent, client: D1Queryable) -> None:
         values,
     )
     logger.info("Usage logged to D1")
-
-
-def import_usage_d1(records: list[dict], client: D1Queryable) -> int:
-    """Copy `usage.jsonl` records into `usage_log`, each one at most once.
-
-    The table has no key, so a record counts as already there when a row holds its
-    run: the same stamp, issue and model. A run logs one record, stamped to the
-    microsecond, so that never merges two runs, and a second copy writes nothing.
-    """
-    written = 0
-    for record in records:
-        columns, values = _usage_row(record)
-        same_run = [record["timestamp"], record.get("date"), record.get("period")]
-        written += client.query(
-            f"INSERT INTO usage_log ({', '.join(columns)}) SELECT {', '.join('?' * len(values))} "
-            "WHERE NOT EXISTS (SELECT 1 FROM usage_log WHERE logged_at = ? "
-            "AND digest_date IS ? AND period IS ? AND model IS ?)",
-            [*values, *same_run, record.get("model")],
-        ).changes
-    return written

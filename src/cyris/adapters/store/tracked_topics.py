@@ -24,19 +24,16 @@ class D1TrackedTopicStore:
 
     def list_topics(self) -> list[TrackedTopic]:
         """Every valid topic, by name. A row that fails its rule is logged and left out."""
+        rows = self._db.query(
+            "SELECT name, description, threshold, model FROM tracked_topics ORDER BY name"
+        ).rows
         topics = []
-        for row in self.rows():
+        for row in rows:
             try:
                 topics.append(TrackedTopic.model_validate(row))
             except ValidationError as e:
                 logger.warning("Ignoring tracked topic %r: %s", row.get("name"), e)
         return topics
-
-    def rows(self) -> list[dict]:
-        """Every row as stored, valid or not, by name: what a writer must not overwrite."""
-        return self._db.query(
-            "SELECT name, description, threshold, model FROM tracked_topics ORDER BY name"
-        ).rows
 
     def upsert(self, topic: TrackedTopic) -> None:
         """Write one topic, creating or replacing the row `name` owns."""

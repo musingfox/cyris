@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from fakes import CompoundSelectLimitedD1, SqliteD1, make_config
+from fakes import CompoundSelectLimitedD1, SqliteD1, insert_stored, make_config
 
 from cyris.adapters.output.usage_log import append_usage_d1
 from cyris.adapters.store import ArticleStore
@@ -59,23 +59,16 @@ def test_dedup_is_not_limited_to_a_window(store: D1ArticleStore) -> None:
     assert result.skipped_count == 1
 
 
-def test_import_preserves_state_and_never_overwrites(store: D1ArticleStore) -> None:
-    """Re-running a migration must not undo a decision already made in D1."""
-    stored = StoredArticle.from_article(
-        _article("https://example.com/kept"), first_seen_at=datetime.now(UTC)
-    )
-    stored.state = ArticleState.ACCEPTED
-    stored.score = 88.0
-    stored.triaged_at = datetime.now(UTC)
-
-    assert store.import_articles([stored]) == 1
+def test_saving_a_stored_url_again_keeps_the_decision_it_holds(store: D1ArticleStore) -> None:
+    """A later fetch of the same URL must not undo a decision already made."""
+    store.save([_article("https://example.com/kept")])
     store.reject(["https://example.com/kept"], reason="changed my mind")
 
-    assert store.import_articles([stored]) == 0
+    assert store.save([_article("https://example.com/kept")]).saved_count == 0
     assert store.get_by_urls(["https://example.com/kept"])[0].state == ArticleState.REJECTED
 
 
-def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
+def test_a_row_round_trips_every_field(store: D1ArticleStore) -> None:
     now = datetime.now(UTC)
     stored = StoredArticle(
         url="https://example.com/full",
@@ -98,7 +91,7 @@ def test_import_round_trips_every_field(store: D1ArticleStore) -> None:
         triaged_at=now,
     )
 
-    store.import_articles([stored])
+    insert_stored(store._db, [stored])
 
     assert store.get_by_urls(["https://example.com/full"])[0] == stored
 
@@ -113,13 +106,14 @@ def test_human_stamps_survive_the_d1_backend(store: D1ArticleStore) -> None:
         article.triaged_at = now - timedelta(days=1) if triaged else None
         return article
 
-    store.import_articles(
+    insert_stored(
+        store._db,
         [
             *[_stored(f"https://example.com/a{i}", ArticleState.ACCEPTED, True) for i in range(5)],
             *[_stored(f"https://example.com/r{i}", ArticleState.REJECTED, True) for i in range(2)],
             # Rejected by the pipeline, not by a person: must not become training signal.
             _stored("https://example.com/pipeline", ArticleState.REJECTED, False),
-        ]
+        ],
     )
 
     stamped_up = [a for a in store.list_articles(state=ArticleState.ACCEPTED) if a.triaged_at]
