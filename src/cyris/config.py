@@ -428,13 +428,25 @@ class AppConfig(BaseModel):
     def sqlite_file_outside_the_vault(self) -> "AppConfig":
         if self.store.backend != "sqlite":
             return self
-        if _within(self.store.sqlite_path, self.agent_vault.path):
-            raise ValueError(
-                f"[store] sqlite_path {self.store.sqlite_path} is inside the agent vault "
-                f"{self.agent_vault.path}: docker compose bind-mounts the vault, and a host "
-                "process and a container on one SQLite file corrupt it. Put it elsewhere."
-            )
+        problem = sqlite_file_in_vault(self)
+        if problem:
+            raise ValueError(problem)
         return self
+
+
+def sqlite_file_in_vault(app: AppConfig) -> str | None:
+    """Why `[store] sqlite_path` may not be used, or None when it may.
+
+    Asked by the load of a `sqlite` install, and by `cyris store migrate --to sqlite`,
+    which opens the file while the backend is still `json`.
+    """
+    if not _within(app.store.sqlite_path, app.agent_vault.path):
+        return None
+    return (
+        f"[store] sqlite_path {app.store.sqlite_path} is inside the agent vault "
+        f"{app.agent_vault.path}: docker compose bind-mounts the vault, and a host "
+        "process and a container on one SQLite file corrupt it. Put it elsewhere."
+    )
 
 
 def _within(path: Path, directory: Path) -> bool:

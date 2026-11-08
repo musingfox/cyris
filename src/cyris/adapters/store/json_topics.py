@@ -91,6 +91,29 @@ class JsonTopicStore:
         self._save(data)
         return written
 
+    def rows(self) -> dict[str, list[dict]]:
+        """The file's topics, members, tags and votes as rows of D1's tables, for a migration.
+
+        A tag here keeps no time of its own. D1 stamps a tag with the save that gave
+        it, which is the topic's newest save, so it gets the topic's `last_seen`.
+        """
+        data = self._load()
+        last_seen = {i: row["last_seen"] for i, row in data["topics"].items()}
+        return {
+            "topics": [
+                {
+                    "id": i,
+                    "name": t["name"],
+                    "first_seen": t["first_seen"],
+                    "last_seen": t["last_seen"],
+                }
+                for i, t in data["topics"].items()
+            ],
+            "members": list(data["members"]),
+            "tags": [{**g, "seen_at": last_seen[g["topic_id"]]} for g in data["tags"]],
+            "votes": list(data["votes"]),
+        }
+
     def topic_votes(self) -> list[TopicVote]:
         return [TopicVote.model_validate(v) for v in self._load()["votes"]]
 

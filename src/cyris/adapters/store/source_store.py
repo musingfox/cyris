@@ -27,13 +27,11 @@ class D1SourceStore:
 
     def list_sources(self) -> dict[str, SourceConfig]:
         """Every source, keyed by name. An empty table means "not configured yet"."""
-        rows = self._db.query("SELECT name, url, type, config FROM sources ORDER BY name").rows
-        sources = {}
-        for row in rows:
-            data = json.loads(row.get("config") or "{}")
-            data.update(name=row["name"], url=row.get("url"), type=row.get("type") or "rss")
-            sources[row["name"]] = SourceConfig.model_validate(data)
-        return sources
+        return {row["name"]: source_from_row(row) for row in self.rows()}
+
+    def rows(self) -> list[dict]:
+        """The table as stored, by name, unparsed, so a reader can name a row that is invalid."""
+        return self._db.query("SELECT name, url, type, config FROM sources ORDER BY name").rows
 
     def upsert(self, source: SourceConfig) -> None:
         """Write one source, creating or replacing the row `name` owns."""
@@ -72,6 +70,13 @@ class D1SourceStore:
             written += self._db.query(sql, [v for row in chunk for v in row]).changes
         logger.info("Pushed %d sources to D1", written)
         return written
+
+
+def source_from_row(row: dict) -> SourceConfig:
+    """One `sources` row as its source; a ValueError when the row is not one."""
+    data = json.loads(row.get("config") or "{}")
+    data.update(name=row["name"], url=row.get("url"), type=row.get("type") or "rss")
+    return SourceConfig.model_validate(data)
 
 
 def _columns(source: SourceConfig) -> list:

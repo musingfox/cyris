@@ -5,6 +5,8 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from cyris.adapters.store.newsletter_dedup import Holders, resolve_stored_url
 from cyris.domain.language import language_sort_key
 from cyris.domain.models import Article, ArticleState, SaveResult, StoredArticle
@@ -295,6 +297,35 @@ class ArticleStore:
         start_idx = offset
         end_idx = offset + limit
         return all_articles[start_idx:end_idx]
+
+    def read_every_article(self) -> list[StoredArticle]:
+        """Every article of every partition, newest first, or a ValueError naming what is not one.
+
+        `list_articles` drops a partition it cannot read, which a run must survive. A
+        migration must not: its copy would silently lack the partition, and a comparison
+        reading the same list would agree. The error is one line, naming the file.
+        """
+        articles: list[StoredArticle] = []
+        for path in sorted(self.articles_path.glob("*.json")):
+            try:
+                data = json.loads(path.read_text())
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+                raise ValueError(f"{path}: not a partition: {e}") from e
+            if not isinstance(data, list):
+                raise ValueError(f"{path}: not a partition: not a list of articles")
+            for index, item in enumerate(data):
+                try:
+                    articles.append(StoredArticle.model_validate(item))
+                except ValidationError as e:
+                    first = e.errors()[0]
+                    field = ".".join(str(part) for part in first["loc"]) or "article"
+                    url = item.get("url") if isinstance(item, dict) else None
+                    raise ValueError(
+                        f"{path}: article {index} ({url or 'no url'}): {field}: {first['msg']}"
+                    ) from e
+        # list_articles' order, which puts the newest copy of a URL first.
+        articles.sort(key=lambda a: a.first_seen_at, reverse=True)
+        return articles
 
     def get_by_urls(self, urls: list[str]) -> list[StoredArticle]:
         """Retrieve articles by their URLs.

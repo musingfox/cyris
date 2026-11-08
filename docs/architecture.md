@@ -663,6 +663,34 @@ file. **They are alternatives, never a pair**
 ([ADR-0003](decisions/0003-one-home-per-backend.md)). `cyris store diff` is what makes a split
 visible; run it before and after any cutover.
 
+### Where a json install's files land in SQLite
+
+`cyris store migrate --to sqlite` moves a `json` install into the file at `[store] sqlite_path`
+in one run, and `cyris store diff --to sqlite` compares the two article stores. Each table is
+written by the store that writes it on D1, over the file's `LocalD1Client`, so there is no second
+writer of any table:
+
+| json home | SQLite table | Written by |
+|---|---|---|
+| `agent-vault/articles/*.json` | `stored_articles`, the newest copy of a URL the 8-day dedup stored twice | `D1ArticleStore.import_articles` |
+| `agent-vault/topics.json` | `topics`, `topic_members`, `topic_tags` (a tag's `seen_at` is its topic's `last_seen`), `topic_votes` | `D1TopicStore.import_topics`, `record_topic_votes` |
+| `agent-vault/usage.jsonl` | `usage_log`, one row per record | `import_usage_d1`, beside the run's `append_usage_d1` |
+| `cyris.toml` grade-D keys | `settings` | `D1Settings.set`, through the loop `cyris settings push` uses |
+| `cyris.toml` `[[tracked_topics]]` | `tracked_topics` | `D1TrackedTopicStore.upsert`, for a name the table lacks |
+| `sources.yaml` | `sources`, only while the table is empty | `D1SourceStore.replace_all` |
+
+Every write only adds, so a second run writes nothing. A row the file already holds is kept, of
+every kind: settings, tracked topics, sources, articles, topics, topic members, tags, votes and
+usage rows. The one exception is a settings row that does not decode or validate: it counts as
+missing and the file's value replaces it, as `cyris settings push` does (ADR-0003). A kept row that differs from the json side is named with what differs; a kept row
+identical to the json side is only counted. A tracked topic the file holds under a name is kept
+even when the row is invalid. Both sides are read and checked before the first write, settings aside: a json
+partition or article that cannot be read, or a file row that cannot be, ends the command on one
+line naming it, with nothing written. The command refuses a backend other than `json` and a
+`sqlite_path` inside the vault, and `store diff --to sqlite` refuses a file that does not exist
+rather than create it. It leaves the json files and `cyris.toml` as they were: the reader
+flips `backend` by hand, and leaving it at `json` is the way back.
+
 ## 5. Configuration: four grades
 
 Every setting belongs to exactly one grade. Mixing them is what makes a deployment un-portable.
@@ -892,7 +920,8 @@ each backend has exactly one home, with nothing overlaid:
   sources from D1 `sources` alone; a `sqlite` install reads the same two tables in its own file,
   under the same rules, and everything said here of D1 holds for it except the push commands:
   `cyris settings push` and `cyris sources push` write to Cloudflare D1 alone, so a `sqlite`
-  install fills its settings on `/settings` and its sources on `/onboarding` or `/settings`, and
+  install fills its settings on `/settings` and its sources on `/onboarding` or `/settings`, or
+  takes both from a `json` install it moved from (`cyris store migrate --to sqlite`, §4), and
   neither `cyris doctor` nor a run's refusal offers it a push; a `json` deployment reads
   `cyris.toml` and `sources.yaml` alone.
   Nothing is overlaid, the environment supplies no grade-D value, and no grade-D value lives in
