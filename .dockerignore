@@ -9,7 +9,7 @@ __pycache__
 .env
 tracking.yaml
 # cyris.toml and sources.yaml are gitignored — do not COPY them. The image bakes
-# sources.example.yaml as /app/sources.yaml; compose bind-mounts over that path.
+# sources.example.yaml as /app/sources.yaml.
 # Grade-B identity (worker URLs, Pages project, D1 id) comes from the environment.
 cyris.toml
 settings.toml

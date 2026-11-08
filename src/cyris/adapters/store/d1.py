@@ -78,10 +78,9 @@ class D1Client:
     def _post_with_retries(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Retry transport failures, because a bulk write is thousands of requests.
 
-        A migration of the whole store is ~1,800 statements; at any realistic
-        per-request failure rate, "give up on the first timeout" means it never
-        finishes. A 4xx is not retried: the request itself is wrong, and repeating
-        it only delays saying so.
+        At any realistic per-request failure rate, "give up on the first timeout"
+        means a large write never finishes. A 4xx is not retried: the request itself is
+        wrong, and repeating it only delays saying so.
         """
         last: Exception | None = None
         for attempt in range(MAX_ATTEMPTS):

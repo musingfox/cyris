@@ -202,7 +202,7 @@ cloud deployment's.
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `TopicRepository` (`D1TopicStore`), `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish_site`, `sync_promotions`, `append_usage_d1`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -868,9 +868,10 @@ The failure would be silent, because every write lands somewhere real. Suppose a
 * With production's notification targets, the production reader gets a digest that is not
   theirs.
 
-A Preview's durable state takes a §4 row like any other. The first `staging` deployment runs with
-`CYRIS_STORE_BACKEND=sqlite`, given as a `--var`, and keeps nothing durable: its container's disk
-does not outlive the instance, so §4 has no row for it. A D1 of its own gets its row when it is
+A Preview's durable state takes a §4 row like any other. The first `staging` deployment ran with
+`CYRIS_STORE_BACKEND=json`, given as a `--var`, which now stops the load. Its next upload names
+`sqlite` instead, which nobody has run yet, and keeps nothing durable: its container's disk does
+not outlive the instance, so §4 has no row for it. A D1 of its own gets its row when it is
 added.
 
 ### Where grade D lives (M2, 2026-08-27; one home per backend since 2026-09-19)

@@ -85,7 +85,7 @@ def test_an_unpriced_run_still_builds_a_discord_payload():
     assert "Cost" not in " ".join(e.get("description", "") for e in embeds)
 
 
-def test_an_unpriced_run_logs_a_null_cost_not_a_zero():
+def test_an_unpriced_run_has_a_null_cost_in_its_record():
     from cyris.adapters.output.usage_log import usage_record
 
     content = DigestContent(
