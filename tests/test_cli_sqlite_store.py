@@ -204,14 +204,13 @@ def test_a_directory_it_cannot_traverse_ends_the_command_without_a_traceback(
     finally:
         locked.chmod(0o700)
 
-    assert not isinstance(result.exception, PermissionError), repr(result.exception)
-    assert "Traceback" not in result.output
+    assert result.exit_code == 1, result.output
+    # Exit 1 through typer.Exit, not a PermissionError escaping the command.
+    assert isinstance(result.exception, SystemExit), repr(result.exception)
     assert "not created yet" not in result.output
-    if command == ["doctor"]:
-        assert result.exit_code == 1, result.output
-        [line] = [line for line in result.output.splitlines() if line.startswith("✗ sqlite")]
-        assert "could not open" in line
-        assert "[store] sqlite_path" in result.output
+    [line] = [line for line in result.output.splitlines() if line.startswith("✗ sqlite")]
+    assert "could not open" in line
+    assert "[store] sqlite_path" in result.output
 
 
 @pytest.mark.parametrize(
