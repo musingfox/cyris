@@ -192,37 +192,6 @@ another device reaching it gets the `403`.
   `127.0.0.1` by default, so another device cannot read it. `--host` with an address opens the archive
   and `/settings` to everyone who can reach that address, with no sign-in.
 
-## Moving a json install to SQLite
-
-An install that keeps its state in JSON files under `agent-vault/` moves all of it into the SQLite file
-with one command: the articles, `topics.json`, `usage.jsonl`, the runtime settings and
-`[[tracked_topics]]` from `cyris.toml`, and `sources.yaml`. It changes nothing on the json side.
-
-1. **Name `backend = "json"` under `[store]` in `cyris.toml`, if it does not say so.** With no line the
-   install now reads SQLite, and the move refuses, because it finds no json install to read.
-2. Stop the scheduler and the server, so nothing writes the json files during the move.
-3. Copy and compare, from the repo root:
-
-   ```sh
-   uv run cyris store migrate --to sqlite   # everything into the file; safe to re-run
-   uv run cyris store diff --to sqlite      # they agree when only local and differing are 0
-   ```
-
-   Under compose, in a one-off container, which mounts the same volumes:
-
-   ```sh
-   docker compose stop
-   docker compose run --rm cyris cyris store migrate --to sqlite
-   ```
-
-   The move only adds, and a row the file already holds is kept and named if it differs. Anything
-   that cannot be read stops it before it writes, naming what.
-4. Set `backend = "sqlite"`, and delete the runtime settings and `[[tracked_topics]]` from `cyris.toml`:
-   `cyris doctor` fails `file settings` while the file still sets one, and the move's last lines name
-   them. Keep a copy of `agent-vault/`, `cyris.toml` and `sources.yaml` until you trust the result.
-5. Start the scheduler and the server again, under compose with `docker compose up -d --force-recreate`.
-   From here on `/settings` changes everything, and `sources.yaml` is no longer read.
-
 ## Moving to Cloudflare later
 
 The runtime settings and the source list can be copied into D1 from files; the articles in a SQLite

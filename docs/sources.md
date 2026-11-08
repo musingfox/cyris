@@ -1,7 +1,7 @@
 # How sources are processed
 
-Each source declares a lane, in the wizard or on `/settings` (Sources), or in `sources.yaml`
-on a json install, and the lane decides how much LLM attention it gets:
+Each source declares a lane, in the wizard or on `/settings` (Sources), or in the `sources.yaml`
+that `cyris sources push` copies to D1, and the lane decides how much LLM attention it gets:
 
 | Lane | Processing | Example |
 |------|-----------|---------|

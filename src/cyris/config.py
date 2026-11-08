@@ -684,7 +684,7 @@ class Config(BaseModel):
 
 @dataclass(frozen=True)
 class RawConfig:
-    """What the two files say, before any home for grade-D settings is chosen."""
+    """What the two files say, before the store is read."""
 
     toml: dict[str, Any]
     sources: dict[str, SourceConfig]

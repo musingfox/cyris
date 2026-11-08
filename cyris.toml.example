@@ -13,8 +13,6 @@ path = "./agent-vault"
 #              server or run creates it.
 #   "d1"     — Cloudflare D1. The tables are created on the first boot that reaches
 #              the database, so an empty one needs no setup step.
-#   "json"   — partition files under [agent_vault] path, for an install that predates
-#              SQLite. `cyris store migrate --to sqlite` moves one across.
 backend = "sqlite"                      # or CYRIS_STORE_BACKEND
 # Relative to this file. Never inside the vault; leave it unset under docker compose.
 # sqlite_path = "state/cyris.sqlite3"   # or CYRIS_STORE_SQLITE_PATH

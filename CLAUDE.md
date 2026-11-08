@@ -24,7 +24,7 @@ live until someone deploys it.
 
 - **§1 Layers** — `entrypoints → service_layer → domain`, with `adapters` implementing the
   service layer's Protocols and `bootstrap.build_deps()` the only place they meet.
-- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. Local-filesystem edges are closed: with D1 the only writes left are the `json` backend's, which is the documented fallback.
+- **§2 Wiring** — which boundaries have a Protocol (cheap to swap) and which are direct injections. Local-filesystem edges are closed: every store write goes through D1 or its local SQLite twin.
 - **§3 How a digest is made** — the two ingestion paths and why they have different shapes (RSS is an idempotent buffer, email is a pull/ack queue). Read this before touching a Worker or a `FetchSource`.
 - **§4 Data residency** — every persistent datum and where it lives. **Do not introduce a new place for state without adding a row here.** Scattering data across new homes to finish a feature is the failure this table exists to prevent.
 - **§5 Configuration: four grades** — A baked / B deployment identity / C secrets / D runtime-mutable. Every new setting must be assigned a grade and put in that grade's home. `cyris.toml` is not a default home.
