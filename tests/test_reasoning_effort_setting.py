@@ -98,7 +98,8 @@ def test_a_stored_effort_outside_the_four_stops_the_run_naming_it(
         cfg.require_complete_settings()
     assert str(caught.value) == (
         "Missing settings in D1: llm_provider.reasoning_effort. "
-        "Set them on /settings, or run `cyris settings push` to copy them from cyris.toml."
+        "Set them on /settings, or run `cyris settings push --config <file>` to copy them "
+        "from a settings file (settings.example.toml lists every key)."
     )
 
 

@@ -149,7 +149,8 @@ def test_the_error_lists_every_key_on_an_empty_d1(tmp_path: Path, d1: SqliteD1) 
         cfg.require_complete_settings()
     assert str(caught.value) == (
         f"Missing settings in D1: {', '.join(sorted(REQUIRED_KEYS))}. "
-        "Set them on /settings, or run `cyris settings push` to copy them from cyris.toml."
+        "Set them on /settings, or run `cyris settings push --config <file>` to copy them "
+        "from a settings file (settings.example.toml lists every key)."
     )
 
 

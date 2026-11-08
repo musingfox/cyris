@@ -641,7 +641,8 @@ class Config(BaseModel):
         if self.app.store.is_cloudflare:
             raise IncompleteSettingsError(
                 f"Missing settings in D1: {keys}. Set them on /settings, or run "
-                "`cyris settings push` to copy them from cyris.toml."
+                "`cyris settings push --config <file>` to copy them from a settings file "
+                "(settings.example.toml lists every key)."
             )
         if self.app.store.is_sql:
             # Not `settings push`: it writes to Cloudflare D1, never to this file.
