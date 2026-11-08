@@ -174,12 +174,29 @@ def test_a_backend_in_the_hosts_environment_beats_the_default_but_not_the_file(
     assert _backend_resolved(tmp_path / "b", service, named_in_file, host_env) == "sqlite"
 
 
-def test_the_probes_config_names_no_backend_so_the_compose_environment_picks_it() -> None:
+def test_the_probe_builds_its_install_by_the_guides_own_copies() -> None:
+    """A reader's copy of the example is what it must pass on, so it writes no config of its own."""
     script = (ROOT / "scripts" / "compose_probe.sh").read_text(encoding="utf-8")
-    [toml] = re.findall(r"cat >cyris\.toml <<'EOF'\n(.*?)\nEOF\n", script, re.S)
+    guide = (ROOT / "docs" / "install-local.md").read_text(encoding="utf-8")
 
-    assert "backend" not in toml
-    assert 'provider = "none"' in toml
+    assert ">cyris.toml" not in script
+    for step in (
+        "cp cyris.toml.example cyris.toml",
+        "cp .env.example .env",
+        "cp sources.example.yaml sources.yaml",
+        "mkdir -p agent-vault",
+    ):
+        assert step in script, step
+        assert step in guide, step
+
+
+@pytest.mark.parametrize("service", SERVICES)
+def test_a_copy_of_the_example_resolves_to_sqlite_under_compose(
+    tmp_path: Path, service: str
+) -> None:
+    example = (ROOT / "cyris.toml.example").read_text(encoding="utf-8")
+
+    assert _backend_resolved(tmp_path, service, example) == "sqlite"
 
 
 def test_the_probe_is_valid_bash() -> None:
