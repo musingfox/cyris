@@ -9,10 +9,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 import respx
-from fakes import settings_toml
+import yaml
+from fakes import seeded_sqlite
 from typer.testing import CliRunner
 
-from cyris.adapters.store.article_store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
+from cyris.adapters.store.local_d1 import LocalD1Client
+from cyris.adapters.store.source_store import D1SourceStore
+from cyris.config import SourcesConfig
 from cyris.domain.models import Article, ArticleState, Lane
 from cyris.entrypoints.cli import app
 
@@ -56,17 +60,18 @@ def _patch_feeds(by_url: dict[str, list[dict]]):
 def e2e_config(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     """Create minimal config files and directories for E2E tests."""
     # Create cyris.toml
-    toml_content = (
-        settings_toml(**{"general.digest_window_hours": 12})
-        + f'''
+    state = tmp_path / "state.sqlite3"
+    toml_content = f'''
 [html_output]
 enabled = true
 output_dir = "{tmp_path / "html"}"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
+
+[store]
+sqlite_path = "{state}"
 '''
-    )
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(toml_content)
 
@@ -89,12 +94,14 @@ sources:
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(sources_content)
 
+    # What the wizard leaves in the file: the settings and the sources.
+    client = seeded_sqlite(state, **{"general.digest_window_hours": 12})
+    for source in SourcesConfig.model_validate(yaml.safe_load(sources_content)).sources:
+        D1SourceStore(client).upsert(source)
+
     html_dir = tmp_path / "html"
 
-    agent_vault = tmp_path / "agent-vault"
-    agent_vault.mkdir()
-
-    return config_path, sources_path, html_dir, agent_vault
+    return config_path, sources_path, html_dir, state
 
 
 class TestRunPipelineE2E:
@@ -102,7 +109,7 @@ class TestRunPipelineE2E:
 
     def test_run_happy_path(self, e2e_config: tuple[Path, Path, Path, Path]) -> None:
         """Test full run pipeline with mocked external services."""
-        config_path, sources_path, html_dir, agent_vault = e2e_config
+        config_path, sources_path, html_dir, state = e2e_config
 
         # Real clock throughout: run_digest must pick up articles saved within
         # the same run (regression coverage for the reload end bound).
@@ -219,13 +226,13 @@ class TestRunPipelineE2E:
         assert "Weekly Tech Trends" in digest_content
 
         # Verify article store was updated
-        store = ArticleStore(agent_vault)
+        store = D1ArticleStore(LocalD1Client(state))
         articles = store.list_articles(limit=10)
         assert len(articles) == 3
 
     def test_run_no_articles(self, e2e_config: tuple[Path, Path, Path, Path]) -> None:
         """Test run command when no articles are found."""
-        config_path, sources_path, html_dir, agent_vault = e2e_config
+        config_path, sources_path, html_dir, _state = e2e_config
 
         with _patch_feeds({}):
             # Run full pipeline
@@ -243,31 +250,27 @@ class TestArticlesLifecycleE2E:
     """E2E tests for articles lifecycle commands."""
 
     @pytest.fixture
-    def articles_config(self, tmp_path: Path) -> tuple[Path, Path, Path, ArticleStore]:
+    def articles_config(self, tmp_path: Path) -> tuple[Path, Path, D1ArticleStore]:
         """Create config and store with test articles."""
         # Create config files
+        state = tmp_path / "state.sqlite3"
         toml_content = f'''
-[general]
-timezone = "Asia/Taipei"
-
 [llm_provider]
 api_key = "test"
-model = "test"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
+
+[store]
+sqlite_path = "{state}"
 '''
         config_path = tmp_path / "cyris.toml"
         config_path.write_text(toml_content)
         sources_path = tmp_path / "sources.yaml"
         sources_path.write_text("sources: []")
 
-        # Create directories
-        agent_vault = tmp_path / "agent-vault"
-        agent_vault.mkdir()
-
         # Create store with articles
-        store = ArticleStore(agent_vault)
+        store = D1ArticleStore(seeded_sqlite(state))
         now = datetime.now(UTC)
         articles = [
             Article(
@@ -300,11 +303,11 @@ path = "{tmp_path / "agent-vault"}"
         ]
         store.save(articles, now=now)
 
-        return config_path, sources_path, agent_vault, store
+        return config_path, sources_path, store
 
-    def test_accept_lifecycle(self, articles_config: tuple[Path, Path, Path, ArticleStore]) -> None:
+    def test_accept_lifecycle(self, articles_config: tuple[Path, Path, D1ArticleStore]) -> None:
         """Accepting by URL marks the rows accepted and human-stamped."""
-        config_path, sources_path, agent_vault, store = articles_config
+        config_path, sources_path, store = articles_config
 
         # Step 1: Accept 2 articles
         result = runner.invoke(

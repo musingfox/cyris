@@ -109,6 +109,8 @@ def test_a_json_ui_role_opens_no_article_store(config: tuple[Path, Path], monkey
     def refuse(*args, **kwargs):
         raise AssertionError("ui role opened an article store")
 
+    config_path, _ = config
+    config_path.write_text('[store]\nbackend = "json"\n\n' + config_path.read_text())
     monkeypatch.setattr("cyris.bootstrap.build_store", refuse)
     result = _run(config)
     assert result.exit_code == 0, result.output

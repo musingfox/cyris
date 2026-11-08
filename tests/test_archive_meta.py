@@ -74,7 +74,9 @@ def test_the_read_writes_nothing() -> None:
 
 
 def _config(tmp_path: Path, *, d1: bool) -> Config:
-    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
+    cfg = make_config(
+        agent_vault=AgentVaultConfig(path=tmp_path / "vault"), store={"backend": "json"}
+    )
     if d1:
         cfg.app.store.backend = "d1"
         cfg.app.store.database_id = "db"

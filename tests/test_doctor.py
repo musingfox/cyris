@@ -180,14 +180,16 @@ def test_d1_sources_are_counted_as_from_d1(tmp_path: Path) -> None:
 
 
 async def test_the_sources_check_names_where_they_came_from(tmp_path: Path) -> None:
-    check = _by_name(await doctor.run_checks(_config(tmp_path)), "sources")
+    cfg = _config(tmp_path, store={"backend": "json"})
+
+    check = _by_name(await doctor.run_checks(cfg), "sources")
 
     assert check.detail.endswith("— from sources.yaml")
 
 
 async def test_no_sources_is_not_a_failure_but_a_wait(tmp_path: Path) -> None:
     """An empty list is a deployment waiting for onboarding, so `doctor` exits 0."""
-    cfg = _config(tmp_path)
+    cfg = _config(tmp_path, store={"backend": "json"})
     cfg.sources = {}
 
     check = _by_name(await doctor.run_checks(cfg), "sources")
@@ -314,7 +316,7 @@ def test_a_missing_key_offers_provider_none_where_this_backend_keeps_it(
 
 
 def test_doctor_on_a_none_provider_config_passes_the_llm_check(tmp_path: Path, monkeypatch) -> None:
-    from fakes import settings_toml
+    from fakes import seeded_sqlite
     from typer.testing import CliRunner
 
     from cyris.entrypoints.cli import app
@@ -322,11 +324,12 @@ def test_doctor_on_a_none_provider_config_passes_the_llm_check(tmp_path: Path, m
     for key in _LLM_KEYS:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    state = tmp_path / "state.sqlite3"
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(
-        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n\n'
-        + settings_toml(**{"llm_provider.provider": "none"})
+        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n\n[store]\nsqlite_path = "{state}"\n'
     )
+    seeded_sqlite(state, **{"llm_provider.provider": "none"})
 
     result = CliRunner().invoke(
         app, ["doctor", "--config", str(config_path), "--sources", str(tmp_path / "s.yaml")]
@@ -536,10 +539,13 @@ async def test_a_config_key_this_build_cannot_see_is_a_failure(tmp_path: Path) -
 async def test_the_resolved_store_class_is_reported_not_the_configured_name(
     tmp_path: Path,
 ) -> None:
-    check = _by_name(await doctor.run_checks(_config(tmp_path)), "store wiring")
+    cfg = _config(tmp_path)
+    build_store(cfg)
+
+    check = _by_name(await doctor.run_checks(cfg), "store wiring")
 
     assert check.status == "ok"
-    assert "ArticleStore" in check.detail
+    assert "D1ArticleStore" in check.detail
 
 
 async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
@@ -1654,7 +1660,7 @@ def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> No
 
 
 def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
-    assert doctor._check_settings(_config(tmp_path)) == doctor.Check(
+    assert doctor._check_settings(_config(tmp_path, store={"backend": "json"})) == doctor.Check(
         "settings", "ok", "all 26 set in cyris.toml"
     )
 
@@ -1676,7 +1682,9 @@ def test_a_d1_home_without_the_effort_passes_naming_its_default(tmp_path: Path, 
 
 
 def test_a_json_home_without_the_effort_passes_naming_its_default(tmp_path: Path) -> None:
-    (tmp_path / "cyris.toml").write_text(settings_toml(omit=["llm_provider.reasoning_effort"]))
+    (tmp_path / "cyris.toml").write_text(
+        '[store]\nbackend = "json"\n\n' + settings_toml(omit=["llm_provider.reasoning_effort"])
+    )
     cfg = load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
 
     assert doctor._check_settings(cfg) == doctor.Check(
@@ -1696,7 +1704,20 @@ def test_a_stored_effort_outside_the_four_fails_the_settings_check(tmp_path: Pat
     )
 
 
-async def test_a_json_deployment_without_a_file_fails_listing_every_key(
+async def test_a_json_deployment_with_no_settings_fails_listing_every_key(tmp_path: Path) -> None:
+    from cyris.config import load_config
+
+    (tmp_path / "cyris.toml").write_text('[store]\nbackend = "json"\n')
+    cfg = load_config(tmp_path / "cyris.toml", tmp_path / "nope.yaml")
+
+    settings = _by_name(await doctor.run_checks(cfg), "settings")
+
+    assert settings.status == "fail"
+    assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(REQUIRED_KEYS))}"
+    assert settings.fix == "settings.example.toml lists every key."
+
+
+async def test_no_file_at_all_warns_and_fails_listing_every_key(
     tmp_path: Path, monkeypatch
 ) -> None:
     from cyris.config import load_config
@@ -1708,8 +1729,8 @@ async def test_a_json_deployment_without_a_file_fails_listing_every_key(
 
     settings = _by_name(checks, "settings")
     assert settings.status == "fail"
-    assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(REQUIRED_KEYS))}"
-    assert settings.fix == "settings.example.toml lists every key."
+    assert settings.detail == f"missing in the SQLite store: {', '.join(sorted(REQUIRED_KEYS))}"
+    assert _by_name(checks, "config file").status == "warn"
     assert _by_name(checks, "config file").detail == "not found"
 
 
@@ -1784,7 +1805,9 @@ async def test_a_json_deployment_has_no_file_settings_check(tmp_path: Path) -> N
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(settings_toml())
 
-    names = [c.name for c in await doctor.run_checks(_config(tmp_path), config_path)]
+    cfg = _config(tmp_path, store={"backend": "json"})
+
+    names = [c.name for c in await doctor.run_checks(cfg, config_path)]
 
     assert "file settings" not in names
 

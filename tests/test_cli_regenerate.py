@@ -56,7 +56,7 @@ def _config(tmp_path: Path, *, d1: bool = True, promote: bool = False):
     store = (
         StoreConfig(backend="d1", database_id="db-ID-1", account_id="acct", api_token="tok")
         if d1
-        else StoreConfig()
+        else StoreConfig(backend="json")
     )
     overrides = (
         {"promote": PromoteConfig(worker_url="https://promote.test", token="promote-tok")}

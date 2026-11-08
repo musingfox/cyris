@@ -231,15 +231,15 @@ class AgentVaultConfig(BaseModel):
 class StoreConfig(BaseModel):
     """Where persistent state lives.
 
-    `json` is local partition files under the agent vault. `d1` puts the article
-    store and the usage log in Cloudflare D1, so a dead local machine loses
-    nothing. `sqlite` keeps the same tables in one SQLite file on this machine,
-    a local install's home (ADR-0025). Each is a whole home, never overlaid on
-    another (ADR-0003); diff json against d1 with `cyris store diff` before
-    switching.
+    `sqlite`, the default, keeps every table in one SQLite file on this machine,
+    a local install's home (ADR-0025). `d1` puts the same tables in Cloudflare D1,
+    so a dead local machine loses nothing; `json` is local partition files under
+    the agent vault, for an install that has not moved yet. Each is a whole home,
+    never overlaid on another (ADR-0003); diff json against d1 with `cyris store
+    diff` before switching.
     """
 
-    backend: Literal["json", "d1", "sqlite"] = "json"
+    backend: Literal["json", "d1", "sqlite"] = "sqlite"
     database_id: str = ""
     account_id: str = ""
     api_token: str = ""
@@ -733,7 +733,8 @@ def read_config_files(
         with open(sources_path) as f:
             raw_yaml = yaml.safe_load(f)
     else:
-        logger.warning("Sources file not found: %s", sources_path)
+        # Not a warning: only a json deployment reads this file, and doctor names an empty list.
+        logger.debug("Sources file not found: %s", sources_path)
         raw_yaml = {}
 
     sources_config = SourcesConfig.model_validate(raw_yaml or {})

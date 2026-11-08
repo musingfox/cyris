@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fakes import SqliteD1, settings_toml
+from fakes import SqliteD1, seed_d1_settings
 from typer.testing import CliRunner
 
 from cyris.domain.similarity import normalize
@@ -30,10 +30,11 @@ def put(db, url, *, state="accepted", tags=(), reason=None, triaged_at=None, tit
 @pytest.fixture
 def deployment(tmp_path, monkeypatch):
     (tmp_path / "cyris.toml").write_text(
-        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n\n' + settings_toml(), encoding="utf-8"
+        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n', encoding="utf-8"
     )
     (tmp_path / "sources.yaml").write_text("sources: []")
     db = SqliteD1()
+    seed_d1_settings(db)
     for i in range(6):
         put(db, f"news-kept-{i}", tags=("news",))
         put(db, f"news-cut-{i}", tags=("news",), state="rejected", reason="filtered")
@@ -132,6 +133,7 @@ class TestDraw:
 
     def test_a_deployment_without_d1_is_told_so(self, deployment, monkeypatch) -> None:
         tmp_path, _ = deployment
+        (tmp_path / "cyris.toml").write_text('[store]\nbackend = "json"\n', encoding="utf-8")
         monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda cfg: None)
 
         result = draw(tmp_path)

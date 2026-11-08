@@ -183,8 +183,12 @@ def _config(tmp_path: Path, **store_kwargs) -> Config:
     return cfg
 
 
-def test_build_store_defaults_to_the_local_files(tmp_path: Path) -> None:
-    assert isinstance(build_store(_config(tmp_path)), ArticleStore)
+def test_build_store_defaults_to_the_sqlite_file(tmp_path: Path) -> None:
+    assert isinstance(build_store(_config(tmp_path)), D1ArticleStore)
+
+
+def test_build_store_returns_the_local_files_when_json_is_selected(tmp_path: Path) -> None:
+    assert isinstance(build_store(_config(tmp_path, backend="json")), ArticleStore)
 
 
 def test_build_store_returns_d1_when_selected(tmp_path: Path) -> None:

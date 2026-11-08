@@ -92,6 +92,7 @@ def test_a_config_elsewhere_opens_the_file_beside_it_not_in_the_working_director
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
     config = install / "cyris.toml"
     config.write_text('[store]\nbackend = "sqlite"\n')
 
@@ -112,6 +113,7 @@ def _everything_in(root: Path) -> list[Path]:
 def first_boot(tmp_path, monkeypatch) -> Path:
     """An install directory holding its cyris.toml and nothing else, as the working directory."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
     config = tmp_path / "cyris.toml"
     config.write_text('[store]\nbackend = "sqlite"\n')
     return config

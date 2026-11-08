@@ -49,9 +49,7 @@ def test_an_image_built_without_a_sha_records_an_empty_one(tmp_path: Path, monke
 
 
 def test_a_json_backend_records_no_run(tmp_path: Path) -> None:
-    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
-
-    assert bootstrap.build_deps(cfg).record_run is None
+    assert bootstrap.build_deps(_json_config(tmp_path)).record_run is None
 
 
 def test_a_d1_deployment_stores_its_digest_in_its_own_d1(tmp_path: Path, db) -> None:
@@ -72,13 +70,13 @@ def test_a_d1_deployment_stores_its_digest_in_its_own_d1(tmp_path: Path, db) -> 
 
 
 def test_a_json_backend_has_no_digest_store(tmp_path: Path) -> None:
-    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
-
-    assert bootstrap.build_deps(cfg).digest_store is None
+    assert bootstrap.build_deps(_json_config(tmp_path)).digest_store is None
 
 
 def _json_config(tmp_path: Path) -> Config:
-    return make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
+    return make_config(
+        agent_vault=AgentVaultConfig(path=tmp_path / "vault"), store={"backend": "json"}
+    )
 
 
 def _alert_mail_env(monkeypatch: pytest.MonkeyPatch, *, account: str = "", token: str = "") -> None:

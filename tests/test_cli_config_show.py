@@ -22,6 +22,9 @@ WEBHOOK_TOKEN = "hookTOKEN" + "z" * 24
 WEBHOOK = f"https://discord.com/api/webhooks/123/{WEBHOOK_TOKEN}"
 
 
+JSON_STORE = '[store]\nbackend = "json"\n\n'
+
+
 def _show(tmp_path: Path, toml: str | None, *, color: bool = False):
     config_path = tmp_path / "cyris.toml"
     if toml is not None:
@@ -114,7 +117,7 @@ def test_an_invalid_stored_reasoning_effort_is_listed_missing_and_exits_0(
 
 
 def test_a_json_deployment_takes_settings_from_cyris_toml(tmp_path: Path) -> None:
-    result = _show(tmp_path, settings_toml(**{"digest.max_articles_per_digest": 7}))
+    result = _show(tmp_path, JSON_STORE + settings_toml(**{"digest.max_articles_per_digest": 7}))
 
     assert result.exit_code == 0, result.output
     assert _rows(result.stdout)["digest.max_articles_per_digest"] == ("7", "cyris.toml")
@@ -131,7 +134,7 @@ def test_every_grade_d_and_grade_b_key_gets_a_row(tmp_path: Path) -> None:
 def test_an_empty_llm_model_shows_the_provider_default(tmp_path: Path) -> None:
     toml = settings_toml(**{"llm_provider.provider": "gemini", "llm_provider.model": ""})
 
-    result = _show(tmp_path, toml)
+    result = _show(tmp_path, JSON_STORE + toml)
 
     value, source = _rows(result.stdout)["llm_provider.model"]
     assert value == f'"{default_model("gemini")}"'
@@ -185,7 +188,14 @@ def test_a_file_identity_value_beats_the_environment(
     rows = _rows(result.stdout)
     assert rows["promote.pages_project"] == ('"from-file"', "cyris.toml")
     assert rows["rss.worker_url"] == ('"https://rss.example"', "environment")
-    assert rows["store.backend"] == ('"json"', "code")
+    assert rows["store.backend"] == ('"sqlite"', "code")
+
+
+@pytest.mark.parametrize("toml", [None, "", "[store]\n"], ids=["no-file", "empty", "bare"])
+def test_the_default_backend_is_sqlite_and_labelled_code(tmp_path: Path, toml: str | None) -> None:
+    rows = _rows(_show(tmp_path, toml).stdout)
+
+    assert rows["store.backend"] == ('"sqlite"', "code")
 
 
 def test_a_baked_threshold_is_labelled_code(tmp_path: Path) -> None:
@@ -243,7 +253,7 @@ def test_no_threshold_row_appears_even_with_one_in_the_file(tmp_path: Path) -> N
 
 
 def test_the_output_has_no_terminal_escapes_and_aligned_columns(tmp_path: Path) -> None:
-    result = _show(tmp_path, settings_toml(), color=True)
+    result = _show(tmp_path, JSON_STORE + settings_toml(), color=True)
 
     assert "\x1b" not in result.output
     header = next(line for line in result.stdout.splitlines() if line.startswith("KEY"))
