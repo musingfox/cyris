@@ -176,3 +176,15 @@ def test_sources_push_fills_an_empty_d1(tmp_path: Path, d1: SqliteD1) -> None:
 
     assert result.exit_code == 0, result.output
     assert set(D1SourceStore(d1).list_sources()) == {"Feed"}
+
+
+def test_sources_push_with_no_file_says_so_on_one_line(tmp_path: Path) -> None:
+    missing = tmp_path / "sources.yaml"
+
+    result = CliRunner().invoke(app, ["sources", "push", "--sources", str(missing)])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output.strip().splitlines() == [
+        f"No sources file at {missing}. Copy sources.example.yaml to it, or pass --sources."
+    ]

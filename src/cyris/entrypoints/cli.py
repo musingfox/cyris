@@ -1761,6 +1761,13 @@ def sources_push(
     ),
 ) -> None:
     """Make D1 match sources.yaml exactly, removals included."""
+    if not sources_path.is_file():
+        typer.echo(
+            f"No sources file at {sources_path}. Copy sources.example.yaml to it, or pass "
+            "--sources.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     cfg, store = _source_store(config_path, sources_path)
 
     # A D1 deployment's config holds the table's sources, so read the file directly
