@@ -131,10 +131,9 @@ class TestDraw:
         assert "at least 30" in result.output
         assert sample(db) == []
 
-    def test_a_deployment_without_d1_is_told_so(self, deployment, monkeypatch) -> None:
+    def test_a_config_still_naming_json_is_told_so(self, deployment) -> None:
         tmp_path, _ = deployment
         (tmp_path / "cyris.toml").write_text('[store]\nbackend = "json"\n', encoding="utf-8")
-        monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda cfg: None)
 
         result = draw(tmp_path)
 

@@ -588,9 +588,7 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 `/onboarding` is the guided setup of a new deployment. An empty `sources` table is the
 waiting-for-onboarding state (`docs/architecture.md` §5), so /settings sends such a deployment here.
 A deployment that already has a source can still open it, because the sources step writes one and a
-reload on a later step must keep the reader in the wizard. A `backend = "json"` deployment, whose
-sources live in a file the app never writes, has no wizard at all: this page sends it back to
-/settings. The same container serves it as serves settings, behind the same sign-in.
+reload on a later step must keep the reader in the wizard. The same container serves it as serves settings, behind the same sign-in.
 
 - **Seven steps, in order:** language and timezone, publish hours, sources, votes, notifications,
   model, first issue. The step a hash opens is the step shown, as settings' categories are, so a reload keeps the

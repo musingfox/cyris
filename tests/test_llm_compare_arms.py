@@ -111,22 +111,23 @@ def test_a_none_arm_is_refused_as_no_model():
         _build_arm("none:", "default")
 
 
-def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch):
-    from fakes import settings_toml
+def test_the_cli_exits_2_on_a_none_arm(tmp_path, monkeypatch, d1):
+    from fakes import seed_d1_settings
     from typer.testing import CliRunner
 
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.domain.models import SourceConfig
     from cyris.entrypoints.cli import app
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
+    seed_d1_settings(d1, **{"llm_provider.provider": "anthropic"})
+    D1SourceStore(d1).upsert(SourceConfig(name="Feed", url="https://a.test/feed"))
     config = tmp_path / "cyris.toml"
     config.write_text(
-        settings_toml(**{"llm_provider.provider": "anthropic"}) + "[html_output]\nenabled = true\n"
-        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n'
+        f'[html_output]\nenabled = true\n[agent_vault]\npath = "{tmp_path / "vault"}"\n'
     )
 
     sources = tmp_path / "sources.yaml"
-    sources.write_text('sources:\n  - name: "Feed"\n    url: "https://a.test/feed"\n')
 
     result = CliRunner().invoke(
         app,

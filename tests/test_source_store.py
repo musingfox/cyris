@@ -99,13 +99,6 @@ def _load(tmp_path: Path, backend: str, monkeypatch, db=None):
     return load_effective_config(config_path, sources_path), constructed
 
 
-def test_a_json_deployment_reads_the_file_and_never_opens_d1(tmp_path: Path, monkeypatch) -> None:
-    cfg, constructed = _load(tmp_path, "json", monkeypatch)
-
-    assert list(cfg.sources) == ["From File"]
-    assert constructed == []
-
-
 def test_a_d1_deployment_reads_only_the_table(tmp_path: Path, monkeypatch) -> None:
     db = SqliteD1()
     D1SourceStore(db).replace_all(_sources(SourceConfig(name="From D1", url="https://d1.test/f")))

@@ -255,14 +255,14 @@ class TestEveryExistingRouteKeepsWinning:
     async def test_a_container_page_is_not_shadowed(self, shadowing, name):
         response = await _get(shadowing, f"/{name}")
 
-        # 200 for the page itself; /onboarding sends a json store's reader on to /settings.
+        # 200 for the page itself; a partial server's /onboarding sends the reader to /settings.
         assert response.status in (200, 302)
         assert f"SHADOW-{name}" not in (response.text or "")
 
     async def test_the_interest_map_is_not_shadowed(self, shadowing):
         response = await _get(shadowing, "/interest")
 
-        # The json store has no reader: the route's own 409, not the shadowing page.
+        # A partial server has no reader: the route's own 409, not the shadowing page.
         assert response.status == 409
         assert "SHADOW-interest" not in response.text
 

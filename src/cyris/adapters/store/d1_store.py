@@ -1,18 +1,14 @@
-"""D1-backed ArticleStore: the same 13 methods, one SQL query each — except `save`,
-which reads before it writes when the batch holds newsletter issues.
+"""ArticleRepository over D1: one SQL query per method — except `save`, which reads
+before it writes when the batch holds newsletter issues.
 
-Behaviour matches `ArticleStore` with one deliberate difference: dedup (URL, plus
-the `newsletter_dedup` re-key) is across the whole table, not across the last 8
-days of partitions. The window in
-the JSON store is a scan-cost optimisation, not a rule — a URL primary key does
-what it was approximating, and does it exactly.
+Dedup (URL, plus the `newsletter_dedup` re-key) is across the whole table: a URL
+primary key has no horizon.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -60,11 +56,10 @@ _SORT_EXPRESSIONS = {
     "first_seen_at": "first_seen_at {dir}",
     "published_at": "published_at {dir}",
     "title": "title {dir}",
-    # `IS NULL ASC` is not a typo: unscored articles sort last in both
-    # directions, which is what the JSON store's ±inf sort key does.
+    # `IS NULL ASC` is not a typo: unscored articles sort last in both directions.
     "score": "score IS NULL ASC, score {dir}",
-    # Chinese first, built from LANGUAGE_SORT_ORDER so it cannot drift from the
-    # JSON store's key function.
+    # Chinese first, built from LANGUAGE_SORT_ORDER so it cannot drift from
+    # `language_sort_key`.
     "language": f"CASE language {_LANGUAGE_CASE} ELSE {len(LANGUAGE_SORT_ORDER)} END {{dir}}",
 }
 
@@ -172,31 +167,6 @@ class D1ArticleStore:
             resolved.append(article.model_copy(update={"url": url}))
         return resolved
 
-    def import_articles(
-        self, articles: list[StoredArticle], on_progress: Callable[[int, int], None] | None = None
-    ) -> int:
-        """Copy rows in as-is, keeping state, scores and triage stamps.
-
-        `INSERT OR IGNORE`, so re-running a migration never overwrites a decision
-        already made in D1 — the local file it came from may be stale by then.
-        That also makes an interrupted migration resumable: run it again and it
-        picks up where it stopped.
-        """
-        if not articles:
-            return 0
-        placeholders = "(" + ", ".join("?" * len(COLUMNS)) + ")"
-        chunks = chunk_rows([_to_row(a) for a in articles], len(COLUMNS))
-        imported = 0
-        for done, chunk in enumerate(chunks, start=1):
-            sql = (
-                f"INSERT OR IGNORE INTO stored_articles ({', '.join(COLUMNS)}) "
-                f"VALUES {', '.join(placeholders for _ in chunk)}"
-            )
-            imported += self._db.query(sql, [v for row in chunk for v in row]).changes
-            if on_progress:
-                on_progress(done, len(chunks))
-        return imported
-
     def update_states(
         self, url_to_state: dict[str, tuple[ArticleState, str | None]], digest_date: str
     ) -> int:
@@ -292,7 +262,7 @@ class D1ArticleStore:
     def update_scores(
         self, url_to_score_lang: dict[str, tuple[float, str]], scan_days: int = 30
     ) -> int:
-        """Write scores back. `scan_days` is ignored — SQL has no partitions to scan."""
+        """Write scores back. `scan_days` is ignored — one SQL statement reaches every row."""
         del scan_days
         if not url_to_score_lang:
             return 0
@@ -393,20 +363,16 @@ class D1ArticleStore:
         return [article_from_row(r) for r in self._db.query(sql, params).rows]
 
     def get_by_urls(self, urls: list[str]) -> list[StoredArticle]:
-        return [article_from_row(r) for r in self.rows_by_urls(urls)]
-
-    def rows_by_urls(self, urls: list[str]) -> list[dict[str, Any]]:
-        """The rows of `urls` as stored, unparsed, so a reader can name one that is invalid."""
         if not urls:
             return []
-        found: list[dict[str, Any]] = []
+        found: list[StoredArticle] = []
         for i in range(0, len(urls), _URLS_PER_STATEMENT):
             batch = urls[i : i + _URLS_PER_STATEMENT]
             sql = (
                 f"SELECT {', '.join(COLUMNS)} FROM stored_articles "
                 f"WHERE url IN ({', '.join('?' * len(batch))})"
             )
-            found.extend(self._db.query(sql, batch).rows)
+            found.extend(article_from_row(r) for r in self._db.query(sql, batch).rows)
         return found
 
     def count_by_state(self) -> dict[ArticleState, int]:

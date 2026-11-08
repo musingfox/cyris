@@ -85,10 +85,8 @@ def test_an_unpriced_run_still_builds_a_discord_payload():
     assert "Cost" not in " ".join(e.get("description", "") for e in embeds)
 
 
-def test_an_unpriced_run_logs_a_null_cost_not_a_zero(tmp_path):
-    import json
-
-    from cyris.adapters.output.usage_log import append_usage
+def test_an_unpriced_run_has_a_null_cost_in_its_record():
+    from cyris.adapters.output.usage_log import usage_record
 
     content = DigestContent(
         date="2026-08-25",
@@ -98,10 +96,8 @@ def test_an_unpriced_run_logs_a_null_cost_not_a_zero(tmp_path):
         articles_included=1,
         usage=_usage("@cf/openai/gpt-oss-120b"),
     )
-    log_path = tmp_path / "usage.jsonl"
-    append_usage(content, log_path)
 
-    assert json.loads(log_path.read_text())["estimated_cost_usd"] is None
+    assert usage_record(content)["estimated_cost_usd"] is None
 
 
 async def test_neurons_survive_the_trip_from_a_response_to_the_run_total():

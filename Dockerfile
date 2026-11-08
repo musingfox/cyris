@@ -36,9 +36,10 @@ RUN uv sync --frozen --no-dev
 COPY docker/crontab /app/crontab
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
-# compose bind-mounts ./sources.yaml over this path; a clone has no sources.yaml,
-# so bake the tracked example. No cyris.toml is baked: a D1 container reads its
-# runtime settings and sources from D1 and its identity from the environment,
+# Every role's commands name this path (`--sources`), and `read_config_files` still
+# parses it, so bake the tracked example: no run takes a source from it. No cyris.toml
+# is baked: a D1 container reads its runtime settings and sources from D1 and its
+# identity from the environment,
 # while a compose install bind-mounts a copy of cyris.toml.example, because its
 # identity is that file: its runtime settings live in the SQLite file in its volume.
 COPY sources.example.yaml /app/sources.yaml

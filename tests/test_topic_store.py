@@ -3,7 +3,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fakes import SqliteD1
 
-from cyris.adapters.store.json_topics import JsonTopicStore
 from cyris.adapters.store.topics import D1TopicStore
 from cyris.domain.models import TopicKind, TopicRecord, TopicTag, TopicVote
 
@@ -12,11 +11,9 @@ pytestmark = pytest.mark.unit
 T0 = datetime(2026, 10, 30, 0, 0, tzinfo=UTC)
 
 
-@pytest.fixture(params=["d1", "json"])
-def store(request, tmp_path):
-    if request.param == "d1":
-        return D1TopicStore(SqliteD1())
-    return JsonTopicStore(tmp_path)
+@pytest.fixture
+def store() -> D1TopicStore:
+    return D1TopicStore(SqliteD1())
 
 
 def _topic(tid: str, *urls: str, tags: tuple[tuple[str, TopicKind], ...] = ()) -> TopicRecord:

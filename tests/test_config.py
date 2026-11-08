@@ -6,9 +6,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from fakes import TEST_SETTINGS, make_config, settings_toml
+from fakes import TEST_SETTINGS, load_files, make_config, settings_toml, stored_settings
 
-from cyris.config import REQUIRED_KEYS, load_config
+from cyris.config import REQUIRED_KEYS
 from cyris.domain.models import Lane
 
 pytestmark = pytest.mark.integration
@@ -20,8 +20,17 @@ def _copy_example_sources(tmp_path: Path) -> Path:
     return path
 
 
-def _load_tmp(tmp_path: Path, config_path: Path):
-    return load_config(config_path=config_path, sources_path=_copy_example_sources(tmp_path))
+def _load_tmp(tmp_path: Path, config_path: Path, settings: dict | None = None):
+    return load_files(config_path, _copy_example_sources(tmp_path), settings)
+
+
+def _load_example():
+    """The shipped examples, as `cyris settings push` would leave the store."""
+    from cyris.entrypoints.cli import _file_settings
+
+    root = Path(__file__).parent.parent
+    example = root / "settings.example.toml"
+    return load_files(example, root / "sources.example.yaml", _file_settings(example))
 
 
 class TestLoadConfig:
@@ -29,11 +38,7 @@ class TestLoadConfig:
         """Load the example config files successfully."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
 
-        project_root = Path(__file__).parent.parent
-        cfg = load_config(
-            config_path=project_root / "settings.example.toml",
-            sources_path=project_root / "sources.example.yaml",
-        )
+        cfg = _load_example()
 
         assert cfg.app.general.timezone == "Asia/Taipei"
         assert cfg.app.llm_provider.model == "claude-sonnet-4-6"
@@ -57,7 +62,7 @@ class TestLoadConfig:
         sources = tmp_path / "sources.yaml"
         sources.write_text(head + "sources:\n" + "\n".join(entries) + "\n")
 
-        cfg = load_config(config_path=tmp_path / "nope.toml", sources_path=sources)
+        cfg = load_files(tmp_path / "nope.toml", sources)
 
         assert set(cfg.sources) == {"The Verge", "報導者", "Some Email Newsletter"}
         assert cfg.sources["The Verge"].lane == Lane.READ
@@ -73,18 +78,18 @@ class TestLoadConfig:
         sources = tmp_path / "sources.yaml"
         sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
         missing = tmp_path / "nope.toml"
-        cfg = load_config(config_path=missing, sources_path=sources)
+        cfg = load_files(missing, sources)
         assert cfg.app.general is None
         assert cfg.app.store.backend == "sqlite"
         assert cfg.config_file_found is False
 
     def test_present_config_file_is_used(self, tmp_path):
         config_file = tmp_path / "cyris.toml"
-        config_file.write_text('[general]\ntimezone = "UTC"\n')
+        config_file.write_text("[html_output]\nenabled = true\n")
         sources = tmp_path / "sources.yaml"
         sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
-        cfg = load_config(config_path=config_file, sources_path=sources)
-        assert cfg.present_settings()["general.timezone"] == "UTC"
+        cfg = load_files(config_file, sources)
+        assert cfg.app.html_output.enabled is True
         assert cfg.config_file_found is True
 
     def test_a_setting_an_older_build_read_does_not_stop_the_load(self, tmp_path):
@@ -93,7 +98,7 @@ class TestLoadConfig:
             settings_toml().replace("[routing]\n", "[routing]\nsummarize_score_threshold = 70\n")
         )
 
-        cfg = _load_tmp(tmp_path, config_file)
+        cfg = _load_tmp(tmp_path, config_file, TEST_SETTINGS)
 
         assert cfg.missing_settings == []
         assert "routing.summarize_score_threshold" not in cfg.present_settings()
@@ -104,14 +109,14 @@ class TestLoadConfig:
         sources = tmp_path / "sources.yaml"
         sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
         with pytest.raises(tomllib.TOMLDecodeError):
-            load_config(config_path=config_file, sources_path=sources)
+            load_files(config_file, sources)
 
     def test_missing_config_file_warns(self, tmp_path, caplog):
         sources = tmp_path / "sources.yaml"
         sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
         missing = tmp_path / "nope.toml"
         with caplog.at_level(logging.WARNING):
-            load_config(config_path=missing, sources_path=sources)
+            load_files(missing, sources)
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert str(missing) in warnings[0].message
@@ -119,26 +124,26 @@ class TestLoadConfig:
     def test_missing_sources_file(self, tmp_path):
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
-        cfg = load_config(config_path=config_file, sources_path=tmp_path / "nope.yaml")
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
         assert cfg.sources == {}
 
     def test_missing_sources_waits_for_onboarding_in_doctor(self, tmp_path):
         from cyris.diagnostics.doctor import _check_sources
 
         config_file = tmp_path / "cyris.toml"
-        config_file.write_text('[store]\nbackend = "json"\n\n[general]\ntimezone = "UTC"\n')
-        cfg = load_config(config_path=config_file, sources_path=tmp_path / "nope.yaml")
+        config_file.write_text('[store]\nbackend = "sqlite"\n')
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
         check = _check_sources(cfg)
         assert check.name == "sources"
         assert check.status == "warn"
-        assert check.detail == "none in sources.yaml yet — waiting for onboarding"
+        assert check.detail == "none in the SQLite store yet — waiting for onboarding"
 
     def test_sources_file_is_used(self, tmp_path):
         config_file = tmp_path / "cyris.toml"
         config_file.write_text('[general]\ntimezone = "UTC"\n')
         sources = tmp_path / "sources.yaml"
         sources.write_text("sources:\n  - name: X\n    url: https://x/feed\n    lane: skim\n")
-        cfg = load_config(config_path=config_file, sources_path=sources)
+        cfg = load_files(config_file, sources)
         assert set(cfg.sources) == {"X"}
 
     def test_missing_required_env_vars(self, tmp_path, monkeypatch):
@@ -146,13 +151,15 @@ class TestLoadConfig:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
         # Use tmp_path so _load_dotenv won't find the real .env
+        from cyris.entrypoints.cli import _file_settings
+
         project_root = Path(__file__).parent.parent
         config_copy = tmp_path / "cyris.toml"
         sources_copy = tmp_path / "sources.yaml"
         config_copy.write_bytes((project_root / "settings.example.toml").read_bytes())
         sources_copy.write_bytes((project_root / "sources.example.yaml").read_bytes())
 
-        cfg = load_config(config_path=config_copy, sources_path=sources_copy)
+        cfg = load_files(config_copy, sources_copy, _file_settings(config_copy))
 
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             cfg.validate_required_keys()
@@ -211,7 +218,6 @@ class TestStoreBackendFromEnv:
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
         monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
         cfg = make_config()
-        assert cfg.app.store.is_sql is True
         assert cfg.app.store.is_cloudflare is True
         assert cfg.app.store.database_id == "abc"
         assert type(build_store(cfg)).__name__ == "D1ArticleStore"
@@ -235,13 +241,13 @@ class TestStoreBackendFromEnv:
         assert cfg.app.store.backend == "sqlite"
         assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
 
-    @pytest.mark.parametrize("backend", ["json", "d1", "sqlite"])
+    @pytest.mark.parametrize("backend", ["d1", "sqlite"])
     def test_a_backend_in_the_file_wins_over_the_default(self, tmp_path, backend):
         config_file = tmp_path / "cyris.toml"
         config_file.write_text(f'[store]\nbackend = "{backend}"\n')
         assert _load_tmp(tmp_path, config_file).app.store.backend == backend
 
-    @pytest.mark.parametrize("backend", ["json", "d1"])
+    @pytest.mark.parametrize("backend", ["d1", "sqlite"])
     @pytest.mark.parametrize("toml", [None, "", "[store]\n"], ids=["no-file", "empty", "bare"])
     def test_the_environment_names_one_the_file_does_not(
         self, tmp_path, monkeypatch, backend, toml
@@ -269,7 +275,6 @@ class TestStoreBackendFromEnv:
         path = tmp_path / "state" / "cyris.sqlite3"
         cfg = make_config(store={"backend": "sqlite", "sqlite_path": str(path)})
 
-        assert cfg.app.store.is_sql is True
         assert cfg.app.store.is_cloudflare is False
         assert cfg.missing_store_keys() == []
         client = bootstrap.build_d1_client(cfg)
@@ -374,7 +379,7 @@ class TestStoreBackendFromEnv:
         config_file.parent.mkdir()
         config_file.write_text('[store]\nbackend = "sqlite"\nsqlite_path = "db/x.sqlite3"\n')
 
-        cfg = load_config(config_file, tmp_path / "nope.yaml")
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
 
         assert cfg.app.store.sqlite_path == tmp_path / "inst" / "db" / "x.sqlite3"
 
@@ -387,7 +392,7 @@ class TestStoreBackendFromEnv:
         config_file.parent.mkdir()
         config_file.write_text('[store]\nbackend = "sqlite"\n')
 
-        cfg = load_config(config_file, tmp_path / "nope.yaml")
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
 
         assert cfg.app.store.sqlite_path == tmp_path / "inst" / "db" / "x.sqlite3"
 
@@ -398,7 +403,7 @@ class TestStoreBackendFromEnv:
         config_file.parent.mkdir()
         config_file.write_text('[store]\nbackend = "sqlite"\n')
 
-        cfg = load_config(config_file, tmp_path / "nope.yaml")
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
 
         assert cfg.app.store.sqlite_path == tmp_path / "inst" / "state" / "cyris.sqlite3"
 
@@ -409,7 +414,7 @@ class TestStoreBackendFromEnv:
             f'[store]\nbackend = "sqlite"\nsqlite_path = "{tmp_path / "x.sqlite3"}"\n'
         )
 
-        cfg = load_config(config_file, tmp_path / "nope.yaml")
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
 
         assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
 
@@ -420,7 +425,7 @@ class TestStoreBackendFromEnv:
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
         monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", "db/x.sqlite3")
 
-        cfg = load_config(tmp_path / "inst" / "nope.toml", tmp_path / "nope.yaml")
+        cfg = load_files(tmp_path / "inst" / "nope.toml", tmp_path / "nope.yaml")
 
         assert cfg.app.store.sqlite_path == Path("db/x.sqlite3")
 
@@ -430,7 +435,7 @@ class TestStoreBackendFromEnv:
         config_file.parent.mkdir()
         config_file.write_text('[store]\nbackend = "sqlite"\n[agent_vault]\npath = "v"\n')
 
-        cfg = load_config(config_file, tmp_path / "nope.yaml")
+        cfg = load_files(config_file, tmp_path / "nope.yaml")
 
         assert cfg.app.agent_vault.path == Path("v")
 
@@ -444,7 +449,7 @@ class TestStoreBackendFromEnv:
         )
 
         with pytest.raises(ValueError, match="inside the agent vault"):
-            load_config(config_file, tmp_path / "nope.yaml")
+            load_files(config_file, tmp_path / "nope.yaml")
 
     def test_a_vault_at_the_working_directory_is_refused_naming_the_fix(
         self, tmp_path, monkeypatch
@@ -456,7 +461,7 @@ class TestStoreBackendFromEnv:
         config_file.write_text('[agent_vault]\npath = "."\n')
 
         with pytest.raises(ValueError) as refused:
-            load_config(config_file, tmp_path / "nope.yaml")
+            load_files(config_file, tmp_path / "nope.yaml")
 
         assert "state/cyris.sqlite3 is inside the agent vault" in str(refused.value)
         assert "Set [store] sqlite_path to a file outside the vault." in str(refused.value)
@@ -464,9 +469,9 @@ class TestStoreBackendFromEnv:
     def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
         config_file = tmp_path / "cyris.toml"
-        config_file.write_text('[store]\nbackend = "json"\n')
+        config_file.write_text('[store]\nbackend = "sqlite"\n')
         cfg = _load_tmp(tmp_path, config_file)
-        assert cfg.app.store.backend == "json"
+        assert cfg.app.store.backend == "sqlite"
 
     def test_empty_database_id_yields_to_env(self, monkeypatch):
         import tomllib
@@ -757,12 +762,11 @@ class TestValidateSetting:
         with pytest.raises(ValueError, match=match):
             validate_setting(key, value)
 
-    def test_a_json_file_with_an_unknown_timezone_fails_the_load(self, tmp_path):
-        config_file = tmp_path / "cyris.toml"
-        config_file.write_text('[general]\ntimezone = "Mars/Base"\n')
+    def test_a_stored_unknown_timezone_counts_as_missing(self, tmp_path):
+        cfg = _load_tmp(tmp_path, tmp_path / "nope.toml", {"general.timezone": "Mars/Base"})
 
-        with pytest.raises(ValueError, match="Mars/Base"):
-            _load_tmp(tmp_path, config_file)
+        assert "general.timezone" in cfg.missing_settings
+        assert "general.timezone" not in cfg.present_settings()
 
 
 class TestProviderNone:
@@ -808,32 +812,32 @@ class TestProviderNone:
             cfg.validate_required_keys()
 
 
-class TestJsonSettingsFromFileOnly:
-    """A json deployment takes every runtime setting from cyris.toml and nowhere else."""
+class TestSettingsFromTheStoreOnly:
+    """Every runtime setting comes from the store and nowhere else."""
 
     ENV_WEBHOOK = "https://discord.com/api/webhooks/1/envTOKEN"
 
-    def _load(self, tmp_path: Path, body: str | None):
+    def _load(self, tmp_path: Path, stored: dict | None = None, body: str | None = None):
         config_file = tmp_path / "cyris.toml"
         if body is not None:
             config_file.write_text(body)
-        return _load_tmp(tmp_path, config_file)
+        return _load_tmp(tmp_path, config_file, stored)
 
     def test_no_file_means_every_key_is_missing(self, tmp_path):
-        cfg = self._load(tmp_path, None)
+        cfg = self._load(tmp_path)
 
         assert cfg.missing_settings == sorted(REQUIRED_KEYS)
         assert cfg.present_settings() == {}
         assert cfg.config_file_found is False
 
-    def test_a_file_without_the_vote_order_judge_leaves_the_digest_unset(self, tmp_path):
-        cfg = self._load(tmp_path, settings_toml(omit=["digest.preference_source"]))
+    def test_a_store_without_the_vote_order_judge_leaves_the_digest_unset(self, tmp_path):
+        cfg = self._load(tmp_path, stored_settings(omit=["digest.preference_source"]))
 
         assert cfg.app.digest is None
         assert cfg.missing_settings == ["digest.preference_source"]
 
-    def test_a_file_with_one_key_leaves_the_other_twenty_four_missing(self, tmp_path):
-        cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
+    def test_a_store_with_one_key_leaves_the_other_twenty_four_missing(self, tmp_path):
+        cfg = self._load(tmp_path, {"general.timezone": "UTC"})
 
         assert len(cfg.missing_settings) == 24
         assert "general.timezone" not in cfg.missing_settings
@@ -842,36 +846,32 @@ class TestJsonSettingsFromFileOnly:
     def test_the_environment_never_supplies_the_webhook(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", self.ENV_WEBHOOK)
 
-        cfg = self._load(tmp_path, '[general]\ntimezone = "UTC"\n')
+        cfg = self._load(tmp_path, {"general.timezone": "UTC"})
 
         assert "notify.discord_webhook_url" in cfg.missing_settings
         assert "envTOKEN" not in cfg.model_dump_json()
 
     def test_an_empty_webhook_is_present_and_means_off(self, tmp_path):
-        cfg = self._load(tmp_path, '[notify]\ndiscord_webhook_url = ""\n')
+        cfg = self._load(tmp_path, {"notify.discord_webhook_url": ""})
 
         assert "notify.discord_webhook_url" not in cfg.missing_settings
         assert cfg.present_settings()["notify.discord_webhook_url"] == ""
 
     def test_provider_none_is_a_present_value(self, tmp_path):
-        cfg = self._load(tmp_path, '[llm_provider]\nprovider = "none"\nmodel = ""\n')
+        cfg = self._load(tmp_path, {"llm_provider.provider": "none", "llm_provider.model": ""})
 
         assert "llm_provider.provider" not in cfg.missing_settings
         assert "llm_provider.model" not in cfg.missing_settings
         assert cfg.present_settings()["llm_provider.provider"] == "none"
 
     def test_the_shipped_example_sets_every_key(self):
-        root = Path(__file__).parent.parent
-
-        cfg = load_config(root / "settings.example.toml", root / "sources.example.yaml")
-
-        assert cfg.missing_settings == []
+        assert _load_example().missing_settings == []
 
     @pytest.mark.parametrize("key", REQUIRED_KEYS)
     def test_each_omitted_key_is_reported_missing(self, tmp_path, monkeypatch, key):
         monkeypatch.setenv("CYRIS_DISCORD_WEBHOOK_URL", self.ENV_WEBHOOK)
 
-        cfg = self._load(tmp_path, settings_toml(omit=[key]))
+        cfg = self._load(tmp_path, stored_settings(omit=[key]))
 
         assert cfg.missing_settings == [key]
         assert key not in cfg.present_settings()
@@ -880,7 +880,7 @@ class TestJsonSettingsFromFileOnly:
     def test_the_webhook_is_read_from_the_notify_table(self, tmp_path):
         url = "https://discord.com/api/webhooks/1/tok"
 
-        cfg = self._load(tmp_path, settings_toml(**{"notify.discord_webhook_url": url}))
+        cfg = self._load(tmp_path, stored_settings(**{"notify.discord_webhook_url": url}))
 
         assert cfg.app.notify.discord_webhook_url == url
 
@@ -888,8 +888,8 @@ class TestJsonSettingsFromFileOnly:
         """A config left on [general.notify] does not set the webhook: it is missing."""
         cfg = self._load(
             tmp_path,
-            settings_toml(omit=["notify.discord_webhook_url"])
-            + '[general.notify]\ndiscord_webhook_url = "https://discord.com/api/webhooks/1/old"\n',
+            stored_settings(omit=["notify.discord_webhook_url"]),
+            '[general.notify]\ndiscord_webhook_url = "https://discord.com/api/webhooks/1/old"\n',
         )
 
         assert cfg.app.notify is None

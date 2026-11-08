@@ -27,11 +27,8 @@ class D1SourceStore:
 
     def list_sources(self) -> dict[str, SourceConfig]:
         """Every source, keyed by name. An empty table means "not configured yet"."""
-        return {row["name"]: source_from_row(row) for row in self.rows()}
-
-    def rows(self) -> list[dict]:
-        """The table as stored, by name, unparsed, so a reader can name a row that is invalid."""
-        return self._db.query("SELECT name, url, type, config FROM sources ORDER BY name").rows
+        rows = self._db.query("SELECT name, url, type, config FROM sources ORDER BY name").rows
+        return {row["name"]: source_from_row(row) for row in rows}
 
     def upsert(self, source: SourceConfig) -> None:
         """Write one source, creating or replacing the row `name` owns."""

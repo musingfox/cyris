@@ -64,7 +64,7 @@ flowchart TB
         CFNL["CloudflareNewsletterSource"]
         RSS["RssSource · direct poll, fallback"]
         HTML["HtmlDigestWriter"]
-        PUB["publish_html_digest"]
+        PUB["publish_site"]
         SYNC["sync_promotions"]
         USAGE["append_usage_d1"]
         NOTI["send_discord"]
@@ -74,7 +74,7 @@ flowchart TB
         TAGS["D1TagStore"]
         STORIES["D1StoryStore"]
         DIGESTS["D1DigestStore"]
-        TOPICS["D1TopicStore · JsonTopicStore"]
+        TOPICS["D1TopicStore"]
     end
 
     subgraph EXT["External"]
@@ -82,7 +82,7 @@ flowchart TB
         FEEDS[("Publisher feeds")]
         CFW{{"Cloudflare · Workers · D1 · KV · Pages"}}
         DISC{{"Discord"}}
-        FS["Local filesystem<br/>json or sqlite backend, or --output PATH"]
+        FS["Local filesystem<br/>sqlite backend, or --output PATH"]
     end
 
     CLI --> DEPS
@@ -131,8 +131,7 @@ flowchart TB
     MAIL --> CFW
     EMB --> CFW
     CLEF --> CFW
-    HTML -->|json or sqlite backend| FS
-    TOPICS -->|json backend only| FS
+    HTML -->|sqlite backend| FS
     CLI -->|--output PATH, operator's file| FS
 
     classDef port fill:#0F6E7A,stroke:#5AC3CC,color:#fff;
@@ -145,7 +144,7 @@ flowchart TB
     class CFNL,CFRSS,PUB,SYNC,CFW,STORE,USAGE,TAGS,STORIES,DIGESTS,EMB,MAIL,CLEF cloud;
 ```
 
-**Legend**: 🟢 Protocol boundary　🟠 a local install's files (the `json` backend, the `sqlite`
+**Legend**: 🟢 Protocol boundary　🟠 a local install's files (the `sqlite`
 file, the pages)　🔴 must not exist in the target architecture　🔵 already on Cloudflare. The D1
 stores reach Cloudflare through `D1Client` over REST, or the local file through `LocalD1Client`
 (`adapters/store/local_d1.py`); both answer the one `D1Queryable` seam (`adapters/store/d1.py`).
@@ -177,21 +176,16 @@ for it:
 | `Embedder → FS` | `embeddings.json` (415 MB), rewritten whole every run | **not Vectorize.** The cache was deleted rather than relocated — a run re-embeds ~600 texts for ~20 neurons — why not Vectorize: [ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md) |
 | `NewsletterArchiveSource ← FS` | local maildir | **deleted** 2026-08-27 (M1), superseded by the newsletter Worker |
 
-A local install has two homes, and `[store] backend` picks one (ADR-0003); a config that names
-none gets `sqlite`, and `cyris.toml.example` names it:
+`[store] backend` picks one of two homes (ADR-0003), `d1` or `sqlite`; a config that names none gets
+`sqlite`, a local install's home, and `cyris.toml.example` names it. **`sqlite`** is every D1 table
+in one SQLite file at `[store] sqlite_path` (§4, §5), opened through `LocalD1Client`, so every D1
+store, and every feature built on one, runs unchanged. Grade-D settings and sources live in the
+file, as they live in D1. Only Cloudflare's own edges stay behind `StoreConfig.is_cloudflare`: its
+REST probes, credentials and Workers. One file is never opened from both a host process and a
+container: a bind mount between them corrupts it, so the path may not sit inside `agent-vault/`,
+which compose bind-mounts.
 
-- **`sqlite`**, the default: every D1 table in one SQLite file at `[store] sqlite_path` (§4, §5), opened through
-  `LocalD1Client`, so every D1 store, and every feature built on one, runs unchanged. Grade-D
-  settings and sources live in the file, as they live in D1. Only Cloudflare's own edges stay
-  behind `StoreConfig.is_cloudflare`: its REST probes, credentials and Workers. What the SQL
-  store holds is behind `StoreConfig.is_sql`, true for `d1` and `sqlite` alike. One file is never
-  opened from both a host process and a container: a bind mount between them corrupts it, so the
-  path may not sit inside `agent-vault/`, which compose bind-mounts.
-- **`json`**: the earlier fallback, which an install keeps only by naming it. The article store,
-  `topics.json` and `usage.jsonl` live in the agent vault (§4 lists each). It still runs, and
-  `cyris store migrate --to sqlite` moves such an install across; ADR-0025 removes it next.
-
-On either, `HtmlDigestWriter` writes `agent-vault/html/`, which `cyris triage-ui` serves. With
+A local install's `HtmlDigestWriter` writes `agent-vault/html/`, which `cyris triage-ui` serves. With
 Cloudflare D1 wired, the site's file list comes from the `pages_manifest` table and nothing is
 written locally.
 
@@ -207,8 +201,8 @@ cloud deployment's.
 
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
-| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `TopicRepository` (`D1TopicStore`, `JsonTopicStore`), `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish`, `sync_promotions`, `append_usage`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `TopicRepository` (`D1TopicStore`), `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish_site`, `sync_promotions`, `append_usage_d1`, `notify`, `send_email`, `send_email_alert`, `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -306,8 +300,8 @@ back empty. It filters by publish date over the
 digest window, as `RssSource` does at digest time, so a blog's old history is not stamped as
 new. The Worker needs Workers Paid; the 2026-10-04 objection to polling from the cyris process,
 that the container would wake every hour, does not apply to a machine that is already on.
-`docker/crontab` runs `ingest` and `run --if-due` in sequence on one line because the `json`
-store, which an install may still name, has no locking. `ingest` does nothing where the Worker is configured. No new state: the
+`docker/crontab` runs `ingest` and `run --if-due` in sequence on one line so the digest reads what
+this hour's poll just stored. `ingest` does nothing where the Worker is configured. No new state: the
 rows are ordinary rows of §4's article store.
 
 **Email — a queue, drained with an ack.** Cloudflare Email Routing delivers to the `email()` handler
@@ -523,10 +517,9 @@ and the run continues. Topic tags emitted by scoring and by news clustering land
 `tags`/`article_tags` (`D1TagStore`), and each run's story membership — which
 articles the clustering step grouped — replaces its
 (date, period) window in `stories`/`story_members` (`D1StoryStore`). Both stores are direct
-injections built only when D1 is configured; with `backend = "json"` they are absent and the run
-skips the writes. A third fact is not D1-only: each non-dry run writes the issue's topics,
-their members and tags through `TopicRepository` (§4), to D1 or to the `json` backend's
-`topics.json`, also fail-soft (`topics_error` in `run_summary`).
+injections. A third fact goes through a Protocol: each non-dry run writes the issue's topics,
+their members and tags through `TopicRepository` (§4), also fail-soft (`topics_error` in
+`run_summary`).
 
 A publishing run also saves the URLs it fed the pipeline to `digest_inputs`, which is the record a
 rerun rebuilds from. `cyris regenerate` has two forms over a stored issue: a re-render to a file, with
@@ -594,8 +587,8 @@ Every persistent datum, where it lives now, and where it is going.
 **What this table covers:** state the pipeline keeps — anything a later run or a
 reader depends on. It does not cover a diagnostic command's output, and it does not need to: the
 comparisons write nothing at all, they emit, and where that lands is the shell's decision.
-`tests/test_local_writes.py` holds the set of files allowed to touch local disk at seven: the four that write the `json`
-backend's files, which the D1 path does not use, `LocalD1Client`, which opens the `sqlite`
+`tests/test_local_writes.py` holds the set of files allowed to touch local disk at four: `HtmlDigestWriter`, which writes a
+local install's pages, `LocalD1Client`, which opens the `sqlite`
 backend's file, the vault probe `cyris doctor` skips under Cloudflare D1, and the file `--output`
 names. A new one fails that test before it can become a row
 nobody added. `tests/test_residency_covers_schema.py` does the same for the other half: every
@@ -603,42 +596,42 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
-| A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside `cyris.toml`; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open by the server, the wizard or a run, and `LocalD1Client` answers the stores as D1 does. `cyris doctor` and `cyris config show` report a file that is not there as not created yet and leave it so; `cyris settings push` never opens it. Not a second home overlaid on D1 or `json` (ADR-0003): an install has one of the three. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins. Backup is `.backup` or `VACUUM INTO`, not `cp` of the file, which can lose recent writes. No row of `feed_health` is written here: no rss Worker polls for a local install |
+| A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside `cyris.toml`; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open by the server, the wizard or a run, and `LocalD1Client` answers the stores as D1 does. `cyris doctor` and `cyris config show` report a file that is not there as not created yet and leave it so; `cyris settings push` never opens it. Not a second home overlaid on D1 (ADR-0003): an install has one of the two. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins. Backup is `.backup` or `VACUUM INTO`, not `cp` of the file, which can lose recent writes. No row of `feed_health` is written here: no rss Worker polls for a local install |
 | Article store | **D1 `stored_articles`** | same | `content` is written as plain text for every source (newsletter bodies already were; an RSS entry's HTML is converted by `CloudflareRssSource`, or by `RssSource` on the direct-polling path, through `adapters/fetch/html_text.py`). Rows stored before RSS content was converted keep their HTML: `INSERT OR IGNORE` never rewrites them, and a pending row or a rerun turns them back into articles as they are. `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}`. Besides a run's save, the onboarding votes step (§6) stores each card the reader marked and then accepts or rejects it with `triaged_at`, as a `/labels` answer is written; a card left alone gets no row and stays in the buffer for the first run. A teaser's page text (§3.2) is the run's alone and is never written here |
 | Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
 | Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window |
 | Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
-| Topics | **D1 `topics`**; `topics.json` in the agent vault for a `json` deployment | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. A stand-in until the filter assigns topics: each item of the page is a topic of this issue only (`domain/topics.py`), so an id never spans two issues. A topic left with no member and no vote is deleted |
-| Topic members | **D1 `topic_members`**; `topics.json` for `json` | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which stay the clustering step's record |
-| Topic tags | **D1 `topic_tags`**; `topics.json` for `json` | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, so a rerun that tags a topic differently replaces them. Today's tags carry no kind, so the stand-in stores every one as `domain` (`STAND_IN_TAG_KIND`) |
-| Topic votes | **D1 `topic_votes`**; `topics.json` for `json` | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one, with no opposite vote between them, is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A sync whose topic-vote write fails still stamps and ACKs its votes, since the stamp is the vote's record and a held ACK would re-stamp the same URLs every run; that sync's topic votes are lost, and `run_summary`'s `topic_votes_failed` says why. A URL no topic holds (an issue published before topics, the raw page) writes no row |
-| Article image URL | **D1 `articles.image_url`** and **`stored_articles.image_url`** (the `json` store keeps it in the article), carried on each Stories item and each Topics member in the issue's `DigestContent` | same | The picture a feed entry names for its article, as a URL only: `media:thumbnail`, `media:content` or an image `enclosure`, else the first `<img>` in the entry's content. Parsed by `workers/rss` when it buffers the entry, or by `RssSource` on the direct-polling path with the same order and rules (`tests/test_feed_image_parity.py` holds the two to one URL), and carried with the article to the store, so a rerun shows the image the article had. The image bytes are never fetched or kept: the digest page loads them from the feed's host in the reader's browser, with no referrer (UI spec §4 *story image*). No article page is fetched for an `og:image` (owner, 2026-10-31): a feed's own picture costs no new outbound request. A newsletter issue has no feed, so it has no image. The digest pipeline stamps it on Stories items and on news clusters' members only, leaving out a picture two or more of one source's articles in the issue share (`domain/story_images.py`); a Topics block shows its first member's that is left (`domain/layers.py`), and an issue stored before Topics showed pictures carries none on its members, so a rerender of it shows no Topics picture where a rerun does. Headlines and the mail show none |
+| Topics | **D1 `topics`** | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. A stand-in until the filter assigns topics: each item of the page is a topic of this issue only (`domain/topics.py`), so an id never spans two issues. A topic left with no member and no vote is deleted |
+| Topic members | **D1 `topic_members`** | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which stay the clustering step's record |
+| Topic tags | **D1 `topic_tags`** | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, so a rerun that tags a topic differently replaces them. Today's tags carry no kind, so the stand-in stores every one as `domain` (`STAND_IN_TAG_KIND`) |
+| Topic votes | **D1 `topic_votes`** | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one, with no opposite vote between them, is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A sync whose topic-vote write fails still stamps and ACKs its votes, since the stamp is the vote's record and a held ACK would re-stamp the same URLs every run; that sync's topic votes are lost, and `run_summary`'s `topic_votes_failed` says why. A URL no topic holds (an issue published before topics, the raw page) writes no row |
+| Article image URL | **D1 `articles.image_url`** and **`stored_articles.image_url`**, carried on each Stories item and each Topics member in the issue's `DigestContent` | same | The picture a feed entry names for its article, as a URL only: `media:thumbnail`, `media:content` or an image `enclosure`, else the first `<img>` in the entry's content. Parsed by `workers/rss` when it buffers the entry, or by `RssSource` on the direct-polling path with the same order and rules (`tests/test_feed_image_parity.py` holds the two to one URL), and carried with the article to the store, so a rerun shows the image the article had. The image bytes are never fetched or kept: the digest page loads them from the feed's host in the reader's browser, with no referrer (UI spec §4 *story image*). No article page is fetched for an `og:image` (owner, 2026-10-31): a feed's own picture costs no new outbound request. A newsletter issue has no feed, so it has no image. The digest pipeline stamps it on Stories items and on news clusters' members only, leaving out a picture two or more of one source's articles in the issue share (`domain/story_images.py`); a Topics block shows its first member's that is left (`domain/layers.py`), and an issue stored before Topics showed pictures carries none on its members, so a rerender of it shows no Topics picture where a rerun does. Headlines and the mail show none |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry. Its `content` is the feed's HTML, which the Worker reads the story image from; `CloudflareRssSource` turns it into plain text (trafilatura) on the way out, so what it writes to `stored_articles.content` is text (older rows: see Article store) |
-| Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. Cloudflare D1 only: a `json` deployment polls no Worker, and a `sqlite` install's table stays empty, so `cyris doctor` skips it there |
-| Source definitions | **D1 `sources`**; `sources.yaml` for a `json` deployment | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |
-| Runtime settings | **D1 `settings`**; `cyris.toml` for a `json` deployment | same | Grade D. One home per backend, no value in code, and a missing key stops the run — see §5 |
-| Tracked topics | **D1 `tracked_topics`**; `cyris.toml` `[[tracked_topics]]` for a `json` deployment | same | Grade D, one row per topic: name, description, threshold and the embedding model the threshold was set for. Written by `/settings` (Tracking), read by `load_effective_config` beside `sources`. Not rows of `settings`: an empty table is a deployment that tracks nothing. A topic's hits are not kept here, or anywhere of their own: they live in the issue's `DigestContent`, which D1 `digests` stores |
-| Areas: name, position, status, merged target, proposal counts | **D1 `areas`** (none for a `json` deployment) | same | Grade D, one row per area, written by `/settings` (Areas). Read by `load_effective_config` beside `tracked_topics`, so every run sees the closed set the model picks from. A `proposed` row carries the counts a suggestion has accumulated; a `dismissed` or `merged` row stays so its name keeps resolving |
-| Area birth threshold | **D1 `area_birth_threshold`** (none for a `json` deployment) | same | Grade D, at most one row, written by `/settings` (Areas). Read only by `/settings`, to mark which proposals meet it. No run reads it, so an unset threshold changes no run |
-| Discord webhook | **D1 `settings`** | same | written by `/settings`; `""` means notifications are off. A `json` deployment keeps it in `cyris.toml [notify]` |
-| Mail addresses (recipient, sender) | **D1 `settings`** | same | written by `/settings` after a test message reaches the recipient; an empty recipient means no mail. A `json` deployment keeps them in `cyris.toml [notify]` |
-| LLM spend | **D1 `usage_log`** | same | `agent-vault/usage.jsonl` is the no-D1 fallback only, the same alternative the article store has: `build_deps` picks one or the other, never both |
+| Feed health | **D1 `feed_health`** | same | One row per RSS feed the Worker has polled: the current failure streak, the last error and when, and the last success. Written by `workers/rss` on every poll, read by `cyris doctor` and `/settings` together with the newest `stored_articles.first_seen_at` per source, which needs no state of its own; `cyris run` neither reads nor writes it. Both `schema.sql` and the Worker create it. A row for a retired source stays behind, harmless, since both readers start from `sources`. Cloudflare D1 only: a `sqlite` install's table stays empty, so `cyris doctor` skips it there |
+| Source definitions | **D1 `sources`** | same | One home per backend. Both cyris and `workers/rss` read the table; an empty one is a deployment waiting for onboarding, so it polls no feed and `cyris run` ends having fetched nothing, with no failure alert (`Config.awaiting_onboarding`) |
+| Runtime settings | **D1 `settings`** | same | Grade D. One home per backend, no value in code, and a missing key stops the run — see §5 |
+| Tracked topics | **D1 `tracked_topics`** | same | Grade D, one row per topic: name, description, threshold and the embedding model the threshold was set for. Written by `/settings` (Tracking), read by `load_effective_config` beside `sources`. Not rows of `settings`: an empty table is a deployment that tracks nothing. A topic's hits are not kept here, or anywhere of their own: they live in the issue's `DigestContent`, which D1 `digests` stores |
+| Areas: name, position, status, merged target, proposal counts | **D1 `areas`** | same | Grade D, one row per area, written by `/settings` (Areas). Read by `load_effective_config` beside `tracked_topics`, so every run sees the closed set the model picks from. A `proposed` row carries the counts a suggestion has accumulated; a `dismissed` or `merged` row stays so its name keeps resolving |
+| Area birth threshold | **D1 `area_birth_threshold`** | same | Grade D, at most one row, written by `/settings` (Areas). Read only by `/settings`, to mark which proposals meet it. No run reads it, so an unset threshold changes no run |
+| Discord webhook | **D1 `settings`** | same | written by `/settings`; `""` means notifications are off |
+| Mail addresses (recipient, sender) | **D1 `settings`** | same | written by `/settings` after a test message reaches the recipient; an empty recipient means no mail |
+| LLM spend | **D1 `usage_log`** | same | One row per run that called a model, written by `append_usage_d1` |
 | Promote votes | **KV** (`workers/promote`) | same | Transient queue, drained at each digest run |
 | Inbound newsletters | **KV** (`workers/newsletter`) | same | Transient queue, drained and ACKed per run |
 | Deployed site's file list | **D1 `pages_manifest`** | same | path → Pages asset hash, a few KB. The *bytes* are Cloudflare's, not ours. A failed cleanup after a save can leave an older stamped generation in the table; readers ignore it, since the newest `updated_at` wins |
-| Interest map page (`/interest`) | **derived**, drawn by the container on each request | same | No store of its own, and no copy in the Pages project: the `ui` container renders it from the live holds in D1 `suppressions` (the run's own definition), `article_tags` and the voted `stored_articles` whenever a signed-in reader opens it, so it is never older than the request. A copy an earlier release published as `/interest.html` leaves the site at the next deploy (`RETIRED_PATHS` in `adapters/output/publish.py`). D1 only: a `json` deployment answers 409 |
-| Digest runs | **D1 `digest_runs`** | same | One row per `run_digest` call on every path — `no_articles`, `no_pending`, `error` included — with status, period, dry-run flag, fetch counts, the image's `CYRIS_GIT_SHA`, the degraded judgement and the whole `run_summary` as JSON; a run that raised also carries `error`, the text its failure alert sends. Written after the log line, inside its own guard. Besides `cyris doctor`, the onboarding first-issue step reads the newest row back (`GET /api/onboarding/first-issue`, §6) to tell the reader how the run it started ended. D1 only: a `json` run writes nothing and keeps only stdout |
-| Digest content | **D1 `digests`** | same | One row per issue, keyed `(date, period)`, last run wins: the final `DigestContent` as JSON (its `area_order` included: stored for the area sections, which no output draws since the mail and Discord took the three layers, and read by nothing until the area skeleton is deleted) plus `raw_page`, the flag saying whether that run's digest page linked a raw companion page — the two inputs the digest page renders from. The raw companion page is rebuilt from `digest_inputs`, not from this row, with each article's state as it is now. Deleted only by `scripts/prune_archive.py`, for named issues (see docs/operations.md). D1 only: a `json` run keeps no copy |
-| Digest inputs | **D1 `digest_inputs`** | same | One row per issue, keyed `(date, period)`, last write wins: the URLs a publishing run fed the pipeline, in order, as a JSON array. Written by a non-dry run only, before publishing; a dry run and a rerun write nothing. A URL record, not article state: a rerun reads each article by URL as it is now, and votes, vote-similarity seeds, settings, tracked topics, areas and the embedding model are read live too, so a rerun shows their current values. A row whose article `cyris articles clean` deleted drops out of the rerun. An issue recorded before this table has no row, so it cannot be rerun. Deleted only by `scripts/prune_archive.py`, for named issues (see docs/operations.md). D1 only: a `json` run keeps no copy |
-| Vote-similarity pool | **D1 `vote_similarity_shadow`** | same | One row per candidate a run judged against the reader's votes, keyed `(run_at, candidate_url)`: the nearest upvoted and downvoted article with each cosine, and the embedding model. `run_at` is the run's `started_at`, which `digest_runs.summary` also carries, and its `vote_similarity_judged` is the run's row count. Raw data with no verdict: the suppression decision is not stored here; `suppressions` holds it. Written by `run_digest` right after `judge_by_votes`, inside its own guard, from the cosines that call already computed, so it costs no embedding call; a run whose similarity pass skipped, and a dry run, write nothing. Nothing reads it yet. D1 only: a `json` run keeps no copy |
-| Suppressions | **D1 `suppressions`** | same | One row per candidate a run newly suppressed as an outlier, keyed `(candidate_url, run_at)`: the downvote it sat nearest to with its cosine, the upvote cosine (NULL when there was no upvote seed), the outlier score, the `reason`, the embedding `model` that judged it, and `until`, the instant the hold expires (run start plus 7 days). `model` is a record, not a filter: a hold outlives a change of `vote_similarity` provider or model for up to `SUPPRESSION_CLOCK_DAYS`, because it holds a verdict rather than a cosine to compare (ADR-0017). A suppression is not a vote: the article stays `pending` with `triaged_at` NULL, and nothing else reads this table's row as a decision. A later human action stamps `triaged_at`, and a run then ignores the hold for that article. A held article still pending is judged with the window and counts toward its median, but this run's verdict does not lift the hold (ADR-0017). Written by `run_digest` after judging, inside its own guard, and never on a dry run. D1 only: a `json` run keeps no copy |
-| Blind-label sample | **D1 `blind_labels`** | same | One row per filter candidate drawn for blind labeling by `cyris labels draw`, keyed by the draw's time and the URL: its position on `/labels`, the news split and the pipeline's state frozen at draw time, how many pool rows shared its stratum, the seed, the pool's cutoff, and the reader's answer (`up`, `down` or `skip`) with its time. Not columns of `stored_articles`: a label is written there exactly as a digest vote is, which overwrites the state that put the row in its stratum and leaves a label indistinguishable from a vote, so `cyris labels report` could neither weight the strata nor keep the labels out of the seeds that score them; a skip has no home there at all. One sample at a time: a draw replaces the previous one only with `--replace`, by inserting the new draw whole in one statement before deleting the old, and readers take the latest draw, so a replace that fails part way leaves one whole sample. D1 only: a `json` deployment has none |
-| Applied schema steps | **D1 `schema_migrations`** (none for a `json` deployment) | same | One row per versioned step in `adapters/store/migrations.py`, recorded once it has run, or once its precondition shows it is not needed. Read on every boot to skip the steps already recorded; nothing else reads it |
+| Interest map page (`/interest`) | **derived**, drawn by the container on each request | same | No store of its own, and no copy in the Pages project: the `ui` container renders it from the live holds in D1 `suppressions` (the run's own definition), `article_tags` and the voted `stored_articles` whenever a signed-in reader opens it, so it is never older than the request. A copy an earlier release published as `/interest.html` leaves the site at the next deploy (`RETIRED_PATHS` in `adapters/output/publish.py`). |
+| Digest runs | **D1 `digest_runs`** | same | One row per `run_digest` call on every path — `no_articles`, `no_pending`, `error` included — with status, period, dry-run flag, fetch counts, the image's `CYRIS_GIT_SHA`, the degraded judgement and the whole `run_summary` as JSON; a run that raised also carries `error`, the text its failure alert sends. Written after the log line, inside its own guard. Besides `cyris doctor`, the onboarding first-issue step reads the newest row back (`GET /api/onboarding/first-issue`, §6) to tell the reader how the run it started ended. |
+| Digest content | **D1 `digests`** | same | One row per issue, keyed `(date, period)`, last run wins: the final `DigestContent` as JSON (its `area_order` included: stored for the area sections, which no output draws since the mail and Discord took the three layers, and read by nothing until the area skeleton is deleted) plus `raw_page`, the flag saying whether that run's digest page linked a raw companion page — the two inputs the digest page renders from. The raw companion page is rebuilt from `digest_inputs`, not from this row, with each article's state as it is now. Deleted only by `scripts/prune_archive.py`, for named issues (see docs/operations.md). |
+| Digest inputs | **D1 `digest_inputs`** | same | One row per issue, keyed `(date, period)`, last write wins: the URLs a publishing run fed the pipeline, in order, as a JSON array. Written by a non-dry run only, before publishing; a dry run and a rerun write nothing. A URL record, not article state: a rerun reads each article by URL as it is now, and votes, vote-similarity seeds, settings, tracked topics, areas and the embedding model are read live too, so a rerun shows their current values. A row whose article `cyris articles clean` deleted drops out of the rerun. An issue recorded before this table has no row, so it cannot be rerun. Deleted only by `scripts/prune_archive.py`, for named issues (see docs/operations.md). |
+| Vote-similarity pool | **D1 `vote_similarity_shadow`** | same | One row per candidate a run judged against the reader's votes, keyed `(run_at, candidate_url)`: the nearest upvoted and downvoted article with each cosine, and the embedding model. `run_at` is the run's `started_at`, which `digest_runs.summary` also carries, and its `vote_similarity_judged` is the run's row count. Raw data with no verdict: the suppression decision is not stored here; `suppressions` holds it. Written by `run_digest` right after `judge_by_votes`, inside its own guard, from the cosines that call already computed, so it costs no embedding call; a run whose similarity pass skipped, and a dry run, write nothing. Nothing reads it yet. |
+| Suppressions | **D1 `suppressions`** | same | One row per candidate a run newly suppressed as an outlier, keyed `(candidate_url, run_at)`: the downvote it sat nearest to with its cosine, the upvote cosine (NULL when there was no upvote seed), the outlier score, the `reason`, the embedding `model` that judged it, and `until`, the instant the hold expires (run start plus 7 days). `model` is a record, not a filter: a hold outlives a change of `vote_similarity` provider or model for up to `SUPPRESSION_CLOCK_DAYS`, because it holds a verdict rather than a cosine to compare (ADR-0017). A suppression is not a vote: the article stays `pending` with `triaged_at` NULL, and nothing else reads this table's row as a decision. A later human action stamps `triaged_at`, and a run then ignores the hold for that article. A held article still pending is judged with the window and counts toward its median, but this run's verdict does not lift the hold (ADR-0017). Written by `run_digest` after judging, inside its own guard, and never on a dry run. |
+| Blind-label sample | **D1 `blind_labels`** | same | One row per filter candidate drawn for blind labeling by `cyris labels draw`, keyed by the draw's time and the URL: its position on `/labels`, the news split and the pipeline's state frozen at draw time, how many pool rows shared its stratum, the seed, the pool's cutoff, and the reader's answer (`up`, `down` or `skip`) with its time. Not columns of `stored_articles`: a label is written there exactly as a digest vote is, which overwrites the state that put the row in its stratum and leaves a label indistinguishable from a vote, so `cyris labels report` could neither weight the strata nor keep the labels out of the seeds that score them; a skip has no home there at all. One sample at a time: a draw replaces the previous one only with `--replace`, by inserting the new draw whole in one statement before deleting the old, and readers take the latest draw, so a replace that fails part way leaves one whole sample. |
+| Applied schema steps | **D1 `schema_migrations`** | same | One row per versioned step in `adapters/store/migrations.py`, recorded once it has run, or once its precondition shows it is not needed. Read on every boot to skip the steps already recorded; nothing else reads it |
 | Pages deploy receipt | **D1 `pages_deploy_receipt`** | same | this D1 has published this Pages project; empty-manifest guard skips the Cloudflare probe. It is not a shortcut around the live-archive shortfall check |
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
-| HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is a local install's, on the `json` or `sqlite` backend; a local `cyris triage-ui` serves it at `/`. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, and a raw page rebuilt from D1 `digest_inputs` with each article's state as it is now, so an issue recorded before `digest_inputs` has no raw page to rebuild |
+| HTML digest + raw pages | **published from memory** | same | `agent-vault/html/` is a local install's; a local `cyris triage-ui` serves it at `/`. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, and a raw page rebuilt from D1 `digest_inputs` with each article's state as it is now, so an issue recorded before `digest_inputs` has no raw page to rebuild |
 | Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`**; the launch film in **R2 `musingfox-media`** under `cyris/` | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose
@@ -658,39 +651,9 @@ outside the repo, and `restore` writes them into a trial's D1, never its `settin
 
 ### One store, one truth
 
-`ArticleStore` (JSON) and `D1ArticleStore` both satisfy `ArticleRepository`, and `[store] backend`
-picks one: `json` the first, `d1` the second over Cloudflare, `sqlite`, the default, the second over
-the local file. **They are alternatives, never a pair**
-([ADR-0003](decisions/0003-one-home-per-backend.md)). `cyris store diff` is what makes a split
-visible; run it before and after any cutover.
-
-### Where a json install's files land in SQLite
-
-`cyris store migrate --to sqlite` moves a `json` install into the file at `[store] sqlite_path`
-in one run, and `cyris store diff --to sqlite` compares the two article stores. Each table is
-written by the store that writes it on D1, over the file's `LocalD1Client`, so there is no second
-writer of any table:
-
-| json home | SQLite table | Written by |
-|---|---|---|
-| `agent-vault/articles/*.json` | `stored_articles`, the newest copy of a URL the 8-day dedup stored twice | `D1ArticleStore.import_articles` |
-| `agent-vault/topics.json` | `topics`, `topic_members`, `topic_tags` (a tag's `seen_at` is its topic's `last_seen`), `topic_votes` | `D1TopicStore.import_topics`, `record_topic_votes` |
-| `agent-vault/usage.jsonl` | `usage_log`, one row per record | `import_usage_d1`, beside the run's `append_usage_d1` |
-| `cyris.toml` grade-D keys | `settings` | `D1Settings.set`, through the loop `cyris settings push` uses |
-| `cyris.toml` `[[tracked_topics]]` | `tracked_topics` | `D1TrackedTopicStore.upsert`, for a name the table lacks |
-| `sources.yaml` | `sources`, only while the table is empty | `D1SourceStore.replace_all` |
-
-Every write only adds, so a second run writes nothing. A row the file already holds is kept, of
-every kind: settings, tracked topics, sources, articles, topics, topic members, tags, votes and
-usage rows. The one exception is a settings row that does not decode or validate: it counts as
-missing and the file's value replaces it, as `cyris settings push` does (ADR-0003). A kept row that differs from the json side is named with what differs; a kept row
-identical to the json side is only counted. A tracked topic the file holds under a name is kept
-even when the row is invalid. Both sides are read and checked before the first write, settings aside: a json
-partition or article that cannot be read, or a file row that cannot be, ends the command on one
-line naming it, with nothing written. The command refuses a backend other than `json` and a
-`sqlite_path` inside the vault, and `store diff --to sqlite` refuses a file that does not exist
-rather than create it. It leaves the json files and `cyris.toml` as they were: the reader
-flips `backend` by hand, and leaving it at `json` is the way back.
+`D1ArticleStore` satisfies `ArticleRepository`, and `[store] backend` picks where its tables are:
+`d1` over Cloudflare, or `sqlite`, the default, in the local file. **They are alternatives, never a
+pair** ([ADR-0003](decisions/0003-one-home-per-backend.md)).
 
 ## 5. Configuration: four grades
 
@@ -703,7 +666,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | **A · Baked defaults** | code | a release | nobody at runtime |
 | **B · Deployment identity** | `cyris.toml`; the environment (`CYRIS_<TABLE>_<KEY>`) fills a key the file leaves absent or empty | an env change or a redeploy | the deploy flow |
 | **C · Secrets** | environment / `.env` / Worker secrets | an env change | the operator, once |
-| **D · Runtime-mutable** | **D1 `settings`**, or the same table in a `sqlite` install's file (a `json` deployment: `cyris.toml`) | a write, effective next run (the type size: within a minute) | the reader, in the UI |
+| **D · Runtime-mutable** | **D1 `settings`**, or the same table in a `sqlite` install's file | a write, effective next run (the type size: within a minute) | the reader, in the UI |
 
 ### Every setting, graded
 
@@ -743,7 +706,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Cloudflare account id, for CI | B | GitHub Actions repository **variable** `CLOUDFLARE_ACCOUNT_ID` | done — a variable, not a secret: it is deployer identity, and keeping it readable makes a wrong registry path a visible 404 rather than `***` |
 | Deployment URL, for CI | B | GitHub Actions repository **variable** `CYRIS_DEPLOYMENT_URL` (the app Worker's `workers.dev` URL; the verify step signs in with the Access service token) | done 2026-09-26 — read by `deploy.yml`'s `verify` step only |
-| Store backend | B | `[store] backend`, else `CYRIS_STORE_BACKEND` (`json`/`d1`/`sqlite`; a value set in the file wins) | done — the default in code is `sqlite`, the local home (ADR-0025). No Cloudflare path reads it: `docker/entrypoint.sh` exports `d1` for the `run` and `ui` roles, and a clone's `.env` names it |
+| Store backend | B | `[store] backend`, else `CYRIS_STORE_BACKEND` (`d1`/`sqlite`; a value set in the file wins) | done — the default in code is `sqlite`, the local home (ADR-0025). No Cloudflare path reads it: `docker/entrypoint.sh` exports `d1` for the `run` and `ui` roles, and a clone's `.env` names it |
 | A local install's SQLite file | B | `[store] sqlite_path`, else `CYRIS_STORE_SQLITE_PATH` (a value set in the file wins); default `state/cyris.sqlite3`; a relative path, from either, starts at the directory of `cyris.toml`, as `.env` does, and with no config file at the working directory | added 2026-11-07 — read only when the backend is `sqlite`. Local identity (`config.LOCAL_B_GRADE_ENV_VARS`), so the app Worker does not forward it and its deploy form does not ask for it: a Cloudflare deployment has no local file. A path inside the agent vault is refused at load, because compose bind-mounts the vault and a host process and a container on one SQLite file corrupt it (ADR-0025) |
 | The SQLite file's open: a 5-second busy timeout, and the first open's WAL switch retried 50 times, 0.1 s apart | A | `BUSY_TIMEOUT_SECONDS`, `FIRST_OPEN_ATTEMPTS`, `FIRST_OPEN_RETRY_SECONDS` in `adapters/store/local_d1.py` | added 2026-11-07 — a run writes single statements of at most 100 parameters, so a lock lasts milliseconds and five seconds is far past a healthy wait. The WAL switch takes a lock the busy handler does not wait on: two processes first-opening one file failed it 2 of 20 times with the timeout set, so it is retried on its own for up to five seconds |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (a value set in `cyris.toml [promote]` wins) | done |
@@ -764,21 +727,21 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, four Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — also the Clef vote order's, and AI Gateway Run for the `ai_gateway` provider), one Worker bearer, one vote token | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. The Access service token is also a GitHub Actions secret, the copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
 | A Preview's deployment identity and secrets (`staging`) | B, C | **that Preview's own secrets** on `cyris-app`, its Access team domain and AUD among them, set with `--secrets-file` on `wrangler preview` or `wrangler preview secret put <NAME> --name staging`; never production's values, and never a Previews Base imported from production | added 2026-10-22 — a home apart from production's Worker secrets, which a Preview does not inherit. The rule and the failure it prevents: *Where a Preview's settings live* below |
-| RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push`; `sources.yaml` for a `json` deployment | done — a table whose every source is unfetchable stops the run, while an empty table is the waiting-for-onboarding state above and stops nothing, so `/settings` retires the last source like any other; it still refuses an RSS source with no feed URL or a newsletter with no `email_match` |
+| RSS + newsletter source list | D | **D1 `sources`**, written by `/settings` and by `cyris sources push` | done — a table whose every source is unfetchable stops the run, while an empty table is the waiting-for-onboarding state above and stops nothing, so `/settings` retires the last source like any other; it still refuses an RSS source with no feed URL or a newsletter with no `email_match` |
 | **`email_match` per source** | **D** | inside the same `sources` row, same writer | same — an email sender is source data, not deploy config |
-| LLM provider + model | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST` to the gateway's `google-ai-studio` endpoint with the model as `google/<model>`; the provider's key is stored in the gateway (BYOK) and the request carries none, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AIG_TOKEN` (AI Gateway Run, sent as `cf-aig-authorization`, never falling back to a Workers AI token, which the gateway refuses); the account is `CLOUDFLARE_ACCOUNT_ID`; and the gateway is `default`, named in the URL. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
-| Digest times + timezone | D | **D1 `settings`**, written by `/settings`; `cyris.toml` for a `json` deployment | done |
+| LLM provider + model | D | **D1 `settings`**, written by `/settings` | done — the provider is `anthropic`, `gemini`, `openai`, `workers_ai`, `ai_gateway` or `"none"`. `ai_gateway` is one `POST` to the gateway's `google-ai-studio` endpoint with the model as `google/<model>`; the provider's key is stored in the gateway (BYOK) and the request carries none, and only `google/*` models are parsed (why: `adapters/ai_gateway_client.py`). It adds no setting of any grade: the token is `CLOUDFLARE_AIG_TOKEN` (AI Gateway Run, sent as `cf-aig-authorization`, never falling back to a Workers AI token, which the gateway refuses); the account is `CLOUDFLARE_ACCOUNT_ID`; and the gateway is `default`, named in the URL. Its cost is priced from the bare model id like every other provider; the gateway's own log keeps a second, Cloudflare-computed figure. Neither figure caps spend. `"none"` is excerpt-only by choice: no client is built, no key is needed, `doctor` reports it ok and the run is not flagged degraded. A missing provider is a missing setting and stops the run |
+| Digest times + timezone | D | **D1 `settings`**, written by `/settings` | done |
 | ~~Featured cap (`digest.max_featured`)~~ | — | — | **deleted** 2026-10-29: the page draws every read and follow article as a pebble, so no number of Features cards is chosen (ADR-0023). A stored D1 row is ignored |
-| Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
-| Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` names the topic order since ADR-0023 (§3.2) and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
-| Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `settings.example.toml` sets `false`, which is the passthrough every issue had before it |
-| Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over, are the reader's to tune. Required, no code default |
+| Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest) | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
+| Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest) | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` names the topic order since ADR-0023 (§3.2) and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
+| Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest) | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `settings.example.toml` sets `false`, which is the passthrough every issue had before it |
+| Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest) | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over, are the reader's to tune. Required, no code default |
 | Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — an up-voted topic stays on the recent-topic list while its net vote is worth more than this, about four half-lives (owner, 2026-10-30) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
-| The Top story score threshold `routing.score_threshold`, the intake cap `digest.max_articles_per_digest`, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline); `cyris.toml` (`[routing]`, `[digest]`) for a `json` deployment | done 2026-09-19 |
-| LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline); `cyris.toml [llm_provider]` for a `json` deployment | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |
-| Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 |
-| Tracked topics: name, description, threshold, embedding model | D | **D1 `tracked_topics`**, written by `/settings` (Tracking); `cyris.toml [[tracked_topics]]` for a `json` deployment | done 2026-10-08 — an optional runtime setting: no topic is a valid deployment, so the list is not in `settings_fields.json`, and an empty one stops nothing. It is the only per-model cosine threshold left, and it is D because it measures how wide the reader means *their own sentence* to reach, which only they can judge from a hit list (`cyris topic-sim`). It keeps ADR-0006's rule that a cutoff belongs to the model it was measured on, because ADR-0017 relaxed that rule only for vote similarity: each topic stores that model, has no default threshold, and a run embedding with another model skips it and names it in `run_summary`. The embedder is the one `vote_similarity.provider` and `.model` name, built when a topic exists even with vote similarity off |
+| The Top story score threshold `routing.score_threshold`, the intake cap `digest.max_articles_per_digest`, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline) | done 2026-09-19 |
+| LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline) | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |
+| Embedding provider + model | D | **D1 `settings`** as `vote_similarity.provider` and `.model`, written by `/settings` (Model) after one real embedding call when vote similarity is on | done 2026-09-19 |
+| Tracked topics: name, description, threshold, embedding model | D | **D1 `tracked_topics`**, written by `/settings` (Tracking) | done 2026-10-08 — an optional runtime setting: no topic is a valid deployment, so the list is not in `settings_fields.json`, and an empty one stops nothing. It is the only per-model cosine threshold left, and it is D because it measures how wide the reader means *their own sentence* to reach, which only they can judge from a hit list (`cyris topic-sim`). It keeps ADR-0006's rule that a cutoff belongs to the model it was measured on, because ADR-0017 relaxed that rule only for vote similarity: each topic stores that model, has no default threshold, and a run embedding with another model skips it and names it in `run_summary`. The embedder is the one `vote_similarity.provider` and `.model` name, built when a topic exists even with vote similarity off |
 | Headline slot: the Top story above the area sections | A | structural: `layout_by_area` in `domain/area_layout.py` takes the first of the featured sections, else the first thematic one | unused — no output draws a Top story: every output splits the group into pebbles (ADR-0023), the page since 2026-10-29 and the mail and Discord since they took the three layers; the code waits for its deletion. No setting |
 | Section labels: "Other" and Discord's "Digest" | A | `UNPLACED_SECTION_LABEL` in `domain/areas.py`, `UNNAMED_SECTION_TITLE` in `adapters/notify.py` | unchanged — reader-facing strings are English and i18n has no framework yet. No output prints either label since the mail and Discord took the three layers; "Other" stays a reserved name. The layout carries only `AreaSection.role`; the label sits in `domain/` because no area may take "Other" (`is_unplaced_label`): `/settings` refuses it as a rename and will not confirm a proposal stored under it, and a proposal or a run's suggestion by that name is not stored (2026-10-28) |
 | ~~Lower rows per named area (`LOWER_ROWS_PER_AREA`)~~ | — | — | **deleted** 2026-10-29 with `cap_lower_layers` and `cap_unplaced_news`: the issue has no output cap (ADR-0023) |
@@ -787,13 +750,13 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | ~~News per paragraph (`digest.units_per_paragraph`)~~ | — | — | **deleted** 2026-10-29 with the paragraph step. A stored D1 row is ignored |
 | ~~Issue cap (`digest.max_articles_per_digest_output`)~~ | — | — | **deleted** 2026-10-29 with `cap_unplaced_news`: the issue has no output cap, and only the intake cap `digest.max_articles_per_digest` bounds it (ADR-0023). A stored D1 row is ignored |
 | ~~Summary score (`routing.summarize_score_threshold`)~~ | — | — | **deleted** 2026-10-31: every `read` article is summarized, in its tag group's one call, and the score only orders it (owner, 2026-10-31). An article under the threshold had shown its text's first 80 characters, which since ADR-0023 sat beside summarized Stories. A stored D1 row is ignored, and so is the key in a `cyris.toml` |
-| Area birth threshold: articles and issues a proposal must reach | D | **D1 `area_birth_threshold`**, written by `/settings` (Areas) | Grade D, no default: until a reader sets it, no proposal is marked as meeting it. Read only by `/settings`, so the number changes no run, only the mark beside a proposal. The area list and this threshold have no `json` home, by the human's choice on 2026-10-12: a proposal needs writes from `/settings`, and `cyris.toml` is read-only to the app, so a `cyris.toml` mirror could only be read and never changed |
-| Discord webhook | D | **D1 `settings`**, written by `/settings`; `cyris.toml [notify]` for a `json` deployment | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the grade-C variables counted below; those are API tokens, which stay C. `""` means off: `/settings` stores it only through a confirmed Turn off, and an empty paste is refused. No environment variable supplies it |
-| Mail recipient + sender | D | **D1 `settings`** as `notify.email_to` and `.email_from`, written by `/settings` (Notifications); `cyris.toml [notify]` for a `json` deployment | done 2026-09-27, a prototype beside Discord — the channel-address rule the webhook set. The container sends through Cloudflare Email Service's REST API (`POST /accounts/{id}/email/sending/send`, Email Sending: Edit on `CLOUDFLARE_API_TOKEN`), no Worker in between. The recipient must be a verified Email Routing destination address, which is free on every plan and needs no onboarded sending domain; the sender must sit on a routing domain. `/settings` stores the pair only after a test message is delivered or queued, and an empty recipient turns mail off without a send. No environment variable supplies either |
-| Digest window | D | **D1 `settings`**, written by `/settings` (Pipeline); `cyris.toml [general]` for a `json` deployment | done 2026-09-19 |
-| Vote similarity on/off, `max_seeds` | D | **D1 `settings`**, written by `/settings` (Model) together with the embedder, first stored off with the onboarding Model step's starting values, and turned on by the onboarding first-issue step once there is a source, voted or not, through the same route with the embedder stored, or its starting value; `cyris.toml [vote_similarity]` for a `json` deployment | done 2026-09-19 — turning it on checks the embedder first |
-| Reader type size | D | **D1 `settings`** as `digest.type_scale`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done — how pages get it: *The reader-facing surfaces*. The mail stays at the baseline: nothing serves it, so the Worker cannot inject the size |
-| Agent vault path, HTML output dir | A | `cyris.toml` | unchanged — the vault is the `json` backend's tree, and the HTML output dir is where a local install's pages go on `json` or `sqlite`; with Cloudflare D1 nothing is written there |
+| Area birth threshold: articles and issues a proposal must reach | D | **D1 `area_birth_threshold`**, written by `/settings` (Areas) | Grade D, no default: until a reader sets it, no proposal is marked as meeting it. Read only by `/settings`, so the number changes no run, only the mark beside a proposal. The area list and this threshold have no `cyris.toml` home, by the human's choice on 2026-10-12: a proposal needs writes from `/settings`, and `cyris.toml` is read-only to the app, so a mirror there could only be read and never changed |
+| Discord webhook | D | **D1 `settings`**, written by `/settings` | done — the URL is a posting token, and D1 stores it in plaintext. Anyone who can read `settings` can post to the channel; anyone who can open `/settings` can rotate it without a redeploy. That is the trade that makes it D. It is **not** among the grade-C variables counted below; those are API tokens, which stay C. `""` means off: `/settings` stores it only through a confirmed Turn off, and an empty paste is refused. No environment variable supplies it |
+| Mail recipient + sender | D | **D1 `settings`** as `notify.email_to` and `.email_from`, written by `/settings` (Notifications) | done 2026-09-27, a prototype beside Discord — the channel-address rule the webhook set. The container sends through Cloudflare Email Service's REST API (`POST /accounts/{id}/email/sending/send`, Email Sending: Edit on `CLOUDFLARE_API_TOKEN`), no Worker in between. The recipient must be a verified Email Routing destination address, which is free on every plan and needs no onboarded sending domain; the sender must sit on a routing domain. `/settings` stores the pair only after a test message is delivered or queued, and an empty recipient turns mail off without a send. No environment variable supplies either |
+| Digest window | D | **D1 `settings`**, written by `/settings` (Pipeline) | done 2026-09-19 |
+| Vote similarity on/off, `max_seeds` | D | **D1 `settings`**, written by `/settings` (Model) together with the embedder, first stored off with the onboarding Model step's starting values, and turned on by the onboarding first-issue step once there is a source, voted or not, through the same route with the embedder stored, or its starting value | done 2026-09-19 — turning it on checks the embedder first |
+| Reader type size | D | **D1 `settings`** as `digest.type_scale`, written by `/settings` (Digest) | done — how pages get it: *The reader-facing surfaces*. The mail stays at the baseline: nothing serves it, so the Worker cannot inject the size |
+| Agent vault path, HTML output dir | A | `cyris.toml` | unchanged — the vault holds a local install's generated pages, and the HTML output dir is where they go; with Cloudflare D1 nothing is written there |
 | **API keys on the settings page** | **C, wanting a D-grade home** | `.env` / Worker secrets only | partly ruled: a channel-address credential such as the Discord webhook is grade D (see its row above). API keys remain undecided: writing a key into D1 `settings` puts a secret in a readable D-grade row |
 | ~~`[obsidian]` vault path, `CYRIS_VAULT_PATH`~~ | — | — | **deleted** 2026-08-27 with `DigestWriter` |
 | ~~`EmailConfig` — legacy local webhook~~ | — | — | **deleted** 2026-08-27, superseded by the newsletter Worker |
@@ -905,9 +868,10 @@ The failure would be silent, because every write lands somewhere real. Suppose a
 * With production's notification targets, the production reader gets a digest that is not
   theirs.
 
-A Preview's durable state takes a §4 row like any other. The first `staging` deployment runs with
-`CYRIS_STORE_BACKEND=json`, given as a `--var`, and keeps nothing durable: its container's disk
-does not outlive the instance, so §4 has no row for it. A D1 of its own gets its row when it is
+A Preview's durable state takes a §4 row like any other. The first `staging` deployment ran with
+`CYRIS_STORE_BACKEND=json`, given as a `--var`, which now stops the load. Its next upload names
+`sqlite` instead, which nobody has run yet, and keeps nothing durable: its container's disk does
+not outlive the instance, so §4 has no row for it. A D1 of its own gets its row when it is
 added.
 
 ### Where grade D lives (M2, 2026-08-27; one home per backend since 2026-09-19)
@@ -921,10 +885,8 @@ each backend has exactly one home, with nothing overlaid:
   sources from D1 `sources` alone; a `sqlite` install reads the same two tables in its own file,
   under the same rules, and everything said here of D1 holds for it except the push commands:
   `cyris settings push` and `cyris sources push` write to Cloudflare D1 alone, so a `sqlite`
-  install fills its settings on `/settings` and its sources on `/onboarding` or `/settings`, or
-  takes both from a `json` install it moved from (`cyris store migrate --to sqlite`, §4), and
-  neither `cyris doctor` nor a run's refusal offers it a push; a `json` deployment reads
-  `cyris.toml` and `sources.yaml` alone.
+  install fills its settings on `/settings` and its sources on `/onboarding` or `/settings`, and
+  neither `cyris doctor` nor a run's refusal offers it a push.
   Nothing is overlaid, the environment supplies no grade-D value, and no grade-D value lives in
   code: the six table models have no defaults, and a table missing any of its keys is `None`.
   The one exception is the optional `llm_provider.reasoning_effort`, whose absence means the
@@ -951,12 +913,11 @@ each backend has exactly one home, with nothing overlaid:
   derive from it — every key has a field in one of Model, Digest, Pipeline or
   Notifications; `tests/test_settings_fields.py` holds the page to it. `validate_setting` checks one key through its field's own type, so the page,
   `cyris settings push` and the loader accept the same values. An invalid D1 row counts as
-  missing, because D1 is fixed through `/settings`, which has to start; an invalid `cyris.toml`
-  value fails the load, because the file is fixed in an editor.
+  missing, because D1 is fixed through `/settings`, which has to start.
 
 One key is also read outside a run: the app Worker reads `digest.type_scale` over REST to size
 every page it serves, and there a missing or invalid row, or any failed read, means 1 rather than an
-error — a page view is not a run and must never fail on a setting. A `json` deployment has no Worker
+error — a page view is not a run and must never fail on a setting. A local install has no Worker
 read; its `cyris triage-ui` sizes the pages it serves from the value it holds, and a page opened
 from disk stays at 1.
 
@@ -985,11 +946,8 @@ Sources are written the same way: `POST /api/sources` upserts one `sources` row 
 overwrites edits made on `/settings`.
 
 Tracked topics are written the same way, `POST /api/topics` and `DELETE /api/topics/{name}`, with
-two differences: an empty table is valid, and no command pushes them from a file, so a D1
+two differences: an empty table is valid, and no command pushes them from a file, so a
 deployment ignores a `cyris.toml`'s `[[tracked_topics]]`.
-
-With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
-409. That deployment edits `cyris.toml` by hand, and `settings.example.toml` lists every required key; the optional `llm_provider.reasoning_effort` is absent and runs at `default`.
 
 The schedule moved with it, and then moved again: the tick is now a Workers Cron Trigger
 (the repo-root `wrangler.toml`) rather than `docker/crontab`, hourly, running
@@ -1190,7 +1148,7 @@ waiting for a sleep timer — `promote-sync` runs even when the run fails, and t
 the run's status. A SIGTERM ends the pass instead: it exits 143 and skips what has not started
 (below); `ui` serves `/settings`; the default is the
 supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` install. Compose
-bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate, keeps
+bind-mounts `./agent-vault`, so the generated HTML survives a recreate, keeps
 the SQLite store in the named volume `cyris-state`, and runs a second container in the `ui` role,
 published on `127.0.0.1` only, with that directory writable, because a wizard's `POST /run` starts
 its run there.
@@ -1325,8 +1283,7 @@ cached by heuristic before a release.
 the waiting-for-onboarding state (§5 *RSS + newsletter source list*), so the container sends
 `/settings` to the guided setup while the table is empty. `/onboarding` stays open on a D1 or
 `sqlite` deployment once the table has a source, because the wizard's own sources step writes one and a
-reload on a later step must not leave the wizard. A `json` deployment, whose sources live in a file
-nothing writes, never sees the wizard. The wizard writes settings through the `/api/settings/*`
+reload on a later step must not leave the wizard. The wizard writes settings through the `/api/settings/*`
 routes the settings page writes them with, and sources through `POST /api/sources`; its read of its
 own, `GET /api/onboarding/feeds`, serves the grade-A feed list (§5), and `GET /api/onboarding/headlines`
 serves the opening's sample headlines (§5) to any deployment. A feed the list lacks goes
@@ -1385,8 +1342,7 @@ reader with no Access session is redirected (302) to the Access login; the Worke
 request that reaches it without a valid JWT. A local `cyris triage-ui` answers `GET` and `HEAD`
 `{"authorized":true,"votes":false}`: the probe opens Settings and the site bar's Archive link on
 `authorized` and stops before the vote buttons, `#raw-views` and the Interest link when `votes` is
-`false`, because the local server has no vote route (`POST` is `405`) and `/interest` answers `409` on
-the `json` backend. The Worker's answer carries no `votes` field, so the cloud pages open all of
+`false`, because the local server has no vote route (`POST` is `405`). The Worker's answer carries no `votes` field, so the cloud pages open all of
 them. A `pages.dev` reader, where that path is not routed, sees none,
 and a stranger cannot record a human verdict. Why the vote token
 is kept apart from the other bearers is
@@ -1416,10 +1372,9 @@ arbitrarily and nothing errors: on 2026-08-27 the container read `backend = "d1"
 silently ignored for two days.
 
 - Changing code means `up -d --build --force-recreate`. Plain `up -d` is not enough.
-- Changing `cyris.toml` or `sources.yaml` also means `--force-recreate`: single-file bind mounts
-  bind an inode, and editors replace files by rename.
-- A compose install mounts the two config files `:ro`, `./agent-vault` (the `json` backend's
-  home and the generated HTML) and the named volume `cyris-state` at `/app/state` (the SQLite
+- Changing `cyris.toml` also means `--force-recreate`: a single-file bind mount binds an inode, and
+  editors replace files by rename.
+- A compose install mounts `cyris.toml` `:ro`, `./agent-vault` (the generated HTML) and the named volume `cyris-state` at `/app/state` (the SQLite
   store's home). `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
   directory it was asking about, which re-created a local-filesystem edge M0–M4 had removed.
 - **In the Container the drift runs the other way**: nothing is mounted, and the image holds no

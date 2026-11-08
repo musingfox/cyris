@@ -1,34 +1,14 @@
-"""The store's dedup window must agree with the RSS Worker's retention."""
+"""Facts the store must agree on with its own domain and with the RSS Worker."""
 
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 
-def test_dedup_window_matches_rss_worker_retention() -> None:
-    """The store's dedup scan and the Worker's prune must span the same days.
+def test_the_language_order_is_generated_from_one_tuple() -> None:
+    """The D1 CASE and the domain's key function come from one tuple.
 
-    The Worker counts its days from when an entry entered the buffer.
-
-    Shortening the scan re-ingests what the buffer still holds; shortening the
-    prune drops articles the scan expects to recognise. Neither side errors.
-    """
-    import re
-    from pathlib import Path
-
-    from cyris.adapters.store.article_store import _DEDUP_SCAN_DAYS
-
-    index_js = Path(__file__).resolve().parents[1] / "workers" / "rss" / "src" / "index.js"
-    match = re.search(r"const RETENTION_DAYS = (\d+)", index_js.read_text())
-    assert match, "RETENTION_DAYS not found in workers/rss/src/index.js"
-    assert int(match.group(1)) == _DEDUP_SCAN_DAYS
-
-
-def test_both_backends_order_languages_the_same_way() -> None:
-    """The D1 CASE and the JSON key function come from one tuple.
-
-    A reader switching `[store] backend` must not see the deck reorder, so the
-    SQL is generated rather than transcribed; this pins the generated form.
+    The SQL is generated rather than transcribed; this pins the generated form.
     """
     from cyris.adapters.store.d1_store import _SORT_EXPRESSIONS
     from cyris.domain.language import LANGUAGE_SORT_ORDER, language_sort_key

@@ -241,13 +241,11 @@ class StoreConfig(BaseModel):
 
     `sqlite`, the default, keeps every table in one SQLite file on this machine,
     a local install's home (ADR-0025). `d1` puts the same tables in Cloudflare D1,
-    so a dead local machine loses nothing; `json` is local partition files under
-    the agent vault, for an install that has not moved yet. Each is a whole home,
-    never overlaid on another (ADR-0003); diff json against d1 with `cyris store
-    diff` before switching.
+    so a dead local machine loses nothing. Each is a whole home, never overlaid on
+    the other (ADR-0003).
     """
 
-    backend: Literal["json", "d1", "sqlite"] = "sqlite"
+    backend: Literal["d1", "sqlite"] = "sqlite"
     database_id: str = ""
     account_id: str = ""
     api_token: str = ""
@@ -282,11 +280,6 @@ class StoreConfig(BaseModel):
         if not self.api_token:
             self.api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
         return self
-
-    @property
-    def is_sql(self) -> bool:
-        """State lives in the D1 tables, on Cloudflare or in the local SQLite file."""
-        return self.backend in ("d1", "sqlite")
 
     @property
     def is_cloudflare(self) -> bool:
@@ -462,28 +455,16 @@ class AppConfig(BaseModel):
 
     @model_validator(mode="after")
     def sqlite_file_outside_the_vault(self) -> "AppConfig":
-        if self.store.backend != "sqlite":
+        if self.store.backend != "sqlite" or not _within(
+            self.store.sqlite_path, self.agent_vault.path
+        ):
             return self
-        problem = sqlite_file_in_vault(self)
-        if problem:
-            raise ValueError(problem)
-        return self
-
-
-def sqlite_file_in_vault(app: AppConfig) -> str | None:
-    """Why `[store] sqlite_path` may not be used, or None when it may.
-
-    Asked by the load of a `sqlite` install, and by `cyris store migrate --to sqlite`,
-    which opens the file while the backend is still `json`.
-    """
-    if not _within(app.store.sqlite_path, app.agent_vault.path):
-        return None
-    return (
-        f"[store] sqlite_path {app.store.sqlite_path} is inside the agent vault "
-        f"{app.agent_vault.path}: docker compose bind-mounts the vault, and a host "
-        "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
-        "to a file outside the vault."
-    )
+        raise ValueError(
+            f"[store] sqlite_path {self.store.sqlite_path} is inside the agent vault "
+            f"{self.agent_vault.path}: docker compose bind-mounts the vault, and a host "
+            "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
+            "to a file outside the vault."
+        )
 
 
 def _within(path: Path, directory: Path) -> bool:
@@ -585,6 +566,10 @@ def _missing_store_keys(app_config: "AppConfig") -> list[str]:
     return missing
 
 
+class JsonStoreRemovedError(ValueError):
+    """A config or environment still names the removed `json` backend."""
+
+
 class IncompleteSettingsError(ValueError):
     """A command that reads runtime settings was started while some are missing."""
 
@@ -601,9 +586,9 @@ class Config(BaseModel):
     app: AppConfig
     sources: dict[str, SourceConfig]
     # Optional, unlike every required grade-D key: an empty list tracks nothing and stops
-    # nothing. From `[[tracked_topics]]` in cyris.toml, or D1 `tracked_topics`.
+    # nothing. From the store's `tracked_topics` table.
     tracked_topics: list[TrackedTopic] = Field(default_factory=list)
-    # D1 `areas` only: a json deployment has none, so the list is empty there.
+    # From the store's `areas` table.
     areas: list[Area] = Field(default_factory=list)
     # Grade-D keys this deployment's one home does not hold. Never raises at load:
     # the commands that fill the home have to start while it is empty.
@@ -644,13 +629,9 @@ class Config(BaseModel):
                 "`cyris settings push --config <file>` to copy them from a settings file "
                 "(settings.example.toml lists every key)."
             )
-        if self.app.store.is_sql:
-            # Not `settings push`: it writes to Cloudflare D1, never to this file.
-            raise IncompleteSettingsError(
-                f"Missing settings in {self.app.store.sql_home}: {keys}. Set them on /settings."
-            )
+        # Not `settings push`: it writes to Cloudflare D1, never to this file.
         raise IncompleteSettingsError(
-            f"Missing from cyris.toml: {keys}. settings.example.toml lists every key."
+            f"Missing settings in {self.app.store.sql_home}: {keys}. Set them on /settings."
         )
 
     def awaiting_onboarding(self) -> bool:
@@ -666,11 +647,9 @@ class Config(BaseModel):
         """Why a run with no source does nothing, and where a source comes from."""
         if self.app.store.is_cloudflare:
             where = "Add one on /settings, or run `cyris sources push`."
-        elif self.app.store.is_sql:
+        else:
             # Not `sources push`: it writes to Cloudflare D1, never to this file.
             where = "Add one on /onboarding or /settings."
-        else:
-            where = "Add feeds to sources.yaml."
         return f"No sources yet, so this run has nothing to fetch: waiting for onboarding. {where}"
 
     def require_sources(self) -> None:
@@ -681,10 +660,10 @@ class Config(BaseModel):
         """
         if not self.sources or any(s.fetchable for s in self.sources.values()):
             return
-        home = self.app.store.sql_home if self.app.store.is_sql else "sources.yaml"
         names = ", ".join(sorted(self.sources))
         raise NoSourcesError(
-            f"No fetchable sources in {home}: {names}. An RSS source needs a feed URL, "
+            f"No fetchable sources in {self.app.store.sql_home}: {names}. "
+            "An RSS source needs a feed URL, "
             "a newsletter source a sender match."
         )
 
@@ -705,7 +684,7 @@ class Config(BaseModel):
 
 @dataclass(frozen=True)
 class RawConfig:
-    """What the two files say, before any home for grade-D settings is chosen."""
+    """What the two files say, before the store is read."""
 
     toml: dict[str, Any]
     sources: dict[str, SourceConfig]
@@ -723,6 +702,7 @@ def read_config_files(
 
     Raises:
         TOMLDecodeError: If the config file exists but is malformed.
+        JsonStoreRemovedError: If the file or the environment names the `json` backend.
         ValidationError: If sources.yaml is invalid.
     """
     config_path = config_path or Path("cyris.toml")
@@ -735,14 +715,17 @@ def read_config_files(
         with open(config_path, "rb") as f:
             raw_toml = tomllib.load(f)
     else:
-        logger.warning("Config file not found: %s", config_path)
         raw_toml = {}
+    # Before anything else can be said about the file, so the refusal is the only line.
+    _refuse_json_store(raw_toml, config_path)
+    if not config_file_found:
+        logger.warning("Config file not found: %s", config_path)
 
     if sources_path.exists():
         with open(sources_path) as f:
             raw_yaml = yaml.safe_load(f)
     else:
-        # Not a warning: only a json deployment reads this file, and doctor names an empty list.
+        # Not a warning: only `sources push` needs this file, and it reads it itself.
         logger.debug("Sources file not found: %s", sources_path)
         raw_yaml = {}
 
@@ -762,20 +745,29 @@ def read_config_files(
     )
 
 
-def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) -> Config:
-    """The Config the files describe, with grade-D settings from exactly one home.
+def _refuse_json_store(raw_toml: dict[str, Any], config_path: Path) -> None:
+    """Stop the load, on one line, when the file or the environment names the `json` backend.
 
-    `d1_settings` None makes cyris.toml the home: an invalid value there fails the
-    load, because the file is fixed in an editor. Otherwise the D1 rows are the
-    home and the file's grade-D keys are ignored; a row that fails its rule counts
-    as missing, because D1 is fixed through /settings, which has to start.
+    Before pydantic, whose refusal of a value outside the `Literal` is several lines
+    that name no way forward. Read as `StoreConfig` reads it: a set file value wins.
     """
-    if d1_settings is None:
-        settings_values, missing_settings = _file_settings(raw.toml)
-        tracked_topics = _file_topics(raw.toml)
-    else:
-        settings_values, missing_settings = _stored_settings(d1_settings)
-        tracked_topics = []
+    env_name = B_GRADE_ENV_VARS["store.backend"]
+    named = _fill_from_env(raw_toml.get("store"), {"backend": env_name})
+    if named.get("backend") != "json":
+        return
+    store = raw_toml.get("store")
+    in_file = isinstance(store, dict) and store.get("backend") == "json"
+    line = f'backend = "json" line from {config_path}' if in_file else f"{env_name}=json line"
+    raise JsonStoreRemovedError(f"The json store was removed: delete the {line} to run on SQLite.")
+
+
+def resolve_config(raw: RawConfig, d1_settings: dict[str, Any]) -> Config:
+    """The Config the files describe, with grade-D settings from the store alone.
+
+    The file's grade-D keys are ignored. A row in `d1_settings` that fails its rule
+    counts as missing, because the store is fixed through /settings, which has to start.
+    """
+    settings_values, missing_settings = _stored_settings(d1_settings)
     app_config = AppConfig.model_validate(
         _with_settings(raw.toml, settings_values, missing_settings),
         context={"config_dir": raw.config_dir},
@@ -783,61 +775,12 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) ->
     return Config(
         app=app_config,
         sources=raw.sources,
-        tracked_topics=tracked_topics,
         missing_settings=missing_settings,
         settings_values=settings_values,
         config_file_found=raw.config_file_found,
         file_toml=raw.toml,
         dotenv_names=raw.dotenv_names,
     )
-
-
-def load_config(
-    config_path: Path | None = None,
-    sources_path: Path | None = None,
-) -> Config:
-    """Load and validate configuration from TOML and YAML files.
-
-    The files alone: cyris.toml is the home of every grade-D setting here and
-    sources.yaml of the sources. A D1 deployment is resolved by
-    `bootstrap.load_effective_config`, which reads both from D1 instead.
-
-    Args:
-        config_path: Path to cyris.toml. Defaults to ./cyris.toml.
-        sources_path: Path to sources.yaml. Defaults to ./sources.yaml.
-
-    Returns:
-        Validated Config object.
-
-    Raises:
-        TOMLDecodeError: If the config file exists but is malformed.
-        ValueError: If a value is invalid (pydantic's ValidationError is one).
-    """
-    return resolve_config(read_config_files(config_path, sources_path))
-
-
-def _file_settings(raw_toml: dict) -> tuple[dict[str, Any], list[str]]:
-    """The grade-D values a cyris.toml sets, validated, and the keys it leaves out."""
-    values: dict[str, Any] = {}
-    missing: list[str] = []
-    for key in GRADE_D_KEYS:
-        table, field = key.split(".", 1)
-        body = raw_toml.get(table)
-        if isinstance(body, dict) and field in body:
-            values[key] = validate_setting(key, body[field])
-        elif key in REQUIRED_KEYS:
-            missing.append(key)
-    return values, sorted(missing)
-
-
-def _file_topics(raw_toml: dict) -> list[TrackedTopic]:
-    """The `[[tracked_topics]]` a cyris.toml lists; none is a valid answer."""
-    topics = [TrackedTopic.model_validate(body) for body in raw_toml.get("tracked_topics", [])]
-    names = [topic.name for topic in topics]
-    repeated = sorted({name for name in names if names.count(name) > 1})
-    if repeated:
-        raise ValueError(f"tracked_topics names {', '.join(repeated)} more than once")
-    return topics
 
 
 def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

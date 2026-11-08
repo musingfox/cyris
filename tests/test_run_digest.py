@@ -12,14 +12,14 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 import respx
-from fakes import FakeLLM, make_config
+from fakes import FakeLLM, SqliteD1, make_config
 from pydantic import ValidationError
 
 from cyris.adapters.clef import ClefClient, ClefError
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
-from cyris.adapters.store import ArticleStore
-from cyris.adapters.store.json_topics import JsonTopicStore
+from cyris.adapters.store.d1_store import D1ArticleStore
+from cyris.adapters.store.topics import D1TopicStore
 from cyris.bootstrap import Deps
 from cyris.config import (
     AgentVaultConfig,
@@ -85,7 +85,7 @@ def make_deps(
 
     deps = Deps(
         cfg=cfg,
-        store=ArticleStore(agent_vault),
+        store=D1ArticleStore(SqliteD1()),
         llm=llm,
         fetch_sources=[source],
         html_writer=HtmlDigestWriter(html_dir),
@@ -808,7 +808,7 @@ async def test_a_run_saves_its_topics_and_a_cluster_is_one_topic(tmp_path: Path)
         )
     )
     deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
-    deps = replace(deps, topic_store=JsonTopicStore(tmp_path / "topics"))
+    deps = replace(deps, topic_store=D1TopicStore(SqliteD1()))
 
     report = await run_digest(deps, RunOptions())
 
@@ -2998,7 +2998,7 @@ def _ranking_deps(
             record_similarity=None,
             ask_clef=ask_clef,
             log_usage=log_usage or deps.log_usage,
-            topic_store=JsonTopicStore(tmp_path / "topics"),
+            topic_store=D1TopicStore(SqliteD1()),
         )
     )
     deps.store.save(candidates)

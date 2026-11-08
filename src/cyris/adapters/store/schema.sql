@@ -21,8 +21,8 @@
 --   wrangler d1 execute cyris-rss --remote --file=src/cyris/adapters/store/schema.sql
 
 CREATE TABLE IF NOT EXISTS stored_articles (
-  url              TEXT PRIMARY KEY,     -- dedup key, same as the JSON store's (newsletter
-                                         -- collisions are re-keyed to newsletter:{id})
+  url              TEXT PRIMARY KEY,     -- dedup key (newsletter collisions are
+                                         -- re-keyed to newsletter:{id})
   original_id,                           -- feed ids are ints, newsletter ids are strings;
                                          -- no declared type, so SQLite keeps each as given
   title            TEXT NOT NULL DEFAULT '',
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS usage_log (
 CREATE INDEX IF NOT EXISTS idx_usage_log_logged_at ON usage_log(logged_at);
 
 -- Source definitions, so adding a feed is a write rather than a rebuild.
--- `sources.yaml` stays the editable format and the fallback; `cyris sources push`
+-- `sources.yaml` stays the editable format; `cyris sources push`
 -- copies it here, and both readers (cyris and workers/rss) prefer this table when
 -- it has rows. The columns are the ones the Worker's poll query needs; everything
 -- else rides in `config` as JSON, so a new SourceConfig field costs no migration.

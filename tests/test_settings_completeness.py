@@ -9,7 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from fakes import SqliteD1, seed_d1_settings, settings_toml
+from fakes import SqliteD1, seed_d1_settings
 from typer.testing import CliRunner
 
 from cyris.config import REQUIRED_KEYS
@@ -71,36 +71,24 @@ def test_run_if_due_on_an_empty_d1_names_every_key_and_fetches_nothing(
     assert built == []
 
 
-def test_run_names_the_key_cyris_toml_lacks(
-    tmp_path: Path, built: list[object], caplog, monkeypatch
+def test_run_names_the_key_the_store_lacks(
+    tmp_path: Path, d1: SqliteD1, built: list[object], caplog
 ) -> None:
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
+    seed_d1_settings(d1, omit=["digest.max_articles_per_digest"])
 
-    result = runner.invoke(
-        app, ["run", *_paths(tmp_path, settings_toml(omit=["digest.max_articles_per_digest"]))]
-    )
+    result = runner.invoke(app, ["run", *_paths(tmp_path)])
 
     assert result.exit_code == 1
-    assert (
-        "Missing from cyris.toml: digest.max_articles_per_digest. "
-        "settings.example.toml lists every key." in caplog.text
-    )
+    assert "Missing settings in D1: digest.max_articles_per_digest. " in caplog.text
     assert built == []
 
 
 def test_articles_score_names_the_missing_snippet_length(
-    tmp_path: Path, caplog, monkeypatch
+    tmp_path: Path, d1: SqliteD1, caplog
 ) -> None:
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
+    seed_d1_settings(d1, omit=["digest.scoring_snippet_length"])
 
-    result = runner.invoke(
-        app,
-        [
-            "articles",
-            "score",
-            *_paths(tmp_path, settings_toml(omit=["digest.scoring_snippet_length"])),
-        ],
-    )
+    result = runner.invoke(app, ["articles", "score", *_paths(tmp_path)])
 
     assert result.exit_code == 1
     assert "digest.scoring_snippet_length" in caplog.text
@@ -112,16 +100,14 @@ def test_articles_score_names_the_missing_snippet_length(
     ids=["vote-sim", "embed-compare", "llm-compare"],
 )
 def test_the_diagnostic_commands_name_a_missing_key(
-    command: list[str], tmp_path: Path, built: list[object], caplog, monkeypatch
+    command: list[str], tmp_path: Path, d1: SqliteD1, built: list[object], caplog
 ) -> None:
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
+    seed_d1_settings(d1, omit=["vote_similarity.max_seeds"])
 
-    result = runner.invoke(
-        app, [*command, *_paths(tmp_path, settings_toml(omit=["vote_similarity.max_seeds"]))]
-    )
+    result = runner.invoke(app, [*command, *_paths(tmp_path)])
 
     assert result.exit_code == 1
-    assert "Missing from cyris.toml: vote_similarity.max_seeds" in caplog.text
+    assert "Missing settings in D1: vote_similarity.max_seeds" in caplog.text
     assert built == []
 
 
@@ -190,3 +176,15 @@ def test_sources_push_fills_an_empty_d1(tmp_path: Path, d1: SqliteD1) -> None:
 
     assert result.exit_code == 0, result.output
     assert set(D1SourceStore(d1).list_sources()) == {"Feed"}
+
+
+def test_sources_push_with_no_file_says_so_on_one_line(tmp_path: Path) -> None:
+    missing = tmp_path / "sources.yaml"
+
+    result = CliRunner().invoke(app, ["sources", "push", "--sources", str(missing)])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output.strip().splitlines() == [
+        f"No sources file at {missing}. Copy sources.example.yaml to it, or pass --sources."
+    ]

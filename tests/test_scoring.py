@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from fakes import FakeLLM
+from fakes import FakeLLM, SqliteD1
 
-from cyris.adapters.store.article_store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.language import detect_language
 from cyris.domain.models import Lane, StoredArticle
 
@@ -327,8 +327,8 @@ class TestScoreArticlesBatch:
 
 class TestUpdateScores:
     @pytest.fixture
-    def store_with_articles(self, tmp_path: Path) -> tuple[ArticleStore, list[StoredArticle]]:
-        store = ArticleStore(tmp_path)
+    def store_with_articles(self) -> tuple[D1ArticleStore, list[StoredArticle]]:
+        store = D1ArticleStore(SqliteD1())
         now = datetime.now(UTC)
         from cyris.domain.models import Article
 
@@ -386,8 +386,8 @@ class TestUpdateScores:
 
 class TestSortByScore:
     @pytest.fixture
-    def store_with_scored(self, tmp_path: Path) -> ArticleStore:
-        store = ArticleStore(tmp_path)
+    def store_with_scored(self) -> D1ArticleStore:
+        store = D1ArticleStore(SqliteD1())
         now = datetime.now(UTC)
         from cyris.domain.models import Article
 

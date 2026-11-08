@@ -56,7 +56,7 @@ async def test_no_topic_is_never_a_missing_setting(bare: TestClient) -> None:
     assert not [key for key in data["missing"] if "tracked_topic" in key]
 
 
-async def test_a_json_deployment_shows_its_file_topics_and_refuses_writes() -> None:
+async def test_a_partial_server_shows_its_startup_topics_and_refuses_writes() -> None:
     server = TriageServer(tracked_topics=[TrackedTopic(**TOPIC)])
     client = await _client(server)
     try:

@@ -24,7 +24,8 @@ together by `tests/test_email_parser.py`.
 
 Out of scope: operational fields only one path has, such as the buffer's
 `fetched_at`. A deployment that runs one path still needs the other to agree,
-because `cyris store migrate` carries rows from the `json` store into D1.
+because both write the one `stored_articles` shape, a local install's and a
+cloud deployment's alike.
 
 A violation is silent because each path is consistent with itself. On
 2026-09-28 feedparser read 2,397 characters of `media:description` from a

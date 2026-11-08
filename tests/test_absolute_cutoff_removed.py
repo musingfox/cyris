@@ -6,9 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from fakes import settings_toml
+from fakes import TEST_SETTINGS, load_files, settings_toml
 
-from cyris.config import load_config
 from cyris.domain.models import ArticleState, Lane, StoredArticle
 from cyris.service_layer.vote_similarity import judge_by_votes
 
@@ -43,8 +42,8 @@ def test_provider_defaults_carry_only_the_model() -> None:
 
 
 def test_a_leftover_threshold_line_still_parses(tmp_path: Path) -> None:
-    with_line = load_config(_with(tmp_path / "a", 0.9), _sources(tmp_path / "a"))
-    without = load_config(_with(tmp_path / "b", None), _sources(tmp_path / "b"))
+    with_line = load_files(_with(tmp_path / "a", 0.9), _sources(tmp_path / "a"), TEST_SETTINGS)
+    without = load_files(_with(tmp_path / "b", None), _sources(tmp_path / "b"), TEST_SETTINGS)
 
     assert with_line.app.vote_similarity.threshold == 0.9
     assert without.app.vote_similarity.threshold is None
@@ -108,7 +107,7 @@ class _Embedder:
 async def test_one_window_suppresses_the_same_url_whatever_the_leftover_threshold(
     tmp_path: Path, threshold: float
 ) -> None:
-    cfg = load_config(_with(tmp_path, threshold), _sources(tmp_path))
+    cfg = load_files(_with(tmp_path, threshold), _sources(tmp_path), TEST_SETTINGS)
     assert cfg.app.vote_similarity.threshold == threshold
     cosines = {f"u{i}": 0.40 + 0.01 * i for i in range(9)}
     cosines["u58"] = 0.58

@@ -28,10 +28,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from fakes import TEST_SETTINGS, SqliteD1
+from fakes import TEST_SETTINGS, SqliteD1, insert_stored
 
 from cyris.adapters.store.d1 import SCHEMA_PATH
-from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.settings import D1Settings
 from cyris.adapters.store.source_store import D1SourceStore
 from cyris.domain.models import SourceConfig, StoredArticle
@@ -182,7 +181,7 @@ def _seed_d1(path: Path, scenario: Scenario) -> None:
         d1.query(SCHEMA_PATH.read_text(encoding="utf-8"))
         D1Settings(d1).set(scenario.settings)
         D1SourceStore(d1).replace_all({s.name: s for s in scenario.sources})
-        D1ArticleStore(d1).import_articles(scenario.stored)
+        insert_stored(d1, scenario.stored)
         for area in scenario.areas:
             columns = ", ".join(area)
             marks = ", ".join("?" * len(area))

@@ -14,7 +14,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from fakes import SqliteD1, seed_d1_settings, settings_toml
+from fakes import SqliteD1, seed_d1_settings, seeded_sqlite
 from typer.testing import CliRunner
 
 from cyris.domain.models import SourceConfig
@@ -71,13 +71,6 @@ def _d1_paths(tmp_path: Path) -> list[str]:
     return ["--config", str(config_path), "--sources", str(tmp_path / "absent.yaml")]
 
 
-def _json_paths(tmp_path: Path) -> list[str]:
-    """A json deployment with every setting in cyris.toml and no sources.yaml."""
-    config_path = tmp_path / "cyris.toml"
-    config_path.write_text('[store]\nbackend = "json"\n\n' + settings_toml())
-    return ["--config", str(config_path), "--sources", str(tmp_path / "absent.yaml")]
-
-
 def test_a_run_on_a_d1_with_no_sources_ends_without_fetching(
     tmp_path: Path, d1: SqliteD1, built: list[object], caplog
 ) -> None:
@@ -91,16 +84,19 @@ def test_a_run_on_a_d1_with_no_sources_ends_without_fetching(
     assert built == []
 
 
-def test_a_json_deployment_with_no_sources_waits_too(
+def test_a_sqlite_install_with_no_sources_waits_too(
     tmp_path: Path, built: list[object], caplog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    state = tmp_path / "cyris.sqlite3"
+    seeded_sqlite(state)
+    monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", str(state))
 
-    result = runner.invoke(app, ["run", *_json_paths(tmp_path)])
+    result = runner.invoke(app, ["run", *_d1_paths(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert WAITING in caplog.text
-    assert "Add feeds to sources.yaml." in caplog.text
+    assert "Add one on /onboarding or /settings." in caplog.text
     assert built == []
 
 

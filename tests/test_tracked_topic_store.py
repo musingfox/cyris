@@ -1,4 +1,4 @@
-"""Tracked topics have one home per backend, and an empty list is a valid one."""
+"""Tracked topics live in the store's table alone, and an empty list is a valid one."""
 
 import json
 from pathlib import Path
@@ -102,25 +102,13 @@ def _load(tmp_path: Path, backend: str, monkeypatch, db=None, topics: str = ""):
     return load_effective_config(config_path, tmp_path / "sources.yaml")
 
 
-def test_a_json_deployment_reads_its_topics_from_the_file(tmp_path: Path, monkeypatch) -> None:
-    cfg = _load(tmp_path, "json", monkeypatch, topics=FILE_TOPIC)
-
-    assert [t.name for t in cfg.tracked_topics] == ["From File"]
-    assert cfg.tracked_topics[0].threshold == 0.7
-
-
 def test_a_file_without_topics_tracks_nothing_and_stops_nothing(
     tmp_path: Path, monkeypatch
 ) -> None:
-    cfg = _load(tmp_path, "json", monkeypatch)
+    cfg = _load(tmp_path, "d1", monkeypatch, SqliteD1())
 
     assert cfg.tracked_topics == []
     assert not any("tracked" in key for key in cfg.missing_settings)
-
-
-def test_a_file_naming_one_topic_twice_fails_the_load(tmp_path: Path, monkeypatch) -> None:
-    with pytest.raises(ValueError, match="From File"):
-        _load(tmp_path, "json", monkeypatch, topics=FILE_TOPIC * 2)
 
 
 def test_a_d1_deployment_reads_only_the_table(tmp_path: Path, monkeypatch) -> None:

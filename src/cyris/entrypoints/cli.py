@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 import typer
 
@@ -364,12 +364,6 @@ def regenerate(
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
-    if not cfg.app.store.is_sql:
-        typer.echo(
-            f"The store backend is {cfg.app.store.backend}; regenerate needs d1 or sqlite",
-            err=True,
-        )
-        raise typer.Exit(1)
     if not cfg.app.html_output.enabled:
         typer.echo("HTML output is disabled; regenerate needs [html_output] enabled", err=True)
         raise typer.Exit(1)
@@ -928,10 +922,15 @@ def doctor(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
+    from cyris.config import JsonStoreRemovedError
     from cyris.diagnostics.doctor import run_checks
 
     try:
         cfg = load_effective_config(config_path, sources_path, local_file="if_created")
+    except JsonStoreRemovedError as e:
+        # The line says what to delete, so the pointers below would only bury it.
+        typer.echo(f"✗ config — {e}")
+        raise typer.Exit(1) from e
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
         typer.echo(
@@ -1076,25 +1075,23 @@ def triage_ui(
             settings=build_settings(cfg),
             values={**cfg.present_settings(), **cfg.defaulted_settings()},
             sources=cfg.sources,
-            source_store=D1SourceStore(d1) if d1 else None,
-            feed_health=D1FeedHealth(d1) if d1 else None,
+            source_store=D1SourceStore(d1),
+            feed_health=D1FeedHealth(d1),
             tracked_topics=cfg.tracked_topics,
-            topic_store=D1TrackedTopicStore(d1) if d1 else None,
-            blind_labels=D1BlindLabels(d1) if d1 else None,
-            article_store=D1ArticleStore(d1) if d1 else None,
-            area_store=D1AreaStore(d1) if d1 else None,
-            source_titles=D1SourceTitles(d1) if d1 else None,
+            topic_store=D1TrackedTopicStore(d1),
+            blind_labels=D1BlindLabels(d1),
+            article_store=D1ArticleStore(d1),
+            area_store=D1AreaStore(d1),
+            source_titles=D1SourceTitles(d1),
             llm_factory=_llm_from_values,
-            onboarding_articles=build_onboarding_articles(cfg) if d1 else None,
-            feed_checker=build_feed_checker() if d1 else None,
-            digest_store=D1DigestStore(d1) if d1 else None,
-            run_log=D1RunLog(d1, "") if d1 else None,
-            interest_reader=D1InterestReader(d1).read if d1 else None,
+            onboarding_articles=build_onboarding_articles(cfg),
+            feed_checker=build_feed_checker(),
+            digest_store=D1DigestStore(d1),
+            run_log=D1RunLog(d1, ""),
+            interest_reader=D1InterestReader(d1).read,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
-            # Only a SQL store has the wizard this route serves. On json a run started
-            # here would write beside the scheduler's, which has no lock.
-            start_run=partial(_start_detached_run, config_path, sources_path) if d1 else None,
+            start_run=partial(_start_detached_run, config_path, sources_path),
         )
         await server.start()
         typer.echo(f"Archive:   http://{host}:{port}/")
@@ -1358,13 +1355,10 @@ def articles_score(
     store = build_store(cfg, d1)
 
     # Same wiring as run_digest: the prompt asks for tags on every call, so
-    # persist them when D1 is available instead of paying for them and
-    # discarding them. JSON-only deployments keep the current behavior.
-    tag_store = None
-    if d1 is not None:
-        from cyris.adapters.store.tags import D1TagStore
+    # persist them instead of paying for them and discarding them.
+    from cyris.adapters.store.tags import D1TagStore
 
-        tag_store = D1TagStore(d1)
+    tag_store = D1TagStore(d1)
 
     # Get articles to score
     if force:
@@ -1391,14 +1385,11 @@ def articles_score(
             nonlocal total_updated
             total_updated += store.update_scores(url_to_score_lang)
 
-        persist_tags = None
-        if tag_store is not None:
-
-            def persist_tags(url_to_tags) -> None:
-                try:
-                    tag_store.save(url_to_tags)
-                except Exception as e:
-                    logger.warning("Failed to persist scoring tags: %s", e)
+        def persist_tags(url_to_tags) -> None:
+            try:
+                tag_store.save(url_to_tags)
+            except Exception as e:
+                logger.warning("Failed to persist scoring tags: %s", e)
 
         catalog = AreaCatalog(cfg.areas)
         total_usage, picks = await score_in_batches(
@@ -1410,13 +1401,12 @@ def articles_score(
             persist_tags=persist_tags,
             area_names=catalog.names(),
         )
-        if d1 is not None:
-            try:
-                counts = proposal_counts(picks, catalog)
-                if counts:
-                    D1AreaStore(d1).record_proposals(counts, None)
-            except Exception as e:
-                logger.warning("Recording area proposals failed: %s", type(e).__name__)
+        try:
+            counts = proposal_counts(picks, catalog)
+            if counts:
+                D1AreaStore(d1).record_proposals(counts, None)
+        except Exception as e:
+            logger.warning("Recording area proposals failed: %s", type(e).__name__)
 
         cost = total_usage.estimated_cost
         typer.echo(
@@ -1433,7 +1423,7 @@ app.add_typer(labels_app, name="labels")
 
 
 def _blind_labels(config_path: Path, sources_path: Path):
-    """The D1 blind-label store, or exit naming why there is none."""
+    """The blind-label store, or exit naming why it cannot be opened."""
     from cyris.adapters.store.blind_labels import D1BlindLabels
     from cyris.bootstrap import build_d1_client, load_effective_config
 
@@ -1443,12 +1433,6 @@ def _blind_labels(config_path: Path, sources_path: Path):
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"Configuration error: {e}")
         raise typer.Exit(1) from e
-    if d1 is None:
-        typer.echo(
-            'Blind labels live in the SQL store: set [store] backend = "sqlite" on a local '
-            'install, or "d1" on Cloudflare.'
-        )
-        raise typer.Exit(1)
     return cfg, D1BlindLabels(d1)
 
 
@@ -1619,98 +1603,32 @@ def labels_report(
     typer.echo(f"Embedding spend: {json.dumps(embedder.usage.as_dict())}")
 
 
-store_app = typer.Typer(help="Move the article store between backends")
-app.add_typer(store_app, name="store")
-
-_ALL_ARTICLES = 1_000_000  # the store holds thousands; this means "everything"
+settings_app = typer.Typer(help="Fill D1's runtime settings from a settings file")
+app.add_typer(settings_app, name="settings")
 
 
-def _newest_by_url(articles: list) -> dict:
-    """One article per URL, the most recently seen one.
+def _force_d1_client(config_path: Path, sources_path: Path):
+    """Return (cfg, D1 client) for the commands that write to Cloudflare D1 whatever the backend.
 
-    The JSON store can hold the same URL twice — its dedup scan only looks back
-    8 days, so a re-published article lands again in a later partition. D1's URL
-    primary key keeps one row, so comparing needs both sides to pick the same
-    one, or every such URL reads as a mismatch when nothing is wrong.
+    `settings push` and `sources push` are how an empty D1 is filled for the first
+    time, and they may run from a `sqlite` install, where `load_effective_config`
+    created no D1 tables. Overriding the backend here is what makes the schema apply
+    on this path too; without it the first INSERT dies with `no such table`. A `sqlite`
+    install's own file is not opened at all: these commands do not write there.
     """
-    newest: dict = {}
-    for article in articles:
-        seen = newest.get(article.url)
-        if seen is None or article.first_seen_at > seen.first_seen_at:
-            newest[article.url] = article
-    return newest
-
-
-# Where `store migrate` and `store diff` copy to and compare with: Cloudflare D1, or
-# the local SQLite file at `[store] sqlite_path` (ADR-0025).
-_TARGETS = ("d1", "sqlite")
-_TO_HELP = "d1 (Cloudflare D1) or sqlite (the file at [store] sqlite_path)"
-
-
-def _target(to: str) -> str:
-    if to not in _TARGETS:
-        raise typer.BadParameter(f"--to {to!r}: one of {', '.join(_TARGETS)}")
-    return to
-
-
-def _load_config(
-    config_path: Path,
-    sources_path: Path,
-    local_file: Literal["open", "if_created", "never"] = "open",
-):
-    """`load_effective_config`, or exit naming why it could not load."""
-    from cyris.adapters.store.d1 import D1Error
-    from cyris.bootstrap import load_effective_config
+    from cyris.adapters.store.d1 import D1Error, apply_schema
+    from cyris.bootstrap import build_d1_client, load_effective_config
 
     try:
         # Already applies the schema when the backend is d1, so an unusable
         # database surfaces here rather than at the first INSERT.
-        return load_effective_config(config_path, sources_path, local_file=local_file)
+        cfg = load_effective_config(config_path, sources_path, local_file="never")
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
     except D1Error as e:
         _echo_d1_failure(e)
         raise typer.Exit(1) from e
-
-
-def _force_d1_client(config_path: Path, sources_path: Path, to: str = "d1"):
-    """Return (cfg, SQL client) for the commands that talk to one whatever the backend.
-
-    `store migrate` and `sources push` are how an empty D1 is filled for the
-    first time, and they run while `[store] backend` is still json — so
-    `load_effective_config` built no client and created no tables. Overriding
-    the backend here is what makes the schema apply on this path too; without
-    it the first INSERT dies with `no such table`. `to="sqlite"` gives the
-    `LocalD1Client` of `[store] sqlite_path` instead, so the same stores write
-    that file exactly as they write D1. Bound for D1, a `sqlite` install's own file
-    is not opened at all: this command does not write there.
-    """
-    cfg = _load_config(config_path, sources_path, "open" if to == "sqlite" else "never")
-    return cfg, _sql_client(cfg, to)
-
-
-def _sql_client(cfg, to: str):
-    """The client of the `to` target, its tables created; `cfg.app.store.backend` becomes `to`."""
-    from cyris.adapters.store.d1 import D1Error, apply_schema
-    from cyris.bootstrap import build_d1_client
-
-    if to == "sqlite":
-        from cyris.config import sqlite_file_in_vault
-
-        # The load refuses this only when the backend is already sqlite.
-        problem = sqlite_file_in_vault(cfg.app)
-        if problem:
-            typer.echo(problem)
-            raise typer.Exit(1)
-        cfg.app.store.backend = "sqlite"
-        try:
-            client = build_d1_client(cfg)
-            apply_schema(client)
-        except D1Error as e:
-            _echo_d1_failure(e)
-            raise typer.Exit(1) from e
-        return client
 
     # load_effective_config applied the schema to this very database only on Cloudflare:
     # a sqlite install's was its local file, not the D1 the override below reaches.
@@ -1733,487 +1651,7 @@ def _sql_client(cfg, to: str):
         except D1Error as e:
             _echo_d1_failure(e)
             raise typer.Exit(1) from e
-    return client
-
-
-def _refuse_sqlite_to_d1(config_path: Path, sources_path: Path) -> None:
-    """Exit on one line when the install is sqlite: its file has no copy path to D1 yet.
-
-    Asked before any load, so nothing is created. Without it the json side, empty on a
-    sqlite install, is read as if it were the store, and `store diff` agrees with D1 over
-    articles it never compared.
-    """
-    backend = _store_before_load(config_path, sources_path).backend
-    if backend == "sqlite":
-        typer.echo(
-            "The store backend is sqlite, and a SQLite file has no copy path to D1 yet: "
-            '--to d1 reads a json install, one whose [store] backend is "json".'
-        )
-        raise typer.Exit(1)
-
-
-def _load_both_stores(config_path: Path, sources_path: Path, to: str = "d1"):
-    """Return (json_store, SQL store) regardless of which one [store] selects."""
-    from cyris.adapters.store import ArticleStore
-    from cyris.adapters.store.d1_store import D1ArticleStore
-
-    cfg, client = _force_d1_client(config_path, sources_path, to)
-    return ArticleStore(cfg.app.agent_vault.path), D1ArticleStore(client)
-
-
-# State, score and the triage stamp are what the pipeline acts on, so those
-# are what a mismatch would corrupt — content drift is not a thing here.
-_DIFF_FIELDS = ("state", "score", "language", "triaged_at", "digest_date", "rejection_reason")
-
-
-def _article_differences(local, remote) -> list[str]:
-    return [
-        f"{f}: {getattr(local, f)!r} vs {getattr(remote, f)!r}"
-        for f in _DIFF_FIELDS
-        if getattr(local, f) != getattr(remote, f)
-    ]
-
-
-@store_app.command("migrate")
-def store_migrate(
-    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
-        "cyris.toml"
-    ),
-    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
-        "sources.yaml"
-    ),
-    to: Annotated[str, typer.Option("--to", help=_TO_HELP)] = "d1",
-) -> None:
-    """Copy the local JSON store into D1, or a whole json install into its SQLite file.
-
-    Safe to re-run; never overwrites.
-    """
-    if _target(to) == "sqlite":
-        _migrate_into_sqlite(config_path, sources_path)
-        return
-    _refuse_sqlite_to_d1(config_path, sources_path)
-
-    json_store, d1_store = _load_both_stores(config_path, sources_path)
-
-    articles = json_store.list_articles(state=None, limit=_ALL_ARTICLES)
-    typer.echo(f"Read {len(articles)} articles from the local store.")
-
-    # A full store is thousands of statements; without this it looks like a hang.
-    def progress(done: int, total: int) -> None:
-        if done % 50 == 0 or done == total:
-            typer.echo(f"  {done}/{total} batches")
-
-    imported = d1_store.import_articles(articles, on_progress=progress)
-    typer.echo(f"Inserted {imported} into D1 ({len(articles) - imported} already there).")
-
-
-def _migrate_into_sqlite(config_path: Path, sources_path: Path) -> None:
-    """Move a json install's whole state into `[store] sqlite_path` (ADR-0025).
-
-    Every table is written by the store that writes it on D1, through the file's
-    `LocalD1Client`, and only where the file lacks the row: what the file holds
-    is kept, and named when it differs from the json side. Nothing on the json
-    side is changed, so leaving `backend = "json"` is the way back.
-    """
-    from pydantic import ValidationError
-
-    from cyris.adapters.output.usage_log import import_usage_d1, usage_log_row, usage_rows_d1
-    from cyris.adapters.store import ArticleStore
-    from cyris.adapters.store.d1_store import D1ArticleStore, article_from_row
-    from cyris.adapters.store.json_topics import JsonTopicStore
-    from cyris.adapters.store.settings import D1Settings
-    from cyris.adapters.store.source_store import D1SourceStore, source_from_row
-    from cyris.adapters.store.topics import D1TopicStore
-    from cyris.adapters.store.tracked_topics import D1TrackedTopicStore
-    from cyris.domain.models import TrackedTopic
-
-    # Asked before the load, which on sqlite or d1 would open the store it names.
-    backend = _store_before_load(config_path, sources_path).backend
-    if backend != "json":
-        typer.echo(
-            f"The store backend is {backend}, so there is no json install to move: "
-            'store migrate --to sqlite reads one whose [store] backend is "json".'
-        )
-        raise typer.Exit(1)
-    cfg = _load_config(config_path, sources_path)
-
-    # Everything is read and checked before the first write, on both sides, so a bad
-    # file writes nothing: first the json side, before the SQLite file is opened.
-    vault = cfg.app.agent_vault.path
-    from_file = _file_settings(config_path)
-    usage_path = vault / "usage.jsonl"
-    usage = _usage_records(usage_path)
-    topic_rows, topic_votes = _json_topic_rows(JsonTopicStore(vault), vault / "topics.json")
-    tracked, sources = list(cfg.tracked_topics), dict(cfg.sources)
-    articles = _every_json_article(ArticleStore(vault))
-    # The json store can hold a URL twice; the file keeps one row, and the
-    # newest-first order is what makes it the newest copy.
-    newest = _newest_by_url(articles)
-
-    # Then the file's side: every row a write could meet, parsed, so a row that
-    # cannot be read ends the command here rather than after half the writes.
-    client = _sql_client(cfg, "sqlite")
-    path = cfg.app.store.sqlite_path
-    sql_store = D1ArticleStore(client)
-    held = _parsed_rows(
-        "stored_articles", "url", sql_store.rows_by_urls(list(newest)), article_from_row, path
-    )
-    source_store = D1SourceStore(client)
-    present = _parsed_rows("sources", "name", source_store.rows(), source_from_row, path)
-    settings = D1Settings(client)
-    tracked_store = D1TrackedTopicStore(client)
-    # Every name the file holds, valid or not: list_topics leaves an invalid row out,
-    # and upsert would then overwrite it.
-    in_file = {row["name"]: row for row in tracked_store.rows()}
-    topic_store_sql = D1TopicStore(client)
-    file_topics = topic_store_sql.rows()
-    file_usage = usage_rows_d1(client)
-
-    # A kept row that differs from the json side is named with what differs; a kept
-    # row identical to it is only counted.
-    typer.echo(f"SQLite file {path}")
-    written = 0
-
-    typer.echo(f"Articles: {len(articles)} in the json store, {len(newest)} urls.")
-    differing = _name_kept(
-        "",
-        ("url",),
-        [newest[url].model_dump(mode="json") for url in sorted(held)],
-        [held[url].model_dump(mode="json") for url in sorted(held)],
-    )
-    imported = sql_store.import_articles(articles)
-    written += imported
-    typer.echo(_held_line(imported, len(held), differing))
-
-    typer.echo("Settings:")
-    written += _add_missing_settings(
-        settings, from_file, config_path, str(path), name_identical=False
-    )
-
-    typer.echo("Tracked topics:")
-    to_add = [t for t in tracked if t.name not in in_file]
-    kept_valid, differing = [], 0
-    for topic in tracked:
-        if topic.name not in in_file:
-            continue
-        try:
-            kept_valid.append(TrackedTopic.model_validate(in_file[topic.name]).model_dump())
-        except ValidationError as e:
-            differing += 1
-            typer.echo(
-                f"  {'kept':<9}tracked topic {topic.name} (the file's row is invalid: "
-                f"{_one_line(e)})"
-            )
-    differing += _name_kept(
-        "tracked topic ",
-        ("name",),
-        [t.model_dump() for t in tracked if t.name in in_file],
-        kept_valid,
-    )
-    for topic in to_add:
-        tracked_store.upsert(topic)
-    written += len(to_add)
-    typer.echo(_held_line(len(to_add), len(tracked) - len(to_add), differing))
-
-    typer.echo("Sources:")
-    if present:
-        # The table is filled only while empty, so every row it holds is kept.
-        differing = _name_kept(
-            "source ",
-            ("name",),
-            [s.model_dump(mode="json") for n, s in sorted(sources.items()) if n in present],
-            [s.model_dump(mode="json") for s in present.values()],
-        )
-        for name in sorted(present.keys() - sources.keys()):
-            differing += 1
-            typer.echo(f"  {'kept':<9}source {name} (not in {sources_path})")
-        for name in sorted(sources.keys() - present.keys()):
-            typer.echo(f"  {'not copied':<9} source {name}: the table was not empty")
-        typer.echo(
-            f"Inserted 0; the file already holds {len(present)} source"
-            f"{'' if len(present) == 1 else 's'}, {differing} of them differing, so nothing "
-            f"was copied from {sources_path}."
-        )
-    else:
-        copied = source_store.replace_all(sources)
-        written += copied
-        typer.echo(f"Inserted {copied} from {sources_path}; the table was empty.")
-
-    typer.echo("Topics:")
-    kinds = (
-        ("topics", "topic ", ("id",)),
-        ("members", "topic member ", ("topic_id", "article_url", "digest_date", "period")),
-        ("tags", "topic tag ", ("topic_id", "tag")),
-        ("votes", "topic vote ", ("topic_id", "clicked_at")),
-    )
-    counts = {}
-    for key, label, fields in kinds:
-        keys = {tuple(r[f] for f in fields) for r in file_topics[key]}
-        counts[key] = (
-            sum(tuple(r[f] for f in fields) in keys for r in topic_rows[key]),
-            _name_kept(label, fields, topic_rows[key], file_topics[key]),
-        )
-    topics_written = topic_store_sql.import_topics(topic_rows)
-    topics_written["votes"] = topic_store_sql.record_topic_votes(topic_votes)
-    written += sum(topics_written.values())
-    for key, table in (
-        ("topics", "topics"),
-        ("members", "topic_members"),
-        ("tags", "topic_tags"),
-        ("votes", "votes"),
-    ):
-        typer.echo(f"  {key}: " + _held_line(topics_written[table], *counts[key]))
-
-    typer.echo(f"Usage, from {usage_path}:")
-    usage_key = ("logged_at", "digest_date", "period", "model")
-    json_usage = [usage_log_row(r) for r in usage]
-    held_keys = {tuple(r[f] for f in usage_key) for r in file_usage}
-    differing = _name_kept("usage run ", usage_key, json_usage, file_usage)
-    usage_written = import_usage_d1(usage, client)
-    written += usage_written
-    held_usage = sum(tuple(r[f] for f in usage_key) in held_keys for r in json_usage)
-    typer.echo(_held_line(usage_written, held_usage, differing))
-
-    if written:
-        typer.echo(f"\nWrote {written} rows into {path}.")
-    else:
-        typer.echo(f"\nNothing written: {path} already holds everything this json install has.")
-    typer.echo(
-        f'\nTo switch, set this one line under [store] in {config_path}:\n  backend = "sqlite"\n'
-        f"Before you do, copy the json files away ({vault}/, {config_path}, {sources_path}) "
-        "and do not delete them yet: they are the way back, by leaving the backend json."
-    )
-    # A sqlite install reads these from the file alone, so once it runs they change
-    # nothing, without a word: name them, so the reader knows what to delete.
-    unread: dict[str, list[str]] = {}
-    for key in sorted(from_file):
-        table, field = key.split(".", 1)
-        unread.setdefault(table, []).append(field)
-    lines = [f"  [{table}] {', '.join(fields)}" for table, fields in unread.items()]
-    if tracked:
-        lines.append(f"  [[tracked_topics]]: {', '.join(sorted(t.name for t in tracked))}")
-    if lines:
-        typer.echo(
-            f"After the switch the SQLite install no longer reads these from {config_path}; "
-            "delete them once you have checked the file holds them:\n" + "\n".join(lines)
-        )
-    typer.echo(f"Nor does it read {sources_path}: its sources are the file's.")
-
-
-def _shown(value) -> str:
-    text = repr(value)
-    return text if len(text) <= 80 else text[:77] + "..."
-
-
-def _name_kept(
-    label: str, key: tuple[str, ...], json_rows: list[dict], file_rows: list[dict]
-) -> int:
-    """Name each json row the file already holds with other values; how many it named.
-
-    A row is matched by `key` and compared on the json row's other columns, so a
-    column only the file has is never a difference.
-    """
-    held = {tuple(r[f] for f in key): r for r in file_rows}
-    named = 0
-    for row in json_rows:
-        found = held.get(tuple(row[f] for f in key))
-        if found is None:
-            continue
-        differences = [
-            f"{f}: json {_shown(row[f])}, file {_shown(found.get(f))}"
-            for f in row
-            if f not in key and row[f] != found.get(f)
-        ]
-        if differences:
-            named += 1
-            name = " ".join(str(row[f]) for f in key)
-            typer.echo(f"  {'kept':<9}{label}{name} ({'; '.join(differences)})")
-    return named
-
-
-def _held_line(inserted: int, held: int, differing: int) -> str:
-    return (
-        f"Inserted {inserted}; {held} already in the file, {differing} of them differing"
-        f"{' (named above)' if differing else ''}."
-    )
-
-
-def _json_topic_rows(store, path: Path):
-    """topics.json as D1 rows and votes, each checked, or exit on one line naming the file."""
-    from cyris.domain.models import TopicTag
-
-    columns = {
-        "topics": ("id", "name", "first_seen", "last_seen"),
-        "members": ("topic_id", "article_url", "digest_date", "period", "seen_at"),
-        "tags": ("topic_id", "tag", "kind", "seen_at"),
-        "votes": ("topic_id", "direction", "clicked_at"),
-    }
-    try:
-        rows, votes = store.rows(), store.topic_votes()
-        for key, names in columns.items():
-            for row in rows[key]:
-                missing = [c for c in names if row.get(c) is None]
-                if missing:
-                    raise ValueError(f"a {key[:-1]} without {', '.join(missing)}")
-        for tag in rows["tags"]:
-            TopicTag.model_validate(tag)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
-        typer.echo(f"✗ {path}: {_one_line(e)}")
-        raise typer.Exit(1) from e
-    return rows, votes
-
-
-def _store_before_load(config_path: Path, sources_path: Path):
-    """`[store]` as the files set it, read without opening the store it names."""
-    from cyris.config import read_config_files, resolve_config
-
-    try:
-        raw = read_config_files(config_path, sources_path)
-        return resolve_config(raw, d1_settings={}).app.store
-    except (FileNotFoundError, ValueError) as e:
-        logger.error("Configuration error: %s", e)
-        raise typer.Exit(1) from e
-
-
-def _one_line(error: Exception) -> str:
-    """An error's reason on one line; a ValidationError's first field and message."""
-    from pydantic import ValidationError
-
-    if isinstance(error, ValidationError):
-        first = error.errors()[0]
-        field = ".".join(str(part) for part in first["loc"])
-        return f"{field}: {first['msg']}" if field else first["msg"]
-    return str(error).splitlines()[0] if str(error) else type(error).__name__
-
-
-def _parsed_rows(table: str, key: str, rows: list[dict], parse, path: Path) -> dict:
-    """`rows` parsed, keyed by `key`, or exit on one line naming the row that is not one."""
-    parsed = {}
-    for row in rows:
-        try:
-            parsed[row[key]] = parse(row)
-        except (ValueError, TypeError, AttributeError, KeyError) as e:
-            typer.echo(f"✗ {table} row {row.get(key)!r} in {path}: {_one_line(e)}")
-            raise typer.Exit(1) from e
-    return parsed
-
-
-def _every_json_article(json_store) -> list:
-    """Every article the json store holds, or exit on one line naming what cannot be read."""
-    try:
-        return json_store.read_every_article()
-    except ValueError as e:
-        typer.echo(f"✗ {e}")
-        raise typer.Exit(1) from e
-
-
-def _usage_records(path: Path) -> list[dict]:
-    """The records `usage.jsonl` holds, or exit naming the line that is not one."""
-    if not path.exists():
-        return []
-    records = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as e:
-            typer.echo(f"{path}:{number}: not a usage record: {e}", err=True)
-            raise typer.Exit(1) from e
-        if not isinstance(record, dict) or "timestamp" not in record:
-            typer.echo(f"{path}:{number}: not a usage record: no timestamp", err=True)
-            raise typer.Exit(1)
-        if problem := _usage_record_problem(record):
-            typer.echo(f"{path}:{number}: not a usage record: {problem}", err=True)
-            raise typer.Exit(1)
-        records.append(record)
-    return records
-
-
-# What `usage_log` (schema.sql) takes for each field `_usage_row` reads. Checked
-# here because the local client commits per statement: a row the table refuses
-# would otherwise fail after the articles and settings were already written.
-_USAGE_TEXT = ("date", "period", "model")
-_USAGE_COUNTS = (
-    "articles_received",
-    "articles_included",
-    "api_calls",
-    "input_tokens",
-    "output_tokens",
-)
-
-
-def _usage_record_problem(record: dict) -> str | None:
-    """Why `usage_log` would refuse this record, or None when it takes it."""
-    if not isinstance(record["timestamp"], str) or not record["timestamp"]:
-        return "timestamp must be a non-empty string"
-    for field in _USAGE_TEXT:
-        if field in record and not isinstance(record[field], str | None):
-            return f"{field} must be a string or null"
-    for field in _USAGE_COUNTS:
-        value = record.get(field, 0)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            return f"{field} must be a whole number of at least 0"
-    cost = record.get("estimated_cost_usd")
-    if cost is not None and (isinstance(cost, bool) or not isinstance(cost, int | float)):
-        return "estimated_cost_usd must be a number or null"
-    return None
-
-
-@store_app.command("diff")
-def store_diff(
-    config_path: Annotated[Path, typer.Option("--config", help="Config file path")] = Path(
-        "cyris.toml"
-    ),
-    sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
-        "sources.yaml"
-    ),
-    to: Annotated[str, typer.Option("--to", help=_TO_HELP)] = "d1",
-) -> None:
-    """Compare both stores article by article; agreement prints only the counts."""
-    if _target(to) == "sqlite":
-        # A comparison writes nothing, so it does not create the file it compares with:
-        # the load would on a sqlite backend, and _sql_client on any.
-        path = _store_before_load(config_path, sources_path).sqlite_path
-        if not path.exists():
-            typer.echo(
-                f"✗ No SQLite file at {path} to compare with; "
-                "`cyris store migrate --to sqlite` creates it."
-            )
-            raise typer.Exit(1)
-    else:
-        _refuse_sqlite_to_d1(config_path, sources_path)
-    json_store, d1_store = _load_both_stores(config_path, sources_path, to)
-
-    if to == "sqlite":
-        # The move read every partition strictly; a comparison that skipped one would agree.
-        local = _newest_by_url(_every_json_article(json_store))
-    else:
-        local = _newest_by_url(json_store.list_articles(state=None, limit=_ALL_ARTICLES))
-    remote = _newest_by_url(d1_store.list_articles(state=None, limit=_ALL_ARTICLES))
-    typer.echo(f"local: {len(local)} urls    {to}: {len(remote)} urls")
-
-    only_local = sorted(local.keys() - remote.keys())
-    only_remote = sorted(remote.keys() - local.keys())
-    for label, urls in (("only local", only_local), (f"only {to}", only_remote)):
-        typer.echo(f"\n{label} ({len(urls)}):")
-        for url in urls[:20]:
-            typer.echo(f"  {url}")
-        if len(urls) > 20:
-            typer.echo(f"  … and {len(urls) - 20} more")
-
-    mismatched = 0
-    for url in sorted(local.keys() & remote.keys()):
-        differences = _article_differences(local[url], remote[url])
-        if differences:
-            mismatched += 1
-            if mismatched <= 20:
-                typer.echo(f"\n{url}\n  " + "\n  ".join(differences))
-    typer.echo(f"\nshared: {len(local.keys() & remote.keys())}, differing: {mismatched}")
-
-
-settings_app = typer.Typer(help="Fill D1's runtime settings from a settings file")
-app.add_typer(settings_app, name="settings")
+    return cfg, client
 
 
 def _file_settings(config_path: Path) -> dict:
@@ -2238,14 +1676,8 @@ def _file_settings(config_path: Path) -> dict:
     return from_file
 
 
-def _add_missing_settings(
-    settings, from_file: dict, config_path: Path, home: str, *, name_identical: bool = True
-) -> int:
-    """Write each key `settings` lacks from `from_file`, naming each key; how many were added.
-
-    `name_identical=False` leaves out a kept key whose value the file also has, as
-    the move counts a kept row identical to the json side without naming it.
-    """
+def _add_missing_settings(settings, from_file: dict, config_path: Path) -> None:
+    """Write each key `settings` lacks from `from_file`, naming each key."""
     from cyris.adapters.notify import mask_discord_webhook_url
     from cyris.config import GRADE_D_KEYS, REQUIRED_KEYS, validate_setting
 
@@ -2272,23 +1704,21 @@ def _add_missing_settings(
                 note = " (not in file)"
             elif from_file[key] != in_d1[key]:
                 note = f" (file has {shown(key, from_file[key])})"
-            if note or name_identical:
-                typer.echo(f"  {'kept':<9}{key}{note}")
+            typer.echo(f"  {'kept':<9}{key}{note}")
         elif key in from_file:
             added[key] = from_file[key]
             typer.echo(f"  {'added':<9}{key} = {shown(key, from_file[key])}")
         elif key not in REQUIRED_KEYS and key not in rows:
-            typer.echo(f"  {'default':<9}{key} — in neither {home} nor {config_path}")
+            typer.echo(f"  {'default':<9}{key} — in neither D1 nor {config_path}")
         else:
             missing += 1
-            typer.echo(f"  {'missing':<9}{key} — in neither {home} nor {config_path}")
+            typer.echo(f"  {'missing':<9}{key} — in neither D1 nor {config_path}")
     if added:
         settings.set(added)
     typer.echo(
         f"Added {len(added)} of {len(GRADE_D_KEYS)} settings from {config_path}; "
         f"{kept} kept; {missing} still missing."
     )
-    return len(added)
 
 
 @settings_app.command("push")
@@ -2306,7 +1736,7 @@ def settings_push(
     from_file = _file_settings(config_path)
     cfg, client = _force_d1_client(config_path, sources_path)
     typer.echo(f"D1 database {cfg.app.store.database_id}")
-    _add_missing_settings(D1Settings(client), from_file, config_path, "D1")
+    _add_missing_settings(D1Settings(client), from_file, config_path)
 
 
 sources_app = typer.Typer(help="Keep source definitions in D1 so adding a feed is not a rebuild")
@@ -2331,6 +1761,13 @@ def sources_push(
     ),
 ) -> None:
     """Make D1 match sources.yaml exactly, removals included."""
+    if not sources_path.is_file():
+        typer.echo(
+            f"No sources file at {sources_path}. Copy sources.example.yaml to it, or pass "
+            "--sources.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     cfg, store = _source_store(config_path, sources_path)
 
     # A D1 deployment's config holds the table's sources, so read the file directly

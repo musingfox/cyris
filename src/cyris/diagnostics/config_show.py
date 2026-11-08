@@ -119,10 +119,7 @@ def _secrets(cfg: Config) -> list[Row]:
 
 
 def _runtime(cfg: Config) -> list[Row]:
-    if cfg.app.store.is_sql:
-        home = SOURCES["d1"] if cfg.app.store.is_cloudflare else SOURCES["sqlite"]
-    else:
-        home = SOURCES["file"]
+    home = SOURCES["d1"] if cfg.app.store.is_cloudflare else SOURCES["sqlite"]
     values = cfg.present_settings()
     defaulted = cfg.defaulted_settings()
     rows = []

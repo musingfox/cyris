@@ -11,7 +11,6 @@ import pytest
 from fakes import FakeLLM, SqliteD1
 from test_run_digest import FakeSource, make_deps
 
-import cyris.adapters.store.article_store as article_store_module
 import cyris.service_layer.run_digest as run_digest_module
 import cyris.utils.timezone as timezone_module
 from cyris.adapters.store.d1 import D1Error
@@ -29,7 +28,7 @@ A = "https://example.com/a"
 D = "https://example.com/disliked"
 
 
-def _fixed_clock(monkeypatch, when: datetime, *also) -> None:
+def _fixed_clock(monkeypatch, when: datetime) -> None:
     class Fixed(datetime):
         @classmethod
         def now(cls, tz=None):
@@ -37,7 +36,7 @@ def _fixed_clock(monkeypatch, when: datetime, *also) -> None:
 
     # `timezone_module` too: the run's window ends at `now_in_timezone`, so a clock
     # left real would move every candidate out of it as the calendar passes T0.
-    for module in (run_digest_module, timezone_module, *also):
+    for module in (run_digest_module, timezone_module):
         monkeypatch.setattr(module, "datetime", Fixed)
 
 
@@ -317,8 +316,7 @@ async def test_a_capped_run_accounts_for_every_row_the_cap_kept(
     await run_digest(deps, RunOptions(period="morning"))
 
     later = T0 + timedelta(days=1)
-    # The store's clock too, or the run's re-save adds a second copy of each row.
-    _fixed_clock(monkeypatch, later, article_store_module)
+    _fixed_clock(monkeypatch, later)
     oldest = _article(30, "Cut by the cap", "https://example.com/old", later - timedelta(hours=2))
     deps, recorded, _ = _world(
         tmp_path / "2", later, _vectors(0.18, [0.995, *SPREAD[1:]]), db=db, extra=[oldest]

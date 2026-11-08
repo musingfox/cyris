@@ -155,7 +155,7 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
 ) -> None:
     from typer.testing import CliRunner
 
-    from cyris.adapters.store import ArticleStore
+    from cyris.adapters.store.d1_store import D1ArticleStore
     from cyris.domain.models import Article
     from cyris.entrypoints.cli import app
 
@@ -165,7 +165,9 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
     config_path.write_text(f'[agent_vault]\npath = "{vault}"\n', encoding="utf-8")
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text("sources: []", encoding="utf-8")
-    store = ArticleStore(vault)
+    db = SqliteD1()
+    seed_d1_settings(db)
+    store = D1ArticleStore(db)
     now = datetime.now(UTC)
     store.save(
         [
@@ -181,8 +183,6 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
         ],
         now=now,
     )
-    db = SqliteD1()
-    seed_d1_settings(db)
     reply = json.dumps(
         {"scores": [{"id": 1, "score": 60, "language": "en", "suggest_area": "Space"}]}
     )
@@ -264,7 +264,7 @@ async def test_every_saved_item_carries_its_area(tmp_path: Path) -> None:
     assert stamp["source"] >= 1
 
 
-async def test_a_json_run_stamps_no_area(tmp_path: Path) -> None:
+async def test_a_run_with_no_areas_stamps_no_area(tmp_path: Path) -> None:
     reply = json.dumps(
         {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
     )
@@ -333,7 +333,7 @@ async def test_a_dismissed_area_stays_out_of_the_saved_order(tmp_path: Path) -> 
     assert content.area_order == ["Tech"]
 
 
-async def test_a_json_run_saves_an_empty_area_order(tmp_path: Path) -> None:
+async def test_a_run_with_no_areas_saves_an_empty_area_order(tmp_path: Path) -> None:
     reply = json.dumps(
         {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
     )
@@ -447,7 +447,7 @@ async def test_a_failed_stamp_cuts_nothing_and_accepts_every_shown_article(
     assert digest_urls(content) == {a.url for a in articles}
 
 
-async def test_a_json_run_accepts_and_shows_every_article(tmp_path: Path) -> None:
+async def test_a_run_with_no_areas_accepts_and_shows_every_article(tmp_path: Path) -> None:
     articles = _radar_articles(7)
 
     _, content, states, _ = await _run_radar(tmp_path, articles)

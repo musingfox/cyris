@@ -138,7 +138,7 @@ async def test_an_area_that_is_not_active_is_refused_and_nothing_changes() -> No
     assert D1SourceStore(db).list_sources()["a"].area_id is None
 
 
-async def test_a_json_deployment_refuses_an_area_on_save() -> None:
+async def test_a_partial_server_refuses_an_area_on_save() -> None:
     client = await _post_client(None)
     try:
         response = await client.post("/api/sources", json=_body(area_id=1))

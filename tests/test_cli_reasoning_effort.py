@@ -3,9 +3,11 @@
 from types import SimpleNamespace
 
 import pytest
-from fakes import settings_toml
+from fakes import seed_d1_settings
 from typer.testing import CliRunner
 
+from cyris.adapters.store.source_store import D1SourceStore
+from cyris.domain.models import SourceConfig
 from cyris.entrypoints.cli import _build_arm, _llm_from_values, app
 
 pytestmark = pytest.mark.integration
@@ -34,18 +36,14 @@ def test_an_arm_runs_at_the_given_effort(built) -> None:
     assert cfg.reasoning_effort == "high"
 
 
-def test_llm_compare_builds_every_arm_at_the_configured_effort(
-    tmp_path, monkeypatch: pytest.MonkeyPatch, built
-) -> None:
-    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
+def test_llm_compare_builds_every_arm_at_the_configured_effort(tmp_path, d1, built) -> None:
+    seed_d1_settings(d1, **{"llm_provider.provider": "openai", KEY: "high"})
+    D1SourceStore(d1).upsert(SourceConfig(name="Feed", url="https://a.test/feed"))
     config = tmp_path / "cyris.toml"
     config.write_text(
-        settings_toml(**{"llm_provider.provider": "openai", KEY: "high"})
-        + "[html_output]\nenabled = true\n"
-        f'[agent_vault]\npath = "{tmp_path / "vault"}"\n'
+        f'[html_output]\nenabled = true\n[agent_vault]\npath = "{tmp_path / "vault"}"\n'
     )
     sources = tmp_path / "sources.yaml"
-    sources.write_text('sources:\n  - name: "Feed"\n    url: "https://a.test/feed"\n')
 
     result = CliRunner().invoke(
         app,

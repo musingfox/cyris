@@ -73,16 +73,11 @@ def test_the_read_writes_nothing() -> None:
     assert [sql for sql in db.sent if not sql.lstrip().upper().startswith("SELECT")] == []
 
 
-def _config(tmp_path: Path, *, d1: bool) -> Config:
-    cfg = make_config(
-        agent_vault=AgentVaultConfig(path=tmp_path / "vault"), store={"backend": "json"}
+def _config(tmp_path: Path) -> Config:
+    return make_config(
+        agent_vault=AgentVaultConfig(path=tmp_path / "vault"),
+        store={"backend": "d1", "database_id": "db", "account_id": "acct", "api_token": "tok"},
     )
-    if d1:
-        cfg.app.store.backend = "d1"
-        cfg.app.store.database_id = "db"
-        cfg.app.store.account_id = "acct"
-        cfg.app.store.api_token = "tok"
-    return cfg
 
 
 def test_a_d1_deployment_reads_counts_from_its_usage_log(tmp_path: Path, monkeypatch) -> None:
@@ -90,10 +85,6 @@ def test_a_d1_deployment_reads_counts_from_its_usage_log(tmp_path: Path, monkeyp
     _log(db, "2026-09-01T12:00:00Z", "2026-09-01", "evening", 9)
     monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: db)
 
-    deps = bootstrap.build_deps(_config(tmp_path, d1=True))
+    deps = bootstrap.build_deps(_config(tmp_path))
 
     assert deps.archive_counts() == {("2026-09-01", "evening"): 9}
-
-
-def test_a_json_deployment_has_no_counts(tmp_path: Path) -> None:
-    assert bootstrap.build_deps(_config(tmp_path, d1=False)).archive_counts() == {}

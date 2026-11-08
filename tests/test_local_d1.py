@@ -255,6 +255,10 @@ def test_a_failing_rollback_does_not_hide_why_the_script_failed(client):
         def __init__(self, conn) -> None:
             self._conn = conn
 
+        @property
+        def total_changes(self) -> int:
+            return self._conn.total_changes
+
         def execute(self, sql, *args):
             if sql == "ROLLBACK":
                 raise sqlite3.OperationalError("disk I/O error during rollback")
@@ -267,3 +271,12 @@ def test_a_failing_rollback_does_not_hide_why_the_script_failed(client):
 
     with pytest.raises(D1Error, match="UNIQUE"):
         client.query("INSERT INTO t (k, v) VALUES ('a', 1);\nINSERT INTO t (k, v) VALUES ('a', 2);")
+
+
+def test_a_statement_opening_with_with_counts_the_rows_it_wrote(client):
+    client.query("CREATE TABLE counted (n INTEGER)")
+    client.query("INSERT INTO counted VALUES (1), (2)")
+
+    sql = "WITH step AS (SELECT 1 AS by) UPDATE counted SET n = n + (SELECT by FROM step)"
+    assert client.query(sql).changes == 2
+    assert client.query(f"{sql}; {sql}").changes == 4

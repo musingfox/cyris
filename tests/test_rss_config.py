@@ -1,10 +1,9 @@
 """The [rss] section and its bootstrap wiring (Cloudflare RSS Worker buffer)."""
 
 import pytest
-from fakes import settings_toml
+from fakes import TEST_SETTINGS, load_files
 
 from cyris.bootstrap import build_deps
-from cyris.config import load_config
 
 pytestmark = pytest.mark.integration
 
@@ -27,12 +26,10 @@ sources:
 def _config(tmp_path, monkeypatch, rss_section: str):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text(
-        CONFIG.format(vault=tmp_path, rss=rss_section) + settings_toml(), encoding="utf-8"
-    )
+    config_path.write_text(CONFIG.format(vault=tmp_path, rss=rss_section), encoding="utf-8")
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(SOURCES, encoding="utf-8")
-    return load_config(config_path=config_path, sources_path=sources_path)
+    return load_files(config_path, sources_path, TEST_SETTINGS)
 
 
 def test_token_comes_from_the_environment(tmp_path, monkeypatch):

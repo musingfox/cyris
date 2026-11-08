@@ -1,14 +1,12 @@
 """A human vote lands in one statement, so a run cannot slip between verdict and stamp."""
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pytest
 from fakes import SqliteD1
 
 from cyris.adapters.promotions import record_votes
-from cyris.adapters.store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, ArticleState, Lane
 from cyris.domain.triage import RejectReason
@@ -96,16 +94,16 @@ def test_a_mixed_ballot_survives_a_run_that_reverses_every_article() -> None:
     }
 
 
-def test_a_vote_sets_state_and_stamp_on_every_row_carrying_the_url(tmp_path: Path) -> None:
-    """A URL older than the dedup scan sits in two partitions; both rows take the vote."""
-    store = ArticleStore(tmp_path)
+def test_a_url_saved_again_months_later_is_one_row_and_it_takes_the_vote() -> None:
+    """The URL is the primary key, so no second row can stay behind unvoted."""
+    store = D1ArticleStore(SqliteD1())
     store.save([_article(DISLIKED)], now=AT - timedelta(days=30))
     store.save([_article(DISLIKED)], now=AT)
-    assert len(store.get_by_urls([DISLIKED])) == 2
+    assert len(store.get_by_urls([DISLIKED])) == 1
 
     record_votes(store, accepted=[], rejected=[DISLIKED], at=AT)
 
     rows = store.get_by_urls([DISLIKED])
     assert [(r.state, r.rejection_reason, r.triaged_at) for r in rows] == [
         (ArticleState.REJECTED, RejectReason.NOT_INTERESTED, AT)
-    ] * 2
+    ]

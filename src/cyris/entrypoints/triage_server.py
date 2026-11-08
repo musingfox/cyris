@@ -362,51 +362,47 @@ class TriageServer:
         # that sets nothing gets the check.
         self._behind_app_worker = behind_app_worker
         self._port = port
-        # Without a settings store the page still renders, read-only: a
-        # `backend = "json"` deployment has nowhere to put a runtime setting, so
-        # its owner edits `cyris.toml` by hand.
+        # Without a settings store the page still renders, read-only. The store
+        # is optional for a partial server.
         self._settings = settings
         # The grade-D values the deployment's home holds, by `table.field`; a key
         # absent here is missing. Each successful save updates it.
         self._values = dict(values or {})
-        # Already resolved by `load_effective_config` — D1's `sources` table under
-        # a D1 store, empty or not; `sources.yaml` otherwise.
+        # Already resolved by `load_effective_config`: the `sources` table, empty or not.
         self._sources = sources or {}
-        # The write surface. Absent on a `backend = "json"` deployment,
-        # where `sources.yaml` is the only home and the list stays read-only.
+        # The write surface; optional for a partial server, whose list stays read-only.
         self._source_store = source_store
-        # D1's `feed_health` beside each source's newest article; absent on a
-        # `backend = "json"` deployment, which polls no Worker.
+        # D1's `feed_health` beside each source's newest article; optional for a
+        # partial server.
         self._feed_health = feed_health
-        # Like sources: the startup list, read-only on a `backend = "json"`
-        # deployment, whose topics live in cyris.toml; D1's table otherwise.
+        # Like sources: the startup list, read-only without the store, which is
+        # optional for a partial server.
         self._tracked_topics = tracked_topics or []
         self._topic_store = topic_store
         # D1's blind-label sample, and the store its up and down answers are
-        # written to as votes; both absent on a `backend = "json"` deployment.
+        # written to as votes; both optional for a partial server.
         self._blind_labels = blind_labels
         self._article_store = article_store
-        # D1's areas and birth threshold; absent on a `backend = "json"` deployment.
+        # D1's areas and birth threshold; optional for a partial server.
         self._area_store = area_store
-        # D1's recent article titles for the Propose prompt; absent on a `backend = "json"`
-        # deployment, and a Propose without it asks the model with no titles.
+        # D1's recent article titles for the Propose prompt; optional for a partial
+        # server, and a Propose without it asks the model with no titles.
         self._source_titles = source_titles
         # Called with the grade-D values for an LLM client; None when no LLM can be built.
         self._llm_factory = llm_factory
         # The wizard's card reader, over the run's own RSS edge
-        # (`bootstrap.build_onboarding_articles`); absent on a `backend = "json"`
-        # deployment, which has no wizard.
+        # (`bootstrap.build_onboarding_articles`); optional for a partial server.
         self._onboarding_articles = onboarding_articles
         # The wizard's check of a feed the reader pastes
-        # (`bootstrap.build_feed_checker`); absent where there is no wizard.
+        # (`bootstrap.build_feed_checker`); optional for a partial server.
         self._feed_checker = feed_checker
         # D1's stored issues and `digest_runs`, which the wizard's first issue
-        # reads its key's state and its run's outcome from; both absent on a
-        # `backend = "json"` deployment, which has no wizard.
+        # reads its key's state and its run's outcome from; both optional for a
+        # partial server.
         self._digest_store = digest_store
         self._run_log = run_log
         # D1's voted tags and live holds, which the interest map is drawn from on each
-        # request (`D1InterestReader.read`); absent on a `backend = "json"` deployment.
+        # request (`D1InterestReader.read`); optional for a partial server.
         self._interest_reader = interest_reader
         # The time the first issue's key is picked at; a probe pins it.
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -2043,8 +2039,7 @@ class TriageServer:
     def _awaiting_onboarding(self) -> bool:
         """Whether this deployment is waiting for onboarding: a writable, empty source table.
 
-        A `backend = "json"` deployment has no writable table, so it never is:
-        its sources live in `sources.yaml`, which the app never writes.
+        A partial server with no source store has no writable table, so it never is.
         """
         if self._source_store is None:
             return False
@@ -2066,7 +2061,7 @@ class TriageServer:
 
         It stays open once the table has a source, because its own sources step
         writes one: a reload on a later step must not send the reader out of it.
-        A `backend = "json"` deployment has no table the wizard could write.
+        A partial server with no source store has no table the wizard could write.
         """
         if self._source_store is None:
             raise web.HTTPFound("/settings")

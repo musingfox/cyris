@@ -7,9 +7,8 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from pydantic import BaseModel
 
-from cyris.adapters.store import ArticleStore
 from cyris.domain.models import TopicVote
-from cyris.service_layer.ports import TopicRepository
+from cyris.service_layer.ports import ArticleRepository, TopicRepository
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ def ack_promotions(worker_url: str, token: str, urls: list[str]) -> None:
 
 
 def record_votes(
-    store: ArticleStore, *, accepted: list[str], rejected: list[str], at: datetime
+    store: ArticleRepository, *, accepted: list[str], rejected: list[str], at: datetime
 ) -> None:
     """Write votes as human decisions: state and `triaged_at` stamp in one write.
 
@@ -150,7 +149,7 @@ def unrecorded(votes: list[TopicVote], recorded: list[TopicVote]) -> list[TopicV
 def sync_promotions(
     worker_url: str,
     token: str,
-    store: ArticleStore,
+    store: ArticleRepository,
     topics: TopicRepository | None = None,
 ) -> SyncResult:
     """Pull votes, apply them to the store, then ACK.

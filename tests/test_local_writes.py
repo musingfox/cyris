@@ -24,10 +24,7 @@ SRC = Path("src/cyris")
 WRITERS = {"write_text", "write_bytes", "mkdir", "touch", "unlink"}
 
 ALLOWED = {
-    "adapters/output/html_digest.py",  # agent-vault/html/, the no-D1 fallback
-    "adapters/output/usage_log.py",  # usage.jsonl, the no-D1 fallback
-    "adapters/store/article_store.py",  # the json store backend
-    "adapters/store/json_topics.py",  # the json store backend's topics
+    "adapters/output/html_digest.py",  # agent-vault/html/, the generated pages
     "adapters/store/local_d1.py",  # the sqlite store backend's file, a local install only
     "diagnostics/doctor.py",  # the vault writability probe, skipped under D1
     "entrypoints/cli.py",  # the file `--output` names: a preview or a regenerated page
@@ -37,9 +34,9 @@ ALLOWED = {
 def _opened_for_writing(node: ast.Call) -> bool:
     """`open(p, "a")` and `p.open("w")` — the form that used to slip past.
 
-    `usage_log.py` is the proof it did: it is caught by its `mkdir` on the line
-    above, and its actual `open(log_path, "a")` was invisible. A new file that
-    only opens and writes would have been listed by neither this set nor §4.
+    `usage_log.py`, when it still wrote a file, was the proof it did: it was caught by
+    its `mkdir` on the line above, and its actual `open(log_path, "a")` was invisible. A
+    new file that only opens and writes would have been listed by neither this set nor §4.
     """
     if isinstance(node.func, ast.Attribute) and node.func.attr == "open":
         positional = node.args[0] if node.args else None  # Path.open(mode)

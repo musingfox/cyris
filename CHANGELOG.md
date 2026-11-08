@@ -136,6 +136,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- The `json` store, and `cyris store migrate` and `cyris store diff` with it. `[store] backend`
+  is `sqlite` or `d1`, and a config or environment that still says `json` stops every command
+  with one line saying what to delete. A json install's way across is to run
+  `cyris store migrate --to sqlite` from commit `7b2300e1` first. Its files in `agent-vault/`
+  are ignored and left where they are.
+- Runtime settings and `[[tracked_topics]]` in `cyris.toml` no longer reach a run, on any
+  install: they come from the store alone. `cyris settings push` still reads its settings file.
+- `docker compose` no longer mounts `./sources.yaml`, so a local install does not need the file.
 - The `CYRIS_UI_TOKEN` sign-in is gone: no token secret, no login form and no
   `cyris_session` cookie. Cloudflare Access is the only sign-in, and the Worker
   checks each Access JWT and answers `403` to a protected request without a valid

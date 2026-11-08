@@ -51,9 +51,9 @@ prototype opened every settings form, sources, tracked topics and votes with `se
   from both sides. Generated pages stay plain files in `agent-vault/html/`.
 * The architecture's stance changes. A local file is a supported home for a local install. Cloud
   deployments still write nothing locally.
-* `json` is removed before the project is announced, once `cyris store migrate` moves a `json`
-  install across, `topics.json`, `usage.jsonl` and `[[tracked_topics]]` included. A public release
-  then never has two local stores to choose between.
+* The `json` store and `cyris store migrate` were removed together, by the owner's decision, because
+  nothing unannounced needed the path. A public release then never has two local stores to choose
+  between.
 * Grade-D keys now have shipped starting values, `src/cyris/settings_starting_values.json`, taken
   from `settings.example.toml`, which a guard test keeps equal to it. They cover the tuned keys a new
   reader is not asked to choose. The onboarding wizard's Model step shows each key the store

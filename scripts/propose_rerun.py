@@ -8,8 +8,8 @@ written: the area table is only read, and the model's grouping is counted, never
 Usage:
     uv run python scripts/propose_rerun.py --config /absolute/path/to/cyris.toml
 
-`sources.yaml` is read from beside the config, as `cyris.toml` is. A D1 deployment reads
-its sources from D1 either way.
+`sources.yaml` is parsed from beside the config, as `cyris.toml` is. The sources themselves
+come from the store.
 """
 
 from __future__ import annotations

@@ -209,7 +209,7 @@ failure mode**: each publish is a full snapshot of the site, and the two would r
    [step 7 of the install](install-cloudflare.md#7-run-the-first-digest-now), then read
    the `run_summary` line in Workers Logs and open the issue in the archive.
 3. From then on, run `cyris` locally only for commands that do not publish:
-   `doctor`, `articles`, `sources`, `settings push`, `store diff`.
+   `doctor`, `articles`, `sources`, `settings push`.
 
 ## Blind labels on the filter's candidates
 

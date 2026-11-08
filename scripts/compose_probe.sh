@@ -81,7 +81,6 @@ cd "$work"
 # docs/install-local.md, step 1, with no key in .env: no LLM call.
 cp cyris.toml.example cyris.toml
 cp .env.example .env
-cp sources.example.yaml sources.yaml
 mkdir -p agent-vault
 
 dc build --quiet >/dev/null || fail "image build"

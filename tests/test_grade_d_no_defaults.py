@@ -8,7 +8,7 @@ import inspect
 from pathlib import Path
 
 import pytest
-from fakes import TEST_SETTINGS, SqliteD1, make_config, settings_toml
+from fakes import TEST_SETTINGS, SqliteD1, load_files, make_config, stored_settings
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
@@ -23,7 +23,8 @@ from cyris.config import (
     NotifyConfig,
     RoutingConfig,
     VoteSimilarityConfig,
-    load_config,
+    read_config_files,
+    resolve_config,
     validate_setting,
 )
 
@@ -84,10 +85,12 @@ def test_an_app_config_needs_every_settings_table():
     assert set(TABLES) <= locations
 
 
-def test_a_json_file_missing_one_key_leaves_only_that_table_unbuilt(tmp_path):
-    (tmp_path / "cyris.toml").write_text(settings_toml(omit=["digest.style_prompt"]))
-
-    cfg = load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
+def test_a_store_missing_one_key_leaves_only_that_table_unbuilt(tmp_path):
+    cfg = load_files(
+        tmp_path / "cyris.toml",
+        tmp_path / "sources.yaml",
+        stored_settings(omit=["digest.style_prompt"]),
+    )
 
     assert cfg.app.digest is None
     assert cfg.app.general.timezone == TEST_SETTINGS["general.timezone"]
@@ -156,7 +159,12 @@ def test_one_setting_validates_while_its_siblings_are_required():
 
 
 def test_the_example_config_builds_every_settings_table():
-    cfg = load_config(ROOT / "settings.example.toml", ROOT / "sources.example.yaml")
+    from cyris.entrypoints.cli import _file_settings
+
+    example = ROOT / "settings.example.toml"
+    raw = read_config_files(example, ROOT / "sources.example.yaml")
+
+    cfg = resolve_config(raw, d1_settings=_file_settings(example))
 
     assert all(getattr(cfg.app, table) is not None for table in TABLES)
 

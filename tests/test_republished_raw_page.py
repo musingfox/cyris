@@ -8,6 +8,7 @@ import pytest
 from fakes import FakeLLM, SqliteD1
 from test_run_digest import FakeSource, make_deps
 
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.domain.models import Article, ArticleState, DigestContent, Lane, UsageStats
@@ -35,7 +36,7 @@ def _article(i: int) -> Article:
 async def _republish(tmp_path: Path, *, raw_page: bool, record, articles=(), store_cls=None):
     deps, _ = make_deps(tmp_path, FakeLLM("{}"), FakeSource([]))
     if store_cls is not None:
-        deps = replace(deps, store=store_cls(tmp_path / "agent-vault"))
+        deps = replace(deps, store=store_cls(SqliteD1()))
     deps.store.save(list(articles))
     # The issue being republished judged these rows; left pending, this run would judge them again.
     deps.store.update_states(
@@ -121,9 +122,7 @@ async def test_a_record_of_three_with_two_rows_lists_the_two(tmp_path: Path) -> 
 
 
 async def test_a_failed_article_read_republishes_without_a_link(tmp_path: Path) -> None:
-    from cyris.adapters.store.article_store import ArticleStore
-
-    class Broken(ArticleStore):
+    class Broken(D1ArticleStore):
         def get_by_urls(self, urls):
             raise RuntimeError("store unavailable")
 

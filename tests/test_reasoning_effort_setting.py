@@ -10,7 +10,6 @@ from cyris.bootstrap import load_effective_config
 from cyris.config import (
     IncompleteSettingsError,
     LLMProviderConfig,
-    load_config,
     validate_setting,
 )
 
@@ -46,16 +45,6 @@ def test_a_defaulted_effort_is_reported_apart_from_the_stored_settings(
     assert cfg.defaulted_settings() == {KEY: "default"}
     assert KEY not in cfg.present_settings()
     assert cfg.require_complete_settings() is None
-
-
-def test_a_json_home_without_the_effort_runs_at_default(tmp_path: Path) -> None:
-    (tmp_path / "cyris.toml").write_text(settings_toml(omit=[KEY]))
-
-    cfg = load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
-
-    assert cfg.missing_settings == []
-    assert cfg.app.llm_provider.reasoning_effort == "default"
-    assert cfg.defaulted_settings() == {KEY: "default"}
 
 
 @pytest.mark.parametrize("value", ["default", "low", "medium", "high"])
@@ -103,13 +92,6 @@ def test_a_stored_effort_outside_the_four_stops_the_run_naming_it(
     )
 
 
-def test_a_file_effort_outside_the_four_fails_the_load(tmp_path: Path) -> None:
-    (tmp_path / "cyris.toml").write_text(settings_toml(**{KEY: "xhigh"}))
-
-    with pytest.raises(ValueError):
-        load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
-
-
 def test_a_stored_effort_reaches_the_config(tmp_path: Path, d1: SqliteD1) -> None:
     seed_d1_settings(d1, **{KEY: "high"})
 
@@ -139,11 +121,3 @@ def test_a_d1_deployment_ignores_the_files_effort_when_d1_holds_none(
     cfg = load_effective_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
 
     assert cfg.app.llm_provider.reasoning_effort == "default"
-
-
-def test_a_json_deployment_reads_the_effort_from_its_file(tmp_path: Path) -> None:
-    (tmp_path / "cyris.toml").write_text(settings_toml(**{KEY: "medium"}))
-
-    cfg = load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
-
-    assert cfg.app.llm_provider.reasoning_effort == "medium"

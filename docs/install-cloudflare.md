@@ -346,8 +346,6 @@ The rest of the CLI, for work with no UI (`cyris --help` lists everything):
 ```
 cyris doctor                  Before the first run, and after any config change: exits
                               non-zero on anything that would break a run
-cyris store migrate|diff      The move into D1, and the comparison to run before you
-                              trust it
 cyris articles list|accept|   Bulk work on the store: the only way to reach pending
       reject|score|clean      rows outside an issue, and to delete old rows
 cyris llm-compare             Digest one window with several providers, side by side,

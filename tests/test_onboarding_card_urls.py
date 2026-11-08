@@ -13,11 +13,10 @@ from email.utils import format_datetime
 import httpx
 import pytest
 import respx
-from fakes import settings_toml
+from fakes import TEST_SETTINGS, load_files
 
 from cyris.adapters.fetch.onboarding_cards import draw_cards
 from cyris.bootstrap import build_deps, build_onboarding_articles
-from cyris.config import load_config
 from cyris.service_layer.fetching import fetch_all_articles
 
 pytestmark = pytest.mark.integration
@@ -82,10 +81,10 @@ def _rows() -> list[dict]:
 def _config(tmp_path, monkeypatch, rss: str):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text(CONFIG.format(vault=tmp_path, rss=rss) + settings_toml(), "utf-8")
+    config_path.write_text(CONFIG.format(vault=tmp_path, rss=rss), "utf-8")
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(SOURCES, encoding="utf-8")
-    return load_config(config_path=config_path, sources_path=sources_path)
+    return load_files(config_path, sources_path, TEST_SETTINGS)
 
 
 async def _both(cfg) -> tuple[set[str], set[str], set[str]]:

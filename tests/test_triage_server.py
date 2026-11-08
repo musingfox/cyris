@@ -1,13 +1,11 @@
 """Tests for triage web server API endpoints."""
 
-from pathlib import Path
-
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from fakes import SqliteD1
 
 from cyris.adapters.output.html_digest import FAVICON
-from cyris.adapters.store.article_store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.entrypoints.triage_server import TriageServer
 
 pytestmark = pytest.mark.integration
@@ -24,10 +22,10 @@ async def client() -> TestClient:
     await test_client.close()
 
 
-class TestNoArticleStore:
-    def test_a_positional_argument_is_refused(self, tmp_path: Path) -> None:
+class TestNoPositionalStore:
+    def test_a_positional_argument_is_refused(self) -> None:
         with pytest.raises(TypeError):
-            TriageServer(ArticleStore(tmp_path))
+            TriageServer(D1ArticleStore(SqliteD1()))
 
 
 class TestTheDeckIsNotServed:
@@ -145,7 +143,7 @@ class TestSourcesEndpoint:
         assert data == {"writable": False, "sources": []}
 
     async def test_writes_are_refused_without_a_writable_table(self, client: TestClient) -> None:
-        """A `backend = "json"` deployment has nowhere to put a source."""
+        """A partial server with no source store has nowhere to put a source."""
         resp = await client.post("/api/sources", json={"name": "x", "url": "https://e.com/rss"})
         assert resp.status == 409
         assert (await client.delete("/api/sources/x")).status == 409

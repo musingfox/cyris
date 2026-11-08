@@ -1,10 +1,6 @@
-"""Newsletter dedup in the store: a sender's repeated link must not swallow an issue.
-
-Every case runs against both ArticleRepository implementations.
-"""
+"""Newsletter dedup in the store: a sender's repeated link must not swallow an issue."""
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,7 +8,6 @@ from fakes import CompoundSelectLimitedD1, CountingD1, SqliteD1
 
 from cyris.adapters.fetch.email_parser import ParsedNewsletter
 from cyris.adapters.fetch.newsletter import newsletter_article
-from cyris.adapters.store.article_store import ArticleStore
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Article, Lane, SourceConfig
 from cyris.service_layer.fetching import fetch_all_articles
@@ -23,9 +18,9 @@ NOW = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
 NAV = "https://s.com/account/settings/email"
 
 
-@pytest.fixture(params=["json", "d1"])
-def store(request, tmp_path: Path):
-    return ArticleStore(tmp_path) if request.param == "json" else D1ArticleStore(SqliteD1())
+@pytest.fixture
+def store() -> D1ArticleStore:
+    return D1ArticleStore(SqliteD1())
 
 
 def _issue(article_id: str, title: str, url: str = NAV, source_name: str = "NL") -> Article:

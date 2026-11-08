@@ -161,7 +161,7 @@ class TestTheCards:
         assert (status, body["sources"], body["cards"], body["empty"]) == (200, 0, [], [])
         assert deployment.polls == [] and deployment.source.reads == 0
 
-    async def test_a_json_deployment_has_no_cards(self) -> None:
+    async def test_a_partial_server_has_no_cards(self) -> None:
         status, body = await _call(TriageServer()._handle_post_onboarding_cards, {})
 
         assert status == 409 and not body["ok"]
@@ -256,7 +256,7 @@ class TestTheVotes:
         assert response.status == 400
         assert deployment.rows() == {}
 
-    async def test_a_json_deployment_takes_no_vote(self) -> None:
+    async def test_a_partial_server_takes_no_vote(self) -> None:
         status, _ = await _call(
             TriageServer()._handle_post_onboarding_votes,
             {"votes": [{"url": FETCHED[0].url, "vote": "up"}]},

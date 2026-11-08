@@ -10,11 +10,11 @@ import httpx
 import pytest
 import respx
 from aiohttp import web
-from fakes import make_config, seed_d1_settings, settings_toml
+from fakes import make_config, seed_d1_settings
 
 from cyris.adapters.gemini_client import GeminiAPIError
 from cyris.bootstrap import build_store, load_effective_config
-from cyris.config import REQUIRED_KEYS, Config, LLMProviderConfig, load_config
+from cyris.config import REQUIRED_KEYS, Config, LLMProviderConfig
 from cyris.diagnostics import doctor
 from cyris.domain.models import Lane, SourceConfig
 
@@ -180,22 +180,22 @@ def test_d1_sources_are_counted_as_from_d1(tmp_path: Path) -> None:
 
 
 async def test_the_sources_check_names_where_they_came_from(tmp_path: Path) -> None:
-    cfg = _config(tmp_path, store={"backend": "json"})
+    cfg = _config(tmp_path, store={"backend": "sqlite"})
 
     check = _by_name(await doctor.run_checks(cfg), "sources")
 
-    assert check.detail.endswith("— from sources.yaml")
+    assert check.detail.endswith("— from the SQLite store")
 
 
 async def test_no_sources_is_not_a_failure_but_a_wait(tmp_path: Path) -> None:
     """An empty list is a deployment waiting for onboarding, so `doctor` exits 0."""
-    cfg = _config(tmp_path, store={"backend": "json"})
+    cfg = _config(tmp_path, store={"backend": "sqlite"})
     cfg.sources = {}
 
     check = _by_name(await doctor.run_checks(cfg), "sources")
 
     assert check.status == "warn"
-    assert check.detail == "none in sources.yaml yet — waiting for onboarding"
+    assert check.detail == "none in the SQLite store yet — waiting for onboarding"
 
 
 async def test_a_provider_without_its_key_names_the_variable(tmp_path: Path, monkeypatch) -> None:
@@ -297,9 +297,9 @@ def test_provider_none_is_reported_as_a_choice(tmp_path: Path, monkeypatch) -> N
     )
 
 
-@pytest.mark.parametrize("backend, where", [("json", "in [llm_provider]"), ("d1", "on /settings")])
-def test_a_missing_key_offers_provider_none_where_this_backend_keeps_it(
-    tmp_path: Path, monkeypatch, backend: str, where: str
+@pytest.mark.parametrize("backend", ["sqlite", "d1"])
+def test_a_missing_key_offers_provider_none_on_the_settings_page(
+    tmp_path: Path, monkeypatch, backend: str
 ) -> None:
     for key in _LLM_KEYS:
         monkeypatch.delenv(key, raising=False)
@@ -310,7 +310,7 @@ def test_a_missing_key_offers_provider_none_where_this_backend_keeps_it(
 
     assert check.status == "fail"
     assert check.fix == (
-        f'Put GEMINI_API_KEY in .env. Or set the provider to "none" {where} '
+        'Put GEMINI_API_KEY in .env. Or set the provider to "none" on /settings '
         "for plain-excerpt digests."
     )
 
@@ -580,7 +580,7 @@ async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
     }
 
 
-@pytest.mark.parametrize("backend", ["json", "sqlite", "d1"])
+@pytest.mark.parametrize("backend", ["sqlite", "d1"])
 def test_a_missing_config_file_warns_unless_the_environment_named_a_backend(
     tmp_path: Path, backend: str
 ) -> None:
@@ -1268,13 +1268,13 @@ async def test_a_config_left_on_the_old_stanza_fails_the_build_check(
         '[general.notify]\ndiscord_webhook_url = "https://discord.com/api/webhooks/1/stale"\n\n'
         f'[agent_vault]\npath = "{tmp_path / "agent-vault"}"\n'
     )
-    from cyris.config import load_config
+    from fakes import load_files
 
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(
         "sources:\n  - name: Origin Feed\n    url: https://origin.test/feed\n    lane: skim\n"
     )
-    cfg = load_config(config_path=config_path, sources_path=sources_path)
+    cfg = load_files(config_path, sources_path)
     cfg.app.html_output.enabled = True
 
     checks = await doctor.run_checks(cfg, config_path)
@@ -1324,7 +1324,7 @@ class TestLastRun:
         checks = await doctor.run_checks(_config(tmp_path), deployment_url="")
         assert _by_name(checks, "last run").status == "skip"
 
-    def test_a_json_store_has_no_run_history(self, tmp_path: Path) -> None:
+    def test_a_sqlite_store_with_no_run_skips(self, tmp_path: Path) -> None:
         assert doctor._check_last_run(_config(tmp_path), "abc").status == "skip"
 
     def test_no_recorded_run_skips(self, tmp_path: Path, monkeypatch) -> None:
@@ -1413,7 +1413,7 @@ class TestFeedHealth:
             [f"https://{source}.test/{seen}", seen, source, seen],
         )
 
-    def test_a_json_store_has_no_feed_health(self, tmp_path: Path) -> None:
+    def test_a_sqlite_store_has_no_feed_health(self, tmp_path: Path) -> None:
         assert doctor._check_feed_health(_config(tmp_path)).status == "skip"
 
     def test_feeds_that_poll_and_publish_are_ok(self, tmp_path: Path, monkeypatch) -> None:
@@ -1659,12 +1659,6 @@ def test_a_d1_deployment_missing_a_setting_fails_naming_it(tmp_path: Path) -> No
     )
 
 
-def test_a_complete_json_deployment_passes(tmp_path: Path) -> None:
-    assert doctor._check_settings(_config(tmp_path, store={"backend": "json"})) == doctor.Check(
-        "settings", "ok", "all 26 set in cyris.toml"
-    )
-
-
 def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
@@ -1681,17 +1675,6 @@ def test_a_d1_home_without_the_effort_passes_naming_its_default(tmp_path: Path, 
     )
 
 
-def test_a_json_home_without_the_effort_passes_naming_its_default(tmp_path: Path) -> None:
-    (tmp_path / "cyris.toml").write_text(
-        '[store]\nbackend = "json"\n\n' + settings_toml(omit=["llm_provider.reasoning_effort"])
-    )
-    cfg = load_config(tmp_path / "cyris.toml", tmp_path / "sources.yaml")
-
-    assert doctor._check_settings(cfg) == doctor.Check(
-        "settings", "ok", "25 of 26 set in cyris.toml; default for llm_provider.reasoning_effort"
-    )
-
-
 def test_a_stored_effort_outside_the_four_fails_the_settings_check(tmp_path: Path, d1) -> None:
     seed_d1_settings(d1, **{"llm_provider.reasoning_effort": "xhigh"})
     cfg = load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
@@ -1704,26 +1687,26 @@ def test_a_stored_effort_outside_the_four_fails_the_settings_check(tmp_path: Pat
     )
 
 
-async def test_a_json_deployment_with_no_settings_fails_listing_every_key(tmp_path: Path) -> None:
-    from cyris.config import load_config
+async def test_a_sqlite_store_with_no_settings_fails_listing_every_key(tmp_path: Path) -> None:
+    from fakes import load_files
 
-    (tmp_path / "cyris.toml").write_text('[store]\nbackend = "json"\n')
-    cfg = load_config(tmp_path / "cyris.toml", tmp_path / "nope.yaml")
+    (tmp_path / "cyris.toml").write_text('[store]\nbackend = "sqlite"\n')
+    cfg = load_files(tmp_path / "cyris.toml", tmp_path / "nope.yaml")
 
     settings = _by_name(await doctor.run_checks(cfg), "settings")
 
     assert settings.status == "fail"
-    assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(REQUIRED_KEYS))}"
-    assert settings.fix == "settings.example.toml lists every key."
+    assert settings.detail == f"missing in the SQLite store: {', '.join(sorted(REQUIRED_KEYS))}"
+    assert settings.fix == "Walk the wizard at /onboarding, or set them on /settings."
 
 
 async def test_no_file_at_all_warns_and_fails_listing_every_key(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from cyris.config import load_config
+    from fakes import load_files
 
     monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
-    cfg = load_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
+    cfg = load_files(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 
     checks = await doctor.run_checks(cfg)
 
@@ -1797,19 +1780,6 @@ def test_several_ignored_keys_are_named_in_order(tmp_path: Path) -> None:
     assert check.detail.endswith(
         "cyris.toml's [digest] max_articles_per_digest, [llm_provider] provider"
     )
-
-
-async def test_a_json_deployment_has_no_file_settings_check(tmp_path: Path) -> None:
-    from fakes import settings_toml
-
-    config_path = tmp_path / "cyris.toml"
-    config_path.write_text(settings_toml())
-
-    cfg = _config(tmp_path, store={"backend": "json"})
-
-    names = [c.name for c in await doctor.run_checks(cfg, config_path)]
-
-    assert "file settings" not in names
 
 
 async def test_an_explicit_custom_domain_is_the_digest_link(tmp_path: Path) -> None:
@@ -1913,15 +1883,15 @@ async def test_mail_without_cloudflare_credentials_warns(tmp_path: Path, monkeyp
 async def test_a_notify_table_missing_only_the_mail_keys_is_reported_not_raised(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from fakes import settings_toml
-
-    from cyris.config import load_config
+    from fakes import load_files, stored_settings
 
     # The state an upgraded deployment starts in: the webhook stored, the mail keys not.
     monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
-    config_path = tmp_path / "cyris.toml"
-    config_path.write_text(settings_toml(omit=["notify.email_to", "notify.email_from"]))
-    cfg = load_config(config_path, tmp_path / "nope.yaml")
+    cfg = load_files(
+        tmp_path / "cyris.toml",
+        tmp_path / "nope.yaml",
+        stored_settings(omit=["notify.email_to", "notify.email_from"]),
+    )
 
     checks = await doctor.run_checks(cfg)
 
