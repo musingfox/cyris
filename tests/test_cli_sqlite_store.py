@@ -7,6 +7,7 @@ its directory should be must end that load as a `D1Error` the command reports, n
 as a traceback.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -184,6 +185,33 @@ def test_doctor_still_refuses_a_file_it_cannot_create(tmp_path, monkeypatch) -> 
     assert result.exit_code == 1, result.output
     assert "not created yet" not in result.output
     assert "[store] sqlite_path" in result.output
+
+
+@pytest.mark.parametrize("command", [["doctor"], ["config", "show"]], ids=lambda c: c[0])
+def test_a_directory_it_cannot_traverse_ends_the_command_without_a_traceback(
+    tmp_path, monkeypatch, command
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root traverses a mode 000 directory, so the path stays reachable")
+    monkeypatch.chdir(tmp_path)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o000)
+    config = _install(tmp_path, locked / "inner" / "x.sqlite3")
+
+    try:
+        result = runner.invoke(app, [*command, "--config", str(config)])
+    finally:
+        locked.chmod(0o700)
+
+    assert not isinstance(result.exception, PermissionError), repr(result.exception)
+    assert "Traceback" not in result.output
+    assert "not created yet" not in result.output
+    if command == ["doctor"]:
+        assert result.exit_code == 1, result.output
+        [line] = [line for line in result.output.splitlines() if line.startswith("✗ sqlite")]
+        assert "could not open" in line
+        assert "[store] sqlite_path" in result.output
 
 
 @pytest.mark.parametrize(

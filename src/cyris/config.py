@@ -73,9 +73,17 @@ B_GRADE_ENV_VARS: dict[str, str] = {
 }
 
 
+def exists(path: Path) -> bool:
+    """Whether `path` is there to see; a path under a directory this user cannot traverse is not."""
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def can_create(path: Path) -> bool:
     """Whether this user could create `path`: its nearest existing parent is theirs to write."""
-    nearest = next(parent for parent in path.parents if parent.exists())
+    nearest = next(parent for parent in path.parents if exists(parent))
     return nearest.is_dir() and os.access(nearest, os.W_OK | os.X_OK)
 
 
@@ -293,7 +301,7 @@ class StoreConfig(BaseModel):
         """
         return (
             self.backend == "sqlite"
-            and not self.sqlite_path.exists()
+            and not exists(self.sqlite_path)
             and can_create(self.sqlite_path)
         )
 

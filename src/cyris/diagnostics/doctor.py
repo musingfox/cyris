@@ -26,7 +26,7 @@ from typing import Literal, get_args
 
 import httpx
 
-from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config, can_create
+from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config, can_create, exists
 from cyris.domain.models import Lane
 
 Status = Literal["ok", "warn", "fail", "skip"]
@@ -41,7 +41,7 @@ class Check:
 
 
 def _writable(path: Path) -> bool:
-    if not path.exists():
+    if not exists(path):
         return can_create(path)
     try:
         probe = path / ".cyris-doctor-probe"
