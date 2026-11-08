@@ -543,12 +543,13 @@ async def test_the_resolved_store_class_is_reported_not_the_configured_name(
 
 
 async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     """A container that ships no file is not a host that forgot the file."""
+    # The premise of this case: the identity arrives as env, not as a file.
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
-    # The premise of this case: the identity arrives as env, not as a file.
     cfg.app.store.database_id = "db"
     cfg.app.store.account_id = "acct"
     cfg.app.store.api_token = "tok"
@@ -573,16 +574,33 @@ async def test_a_missing_config_file_on_d1_is_ok_and_names_the_environment(
     }
 
 
-async def test_a_missing_config_file_on_json_warns_to_set_cyris_env(
-    tmp_path: Path,
+@pytest.mark.parametrize("backend", ["json", "sqlite", "d1"])
+def test_a_missing_config_file_warns_unless_the_environment_named_a_backend(
+    tmp_path: Path, backend: str
 ) -> None:
     cfg = _config(tmp_path)
+    cfg.app.store.backend = backend
     cfg.config_file_found = False
 
-    check = _by_name(await doctor.run_checks(cfg), "config file")
+    check = doctor._check_config_file(cfg, tmp_path / "typo.toml")
 
     assert check.status == "warn"
+    assert check.detail == "not found"
     assert "CYRIS_" in check.fix
+
+
+def test_a_missing_config_file_is_fine_once_the_environment_names_the_backend(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
+    cfg = _config(tmp_path)
+    cfg.app.store.backend = "sqlite"
+    cfg.config_file_found = False
+
+    check = doctor._check_config_file(cfg, tmp_path / "typo.toml")
+
+    assert check.status == "ok"
+    assert check.detail == "not found — running from the environment"
 
 
 async def test_a_found_config_file_is_named_in_the_check(tmp_path: Path) -> None:

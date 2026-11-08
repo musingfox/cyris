@@ -26,7 +26,7 @@ from typing import Literal, get_args
 
 import httpx
 
-from cyris.config import GRADE_D_KEYS, Config, can_create
+from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config, can_create
 from cyris.domain.models import Lane
 
 Status = Literal["ok", "warn", "fail", "skip"]
@@ -82,7 +82,9 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
     if cfg.config_file_found:
         where = str(config_path) if config_path is not None else "cyris.toml"
         return Check("config file", "ok", where)
-    if cfg.app.store.is_sql:
+    # The environment named the store, so this host means to run with no file. A default
+    # would not say that: a mistyped --config and a wrong directory get it too.
+    if os.environ.get(B_GRADE_ENV_VARS["store.backend"]):
         return Check("config file", "ok", "not found — running from the environment")
     return Check(
         "config file",
