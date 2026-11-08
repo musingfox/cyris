@@ -1736,6 +1736,22 @@ def _sql_client(cfg, to: str):
     return client
 
 
+def _refuse_sqlite_to_d1(config_path: Path, sources_path: Path) -> None:
+    """Exit on one line when the install is sqlite: its file has no copy path to D1 yet.
+
+    Asked before any load, so nothing is created. Without it the json side, empty on a
+    sqlite install, is read as if it were the store, and `store diff` agrees with D1 over
+    articles it never compared.
+    """
+    backend = _store_before_load(config_path, sources_path).backend
+    if backend == "sqlite":
+        typer.echo(
+            "The store backend is sqlite, and a SQLite file has no copy path to D1 yet: "
+            '--to d1 reads a json install, one whose [store] backend is "json".'
+        )
+        raise typer.Exit(1)
+
+
 def _load_both_stores(config_path: Path, sources_path: Path, to: str = "d1"):
     """Return (json_store, SQL store) regardless of which one [store] selects."""
     from cyris.adapters.store import ArticleStore
@@ -1775,6 +1791,7 @@ def store_migrate(
     if _target(to) == "sqlite":
         _migrate_into_sqlite(config_path, sources_path)
         return
+    _refuse_sqlite_to_d1(config_path, sources_path)
 
     json_store, d1_store = _load_both_stores(config_path, sources_path)
 
@@ -2164,6 +2181,8 @@ def store_diff(
                 "`cyris store migrate --to sqlite` creates it."
             )
             raise typer.Exit(1)
+    else:
+        _refuse_sqlite_to_d1(config_path, sources_path)
     json_store, d1_store = _load_both_stores(config_path, sources_path, to)
 
     if to == "sqlite":

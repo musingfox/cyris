@@ -685,3 +685,22 @@ def test_the_closing_print_names_what_cyris_toml_will_no_longer_be_read_for(
         assert f"\n  [{table}] {', '.join(fields)}\n" in closing, (table, closing)
     assert "\n  [[tracked_topics]]: Fusion, Rust\n" in closing
     assert "sources.yaml" in closing.split("[[tracked_topics]]", 1)[1]
+
+
+@pytest.mark.parametrize("command", ["migrate", "diff"])
+def test_a_sqlite_install_has_no_copy_path_to_d1_and_creates_nothing(
+    tmp_path: Path, monkeypatch, command: str
+) -> None:
+    """The json side of a sqlite install is empty: reading it as the store agrees with nothing."""
+    monkeypatch.chdir(tmp_path)
+    for name in ("CYRIS_STORE_BACKEND", "CYRIS_STORE_SQLITE_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    config = tmp_path / "cyris.toml"
+    config.write_text('[store]\nbackend = "sqlite"\n')
+
+    result = _cli(config, "store", command)
+
+    assert result.exit_code == 1, result.output
+    [line] = result.output.splitlines()
+    assert "SQLite file has no copy path to D1" in line
+    assert sorted(tmp_path.rglob("*")) == [config]
