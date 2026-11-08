@@ -112,9 +112,12 @@ class LocalD1Client:
         with self._lock:
             try:
                 if len(statements) <= 1:
+                    # Not `cursor.rowcount`: sqlite3 leaves it at -1 for a statement that
+                    # opens with `WITH`, which `update_scores` is.
+                    before = self._conn.total_changes
                     cursor = self._conn.execute(sql, params or [])
                     rows = [dict(row) for row in cursor.fetchall()]
-                    return QueryResult(rows=rows, changes=max(cursor.rowcount, 0))
+                    return QueryResult(rows=rows, changes=self._conn.total_changes - before)
                 if params:
                     # D1 binds one parameter list to one statement; a script with
                     # bindings is a caller bug, refused before anything runs.
@@ -128,13 +131,12 @@ class LocalD1Client:
     def _run_script(self, statements: list[str]) -> QueryResult:
         """Several statements in one call, all or none, as D1 runs one POST."""
         rows: list[dict[str, Any]] = []
-        changes = 0
+        before = self._conn.total_changes
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             for statement in statements:
                 cursor = self._conn.execute(statement)
                 rows.extend(dict(row) for row in cursor.fetchall())
-                changes += max(cursor.rowcount, 0)
         except BaseException:
             # The failed statement is the answer; a rollback that fails too (the
             # transaction already gone, a disk error) must not replace it.
@@ -144,7 +146,7 @@ class LocalD1Client:
                 logger.warning("ROLLBACK after a failed script failed too", exc_info=True)
             raise
         self._conn.execute("COMMIT")
-        return QueryResult(rows=rows, changes=changes)
+        return QueryResult(rows=rows, changes=self._conn.total_changes - before)
 
     def close(self) -> None:
         self._conn.close()
