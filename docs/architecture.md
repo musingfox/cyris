@@ -602,7 +602,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
-| A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside the agent vault; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open, and `LocalD1Client` answers the stores as D1 does. Not a second home overlaid on D1 or `json` (ADR-0003): an install has one of the three. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins Backup is `.backup` or `VACUUM INTO`, not `cp` of the file, which can lose recent writes. No row of `feed_health` is written here: no rss Worker polls for a local install |
+| A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside the agent vault; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open, and `LocalD1Client` answers the stores as D1 does. Not a second home overlaid on D1 or `json` (ADR-0003): an install has one of the three. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins. Backup is `.backup` or `VACUUM INTO`, not `cp` of the file, which can lose recent writes. No row of `feed_health` is written here: no rss Worker polls for a local install |
 | Article store | **D1 `stored_articles`** | same | `content` is written as plain text for every source (newsletter bodies already were; an RSS entry's HTML is converted by `CloudflareRssSource`, or by `RssSource` on the direct-polling path, through `adapters/fetch/html_text.py`). Rows stored before RSS content was converted keep their HTML: `INSERT OR IGNORE` never rewrites them, and a pending row or a rerun turns them back into articles as they are. `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}`. Besides a run's save, the onboarding votes step (§6) stores each card the reader marked and then accepts or rejects it with `triaged_at`, as a `/labels` answer is written; a card left alone gets no row and stays in the buffer for the first run. A teaser's page text (§3.2) is the run's alone and is never written here |
 | Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
@@ -1181,9 +1181,10 @@ waiting for a sleep timer — `promote-sync` runs even when the run fails, and t
 the run's status. A SIGTERM ends the pass instead: it exits 143 and skips what has not started
 (below); `ui` serves `/settings`; the default is the
 supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` install. Compose
-bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate, and
-runs a second container in the `ui` role, published on `127.0.0.1` only, with that directory
-read-only.
+bind-mounts `./agent-vault`, so the `json` store and the generated HTML survive a recreate, keeps
+the SQLite store in the named volume `cyris-state`, and runs a second container in the `ui` role,
+published on `127.0.0.1` only, with that directory writable, because a wizard's `POST /run` starts
+its run there.
 The two roles run as separate instances with separate idle timers, each set with the Durable
 Object's `ctx.container.setInactivityTimeout()`: `ui` sleeps after 5 minutes, and `run` gets
 `RUN_INACTIVITY_TIMEOUT_MS` (15 minutes) in `workers/app/src/index.js`, chosen from the Durable
@@ -1408,8 +1409,9 @@ silently ignored for two days.
 - Changing code means `up -d --build --force-recreate`. Plain `up -d` is not enough.
 - Changing `cyris.toml` or `sources.yaml` also means `--force-recreate`: single-file bind mounts
   bind an inode, and editors replace files by rename.
-- A compose install mounts the two config files `:ro` and `./agent-vault`, the `json` backend's
-  home. `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
+- A compose install mounts the two config files `:ro`, `./agent-vault` (the `json` backend's
+  home and the generated HTML) and the named volume `cyris-state` at `/app/state` (the SQLite
+  store's home). `doctor`'s vault probe is skipped under `backend = "d1"` — it used to `mkdir` the very
   directory it was asking about, which re-created a local-filesystem edge M0–M4 had removed.
 - **In the Container the drift runs the other way**: nothing is mounted, and the image holds no
   `cyris.toml` at all — only `sources.example.yaml`, copied to `/app/sources.yaml`, is baked in with

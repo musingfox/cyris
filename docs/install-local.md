@@ -143,7 +143,8 @@ the schedule follows `[general] timezone`.
 
 *Where the state is.* With no `[store] backend` line in `cyris.toml`, or with `backend = "sqlite"`,
 both containers run on one SQLite file, `/app/state/cyris.sqlite3`, in the named volume
-`cyris-state`. The volume survives `docker compose down` and `up -d --force-recreate`; only
+`cyris-state`. Leave `[store] sqlite_path` and `CYRIS_STORE_SQLITE_PATH` unset under compose: a
+path outside `/app/state` puts the file in the container's own layer, and a recreate loses it. The volume survives `docker compose down` and `up -d --force-recreate`; only
 `docker compose down -v` deletes it. Every command of a compose install runs in a container:
 
 ```sh
@@ -159,19 +160,21 @@ later change; until then a `cp` of the file can lose recent writes.
 
 *A `cyris.toml` that names a backend wins over compose.* `cyris.toml.example` says
 `backend = "json"`, so a copy of it stays on json under compose, in both containers, with its
-state in `agent-vault/`. To move it to SQLite:
+state in `agent-vault/`. To move it to SQLite, stop both containers so no scheduled run writes
+the json files during the move, run the migration in a one-off container, which mounts the same
+volumes, then change the line to `backend = "sqlite"` (or delete it) and start again:
 
 ```sh
-docker compose exec cyris cyris store migrate --to sqlite
+docker compose stop
+docker compose run --rm cyris cyris store migrate --to sqlite
+docker compose up -d --force-recreate
 ```
 
-then change the line to `backend = "sqlite"` (or delete it), and run
-`docker compose up -d --force-recreate`; the rest of
-[Moving a json install to SQLite](#moving-a-json-install-to-sqlite) applies, each command run as
-above. One thing changed for a compose install that stays on json: its `ui` vault is writable, so
-a vote cast on its archive pages now lands in the json files, with the risk of two writers on
-them that ADR-0025 measured, accepted because json is removed in a later milestone. Such an
-install has no wizard, and its server accepts no `POST /run`.
+The rest of [Moving a json install to SQLite](#moving-a-json-install-to-sqlite) applies, each
+command run in a container. A json `cyris.toml` that relied on the code's old default and names no
+backend now opens the empty SQLite file instead: add `backend = "json"` before upgrading, or
+migrate as above with that line in place. A json install has no wizard, and its server accepts no
+`POST /run`.
 
 ## 8. The archive and `/settings`
 
