@@ -24,6 +24,7 @@ def _names_both_sql_backends(text: str) -> None:
 
 def test_the_labels_command_names_sqlite(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "cyris.toml").write_text('[store]\nbackend = "json"\n')
     result = CliRunner().invoke(
         app,
         [

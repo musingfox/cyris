@@ -11,6 +11,8 @@ whole wizard over HTTP to a first issue.
 
 import asyncio
 import json
+import shutil
+import sqlite3
 from pathlib import Path
 from unittest import mock
 
@@ -24,6 +26,8 @@ from cyris.diagnostics.doctor import Check
 from cyris.entrypoints.triage_server import TriageServer
 
 pytestmark = pytest.mark.integration
+
+EXAMPLE = Path(__file__).resolve().parent.parent / "cyris.toml.example"
 
 # What the reader answers on the steps that ask without a starting value.
 ANSWERS = {
@@ -51,14 +55,10 @@ PUSHED = {
 
 @pytest.fixture
 def install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A local install's cyris.toml naming a `sqlite` store in `tmp_path`, and nothing else."""
+    """A local install in `tmp_path`: `cyris.toml.example` copied unchanged, on the default path."""
     monkeypatch.chdir(tmp_path)
-    config = tmp_path / "cyris.toml"
-    config.write_text(
-        f'[store]\nbackend = "sqlite"\nsqlite_path = "{tmp_path / "state.sqlite3"}"\n',
-        encoding="utf-8",
-    )
-    return config
+    monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
+    return Path(shutil.copy(EXAMPLE, tmp_path / "cyris.toml"))
 
 
 def _config(config: Path):
@@ -146,6 +146,14 @@ async def test_an_empty_store_is_complete_after_the_wizard(install: Path) -> Non
     await _walk(_server(install))
 
     assert _config(install).missing_settings == []
+
+
+async def test_the_saves_land_in_the_file_at_the_default_path(install: Path) -> None:
+    await _walk(_server(install))
+
+    with sqlite3.connect(install.parent / "state" / "cyris.sqlite3") as db:
+        keys = {row[0] for row in db.execute("SELECT key FROM settings")}
+    assert keys >= set(STARTING_VALUES)
 
 
 async def test_every_tuned_setting_lands_at_its_starting_value(install: Path) -> None:

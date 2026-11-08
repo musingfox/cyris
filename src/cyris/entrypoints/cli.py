@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -931,10 +931,13 @@ def doctor(
     from cyris.diagnostics.doctor import run_checks
 
     try:
-        cfg = load_effective_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path, local_file="if_created")
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
-        typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
+        typer.echo(
+            "  cyris.toml.example shows what the file holds; "
+            "settings.example.toml lists the runtime settings."
+        )
         raise typer.Exit(1) from e
     except D1Error as e:
         # The tables are created here on first boot, so reaching this means D1
@@ -975,10 +978,10 @@ def config_show(
     """Print every setting's effective value and where it came from. Secrets show only set."""
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.diagnostics.config_show import config_rows, render
+    from cyris.diagnostics.config_show import config_rows, render, store_note
 
     try:
-        cfg = load_effective_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path, local_file="if_created")
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}", err=True)
         raise typer.Exit(1) from e
@@ -987,6 +990,8 @@ def config_show(
         raise typer.Exit(1) from e
 
     typer.echo(render(config_rows(cfg)))
+    if note := store_note(cfg):
+        typer.echo(f"\n{note}")
 
 
 def _llm_from_values(values: dict):
@@ -1648,7 +1653,11 @@ def _target(to: str) -> str:
     return to
 
 
-def _load_config(config_path: Path, sources_path: Path):
+def _load_config(
+    config_path: Path,
+    sources_path: Path,
+    local_file: Literal["open", "if_created", "never"] = "open",
+):
     """`load_effective_config`, or exit naming why it could not load."""
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
@@ -1656,7 +1665,7 @@ def _load_config(config_path: Path, sources_path: Path):
     try:
         # Already applies the schema when the backend is d1, so an unusable
         # database surfaces here rather than at the first INSERT.
-        return load_effective_config(config_path, sources_path)
+        return load_effective_config(config_path, sources_path, local_file=local_file)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -1674,9 +1683,10 @@ def _force_d1_client(config_path: Path, sources_path: Path, to: str = "d1"):
     the backend here is what makes the schema apply on this path too; without
     it the first INSERT dies with `no such table`. `to="sqlite"` gives the
     `LocalD1Client` of `[store] sqlite_path` instead, so the same stores write
-    that file exactly as they write D1.
+    that file exactly as they write D1. Bound for D1, a `sqlite` install's own file
+    is not opened at all: this command does not write there.
     """
-    cfg = _load_config(config_path, sources_path)
+    cfg = _load_config(config_path, sources_path, "open" if to == "sqlite" else "never")
     return cfg, _sql_client(cfg, to)
 
 
@@ -1726,6 +1736,22 @@ def _sql_client(cfg, to: str):
     return client
 
 
+def _refuse_sqlite_to_d1(config_path: Path, sources_path: Path) -> None:
+    """Exit on one line when the install is sqlite: its file has no copy path to D1 yet.
+
+    Asked before any load, so nothing is created. Without it the json side, empty on a
+    sqlite install, is read as if it were the store, and `store diff` agrees with D1 over
+    articles it never compared.
+    """
+    backend = _store_before_load(config_path, sources_path).backend
+    if backend == "sqlite":
+        typer.echo(
+            "The store backend is sqlite, and a SQLite file has no copy path to D1 yet: "
+            '--to d1 reads a json install, one whose [store] backend is "json".'
+        )
+        raise typer.Exit(1)
+
+
 def _load_both_stores(config_path: Path, sources_path: Path, to: str = "d1"):
     """Return (json_store, SQL store) regardless of which one [store] selects."""
     from cyris.adapters.store import ArticleStore
@@ -1765,6 +1791,7 @@ def store_migrate(
     if _target(to) == "sqlite":
         _migrate_into_sqlite(config_path, sources_path)
         return
+    _refuse_sqlite_to_d1(config_path, sources_path)
 
     json_store, d1_store = _load_both_stores(config_path, sources_path)
 
@@ -2154,6 +2181,8 @@ def store_diff(
                 "`cyris store migrate --to sqlite` creates it."
             )
             raise typer.Exit(1)
+    else:
+        _refuse_sqlite_to_d1(config_path, sources_path)
     json_store, d1_store = _load_both_stores(config_path, sources_path, to)
 
     if to == "sqlite":
@@ -2183,7 +2212,7 @@ def store_diff(
     typer.echo(f"\nshared: {len(local.keys() & remote.keys())}, differing: {mismatched}")
 
 
-settings_app = typer.Typer(help="Fill D1's runtime settings from a cyris.toml")
+settings_app = typer.Typer(help="Fill D1's runtime settings from a settings file")
 app.add_typer(settings_app, name="settings")
 
 
@@ -2271,7 +2300,7 @@ def settings_push(
         "sources.yaml"
     ),
 ) -> None:
-    """Copy each runtime setting D1 lacks from cyris.toml. Never overwrites a row."""
+    """Copy each runtime setting D1 lacks from --config. Never overwrites a row."""
     from cyris.adapters.store.settings import D1Settings
 
     from_file = _file_settings(config_path)

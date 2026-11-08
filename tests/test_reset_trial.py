@@ -130,7 +130,7 @@ def _main(reset, wrangler: FakeWrangler, *args: str) -> tuple[int, list[str]]:
 
 
 def _shipped(key: str):
-    node = tomllib.loads((ROOT / "cyris.toml.example").read_text(encoding="utf-8"))
+    node = tomllib.loads((ROOT / "settings.example.toml").read_text(encoding="utf-8"))
     for part in key.split("."):
         node = node[part]
     return node

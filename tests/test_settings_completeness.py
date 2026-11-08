@@ -74,7 +74,7 @@ def test_run_if_due_on_an_empty_d1_names_every_key_and_fetches_nothing(
 def test_run_names_the_key_cyris_toml_lacks(
     tmp_path: Path, built: list[object], caplog, monkeypatch
 ) -> None:
-    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
 
     result = runner.invoke(
         app, ["run", *_paths(tmp_path, settings_toml(omit=["digest.max_articles_per_digest"]))]
@@ -83,7 +83,7 @@ def test_run_names_the_key_cyris_toml_lacks(
     assert result.exit_code == 1
     assert (
         "Missing from cyris.toml: digest.max_articles_per_digest. "
-        "cyris.toml.example lists every key." in caplog.text
+        "settings.example.toml lists every key." in caplog.text
     )
     assert built == []
 
@@ -91,7 +91,7 @@ def test_run_names_the_key_cyris_toml_lacks(
 def test_articles_score_names_the_missing_snippet_length(
     tmp_path: Path, caplog, monkeypatch
 ) -> None:
-    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
 
     result = runner.invoke(
         app,
@@ -114,7 +114,7 @@ def test_articles_score_names_the_missing_snippet_length(
 def test_the_diagnostic_commands_name_a_missing_key(
     command: list[str], tmp_path: Path, built: list[object], caplog, monkeypatch
 ) -> None:
-    monkeypatch.delenv("CYRIS_STORE_BACKEND", raising=False)
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "json")
 
     result = runner.invoke(
         app, [*command, *_paths(tmp_path, settings_toml(omit=["vote_similarity.max_seeds"]))]
@@ -149,7 +149,8 @@ def test_the_error_lists_every_key_on_an_empty_d1(tmp_path: Path, d1: SqliteD1) 
         cfg.require_complete_settings()
     assert str(caught.value) == (
         f"Missing settings in D1: {', '.join(sorted(REQUIRED_KEYS))}. "
-        "Set them on /settings, or run `cyris settings push` to copy them from cyris.toml."
+        "Set them on /settings, or run `cyris settings push --config <file>` to copy them "
+        "from a settings file (settings.example.toml lists every key)."
     )
 
 

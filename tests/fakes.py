@@ -100,6 +100,17 @@ def make_config(*, sources: dict | None = None, **table_overrides: Any):
     return Config(app=app, sources=sources or {}, settings_values=values)
 
 
+def seeded_sqlite(path: Any, *, omit: Iterable[str] = (), **overrides: Any) -> Any:
+    """A local install's SQLite file with its tables and settings, as the wizard leaves it."""
+    from cyris.adapters.store.d1 import apply_schema
+    from cyris.adapters.store.local_d1 import LocalD1Client
+
+    client = LocalD1Client(path)
+    apply_schema(client)
+    seed_d1_settings(client, omit=omit, **overrides)
+    return client
+
+
 def seed_d1_settings(d1, *, omit: Iterable[str] = (), **overrides: Any) -> None:
     """Store every grade-D key but `omit` in D1 `settings`, keyed `table.field`."""
     from cyris.adapters.store.settings import D1Settings

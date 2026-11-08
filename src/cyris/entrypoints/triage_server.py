@@ -2161,7 +2161,12 @@ class TriageServer:
         return web.Response(status=404, text=text, content_type="text/plain")
 
     async def _handle_index(self, request: web.Request) -> web.Response:
-        return self._serve_page(INDEX_PAGE) or self._no_page(INDEX_PAGE)
+        page = self._serve_page(INDEX_PAGE)
+        if page is not None:
+            return page
+        if self._awaiting_onboarding():
+            raise web.HTTPFound(ONBOARDING_PATH)
+        return self._no_page(INDEX_PAGE)
 
     async def _handle_page(self, request: web.Request) -> web.Response:
         name = request.match_info["name"]

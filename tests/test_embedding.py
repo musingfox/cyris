@@ -273,15 +273,17 @@ class _WindowEmbedder:
 def _vote_sim_world(tmp_path: Path, monkeypatch) -> Path:
     from datetime import UTC, datetime, timedelta
 
-    from fakes import settings_toml
+    from fakes import seeded_sqlite
 
-    from cyris.adapters.store import ArticleStore
+    from cyris.adapters.store.d1_store import D1ArticleStore
     from cyris.domain.models import Article, Lane
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cyris.bootstrap.build_embedder", lambda cfg: _WindowEmbedder())
-    (tmp_path / "cyris.toml").write_text(
-        settings_toml(**{"vote_similarity.enabled": True, "vote_similarity.provider": "gemini"})
+    state = tmp_path / "state.sqlite3"
+    (tmp_path / "cyris.toml").write_text(f'[store]\nsqlite_path = "{state}"\n')
+    client = seeded_sqlite(
+        state, **{"vote_similarity.enabled": True, "vote_similarity.provider": "gemini"}
     )
     sources = tmp_path / "sources.yaml"
     sources.write_bytes((Path(__file__).parent.parent / "sources.example.yaml").read_bytes())
@@ -299,7 +301,7 @@ def _vote_sim_world(tmp_path: Path, monkeypatch) -> Path:
         )
         for i, title in enumerate(titles)
     ]
-    store = ArticleStore(tmp_path / "agent-vault")
+    store = D1ArticleStore(client)
     store.save(articles)
     seeds = [f"https://example.com/S{i}" for i in range(3)]
     store.reject(seeds, "not_interested")

@@ -24,6 +24,7 @@ from pydantic import (
     Field,
     TypeAdapter,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -70,6 +71,20 @@ B_GRADE_ENV_VARS: dict[str, str] = {
     "newsletter.worker_url": "CYRIS_NEWSLETTER_WORKER_URL",
     "rss.worker_url": "CYRIS_RSS_WORKER_URL",
 }
+
+
+def exists(path: Path) -> bool:
+    """Whether `path` is there to see; a path under a directory this user cannot traverse is not."""
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def can_create(path: Path) -> bool:
+    """Whether this user could create `path`: its nearest existing parent is theirs to write."""
+    nearest = next(parent for parent in path.parents if exists(parent))
+    return nearest.is_dir() and os.access(nearest, os.W_OK | os.X_OK)
 
 
 def _fill_from_env(data: object, fields: dict[str, str]) -> object:
@@ -224,21 +239,22 @@ class AgentVaultConfig(BaseModel):
 class StoreConfig(BaseModel):
     """Where persistent state lives.
 
-    `json` is local partition files under the agent vault. `d1` puts the article
-    store and the usage log in Cloudflare D1, so a dead local machine loses
-    nothing. `sqlite` keeps the same tables in one SQLite file on this machine,
-    a local install's home (ADR-0025). Each is a whole home, never overlaid on
-    another (ADR-0003); diff json against d1 with `cyris store diff` before
-    switching.
+    `sqlite`, the default, keeps every table in one SQLite file on this machine,
+    a local install's home (ADR-0025). `d1` puts the same tables in Cloudflare D1,
+    so a dead local machine loses nothing; `json` is local partition files under
+    the agent vault, for an install that has not moved yet. Each is a whole home,
+    never overlaid on another (ADR-0003); diff json against d1 with `cyris store
+    diff` before switching.
     """
 
-    backend: Literal["json", "d1", "sqlite"] = "json"
+    backend: Literal["json", "d1", "sqlite"] = "sqlite"
     database_id: str = ""
     account_id: str = ""
     api_token: str = ""
-    # Relative to the working directory, as `[agent_vault] path` is. Never inside the
-    # vault: compose bind-mounts it, and a host process and a container on one SQLite
-    # file corrupt it (ADR-0025). AppConfig refuses such a path.
+    # Relative to the directory of cyris.toml, as `.env` is, and to the working directory
+    # with no file: `resolve_config` anchors it. Never inside the vault: compose bind-mounts
+    # it, and a host process and a container on one SQLite file corrupt it (ADR-0025).
+    # AppConfig refuses such a path.
     sqlite_path: Path = Path("state/cyris.sqlite3")
 
     @model_validator(mode="before")
@@ -276,6 +292,18 @@ class StoreConfig(BaseModel):
     def is_cloudflare(self) -> bool:
         """The tables are Cloudflare D1, reached over REST with Cloudflare credentials."""
         return self.backend == "d1"
+
+    @property
+    def sqlite_not_created(self) -> bool:
+        """A local install's file does not exist yet, and opening it would create it.
+
+        Not one that cannot be created: opening that names the reason.
+        """
+        return (
+            self.backend == "sqlite"
+            and not exists(self.sqlite_path)
+            and can_create(self.sqlite_path)
+        )
 
     @property
     def sql_home(self) -> str:
@@ -424,6 +452,14 @@ class AppConfig(BaseModel):
     store: StoreConfig = Field(default_factory=StoreConfig)
     vote_similarity: VoteSimilarityConfig | None
 
+    # Before the vault check below, which has to ask about the file that will be opened.
+    @model_validator(mode="after")
+    def anchor_sqlite_path(self, info: ValidationInfo) -> "AppConfig":
+        config_dir = (info.context or {}).get("config_dir")
+        if config_dir is not None:
+            self.store.sqlite_path = config_dir / self.store.sqlite_path
+        return self
+
     @model_validator(mode="after")
     def sqlite_file_outside_the_vault(self) -> "AppConfig":
         if self.store.backend != "sqlite":
@@ -445,7 +481,8 @@ def sqlite_file_in_vault(app: AppConfig) -> str | None:
     return (
         f"[store] sqlite_path {app.store.sqlite_path} is inside the agent vault "
         f"{app.agent_vault.path}: docker compose bind-mounts the vault, and a host "
-        "process and a container on one SQLite file corrupt it. Put it elsewhere."
+        "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
+        "to a file outside the vault."
     )
 
 
@@ -498,7 +535,7 @@ REQUIRED_KEYS: tuple[str, ...] = tuple(key for key in GRADE_D_KEYS if key not in
 # it: the tuned values a new reader is not asked to choose, and vote similarity's switch,
 # which the vote route saves with them (ADR-0025). The reader confirms them with Next,
 # which writes them into the store once. Nothing reads them as a fallback: a key still
-# missing on a running deployment stays an error (ADR-0003). `cyris.toml.example` holds
+# missing on a running deployment stays an error (ADR-0003). `settings.example.toml` holds
 # the same values, and `tests/test_settings_starting_values.py` keeps the two equal.
 STARTING_VALUES: dict[str, Any] = json.loads(
     (files("cyris") / "settings_starting_values.json").read_text(encoding="utf-8")
@@ -604,7 +641,8 @@ class Config(BaseModel):
         if self.app.store.is_cloudflare:
             raise IncompleteSettingsError(
                 f"Missing settings in D1: {keys}. Set them on /settings, or run "
-                "`cyris settings push` to copy them from cyris.toml."
+                "`cyris settings push --config <file>` to copy them from a settings file "
+                "(settings.example.toml lists every key)."
             )
         if self.app.store.is_sql:
             # Not `settings push`: it writes to Cloudflare D1, never to this file.
@@ -612,7 +650,7 @@ class Config(BaseModel):
                 f"Missing settings in {self.app.store.sql_home}: {keys}. Set them on /settings."
             )
         raise IncompleteSettingsError(
-            f"Missing from cyris.toml: {keys}. cyris.toml.example lists every key."
+            f"Missing from cyris.toml: {keys}. settings.example.toml lists every key."
         )
 
     def awaiting_onboarding(self) -> bool:
@@ -673,6 +711,8 @@ class RawConfig:
     sources: dict[str, SourceConfig]
     config_file_found: bool
     dotenv_names: frozenset[str] = frozenset()
+    # Where a relative `[store] sqlite_path` starts: the file's directory. None with no file.
+    config_dir: Path | None = None
 
 
 def read_config_files(
@@ -702,7 +742,8 @@ def read_config_files(
         with open(sources_path) as f:
             raw_yaml = yaml.safe_load(f)
     else:
-        logger.warning("Sources file not found: %s", sources_path)
+        # Not a warning: only a json deployment reads this file, and doctor names an empty list.
+        logger.debug("Sources file not found: %s", sources_path)
         raw_yaml = {}
 
     sources_config = SourcesConfig.model_validate(raw_yaml or {})
@@ -717,6 +758,7 @@ def read_config_files(
         sources={s.name: s for s in sources_config.sources},
         config_file_found=config_file_found,
         dotenv_names=dotenv_names,
+        config_dir=config_path.parent if config_file_found else None,
     )
 
 
@@ -735,7 +777,8 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any] | None = None) ->
         settings_values, missing_settings = _stored_settings(d1_settings)
         tracked_topics = []
     app_config = AppConfig.model_validate(
-        _with_settings(raw.toml, settings_values, missing_settings)
+        _with_settings(raw.toml, settings_values, missing_settings),
+        context={"config_dir": raw.config_dir},
     )
     return Config(
         app=app_config,

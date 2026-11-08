@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from fakes import FakeLLM, SqliteD1, settings_toml
+from fakes import FakeLLM, SqliteD1, seed_d1_settings
 from test_run_digest import FakeSource, make_deps
 
 from cyris.adapters.store.areas import D1AreaStore
@@ -162,9 +162,7 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
     vault = tmp_path / "agent-vault"
     vault.mkdir()
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text(
-        settings_toml() + f'\n[agent_vault]\npath = "{vault}"\n', encoding="utf-8"
-    )
+    config_path.write_text(f'[agent_vault]\npath = "{vault}"\n', encoding="utf-8")
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text("sources: []", encoding="utf-8")
     store = ArticleStore(vault)
@@ -184,6 +182,7 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
         now=now,
     )
     db = SqliteD1()
+    seed_d1_settings(db)
     reply = json.dumps(
         {"scores": [{"id": 1, "score": 60, "language": "en", "suggest_area": "Space"}]}
     )

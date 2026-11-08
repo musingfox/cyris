@@ -1,8 +1,8 @@
-"""The starting values the wizard shows a new reader agree with `cyris.toml.example`.
+"""The starting values the wizard shows a new reader agree with `settings.example.toml`.
 
 `src/cyris/settings_starting_values.json` is what the onboarding wizard's Model step
-pre-fills for a required key the store lacks (ADR-0025), and `cyris.toml.example` is
-what a `json` deployer copies. Two lists of the same values drift unless something
+pre-fills for a required key the store lacks (ADR-0025), and `settings.example.toml` is
+what a `cyris settings push` starts from. Two lists of the same values drift unless something
 holds them together; this file does, for every key both hold.
 """
 
@@ -15,7 +15,7 @@ from cyris.config import REQUIRED_KEYS, STARTING_VALUES, validate_setting
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
-EXAMPLE = Path(__file__).parent.parent / "cyris.toml.example"
+EXAMPLE = Path(__file__).parent.parent / "settings.example.toml"
 
 # The required keys a wizard step asks the reader for by name, so none starts at a
 # value the reader did not pick: the language and the clock are theirs, the hours
@@ -63,6 +63,6 @@ def test_each_starting_value_is_one_the_store_takes(key: str) -> None:
 def test_each_starting_value_is_the_examples(key: str) -> None:
     example = _example_values()
 
-    assert key in example, f"{key} is not in cyris.toml.example"
+    assert key in example, f"{key} is not in settings.example.toml"
     assert STARTING_VALUES[key] == example[key]
     assert type(STARTING_VALUES[key]) is type(example[key])

@@ -141,7 +141,7 @@ def test_an_empty_preview_fails_and_leaves_the_file_as_it_was(
 def test_the_first_stdout_line_names_the_resolved_backend(tmp_path: Path, wire) -> None:
     wire(_config(tmp_path))
     result = _run(tmp_path, "--dry-run", "--output", str(tmp_path / "a.html"))
-    assert result.stdout.splitlines()[0] == "Store backend: json"
+    assert result.stdout.splitlines()[0] == "Store backend: sqlite"
 
     d1 = StoreConfig(backend="d1", database_id="db-ID-1", account_id="acct", api_token="tok")
     wire(_config(tmp_path, store=d1))

@@ -401,18 +401,18 @@ def run_deployment(run_dir: Path, scenario: Scenario, *, period: str = "morning"
     )
 
 
-# What a new local install's cyris.toml says (ADR-0025): the SQLite store and nothing else
-# about it, and pages written for its own server to serve. Every runtime setting and source
-# is saved through the server, as the reader's browser saves them.
-LOCAL_INSTALL_TOML = '[store]\nbackend = "sqlite"\n\n[html_output]\nenabled = true\n'
-# `[store] sqlite_path`'s default, relative to the directory the install runs in.
+# What a new local install's cyris.toml is (ADR-0025): the shipped example, copied unchanged.
+# Every runtime setting and source is saved through the server, as the reader's browser
+# saves them.
+LOCAL_INSTALL_EXAMPLE = Path(__file__).resolve().parents[2] / "cyris.toml.example"
+# `[store] sqlite_path`'s default, relative to the directory of that cyris.toml.
 LOCAL_SQLITE_PATH = Path("state/cyris.sqlite3")
 
 
 def write_local_install(run_dir: Path) -> Path:
     """A local install's cyris.toml and .env, with fake credentials only. Returns the config."""
     config = run_dir / "cyris.toml"
-    config.write_text(LOCAL_INSTALL_TOML, encoding="utf-8")
+    shutil.copyfile(LOCAL_INSTALL_EXAMPLE, config)
     # The embedder's key: the wizard turns vote similarity on, which embeds.
     (run_dir / ".env").write_text(f"GEMINI_API_KEY={GEMINI_KEY}\n", encoding="utf-8")
     return config

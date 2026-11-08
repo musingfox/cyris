@@ -12,9 +12,11 @@ tracking.yaml
 # sources.example.yaml as /app/sources.yaml; compose bind-mounts over that path.
 # Grade-B identity (worker URLs, Pages project, D1 id) comes from the environment.
 cyris.toml
+settings.toml
 sources.yaml
-# runtime data (volume-mounted)
+# runtime data (volume-mounted); state holds the Discord webhook URL and the mail addresses
 agent-vault
+state
 vault
 # not needed in image
 tests

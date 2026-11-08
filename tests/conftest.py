@@ -21,11 +21,15 @@ _DEFAULT_NEWSLETTER_FIXTURES = Path.home() / "cyris-newsletter-fixtures"
 
 
 @pytest.fixture(autouse=True)
-def _clear_b_grade_env(monkeypatch):
+def _clear_b_grade_env(monkeypatch, tmp_path_factory):
     from cyris.config import B_GRADE_ENV_VARS, LOCAL_B_GRADE_ENV_VARS
 
     for name in (*B_GRADE_ENV_VARS.values(), *LOCAL_B_GRADE_ENV_VARS.values()):
         monkeypatch.delenv(name, raising=False)
+    # The default backend opens `state/` beside the config, or in the working directory,
+    # which is this repo. A test about the default path deletes this variable first.
+    scratch = tmp_path_factory.mktemp("store") / "cyris.sqlite3"
+    monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", str(scratch))
 
 
 @pytest.fixture

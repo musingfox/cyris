@@ -55,7 +55,7 @@ prototype opened every settings form, sources, tracked topics and votes with `se
   install across, `topics.json`, `usage.jsonl` and `[[tracked_topics]]` included. A public release
   then never has two local stores to choose between.
 * Grade-D keys now have shipped starting values, `src/cyris/settings_starting_values.json`, taken
-  from `cyris.toml.example`, which a guard test keeps equal to it. They cover the tuned keys a new
+  from `settings.example.toml`, which a guard test keeps equal to it. They cover the tuned keys a new
   reader is not asked to choose. The onboarding wizard's Model step shows each key the store
   lacks, pre-filled with its starting value, and its Next writes them into the store once. A key
   the store already holds is neither shown nor written. ADR-0003's single home still holds: the
@@ -84,7 +84,7 @@ prototype opened every settings form, sources, tracked topics and votes with `se
   wizard or `cyris settings push` has filled the settings.
 * Good, because the wizard alone now fills them: its Model step writes the starting values of the
   keys it does not ask about, and leaving Notifications turns off what was never set. Bad, because
-  the tuned values now have a second list beside `cyris.toml.example`, held equal by
+  the tuned values now have a second list beside `settings.example.toml`, held equal by
   `tests/test_settings_starting_values.py`, and a reader who never opens the Model step's fold
   takes them without reading them.
 * Bad, because no path to Cloudflare D1 exists yet. `.dump` produced a 186889-byte line against

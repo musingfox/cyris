@@ -31,7 +31,7 @@ class TestLoadConfig:
 
         project_root = Path(__file__).parent.parent
         cfg = load_config(
-            config_path=project_root / "cyris.toml.example",
+            config_path=project_root / "settings.example.toml",
             sources_path=project_root / "sources.example.yaml",
         )
 
@@ -75,7 +75,7 @@ class TestLoadConfig:
         missing = tmp_path / "nope.toml"
         cfg = load_config(config_path=missing, sources_path=sources)
         assert cfg.app.general is None
-        assert cfg.app.store.backend == "json"
+        assert cfg.app.store.backend == "sqlite"
         assert cfg.config_file_found is False
 
     def test_present_config_file_is_used(self, tmp_path):
@@ -126,7 +126,7 @@ class TestLoadConfig:
         from cyris.diagnostics.doctor import _check_sources
 
         config_file = tmp_path / "cyris.toml"
-        config_file.write_text('[general]\ntimezone = "UTC"\n')
+        config_file.write_text('[store]\nbackend = "json"\n\n[general]\ntimezone = "UTC"\n')
         cfg = load_config(config_path=config_file, sources_path=tmp_path / "nope.yaml")
         check = _check_sources(cfg)
         assert check.name == "sources"
@@ -149,7 +149,7 @@ class TestLoadConfig:
         project_root = Path(__file__).parent.parent
         config_copy = tmp_path / "cyris.toml"
         sources_copy = tmp_path / "sources.yaml"
-        config_copy.write_bytes((project_root / "cyris.toml.example").read_bytes())
+        config_copy.write_bytes((project_root / "settings.example.toml").read_bytes())
         sources_copy.write_bytes((project_root / "sources.example.yaml").read_bytes())
 
         cfg = load_config(config_path=config_copy, sources_path=sources_copy)
@@ -216,12 +216,41 @@ class TestStoreBackendFromEnv:
         assert cfg.app.store.database_id == "abc"
         assert type(build_store(cfg)).__name__ == "D1ArticleStore"
 
-    def test_no_file_defaults_to_json(self, tmp_path):
+    def test_no_file_defaults_to_sqlite(self, tmp_path):
         from cyris.bootstrap import build_store
 
         cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
-        assert cfg.app.store.backend == "json"
-        assert type(build_store(cfg)).__name__ == "ArticleStore"
+        assert cfg.app.store.backend == "sqlite"
+        assert type(build_store(cfg)).__name__ == "D1ArticleStore"
+
+    def test_an_empty_file_defaults_to_sqlite(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text("")
+        assert _load_tmp(tmp_path, config_file).app.store.backend == "sqlite"
+
+    def test_a_store_table_with_only_sqlite_path_defaults_to_sqlite(self, tmp_path):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text(f'[store]\nsqlite_path = "{tmp_path / "x.sqlite3"}"\n')
+        cfg = _load_tmp(tmp_path, config_file)
+        assert cfg.app.store.backend == "sqlite"
+        assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
+
+    @pytest.mark.parametrize("backend", ["json", "d1", "sqlite"])
+    def test_a_backend_in_the_file_wins_over_the_default(self, tmp_path, backend):
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text(f'[store]\nbackend = "{backend}"\n')
+        assert _load_tmp(tmp_path, config_file).app.store.backend == backend
+
+    @pytest.mark.parametrize("backend", ["json", "d1"])
+    @pytest.mark.parametrize("toml", [None, "", "[store]\n"], ids=["no-file", "empty", "bare"])
+    def test_the_environment_names_one_the_file_does_not(
+        self, tmp_path, monkeypatch, backend, toml
+    ):
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", backend)
+        config_file = tmp_path / "cyris.toml"
+        if toml is not None:
+            config_file.write_text(toml)
+        assert _load_tmp(tmp_path, config_file).app.store.backend == backend
 
     def test_invalid_backend_raises(self, monkeypatch):
         from pydantic import ValidationError
@@ -270,7 +299,8 @@ class TestStoreBackendFromEnv:
             cfg.require_complete_settings()
         assert "cyris sources push" in cfg.onboarding_wait()
 
-    def test_sqlite_path_defaults_beside_the_vault_not_in_it(self):
+    def test_sqlite_path_defaults_beside_the_vault_not_in_it(self, monkeypatch):
+        monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
         cfg = make_config(store={"backend": "sqlite"})
         assert cfg.app.store.sqlite_path == Path("state/cyris.sqlite3")
         assert not cfg.app.store.sqlite_path.resolve().is_relative_to(
@@ -286,7 +316,8 @@ class TestStoreBackendFromEnv:
         cfg = make_config(store=store)
         assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
 
-    def test_blank_sqlite_path_is_the_default(self):
+    def test_blank_sqlite_path_is_the_default(self, monkeypatch):
+        monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
         cfg = make_config(store={"backend": "sqlite", "sqlite_path": ""})
         assert cfg.app.store.sqlite_path == Path("state/cyris.sqlite3")
 
@@ -334,6 +365,101 @@ class TestStoreBackendFromEnv:
         (tmp_path / "agent-vault-state").mkdir()
         cfg = self._vault_config(vault, tmp_path / "agent-vault-state" / "x.sqlite3")
         assert cfg.app.store.sqlite_path == tmp_path / "agent-vault-state" / "x.sqlite3"
+
+    def test_a_relative_sqlite_path_in_the_file_starts_at_the_files_directory(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\nsqlite_path = "db/x.sqlite3"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "inst" / "db" / "x.sqlite3"
+
+    def test_a_relative_sqlite_path_from_the_environment_starts_there_too(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", "db/x.sqlite3")
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "inst" / "db" / "x.sqlite3"
+
+    def test_the_default_sqlite_path_starts_at_the_files_directory(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "inst" / "state" / "cyris.sqlite3"
+
+    def test_an_absolute_sqlite_path_is_kept(self, tmp_path):
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text(
+            f'[store]\nbackend = "sqlite"\nsqlite_path = "{tmp_path / "x.sqlite3"}"\n'
+        )
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == tmp_path / "x.sqlite3"
+
+    def test_with_no_config_file_a_relative_sqlite_path_starts_at_the_working_directory(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CYRIS_STORE_BACKEND", "sqlite")
+        monkeypatch.setenv("CYRIS_STORE_SQLITE_PATH", "db/x.sqlite3")
+
+        cfg = load_config(tmp_path / "inst" / "nope.toml", tmp_path / "nope.yaml")
+
+        assert cfg.app.store.sqlite_path == Path("db/x.sqlite3")
+
+    def test_the_vault_path_still_starts_at_the_working_directory(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text('[store]\nbackend = "sqlite"\n[agent_vault]\npath = "v"\n')
+
+        cfg = load_config(config_file, tmp_path / "nope.yaml")
+
+        assert cfg.app.agent_vault.path == Path("v")
+
+    def test_the_vault_refusal_asks_about_the_anchored_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "inst" / "cyris.toml"
+        config_file.parent.mkdir()
+        config_file.write_text(
+            f'[store]\nbackend = "sqlite"\nsqlite_path = "v/x.sqlite3"\n'
+            f'[agent_vault]\npath = "{tmp_path / "inst" / "v"}"\n'
+        )
+
+        with pytest.raises(ValueError, match="inside the agent vault"):
+            load_config(config_file, tmp_path / "nope.yaml")
+
+    def test_a_vault_at_the_working_directory_is_refused_naming_the_fix(
+        self, tmp_path, monkeypatch
+    ):
+        """The default path falls inside this vault, and the reader never wrote either line."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH")
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[agent_vault]\npath = "."\n')
+
+        with pytest.raises(ValueError) as refused:
+            load_config(config_file, tmp_path / "nope.yaml")
+
+        assert "state/cyris.sqlite3 is inside the agent vault" in str(refused.value)
+        assert "Set [store] sqlite_path to a file outside the vault." in str(refused.value)
 
     def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
@@ -404,7 +530,7 @@ class TestEmptyEnvIsUnset:
         for name in B_GRADE_ENV_VARS.values():
             monkeypatch.setenv(name, "")
         cfg = _load_tmp(tmp_path, tmp_path / "nope.toml")
-        assert cfg.app.store.backend == "json"
+        assert cfg.app.store.backend == "sqlite"
         assert cfg.app.html_output.enabled is False
         assert cfg.app.promote.publish_enabled is False
         assert cfg.app.rss.worker_url == ""
@@ -737,7 +863,7 @@ class TestJsonSettingsFromFileOnly:
     def test_the_shipped_example_sets_every_key(self):
         root = Path(__file__).parent.parent
 
-        cfg = load_config(root / "cyris.toml.example", root / "sources.example.yaml")
+        cfg = load_config(root / "settings.example.toml", root / "sources.example.yaml")
 
         assert cfg.missing_settings == []
 
@@ -775,7 +901,7 @@ class TestJsonSettingsFromFileOnly:
         assert "notify" not in GeneralConfig.model_fields
 
     def test_the_shipped_example_omits_general_notify(self):
-        example = Path(__file__).parent.parent / "cyris.toml.example"
+        example = Path(__file__).parent.parent / "settings.example.toml"
 
         assert "[general.notify]" not in example.read_text()
 

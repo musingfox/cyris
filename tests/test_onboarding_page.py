@@ -183,6 +183,37 @@ class TestWhoSeesTheWizard:
             (302, "/settings") if path == "/onboarding" else (200, None)
         )
 
+    async def test_the_first_address_leads_to_the_wizard(self, serve, tmp_path) -> None:
+        """Before any issue, `/`'s 404 tells the reader to run a command that cannot run yet."""
+        server = TriageServer(settings=None, source_store=FakeSourceStore({}), html_dir=tmp_path)
+        client = await serve(server)
+
+        response = await client.get("/", allow_redirects=False)
+
+        assert (response.status, response.headers.get("Location")) == (302, "/onboarding")
+
+    async def test_a_deployment_with_a_source_and_no_issue_keeps_its_next_step(
+        self, serve, tmp_path
+    ) -> None:
+        server = TriageServer(
+            settings=None, source_store=FakeSourceStore({"Feed": A_SOURCE}), html_dir=tmp_path
+        )
+        client = await serve(server)
+
+        response = await client.get("/", allow_redirects=False)
+
+        assert response.status == 404
+        assert "cyris run --period morning" in await response.text()
+
+    async def test_an_issue_wins_over_the_wizard(self, serve, tmp_path) -> None:
+        (tmp_path / "index.html").write_text("<p>the archive</p>", encoding="utf-8")
+        server = TriageServer(settings=None, source_store=FakeSourceStore({}), html_dir=tmp_path)
+        client = await serve(server)
+
+        response = await client.get("/", allow_redirects=False)
+
+        assert response.status == 200
+
     async def test_a_failed_source_read_still_serves_settings(self, serve) -> None:
         """/settings is where a reader fixes D1, so routing never depends on reading it."""
 

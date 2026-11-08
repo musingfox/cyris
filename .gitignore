@@ -31,7 +31,11 @@ Thumbs.db
 # Runtime config (copy from *.example)
 cyris.toml
 cyris.staging.toml
+settings.toml
 sources.yaml
+
+# A SQLite install's file: it holds the Discord webhook URL and the mail addresses
+state/
 
 # Agent vault runtime data
 agent-vault/daily/

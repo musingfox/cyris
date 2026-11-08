@@ -9,7 +9,7 @@ walks the wizard again from the first step.
 
 Cleared, in the trial's D1: every row of the tables listed at the end of this
 help. In `settings`, only the keys listed there, written back to what
-`cyris.toml.example` ships. In the vote Worker's KV: every pending vote.
+`settings.example.toml` ships. In the vote Worker's KV: every pending vote.
 
 Kept: `usage_log` (what the trial has spent), `schema_migrations` (the schema steps
 already run), every other `settings` key (the LLM provider and model the owner
@@ -44,7 +44,7 @@ import provision_trial
 from provision_trial import wrangler, wrangler_env
 
 ROOT = provision_trial.ROOT
-SHIPPED_SETTINGS = "cyris.toml.example"
+SHIPPED_SETTINGS = "settings.example.toml"
 
 # Reader content: what a tester's onboarding and the runs after it wrote. Every table
 # the schema creates is either here or in KEPT; tests/test_reset_trial.py holds the
@@ -105,7 +105,7 @@ Runner = Callable[[list[str]], str]
 
 
 def shipped_defaults(path: Path | None = None) -> dict[str, object]:
-    """Each onboarding key's value in the shipped `cyris.toml.example`."""
+    """Each onboarding key's value in the shipped `settings.example.toml`."""
     doc = tomllib.loads((path or ROOT / SHIPPED_SETTINGS).read_text(encoding="utf-8"))
     out: dict[str, object] = {}
     for key in ONBOARDING_KEYS:

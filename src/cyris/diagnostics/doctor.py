@@ -4,7 +4,9 @@ The checks themselves are read-only and cheap, but `doctor` as a command is not:
 `load_effective_config` creates the D1 tables if they are absent, so a token
 without D1 edit cannot run it, and a wrong-but-valid `database_id` gets nine
 empty tables. That is the price of the checks working on a clean deployment at
-all — a first boot has nothing to check until the tables exist.
+all — a first boot has nothing to check until the tables exist. A local SQLite
+file that is not there stays that way: the checks report it as not created yet,
+because a mistyped `sqlite_path` must not leave a new file behind.
 
 The reason this module exists: a Cloudflare API
 token sat expired in `.env` while `wrangler pages deploy` reported it as its own
@@ -24,7 +26,7 @@ from typing import Literal, get_args
 
 import httpx
 
-from cyris.config import GRADE_D_KEYS, Config
+from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config, can_create, exists
 from cyris.domain.models import Lane
 
 Status = Literal["ok", "warn", "fail", "skip"]
@@ -39,8 +41,9 @@ class Check:
 
 
 def _writable(path: Path) -> bool:
+    if not exists(path):
+        return can_create(path)
     try:
-        path.mkdir(parents=True, exist_ok=True)
         probe = path / ".cyris-doctor-probe"
         probe.write_text("", encoding="utf-8")
         probe.unlink()
@@ -79,7 +82,9 @@ def _check_config_file(cfg: Config, config_path: Path | None) -> Check:
     if cfg.config_file_found:
         where = str(config_path) if config_path is not None else "cyris.toml"
         return Check("config file", "ok", where)
-    if cfg.app.store.is_sql:
+    # The environment named the store, so this host means to run with no file. A default
+    # would not say that: a mistyped --config and a wrong directory get it too.
+    if os.environ.get(B_GRADE_ENV_VARS["store.backend"]):
         return Check("config file", "ok", "not found — running from the environment")
     return Check(
         "config file",
@@ -101,7 +106,7 @@ def _check_settings(cfg: Config) -> Check:
                 f"missing in {home}: {missing}",
                 "Set them on /settings, or run `cyris settings push`."
                 if cfg.app.store.is_cloudflare
-                else "Set them on /settings.",
+                else "Walk the wizard at /onboarding, or set them on /settings.",
             )
         return Check("settings", "ok", _settings_ok(cfg, home))
     if missing:
@@ -109,7 +114,7 @@ def _check_settings(cfg: Config) -> Check:
             "settings",
             "fail",
             f"missing from cyris.toml: {missing}",
-            "cyris.toml.example lists every key.",
+            "settings.example.toml lists every key.",
         )
     return Check("settings", "ok", _settings_ok(cfg, "cyris.toml"))
 
@@ -466,7 +471,8 @@ def _check_paths(cfg: Config) -> list[Check]:
     # goes to `usage_log` — so there is nothing to check. Probing anyway would *create*
     # the directory it asks about: a local-filesystem edge the cloud target spent
     # M0–M4 removing, re-added by the health check itself. A sqlite install still
-    # writes its pages to `agent-vault/html/` (ADR-0025), so it is probed.
+    # writes its pages to `agent-vault/html/` (ADR-0025), so it is probed, and a vault
+    # that is not there is only asked whether it could be.
     if cfg.app.store.is_cloudflare:
         return []
 
@@ -491,6 +497,7 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
     from cyris.bootstrap import build_store
     from cyris.config import AppConfig
 
+    backend = cfg.app.store.backend
     checks: list[Check] = []
     if config_path is not None and config_path.exists():
         import tomllib
@@ -527,6 +534,11 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
         else:
             checks.append(Check("build", "ok", f"understands every table in {config_path}"))
 
+    # Building this store would create its file, which only `_check_store` reports.
+    if cfg.app.store.sqlite_not_created:
+        checks.append(Check("store wiring", "skip", f"[store] backend = {backend!r} → not opened"))
+        return checks
+
     # What the wiring actually resolved to, so a mismatch is readable rather
     # than inferred from behaviour two days later. A store that cannot be built
     # at all is `_check_store`'s answer to give, not this one's.
@@ -539,7 +551,7 @@ def _check_build(cfg: Config, config_path: Path | None) -> list[Check]:
         Check(
             "store wiring",
             "ok" if resolved == expected else "fail",
-            f"[store] backend = {cfg.app.store.backend!r} → {resolved}",
+            f"[store] backend = {backend!r} → {resolved}",
             "" if resolved == expected else f"Expected {expected}. The build is out of date.",
         )
     )
@@ -553,6 +565,14 @@ def _check_store(cfg: Config) -> Check:
     backend = store.backend
     # A local file is named by its path, so a reader can see which file this machine opened.
     where = f" at {store.sqlite_path}" if store.is_sql and not store.is_cloudflare else ""
+    if store.sqlite_not_created:
+        return Check(
+            f"article store ({backend})",
+            "warn",
+            f"not created yet{where}",
+            "Expected on a first boot: the server, the wizard or `cyris run` creates it. "
+            "Otherwise check [store] sqlite_path before the next run writes here.",
+        )
     try:
         counts = build_store(cfg).count_by_state()
     except Exception as e:  # noqa: BLE001 - any failure here is the answer
@@ -958,6 +978,8 @@ def _check_last_run(cfg: Config, online_sha: str) -> Check:
     from cyris.adapters.store.runs import D1RunLog
 
     name = "last run"
+    if cfg.app.store.sqlite_not_created:
+        return Check(name, "skip", "no run recorded: the SQLite store is not created yet")
     try:
         client = bootstrap.build_d1_client(cfg)
         if client is None:

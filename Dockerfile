@@ -39,8 +39,8 @@ COPY docker/entrypoint.sh /app/entrypoint.sh
 # compose bind-mounts ./sources.yaml over this path; a clone has no sources.yaml,
 # so bake the tracked example. No cyris.toml is baked: a D1 container reads its
 # runtime settings and sources from D1 and its identity from the environment,
-# while a compose (json) install must bind-mount one, because runtime settings
-# have no defaults in code.
+# while a compose install bind-mounts a copy of cyris.toml.example, because its
+# identity is that file: its runtime settings live in the SQLite file in its volume.
 COPY sources.example.yaml /app/sources.yaml
 
 ARG GIT_SHA

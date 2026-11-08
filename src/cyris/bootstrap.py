@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from functools import cache, partial
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.anthropic_client import AnthropicClient
@@ -262,13 +262,23 @@ def build_settings(cfg: Config, d1: Any | None = None) -> Any | None:
     return D1Settings(d1)
 
 
-def load_effective_config(config_path: Path, sources_path: Path) -> Config:
+def load_effective_config(
+    config_path: Path,
+    sources_path: Path,
+    *,
+    local_file: Literal["open", "if_created", "never"] = "open",
+) -> Config:
     """The config a run actually uses, with grade-D settings from one home.
 
     A json deployment reads them from cyris.toml; a D1 deployment from the D1
     `settings` table alone, whatever the file says. Every entrypoint goes through
     here, because a host run and a container run resolving settings differently
     is the failure this exists to prevent — so a D1 read error propagates.
+
+    `local_file` says what happens to a `sqlite` install's file. The server, the
+    wizard and a run open it, which creates it on first use. A command that only
+    reports (`if_created`) leaves a file that is not there uncreated, and one that
+    writes elsewhere (`never`) leaves it alone: either gets the store as empty.
     """
     from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.d1 import apply_schema
@@ -282,6 +292,11 @@ def load_effective_config(config_path: Path, sources_path: Path) -> Config:
     cfg = resolve_config(raw, d1_settings={})
     if not cfg.app.store.is_sql:
         return resolve_config(raw)
+    if cfg.app.store.backend == "sqlite" and (
+        local_file == "never" or (local_file == "if_created" and cfg.app.store.sqlite_not_created)
+    ):
+        cfg.sources = {}
+        return cfg
 
     d1 = build_d1_client(cfg)
     settings = build_settings(cfg, d1)

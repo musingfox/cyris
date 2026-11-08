@@ -444,6 +444,7 @@ def _triage_ui_kwargs(tmp_path: Path, monkeypatch, d1) -> dict:
     config_path.write_text(
         f'[general]\ntimezone = "Asia/Taipei"\n\n[llm_provider]\napi_key = "test"\n'
         f'model = "test"\n\n[agent_vault]\npath = "{tmp_path / "agent-vault"}"\n'
+        + ("" if d1 else '\n[store]\nbackend = "json"\n')
     )
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text("sources: []")

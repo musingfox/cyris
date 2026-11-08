@@ -1,0 +1,65 @@
+# Cyris runtime settings — only the source for `cyris settings push`, which copies
+# them into a Cloudflare deployment's D1. Nothing else reads this file: copy it to
+# settings.toml, fill in your values, and pass it with
+# `cyris settings push --config settings.toml`. A local install does not need it: the
+# wizard and /settings keep these in its SQLite file. Secrets come from the environment.
+#
+# Edit these first:
+#   [llm_provider] provider and model — match the key in .env, or provider = "none"
+#                  with model = "" for plain excerpts and no key
+#   [general]      timezone and digest_schedule — the hours are read in that zone
+#   [digest]       output_language — the language headlines and summaries are written in
+# The rest works as shipped.
+
+[general]
+digest_schedule = ["08:00", "20:00"]   # local clock times to run the digest
+timezone = "Asia/Taipei"
+digest_window_hours = 24
+
+[notify]
+discord_webhook_url = ""                # "" means off; paste a Discord webhook URL to get a message per digest
+email_to = ""                           # "" means off; a verified Email Routing destination address
+email_from = ""                         # an address on one of the account's Email Routing domains
+
+[llm_provider]
+# "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY), "openai" (OPENAI_API_KEY),
+# "workers_ai"
+# (CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying Workers AI -> Read),
+# "ai_gateway" (CLOUDFLARE_AIG_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying
+# Account -> AI Gateway -> Run. The provider's key is stored in the AI Gateway named
+# default, and the model is written google/<model>, e.g. "google/gemini-3.8-flash"),
+# or "none" for plain excerpts with no model and no key (set model = "").
+# workers_ai keeps everything on one Cloudflare account, but it is not yet a
+# drop-in: run `cyris llm-compare` and read both digests before switching.
+provider = "anthropic"
+model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider = "gemini"
+
+[digest]
+max_articles_per_digest = 400           # a run scores and digests the window's newest N, across all sources
+scoring_snippet_length = 1000           # characters of each article the scorer reads
+summarize_snippet_length = 1000         # characters read when summarizing
+filter_snippet_length = 500             # characters read when clustering news and extracting headlines
+output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
+style_prompt = ""                       # optional: your tone/focus, injected into the prompts
+type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
+rank_by_preference = true               # order headlines and Features by your topic votes
+preference_source = "cosine"            # who judges that order: cosine (your topic votes) or clef (needs a Workers AI token and [vote_similarity])
+summarize_follow = false                # explain each follow-lane article as read articles are
+vote_half_life_days = 7                 # a topic vote counts half as much after this many days
+topic_lifetime_days = 7                 # topics seen within this many days are current; one you voted up stays longer
+
+[routing]
+score_threshold = 70                    # two articles on one topic at or above it share the Top story (0-100)
+
+[vote_similarity]
+# Suppress candidates that sit close to a downvoted article. Runs over every
+# candidate, not just scored ones — the scorer skips news, and the class that
+# drew the first downvote was news-tagged. Preview with `cyris vote-sim` before
+# enabling, and compare providers with `cyris embed-compare`.
+enabled = false
+provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
+                          # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
+model = ""                # "" uses the provider's default model
+max_seeds = 200           # recent votes on each side a run compares against
+# A `threshold` key here is ignored (ADR-0017): each run suppresses the outliers of its
+# own window, so there is no cutoff to set and none to carry across providers.

@@ -74,7 +74,7 @@ def _d1_paths(tmp_path: Path) -> list[str]:
 def _json_paths(tmp_path: Path) -> list[str]:
     """A json deployment with every setting in cyris.toml and no sources.yaml."""
     config_path = tmp_path / "cyris.toml"
-    config_path.write_text(settings_toml())
+    config_path.write_text('[store]\nbackend = "json"\n\n' + settings_toml())
     return ["--config", str(config_path), "--sources", str(tmp_path / "absent.yaml")]
 
 

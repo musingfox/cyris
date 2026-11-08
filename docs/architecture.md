@@ -177,18 +177,19 @@ for it:
 | `Embedder → FS` | `embeddings.json` (415 MB), rewritten whole every run | **not Vectorize.** The cache was deleted rather than relocated — a run re-embeds ~600 texts for ~20 neurons — why not Vectorize: [ADR-0005](decisions/0005-no-vector-index-and-no-embedding-cache.md) |
 | `NewsletterArchiveSource ← FS` | local maildir | **deleted** 2026-08-27 (M1), superseded by the newsletter Worker |
 
-A local install has two homes to choose from, and `[store] backend` picks one (ADR-0003):
+A local install has two homes, and `[store] backend` picks one (ADR-0003); a config that names
+none gets `sqlite`, and `cyris.toml.example` names it:
 
-- **`sqlite`**: every D1 table in one SQLite file at `[store] sqlite_path` (§4, §5), opened through
+- **`sqlite`**, the default: every D1 table in one SQLite file at `[store] sqlite_path` (§4, §5), opened through
   `LocalD1Client`, so every D1 store, and every feature built on one, runs unchanged. Grade-D
   settings and sources live in the file, as they live in D1. Only Cloudflare's own edges stay
   behind `StoreConfig.is_cloudflare`: its REST probes, credentials and Workers. What the SQL
   store holds is behind `StoreConfig.is_sql`, true for `d1` and `sqlite` alike. One file is never
   opened from both a host process and a container: a bind mount between them corrupts it, so the
   path may not sit inside `agent-vault/`, which compose bind-mounts.
-- **`json`**: the earlier fallback, and still the default. The article store, `topics.json` and
-  `usage.jsonl` live in the agent vault (§4 lists each). ADR-0025 removes it once
-  `cyris store migrate` moves a `json` install across.
+- **`json`**: the earlier fallback, which an install keeps only by naming it. The article store,
+  `topics.json` and `usage.jsonl` live in the agent vault (§4 lists each). It still runs, and
+  `cyris store migrate --to sqlite` moves such an install across; ADR-0025 removes it next.
 
 On either, `HtmlDigestWriter` writes `agent-vault/html/`, which `cyris triage-ui` serves. With
 Cloudflare D1 wired, the site's file list comes from the `pages_manifest` table and nothing is
@@ -306,7 +307,7 @@ digest window, as `RssSource` does at digest time, so a blog's old history is no
 new. The Worker needs Workers Paid; the 2026-10-04 objection to polling from the cyris process,
 that the container would wake every hour, does not apply to a machine that is already on.
 `docker/crontab` runs `ingest` and `run --if-due` in sequence on one line because the `json`
-store has no locking. `ingest` does nothing where the Worker is configured. No new state: the
+store, which an install may still name, has no locking. `ingest` does nothing where the Worker is configured. No new state: the
 rows are ordinary rows of §4's article store.
 
 **Email — a queue, drained with an ack.** Cloudflare Email Routing delivers to the `email()` handler
@@ -602,7 +603,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 
 | Datum | Today | Destination | Notes |
 |---|---|---|---|
-| A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside the agent vault; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open, and `LocalD1Client` answers the stores as D1 does. Not a second home overlaid on D1 or `json` (ADR-0003): an install has one of the three. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins. Backup is `.backup` or `VACUUM INTO`, not `cp` of the file, which can lose recent writes. No row of `feed_health` is written here: no rss Worker polls for a local install |
+| A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside `cyris.toml`; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open by the server, the wizard or a run, and `LocalD1Client` answers the stores as D1 does. `cyris doctor` and `cyris config show` report a file that is not there as not created yet and leave it so; `cyris settings push` never opens it. Not a second home overlaid on D1 or `json` (ADR-0003): an install has one of the three. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins. Backup is `.backup` or `VACUUM INTO`, not `cp` of the file, which can lose recent writes. No row of `feed_health` is written here: no rss Worker polls for a local install |
 | Article store | **D1 `stored_articles`** | same | `content` is written as plain text for every source (newsletter bodies already were; an RSS entry's HTML is converted by `CloudflareRssSource`, or by `RssSource` on the direct-polling path, through `adapters/fetch/html_text.py`). Rows stored before RSS content was converted keep their HTML: `INSERT OR IGNORE` never rewrites them, and a pending row or a rerun turns them back into articles as they are. `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}`. Besides a run's save, the onboarding votes step (§6) stores each card the reader marked and then accepts or rejects it with `triaged_at`, as a `/labels` answer is written; a card left alone gets no row and stays in the buffer for the first run. A teaser's page text (§3.2) is the run's alone and is never written here |
 | Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
@@ -658,8 +659,8 @@ outside the repo, and `restore` writes them into a trial's D1, never its `settin
 ### One store, one truth
 
 `ArticleStore` (JSON) and `D1ArticleStore` both satisfy `ArticleRepository`, and `[store] backend`
-picks one: `json` the first, `d1` the second over Cloudflare, `sqlite` the second over the local
-file. **They are alternatives, never a pair**
+picks one: `json` the first, `d1` the second over Cloudflare, `sqlite`, the default, the second over
+the local file. **They are alternatives, never a pair**
 ([ADR-0003](decisions/0003-one-home-per-backend.md)). `cyris store diff` is what makes a split
 visible; run it before and after any cutover.
 
@@ -726,7 +727,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote-similarity minimum window: 10 candidates | A | `MIN_OUTLIER_WINDOW` in `domain/similarity.py` | done 2026-10-17 — below about ten candidates the median and MAD rest on two or three articles, so one article moves the cut; production windows are hundreds of candidates. A floor on sample size, not a cosine, so it does not go stale as votes grow (ADR-0017) |
 | Suppression clock: 7 days | A | `SUPPRESSION_CLOCK_DAYS` in `domain/suppression.py` | done 2026-10-17 — a week is the cycle a reader's digests repeat over; a hold outlasting that would hide an article on votes the reader has since moved past (ADR-0017) |
 | Runtime-setting registry: each grade-D key's `/settings` category, label, controls, save route and whether a save applies live | A | `src/cyris/settings_fields.json` | unchanged — the one key list (see *Where grade D lives*); `tests/test_settings_fields.py` holds the page to it |
-| Onboarding starting values: the value the wizard's Model step shows each tuned grade-D key at while the store lacks it | A | `src/cyris/settings_starting_values.json` | added 2026-11-07 (ADR-0025) — a new reader confirms them with one Next rather than choosing 17 numbers. They are `cyris.toml.example`'s, which `tests/test_settings_starting_values.py` holds equal, and they reach a run only once written into the store (see *Where grade D lives*). A key the store holds is never offered, so a trial's first-boot push survives the wizard |
+| Onboarding starting values: the value the wizard's Model step shows each tuned grade-D key at while the store lacks it | A | `src/cyris/settings_starting_values.json` | added 2026-11-07 (ADR-0025) — a new reader confirms them with one Next rather than choosing 17 numbers. They are `settings.example.toml`'s, which `tests/test_settings_starting_values.py` holds equal, and they reach a run only once written into the store (see *Where grade D lives*). A key the store holds is never offered, so a trial's first-boot push survives the wizard |
 | `cyris config show` registry: the rows it lists beyond `settings_fields.json` and `B_GRADE_ENV_VARS`, and every label it prints | A | `src/cyris/diagnostics/config_show.json` | done 2026-10-08 — the image ships `src/` only, so `.env.example` cannot be read at runtime; `tests/test_deploy_inputs.py` holds the secret list to it, and each code constant is named as `module:attribute` so the value shown is the one the code runs with |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
 | Wire dateline closing words (電, 報導), which the sand line's stand-in excerpt skips | A | `service_layer/datelines.json`, loaded by `degrade.py` | added 2026-10-29 — data so another wire's closing word is not a code edit, as `keywords.json` is; beside `languages.json` because the service layer may not read an adapter's file. The shape stays in code: a bracket pair at the very start of the text, at most `DATELINE_MAX_CHARS` = 40 characters before the closing word (A: an aside in brackets runs longer). Only the sand stand-in strips it (`cluster_news._member`) |
@@ -742,8 +743,8 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | KV namespace ids, D1 database id | B | `wrangler.toml`; `CYRIS_STORE_DATABASE_ID` for the article store | done |
 | Cloudflare account id, for CI | B | GitHub Actions repository **variable** `CLOUDFLARE_ACCOUNT_ID` | done — a variable, not a secret: it is deployer identity, and keeping it readable makes a wrong registry path a visible 404 rather than `***` |
 | Deployment URL, for CI | B | GitHub Actions repository **variable** `CYRIS_DEPLOYMENT_URL` (the app Worker's `workers.dev` URL; the verify step signs in with the Access service token) | done 2026-09-26 — read by `deploy.yml`'s `verify` step only |
-| Store backend | B | `CYRIS_STORE_BACKEND` (`json`/`d1`/`sqlite`; a value set in the file wins) | done — `json` stays the default until `cyris store migrate` exists (ADR-0025) |
-| A local install's SQLite file | B | `[store] sqlite_path`, else `CYRIS_STORE_SQLITE_PATH` (a value set in the file wins); default `state/cyris.sqlite3`, relative to the working directory as `[agent_vault] path` is | added 2026-11-07 — read only when the backend is `sqlite`. Local identity (`config.LOCAL_B_GRADE_ENV_VARS`), so the app Worker does not forward it and its deploy form does not ask for it: a Cloudflare deployment has no local file. A path inside the agent vault is refused at load, because compose bind-mounts the vault and a host process and a container on one SQLite file corrupt it (ADR-0025) |
+| Store backend | B | `[store] backend`, else `CYRIS_STORE_BACKEND` (`json`/`d1`/`sqlite`; a value set in the file wins) | done — the default in code is `sqlite`, the local home (ADR-0025). No Cloudflare path reads it: `docker/entrypoint.sh` exports `d1` for the `run` and `ui` roles, and a clone's `.env` names it |
+| A local install's SQLite file | B | `[store] sqlite_path`, else `CYRIS_STORE_SQLITE_PATH` (a value set in the file wins); default `state/cyris.sqlite3`; a relative path, from either, starts at the directory of `cyris.toml`, as `.env` does, and with no config file at the working directory | added 2026-11-07 — read only when the backend is `sqlite`. Local identity (`config.LOCAL_B_GRADE_ENV_VARS`), so the app Worker does not forward it and its deploy form does not ask for it: a Cloudflare deployment has no local file. A path inside the agent vault is refused at load, because compose bind-mounts the vault and a host process and a container on one SQLite file corrupt it (ADR-0025) |
 | The SQLite file's open: a 5-second busy timeout, and the first open's WAL switch retried 50 times, 0.1 s apart | A | `BUSY_TIMEOUT_SECONDS`, `FIRST_OPEN_ATTEMPTS`, `FIRST_OPEN_RETRY_SECONDS` in `adapters/store/local_d1.py` | added 2026-11-07 — a run writes single statements of at most 100 parameters, so a lock lasts milliseconds and five seconds is far past a healthy wait. The WAL switch takes a lock the busy handler does not wait on: two processes first-opening one file failed it 2 of 20 times with the timeout set, so it is retried on its own for up to five seconds |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (a value set in `cyris.toml [promote]` wins) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
@@ -770,7 +771,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | ~~Featured cap (`digest.max_featured`)~~ | — | — | **deleted** 2026-10-29: the page draws every read and follow article as a pebble, so no number of Features cards is chosen (ADR-0023). A stored D1 row is ignored |
 | Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
 | Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` names the topic order since ADR-0023 (§3.2) and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
-| Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `cyris.toml.example` sets `false`, which is the passthrough every issue had before it |
+| Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `settings.example.toml` sets `false`, which is the passthrough every issue had before it |
 | Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest); `cyris.toml [digest]` for a `json` deployment | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over, are the reader's to tune. Required, no code default |
 | Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — an up-voted topic stays on the recent-topic list while its net vote is worth more than this, about four half-lives (owner, 2026-10-30) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
@@ -931,7 +932,7 @@ each backend has exactly one home, with nothing overlaid:
 - **Starting values are written once, never read.** `src/cyris/settings_starting_values.json`
   (`config.STARTING_VALUES`) holds a starting value for each required key no wizard step asks the
   reader for by name: the tuned digest and pipeline keys, the embedder with its seeds, and vote
-  similarity's switch. The values are `cyris.toml.example`'s, and
+  similarity's switch. The values are `settings.example.toml`'s, and
   `tests/test_settings_starting_values.py` keeps the two equal. `GET /api/settings` answers
   `starting` with only the keys the home lacks. The onboarding wizard's Model step pre-fills its
   fold from that answer, and its Next writes the values into the home. No loader, run or
@@ -963,8 +964,13 @@ from disk stays at 1.
 table is empty (waiting for onboarding), and on a `d1` or `sqlite` deployment fails `file settings` when `cyris.toml` still sets a grade-D key
 the deployment ignores. On `sqlite` it names the store's file in `article store (sqlite)` and asks
 Cloudflare nothing: the store check reads the file, and every probe of a Cloudflare API stays
-behind `is_cloudflare`. `cyris settings push` copies the keys D1 lacks from a `cyris.toml`, never
-overwrites a row, and prints the database id it bound to first.
+behind `is_cloudflare`. A store that is not there yet it reports as `not created yet`, without
+creating it, which leaves `settings` the one failure of a new install's first boot, and it warns on
+`config file` when `cyris.toml` is missing unless the environment named a backend, so a mistyped
+`--config` does not pass. `cyris settings push` copies the keys D1 lacks from the file `--config` names,
+for which `settings.example.toml` is the shipped source, never overwrites a row, never opens a
+`sqlite` install's file, and prints the database id it bound to first. `cyris.toml.example` holds only
+the tables a `sqlite` install reads from the file, grades A and B, so a copy of it passes `file settings`.
 
 `cyris config show` answers what a setting is right now and why. It prints every grade's settings
 as key, effective value and source: `code`, the provider default, `cyris.toml`, D1 `settings`, the
@@ -983,7 +989,7 @@ two differences: an empty table is valid, and no command pushes them from a file
 deployment ignores a `cyris.toml`'s `[[tracked_topics]]`.
 
 With `backend = "json"` there is no settings store: the page renders read-only and `POST` answers
-409. That deployment edits `cyris.toml` by hand, and `cyris.toml.example` lists every required key; the optional `llm_provider.reasoning_effort` is absent and runs at `default`.
+409. That deployment edits `cyris.toml` by hand, and `settings.example.toml` lists every required key; the optional `llm_provider.reasoning_effort` is absent and runs at `default`.
 
 The schedule moved with it, and then moved again: the tick is now a Workers Cron Trigger
 (the repo-root `wrangler.toml`) rather than `docker/crontab`, hourly, running
@@ -1166,6 +1172,9 @@ precondition does not hold. `schema.sql` must not index a column a step adds, si
 ([ADR-0016](decisions/0016-version-table-schema-migrations.md) gives the rules). A
 first boot then stops every run, naming what is missing, until `/settings` or, on Cloudflare D1,
 `cyris settings push` holds every runtime setting and `sources` holds a source (§5).
+A compose install is one copy of `cyris.toml.example`, which names `sqlite`, so its file agrees with
+the `CYRIS_STORE_BACKEND=sqlite` compose sets for an install whose file names no backend; a local
+first boot's file and tables come from the first process that opens the store, not from `doctor`.
 
 **Two schedulers is the failure mode this cutover had to avoid.** The local machine and the Container
 run the same pipeline against the same D1 and publish to the same Pages project, where a deployment

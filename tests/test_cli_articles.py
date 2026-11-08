@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from fakes import settings_toml
+from fakes import seed_d1_settings, seeded_sqlite
 from typer.testing import CliRunner
 
-from cyris.adapters.store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, ArticleState, Lane
 from cyris.entrypoints.cli import app
 
@@ -18,20 +18,21 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def setup_store(tmp_path: Path) -> tuple[Path, Path, Path, ArticleStore]:
+def setup_store(tmp_path: Path) -> tuple[Path, Path, Path, D1ArticleStore]:
     """Create a store with test articles and a minimal config."""
     # Create config files
-    toml_content = (
-        settings_toml()
-        + f'''
+    state = tmp_path / "state.sqlite3"
+    toml_content = f'''
 [obsidian]
 user_vault_path = "{tmp_path / "vault"}"
 digest_folder = "Digests"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
+
+[store]
+sqlite_path = "{state}"
 '''
-    )
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(toml_content)
     sources_path = tmp_path / "sources.yaml"
@@ -42,7 +43,7 @@ path = "{tmp_path / "agent-vault"}"
     (tmp_path / "agent-vault").mkdir()
 
     # Create store with articles
-    store = ArticleStore(tmp_path / "agent-vault")
+    store = D1ArticleStore(seeded_sqlite(state))
     now = datetime.now(UTC)
     articles = [
         Article(
@@ -69,7 +70,7 @@ path = "{tmp_path / "agent-vault"}"
     return tmp_path, config_path, sources_path, store
 
 
-def test_articles_list_pending(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
+def test_articles_list_pending(setup_store: tuple[Path, Path, Path, D1ArticleStore]) -> None:
     """Test articles list with pending state filter."""
     tmp_path, config_path, sources_path, store = setup_store
     result = runner.invoke(
@@ -89,7 +90,7 @@ def test_articles_list_pending(setup_store: tuple[Path, Path, Path, ArticleStore
     assert "Pending Article" in result.stdout or "PENDING" in result.stdout
 
 
-def test_articles_list_json(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
+def test_articles_list_json(setup_store: tuple[Path, Path, Path, D1ArticleStore]) -> None:
     """Test articles list with JSON format."""
     tmp_path, config_path, sources_path, store = setup_store
     result = runner.invoke(
@@ -110,7 +111,7 @@ def test_articles_list_json(setup_store: tuple[Path, Path, Path, ArticleStore]) 
     assert isinstance(data, list)
 
 
-def test_articles_list_urls(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
+def test_articles_list_urls(setup_store: tuple[Path, Path, Path, D1ArticleStore]) -> None:
     """Test articles list with URLs format."""
     tmp_path, config_path, sources_path, store = setup_store
     result = runner.invoke(
@@ -131,20 +132,22 @@ def test_articles_list_urls(setup_store: tuple[Path, Path, Path, ArticleStore]) 
     assert len(lines) == 2
 
 
-def test_articles_accept_without_vault(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
+def test_articles_accept_without_vault(
+    setup_store: tuple[Path, Path, Path, D1ArticleStore],
+) -> None:
     """Test accepting articles without vault_path configured."""
     tmp_path, config_path, sources_path, store = setup_store
     # Create config without vault_path
-    toml_content = (
-        settings_toml()
-        + f'''
+    toml_content = f'''
 [obsidian]
 digest_folder = "Digests"
 
 [agent_vault]
 path = "{tmp_path / "agent-vault"}"
+
+[store]
+sqlite_path = "{tmp_path / "state.sqlite3"}"
 '''
-    )
     config_path.write_text(toml_content)
 
     result = runner.invoke(
@@ -168,7 +171,7 @@ path = "{tmp_path / "agent-vault"}"
     assert articles[0].state == ArticleState.ACCEPTED
 
 
-def test_articles_accept_not_in_store(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
+def test_articles_accept_not_in_store(setup_store: tuple[Path, Path, Path, D1ArticleStore]) -> None:
     """Test accepting article URL not in store."""
     tmp_path, config_path, sources_path, store = setup_store
     result = runner.invoke(
@@ -189,7 +192,7 @@ def test_articles_accept_not_in_store(setup_store: tuple[Path, Path, Path, Artic
 
 
 def test_articles_reject_defaults_to_not_interested(
-    setup_store: tuple[Path, Path, Path, ArticleStore],
+    setup_store: tuple[Path, Path, Path, D1ArticleStore],
 ) -> None:
     """Rejecting without a reason records the canonical default and triage time."""
     _, config_path, sources_path, store = setup_store
@@ -213,7 +216,7 @@ def test_articles_reject_defaults_to_not_interested(
 
 
 def test_articles_reject_accepts_free_text_reason(
-    setup_store: tuple[Path, Path, Path, ArticleStore],
+    setup_store: tuple[Path, Path, Path, D1ArticleStore],
 ) -> None:
     """An explicit free-text rejection reason is preserved."""
     _, config_path, sources_path, store = setup_store
@@ -237,7 +240,7 @@ def test_articles_reject_accepts_free_text_reason(
     assert rejected[0].rejection_reason == "duplicate coverage"
 
 
-def test_articles_clean(setup_store: tuple[Path, Path, Path, ArticleStore]) -> None:
+def test_articles_clean(setup_store: tuple[Path, Path, Path, D1ArticleStore]) -> None:
     """Test cleaning old rejected articles."""
     tmp_path, config_path, sources_path, store = setup_store
     store.update_article_state("https://example.com/1", ArticleState.REJECTED, reason="x")
@@ -260,18 +263,18 @@ def test_articles_clean(setup_store: tuple[Path, Path, Path, ArticleStore]) -> N
 
 
 def test_articles_score_persists_tags_when_d1_available(
-    setup_store: tuple[Path, Path, Path, ArticleStore],
+    setup_store: tuple[Path, Path, Path, D1ArticleStore],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`articles score` wires persist_tags like run_digest: paid-for tags land in D1."""
     from fakes import FakeLLM, SqliteD1
 
     import cyris.bootstrap as bootstrap
-    from cyris.adapters.store.d1_store import D1ArticleStore
 
     _tmp_path, config_path, sources_path, _store = setup_store
 
     db = SqliteD1()
+    seed_d1_settings(db)
     now = datetime.now(UTC)
     D1ArticleStore(db).save(
         [

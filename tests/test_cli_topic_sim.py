@@ -4,10 +4,10 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from fakes import settings_toml
+from fakes import seeded_sqlite
 from typer.testing import CliRunner
 
-from cyris.adapters.store import ArticleStore
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import Article, Lane
 from cyris.domain.similarity import normalize
 from cyris.entrypoints.cli import app
@@ -46,16 +46,14 @@ def _article(n: int, title: str) -> Article:
 
 
 def _write_config(tmp_path):
-    vault = tmp_path / "vault"
-    (tmp_path / "cyris.toml").write_text(
-        f'[agent_vault]\npath = "{vault}"\n\n' + settings_toml(), encoding="utf-8"
-    )
-    return vault
+    state = tmp_path / "state.sqlite3"
+    (tmp_path / "cyris.toml").write_text(f'[store]\nsqlite_path = "{state}"\n', encoding="utf-8")
+    return seeded_sqlite(state)
 
 
 @pytest.fixture
 def deployment(tmp_path, monkeypatch):
-    ArticleStore(_write_config(tmp_path)).save(
+    D1ArticleStore(_write_config(tmp_path)).save(
         [
             _article(1, "Lottery draw"),
             _article(2, "Claude gets a new model"),

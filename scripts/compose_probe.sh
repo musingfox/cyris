@@ -5,8 +5,9 @@
 # never touches a running install: its containers, image tags and volume carry the
 # project name, and its ui is published on a free host port instead of 8766.
 #
-# The copy's cyris.toml names no backend on purpose. The compose environment, not the
-# file, must pick sqlite, so do not add a `[store] backend` line here.
+# The install is what docs/install-local.md tells a reader to make: the example copied
+# unchanged, and the files the compose mounts need. Do not write a cyris.toml here. A probe
+# on its own file would pass while a reader's copy of the example failed.
 #
 # One line per check, `ok` or `FAIL`; the first failure stops the probe with a non-zero
 # exit, after the project's containers, volume and the copy are removed. It makes no
@@ -52,12 +53,12 @@ for tool in docker curl git tar; do
 done
 docker compose version >/dev/null 2>&1 || fail "needs the docker compose plugin"
 
-# The compose environment must pick the backend, so nothing here may name one.
+# Only the install's own files may decide, so this shell names nothing they should.
 unset CYRIS_STORE_BACKEND CYRIS_STORE_SQLITE_PATH COMPOSE_PROJECT_NAME
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/cyris-compose-probe.XXXXXX")
 # Tracked and untracked-but-not-ignored files: what a clone plus your edits would build.
-# Ignored files (.env, cyris.toml, agent-vault/, node_modules/) stay out of the copy.
+# Ignored files (.env, cyris.toml, state/, agent-vault/, node_modules/) stay out of the copy.
 git -C "$repo" ls-files -z --cached --others --exclude-standard |
   tar -C "$repo" --null -T - -cf - |
   tar -C "$work" -xf -
@@ -77,16 +78,9 @@ export CYRIS_UI_PORT="$port"
 base="http://127.0.0.1:$port"
 
 cd "$work"
-# No `[store] backend` line, and the provider none: no key, no LLM call.
-cat >cyris.toml <<'EOF'
-[llm_provider]
-provider = "none"
-model = ""
-
-[html_output]
-enabled = true
-EOF
-: >.env
+# docs/install-local.md, step 1, with no key in .env: no LLM call.
+cp cyris.toml.example cyris.toml
+cp .env.example .env
 cp sources.example.yaml sources.yaml
 mkdir -p agent-vault
 
