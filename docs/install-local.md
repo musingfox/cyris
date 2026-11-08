@@ -1,309 +1,267 @@
 # Installing cyris locally
 
-A local install runs the whole pipeline on your machine: feeds are polled when the
-digest runs, state is JSON files under `agent-vault/`, and the digest is an HTML file on
-disk. It is the same pipeline, prompts and digest as the Cloudflare install; what it
-gives up is listed under [What a local install cannot do](#what-a-local-install-cannot-do).
+A local install runs the whole pipeline on your machine: feeds are polled hourly and when the
+digest runs, state is one SQLite file, and the digest is an HTML page its own server shows you. It
+is the same pipeline, prompts and digest as the Cloudflare install; what it gives up is listed under
+[What a local install cannot do](#what-a-local-install-cannot-do).
+
+You copy one file, put your keys in another, start the server and answer the wizard. Everything
+else, your settings and your feeds included, is saved through the wizard into the SQLite file
+([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)).
 
 ## Prerequisites
 
-- Python 3.12+ and [uv](https://github.com/astral-sh/uv)
-- One LLM API key (Anthropic, Google Gemini, OpenAI, or a Cloudflare Workers AI token),
-  or none: provider `none` lists plain excerpts
-- Docker, only if you schedule with `docker compose`
+Either of these runs the same install:
 
-## 1. Clone and install
+- **`uv`**: Python 3.12+ and [uv](https://github.com/astral-sh/uv). Every command runs on this
+  machine.
+- **`docker compose`**: Docker with the compose plugin. Every command runs in a container.
+
+The file is opened from one side only, so pick one and stay on it: see
+[Where the state is](#where-the-state-is).
+
+## 1. Clone and copy the example
 
 ```sh
 git clone https://github.com/musingfox/cyris.git && cd cyris
+cp cyris.toml.example cyris.toml
+```
+
+`cyris.toml` works as shipped, so there is nothing to edit. It names the `sqlite` store and turns
+on the HTML pages, and it holds no runtime setting: those live in the store, and `cyris doctor`
+fails a file that sets one, because nothing reads it there.
+
+**With `uv`**, install the dependencies:
+
+```sh
 uv sync
 ```
 
-## 2. Copy the three example files
+**With `docker compose`**, the two containers bind-mount these, and a missing source would stop
+them: Docker creates a directory where the file should be, and refuses to start without `.env`.
 
 ```sh
-cp cyris.toml.example cyris.toml
 cp .env.example .env
 cp sources.example.yaml sources.yaml
+mkdir -p agent-vault
 ```
 
-- **`cyris.toml`** holds every runtime setting. Each runtime setting is required: one
-  left out stops the run and is named, because no value for one lives in code. The
-  deployment keys around them do have defaults, and one of those matters: without
-  `[html_output] enabled = true` a run succeeds and writes no digest.
-- **`.env`** holds secrets. Locally only the key for your LLM provider matters; leave
-  the Cloudflare names blank.
-- **`sources.yaml`** is the source list, and it starts empty: a new deployment ships
-  with no feed ([ADR-0020](decisions/0020-new-deployments-start-from-onboarding.md)). The
-  Cloudflare install asks for feeds in its onboarding wizard; a local install has no
-  wizard, so you write them here (step 3).
+A SQLite install does not read `sources.yaml`; your feeds are saved by the wizard. The file only
+has to exist for the mount, and the copy is empty.
 
-## 3. Edit `cyris.toml`
+## 2. Put your keys in `.env`
 
-Change these; the rest works as shipped.
+The wizard saves your settings but never takes a secret, so keys come from `.env`, which git
+ignores. With `uv`, start it the same way, `cp .env.example .env`. Set what you use, and leave the
+rest blank:
 
-| Key | Set it to |
+| You want | Set |
 |---|---|
-| `[llm_provider] provider` | `anthropic`, `gemini`, `openai`, `workers_ai` or `ai_gateway`, matching the key you put in `.env`; or `none` |
-| `[llm_provider] model` | A model of that provider (the example is an Anthropic model), or `""` with `none` |
-| `[general] timezone` | Your IANA zone, such as `Europe/Berlin`. The example is `Asia/Taipei` |
-| `[general] digest_schedule` | The local hours to publish, such as `["08:00", "20:00"]`, read in that timezone |
-| `[digest] output_language` | A BCP 47 tag for headlines and summaries, such as `en`. There is no default; the example uses `zh-Hant` |
+| A model to write the digest | One of `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CLOUDFLARE_AI_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for `workers_ai`, or `CLOUDFLARE_AIG_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for `ai_gateway`, which also needs the provider's key stored in your gateway: see [Running the LLM through AI Gateway](operations.md#running-the-llm-through-ai-gateway) |
+| Your votes to matter | An embedder's key: `GEMINI_API_KEY`, or `CLOUDFLARE_EMBEDDING_API_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` |
+| A digest by mail | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`, a token carrying Email Sending: Edit |
 
-`[notify] discord_webhook_url` and `[digest] style_prompt` are required keys for optional
-features: set the webhook for a Discord message per digest and the prompt for your own tone
-or focus, or keep each as `""` to leave it off. Keep `[store] backend = "json"` and
-`[html_output] enabled = true`.
+None of these is required. With no model key the wizard offers provider None, and the digest lists
+plain excerpts. With no embedder key the first-issue step says vote similarity is still off, and the
+issue is made anyway. The server reads `.env` when it starts, so restart it after an edit.
 
-Then put the matching key in `.env` (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-`OPENAI_API_KEY`, `CLOUDFLARE_AI_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for
-`workers_ai`, or `CLOUDFLARE_AIG_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for `ai_gateway`, which also
-needs the provider's key stored in your gateway:
-see [Running the LLM through AI Gateway](operations.md#running-the-llm-through-ai-gateway)).
+## 3. Start the server
 
-Then add the feeds you read under `sources:` in `sources.yaml`, replacing its empty `[]`.
-The file's commented entries show each shape a source takes. For ready-made entries,
-`src/cyris/onboarding_feeds.json` lists the publishers' own feeds the onboarding wizard
-offers; each entry there is already a source in this shape but for `topics`, the list's own
-grouping, which a source does not have (leave it out), and YAML reads a JSON object as written,
-so a copied entry goes in as `- {"name": …, "url": …}`. Each source takes a lane; see [How sources are processed](sources.md).
-Email-only newsletters (`type: newsletter`) are inert locally. Until `sources.yaml` lists
-a source, `cyris doctor` warns that it is waiting for onboarding and every run ends
-having fetched nothing.
-
-## 4. Check the configuration
+**With `uv`:**
 
 ```sh
-uv run cyris doctor
+uv run cyris triage-ui
 ```
 
-It exits non-zero on anything that would break a run and says what to fix. Ends with
-`Ready to run.` when there is nothing left.
-
-## 5. Run the first digest
+**With `docker compose`:**
 
 ```sh
-uv run cyris run --period morning
+docker compose up -d
 ```
 
-`--period` is `morning` or `evening` and names the issue; it defaults to `morning`, so
-a second run on the same day without it rewrites the morning issue. Running again
-inside the same window prints `No pending articles to process.`; `--force` reprocesses
-the window.
+This builds the image and starts two containers: `ui`, the server, and `cyris`, the scheduler of
+step 5. The server is published on this machine only; set `CYRIS_UI_PORT` to publish another host
+port.
 
-Run every `cyris` command from the repo root. `--config` and `--sources` default to
-`cyris.toml` and `sources.yaml` in the current directory, `.env` is read from beside the
-config file, and `[agent_vault] path` and `[html_output] output_dir` are relative to the
-current directory too.
+Either way the wizard is now at <http://127.0.0.1:8766/onboarding>.
 
-## 6. Where the output lands
+## 4. Walk the wizard
 
-Everything is under `agent-vault/`, which git ignores:
+It asks for your language and timezone, the hours to publish, your feeds, a few votes on their
+articles, where to notify you, and a model, and it pre-fills the tuned settings it does not ask
+about. Its last step starts the first issue and shows it to you. Nothing is written by hand.
 
-- `agent-vault/html/<date>-<period>.html`: the digest
-- `agent-vault/html/<date>-<period>-raw.html`: every article the run judged, including
-  what the digest dropped
-- `agent-vault/html/index.html`: the archive; read it at `http://127.0.0.1:8766/` while
-  `cyris triage-ui` runs (section 8), or open the file itself
-- `agent-vault/articles/`: the article store, and `agent-vault/usage.jsonl`, the LLM
-  spend (written once a run calls an LLM, so absent with provider `none`)
+To check an install, `uv run cyris doctor`, or under compose `docker compose exec cyris cyris doctor`.
+It exits non-zero on anything that would break a run, says what to fix, and ends with `Ready to run.`
+when there is nothing left. It creates nothing.
 
-## 7. Schedule it
+Before the wizard, one failure is expected: `settings` names every key the wizard is about to
+save, and `sources` warns that it is waiting for onboarding. Before the server's first start,
+`article store (sqlite)` also says `not created yet`, because the server creates the file. If it
+says that afterwards, the command is looking in another directory.
 
-Pick one of the two. Both run hourly: `cyris ingest` stores what the feeds hold, then
-`cyris run --if-due` does nothing except on the `digest_schedule` hours and picks
-`--period` from which hour it is. A feed keeps only a few hours of entries, so without
-the hourly `ingest` a digest misses what a busy feed dropped since the last one. The two
-run in sequence on one line because the store has no locking.
+## 5. Schedule it
 
-**cron.** Cron starts in your home directory with a minimal `PATH`, so change into the
+Both ways run hourly: `cyris ingest` stores what the feeds hold, then `cyris run --if-due` does
+nothing except on the hours you chose and picks `--period` from which hour it is. A feed keeps only
+a few hours of entries, so without the hourly `ingest` a digest misses what a busy feed dropped since
+the last one.
+
+**With `docker compose`** there is nothing to do: the `cyris` container runs supercronic, which fires
+`cyris ingest`, then `cyris run --if-due`, and `cyris promote-sync` every hour. The compose `TZ` only
+changes log timestamps; the schedule follows the timezone you saved.
+
+**With `uv`**, use cron. Cron starts in your home directory with a minimal `PATH`, so change into the
 repo and give `uv` by its absolute path (`command -v uv` prints it):
 
 ```cron
 0 * * * * cd /path/to/cyris && { /path/to/uv run cyris ingest; /path/to/uv run cyris run --if-due; } >> "$HOME/cyris.log" 2>&1
 ```
 
-A fixed `cyris run` line per hour, without `--if-due` or `--period`, labels every issue
-`morning`, and the evening run overwrites that morning's digest.
+Keep `uv run cyris triage-ui` running as well, as a login item or a service, to read the archive.
 
-**docker compose.**
+A fixed `cyris run` line per hour, without `--if-due` or `--period`, labels every issue `morning`, and
+the evening run overwrites that morning's digest. To make an issue now, run `cyris run --period morning`;
+`--period` is `morning` or `evening` and names the issue, and `--force` reprocesses a window already
+processed.
 
-```sh
-docker compose up -d
-```
+## Where the state is
 
-This builds the image and starts two containers. `cyris` runs supercronic, which fires
-`cyris ingest`, then `cyris run --if-due`, and `cyris promote-sync` every hour. `ui` serves the
-archive and `/settings` (§8) at `http://127.0.0.1:8766/`, published on this machine only; set
-`CYRIS_UI_PORT` to publish another host port. Both read `.env` (the file must exist) and
-bind-mount `cyris.toml`, `sources.yaml` and `./agent-vault`, which holds the generated HTML. After
-editing `cyris.toml` or `sources.yaml`, run `docker compose up -d --force-recreate`: a plain
-`up -d` keeps the container reading the old file. The compose `TZ` only changes log timestamps;
-the schedule follows `[general] timezone`.
+**With `uv`**, the state is `state/cyris.sqlite3` beside `cyris.toml`, which git ignores. It holds your
+Discord webhook URL and your mail addresses, so do not share it. `--config` and `--sources` default to
+`cyris.toml` and `sources.yaml` in the current directory; `.env` and a relative `[store] sqlite_path`
+are found beside the config, and `[agent_vault] path` and `[html_output] output_dir` are relative to the
+current directory, so run every command from the repo root. The pages are under `agent-vault/`, which
+git also ignores:
 
-*Where the state is.* With no `[store] backend` line in `cyris.toml`, or with `backend = "sqlite"`,
-both containers run on one SQLite file, `/app/state/cyris.sqlite3`, in the named volume
-`cyris-state`. Leave `[store] sqlite_path` and `CYRIS_STORE_SQLITE_PATH` unset under compose: a
-path outside `/app/state` puts the file in the container's own layer, and a recreate loses it. The volume survives `docker compose down` and `up -d --force-recreate`; only
-`docker compose down -v` deletes it. Every command of a compose install runs in a container:
+- `agent-vault/html/<date>-<period>.html`: the digest
+- `agent-vault/html/<date>-<period>-raw.html`: every article the run judged, including what the
+  digest dropped
+- `agent-vault/html/index.html`: the archive, which the server shows at `http://127.0.0.1:8766/`
+
+**With `docker compose`**, both containers run on one file, `/app/state/cyris.sqlite3`, in the named
+volume `cyris-state`, and `./agent-vault` is bind-mounted for the pages. Leave `[store] sqlite_path` and
+`CYRIS_STORE_SQLITE_PATH` unset: a path outside `/app/state` puts the file in the container's own layer,
+and a recreate loses it. The volume survives `docker compose down` and `up -d --force-recreate`; only
+`docker compose down -v` deletes it. Every command runs in a container:
 
 ```sh
 docker compose exec cyris cyris doctor
 docker compose exec cyris cyris run --period morning
 ```
 
-Never open that file from the host, with `sqlite3`, a database browser or `cp` out of the
-volume's directory, and never bind-mount it: a macOS host process and a container on one file
-corrupt it, even when the host only reads
-([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)). Backup steps come in a
-later change; until then a `cp` of the file can lose recent writes.
+Never open that file from the host, with `sqlite3`, a database browser or `cp` out of the volume's
+directory, and never bind-mount it: a macOS host process and a container on one file corrupt it, even
+when the host only reads
+([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)). Backup steps come in a later
+change; until then a `cp` of the file can lose recent writes. After editing `cyris.toml`, run
+`docker compose up -d --force-recreate`: a plain `up -d` keeps the container reading the old file.
 
-*A `cyris.toml` that names a backend wins over compose.* `cyris.toml.example` says
-`backend = "json"`, so a copy of it stays on json under compose, in both containers, with its
-state in `agent-vault/`. To move it to SQLite, stop both containers so no scheduled run writes
-the json files during the move, run the migration in a one-off container, which mounts the same
-volumes, then change the line to `backend = "sqlite"` (or delete it) and start again:
+## The archive and `/settings`
 
-```sh
-docker compose stop
-docker compose run --rm cyris cyris store migrate --to sqlite
-docker compose up -d --force-recreate
-```
+The server shows the archive at `http://127.0.0.1:8766/`: the issue list, each issue and its All
+articles page, from `[html_output] output_dir`. It also serves
+`http://127.0.0.1:8766/settings`, which changes every runtime setting and the source list; the
+Settings and Archive links move between the two. A change takes effect on the next run. The vote
+buttons and the Interest map stay hidden here (see below); an issue written by an earlier version
+still shows its vote buttons, and a click reports a failure.
 
-The rest of [Moving a json install to SQLite](#moving-a-json-install-to-sqlite) applies, each
-command run in a container. A json `cyris.toml` that relied on the code's old default and names no
-backend now opens the empty SQLite file instead: add `backend = "json"` before upgrading, or
-migrate as above with that line in place. A json install has no wizard, and its server accepts no
-`POST /run`.
+Set `[html_output] base_url = "http://127.0.0.1:8766"` in `cyris.toml` and each notification carries
+a Read online link to its issue. That address opens only on this machine, so with it empty, the
+default, a notification has no link. A page opened from disk, rather than through this server, has a
+Settings link that goes nowhere, and keeps the type size 1.
 
-## 8. The archive and `/settings`
-
-A compose install already runs this as its `ui` container. Without compose:
-
-```sh
-uv run cyris triage-ui
-```
-
-This serves the archive at `http://127.0.0.1:8766/`: the issue list, each issue and its
-All articles page, from `[html_output] output_dir`, with `[digest] type_scale` from
-`cyris.toml` applied (restart to pick up a change). Before the first run there is no issue, and `/` says so and names
-`cyris run --period morning`. It also serves `http://127.0.0.1:8766/settings`, which shows
-every runtime setting and the source list; the Settings and Archive links move between
-the two. The vote buttons and the Interest map stay hidden here (see below); an issue written by
-an earlier version still shows its vote buttons, and a click reports a failure.
-Set `[html_output] base_url = "http://127.0.0.1:8766"` and each notification carries a
-Read online link to its issue. That address opens only on this machine, so with it empty, the
-default, a notification has no link.
-With `[html_output] enabled = false` it serves no archive. On the `json` backend the page is read-only: `cyris.toml` and
-`sources.yaml` are the only place to change anything, and there is no onboarding wizard —
-`/onboarding` sends you back to `/settings`, because the wizard writes settings this
-backend has nowhere to keep. A page opened from disk, rather than through this server, still
-has a Settings link that goes nowhere, and keeps the type size 1.
-
-The server answers only requests that name it, so a web page open in your browser cannot
-read your settings or spend your LLM key through it. A request whose `Host` is not
-`127.0.0.1`, `localhost` or `[::1]` (any port), or the exact address given to `--host`, gets
-a `403` naming what was refused, and so does a write from a page this server did not serve.
-curl and scripts that send no `Origin` are not held to the second rule.
+The server answers only requests that name it, so a web page open in your browser cannot read your
+settings or spend your LLM key through it. A request whose `Host` is not `127.0.0.1`, `localhost` or
+`[::1]` (any port), or the exact address given to `--host`, gets a `403` naming what was refused, and
+so does a write from a page this server did not serve. curl and scripts that send no `Origin` are not
+held to the second rule.
 
 `--host` takes one address: with `--host 192.168.1.5`, the server answers at
 `http://192.168.1.5:8766`, and a name for that machine, such as a Tailscale or `.local` name, gets
-the `403`. `--host 0.0.0.0` listens everywhere and still answers only on the three loopback names,
-so another device reaching it gets the `403`.
+the `403`. `--host 0.0.0.0` listens everywhere and still answers only on the three loopback names, so
+another device reaching it gets the `403`.
 
 ## What a local install cannot do
 
-- **Votes.** 👍/👎 go through the Cloudflare app Worker and `workers/promote`. Locally,
-  `cyris articles accept|reject` records the same decision.
-- **Email-only newsletters.** Receiving mail needs `workers/newsletter` and your own
-  domain with Cloudflare Email Routing. Newsletters that publish RSS are ordinary feeds
-  and work locally.
-- **An archive you can reach from anywhere.** `cyris triage-ui` serves the archive only while it
-  runs, at `127.0.0.1` by default, so another device cannot read it. `--host` with an address opens
-  the archive and `/settings` to everyone who can reach that address, with no sign-in.
+- **Votes on an issue.** 👍/👎 on a digest go through the Cloudflare app Worker and `workers/promote`.
+  Locally, the wizard's votes and `cyris articles accept|reject` record the same decision.
+- **Email-only newsletters.** Receiving mail needs `workers/newsletter` and your own domain with
+  Cloudflare Email Routing. Newsletters that publish RSS are ordinary feeds and work locally.
+- **An archive you can reach from anywhere.** The server shows the archive only while it runs, at
+  `127.0.0.1` by default, so another device cannot read it. `--host` with an address opens the archive
+  and `/settings` to everyone who can reach that address, with no sign-in.
 
 ## Moving a json install to SQLite
 
-An install whose `cyris.toml` says `[store] backend = "json"` moves its whole state into the
-SQLite file at `[store] sqlite_path` (default `state/cyris.sqlite3`, which may not sit inside
-`agent-vault/`) with one command: the articles, `topics.json`, `usage.jsonl`, the runtime settings
-and `[[tracked_topics]]` from `cyris.toml`, and `sources.yaml`. Run these on the host, from the
-repo root:
+An install that keeps its state in JSON files under `agent-vault/` moves all of it into the SQLite file
+with one command: the articles, `topics.json`, `usage.jsonl`, the runtime settings and
+`[[tracked_topics]]` from `cyris.toml`, and `sources.yaml`. It changes nothing on the json side.
 
-1. Stop the scheduler and `cyris triage-ui`, so nothing writes the json files during the move.
-2. Copy and compare:
+1. **Name `backend = "json"` under `[store]` in `cyris.toml`, if it does not say so.** With no line the
+   install now reads SQLite, and the move refuses, because it finds no json install to read.
+2. Stop the scheduler and the server, so nothing writes the json files during the move.
+3. Copy and compare, from the repo root:
 
    ```sh
    uv run cyris store migrate --to sqlite   # everything into the file; safe to re-run
    uv run cyris store diff --to sqlite      # they agree when only local and differing are 0
    ```
 
-   The move only adds, and a second run writes nothing and says so. A row the file already
-   holds is kept, of every kind: settings, tracked topics, sources, articles, topics, topic
-   members, tags, votes and usage rows, except a settings row that cannot be read, which the
-   file's value replaces. A kept row that differs from the json side is named with
-   what differs; a kept row identical to the json side is only counted. Sources are copied only
-   into an empty table. An article, partition or row that cannot be read stops the move before
-   it writes anything, naming it. It changes nothing on the json side.
-3. Copy `agent-vault/`, `cyris.toml` and `sources.yaml` somewhere else, and do not delete them
-   yet: with `backend = "json"` the install reads them as before.
-4. In `cyris.toml`, set `backend = "sqlite"` under `[store]`.
-5. Run `uv run cyris doctor`. It fails `file settings` while `cyris.toml` still sets a runtime
-   setting the file now holds; delete the keys it names. The move's last lines name them too,
-   by section, with `[[tracked_topics]]`, which the SQLite install no longer reads either. From
-   here on `/settings` changes them, and `sources.yaml` is no longer read.
-6. Start the scheduler again.
+   Under compose, in a one-off container, which mounts the same volumes:
+
+   ```sh
+   docker compose stop
+   docker compose run --rm cyris cyris store migrate --to sqlite
+   ```
+
+   The move only adds, and a row the file already holds is kept and named if it differs. Anything
+   that cannot be read stops it before it writes, naming what.
+4. Set `backend = "sqlite"`, and delete the runtime settings and `[[tracked_topics]]` from `cyris.toml`:
+   `cyris doctor` fails `file settings` while the file still sets one, and the move's last lines name
+   them. Keep a copy of `agent-vault/`, `cyris.toml` and `sources.yaml` until you trust the result.
+5. Start the scheduler and the server again, under compose with `docker compose up -d --force-recreate`.
+   From here on `/settings` changes everything, and `sources.yaml` is no longer read.
 
 ## Moving to Cloudflare later
 
-The article store, the runtime settings and the source list can all be copied into D1.
-The store and the settings are added without overwriting anything there; the source
-list replaces D1's, so a source D1 holds that `sources.yaml` lacks is removed.
+The runtime settings and the source list can be copied into D1 from files; the articles in a SQLite
+file cannot yet, because that copy is not built
+([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)). A Cloudflare install starts its
+store empty.
 
-1. Do steps 1 to 3 of [the Cloudflare guide](install-cloudflare.md): the D1 database,
-   the Pages project name and the API token.
-2. Add `CYRIS_STORE_DATABASE_ID`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` to
-   `.env`. Leave `[store] backend = "json"` for now. From here on, run wrangler in this
-   directory with `--env-file /dev/null`, or it picks up that token.
-3. Copy and compare:
+1. Do steps 1 to 3 of [the Cloudflare guide](install-cloudflare.md): the D1 database, the Pages project
+   name and the API token.
+2. Stop the local scheduler: remove the cron line, or `docker compose down`. Two schedulers publishing
+   one Pages project is the failure mode.
+3. Continue the Cloudflare guide from step 4. Its wizard takes your settings and feeds again, or set the
+   clone up as in [Running the CLI against the deployment](install-cloudflare.md#running-the-cli-against-the-deployment)
+   and push them from files.
 
-   ```sh
-   uv run cyris store migrate     # the JSON store into D1; safe to re-run
-   uv run cyris store diff        # article by article; they agree when only local, only d1 and differing are all 0
-   uv run cyris settings push     # every runtime setting D1 lacks, from cyris.toml
-   uv run cyris sources push      # make D1's source table match sources.yaml, removals included
-   ```
-
-4. Stop the local scheduler: remove the cron line, or `docker compose down`. Two
-   schedulers publishing one Pages project is the failure mode, and after the switch
-   the two backends would split decisions that neither can merge back.
-5. Continue the Cloudflare guide from step 4. Step 6 finds the settings and sources
-   already in D1.
-
-To keep using this clone's CLI afterwards, set it up as in
-[Running the CLI against the deployment](install-cloudflare.md#running-the-cli-against-the-deployment).
-A D1 deployment reads runtime settings from D1 only, and `cyris doctor` fails while a
-`cyris.toml` still sets them.
+A D1 deployment reads runtime settings from D1 only, and `cyris doctor` fails while a `cyris.toml` still
+sets them.
 
 ## Troubleshooting
 
-- **`Missing from cyris.toml: …`**: a key is missing. If the line before it is
-  `Config file not found: cyris.toml`, the command ran outside the repo root; in cron,
-  add `cd /path/to/cyris &&`.
-- **doctor: `provider is anthropic but ANTHROPIC_API_KEY is empty`**: put the key in
-  `.env`, or set `provider = "none"` and `model = ""`.
-- **`waiting for onboarding`**: `sources.yaml` holds no source, so the run ends
-  having fetched nothing. Add at least one source.
-- **A run succeeds but `agent-vault/html/` stays empty**: set `[html_output] enabled =
-  true`; left out, it defaults to off.
-- **`Not a digest hour (…)`**: `--if-due` outside the schedule, which is normal. Use
-  `--period` to run now.
-- **The evening digest replaced the morning one**: the scheduled command lacks
-  `--if-due`.
+- **`Missing settings in the SQLite store: …`**: the wizard has not finished. Open `/onboarding`, or set
+  the keys on `/settings`. If the line before it is `Config file not found: cyris.toml`, the command ran
+  outside the repo root; in cron, add `cd /path/to/cyris &&`.
+- **doctor: `config file — not found`**: the same, or a mistyped `--config`.
+- **doctor: `article store (sqlite) — not created yet` on an install you already use**: the command is
+  looking at another path. A relative `[store] sqlite_path` starts at the directory of `cyris.toml`.
+- **`[store] sqlite_path … is inside the agent vault`**: set `[store] sqlite_path` to a file outside the
+  vault. A vault at the repo root holds the default path too.
+- **doctor: `provider is anthropic but ANTHROPIC_API_KEY is empty`**: put the key in `.env` and restart
+  the server, or pick None on `/settings`.
+- **`waiting for onboarding`**: the store holds no source, so the run ends having fetched nothing. Add one
+  on `/onboarding` or `/settings`.
+- **`Not a digest hour (…)`**: `--if-due` outside the schedule, which is normal. Use `--period` to run
+  now.
+- **The evening digest replaced the morning one**: the scheduled command lacks `--if-due`.
+- **`docker compose up` says a mount is not a file, or `cyris.toml` is a directory**: a source was missing
+  the first time. Remove the directory Docker made, then do step 1's copies.
 - **compose ignores an edit to `cyris.toml`**: `docker compose up -d --force-recreate`.
-- **`Promotion sync not configured` every hour in the compose log**: harmless; there is
-  no vote Worker locally.
-- **doctor warns `rss buffer — not configured`**: informational on a local install
-  that runs `cyris ingest` hourly, as step 7 schedules it.
-- **doctor says to set the Discord webhook on `/settings`**: locally it is
-  `[notify] discord_webhook_url` in `cyris.toml`.
+- **`Promotion sync not configured` every hour in the compose log**: harmless; there is no vote Worker
+  locally.
+- **doctor warns `rss buffer — not configured`**: informational on a local install that runs `cyris
+  ingest` hourly, as step 5 schedules it.

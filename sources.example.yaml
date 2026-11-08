@@ -7,7 +7,7 @@
 #   follow - Sources you follow as they are. Passed through: never scored, filtered or summarized.
 #
 # A new deployment starts with no source (docs/decisions/0020-new-deployments-start-from-onboarding.md).
-# On a D1 deployment this file is not read: /settings sends you to /onboarding, where you pick
+# On a SQLite or D1 deployment this file is not read: /settings sends you to /onboarding, where you pick
 # your feeds. On a `json` deployment there is no onboarding, so copy this file to sources.yaml
 # and add the feeds you read. Until it lists one, every run ends having fetched nothing,
 # waiting for onboarding. src/cyris/onboarding_feeds.json holds the feeds the wizard offers,
