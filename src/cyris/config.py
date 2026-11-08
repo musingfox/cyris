@@ -73,6 +73,12 @@ B_GRADE_ENV_VARS: dict[str, str] = {
 }
 
 
+def can_create(path: Path) -> bool:
+    """Whether this user could create `path`: its nearest existing parent is theirs to write."""
+    nearest = next(parent for parent in path.parents if parent.exists())
+    return nearest.is_dir() and os.access(nearest, os.W_OK | os.X_OK)
+
+
 def _fill_from_env(data: object, fields: dict[str, str]) -> object:
     data = {} if not isinstance(data, dict) else dict(data)
     for field, env_name in fields.items():
@@ -278,6 +284,18 @@ class StoreConfig(BaseModel):
     def is_cloudflare(self) -> bool:
         """The tables are Cloudflare D1, reached over REST with Cloudflare credentials."""
         return self.backend == "d1"
+
+    @property
+    def sqlite_not_created(self) -> bool:
+        """A local install's file does not exist yet, and opening it would create it.
+
+        Not one that cannot be created: opening that names the reason.
+        """
+        return (
+            self.backend == "sqlite"
+            and not self.sqlite_path.exists()
+            and can_create(self.sqlite_path)
+        )
 
     @property
     def sql_home(self) -> str:

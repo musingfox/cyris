@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -931,7 +931,7 @@ def doctor(
     from cyris.diagnostics.doctor import run_checks
 
     try:
-        cfg = load_effective_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path, local_file="if_created")
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
         typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
@@ -975,10 +975,10 @@ def config_show(
     """Print every setting's effective value and where it came from. Secrets show only set."""
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.diagnostics.config_show import config_rows, render
+    from cyris.diagnostics.config_show import config_rows, render, store_note
 
     try:
-        cfg = load_effective_config(config_path, sources_path)
+        cfg = load_effective_config(config_path, sources_path, local_file="if_created")
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}", err=True)
         raise typer.Exit(1) from e
@@ -987,6 +987,8 @@ def config_show(
         raise typer.Exit(1) from e
 
     typer.echo(render(config_rows(cfg)))
+    if note := store_note(cfg):
+        typer.echo(f"\n{note}")
 
 
 def _llm_from_values(values: dict):
@@ -1648,7 +1650,11 @@ def _target(to: str) -> str:
     return to
 
 
-def _load_config(config_path: Path, sources_path: Path):
+def _load_config(
+    config_path: Path,
+    sources_path: Path,
+    local_file: Literal["open", "if_created", "never"] = "open",
+):
     """`load_effective_config`, or exit naming why it could not load."""
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
@@ -1656,7 +1662,7 @@ def _load_config(config_path: Path, sources_path: Path):
     try:
         # Already applies the schema when the backend is d1, so an unusable
         # database surfaces here rather than at the first INSERT.
-        return load_effective_config(config_path, sources_path)
+        return load_effective_config(config_path, sources_path, local_file=local_file)
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
         raise typer.Exit(1) from e
@@ -1674,9 +1680,10 @@ def _force_d1_client(config_path: Path, sources_path: Path, to: str = "d1"):
     the backend here is what makes the schema apply on this path too; without
     it the first INSERT dies with `no such table`. `to="sqlite"` gives the
     `LocalD1Client` of `[store] sqlite_path` instead, so the same stores write
-    that file exactly as they write D1.
+    that file exactly as they write D1. Bound for D1, a `sqlite` install's own file
+    is not opened at all: this command does not write there.
     """
-    cfg = _load_config(config_path, sources_path)
+    cfg = _load_config(config_path, sources_path, "open" if to == "sqlite" else "never")
     return cfg, _sql_client(cfg, to)
 
 

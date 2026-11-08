@@ -13,7 +13,7 @@ from aiohttp import web
 from fakes import make_config, seed_d1_settings, settings_toml
 
 from cyris.adapters.gemini_client import GeminiAPIError
-from cyris.bootstrap import load_effective_config
+from cyris.bootstrap import build_store, load_effective_config
 from cyris.config import REQUIRED_KEYS, Config, LLMProviderConfig, load_config
 from cyris.diagnostics import doctor
 from cyris.domain.models import Lane, SourceConfig
@@ -90,6 +90,7 @@ async def test_a_sqlite_store_is_named_with_its_path_and_asks_cloudflare_nothing
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
     cfg = _sqlite_config(tmp_path)
+    build_store(cfg)
 
     with respx.mock:
         anything = respx.route().respond(500)
@@ -105,6 +106,35 @@ async def test_a_sqlite_store_is_named_with_its_path_and_asks_cloudflare_nothing
     assert _by_name(checks, "feed health").status == "skip"
     # Its pages are still files in the vault, so the vault is still probed.
     assert _by_name(checks, "agent vault").status == "ok"
+
+
+async def test_a_sqlite_store_that_is_not_there_is_reported_and_left_uncreated(
+    tmp_path: Path,
+) -> None:
+    cfg = _sqlite_config(tmp_path)
+    cfg.app.agent_vault.path = tmp_path / "agent-vault"
+
+    with respx.mock:
+        anything = respx.route().respond(500)
+        checks = await doctor.run_checks(cfg, deployment_url="")
+
+    assert anything.call_count == 0
+    store = _by_name(checks, "article store")
+    assert store.status == "warn"
+    assert f"not created yet at {cfg.app.store.sqlite_path}" in store.detail
+    assert "first boot" in store.fix
+    assert "sqlite_path" in store.fix
+    assert _by_name(checks, "store wiring").status == "skip"
+    assert _by_name(checks, "agent vault").status == "ok"
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_a_vault_that_could_not_be_created_fails(tmp_path: Path) -> None:
+    (tmp_path / "file").write_text("a file where a directory should be")
+    cfg = _sqlite_config(tmp_path)
+    cfg.app.agent_vault.path = tmp_path / "file" / "agent-vault"
+
+    assert _by_name(await doctor.run_checks(cfg), "agent vault").status == "fail"
 
 
 async def test_an_unopenable_sqlite_file_fails_naming_the_path(tmp_path: Path) -> None:

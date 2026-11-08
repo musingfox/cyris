@@ -44,6 +44,13 @@ def config_rows(cfg: Config) -> list[Row]:
     return [*_baked(cfg), *_identity(cfg), *_secrets(cfg), *_runtime(cfg)]
 
 
+def store_note(cfg: Config) -> str:
+    """What to say of a store that holds nothing yet because it does not exist."""
+    if not cfg.app.store.sqlite_not_created:
+        return ""
+    return _REGISTRY["notes"]["store_not_created"].format(path=cfg.app.store.sqlite_path)
+
+
 def render(rows: list[Row]) -> str:
     """Plain aligned columns, grouped by grade, for pasting into a support chat."""
     header = _REGISTRY["header"]

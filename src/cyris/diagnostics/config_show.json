@@ -15,6 +15,9 @@
     "none": "-",
     "set": "set"
   },
+  "notes": {
+    "store_not_created": "The SQLite store is not created yet: the server, the wizard or `cyris run` creates {path}."
+  },
   "header": ["KEY", "VALUE", "SOURCE"],
   "grades": {
     "A": "A - baked into the image",
