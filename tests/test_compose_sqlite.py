@@ -67,6 +67,14 @@ def test_both_services_mount_one_named_volume_at_the_directory_of_the_default_fi
     assert not (_compose()["volumes"][name] or {}).get("driver_opts")
 
 
+@pytest.mark.parametrize("service", SERVICES)
+def test_no_service_mounts_a_sources_file(service: str) -> None:
+    """A run's sources are the table's, and a missing host file would become a directory."""
+    targets = [_volume(entry)[1] for entry in _compose()["services"][service]["volumes"]]
+
+    assert not any("sources.yaml" in target for target in targets), targets
+
+
 def test_the_default_sqlite_path_is_in_that_directory_inside_the_container() -> None:
     """The image's working directory is /app, and the path is relative to it."""
     workdir = re.search(r"^WORKDIR (\S+)$", (ROOT / "Dockerfile").read_text(), re.M)[1]
@@ -188,11 +196,12 @@ def test_the_probe_builds_its_install_by_the_guides_own_copies() -> None:
     for step in (
         "cp cyris.toml.example cyris.toml",
         "cp .env.example .env",
-        "cp sources.example.yaml sources.yaml",
         "mkdir -p agent-vault",
     ):
         assert step in script, step
         assert step in guide, step
+    assert "sources.yaml" not in script.split("mkdir -p agent-vault")[0]
+    assert "cp sources.example.yaml" not in guide
 
 
 @pytest.mark.parametrize("service", SERVICES)

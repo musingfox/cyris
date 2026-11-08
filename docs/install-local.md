@@ -42,12 +42,10 @@ them: Docker creates a directory where the file should be, and refuses to start 
 
 ```sh
 cp .env.example .env
-cp sources.example.yaml sources.yaml
 mkdir -p agent-vault
 ```
 
-A SQLite install does not read `sources.yaml`; your feeds are saved by the wizard. The file only
-has to exist for the mount, and the copy is empty.
+Your feeds are saved by the wizard, so there is no list of sources to copy.
 
 ## 2. Put your keys in `.env`
 
