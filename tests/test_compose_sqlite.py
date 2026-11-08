@@ -172,3 +172,15 @@ def test_a_backend_in_the_hosts_environment_beats_the_default_but_not_the_file(
 
     assert _backend_resolved(tmp_path / "a", service, "", host_env) == "json"
     assert _backend_resolved(tmp_path / "b", service, named_in_file, host_env) == "sqlite"
+
+
+def test_the_probes_config_names_no_backend_so_the_compose_environment_picks_it() -> None:
+    script = (ROOT / "scripts" / "compose_probe.sh").read_text(encoding="utf-8")
+    [toml] = re.findall(r"cat >cyris\.toml <<'EOF'\n(.*?)\nEOF\n", script, re.S)
+
+    assert "backend" not in toml
+    assert 'provider = "none"' in toml
+
+
+def test_the_probe_is_valid_bash() -> None:
+    subprocess.run(["bash", "-n", str(ROOT / "scripts" / "compose_probe.sh")], check=True)
