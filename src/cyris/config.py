@@ -527,7 +527,7 @@ REQUIRED_KEYS: tuple[str, ...] = tuple(key for key in GRADE_D_KEYS if key not in
 # it: the tuned values a new reader is not asked to choose, and vote similarity's switch,
 # which the vote route saves with them (ADR-0025). The reader confirms them with Next,
 # which writes them into the store once. Nothing reads them as a fallback: a key still
-# missing on a running deployment stays an error (ADR-0003). `cyris.toml.example` holds
+# missing on a running deployment stays an error (ADR-0003). `settings.example.toml` holds
 # the same values, and `tests/test_settings_starting_values.py` keeps the two equal.
 STARTING_VALUES: dict[str, Any] = json.loads(
     (files("cyris") / "settings_starting_values.json").read_text(encoding="utf-8")
@@ -641,7 +641,7 @@ class Config(BaseModel):
                 f"Missing settings in {self.app.store.sql_home}: {keys}. Set them on /settings."
             )
         raise IncompleteSettingsError(
-            f"Missing from cyris.toml: {keys}. cyris.toml.example lists every key."
+            f"Missing from cyris.toml: {keys}. settings.example.toml lists every key."
         )
 
     def awaiting_onboarding(self) -> bool:

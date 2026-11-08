@@ -114,7 +114,7 @@ def _check_settings(cfg: Config) -> Check:
             "settings",
             "fail",
             f"missing from cyris.toml: {missing}",
-            "cyris.toml.example lists every key.",
+            "settings.example.toml lists every key.",
         )
     return Check("settings", "ok", _settings_ok(cfg, "cyris.toml"))
 

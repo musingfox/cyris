@@ -31,7 +31,7 @@ class TestLoadConfig:
 
         project_root = Path(__file__).parent.parent
         cfg = load_config(
-            config_path=project_root / "cyris.toml.example",
+            config_path=project_root / "settings.example.toml",
             sources_path=project_root / "sources.example.yaml",
         )
 
@@ -149,7 +149,7 @@ class TestLoadConfig:
         project_root = Path(__file__).parent.parent
         config_copy = tmp_path / "cyris.toml"
         sources_copy = tmp_path / "sources.yaml"
-        config_copy.write_bytes((project_root / "cyris.toml.example").read_bytes())
+        config_copy.write_bytes((project_root / "settings.example.toml").read_bytes())
         sources_copy.write_bytes((project_root / "sources.example.yaml").read_bytes())
 
         cfg = load_config(config_path=config_copy, sources_path=sources_copy)
@@ -831,7 +831,7 @@ class TestJsonSettingsFromFileOnly:
     def test_the_shipped_example_sets_every_key(self):
         root = Path(__file__).parent.parent
 
-        cfg = load_config(root / "cyris.toml.example", root / "sources.example.yaml")
+        cfg = load_config(root / "settings.example.toml", root / "sources.example.yaml")
 
         assert cfg.missing_settings == []
 
@@ -869,7 +869,7 @@ class TestJsonSettingsFromFileOnly:
         assert "notify" not in GeneralConfig.model_fields
 
     def test_the_shipped_example_omits_general_notify(self):
-        example = Path(__file__).parent.parent / "cyris.toml.example"
+        example = Path(__file__).parent.parent / "settings.example.toml"
 
         assert "[general.notify]" not in example.read_text()
 

@@ -31,7 +31,7 @@ def make_tree(tmp_path: Path, *scripts: str) -> Path:
     for rel in [
         "scripts/provision_trial.py",
         "scripts/derive-wrangler-config.sh",
-        "cyris.toml.example",
+        "settings.example.toml",
         *TEMPLATES,
         *(f"scripts/{s}.py" for s in scripts),
     ]:

@@ -214,7 +214,7 @@ def rig(tmp_path: Path):
         (repo / "scripts/provision_trial.py").write_text("")
         for worker in ("promote", "rss", "newsletter"):
             (repo / "workers" / worker).mkdir(parents=True)
-        (repo / "cyris.toml.example").write_text(EXAMPLE_CONFIG)
+        (repo / "settings.example.toml").write_text(EXAMPLE_CONFIG)
         (repo / f".env.trial-{SLUG}-wizard").write_text(_state(done, email, state))
         (repo / f".env.trial-{SLUG}").write_text(
             f"CLOUDFLARE_API_TOKEN={TOKEN}\nGEMINI_API_KEY=g\nCYRIS_STORE_DATABASE_ID={D1_ID}\n"

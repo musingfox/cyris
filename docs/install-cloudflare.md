@@ -300,7 +300,7 @@ source: on `/settings` → Sources, or with `cyris sources push`. On a D1 deploy
 Work with no UI (bulk article changes, `sources push`, `doctor`) runs from a clone,
 because every command reaches D1 over REST. Use a clone with **no `cyris.toml`**: a
 value set in that file wins over the environment, so a copied example would keep the
-CLI on the local JSON store. Put this in the clone's `.env`:
+CLI on a local SQLite file. Put this in the clone's `.env`:
 
 ```sh
 CYRIS_STORE_BACKEND=d1
@@ -321,10 +321,11 @@ CYRIS_PROMOTE_WORKER_URL=
 CYRIS_PROMOTE_TOKEN=
 ```
 
-`cyris settings push` needs a `cyris.toml` to copy from and `cyris sources push` needs
-a `sources.yaml`; those two commands always write to D1 whatever the backend. Keep that
-file under another name and pass it explicitly (`cyris settings push --config
-settings.toml`), so the clone's other commands still find no `cyris.toml`. Keep the
+`cyris settings push` needs a settings file to copy from and `cyris sources push` needs
+a `sources.yaml`; those two commands always write to D1 whatever the backend. Copy
+`settings.example.toml` to `settings.toml`, which git ignores, and pass it explicitly
+(`cyris settings push --config settings.toml`), so the clone's other commands still find no
+`cyris.toml`. Keep the
 `--env-file /dev/null` habit in this clone: the `.env` now holds a
 `CLOUDFLARE_API_TOKEN` that wrangler would pick up.
 

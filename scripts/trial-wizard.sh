@@ -739,7 +739,7 @@ stage_13() {
       -e '/^\[llm_provider\]/,/^\[digest\]/s/^model = .*/model = "gemini-2.5-flash"/' \
       -e "s/^max_articles_per_digest = .*/max_articles_per_digest = $MAX_ARTICLES/" \
       -e "s/^output_language = .*/output_language = \"$OUTPUT_LANGUAGE\"/" \
-      cyris.toml.example > "$TRIAL_DIR/settings.toml"
+      settings.example.toml > "$TRIAL_DIR/settings.toml"
   grep -qx "output_language = \"$OUTPUT_LANGUAGE\"" "$TRIAL_DIR/settings.toml" || die "output_language did not land in settings.toml."
   # An empty list, so the push reads no sources.yaml from anywhere else.
   printf 'sources: []\n' > "$TRIAL_DIR/sources.yaml"

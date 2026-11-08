@@ -83,7 +83,7 @@ def test_run_names_the_key_cyris_toml_lacks(
     assert result.exit_code == 1
     assert (
         "Missing from cyris.toml: digest.max_articles_per_digest. "
-        "cyris.toml.example lists every key." in caplog.text
+        "settings.example.toml lists every key." in caplog.text
     )
     assert built == []
 

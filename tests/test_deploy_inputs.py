@@ -95,6 +95,7 @@ def test_only_the_app_workers_code_sets_the_setting_that_turns_the_check_off() -
     elsewhere = [
         ".env.example",
         "cyris.toml.example",
+        "settings.example.toml",
         "package.json",
         "wrangler.toml",
         "docker-compose.yml",

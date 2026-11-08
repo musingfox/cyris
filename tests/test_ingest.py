@@ -154,11 +154,12 @@ def write_config(tmp_path: Path) -> tuple[Path, Path]:
     vault = tmp_path / "agent-vault"
     vault.mkdir()
     config_path = tmp_path / "cyris.toml"
-    example = (Path(__file__).resolve().parent.parent / "cyris.toml.example").read_text()
+    example = (Path(__file__).resolve().parent.parent / "settings.example.toml").read_text()
     config_path.write_text(
-        example.replace('path = "./agent-vault"', f'path = "{vault}"')
-        .replace('provider = "anthropic"', 'provider = "none"')
-        .replace('model = "claude-sonnet-4-6"', 'model = ""')
+        example.replace('provider = "anthropic"', 'provider = "none"').replace(
+            'model = "claude-sonnet-4-6"', 'model = ""'
+        )
+        + f'\n[agent_vault]\npath = "{vault}"\n\n[store]\nbackend = "json"\n'
     )
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text('sources:\n  - {"name": "Blog", "url": "https://example.com/feed"}\n')

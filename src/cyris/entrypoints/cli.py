@@ -934,7 +934,10 @@ def doctor(
         cfg = load_effective_config(config_path, sources_path, local_file="if_created")
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
-        typer.echo("  Copy cyris.toml.example and sources.example.yaml, then fill them in.")
+        typer.echo(
+            "  cyris.toml.example shows what the file holds; "
+            "settings.example.toml lists the runtime settings."
+        )
         raise typer.Exit(1) from e
     except D1Error as e:
         # The tables are created here on first boot, so reaching this means D1
@@ -2190,7 +2193,7 @@ def store_diff(
     typer.echo(f"\nshared: {len(local.keys() & remote.keys())}, differing: {mismatched}")
 
 
-settings_app = typer.Typer(help="Fill D1's runtime settings from a cyris.toml")
+settings_app = typer.Typer(help="Fill D1's runtime settings from a settings file")
 app.add_typer(settings_app, name="settings")
 
 
@@ -2278,7 +2281,7 @@ def settings_push(
         "sources.yaml"
     ),
 ) -> None:
-    """Copy each runtime setting D1 lacks from cyris.toml. Never overwrites a row."""
+    """Copy each runtime setting D1 lacks from --config. Never overwrites a row."""
     from cyris.adapters.store.settings import D1Settings
 
     from_file = _file_settings(config_path)

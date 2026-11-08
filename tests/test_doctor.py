@@ -1709,7 +1709,7 @@ async def test_a_json_deployment_without_a_file_fails_listing_every_key(
     settings = _by_name(checks, "settings")
     assert settings.status == "fail"
     assert settings.detail == f"missing from cyris.toml: {', '.join(sorted(REQUIRED_KEYS))}"
-    assert settings.fix == "cyris.toml.example lists every key."
+    assert settings.fix == "settings.example.toml lists every key."
     assert _by_name(checks, "config file").detail == "not found"
 
 

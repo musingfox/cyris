@@ -1,72 +1,26 @@
-# Cyris configuration — copy to cyris.toml and fill in your values.
+# Cyris configuration — copy to cyris.toml. It runs as shipped: the wizard takes a new
+# install from here to its first issue, and it asks for everything this file leaves out.
 # Secrets (API keys, tokens) come from the environment / .env, never here.
-#
-# Edit these first:
-#   [llm_provider] provider and model — match the key in .env, or provider = "none"
-#                  with model = "" for plain excerpts and no key
-#   [general]      timezone and digest_schedule — the hours are read in that zone
-#   [digest]       output_language — the language headlines and summaries are written in
-# The rest works as shipped. Every key in [general], [notify], [llm_provider],
-# [digest], [routing] and [vote_similarity] (threshold aside) must stay present:
-# none has a default in code, and a missing one stops the run.
-# On a Cloudflare deployment ([store] backend = "d1") those keys live in D1 and
-# are set on /settings or with `cyris settings push`; this file does not set them.
-
-[general]
-digest_schedule = ["08:00", "20:00"]   # local clock times to run the digest
-timezone = "Asia/Taipei"
-digest_window_hours = 24
-
-[notify]
-discord_webhook_url = ""                # "" means off; paste a Discord webhook URL to get a message per digest
-email_to = ""                           # "" means off; a verified Email Routing destination address
-email_from = ""                         # an address on one of the account's Email Routing domains
-
-[llm_provider]
-# "anthropic" (ANTHROPIC_API_KEY), "gemini" (GEMINI_API_KEY), "openai" (OPENAI_API_KEY),
-# "workers_ai"
-# (CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying Workers AI -> Read),
-# "ai_gateway" (CLOUDFLARE_AIG_TOKEN + CLOUDFLARE_ACCOUNT_ID; a token carrying
-# Account -> AI Gateway -> Run. The provider's key is stored in the AI Gateway named
-# default, and the model is written google/<model>, e.g. "google/gemini-3.8-flash"),
-# or "none" for plain excerpts with no model and no key (set model = "").
-# workers_ai keeps everything on one Cloudflare account, but it is not yet a
-# drop-in: run `cyris llm-compare` and read both digests before switching.
-provider = "anthropic"
-model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider = "gemini"
-
-[digest]
-max_articles_per_digest = 400           # a run scores and digests the window's newest N, across all sources
-scoring_snippet_length = 1000           # characters of each article the scorer reads
-summarize_snippet_length = 1000         # characters read when summarizing
-filter_snippet_length = 500             # characters read when clustering news and extracting headlines
-output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
-style_prompt = ""                       # optional: your tone/focus, injected into the prompts
-type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
-rank_by_preference = true               # order headlines and Features by your topic votes
-preference_source = "cosine"            # who judges that order: cosine (your topic votes) or clef (needs a Workers AI token and [vote_similarity])
-summarize_follow = false                # explain each follow-lane article as read articles are
-vote_half_life_days = 7                 # a topic vote counts half as much after this many days
-topic_lifetime_days = 7                 # topics seen within this many days are current; one you voted up stays longer
+# Runtime settings are not here either. They live in the store, set in the wizard and
+# on /settings; a key set in this file stops `cyris doctor`, because nothing reads it.
 
 [agent_vault]
 path = "./agent-vault"
 
 [store]
-# Where the article store and the usage log live.
-#   "json" — partition files under [agent_vault] path. No setup, but a dead
-#            machine takes the store with it.
-#   "d1"   — Cloudflare D1. The tables are created on the first boot that reaches
-#            the database, so an empty one needs no setup step. Coming from the
-#            JSON store, copy it over with `cyris store migrate` and compare the
-#            two with `cyris store diff` before switching.
-backend = "json"                        # or CYRIS_STORE_BACKEND
+# Where the article store, the runtime settings, the sources and the usage log live.
+#   "sqlite" — one SQLite file on this machine, at sqlite_path. No setup: the first
+#              server or run creates it.
+#   "d1"     — Cloudflare D1. The tables are created on the first boot that reaches
+#              the database, so an empty one needs no setup step.
+#   "json"   — partition files under [agent_vault] path, for an install that predates
+#              SQLite. `cyris store migrate --to sqlite` moves one across.
+backend = "sqlite"                      # or CYRIS_STORE_BACKEND
+# Relative to this file. Never inside the vault; leave it unset under docker compose.
+# sqlite_path = "state/cyris.sqlite3"   # or CYRIS_STORE_SQLITE_PATH
 database_id = ""                        # or CYRIS_STORE_DATABASE_ID
 # account_id via env: CLOUDFLARE_ACCOUNT_ID
 # API token via env: CLOUDFLARE_API_TOKEN (needs D1 read+write, same token as Pages)
-
-[routing]
-score_threshold = 70                    # two articles on one topic at or above it share the Top story (0-100)
 
 [html_output]
 # The local install's only output: without this (or [promote] publish_enabled)
@@ -91,31 +45,6 @@ custom_domain = ""                      # or CYRIS_PROMOTE_CUSTOM_DOMAIN
 # Optional Cloudflare email-ingestion Worker (see workers/newsletter/).
 worker_url = ""                         # or CYRIS_NEWSLETTER_WORKER_URL
 # Token via env: CYRIS_WORKER_TOKEN
-
-[vote_similarity]
-# Suppress candidates that sit close to a downvoted article. Runs over every
-# candidate, not just scored ones — the scorer skips news, and the class that
-# drew the first downvote was news-tagged. Preview with `cyris vote-sim` before
-# enabling, and compare providers with `cyris embed-compare`.
-enabled = false
-provider = "workers_ai"   # @cf/baai/bge-m3 via CLOUDFLARE_EMBEDDING_API_TOKEN
-                          # + CLOUDFLARE_ACCOUNT_ID. "gemini" uses GEMINI_API_KEY.
-model = ""                # "" uses the provider's default model
-max_seeds = 200           # recent votes on each side a run compares against
-# A `threshold` key here is ignored (ADR-0017): each run suppresses the outliers of its
-# own window, so there is no cutoff to set and none to carry across providers.
-
-# Tracked topics: each issue lists, under Tracking, every candidate whose title sits
-# within `threshold` (a cosine) of the topic's description. Optional: none is valid.
-# No LLM call; the embedder is the one [vote_similarity] names, on or off. There is
-# no default threshold: read one off `cyris topic-sim "<description>" --hours 168`.
-# `model` is the embedding model that threshold was set for; a run embedding with
-# another model skips the topic. A D1 deployment keeps topics on /settings instead.
-# [[tracked_topics]]
-# name = "Anthropic"
-# description = "The company that makes Claude and publishes on AI safety"
-# threshold = 0.6
-# model = "@cf/baai/bge-m3"
 
 [rss]
 # Cloudflare feed-buffer Worker (see workers/rss/): polls feeds hourly into D1 so

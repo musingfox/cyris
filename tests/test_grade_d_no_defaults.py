@@ -156,7 +156,7 @@ def test_one_setting_validates_while_its_siblings_are_required():
 
 
 def test_the_example_config_builds_every_settings_table():
-    cfg = load_config(ROOT / "cyris.toml.example", ROOT / "sources.example.yaml")
+    cfg = load_config(ROOT / "settings.example.toml", ROOT / "sources.example.yaml")
 
     assert all(getattr(cfg.app, table) is not None for table in TABLES)
 
