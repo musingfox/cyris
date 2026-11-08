@@ -63,7 +63,9 @@ rest blank:
 
 None of these is required. With no model key the wizard offers provider None, and the digest lists
 plain excerpts. With no embedder key the first-issue step says vote similarity is still off, and the
-issue is made anyway. The server reads `.env` when it starts, so restart it after an edit.
+issue is made anyway. The server reads `.env` when it starts. After an edit, with `uv`, stop it and run
+`uv run cyris triage-ui` again; under compose, run `docker compose up -d --force-recreate`, because
+`env_file` applies when a container is created and `docker compose restart` keeps the old values.
 
 ## 3. Start the server
 
@@ -251,8 +253,8 @@ sets them.
   looking at another path. A relative `[store] sqlite_path` starts at the directory of `cyris.toml`.
 - **`[store] sqlite_path … is inside the agent vault`**: set `[store] sqlite_path` to a file outside the
   vault. A vault at the repo root holds the default path too.
-- **doctor: `provider is anthropic but ANTHROPIC_API_KEY is empty`**: put the key in `.env` and restart
-  the server, or pick None on `/settings`.
+- **doctor: `provider is anthropic but ANTHROPIC_API_KEY is empty`**: put the key in `.env` and start the
+  server again (under compose, `docker compose up -d --force-recreate`), or pick None on `/settings`.
 - **`waiting for onboarding`**: the store holds no source, so the run ends having fetched nothing. Add one
   on `/onboarding` or `/settings`.
 - **`Not a digest hour (…)`**: `--if-due` outside the schedule, which is normal. Use `--period` to run
