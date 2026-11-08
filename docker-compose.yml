@@ -4,6 +4,9 @@ services:
     env_file: .env
     environment:
       - TZ=${TZ:-Asia/Taipei}
+      # The cron role exports nothing, so the backend is set here, as on `ui`. A
+      # `[store] backend` line in cyris.toml beats it: an install that names json keeps json.
+      - CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-sqlite}
     volumes:
       # Single-file mounts bind an inode, and editors replace files by rename, so
       # editing either of these leaves the container reading a deleted inode
@@ -11,9 +14,13 @@ services:
       # Plain `up -d` won't do it: compose sees no config change and leaves it running.
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
-      # The json store and the generated HTML. Inside the container they would go
-      # with it on the next recreate.
+      # The generated HTML, and the json store of an install that still names json.
+      # Inside the container they would go with it on the next recreate.
       - ./agent-vault:/app/agent-vault
+      # The SQLite file (`[store] sqlite_path`, default state/cyris.sqlite3, under /app).
+      # A named volume, never a bind mount: a macOS host process and a container on one
+      # bind-mounted SQLite file corrupt it (ADR-0025), so no host path may reach it.
+      - cyris-state:/app/state
     restart: unless-stopped
 
   # The archive and /settings. The role listens on every address inside the container,
@@ -26,11 +33,18 @@ services:
       - TZ=${TZ:-Asia/Taipei}
       - CYRIS_ROLE=ui
       # The role's default is the Cloudflare deployment's d1.
-      - CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-json}
+      - CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-sqlite}
     ports:
-      - "127.0.0.1:8766:8766"
+      # The host port is the only thing the environment may change.
+      - "127.0.0.1:${CYRIS_UI_PORT:-8766}:8766"
     volumes:
       - ./cyris.toml:/app/cyris.toml:ro
       - ./sources.yaml:/app/sources.yaml:ro
-      - ./agent-vault:/app/agent-vault:ro
+      # Writable: the wizard's last step (`POST /run`) starts a run inside this container,
+      # and the run writes agent-vault/html/.
+      - ./agent-vault:/app/agent-vault
+      - cyris-state:/app/state
     restart: unless-stopped
+
+volumes:
+  cyris-state:

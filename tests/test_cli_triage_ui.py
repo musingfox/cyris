@@ -9,7 +9,7 @@ import signal
 from pathlib import Path
 
 import pytest
-from aiohttp.test_utils import TestClient, TestServer
+from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 from fakes import seed_d1_settings
 from typer.testing import CliRunner
 
@@ -234,3 +234,63 @@ def test_with_html_output_off_the_command_gives_the_server_no_pages(config) -> N
     _run(config)
 
     assert FakeServer.calls[0][1]["html_dir"] is None
+
+
+class _LocalServer(TriageServer):
+    """The real server as the command builds it, stopping the command once it has started."""
+
+    built: list["_LocalServer"] = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        _LocalServer.built.append(self)
+
+    async def start(self) -> None:
+        asyncio.get_running_loop().call_soon(signal.raise_signal, signal.SIGINT)
+
+
+def _post_run_status(config: tuple[Path, Path], monkeypatch, store: str) -> tuple[int, list]:
+    """The status `POST /run` gets from the server the command builds on `store`, and the
+    runs it started. The run itself is recorded, never spawned."""
+    config_path, _ = config
+    with config_path.open("a") as toml:
+        toml.write(
+            f'\n[store]\nbackend = "{store}"\n'
+            f'sqlite_path = "{config_path.parent / "state" / "cyris.sqlite3"}"\n'
+        )
+    started: list[tuple[str | None, str | None]] = []
+    monkeypatch.setattr(
+        "cyris.entrypoints.cli._start_detached_run",
+        lambda _config, _sources, period, date: started.append((period, date)),
+    )
+    _LocalServer.built = []
+    monkeypatch.setattr("cyris.entrypoints.triage_server.TriageServer", _LocalServer)
+
+    result = _run(config)
+    assert result.exit_code == 0, result.output
+    [server] = _LocalServer.built
+
+    async def post() -> int:
+        # Resolved through the app's router, as a request is, without a socket.
+        request = make_mocked_request("POST", "/run?period=morning", app=server._app)
+        match = await server._app.router.resolve(request)
+        if match.http_exception is not None:
+            return match.http_exception.status
+        return (await match.handler(request)).status
+
+    return asyncio.run(post()), started
+
+
+def test_a_json_server_has_no_post_run(config: tuple[Path, Path], monkeypatch) -> None:
+    """A json install has no wizard, and a run started here would write beside the scheduler's."""
+    status, started = _post_run_status(config, monkeypatch, "json")
+
+    assert status in (404, 405)
+    assert started == []
+
+
+def test_a_sqlite_server_still_accepts_post_run(config: tuple[Path, Path], monkeypatch) -> None:
+    status, started = _post_run_status(config, monkeypatch, "sqlite")
+
+    assert status == 200
+    assert started == [("morning", None)]
