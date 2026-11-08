@@ -1,7 +1,7 @@
 """A new local install reaches its first issue on a SQLite file, through its own server.
 
-`cyris triage-ui` runs as a subprocess on an empty directory whose `cyris.toml` names the
-`sqlite` store and nothing else about it (ADR-0025). The test sends what the reader's
+`cyris triage-ui` runs as a subprocess on an empty directory whose `cyris.toml` is
+`cyris.toml.example`, copied unchanged (ADR-0025). The test sends what the reader's
 browser sends on the wizard alone, in the order `static/onboarding.js` sends it, and no
 /settings save: the reader answers each step, leaves Notifications empty, picks None
 and the embedder whose key is present on the Model step and keeps every other value
@@ -118,6 +118,10 @@ class Install:
     records: list[dict]
     # How many requests the proxy had seen when `cyris doctor` started.
     records_before_doctor: int
+    # `cyris doctor` before the server's first start, and which of the install's own
+    # directories it left behind.
+    first_boot_doctor: subprocess.CompletedProcess
+    left_by_first_boot_doctor: list[str]
     routes: list[str]
     log: str
 
@@ -167,6 +171,21 @@ def _wait_for_run(browser: _Browser, after: int, log: Path) -> dict:
     raise AssertionError(f"no run was recorded in {harness.RUN_SECONDS}s\n{tail}")
 
 
+def _doctor(run_dir: Path, config: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            str(harness.VENV_BIN / "cyris"), "doctor",
+            "--config", str(config),
+            "--sources", str(run_dir / "sources.yaml"),
+        ],
+        cwd=run_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=harness.RUN_SECONDS,
+    )  # fmt: skip
+
+
 @pytest.fixture(scope="module")
 def install(tmp_path_factory) -> Install:
     run_dir = tmp_path_factory.mktemp("e2e-local-install")
@@ -183,6 +202,10 @@ def install(tmp_path_factory) -> Install:
     )
     with harness.fakes(run_dir, scenario) as (proxy_url, ca_file):
         env = harness.cyris_env(run_dir, proxy_url, ca_file)
+        first_boot_doctor = _doctor(run_dir, config, env)
+        left_by_first_boot_doctor = [
+            name for name in ("state", "agent-vault") if (run_dir / name).exists()
+        ]
         with harness.triage_ui(run_dir, env) as base, harness.local_client() as client:
             browser = _Browser(client, base)
             # The page loads: the opening's headlines, the stored settings, the feed list.
@@ -226,18 +249,7 @@ def install(tmp_path_factory) -> Install:
             ended = _wait_for_run(browser, after, run_dir / "triage-ui.log")
             page = client.get(f"{base}/{issue['date']}-{issue['period']}")
             records_before_doctor = len(harness.read_records(run_dir))
-            doctor = subprocess.run(
-                [
-                    str(harness.VENV_BIN / "cyris"), "doctor",
-                    "--config", str(config),
-                    "--sources", str(run_dir / "sources.yaml"),
-                ],
-                cwd=run_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=harness.RUN_SECONDS,
-            )  # fmt: skip
+            doctor = _doctor(run_dir, config, env)
     return Install(
         dir=run_dir,
         items=items,
@@ -249,9 +261,27 @@ def install(tmp_path_factory) -> Install:
         doctor=doctor,
         records=harness.read_records(run_dir),
         records_before_doctor=records_before_doctor,
+        first_boot_doctor=first_boot_doctor,
+        left_by_first_boot_doctor=left_by_first_boot_doctor,
         routes=json.loads((run_dir / "routes.json").read_text(encoding="utf-8")),
         log=(run_dir / "triage-ui.log").read_text(encoding="utf-8", errors="replace"),
     )
+
+
+def test_the_install_is_the_example_copied_unchanged(install) -> None:
+    config = (install.dir / "cyris.toml").read_bytes()
+
+    assert config == harness.LOCAL_INSTALL_EXAMPLE.read_bytes()
+
+
+def test_doctor_takes_the_copy_as_a_first_boot_and_creates_nothing(install) -> None:
+    out = install.first_boot_doctor.stdout
+    lines = out.splitlines()
+
+    assert any(line.startswith("✓ file settings —") for line in lines), out
+    assert any("article store (sqlite) — not created yet" in line for line in lines), out
+    assert [line.split(" — ")[0] for line in lines if line.startswith("✗")] == ["✗ settings"], out
+    assert install.left_by_first_boot_doctor == []
 
 
 def test_every_request_is_one_the_wizard_sends(install) -> None:
