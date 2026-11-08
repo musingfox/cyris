@@ -414,6 +414,21 @@ class TestStoreBackendFromEnv:
         with pytest.raises(ValueError, match="inside the agent vault"):
             load_config(config_file, tmp_path / "nope.yaml")
 
+    def test_a_vault_at_the_working_directory_is_refused_naming_the_fix(
+        self, tmp_path, monkeypatch
+    ):
+        """The default path falls inside this vault, and the reader never wrote either line."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CYRIS_STORE_SQLITE_PATH", raising=False)
+        config_file = tmp_path / "cyris.toml"
+        config_file.write_text('[store]\nbackend = "sqlite"\n[agent_vault]\npath = "."\n')
+
+        with pytest.raises(ValueError) as refused:
+            load_config(config_file, tmp_path / "nope.yaml")
+
+        assert "state/cyris.sqlite3 is inside the agent vault" in str(refused.value)
+        assert "Set [store] sqlite_path to a file outside the vault." in str(refused.value)
+
     def test_file_backend_wins_over_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
         config_file = tmp_path / "cyris.toml"

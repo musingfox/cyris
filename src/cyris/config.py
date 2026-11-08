@@ -455,7 +455,8 @@ def sqlite_file_in_vault(app: AppConfig) -> str | None:
     return (
         f"[store] sqlite_path {app.store.sqlite_path} is inside the agent vault "
         f"{app.agent_vault.path}: docker compose bind-mounts the vault, and a host "
-        "process and a container on one SQLite file corrupt it. Put it elsewhere."
+        "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
+        "to a file outside the vault."
     )
 
 
