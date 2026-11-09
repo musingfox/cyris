@@ -1968,7 +1968,11 @@ def test_the_landing_page_drops_a_claim_the_product_does_not_keep(retired: str) 
     assert retired not in WEBSITE.read_text()
 
 
-def test_every_landing_description_leads_with_the_owners_phrase() -> None:
+# The page's current lead, not yet confirmed as the owner's.
+DESCRIPTION_LEAD = {"en": "First things first", "zh": "要事第一"}
+
+
+def test_every_landing_description_is_one_text_per_language_with_the_same_lead() -> None:
     page = WEBSITE.read_text()
     head = re.findall(r'description" content="([^"]*)"', page)
     script = re.findall(r"[dD]escription: '([^']*)'", page)
@@ -1976,8 +1980,8 @@ def test_every_landing_description_leads_with_the_owners_phrase() -> None:
     assert len(head) == len(english) == len(chinese) == 3
     assert len({*head, *english}) == 1
     assert len(set(chinese)) == 1
-    assert head[0].startswith("First things first")
-    assert chinese[0].startswith("要事第一")
+    assert head[0].startswith(DESCRIPTION_LEAD["en"])
+    assert chinese[0].startswith(DESCRIPTION_LEAD["zh"])
 
 
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
