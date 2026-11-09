@@ -1405,8 +1405,7 @@ class TriageServer:
         return web.json_response(
             {
                 "ok": False,
-                "error": 'No writable topic table (store backend is neither "sqlite" nor "d1"): '
-                "edit [[tracked_topics]] in cyris.toml instead.",
+                "error": 'No writable topic table (store backend is neither "sqlite" nor "d1")',
             },
             status=409,
         )

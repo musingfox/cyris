@@ -125,9 +125,7 @@ function markMissing() {
   for (const [tab, labels] of Object.entries(byTab)) {
     const notice = $(`${tab}-missing`);
     notice.textContent = !labels.length ? ""
-      : state.writable
-        ? `Not set yet: ${labels.join(", ")}. The next run stops until they are saved.`
-        : `Missing from cyris.toml: ${labels.join(", ")}. The next run stops until they are added there.`;
+      : `Not set yet: ${labels.join(", ")}. The next run stops until they are saved.`;
     notice.hidden = !labels.length;
     document.querySelector(`.settings-nav a[data-tab="${tab}"]`)
       .classList.toggle("missing", labels.length > 0);
@@ -241,8 +239,7 @@ function render() {
     detectTimezone($("digest-form"));
   } else {
     SETTINGS_NOTICES.forEach((id) => {
-      show("err", "This deployment has no settings store, so nothing can be saved here. " +
-        "Edit cyris.toml instead.", id);
+      show("err", "This deployment has no settings store, so nothing can be saved here.", id);
     });
   }
   updateDependencies();
@@ -687,7 +684,7 @@ const EMPTY = {
   newsletter: "No newsletter sources.",
 };
 
-const NO_SOURCE_TABLE = "No writable source table here — edit sources.yaml instead.";
+const NO_SOURCE_TABLE = "No writable source table here.";
 
 const rowOf = (name) => document.querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
 
@@ -1511,7 +1508,7 @@ let topicModel = "";
 // Which editor is open: null for none, "" for a new topic, else its name.
 let openTopic = null;
 
-const NO_TOPIC_TABLE = "No writable topic table here — edit [[tracked_topics]] in cyris.toml instead.";
+const NO_TOPIC_TABLE = "No writable topic table here.";
 
 const topicRow = (name) => $("topic-body").querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
 
