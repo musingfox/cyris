@@ -200,13 +200,6 @@ class PagesClient:
 
     # ---- the protocol ---------------------------------------------------
 
-    def deploy(self, directory: Path, branch: str = "main") -> DeploymentRecord:
-        """Deploy every file under `directory`. The local-archive path."""
-        files = _collect(directory)
-        if not files:
-            raise PagesDeployError(f"{directory} holds no files to deploy")
-        return self.deploy_files(files, branch=branch)
-
     def deploy_manifest(
         self,
         new_files: dict[str, bytes],
