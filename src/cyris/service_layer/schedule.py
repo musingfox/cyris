@@ -1,6 +1,7 @@
 """Is this hour a digest hour?
 
-The container's cron fires hourly and asks; the answer comes from the effective
+An hourly tick asks (supercronic in the container, or `cyris triage-ui`'s own tick
+on a local store, which `--no-schedule` turns off); the answer comes from the effective
 `digest_schedule`, which the settings page can change without a rebuild. A fixed
 `0 8,20 * * *` crontab could not — it is baked into the image.
 

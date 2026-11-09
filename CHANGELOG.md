@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `cyris triage-ui` schedules a uv install itself: every hour, on the hour, it runs
+  `cyris ingest`, `cyris run --if-due` and `cyris promote-sync`, so the cron line
+  from the install guide can go; remove it if you added one. The schedule runs only
+  while the server runs. `--no-schedule` turns it off, and a store on D1 never ticks.
 - On a SQLite store, a `cyris run` that starts while a digest is running does nothing
   and says so, and so does an hourly run whose issue already exists.
 - `cyris triage-ui` serves the archive. Open `http://127.0.0.1:8766/` to read the

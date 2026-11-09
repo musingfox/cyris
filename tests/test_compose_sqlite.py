@@ -213,5 +213,29 @@ def test_a_copy_of_the_example_resolves_to_sqlite_under_compose(
     assert _backend_resolved(tmp_path, service, example) == "sqlite"
 
 
+def test_the_ui_service_tells_the_server_not_to_schedule(tmp_path: Path) -> None:
+    """Supercronic owns compose's schedule. The real entrypoint runs the service's own command,
+    so a flag the role's `exec` dropped fails here too."""
+    command = _compose()["services"]["ui"]["command"]
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    recorded = tmp_path / "argv"
+    stub = stubs / "cyris"
+    stub.write_text(f"#!/bin/sh\necho \"$*\" > '{recorded}'\n")
+    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+    env = {"PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}", "CYRIS_ROLE": "ui"}
+
+    assert command[0] == "/app/entrypoint.sh"
+    subprocess.run(["sh", str(ENTRYPOINT), *command[1:]], env=env, cwd=tmp_path, check=True)
+
+    argv = recorded.read_text().split()
+    assert argv[0] == "triage-ui"
+    assert "--no-schedule" in argv
+
+
+def test_the_scheduler_service_keeps_the_images_default_command() -> None:
+    assert "command" not in _compose()["services"]["cyris"]
+
+
 def test_the_probe_is_valid_bash() -> None:
     subprocess.run(["bash", "-n", str(ROOT / "scripts" / "compose_probe.sh")], check=True)

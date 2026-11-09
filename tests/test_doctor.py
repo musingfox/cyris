@@ -376,6 +376,17 @@ async def test_an_unwired_rss_buffer_warns_with_the_measured_cost(tmp_path: Path
     assert "95 of the 179" in check.fix
 
 
+async def test_the_rss_hint_does_not_tell_a_reader_to_add_a_second_hourly_ingest(
+    tmp_path: Path,
+) -> None:
+    """The server ticks unless --no-schedule, as supercronic does, so a cron line doubles it."""
+    check = _by_name(await doctor.run_checks(_config(tmp_path)), "rss buffer")
+
+    assert "--no-schedule" in check.fix
+    assert "supercronic" in check.fix
+    assert "Run `cyris ingest` hourly" not in check.fix
+
+
 async def test_a_working_account_token_is_not_called_invalid(tmp_path: Path, monkeypatch) -> None:
     """The bug this replaced: /user/tokens/verify rejects account-owned tokens,
     so doctor called a token invalid three lines under a check that had just

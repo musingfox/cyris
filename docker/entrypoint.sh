@@ -77,7 +77,8 @@ PY
     ;;
   ui)
     export CYRIS_STORE_BACKEND=${CYRIS_STORE_BACKEND:-d1}
-    exec cyris triage-ui --host 0.0.0.0 --port 8766 $CONF
+    # Compose's `ui` service passes --no-schedule here: supercronic owns its schedule.
+    exec cyris triage-ui --host 0.0.0.0 --port 8766 $CONF "$@"
     ;;
   # The local scheduler for a docker compose install, which has no Workers Cron
   # to fire the tick; the default so compose needs no CYRIS_ROLE.

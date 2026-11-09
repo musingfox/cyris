@@ -6,12 +6,13 @@ import json
 import logging
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
 import threading
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Annotated
@@ -23,6 +24,10 @@ from cyris.domain.triage import RejectReason
 
 app = typer.Typer(help="Cyris — AI-powered information digest agent", invoke_without_command=True)
 logger = logging.getLogger("cyris")
+
+# The longest the hourly tick waits before reading the clock again. asyncio's clock stops
+# while a machine sleeps, so one wait for the next hour would fire as late as the lid was shut.
+TICK_WAKE_SECONDS = 30
 
 
 @app.callback()
@@ -1089,11 +1094,19 @@ def triage_ui(
     sources_path: Annotated[Path, typer.Option("--sources", help="Sources file path")] = Path(
         "sources.yaml"
     ),
+    no_schedule: Annotated[
+        bool,
+        typer.Option(
+            "--no-schedule",
+            help="Do not run the hourly tick: something else schedules this store",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Start the settings web UI: LLM provider, digest hours, notifications, sources, topics;
     /labels, the blind-label page; /interest, the interest map; and, when [html_output] is
-    enabled, the archive pages in its output_dir."""
+    enabled, the archive pages in its output_dir. On a local store it also runs the hourly
+    tick, unless --no-schedule says something else does."""
     _setup_logging(verbose)
 
     from cyris.adapters.store.areas import D1AreaStore
@@ -1161,6 +1174,12 @@ def triage_ui(
         typer.echo(f"Settings:  http://{host}:{port}/settings")
         typer.echo(f"Labels:    http://{host}:{port}/labels")
         typer.echo(f"Interest:  http://{host}:{port}/interest")
+        ticker = None
+        if not no_schedule and not cfg.app.store.is_cloudflare:
+            ticker = asyncio.create_task(
+                _tick_on_the_hour(partial(_start_detached_tick, config_path, sources_path))
+            )
+            typer.echo("Schedule:  hourly, while this server runs")
         typer.echo("Press Ctrl+C to stop")
 
         # In the Container this process is PID 1, and Linux drops signals that
@@ -1183,6 +1202,8 @@ def triage_ui(
         except asyncio.CancelledError:
             pass
         finally:
+            if ticker is not None:
+                ticker.cancel()
             await server.stop()
             logger.info("triage-ui: stopped")
 
@@ -1206,16 +1227,71 @@ def _start_detached_run(
         args = ["--if-due"]
     else:
         args = ["--period", period, *(["--date", date] if date else [])]
-    argv = [
-        sys.executable, "-m", "cyris", "run", *args,
+    argv = _cyris_argv(config_path, sources_path, "run", *args)
+    logger.info("Starting %s", " ".join(argv[2:]))
+    _spawn_detached(argv)
+
+
+def _start_detached_tick(config_path: Path, sources_path: Path) -> subprocess.Popen:
+    """Start the hour `docker/crontab` runs, on this server's own config, apart from the server.
+
+    One shell line, not a thread here waiting on each step: a server stopped between
+    the poll and the digest would otherwise lose that hour's issue. `;` as in the
+    crontab: a failed poll must not skip the digest, and the digest reads what the poll
+    stored. Its own session and the server's log, as a manual run.
+    """
+    steps = (
+        _cyris_argv(config_path, sources_path, "ingest"),
+        _cyris_argv(config_path, sources_path, "run", "--if-due"),
+        _cyris_argv(config_path, sources_path, "promote-sync"),
+    )
+    logger.info("Schedule: starting the hourly tick")
+    return _spawn_detached(["sh", "-c", "; ".join(shlex.join(step) for step in steps)])
+
+
+def _cyris_argv(config_path: Path, sources_path: Path, command: str, *args: str) -> list[str]:
+    return [
+        sys.executable, "-m", "cyris", command, *args,
         "--config", str(config_path), "--sources", str(sources_path),
     ]  # fmt: skip
-    logger.info("Starting %s", " ".join(argv[2:]))
-    run = subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True)
-    # Reaped by a thread of its own, so the run leaves no zombie behind and the
-    # request that started it is answered at once. Daemon: a server stopping
-    # mid-run does not wait for it, and the run carries on in its own session.
-    threading.Thread(target=run.wait, name=f"cyris-run-{run.pid}", daemon=True).start()
+
+
+def _spawn_detached(argv: list[str]) -> subprocess.Popen:
+    child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True)
+    # Reaped by a thread of its own, so the child leaves no zombie behind and the
+    # caller goes on at once. Daemon: a server stopping mid-run does not wait for
+    # it, and the child carries on in its own session.
+    threading.Thread(target=child.wait, name=f"cyris-run-{child.pid}", daemon=True).start()
+    return child
+
+
+def _local_now() -> datetime:
+    return datetime.now().astimezone()
+
+
+async def _tick_on_the_hour(start_tick, clock=None, sleep=asyncio.sleep) -> None:
+    """Call `start_tick` when this machine's clock enters a new hour, as cron would.
+
+    Skips an hour whose previous tick has not ended, as supercronic does. A tick that
+    cannot start is logged and the next hour tries again, so it costs the server nothing.
+    """
+    clock = clock or _local_now
+    last_hour = clock().replace(minute=0, second=0, microsecond=0)
+    running = None
+    while True:
+        now = clock()
+        hour = now.replace(minute=0, second=0, microsecond=0)
+        if hour != last_hour:
+            last_hour = hour
+            if running is not None and running.poll() is None:
+                logger.warning("Schedule: the last tick is still running; skipping this hour")
+            else:
+                try:
+                    running = start_tick()
+                except Exception:  # noqa: BLE001 - the next hour tries again
+                    logger.exception("Schedule: could not start the hourly tick")
+        until_next_hour = (hour + timedelta(hours=1) - now).total_seconds()
+        await sleep(min(until_next_hour, TICK_WAKE_SECONDS))
 
 
 # Articles management sub-app

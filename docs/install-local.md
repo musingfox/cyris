@@ -79,8 +79,8 @@ uv run cyris triage-ui
 docker compose up -d
 ```
 
-This builds the image and starts two containers: `ui`, the server, and `cyris`, the scheduler of
-step 5. The server is published on this machine only; set `CYRIS_UI_PORT` to publish another host
+This builds the image and starts two containers: `ui`, the server, and `cyris`, the scheduler
+([step 5](#5-the-schedule)). The server is published on this machine only; set `CYRIS_UI_PORT` to publish another host
 port.
 
 Either way the wizard is now at <http://127.0.0.1:8766/onboarding>.
@@ -100,30 +100,37 @@ save, and `sources` warns that it is waiting for onboarding. Before the server's
 `article store (sqlite)` also says `not created yet`, because the server creates the file. If it
 says that afterwards, the command is looking in another directory.
 
-## 5. Schedule it
+## 5. The schedule
 
-Both ways run hourly: `cyris ingest` stores what the feeds hold, then `cyris run --if-due` does
-nothing except on the hours you chose and picks `--period` from which hour it is. A feed keeps only
-a few hours of entries, so without the hourly `ingest` a digest misses what a busy feed dropped since
-the last one.
+There is nothing to set up. Both ways run hourly, on the hour: `cyris ingest` stores what the feeds
+hold, then `cyris run --if-due` does nothing except on the hours you chose and picks `--period` from
+which hour it is, then `cyris promote-sync` runs. A feed keeps only a few hours of entries, so without
+the hourly `ingest` a digest misses what a busy feed dropped since the last one.
 
-**With `docker compose`** there is nothing to do: the `cyris` container runs supercronic, which fires
-`cyris ingest`, then `cyris run --if-due`, and `cyris promote-sync` every hour. The compose `TZ` only
-changes log timestamps; the schedule follows the timezone you saved.
+**The schedule runs only while the server or its container runs. A machine or a server that is off
+fetches nothing**, and an hour it misses is not made up: what a feed dropped meanwhile is gone, and a
+digest hour it slept through has no issue.
 
-**With `uv`**, use cron. Cron starts in your home directory with a minimal `PATH`, so change into the
-repo and give `uv` by its absolute path (`command -v uv` prints it):
+**With `uv`**, `uv run cyris triage-ui` runs the hour itself, by this machine's clock, and logs it where
+the server logs. Keep it running from the repo root, as a login item or a service. Stopping it does not
+stop a run already under way. If an earlier version of this guide had you add a cron line, remove it.
+`--no-schedule` turns the schedule off, for a store something else schedules.
 
-```cron
-0 * * * * cd /path/to/cyris && { /path/to/uv run cyris ingest; /path/to/uv run cyris run --if-due; } >> "$HOME/cyris.log" 2>&1
-```
+**With `docker compose`**, the `cyris` container runs supercronic, which fires the same commands, and
+the `ui` container runs the server with `--no-schedule`. The compose `TZ` only changes log timestamps;
+the schedule follows the timezone you saved.
 
-Keep `uv run cyris triage-ui` running as well, as a login item or a service, to read the archive.
+To make an issue now, run `cyris run --period morning`; `--period` is `morning` or `evening` and names
+the issue, and `--force` reprocesses a window already processed.
 
-A fixed `cyris run` line per hour, without `--if-due` or `--period`, labels every issue `morning`, and
-the evening run overwrites that morning's digest. To make an issue now, run `cyris run --period morning`;
-`--period` is `morning` or `evening` and names the issue, and `--force` reprocesses a window already
-processed.
+One store runs one `cyris run` at a time, whether the hourly tick or you started it. A `cyris run`
+that starts while another is under way does nothing and says so in the log. So does an hourly run
+whose issue already exists, and `cyris run --period morning` is how to make that issue again. A run
+you started by hand that is still going when a digest hour begins therefore costs that hour its
+issue; its articles wait for the next one.
+
+`cyris regenerate --mode rerun --publish` takes no such lock, so do not start it while a run is
+under way.
 
 ## Where the state is
 
@@ -138,6 +145,9 @@ git also ignores:
 - `agent-vault/html/<date>-<period>-raw.html`: every article the run judged, including what the
   digest dropped
 - `agent-vault/html/index.html`: the archive, which the server shows at `http://127.0.0.1:8766/`
+
+An empty `cyris.sqlite3.run-lock` sits beside the file on either install. It is what keeps one digest
+at a time, holds nothing, and needs no backup.
 
 **With `docker compose`**, both containers run on one file, `/app/state/cyris.sqlite3`, in the named
 volume `cyris-state`, and `./agent-vault` is bind-mounted for the pages. Leave `[store] sqlite_path` and
@@ -194,15 +204,16 @@ the same disk does not survive that disk.
 Stop every process that has the file open first. One left running writes its old state back over the
 restored file. The steps below replace the store, so anything written after the backup is gone.
 
-**With `uv`**, stop `uv run cyris triage-ui`, remove the cron line of step 5 for now and wait for a
-running job to end, then:
+**With `uv`**, stop `uv run cyris triage-ui`, which stops the schedule, and wait for a run it started to
+end: it carries on without the server, and `pgrep -fl "cyris (ingest|run|promote-sync)"` prints nothing
+once it has. Then:
 
 ```sh
 rm -f state/cyris.sqlite3-wal state/cyris.sqlite3-shm
 cp state/cyris-backup.sqlite3 state/cyris.sqlite3
 ```
 
-Start the server again and put the cron line back.
+Start the server again, which starts the schedule again.
 
 **With `docker compose`:**
 
@@ -260,8 +271,8 @@ store empty.
 
 1. Do steps 1 to 3 of [the Cloudflare guide](install-cloudflare.md): the D1 database, the Pages project
    name and the API token.
-2. Stop the local scheduler: remove the cron line, or `docker compose down`. Two schedulers publishing
-   one Pages project is the failure mode.
+2. Stop the local scheduler: stop `uv run cyris triage-ui`, or `docker compose down`. Two schedulers
+   publishing one Pages project is the failure mode. A server pointed at D1 does not schedule anything.
 3. Continue the Cloudflare guide from step 4. Its wizard takes your settings and feeds again, or set the
    clone up as in [Running the CLI against the deployment](install-cloudflare.md#running-the-cli-against-the-deployment)
    and push them from files.
@@ -273,7 +284,7 @@ sets them.
 
 - **`Missing settings in the SQLite store: …`**: the wizard has not finished. Open `/onboarding`, or set
   the keys on `/settings`. If the line before it is `Config file not found: cyris.toml`, the command ran
-  outside the repo root; in cron, add `cd /path/to/cyris &&`.
+  outside the repo root; start a login item or a service for the server from there as well.
 - **doctor: `config file — not found`**: the same, or a mistyped `--config`.
 - **doctor: `article store (sqlite) — not created yet` on an install you already use**: the command is
   looking at another path. A relative `[store] sqlite_path` starts at the directory of `cyris.toml`.
@@ -285,11 +296,15 @@ sets them.
   on `/onboarding` or `/settings`.
 - **`Not a digest hour (…)`**: `--if-due` outside the schedule, which is normal. Use `--period` to run
   now.
-- **The evening digest replaced the morning one**: the scheduled command lacks `--if-due`.
+- **`A digest is already running on this store`** or **`… issue already exists; this tick does
+  nothing`**: the rule of [step 5](#5-the-schedule), which is normal.
+- **The evening digest replaced the morning one**: a command you scheduled yourself lacks `--if-due`:
+  without it or `--period`, every issue is labelled `morning`.
+- **No new articles, and nothing in the log on the hour**: the server is not running, or it was started
+  with `--no-schedule`.
 - **`docker compose up` says a mount is not a file, or `cyris.toml` is a directory**: a source was missing
   the first time. Remove the directory Docker made, then do step 1's copies.
 - **compose ignores an edit to `cyris.toml`**: `docker compose up -d --force-recreate`.
-- **`Promotion sync not configured` every hour in the compose log**: harmless; there is no vote Worker
-  locally.
-- **doctor warns `rss buffer — not configured`**: informational on a local install that runs `cyris
-  ingest` hourly, as step 5 schedules it.
+- **`Promotion sync not configured` every hour in the log**: harmless; there is no vote Worker locally.
+- **doctor warns `rss buffer — not configured`**: informational on a local install, which runs `cyris
+  ingest` hourly ([step 5](#5-the-schedule)).
