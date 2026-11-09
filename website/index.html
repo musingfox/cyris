@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#07070a">
 <title>Cyris: Put your attention on what really matters.</title>
-<meta name="description" content="Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.">
+<meta name="description" content="First things first: one digest from the feeds and newsletters you subscribe to, with the full list beside it.">
 <link rel="canonical" href="https://cyris.musingfox.com/">
 <meta property="og:title" content="Cyris: Put your attention on what really matters.">
-<meta property="og:description" content="Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.">
+<meta property="og:description" content="First things first: one digest from the feeds and newsletters you subscribe to, with the full list beside it.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://cyris.musingfox.com/">
 <meta property="og:image" content="https://cyris.musingfox.com/assets/social.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Cyris: Put your attention on what really matters.">
-<meta name="twitter:description" content="Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.">
+<meta name="twitter:description" content="First things first: one digest from the feeds and newsletters you subscribe to, with the full list beside it.">
 <meta name="twitter:image" content="https://cyris.musingfox.com/assets/social.png">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -362,7 +362,7 @@ html[lang="zh-Hant"] em { font-style: normal; }
                     <p class="say" data-zh="你替每個來源選一條 lane，&lt;em&gt;lane 決定&lt;/em&gt; Cyris 怎麼處理它的文章。">You give each source a lane, and <em>the lane decides</em> what Cyris does with its articles.</p>
                     <dl class="lanes">
                         <div><dt>read</dt><dd data-zh="每篇文章都會整理重點並評分。">Each article is summarized and scored.</dd></div>
-                        <div><dt>follow</dt><dd data-zh="每篇文章都照原文送達，不評分。">Each article comes through as written and is never scored.</dd></div>
+                        <div><dt>follow</dt><dd data-zh="文章不評分，也不經 LLM 篩選。">Articles are not scored and not filtered by the LLM.</dd></div>
                         <div><dt>skim</dt><dd data-zh="文章會經過篩選，同一主題的新聞會歸在一起。">Articles are filtered, and news on one topic is grouped together.</dd></div>
                     </dl>
                 </li>
@@ -370,7 +370,7 @@ html[lang="zh-Hant"] em { font-style: normal; }
                     <p class="say" data-zh="你選的 lane &lt;em&gt;決定每篇文章落在哪一層&lt;/em&gt;。">The lanes you chose <em>set each article's layer</em>.</p>
                     <dl class="lanes layers">
                         <div><dt>Stories</dt><dd data-zh="每篇 read 或 follow 的文章各占一列，附上圖片、重點或摘錄，以及來源。">Each read or follow article gets its own row, with its image, its summary or excerpt, and its source.</dd></div>
-                        <div><dt>Topics</dt><dd data-zh="同一個新聞主題有兩篇以上文章時，會合成一張附圖的卡片，附上一段摘錄和每一篇的連結。">A news topic with two or more articles becomes one card with an image, a short excerpt and a link to each of them.</dd></div>
+                        <div><dt>Topics</dt><dd data-zh="同一個新聞主題有兩篇以上文章時，會合成一張卡片，附上一段摘錄和每一篇的連結，其中有圖時也會附圖。">A news topic with two or more articles becomes one card with a short excerpt, a link to each of them and an image if one of them has it.</dd></div>
                         <div><dt>Headlines</dt><dd data-zh="只有一篇文章的主題或篩選後的標題，都會收成一行。篩選掉的文章仍留在完整清單上。">A topic with only one article, or a filtered headline, becomes a single line. What the filter leaves out stays on the full list.</dd></div>
                     </dl>
                 </li>
@@ -381,7 +381,7 @@ html[lang="zh-Hant"] em { font-style: normal; }
                     <p class="say" data-zh="你投下的&lt;em&gt;贊成與反對票&lt;/em&gt;能讓之後的摘要略過與你否決的文章相近的內容。">Your <em>up and down votes</em> can let later issues skip articles like the ones you turned down.</p>
                 </li>
                 <li>
-                    <p class="say" data-zh="摘要會&lt;em&gt;寄到你的信箱&lt;/em&gt;，或以 Discord 訊息附上新一期的連結。">It arrives <em>by email</em>, or as a Discord message that links to the new issue.</p>
+                    <p class="say" data-zh="摘要會&lt;em&gt;寄到你的信箱&lt;/em&gt;，或以 Discord 訊息送達。">It arrives <em>by email</em>, or as a Discord message.</p>
                 </li>
             </ol>
         </div>
@@ -402,7 +402,7 @@ html[lang="zh-Hant"] em { font-style: normal; }
                     </g></svg>
                     <h3 data-zh="在你的電腦上">On your computer</h3>
                     <p class="fig-cap where" data-zh="docker compose 或 uv">docker compose or uv</p>
-                    <p data-zh="在你自己的機器上執行，每小時自動抓取 RSS。免費，LLM 金鑰的用量另計。摘要頁上沒有投票按鈕，投票要在設定精靈或命令列進行。">Runs on your own machine and fetches your RSS feeds every hour by itself. Free, apart from your LLM key's usage. Issue pages have no vote buttons here, so you vote in the setup wizard or from the command line.</p>
+                    <p data-zh="在你自己的機器上執行，每小時自動抓取 RSS。免費，LLM 金鑰的用量另計。摘要頁上沒有投票按鈕，投票要在設定精靈或命令列進行。只透過電子郵件發送的電子報需要電子報 Worker 和你自己的網域；有 RSS 的電子報則和一般 RSS 訂閱一樣。">Runs on your own machine and fetches your RSS feeds every hour by itself. Free, apart from your LLM key's usage. Issue pages have no vote buttons here, so you vote in the setup wizard or from the command line. Email-only newsletters need the newsletter Worker and your own domain; newsletters with an RSS feed work as normal feeds.</p>
                     <span class="go" data-zh="本機安裝指南 &lt;span aria-hidden=&quot;true&quot;&gt;↗&lt;/span&gt;">Local setup guide <span aria-hidden="true">↗</span></span>
                 </a>
             </li>
@@ -470,11 +470,11 @@ html[lang="zh-Hant"] em { font-style: normal; }
     const copy = {
         en: {
             title: 'Cyris: Put your attention on what really matters.',
-            description: 'Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.',
+            description: 'First things first: one digest from the feeds and newsletters you subscribe to, with the full list beside it.',
             ogTitle: 'Cyris: Put your attention on what really matters.',
-            ogDescription: 'Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.',
+            ogDescription: 'First things first: one digest from the feeds and newsletters you subscribe to, with the full list beside it.',
             twitterTitle: 'Cyris: Put your attention on what really matters.',
-            twitterDescription: 'Cyris reads the RSS feeds and newsletters you subscribe to and writes one digest you can finish, with the full article list beside it.',
+            twitterDescription: 'First things first: one digest from the feeds and newsletters you subscribe to, with the full list beside it.',
             language: '繁體中文',
             languageLabel: 'Switch to Traditional Chinese',
             lightTheme: 'Preview light theme',
@@ -482,11 +482,11 @@ html[lang="zh-Hant"] em { font-style: normal; }
         },
         'zh-Hant': {
             title: 'Cyris：把注意力放在真正重要的事情',
-            description: 'Cyris 讀完你訂閱的 RSS 與電子報，寫成一份讀得完的摘要，完整的文章清單就在旁邊。',
+            description: '要事第一：一份摘要，來自你訂閱的 RSS 與電子報，完整清單就在旁邊。',
             ogTitle: 'Cyris：把注意力放在真正重要的事情',
-            ogDescription: 'Cyris 讀完你訂閱的 RSS 與電子報，寫成一份讀得完的摘要，完整的文章清單就在旁邊。',
+            ogDescription: '要事第一：一份摘要，來自你訂閱的 RSS 與電子報，完整清單就在旁邊。',
             twitterTitle: 'Cyris：把注意力放在真正重要的事情',
-            twitterDescription: 'Cyris 讀完你訂閱的 RSS 與電子報，寫成一份讀得完的摘要，完整的文章清單就在旁邊。',
+            twitterDescription: '要事第一：一份摘要，來自你訂閱的 RSS 與電子報，完整清單就在旁邊。',
             language: 'English',
             languageLabel: '切換至英文',
             lightTheme: '預覽淺色主題',
