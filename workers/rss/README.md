@@ -78,8 +78,8 @@ Builds redeploys it; then set `RSS_TOKEN` and the two app secrets as above.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/rss)
 
 For a local install, the app side is `[rss] worker_url` in
-`cyris.toml` plus `CYRIS_WORKER_TOKEN` in `.env`; the feed list still has to be in the store
-(`cyris sources push`).
+`cyris.toml` plus `CYRIS_WORKER_TOKEN` in `.env`; the Worker reads its feed list from Cloudflare D1,
+so it has to be there even on a SQLite install (`cyris sources push` writes D1, whatever the backend).
 
 ## Local development
 
