@@ -153,9 +153,68 @@ docker compose exec cyris cyris run --period morning
 Never open that file from the host, with `sqlite3`, a database browser or `cp` out of the volume's
 directory, and never bind-mount it: a macOS host process and a container on one file corrupt it, even
 when the host only reads
-([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)). Backup steps come in a later
-change; until then a `cp` of the file can lose recent writes. After editing `cyris.toml`, run
-`docker compose up -d --force-recreate`: a plain `up -d` keeps the container reading the old file.
+([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)). To copy it, see
+[Backing up](#backing-up). After editing `cyris.toml`, run `docker compose up -d --force-recreate`: a
+plain `up -d` keeps the container reading the old file.
+
+## Backing up
+
+The SQLite file holds your settings, feeds, articles, votes and run history. `.env`, `cyris.toml` and
+`agent-vault/` are not in it, so copy them as ordinary files.
+
+Do not `cp` the file: recent writes sit beside it in `cyris.sqlite3-wal`, and a copy of the file alone
+loses them. `VACUUM INTO` writes one complete file, and it is safe while the server and the scheduler
+are running. Python's `sqlite3` module runs it on both installs, and the image has no `sqlite3` tool.
+
+**With `uv`** (with a `[store] sqlite_path` of your own, use that path):
+
+```sh
+uv run python -m sqlite3 state/cyris.sqlite3 "VACUUM INTO 'state/cyris-backup.sqlite3'"
+```
+
+If that answers `output file already exists`, move the last backup away and run it again.
+
+**With `docker compose`:**
+
+```sh
+mkdir -p state
+docker compose exec cyris python -m sqlite3 /app/state/cyris.sqlite3 "VACUUM INTO '/tmp/cyris-backup.sqlite3'"
+docker compose cp cyris:/tmp/cyris-backup.sqlite3 ./state/cyris-backup.sqlite3
+docker compose exec cyris rm /tmp/cyris-backup.sqlite3
+```
+
+The second command replaces an earlier `state/cyris-backup.sqlite3` on the host.
+
+Either way the backup is `state/cyris-backup.sqlite3`, which git ignores. It holds your Discord webhook
+URL and your mail addresses, so keep it as you keep `.env`. Copy it off this machine, because a copy on
+the same disk does not survive that disk.
+
+### Restoring
+
+Stop every process that has the file open first. One left running writes its old state back over the
+restored file. The steps below replace the store, so anything written after the backup is gone.
+
+**With `uv`**, stop `uv run cyris triage-ui`, remove the cron line of step 5 for now and wait for a
+running job to end, then:
+
+```sh
+rm -f state/cyris.sqlite3-wal state/cyris.sqlite3-shm
+cp state/cyris-backup.sqlite3 state/cyris.sqlite3
+```
+
+Start the server again and put the cron line back.
+
+**With `docker compose`:**
+
+```sh
+docker compose stop
+docker compose run --rm --no-deps --entrypoint sh -v ./state/cyris-backup.sqlite3:/tmp/cyris-backup.sqlite3:ro cyris -c 'rm -f /app/state/cyris.sqlite3-wal /app/state/cyris.sqlite3-shm && cp /tmp/cyris-backup.sqlite3 /app/state/cyris.sqlite3'
+docker compose up -d
+```
+
+The same steps restore into a new clone, or after `docker compose down -v`: run `docker compose up -d`
+once so that the volume exists, then follow them. Then run `cyris doctor`, which reports the feeds and
+articles it finds.
 
 ## The archive and `/settings`
 
