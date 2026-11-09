@@ -80,7 +80,6 @@ def _deps(tmp_path: Path, publish_site, page_serves) -> Deps:
         llm=None,
         fetch_sources=[],
         html_writer=None,
-        publish=None,
         sync_promotions=None,
         log_usage=lambda content: None,
         publish_site=publish_site,

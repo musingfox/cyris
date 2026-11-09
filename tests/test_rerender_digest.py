@@ -37,7 +37,6 @@ def _deps(tmp_path: Path, db: RecordingD1, llm: FakeLLM) -> Deps:
         llm=llm,
         fetch_sources=[],
         html_writer=HtmlDigestWriter(tmp_path / "html"),
-        publish=None,
         sync_promotions=None,
         log_usage=lambda content: None,
         digest_store=D1DigestStore(db),

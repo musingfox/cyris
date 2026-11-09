@@ -9,7 +9,7 @@ import pytest
 from cyris.adapters.output import pages_deploy
 from cyris.adapters.output import publish as publish_mod
 from cyris.adapters.output.pages_deploy import DeploymentRecord
-from cyris.adapters.output.publish import publish_html_digest
+from cyris.adapters.output.publish import publish_site
 from cyris.service_layer import vote_order
 
 pytestmark = pytest.mark.unit
@@ -33,18 +33,44 @@ def _credentials(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
 
 
+class _Manifest:
+    """An empty manifest, so `publish_site` reads no live index before it deploys."""
+
+    def __init__(self) -> None:
+        self.saved: dict[str, str] | None = None
+
+    def load(self) -> dict[str, str]:
+        return {}
+
+    def save(self, manifest: dict[str, str]) -> None:
+        self.saved = manifest
+
+
+class _Receipts:
+    def exists(self, _project: str) -> bool:
+        return False
+
+    def record(self, _project: str) -> None:
+        pass
+
+
+def _publish(project: str = "cyris-digest") -> bool:
+    return publish_site({"/x.html": b"x"}, SLUG, _Manifest(), project, _Receipts())
+
+
 def _fake_deploy(monkeypatch, *, fails=False, fail_first=0, records=(LANDED,)):
     """Stub the direct-upload client. `records` are the deployments it reports, in
     turn; the last one repeats."""
     runs = []
 
-    def deploy(_self, _directory, branch="main"):
+    def deploy_manifest(_self, _new_files, _manifest, recover, branch="main"):
         runs.append(branch)
         if fails or len(runs) <= fail_first:
             raise publish_mod.PagesDeployError("boom")
-        return records[min(len(runs) - fail_first, len(records)) - 1]
+        return records[min(len(runs) - fail_first, len(records)) - 1], {"/x.html": "h"}
 
-    monkeypatch.setattr(publish_mod.PagesClient, "deploy", deploy)
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
     return runs
 
 
@@ -73,7 +99,7 @@ def test_the_create_stage_is_logged_even_when_cloudflare_reports_none(monkeypatc
     monkeypatch.setattr(pages_deploy.httpx, "Client", real_request)
 
     with caplog.at_level("INFO"):
-        publish_html_digest(Path("html"), "cyris-digest", SLUG)
+        _publish()
 
     infos = [r.message for r in caplog.records if r.levelname == "INFO"]
     assert any("dep-2" in m and "None" in m for m in infos)
@@ -83,7 +109,7 @@ def test_live_page_confirms_the_deploy(monkeypatch):
     _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, LIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert _publish() is True
 
 
 def test_a_landed_deployment_without_a_live_page_is_not_published(monkeypatch):
@@ -94,7 +120,7 @@ def test_a_landed_deployment_without_a_live_page_is_not_published(monkeypatch):
     _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
 
 
 def test_a_deployed_page_is_polled_not_redeployed(monkeypatch):
@@ -106,7 +132,7 @@ def test_a_deployed_page_is_polled_not_redeployed(monkeypatch):
     slept = []
     monkeypatch.setattr(publish_mod.time, "sleep", slept.append)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert _publish() is True
     assert len(runs) == 1
     assert sum(slept) == 120, "the verify window is two minutes of waiting"
 
@@ -153,7 +179,7 @@ def test_verification_tolerates_propagation_delay(monkeypatch):
     _fake_deploy(monkeypatch)
     calls = _fake_get(monkeypatch, ARCHIVE_PAGE, LIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert _publish() is True
     assert len(calls) == 2
 
 
@@ -163,7 +189,7 @@ def test_a_page_that_never_goes_live_is_not_redeployed(monkeypatch):
     runs = _fake_deploy(monkeypatch)
     calls = _fake_get(monkeypatch, ARCHIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
     assert len(runs) == 1
     assert len(calls) == publish_mod.VERIFY_POLLS == 25
 
@@ -172,7 +198,7 @@ def test_a_refused_deployment_is_retried(monkeypatch):
     runs = _fake_deploy(monkeypatch, fail_first=1)
     _fake_get(monkeypatch, LIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert _publish() is True
     assert len(runs) == 2
 
 
@@ -183,7 +209,7 @@ def test_a_deployment_cloudflare_reports_failed_is_deployed_again(monkeypatch):
     runs = _fake_deploy(monkeypatch, records=(FAILED, LANDED))
     _fake_get(monkeypatch, LIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is True
+    assert _publish() is True
     assert len(runs) == 2
 
 
@@ -191,7 +217,7 @@ def test_failed_deployment_retries_are_bounded(monkeypatch):
     runs = _fake_deploy(monkeypatch, records=(FAILED,))
     _fake_get(monkeypatch, LIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
     assert len(runs) == publish_mod.DEPLOY_ATTEMPTS
 
 
@@ -201,14 +227,14 @@ def test_a_deployment_with_no_verdict_and_no_live_page_is_not_redeployed(monkeyp
     monkeypatch.setattr(publish_mod.PagesClient, "get_deployment", lambda _self, _id: queued)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
     assert len(runs) == 1
 
 
 def test_refused_deployment_retries_are_bounded(monkeypatch):
     runs = _fake_deploy(monkeypatch, fails=True)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
     assert len(runs) == publish_mod.DEPLOY_ATTEMPTS
 
 
@@ -220,7 +246,7 @@ def test_a_refused_deployment_skips_verification(monkeypatch):
 
     monkeypatch.setattr(publish_mod.httpx, "get", explode)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
 
 
 def test_a_deployment_cloudflare_reports_failed_skips_verification(monkeypatch):
@@ -231,7 +257,7 @@ def test_a_deployment_cloudflare_reports_failed_skips_verification(monkeypatch):
 
     monkeypatch.setattr(publish_mod.httpx, "get", explode)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
 
 
 def test_slow_refusals_are_not_retried_past_the_publish_budget(monkeypatch):
@@ -239,14 +265,15 @@ def test_slow_refusals_are_not_retried_past_the_publish_budget(monkeypatch):
     monkeypatch.setattr(publish_mod, "_clock", lambda: now[0])
     runs = []
 
-    def deploy(_self, _directory, branch="main"):
+    def deploy_manifest(_self, _new_files, _manifest, recover, branch="main"):
         runs.append(branch)
         now[0] += 100
         raise publish_mod.PagesDeployError("timed out")
 
-    monkeypatch.setattr(publish_mod.PagesClient, "deploy", deploy)
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", deploy_manifest)
+    monkeypatch.setattr(publish_mod.PagesClient, "has_deployments", lambda _self: False)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
     assert len(runs) == 1
     assert now[0] <= publish_mod.PUBLISH_BUDGET_SECONDS
 
@@ -259,16 +286,16 @@ def test_unreachable_page_is_a_failure(monkeypatch):
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False
 
 
 def test_missing_project_name_short_circuits(monkeypatch):
     def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
         raise AssertionError("should not call the API without a project name")
 
-    monkeypatch.setattr(publish_mod.PagesClient, "deploy", explode)
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", explode)
 
-    assert publish_html_digest(Path("html"), "", SLUG) is False
+    assert _publish("") is False
 
 
 def test_missing_credentials_fail_rather_than_calling_the_api(monkeypatch):
@@ -277,6 +304,6 @@ def test_missing_credentials_fail_rather_than_calling_the_api(monkeypatch):
     def explode(*_args, **_kwargs):  # pragma: no cover - must not be reached
         raise AssertionError("should not call the API without a token")
 
-    monkeypatch.setattr(publish_mod.PagesClient, "deploy", explode)
+    monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", explode)
 
-    assert publish_html_digest(Path("html"), "cyris-digest", SLUG) is False
+    assert _publish() is False

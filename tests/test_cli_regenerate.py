@@ -77,7 +77,6 @@ def _rerender_deps(tmp_path: Path, db: RecordingD1, cfg, *, publish_site=None) -
         llm=FakeLLM("{}"),
         fetch_sources=[],
         html_writer=HtmlDigestWriter(tmp_path / "html"),
-        publish=None,
         publish_site=publish_site,
         sync_promotions=None,
         log_usage=lambda content: None,
