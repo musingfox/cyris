@@ -1921,8 +1921,22 @@ async def test_the_local_server_still_takes_no_vote_as_its_card_says() -> None:
     assert json.loads(probe.text)["votes"] is False
 
 
-def test_the_landing_page_does_not_name_the_sources_example() -> None:
-    assert "sources.example.yaml" not in WEBSITE.read_text()
+@pytest.mark.parametrize(
+    "retired",
+    [
+        # A vote moves no published issue while topics last one issue (domain/topics.py).
+        "reorder",
+        "調整之後各期的排序",
+        "data-pre",
+        # News paragraphs are no longer written (ADR-0023): a Topics card lists its articles.
+        "cites each",
+        "引用每一篇",
+        # A new local install goes through the wizard (docs/install-local.md).
+        "sources.example.yaml",
+    ],
+)
+def test_the_landing_page_drops_a_claim_the_product_does_not_keep(retired: str) -> None:
+    assert retired not in WEBSITE.read_text()
 
 
 def test_every_landing_description_leads_with_the_owners_phrase() -> None:
