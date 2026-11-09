@@ -614,6 +614,13 @@ class TestTheModelStep:
         assert '$("o-no-key").hidden = keyed.some((p) => p.configured);' in draw[1]
         assert '${keyed.map((p) => p.env_var).join(", ")}' in draw[1]
 
+    def test_the_line_gives_the_restart_each_install_path_needs(self) -> None:
+        draw = re.search(r"function drawProviders\(stored\) \{(.*?)\n\}\n", ONBOARDING_JS, re.S)
+        assert draw, "no drawProviders in onboarding.js"
+
+        assert "docker compose up -d --force-recreate" in draw[1]
+        assert "cyris triage-ui" in draw[1]
+
 
 def _function_with_args(name: str) -> str:
     return _function(name)
