@@ -1888,29 +1888,58 @@ def _edition_cards() -> dict[str, str]:
     return {"local": local, "cloud": cloud, "hosted": hosted}
 
 
-# Words a limit cannot be stated without, not its sentence. `Worker` alone, because
-# `Workers` is the Cloudflare plan the card also names.
+SENTENCE_ENDS = {"en": r"[.;!?]", "zh": r"[。；！？]"}
+# A limit that something is missing is stated with one of these.
+DENIALS = {"en": r"\b(?:no|not|never|cannot|without)\b|n't", "zh": r"沒有|不|無|未"}
+# What a limit says is needed stops being needed with one of these: `no` within a
+# few words of the need, or a denied verb of needing.
+NEEDS_NOTHING = {
+    "en": r"\bno\s+(?:[\w-]+\s+){{0,3}}?(?:{needs})"
+    r"|(?:\bnot|n't|\bnever)\s+(?:\w+\s+)?(?:need|requir)",
+    "zh": r"不需|無需|無須|毋須|不必|不用|免|不要",
+}
+
+
+# A limit is the words it cannot be stated without, found in one sentence, not the
+# sentence itself, and whether that sentence denies something or names a need.
+# `Worker` alone, because `Workers` is the Cloudflare plan the card also names.
 @pytest.mark.parametrize(
-    ("card", "english", "chinese"),
+    ("card", "limit", "en", "zh", "denied"),
     [
+        ("local", "vote", [r"\bvot"], ["投票"], True),
         (
             "local",
-            [r"\bvot", r"\bnewsletter", r"\bworker\b", r"\bdomain\b"],
-            ["投票", "電子報", r"Worker(?!s)", "網域"],
+            "newsletter",
+            [r"\bnewsletter", r"\bworker\b", r"\bdomain\b"],
+            ["電子報", r"Worker(?!s)", "網域"],
+            False,
         ),
         (
             "cloud",
+            "vote",
             [r"\bvot", r"\bworker\b", r"\bsign|\blog"],
             ["投票", r"Worker(?!s)", "登入"],
+            False,
         ),
     ],
 )
-def test_an_edition_card_names_its_limits_in_both_languages(
-    card: str, english: list[str], chinese: list[str]
+def test_an_edition_card_states_each_limit_in_both_languages(
+    card: str, limit: str, en: list[str], zh: list[str], denied: bool
 ) -> None:
     body = re.search(r'<p data-zh="([^"]*)">(.*?)</p>', _edition_cards()[card], re.DOTALL)
-    assert [word for word in english if not re.search(word, body[2], re.IGNORECASE)] == []
-    assert [word for word in chinese if not re.search(word, body[1])] == []
+    for language, text, words in (("en", body[2], en), ("zh", body[1], zh)):
+        sentences = [
+            sentence
+            for sentence in re.split(SENTENCE_ENDS[language], text)
+            if all(re.search(word, sentence, re.IGNORECASE) for word in words)
+        ]
+        assert sentences, f"{language}: no sentence names all of {words}"
+        if denied:
+            stated = [s for s in sentences if re.search(DENIALS[language], s, re.IGNORECASE)]
+        else:
+            nothing = NEEDS_NOTHING[language].format(needs="|".join(words[1:]))
+            stated = [s for s in sentences if not re.search(nothing, s, re.IGNORECASE)]
+        assert stated, f"{language}: {sentences} no longer state the {limit} limit"
 
 
 async def test_the_local_server_still_takes_no_vote_as_its_card_says() -> None:
