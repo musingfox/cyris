@@ -388,6 +388,17 @@ finished (§5), which names that hour's period and the hour's own local date, so
 up after midnight keeps its issue's date. Without one, the pipeline dates
 the issue when it writes it.
 
+**On a `sqlite` store, one `cyris run` at a time and one tick per issue.** Before it builds anything, a
+non-dry `cyris run` takes the digest-run lock (§4), and one that finds it held does nothing, says
+so and exits 0, whichever period either run is for. The lock covers only a non-dry `cyris run`:
+`cyris regenerate --mode rerun --publish` takes none, so it can overlap a run. The lock is taken in `cyris run` and not in the
+server because under compose the tick and `POST /run` start in two containers. A tick then does
+nothing and says so if its key is already in `digests`, the only state the same-period check reads;
+a run naming `--period` still stores over it, which is how a reader makes an issue again. A manual
+run still going when a digest hour begins therefore costs that hour its issue, and its articles
+stay pending for the next. On `d1` none of this applies and `--if-due` asks only the schedule: the
+Worker decides when to start a run (§5), and `Lifecycle.start` holds one `run` instance.
+
 Each source carries a **lane**, which decides how much attention it gets:
 
 | Lane | Treatment |
@@ -738,6 +749,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
 | HTML digest + raw pages | **published from memory** | same | A hosted tenant's are its `hosted_pages` rows (above), not a Pages project's. `agent-vault/html/` is a local install's; a local `cyris triage-ui` serves it at `/`. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, and a raw page rebuilt from D1 `digest_inputs` with each article's state as it is now, so an issue recorded before `digest_inputs` has no raw page to rebuild |
+| A local install's digest-run lock | **an empty file beside the SQLite file**, `<sqlite_path>.run-lock`; under `docker compose`, in the volume both services mount | same | `take_digest_run_lock` in `adapters/store/local_d1.py`: the `flock` a non-dry `cyris run` holds for as long as it runs (§3.2). The state is the kernel's lock, not the file, which stays empty, so a killed run leaves nothing to clear and a backup or a restore can ignore it. A file of its own because `flock` on the store's file can conflict with SQLite's locks, and not a row because `digest_runs` gets its row only when a run ends. Never on `d1` |
 | Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`**; the launch film in **R2 `musingfox-media`** under `cyris/` | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose

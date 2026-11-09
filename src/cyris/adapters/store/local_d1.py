@@ -13,7 +13,9 @@ it (ADR-0025), which is why `[store] sqlite_path` may not sit in `agent-vault/`.
 
 from __future__ import annotations
 
+import fcntl
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -150,6 +152,31 @@ class LocalD1Client:
 
     def close(self) -> None:
         self._conn.close()
+
+
+def take_digest_run_lock(store_path: Path) -> int | None:
+    """The one-digest-at-a-time lock on this store, as a descriptor to close, or None if held.
+
+    A kernel lock rather than a row: `digest_runs` gets its row only when a run ends, and a
+    row saying a run began would outlive a run that was killed. The kernel drops this one
+    however the process ends, so a crash leaves nothing to clear. A file of its own, because
+    `flock` on the store's file can conflict with SQLite's own locks on some platforms.
+    """
+    path = store_path.with_name(f"{store_path.name}.run-lock")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    except OSError as e:
+        raise LocalD1Error(store_path, f"could not open {path}: {e}") from e
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    except OSError as e:
+        os.close(fd)
+        raise LocalD1Error(store_path, f"could not lock {path}: {e}") from e
+    return fd
 
 
 def _locked(error: sqlite3.OperationalError) -> bool:

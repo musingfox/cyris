@@ -242,8 +242,8 @@ def run(
     _setup_logging(verbose)
 
     from cyris.adapters.store.d1 import D1Error
-    from cyris.bootstrap import build_deps, load_effective_config
-    from cyris.service_layer.run_digest import RunOptions, RunReport, run_digest
+    from cyris.adapters.store.local_d1 import take_digest_run_lock
+    from cyris.bootstrap import load_effective_config
     from cyris.service_layer.schedule import due_period
     from cyris.utils.timezone import now_in_timezone
 
@@ -277,9 +277,11 @@ def run(
         # The schedule lives in D1 so changing it does not need a rebuild. The app
         # Worker's Cron Trigger asks the same question before waking the container
         # (workers/app/src/schedule.js), so a tick ends here only when the Worker
-        # could not read the schedule, or on a `docker compose` install, whose
-        # crontab is hourly and unconditional. Not due is a normal outcome.
-        due = due_period(now_in_timezone(cfg.app.general.timezone), cfg.app.general.digest_schedule)
+        # could not read the schedule, or on a local install, whose tick, from
+        # `cyris triage-ui` or the compose crontab, is hourly and unconditional. Not
+        # due is a normal outcome.
+        now = now_in_timezone(cfg.app.general.timezone)
+        due = due_period(now, cfg.app.general.digest_schedule)
         if due is None:
             message = f"Not a digest hour ({', '.join(cfg.app.general.digest_schedule)})."
             if output is not None:
@@ -288,6 +290,56 @@ def run(
             typer.echo(message)
             return
         period = due
+
+    if dry_run or cfg.app.store.is_cloudflare:
+        _run_pipeline(cfg, period, dry_run, force, date, output, if_due)
+        return
+
+    # A local install's server and its scheduler each start runs on one file, with no
+    # Worker to ask first. A preview publishes nothing, and D1's schedule is the Worker's.
+    try:
+        lock = take_digest_run_lock(cfg.app.store.sqlite_path)
+    except D1Error as e:
+        _echo_d1_failure(e)
+        raise typer.Exit(1) from e
+    if lock is None:
+        typer.echo(f"A digest is already running on this store; this {period} run does nothing.")
+        return
+    try:
+        if if_due and _issue_stored(cfg, now.strftime("%Y-%m-%d"), period):
+            typer.echo(
+                f"The {now:%Y-%m-%d} {period} issue already exists; this tick does nothing. "
+                f"`cyris run --period {period}` makes it again."
+            )
+            return
+        _run_pipeline(cfg, period, dry_run, force, date, output, if_due)
+    finally:
+        os.close(lock)
+
+
+def _issue_stored(cfg, date: str, period: str) -> bool:
+    from cyris.adapters.store.d1 import D1Error
+    from cyris.adapters.store.digests import D1DigestStore
+    from cyris.bootstrap import build_d1_client
+
+    try:
+        return (date, period) in D1DigestStore(build_d1_client(cfg)).issues()
+    except D1Error as e:
+        _echo_d1_failure(e)
+        raise typer.Exit(1) from e
+
+
+def _run_pipeline(
+    cfg,
+    period: str,
+    dry_run: bool,
+    force: bool,
+    date: str | None,
+    output: Path | None,
+    if_due: bool,
+) -> None:
+    from cyris.bootstrap import build_deps
+    from cyris.service_layer.run_digest import RunOptions, RunReport, run_digest
 
     if output is not None:
         typer.echo(f"Store backend: {cfg.app.store.backend}")

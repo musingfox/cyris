@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- On a SQLite store, a `cyris run` that starts while a digest is running does nothing
+  and says so, and so does an hourly run whose issue already exists.
 - `cyris triage-ui` serves the archive. Open `http://127.0.0.1:8766/` to read the
   issue list, an issue and its All articles page, and to move to Settings and back, with
   `[digest] type_scale` applied. It needs `[html_output] enabled`. The vote buttons and
