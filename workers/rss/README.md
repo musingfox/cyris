@@ -14,7 +14,7 @@ Part of the Cloudflare install; the whole order is in
 cron 0 * * * *
   → scheduled(): fetch every feed, 4 at a time → parse → INSERT OR IGNORE → prune 8d after entry
   → cyris run → GET /articles?after=&before= (Bearer) → CloudflareRssSource
-       → Articles → ArticleStore (dedups by URL again, harmlessly)
+       → Articles → D1ArticleStore (dedups by URL again, harmlessly)
 ```
 
 **Needs Workers Paid.** `wrangler.toml` raises the CPU ceiling to 300s because on
@@ -36,7 +36,7 @@ rather than drained loses nothing when a digest crashes:
 | GET  | `/stats` | Row count and the oldest/newest `published_at` |
 
 There is deliberately **no ack endpoint**: this is a retention buffer, not a
-queue (ADR-0001 above). Rows age out 8 days after they entered the buffer, matching the ArticleStore's dedup scan.
+queue (ADR-0001 above). Rows age out 8 days after they entered the buffer, matching the D1ArticleStore's dedup scan.
 
 ## Deploy
 
@@ -77,8 +77,8 @@ Builds redeploys it; then set `RSS_TOKEN` and the two app secrets as above.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/musingfox/cyris/tree/main/workers/rss)
 
-For a local install that uses the `json` store, the app side is `[rss] worker_url` in
-`cyris.toml` plus `CYRIS_WORKER_TOKEN` in `.env`; the feed list still has to be in D1
+For a local install, the app side is `[rss] worker_url` in
+`cyris.toml` plus `CYRIS_WORKER_TOKEN` in `.env`; the feed list still has to be in the store
 (`cyris sources push`).
 
 ## Local development

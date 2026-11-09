@@ -50,7 +50,7 @@ async function ensureSchema(env) {
   schemaApplied = true;
 }
 
-const RETENTION_DAYS = 8; // counted from buffer entry; matches the ArticleStore's dedup scan window
+const RETENTION_DAYS = 8; // counted from buffer entry; matches the D1ArticleStore's dedup scan window
 const FETCH_TIMEOUT_MS = 20000;
 // Substack rate-limits Cloudflare's egress; 10 at once drew HTTP 429s.
 const CONCURRENCY = 4;

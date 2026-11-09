@@ -22,7 +22,7 @@ export function createTypeScale({ env, fetchImpl, now = Date.now, ttlMs = 60000,
     const account = env.CLOUDFLARE_ACCOUNT_ID;
     const database = env.CYRIS_STORE_DATABASE_ID;
     const token = env.CLOUDFLARE_API_TOKEN;
-    if (env.CYRIS_STORE_BACKEND === "json" || !account || !database || !token) return FALLBACK;
+    if (!account || !database || !token) return FALLBACK;
     try {
       const response = await fetchImpl(`${ACCOUNTS_API}/${account}/d1/database/${database}/query`, {
         method: "POST",

@@ -112,13 +112,13 @@ def main(argv: list[str] | None = None, *, clock: Callable[[], float] = time.per
         return 1
 
     try:
-        areas = D1AreaStore(d1).list_areas() if d1 else []
+        areas = D1AreaStore(d1).list_areas()
         area_names = [
             area.name
             for area in sorted(areas, key=lambda a: (a.status != "active", a.position, a.id))
             if area.status in ("active", "proposed")
         ]
-        titles = D1SourceTitles(d1).recent(datetime.now(UTC)) if d1 else None
+        titles = D1SourceTitles(d1).recent(datetime.now(UTC))
         report = asyncio.run(rerun(llm, cfg.sources, titles, area_names, clock))
     except Exception as e:  # noqa: BLE001 - only the class name leaves this script
         print(f"rerun failed: {type(e).__name__}", file=sys.stderr)
