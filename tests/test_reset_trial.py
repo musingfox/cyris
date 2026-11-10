@@ -7,18 +7,27 @@ answers KV commands from a dict, so the SQL the script sends is the SQL that is 
 
 import json
 import re
+import shlex
 import sqlite3
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
 import pytest
 from fakes import CompoundSelectLimitedD1
-from trial_tree import ROOT, SLUG, load, make_tree
+from trial_tree import (
+    ROOT,
+    SLUG,
+    load,
+    make_tree,
+)
 
 pytestmark = pytest.mark.unit
 
 RSS_CONFIG = f"workers/rss/wrangler.trial-{SLUG}.toml"
 PROMOTE_CONFIG = f"workers/promote/wrangler.trial-{SLUG}.toml"
+NEWSLETTER_CONFIG = f"workers/newsletter/wrangler.trial-{SLUG}.toml"
 SCHEMA = ROOT / "src/cyris/adapters/store/schema.sql"
 RSS_WORKER = ROOT / "workers/rss/src/index.js"
 LLM = {"llm_provider.provider": "gemini", "llm_provider.model": "gemini-2.5-flash"}
@@ -48,6 +57,7 @@ class FakeWrangler:
         for statement in _rss_ddl():
             self.db.execute(statement)
         self.kv = {"promote:aa": "{}", "promote:bb": "{}", "other:cc": "{}"}
+        self.newsletter_kv = {"nl:aa": "{}", "nl:bb": "{}", "other:zz": "{}"}
         self.calls: list[list[str]] = []
         self.seed()
 
@@ -89,12 +99,15 @@ class FakeWrangler:
                 return json.dumps([{"results": [], "success": True}])
             rows = [dict(r) for r in self.db.execute(sql)]
             return "banner line\n" + json.dumps([{"results": rows, "success": True}])
-        if cmd[2:5] == ["kv", "key", "list"]:
-            prefix = cmd[cmd.index("--prefix") + 1]
-            return json.dumps([{"name": k} for k in self.kv if k.startswith(prefix)])
-        if cmd[2:5] == ["kv", "bulk", "delete"]:
+        if cmd[2:4] == ["kv", "key"] or cmd[2:5] == ["kv", "bulk", "delete"]:
+            store = {"PROMOTIONS": self.kv, "NEWSLETTERS": self.newsletter_kv}[
+                cmd[cmd.index("--binding") + 1]
+            ]
+            if cmd[4] == "list":
+                prefix = cmd[cmd.index("--prefix") + 1]
+                return json.dumps([{"name": k} for k in store if k.startswith(prefix)])
             for key in json.loads(Path(cmd[5]).read_text(encoding="utf-8")):
-                del self.kv[key]
+                del store[key]
             return ""
         raise AssertionError(f"unexpected command {cmd}")
 
@@ -395,3 +408,247 @@ def test_the_vote_prefix_is_the_promote_workers(reset) -> None:
     worker = (ROOT / "workers/promote/src/index.js").read_text(encoding="utf-8")
 
     assert f'prefix: "{reset.VOTE_PREFIX}"' in worker
+
+
+# --- the newsletter KV
+
+
+@pytest.fixture
+def newsletter_tree(tmp_path: Path) -> Path:
+    return make_tree(tmp_path, "reset_trial", newsletter=True)
+
+
+@pytest.fixture
+def newsletter_reset(newsletter_tree: Path, monkeypatch):
+    return load(newsletter_tree, "reset_trial", monkeypatch)
+
+
+def test_the_dry_run_counts_the_newsletter_issues_and_clears_none(newsletter_reset) -> None:
+    wrangler = FakeWrangler()
+
+    code, out = _main(newsletter_reset, wrangler)
+
+    assert code == 0
+    assert any("KV NEWSLETTERS" in line and "2 stored newsletter issues" in line for line in out)
+    assert wrangler.writes() == []
+    assert set(wrangler.newsletter_kv) == {"nl:aa", "nl:bb", "other:zz"}
+
+
+def test_yes_clears_the_trials_newsletter_issues_from_its_own_kv(newsletter_reset) -> None:
+    wrangler = FakeWrangler()
+
+    code, out = _main(newsletter_reset, wrangler, "--yes")
+
+    assert code == 0, out
+    assert set(wrangler.newsletter_kv) == {"other:zz"}
+    assert set(wrangler.kv) == {"other:cc"}
+    kv = [c for c in wrangler.calls if c[2] == "kv"]
+    configs = {c[c.index("--config") + 1] for c in kv if "NEWSLETTERS" in c}
+    assert configs == {NEWSLETTER_CONFIG}
+    assert all(c[c.index("--env-file") + 1] == "/dev/null" and "--remote" in c for c in kv)
+
+
+def test_no_stored_issue_means_no_newsletter_delete(newsletter_reset) -> None:
+    wrangler = FakeWrangler()
+    wrangler.newsletter_kv = {}
+
+    _main(newsletter_reset, wrangler, "--yes")
+
+    assert not any("NEWSLETTERS" in c for c in wrangler.writes())
+
+
+def test_a_trial_without_a_newsletter_kv_never_touches_one(reset) -> None:
+    wrangler = FakeWrangler()
+
+    code, out = _main(reset, wrangler, "--yes")
+
+    assert code == 0
+    assert not any(
+        "NEWSLETTERS" in " ".join(c) or "newsletter" in " ".join(c) for c in wrangler.calls
+    )
+    assert set(wrangler.newsletter_kv) == {"nl:aa", "nl:bb", "other:zz"}
+    assert not any("newsletter" in line for line in out)
+
+
+def test_a_newsletter_kv_id_that_differs_from_the_wizard_state_is_refused(
+    newsletter_reset, newsletter_tree: Path, capsys
+) -> None:
+    state = newsletter_tree / f".env.trial-{SLUG}-wizard"
+    lines = [ln for ln in state.read_text().splitlines() if "NEWSLETTER_KV" not in ln]
+    state.write_text("\n".join([*lines, "TRIAL_NEWSLETTER_KV_ID=" + "0" * 32]) + "\n")
+    wrangler = FakeWrangler()
+
+    assert newsletter_reset.main(["--slug", SLUG, "--yes"], run=wrangler, say=print) == 1
+    assert "TRIAL_NEWSLETTER_KV_ID=" in capsys.readouterr().err
+    assert wrangler.calls == []
+
+
+def test_a_newsletter_config_naming_production_is_refused_before_any_call(
+    newsletter_reset, newsletter_tree: Path, capsys
+) -> None:
+    path = newsletter_tree / NEWSLETTER_CONFIG
+    path.write_text(path.read_text().replace("cyris-newsletter-alice", "cyris-newsletter"))
+    wrangler = FakeWrangler()
+
+    assert newsletter_reset.main(["--slug", SLUG, "--yes"], run=wrangler, say=print) == 1
+    assert "production name" in capsys.readouterr().err
+    assert wrangler.calls == []
+
+
+# --- the state's id alone says whether the trial has a newsletter Worker
+
+
+def _without_newsletter_id(tree: Path) -> None:
+    state = tree / f".env.trial-{SLUG}-wizard"
+    lines = [ln for ln in state.read_text().splitlines() if "NEWSLETTER_KV" not in ln]
+    state.write_text("\n".join(lines) + "\n")
+
+
+def test_an_id_with_no_config_on_disk_is_refused_and_claims_no_clear(
+    newsletter_reset, newsletter_tree: Path, capsys
+) -> None:
+    (newsletter_tree / NEWSLETTER_CONFIG).unlink()
+    wrangler = FakeWrangler()
+    said: list[str] = []
+
+    code = newsletter_reset.main(["--slug", SLUG, "--yes"], run=wrangler, say=said.append)
+
+    assert code == 1
+    assert wrangler.calls == []
+    assert not any(line.startswith("Reset") for line in said)
+    err = capsys.readouterr().err
+    assert "TRIAL_NEWSLETTER_KV_ID" in err and NEWSLETTER_CONFIG in err
+    assert set(wrangler.newsletter_kv) == {"nl:aa", "nl:bb", "other:zz"}
+
+
+def test_a_config_with_no_saved_id_is_reported_and_its_kv_left_alone(
+    newsletter_reset, newsletter_tree: Path
+) -> None:
+    _without_newsletter_id(newsletter_tree)
+    wrangler = FakeWrangler()
+
+    code, out = _main(newsletter_reset, wrangler, "--yes")
+
+    assert code == 0, out
+    assert {t: wrangler.count(t) for t in newsletter_reset.CLEARED} == dict.fromkeys(
+        newsletter_reset.CLEARED, 0
+    )
+    assert set(wrangler.kv) == {"other:cc"}
+    assert set(wrangler.newsletter_kv) == {"nl:aa", "nl:bb", "other:zz"}
+    assert not any("NEWSLETTERS" in " ".join(c) for c in wrangler.calls)
+    assert not any(NEWSLETTER_CONFIG in c for c in wrangler.calls)
+    notes = [line for line in out if "TRIAL_NEWSLETTER_KV_ID" in line]
+    assert len(notes) == 1
+    assert NEWSLETTER_CONFIG in notes[0] and "left alone" in notes[0]
+    assert "save" in notes[0] and "wizard state" in notes[0]
+    assert out[-1] == f"Reset {SLUG}: it now waits for onboarding."
+
+
+def test_a_config_with_no_saved_id_is_reported_by_the_dry_run_too(
+    newsletter_reset, newsletter_tree: Path
+) -> None:
+    _without_newsletter_id(newsletter_tree)
+    wrangler = FakeWrangler()
+
+    code, out = _main(newsletter_reset, wrangler)
+
+    assert code == 0
+    assert len([line for line in out if "TRIAL_NEWSLETTER_KV_ID" in line]) == 1
+    assert wrangler.writes() == []
+
+
+@pytest.mark.parametrize(
+    "stray",
+    [
+        pytest.param(lambda t: t.replace("cyris-newsletter-alice", "cyris-newsletter"), id="prod"),
+        pytest.param(lambda t: "this is [not toml", id="unparseable"),
+    ],
+)
+def test_a_config_with_no_saved_id_is_reported_and_never_read_or_validated(
+    newsletter_reset, newsletter_tree: Path, stray
+) -> None:
+    _without_newsletter_id(newsletter_tree)
+    path = newsletter_tree / NEWSLETTER_CONFIG
+    path.write_text(stray(path.read_text()))
+    before = path.read_bytes()
+    wrangler = FakeWrangler()
+
+    code, out = _main(newsletter_reset, wrangler, "--yes")
+
+    assert code == 0, out
+    notes = [line for line in out if "TRIAL_NEWSLETTER_KV_ID" in line]
+    assert len(notes) == 1 and NEWSLETTER_CONFIG in notes[0]
+    assert not any(NEWSLETTER_CONFIG in c for c in wrangler.calls)
+    assert path.read_bytes() == before
+    assert set(wrangler.newsletter_kv) == {"nl:aa", "nl:bb", "other:zz"}
+
+
+def _refusal(reset, tree: Path, capsys, *, drop: tuple[str, ...] = ()) -> list[str]:
+    (tree / NEWSLETTER_CONFIG).unlink()
+    state = tree / f".env.trial-{SLUG}-wizard"
+    state.write_text(
+        "".join(
+            ln + "\n" for ln in state.read_text().splitlines() if ln.split("=", 1)[0] not in drop
+        )
+    )
+
+    assert reset.main(["--slug", SLUG, "--yes"], run=FakeWrangler(), say=print) == 1
+
+    return capsys.readouterr().err.splitlines()
+
+
+def test_the_refusal_for_a_missing_config_prints_a_render_command_that_runs(
+    newsletter_reset, newsletter_tree: Path, capsys
+) -> None:
+    lines = _refusal(newsletter_reset, newsletter_tree, capsys)
+
+    line = next(ln for ln in lines if "provision_trial.py render" in ln)
+    tokens = shlex.split(line[line.index("uv run") :])
+    assert tokens[:4] == ["uv", "run", "python", "scripts/provision_trial.py"]
+    done = subprocess.run(
+        [sys.executable, *tokens[3:]], cwd=newsletter_tree, capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stderr
+    assert (newsletter_tree / NEWSLETTER_CONFIG).exists()
+    assert line.startswith("  uv run") and not line.endswith(".")
+    wrangler = FakeWrangler()
+    assert newsletter_reset.main(["--slug", SLUG, "--yes"], run=wrangler, say=print) == 0
+    assert set(wrangler.newsletter_kv) == {"other:zz"}
+
+
+def test_the_refusal_names_the_deploy_as_a_command_on_its_own_line(
+    newsletter_reset, newsletter_tree: Path, capsys
+) -> None:
+    lines = _refusal(newsletter_reset, newsletter_tree, capsys)
+
+    assert f"  uv run python scripts/deploy_trial.py --slug {SLUG}" in lines
+    assert not any(ln.rstrip().endswith((".", ",", ";")) and "uv run" in ln for ln in lines)
+
+
+@pytest.mark.parametrize(
+    "drop,stage",
+    [
+        (("DOMAIN",), 2),
+        (("IMAGE_DIGEST",), 2),
+        (("ACCOUNT_ID", "IMAGE_DIGEST"), 2),
+    ],
+    ids=["domain", "digest", "account-and-digest"],
+)
+def test_the_refusal_names_each_missing_state_key_and_the_stage_that_saves_it(
+    newsletter_reset, newsletter_tree: Path, capsys, drop, stage
+) -> None:
+    lines = _refusal(newsletter_reset, newsletter_tree, capsys, drop=drop)
+
+    err = "\n".join(lines)
+    for key in drop:
+        assert f"  {key}: bash scripts/trial-wizard.sh {SLUG} --from {stage}" in lines
+    assert "--from 8" not in err
+    assert "provision_trial.py render" not in err
+    assert f"uv run python scripts/deploy_trial.py --slug {SLUG}" in err
+
+
+def test_a_trial_with_a_saved_id_gets_no_stray_config_note(newsletter_reset) -> None:
+    code, out = _main(newsletter_reset, FakeWrangler())
+
+    assert code == 0, out
+    assert not any("TRIAL_NEWSLETTER_KV_ID" in line or "left alone" in line for line in out)

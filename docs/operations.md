@@ -102,7 +102,7 @@ before it. This project's trial is `trial1`.
 3. Check the release on the trial. If it is wrong, take production back as *Going back*
    describes.
 
-The rss and vote Workers deploy outside any workflow. `deploy_trial.py` deploys the
+The rss, vote and newsletter Workers deploy outside any workflow. `deploy_trial.py` deploys the
 trial's copies when their code changed, and production's copies then need the same
 deploy by hand.
 

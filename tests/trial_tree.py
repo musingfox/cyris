@@ -17,6 +17,7 @@ SLUG = "alice"
 ACCT = "0123456789abcdef0123456789abcdef"
 DIGEST = "sha256:" + "a" * 64
 KV = "fedcba9876543210fedcba9876543210"
+NEWSLETTER_KV = "1234567890abcdef1234567890abcdef"
 D1 = "11111111-2222-4333-8444-555555555555"
 TEMPLATES = [
     "wrangler.toml",
@@ -26,7 +27,8 @@ TEMPLATES = [
 ]
 
 
-def make_tree(tmp_path: Path, *scripts: str) -> Path:
+def make_tree(tmp_path: Path, *scripts: str, newsletter: bool = False) -> Path:
+    """The tree with one trial rendered; `newsletter` gives it the newsletter Worker too."""
     tree = tmp_path / "tree"
     for rel in [
         "scripts/provision_trial.py",
@@ -38,16 +40,17 @@ def make_tree(tmp_path: Path, *scripts: str) -> Path:
         (tree / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / rel, tree / rel)
     (tree / "scripts/derive-wrangler-config.sh").chmod(0o755)
-    render(tree, DIGEST)
+    render(tree, DIGEST, newsletter=newsletter)
+    ids = f"TRIAL_NEWSLETTER_KV_ID={NEWSLETTER_KV}\n" if newsletter else ""
     (tree / f".env.trial-{SLUG}-wizard").write_text(
-        f"DOMAIN=example.com\nACCOUNT_ID={ACCT}\nTRIAL_KV_ID={KV}\nTRIAL_D1_ID={D1}\n"
+        f"DOMAIN=example.com\nACCOUNT_ID={ACCT}\nTRIAL_KV_ID={KV}\n{ids}TRIAL_D1_ID={D1}\n"
         f"IMAGE_TAG=image/1111111\nIMAGE_DIGEST={DIGEST}\n",
         encoding="utf-8",
     )
     return tree
 
 
-def render(tree: Path, digest: str) -> None:
+def render(tree: Path, digest: str, *, newsletter: bool = False) -> None:
     subprocess.run(
         [
             sys.executable,
@@ -63,6 +66,7 @@ def render(tree: Path, digest: str) -> None:
             digest,
             "--kv-id",
             KV,
+            *(["--newsletter-kv-id", NEWSLETTER_KV] if newsletter else []),
             "--d1-id",
             D1,
         ],
