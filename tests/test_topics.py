@@ -21,6 +21,7 @@ from cyris.domain.topics import (
 pytestmark = pytest.mark.unit
 
 DATE, PERIOD = "2026-10-30", "morning"
+DAY = timedelta(days=1)
 
 
 def _recent(tid: str, name: str) -> TopicSummary:
@@ -130,16 +131,23 @@ def test_a_run_that_gives_a_continuing_topic_no_tags_keeps_the_stored_ones() -> 
     assert topic.tags == [entity]
 
 
-def test_a_name_two_recent_topics_share_joins_the_newest_of_them() -> None:
-    book = _book(
+def test_a_name_two_recent_topics_share_joins_the_one_that_stays_longest() -> None:
+    shared = [
         _stored("newest", "Story", minutes=2),
         _stored("oldest", "Story", minutes=0),
         _stored("middle", "story", minutes=1),
+    ]
+    unvoted = _book(*shared)
+    leaves = {t.id: t.last_seen + timedelta(days=7) for t in shared}
+    voted = TopicBook(
+        shared, date=DATE, period=PERIOD, expires=leaves | {"oldest": leaves["newest"] + DAY}
     )
 
-    book.place("u1", position=None, name="Story", tags=[])
+    unvoted.place("u1", position=None, name="Story", tags=[])
+    voted.place("u1", position=None, name="Story", tags=[])
 
-    assert _urls_by_id(book, "u1") == {"newest": ["u1"]}
+    assert _urls_by_id(unvoted, "u1") == {"newest": ["u1"]}
+    assert _urls_by_id(voted, "u1") == {"oldest": ["u1"]}
 
 
 LONG = "Long " + "x" * 200
@@ -161,7 +169,7 @@ def test_a_stored_name_the_offer_cleans_is_joined_by_its_offered_and_its_stored_
     assert _urls_by_id(book, "u1", "u2") == {"old": ["u1", "u2"]}
 
 
-def test_two_stored_names_sharing_their_offered_form_join_the_newest_by_it() -> None:
+def test_two_stored_names_sharing_their_offered_form_join_the_one_staying_longest() -> None:
     book = _book(_stored("old", LONG + "A", minutes=0), _stored("new", LONG + "B", minutes=5))
 
     book.place("u1", position=None, name=book.names()[0], tags=[])
@@ -227,6 +235,36 @@ def test_at_most_the_cap_of_recent_topics_is_offered_the_most_recently_seen_firs
     assert _urls_by_id(book, "u2") == {f"t{MAX_RECENT_TOPICS + 4}": ["u2"]}
 
 
+def test_the_cap_keeps_a_vote_extended_topic_over_a_fresher_one_that_leaves_sooner() -> None:
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    fresh = [
+        TopicSummary(id=f"t{n}", name=f"Topic {n}", last_seen=start + timedelta(minutes=n))
+        for n in range(MAX_RECENT_TOPICS)
+    ]
+    extended = TopicSummary(id="voted", name="Voted", last_seen=start - timedelta(days=3))
+    expires = {t.id: t.last_seen + timedelta(days=7) for t in fresh}
+    expires["voted"] = start + timedelta(days=8)
+
+    book = TopicBook([*fresh, extended], date=DATE, period=PERIOD, expires=expires)
+
+    assert book.names()[:2] == ["Voted", f"Topic {MAX_RECENT_TOPICS - 1}"]
+    assert "Topic 0" not in book.names()
+    assert len(book.names()) == MAX_RECENT_TOPICS
+
+
+def test_of_two_topics_leaving_together_a_shared_name_joins_the_newest() -> None:
+    older = _stored("older", "Story", minutes=0)
+    newer = _stored("newer", "Story", minutes=5)
+    leaving = datetime(2026, 11, 5, tzinfo=UTC)
+    book = TopicBook(
+        [older, newer], date=DATE, period=PERIOD, expires={"older": leaving, "newer": leaving}
+    )
+
+    book.place("u1", position=None, name="Story", tags=[])
+
+    assert _urls_by_id(book, "u1") == {"newer": ["u1"]}
+
+
 def test_two_urls_differing_only_in_case_are_two_topics_of_their_own() -> None:
     book = _book()
 
@@ -268,7 +306,9 @@ def test_every_way_in_stores_and_offers_the_clean_name() -> None:
 ARCHITECTURE = Path(__file__).parent.parent / "docs/architecture.md"
 
 
-@pytest.mark.parametrize("name", ["MAX_RECENT_TOPICS", "MAX_TOPIC_NAME_LENGTH", "MAX_TOPIC_TAGS"])
+@pytest.mark.parametrize(
+    "name", ["MAX_RECENT_TOPICS", "MAX_TOPIC_LIFETIMES", "MAX_TOPIC_NAME_LENGTH", "MAX_TOPIC_TAGS"]
+)
 def test_each_topic_bound_has_a_grade_a_row_with_its_value(name: str) -> None:
     rows = [
         [cell.strip() for cell in line.strip().strip("|").split("|")]

@@ -1,4 +1,6 @@
-"""Use case: read the reader's topic votes and score an issue's topics by option I (ADR-0023)."""
+"""Use case: read the reader's topic votes to score an issue's topics by option I (ADR-0023)
+and to say which recent topics an issue's articles may join (ADR-0026).
+"""
 
 from datetime import datetime, timedelta
 
@@ -6,10 +8,10 @@ from cyris.domain.models import TopicRecord, TopicSummary
 from cyris.domain.topic_rank import (
     RECENT_VOTE_CUTOFF,
     entity_tags,
-    kept_by_upvote,
     score_topics,
     topic_preferences,
 )
+from cyris.domain.topics import MAX_TOPIC_LIFETIMES, recent_expiry
 from cyris.service_layer.ports import TopicRepository
 
 
@@ -32,8 +34,8 @@ def score_issue_topics(
     }
     population |= {t.id: entity_tags(t.tags) for t in issue}
     # A topic falls out of the window once it stops appearing, so looking up each
-    # voted one would grow with the whole vote history. A vote faded below the
-    # recent list's cutoff lends at most that much through a tag, which moves no
+    # voted one would grow with the whole vote history. A vote faded below
+    # RECENT_VOTE_CUTOFF lends at most that much through a tag, which moves no
     # order a fresher vote sets; its topic is not looked up.
     voted = [i for i, p in prefs.items() if i not in population and abs(p) > RECENT_VOTE_CUTOFF]
     entities = population | {t.id: entity_tags(t.tags) for t in topics.topics_by_ids(voted)}
@@ -43,15 +45,13 @@ def score_issue_topics(
 
 def recent_topic_list(
     topics: TopicRepository, at: datetime, *, half_life_days: int, lifetime_days: int
-) -> list[TopicSummary]:
-    """The topics last seen within `lifetime_days`, plus each one the reader voted up
-    whose vote is still above `RECENT_VOTE_CUTOFF`.
+) -> tuple[list[TopicSummary], dict[str, datetime]]:
+    """The topics on the recent list at `at`, and when each leaves it (ADR-0026).
 
-    Nothing reads this list: the filter is offered the plain lifetime
-    (`TopicRepository.recent_topics` in `run_digest`), since the rule for extending a
-    topic is not decided (owner, 2026-10-30).
+    A topic stays `lifetime_days` after it was last seen, longer while the reader's upvote
+    on it holds, and never past `MAX_TOPIC_LIFETIMES` lifetimes, so only that window is read.
     """
-    recent = topics.recent_topics(at - timedelta(lifetime_days), at)
-    seen = {t.id for t in recent}
-    upvoted = kept_by_upvote(topic_preferences(topics.topic_votes(), at, half_life_days))
-    return recent + topics.topics_by_ids([i for i in upvoted if i not in seen])
+    window = topics.recent_topics(at - timedelta(lifetime_days * MAX_TOPIC_LIFETIMES), at)
+    prefs = topic_preferences(topics.topic_votes(), at, half_life_days)
+    expires = recent_expiry(window, prefs, at, lifetime_days=lifetime_days)
+    return [t for t in window if t.id in expires], expires

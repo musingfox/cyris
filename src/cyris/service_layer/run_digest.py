@@ -27,6 +27,7 @@ from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.schedule import PERIOD_ORDER, Period, is_latest_issue
 from cyris.service_layer.scoring import AreaPick, score_in_batches, select_scorable
+from cyris.service_layer.topic_order import recent_topic_list
 from cyris.service_layer.vote_order import VoteOrder
 from cyris.utils.timezone import now_in_timezone
 
@@ -707,13 +708,16 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             logger.error("Reading article pages failed, the run keeps feed text: %s", e)
             summary["article_pages_error"] = str(e)
 
-    # The plain lifetime: the rule for extending a topic is not decided (owner, 2026-10-30).
     recent_topics: list[TopicSummary] = []
+    recent_expires: dict[str, datetime] = {}
     if deps.topic_store is not None:
         try:
-            at = datetime.fromisoformat(summary["started_at"])
-            since = at - timedelta(days=cfg.app.digest.topic_lifetime_days)
-            recent_topics = deps.topic_store.recent_topics(since, at)
+            recent_topics, recent_expires = recent_topic_list(
+                deps.topic_store,
+                datetime.fromisoformat(summary["started_at"]),
+                half_life_days=cfg.app.digest.vote_half_life_days,
+                lifetime_days=cfg.app.digest.topic_lifetime_days,
+            )
         except Exception as e:
             # A failed read costs this issue its continuing topics, not the issue.
             logger.warning("Topic store unreadable, every topic this run opens is new: %s", e)
@@ -740,6 +744,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         article_tags=scoring_tags,
         preference=order,
         recent_topics=recent_topics,
+        recent_expires=recent_expires,
     )
     content = result.content
     summary["preference_rank_applied"] = result.preference_moves is not None

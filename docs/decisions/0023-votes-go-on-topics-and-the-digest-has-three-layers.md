@@ -6,6 +6,11 @@ decision-makers: ""
 
 # Votes go on topics, and the digest has three layers
 
+> Superseded in part by [ADR-0026](0026-an-upvote-slows-a-topics-decay-under-a-ceiling.md)
+> (2026-11-10). The sentence "A topic ends when it has had no new article for `L` days" holds
+> only for a topic with no upvote: an upvote slows its leaving the recent list, never past three
+> times `L` after its last article. The rest of this ADR still stands.
+
 ## Context and Problem Statement
 
 The 2026-10-28 morning issue showed a vote group for every source under every topic. A reader

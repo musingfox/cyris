@@ -15,9 +15,9 @@ from datetime import datetime
 
 from cyris.domain.models import TopicKind, TopicTag, TopicVote
 
-# The owner ruled on 2026-10-30 that a topic the reader voted up stays on the
-# recent-topic list after `L` days, while its net vote is still worth more than this:
-# 0.1 is about four half-lives (0.5 ** 4 ≈ 0.06 is below it, 0.5 ** 3 ≈ 0.13 above).
+# A voted topic outside an issue's population is looked up for its tags only while its net
+# vote is worth more than this: 0.1 is between three and four half-lives (0.5 ** 3 ≈ 0.13 is
+# above it, 0.5 ** 4 ≈ 0.06 below). The recent list does not read it (ADR-0026).
 RECENT_VOTE_CUTOFF = 0.1
 
 _SECONDS_PER_DAY = 86_400
@@ -73,8 +73,3 @@ def score_topics(
             tag_term += carried / max(df.get(tag, 0), 1)
         scores[topic] = prefs.get(topic, 0.0) + tag_term
     return scores
-
-
-def kept_by_upvote(prefs: Mapping[str, float]) -> list[str]:
-    """Voted topics still worth more than `RECENT_VOTE_CUTOFF` upward."""
-    return [topic for topic, p in prefs.items() if p > RECENT_VOTE_CUTOFF]

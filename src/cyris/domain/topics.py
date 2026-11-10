@@ -7,8 +7,10 @@ placed is a topic of its own, which no other article can join.
 """
 
 import hashlib
+import math
 import unicodedata
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from datetime import datetime, timedelta
 
 from cyris.domain.models import TopicRecord, TopicSummary, TopicTag
 from cyris.domain.tags import normalize_tag
@@ -22,6 +24,11 @@ MAX_TOPIC_TAGS = 5
 # snippet, so names of that length at most double a batch's prompt; names in Chinese take
 # half that, and 300 names at MAX_TOPIC_NAME_LENGTH make it about 4.3 times.
 MAX_RECENT_TOPICS = 300
+
+# An upvote lengthens a topic's stay on the recent list, but never past this many lifetimes
+# after its last article, so the list holds at most that many days of topics however much
+# the reader votes. A starting point (ADR-0026), not a measurement.
+MAX_TOPIC_LIFETIMES = 3
 
 # A topic name is a few words, but an unplaced article's raw title becomes one, and a
 # feed's title can be a whole paragraph that every later prompt would repeat.
@@ -37,6 +44,35 @@ def topic_name(raw: str) -> str:
     if len(name) <= MAX_TOPIC_NAME_LENGTH:
         return name
     return name[: MAX_TOPIC_NAME_LENGTH - 1].rstrip() + "…"
+
+
+def topic_expiry(last_seen: datetime, pref: float, *, lifetime_days: float) -> datetime:
+    """When a topic last seen at `last_seen` leaves the recent list while its net decayed vote
+    is `pref`: `lifetime_days` stretched by 2 ** pref, a downvote stretching nothing, and never
+    past `MAX_TOPIC_LIFETIMES` lifetimes.
+    """
+    lifetimes = (
+        MAX_TOPIC_LIFETIMES if pref >= math.log2(MAX_TOPIC_LIFETIMES) else 2 ** max(pref, 0.0)
+    )
+    return last_seen + timedelta(days=lifetime_days * lifetimes)
+
+
+def recent_expiry(
+    recent: Iterable[TopicSummary],
+    prefs: Mapping[str, float],
+    at: datetime,
+    *,
+    lifetime_days: float,
+) -> dict[str, datetime]:
+    """Each of `recent` still on the recent list at `at`, by id, with when it leaves it.
+
+    `prefs` is each voted topic's net vote decayed to `at`, so a vote's stretch fades with it.
+    """
+    expiry = {
+        t.id: topic_expiry(t.last_seen, prefs.get(t.id, 0.0), lifetime_days=lifetime_days)
+        for t in recent
+    }
+    return {tid: leaves for tid, leaves in expiry.items() if at < leaves}
 
 
 def topic_id(date: str, period: str, name: str) -> str:
@@ -59,18 +95,31 @@ def _issue_id(date: str, period: str, key: str) -> str:
 class TopicBook:
     """The topics an issue's articles may join, and which one each article joined.
 
-    Of the recent topics, the `MAX_RECENT_TOPICS` last seen are offered, newest first; every
-    topic this issue opens is offered after them. A name joins by the form it is offered in, so
-    a stored name the offer cleans or cuts is still joined, and a name two of them share in
-    that form is the newest's. A topic saved again keeps its stored tags behind the ones this
-    issue gave it.
+    Of the recent topics, the `MAX_RECENT_TOPICS` that leave the list last are offered in that
+    order, and of two leaving together the newest first; every topic this issue opens is offered
+    after them. A name joins by the form it is offered in, so a stored name the offer cleans or
+    cuts is still joined, and a name two of them share in that form joins the one that stays
+    longest, the first listed. `expires` says when each recent topic leaves (`recent_expiry`);
+    without it none has a vote, so the newest leaves last. A topic saved again keeps its stored
+    tags behind the ones this issue gave it.
     """
 
-    def __init__(self, recent: Sequence[TopicSummary], *, date: str, period: str) -> None:
+    def __init__(
+        self,
+        recent: Sequence[TopicSummary],
+        *,
+        date: str,
+        period: str,
+        expires: Mapping[str, datetime] | None = None,
+    ) -> None:
         self._date = date
         self._period = period
-        newest = sorted(recent, key=lambda t: t.last_seen, reverse=True)[:MAX_RECENT_TOPICS]
-        self._listed = [TopicRecord(id=t.id, name=topic_name(t.name), urls=[]) for t in newest]
+
+        def leaves(t: TopicSummary) -> tuple[datetime, datetime]:
+            return (t.last_seen if expires is None else expires[t.id], t.last_seen)
+
+        kept = sorted(recent, key=leaves, reverse=True)[:MAX_RECENT_TOPICS]
+        self._listed = [TopicRecord(id=t.id, name=topic_name(t.name), urls=[]) for t in kept]
         self._by_name: dict[str, TopicRecord] = {}
         for topic in self._listed:
             self._by_name.setdefault(normalize_tag(topic.name), topic)

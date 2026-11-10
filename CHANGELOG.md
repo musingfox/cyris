@@ -74,6 +74,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   to the filter too, so a `follow` article reaches the model with **Summarize
   follow articles** off, and a window of only `follow` articles now costs a call. A
   topic's tags show on the page and never reach `/interest`.
+- **An upvote keeps a topic open to new articles for longer.** A topic you voted
+  up leaves the list of topics new articles can join more slowly, by less as your
+  vote fades with **Vote half-life**, and never later than three times **Topic
+  lifetime** after it last appeared. A topic with no vote, or only a downvote,
+  leaves after **Topic lifetime** as before. When more than 300 topics qualify,
+  the ones that stay longest are offered.
 - **A push to `main` deploys production.** The release workflow now runs on
   every push to `main`. A release that passes its checks deploys the commit it
   released, as a separate job, so a failed build and a failed deploy still show

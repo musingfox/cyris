@@ -225,26 +225,36 @@ async def test_an_article_matching_a_recent_topic_joins_its_id_across_two_issues
     ]
 
 
-async def test_the_recent_list_is_the_plain_lifetime_even_for_a_topic_voted_up(tmp_path) -> None:
+async def test_the_filter_is_offered_a_topic_an_upvote_keeps_past_its_lifetime(tmp_path) -> None:
     source = Source()
     source.articles = [_article(1, "Noise")]
     model = ReplayModel({})
     deps = _deps(tmp_path, model, source)
     now = datetime.now(UTC)
     deps.cfg.app.digest.topic_lifetime_days = 7
-    expired = TopicRecord(id="expired", name="Expired story", urls=["u-old"])
-    fresh = TopicRecord(id="fresh", name="Fresh story", urls=["u-new"])
-    deps.topic_store.save_topics("2026-01-01", "morning", [expired], now - timedelta(days=8))
-    deps.topic_store.save_topics("2026-01-02", "morning", [fresh], now - timedelta(days=6))
+    deps.cfg.app.digest.vote_half_life_days = 7
+    stored = [
+        ("extended", "Extended story", 8),
+        ("expired", "Expired story", 8),
+        ("fresh", "Fresh story", 6),
+        ("past-ceiling", "Past the ceiling", 22),
+    ]
+    for day, (tid, name, days_ago) in enumerate(stored, start=1):
+        topic = TopicRecord(id=tid, name=name, urls=[f"u-{tid}"])
+        seen = now - timedelta(days=days_ago)
+        deps.topic_store.save_topics(f"2026-01-0{day}", "morning", [topic], seen)
     deps.topic_store.record_topic_votes(
-        [TopicVote(topic_id="expired", direction=1, clicked_at=now - timedelta(hours=1))]
+        [TopicVote(topic_id="extended", direction=1, clicked_at=now - timedelta(hours=1))]
+        + [
+            TopicVote(topic_id="past-ceiling", direction=1, clicked_at=now - timedelta(minutes=n))
+            for n in range(1, 21)
+        ]
     )
 
     await run_digest(deps, RunOptions())
 
     (prompt,) = model.filter_prompts()
-    assert "Fresh story" in prompt
-    assert "Expired story" not in prompt
+    assert re.findall(r"^\d+: (.*)$", prompt, re.MULTILINE) == ["Extended story", "Fresh story"]
 
 
 def test_a_stored_entity_tag_survives_the_cut_when_a_later_issue_adds_tags() -> None:

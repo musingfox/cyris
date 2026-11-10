@@ -3,6 +3,7 @@
 import hashlib
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import datetime
 
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -99,6 +100,7 @@ class DigestPipeline:
         preference: PreferenceSource | None = None,
         date: str | None = None,
         recent_topics: Sequence[TopicSummary] = (),
+        recent_expires: Mapping[str, datetime] | None = None,
     ) -> ProcessResult:
         """Process articles through lane-based pipeline.
 
@@ -117,6 +119,8 @@ class DigestPipeline:
                 headlines; None keeps the order of the score and the model.
             date: The issue's date, YYYY-MM-DD; None means today in `timezone`.
             recent_topics: The earlier topics an article of this issue may join.
+            recent_expires: When each of `recent_topics` leaves the recent list, by id;
+                None means none has a vote, so the newest leaves last.
 
         Returns:
             ProcessResult with content and URL classification.
@@ -156,7 +160,7 @@ class DigestPipeline:
             fell_back_to_excerpts=self._llm is None,
         )
 
-        topics = TopicBook(recent_topics, date=today, period=period)
+        topics = TopicBook(recent_topics, date=today, period=period, expires=recent_expires)
         # Every lane, since every article needs a topic; only the skim lane can be left out.
         filtered = await filter_articles(
             [*skim_lane, *read_lane, *follow_lane],

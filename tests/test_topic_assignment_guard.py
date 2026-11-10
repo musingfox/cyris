@@ -85,18 +85,20 @@ def test_the_prompt_leaves_out_the_owners_granularity_example(word: str) -> None
     assert word not in prompts.FILTER_SYSTEM
 
 
-def test_the_run_offers_the_plain_lifetime_and_not_the_voted_up_extension() -> None:
+def test_the_run_offers_the_list_an_upvote_extends_and_not_the_plain_lifetime() -> None:
     source = inspect.getsource(run_digest)
 
-    assert "recent_topic_list" not in source
-    assert ".recent_topics(" in source
+    assert "recent_topic_list(" in source
+    assert ".recent_topics(" not in source
 
 
-def test_the_cutoffs_row_says_the_voted_up_extension_is_read_by_nothing() -> None:
-    (row,) = [line for line in ARCHITECTURE.splitlines() if "`RECENT_VOTE_CUTOFF` = " in line]
+def test_the_ceilings_row_says_it_bounds_the_list_whatever_the_votes() -> None:
+    (row,) = [line for line in ARCHITECTURE.splitlines() if "`MAX_TOPIC_LIFETIMES` = " in line]
 
-    assert "nothing reads that list" in row
-    assert "stays on the recent-topic list while" not in row
+    assert "independently of how much the reader votes" in row
+    assert "a starting point, not a measurement" in row
+    (cutoff,) = [line for line in ARCHITECTURE.splitlines() if "`RECENT_VOTE_CUTOFF` = " in line]
+    assert "nothing reads that list" not in cutoff
 
 
 def test_the_feed_list_routes_news_where_the_news_tag_is_read() -> None:

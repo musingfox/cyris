@@ -384,8 +384,11 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "UPDATE stored_articles SET score",
     "SELECT stored_articles",
-    # The recent topics the filter is offered; a first run holds none, so no tag read.
+    # The recent topics the filter is offered, read over three lifetimes; a first run
+    # holds none, so no tag read. Then the votes that stretch a recent topic's stay
+    # (ADR-0026), read whether or not a topic is recent.
     "SELECT topics",
+    "SELECT topic_votes",
     "INSERT OR REPLACE INTO stories",
     "INSERT OR IGNORE INTO story_members",
     "DELETE FROM story_members",

@@ -442,34 +442,34 @@ issue's `DigestContent.tracked_topics` and nothing else: no store of their own, 
 article count, and no article's state changes for being one. A hit the issue does not show in a
 layer stays pending, so the next run in the window can list it again.
 
-**The filter assigns the topics** (`service_layer/filtering.py`, `domain/topics.py`, ADR-0023). Every
-article the run keeps goes through the filter's batches of `BATCH_SIZE`, the skim lane first, then
-`read` and `follow`, each of those marked `KEEP_MARKER`, which the model may not leave out and which
-it answers only with a topic. The batches run in order. Each prompt numbers the topics on offer: the
-ones last seen in the `digest.topic_lifetime_days` before the run's start, which `run_digest` reads
-through `TopicRepository.recent_topics`, at most `MAX_RECENT_TOPICS` of them and the most recently
-seen first (§5), then every topic an earlier batch of this run opened, so a number names the same
-topic in every batch. A recent topic past the cap is not offered, so a story it held opens anew. The model picks a number, or opens a topic by name only
-for a genuinely new story, and gives the topic's tags with their kind. Assignment is the LLM's alone:
-it is handed no embedding candidates and no call merges topics after the last batch, since both lost
-in the feasibility rounds (ADR-0023, *Known weakness*), which `tests/test_topic_assignment_guard.py`
-holds. A topic name is made one line before it is stored or offered, with no control characters,
-its whitespace collapsed and its length capped (`topic_name`, §5), so a stored title cannot put a
-line that reads as an article into a later prompt. A name already on offer, normalized and exactly
-equal, joins that topic. A new topic's id is
-`{date}-{period}-{hash of the normalized name}`, so a rerun that opens the same name keeps the id. An
-answer that names no usable topic takes its headline as the name, and one whose headline is blank as
-well is a topic of its own, named by the article's title; an article with no answer at all
-(no LLM, a failed batch, a `read` or `follow` article the model left out) is a topic of its own, with
-no tags and an id from its URL exactly as `stored_articles` keys it, case included, which no other
+**The filter assigns the topics** (`service_layer/filtering.py`, `domain/topics.py`, ADR-0023).
+Every article the run keeps goes through the filter's batches of `BATCH_SIZE`, the skim lane first,
+then `read` and `follow`, each of those marked `KEEP_MARKER`, which the model may not leave out and
+which it answers only with a topic. The batches run in order. Each prompt numbers the topics on
+offer: the recent list, which `run_digest` reads through `recent_topic_list` (below), at most
+`MAX_RECENT_TOPICS` of them and the last to leave the list first (§5), then every topic an earlier
+batch of this run opened, so a number names the same topic in every batch. A recent topic past the
+cap is not offered, so a story it held opens anew. The model picks a number, or opens a topic by
+name only for a genuinely new story, and gives the topic's tags with their kind. Assignment is the
+LLM's alone: it is handed no embedding candidates and no call merges topics after the last batch,
+since both lost in the feasibility rounds (ADR-0023, *Known weakness*), which
+`tests/test_topic_assignment_guard.py` holds. A topic name is made one line before it is stored or
+offered, with no control characters, its whitespace collapsed and its length capped (`topic_name`,
+§5), so a stored title cannot put a line that reads as an article into a later prompt. A name
+already on offer, normalized and exactly equal, joins that topic. A new topic's id is
+`{date}-{period}-{hash of the normalized name}`, so a rerun that opens the same name keeps the id.
+An answer that names no usable topic takes its headline as the name, and one whose headline is blank
+as well is a topic of its own, named by the article's title; an article with no answer at all (no
+LLM, a failed batch, a `read` or `follow` article the model left out) is a topic of its own, with no
+tags and an id from its URL exactly as `stored_articles` keys it, case included, which no other
 article can join. A batch whose reply fails validation is a failed batch: its placements are made
 only once the whole reply is read, so it keeps none. A skim article the filter rejects has no topic,
-and neither has a `read` article the summarizer left out, which stays pending. A failed read
-of the recent topics costs the run its list, never the run (`recent_topics_error` in `run_summary`).
-A topic's tags go to `topic_tags` (§4) and never to `article_tags`, so `/interest` reads none. The
+and neither has a `read` article the summarizer left out, which stays pending. A failed read of the
+recent topics costs the run its list, never the run (`recent_topics_error` in `run_summary`). A
+topic's tags go to `topic_tags` (§4) and never to `article_tags`, so `/interest` reads none. The
 prompt's follow-up rule keeps all of a topic: a report on a story that qualifies stays even when it
-adds no new information. The filter's criteria are the ones Clef falls back on, so Clef's text changed
-with it.
+adds no new information. The filter's criteria are the ones Clef falls back on, so Clef's text
+changed with it.
 
 The summarize call writes a summary for each group and one for each article. `layer_by_score`
 then lays them out inside `DigestPipeline`: the Top story is a group only when two or more of its
@@ -521,12 +521,20 @@ model's order; a failed read costs the order, never the run. `run_summary` recor
 `preference_rank_moved_features` and `_units`, the Features positions and the cluster and headline
 positions that differ from the order without it.
 
-`recent_topic_list` in `service_layer/topic_order.py` is the topics last seen in
-`digest.topic_lifetime_days`, plus each topic the reader voted up whose net decayed vote is still
-above `RECENT_VOTE_CUTOFF` (0.1, about four half-lives; owner, 2026-10-30). Nothing reads it: the
-filter is offered the plain lifetime, since the rule for extending a topic is not decided (owner,
-2026-10-30). A topic that keeps appearing stays on offer all the same, because each issue that holds
-it moves its `last_seen`.
+**The recent list** (`recent_topic_list` in `service_layer/topic_order.py`, `topic_expiry` and
+`recent_expiry` in `domain/topics.py`, ADR-0026) is the topics an issue's articles may join. A topic
+is on it while the days since its `last_seen` are under `min(L × 2 ** p, MAX_TOPIC_LIFETIMES × L)`,
+where `L` is `digest.topic_lifetime_days` and `p` is the topic's net vote at the run's start, each
+vote halving every `digest.vote_half_life_days`, floored at 0. So a topic with no vote leaves at
+`L`, an upvote slows its leaving as long as the vote holds, a downvote only cancels an upvote's
+stretch, and no vote, one cast on an archived page included, keeps a topic past three lifetimes
+after its last article: at a 7-day lifetime and half-life one upvote keeps it 9.24 days, and 13 or
+more reach the 21. The run reads the topics last seen in the `MAX_TOPIC_LIFETIMES × L` before its
+start and keeps the ones the rule holds, so the list before the cap is at most those days of topics
+however much the reader votes; the cap then keeps the ones that leave last, by each topic's expiry,
+and of two leaving together the one seen last first. A name two listed topics share joins the one that stays longest.
+A topic that keeps appearing stays on offer all the same, because each issue that holds it moves its
+`last_seen`. The list changes no score: the discount's population above stays the plain `L`; it sets only which topics are offered and, past the cap, which are kept.
 
 **Who scores them** (`digest.preference_source`, `cosine` or `clef`). `cosine` is the order above;
 the value keeps its name because it is a stored setting, though no cosine takes part since ADR-0023.
@@ -633,7 +641,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary; what `/interest` reads |
 | Stories | **D1 `stories`** | same | Each issue's sand blocks, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window. Written by every non-dry run; nothing reads it |
 | Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
-| Topics | **D1 `topics`** | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. The filter assigns them (§3.2), so an id spans the issues that hold the topic. A row written before it did, while each page item was a topic of one issue, is offered to the filter like any other until its `last_seen` leaves `digest.topic_lifetime_days`. A topic left with no member and no vote is deleted |
+| Topics | **D1 `topics`** | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. The filter assigns them (§3.2), so an id spans the issues that hold the topic. A row written before it did, while each page item was a topic of one issue, is offered to the filter like any other until it leaves the recent list (§3.2). A topic left with no member and no vote is deleted |
 | Topic members | **D1 `topic_members`** | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which record only each issue's sand |
 | Topic tags | **D1 `topic_tags`** | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, then the stored ones those do not repeat, at most `MAX_TOPIC_TAGS`, so a later issue or a rerun that tags a topic differently adds to them, and a save that gives it none keeps them. The stored ones are read back entity tags first, then by tag, so when a save passes the cap the stored tags it drops are the domain and region tags, the alphabetically last first, and a stored entity tag goes only once this save's tags and the stored entity tags alone pass it. Written from what the filter answers, never from `article_tags`. A tag whose kind the model left out or got wrong is stored as `domain`, as every row written before the filter assigned topics is: shown, and carrying no preference |
 | Topic votes | **D1 `topic_votes`** | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one, with no opposite vote between them, is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A sync whose topic-vote write fails still stamps and ACKs its votes, since the stamp is the vote's record and a held ACK would re-stamp the same URLs every run; that sync's topic votes are lost, and `run_summary`'s `topic_votes_failed` says why. A URL no topic holds (an issue published before topics, the raw page) writes no row |
@@ -705,7 +713,8 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 |---|---|---|---|
 | Batch sizes | A | `BATCH_SIZE` in `service_layer/filtering.py` and `service_layer/scoring.py`, and on each embedder in `adapters/embedding.py` | unchanged |
 | A topic's tags: at most 5 | A | `MAX_TOPIC_TAGS` = 5 in `domain/topics.py` | added with the filter's topics — the design's 2-5 (ADR-0023). A topic takes each of its articles' tags, so the cap is held where they meet; the floor of 2 is only the prompt's to ask |
-| Recent topics offered to the filter | A | `MAX_RECENT_TOPICS` = 300 in `domain/topics.py` | added 2026-11-10 — the list goes into every batch, and a week of issues holds hundreds of topics. Measured with `build_filter_prompt` on 20 articles at the example's 500-character snippet: 300 names of 34 characters add 11,879 characters to an 11,577-character prompt, so names of that length at most double a batch, and 12-character Chinese names add 5,279. The bound is the cap, not the doubling: 300 names of `MAX_TOPIC_NAME_LENGTH` = 120 characters add 37,679, about 4.3 times that prompt (49,256 against 11,577). The most recently seen are kept, and the topics a run opens are offered after them uncapped, since a later batch must see them (bounded by the intake cap) |
+| Recent topics offered to the filter | A | `MAX_RECENT_TOPICS` = 300 in `domain/topics.py` | added 2026-11-10 — the list goes into every batch, and a week of issues holds hundreds of topics. Measured with `build_filter_prompt` on 20 articles at the example's 500-character snippet: 300 names of 34 characters add 11,879 characters to an 11,577-character prompt, so names of that length at most double a batch, and 12-character Chinese names add 5,279. The bound is the cap, not the doubling: 300 names of `MAX_TOPIC_NAME_LENGTH` = 120 characters add 37,679, about 4.3 times that prompt (49,256 against 11,577). The ones that leave the recent list last are kept (ADR-0026), and the topics a run opens are offered after them uncapped, since a later batch must see them (bounded by the intake cap) |
+| How long an upvote can keep a topic on the recent list | A | `MAX_TOPIC_LIFETIMES` = 3 in `domain/topics.py` | added 2026-11-10 ([ADR-0026](decisions/0026-an-upvote-slows-a-topics-decay-under-a-ceiling.md)) — an upvote stretches a topic's stay by 2 ** its decayed vote, and this ceiling bounds the list independently of how much the reader votes: before the `MAX_RECENT_TOPICS` cap it holds at most 3 × `digest.topic_lifetime_days` days of topics, an archived page's vote included. 3 is a starting point, not a measurement: 21 days at a 7-day lifetime is the one figure on record, inferred in the 2026-10-29 review. The base 2 is the rule's structure, not a setting |
 | A topic name's length | A | `MAX_TOPIC_NAME_LENGTH` = 120 in `domain/topics.py` | added 2026-11-10 — a name is a few words, but an unplaced article's raw title becomes one, and a feed's title can be a paragraph that every later filter prompt would repeat; 120 characters holds a full headline. A longer name is cut and ends in "…" |
 | Propose titles per source | A | `TITLES_PER_SOURCE` = 5 in `adapters/store/source_titles.py` | unchanged — five headlines show a source's subject; each source's line is paid for in every Propose call. `tests/test_area_source_titles.py` holds the value to this row |
 | Propose title length | A | `TITLE_MAX_CHARS` = 80 in `adapters/store/source_titles.py` | unchanged — a headline fits in 80 characters; a longer title is mostly a dek the model does not need. `tests/test_area_source_titles.py` holds the value to this row |
@@ -769,8 +778,8 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote order on/off | D | **D1 `settings`** as `digest.rank_by_preference`, written by `/settings` (Digest) | done 2026-10-08 — a reader preference: whether their votes may reorder an issue is theirs to switch off, and the reorder was never measured against a real digest before and after ([ADR-0006](decisions/0006-embedding-thresholds-are-per-model-calibrations.md)) |
 | Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest) | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` names the topic order since ADR-0023 (§3.2) and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
 | Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest) | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `settings.example.toml` sets `false`, which is the passthrough every issue had before it |
-| Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest) | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over, are the reader's to tune. Required, no code default |
-| Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — about four half-lives. What reads it: `score_issue_topics` looks up a voted topic outside the issue's population only while its net vote is worth more than this. `recent_topic_list` would keep an up-voted topic on the recent-topic list by the same cutoff, but nothing reads that list: the filter is offered the plain `digest.topic_lifetime_days`, since the rule for extending a topic is not decided (owner, 2026-10-30) |
+| Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest) | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over and the recent list's base lifetime, which an upvote stretches (§3.2), are the reader's to tune. Required, no code default |
+| Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — between three and four half-lives. What reads it: `score_issue_topics` looks up a voted topic outside the issue's population only while its net vote is worth more than this. The recent list does not: how long an upvote keeps a topic there is `MAX_TOPIC_LIFETIMES` and its rule (ADR-0026) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
 | The Top story score threshold `routing.score_threshold`, the intake cap `digest.max_articles_per_digest`, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline) | done 2026-09-19 |
 | LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline) | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |
