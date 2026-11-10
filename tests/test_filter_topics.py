@@ -136,7 +136,6 @@ def _deps(tmp_path: Path, llm: FakeLLM, source: Source, db: SqliteD1 | None = No
         llm=llm,
         fetch_sources=[source],
         html_writer=HtmlDigestWriter(tmp_path / "html"),
-        publish=None,
         sync_promotions=None,
         log_usage=lambda content: None,
         send_discord=discord,
