@@ -390,14 +390,17 @@ up after midnight keeps its issue's date. Without one, the pipeline dates
 the issue when it writes it.
 
 **On a `sqlite` store, one `cyris run` at a time and one tick per issue.** Before it builds anything, a
-non-dry `cyris run` takes the digest-run lock (§4), and one that finds it held does nothing, says
-so and exits 0, whichever period either run is for. The lock covers only a non-dry `cyris run`:
+non-dry `cyris run` takes the digest-run lock (§4), whichever period either run is for. One naming
+`--period`, such as `POST /run` spawns, that finds it held does nothing, says so and exits 0. A
+`--if-due` tick that finds it held waits for it, trying again every `DIGEST_LOCK_POLL_SECONDS` for up
+to `DIGEST_LOCK_WAIT_SECONDS` (§5), then makes the check below under the lock. Past the cap it says
+it waited for another digest and exits 0. The lock covers only a non-dry `cyris run`:
 `cyris regenerate --mode rerun --publish` takes none, so it can overlap a run. The lock is taken in `cyris run` and not in the
 server because under compose the tick and `POST /run` start in two containers. A tick then does
 nothing and says so if its key is already in `digests`, the only state the same-period check reads;
 a run naming `--period` still stores over it, which is how a reader makes an issue again. A manual
-run still going when a digest hour begins therefore costs that hour its issue, and its articles
-stay pending for the next. On `d1` none of this applies and `--if-due` asks only the schedule: the
+run still going when a digest hour begins therefore delays that hour's issue by up to the cap, and
+costs it only when the run outlasts the cap or is for the same issue. On `d1` none of this applies and `--if-due` asks only the schedule: the
 Worker decides when to start a run (§5), and `Lifecycle.start` holds one `run` instance.
 
 Each source carries a **lane**, which decides how much attention it gets:
@@ -875,6 +878,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Hosted seed: the settings and sources the operator's seed writes into a tenant's database | A, **stub** | `workers/app/src/hosted_seed.json`, laid over `src/cyris/settings_starting_values.json`; its sources name `src/cyris/onboarding_feeds.json` entries | added 2026-11-18 — the provider and model are fixed to Anthropic's `claude-haiku-5-5`, the schedule to 08:00 and 20:00 in UTC, the language to `en` and every notification target blank; each tenant gets four feeds no other tenant has, so its stored articles show whose they are (`scripts/hosted_check.py`). Written once by `POST /hosted/tenants/<tenant>/seed` as upserts, and read by nothing else: the tenant's run reads its own `settings` and `sources` like any deployment's. Per-tenant onboarding replaces it. `tests/test_hosted_config.py` validates every value with `validate_setting` and every source as a fetchable `SourceConfig` |
 | A hosted container's environment | A | `hostedContainerEnv` and `HOSTED_SECRETS` in `workers/app/src/hosted_container.js` | added 2026-11-18 — an allow-list, not the default Worker's `SECRETS` and `DEPLOYMENT`: the model providers' keys and the account id, the tenant id from the object's own name, the hosted domain, `d1`, and Pages publishing off. No rss, promote or newsletter Worker URL or bearer, no D1 and Pages token and no deployment identity reach it. `tests/test_hosted_config.py` holds the list inside `SECRETS`; the hosted Worker's own secrets are set with `scripts/hosted.sh secrets` |
 | The local hourly tick: on, reading the wall clock at most 30 s apart | A | `TICK_WAKE_SECONDS` in `entrypoints/cli.py`; `cyris triage-ui --no-schedule` turns it off for one server, and compose's `ui` service passes that | added 2026-11-09 — asyncio's clock stops while a machine sleeps, so one wait for the next hour would fire late by as long as the lid was shut. A flag and not a setting, because what decides it is who else schedules this store, which is how the server was started and not a reader's preference |
+| An hourly tick waits for a running digest: tries the lock every 5 s, for up to 30 minutes | A | `DIGEST_LOCK_POLL_SECONDS`, `DIGEST_LOCK_WAIT_SECONDS` in `entrypoints/cli.py`; only `cyris run --if-due` waits, and a `--period` run is refused at once | added 2026-11-10 — the lock is not per period, so a manual run still going at a digest hour (the onboarding's first issue starts at 07:58) used to cost that hour its issue. The cap bounds only the wait: a tick that gets the lock at minute 29 then runs a whole digest, and wait plus digest can outlast the hour. The server's ticker then skips the next hour (`_tick_on_the_hour`, "the last tick is still running"), and with adjacent schedule hours that hour is a digest hour, so its issue is lost with only a warning. A run that outlasts the cap leaves the issue unmade and says so |
 | The SQLite file's open: a 5-second busy timeout, and the first open's WAL switch retried 50 times, 0.1 s apart | A | `BUSY_TIMEOUT_SECONDS`, `FIRST_OPEN_ATTEMPTS`, `FIRST_OPEN_RETRY_SECONDS` in `adapters/store/local_d1.py` | added 2026-11-07 — a run writes single statements of at most 100 parameters, so a lock lasts milliseconds and five seconds is far past a healthy wait. The WAL switch takes a lock the busy handler does not wait on: two processes first-opening one file failed it 2 of 20 times with the timeout set, so it is retried on its own for up to five seconds |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (a value set in `cyris.toml [promote]` wins) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
@@ -1479,8 +1483,9 @@ or `--if-due` with no period, on the server's own `--config` and `--sources`, in
 own so stopping the server does not stop the run, and answers `{"started": "run", "at": ...}` as
 the Worker's `startRun` does. The run's log goes where the server's does. Behind the Worker the
 route is not registered: the Worker answers `/run` and starts its own run container. The answer
-says only that the run was started: one that finds a digest under way (§3.2) does nothing and says
-so in that log, and a wizard waiting on it reads the outcome of the run that held the lock when its
+says only that the run was started: one naming a period that finds a digest under way (§3.2) does nothing and
+says so in that log, while one with no period runs `--if-due` and waits for the digest, up to the cap
+(§3.2, §5), and a wizard waiting on it reads the outcome of the run that held the lock when its
 period matches, and otherwise reports that no run ended.
 
 **The local server runs the hourly tick.** `cyris triage-ui` on a `sqlite` store (`StoreConfig.is_cloudflare`

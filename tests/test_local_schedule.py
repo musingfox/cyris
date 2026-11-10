@@ -331,6 +331,10 @@ def install(tmp_path: Path, monkeypatch) -> list[str]:
         "cyris.utils.timezone.now_in_timezone",
         lambda tz: datetime(2026, 9, 19, 8, 0, 1, tzinfo=ZoneInfo(tz)),
     )
+    # A run that waits when it should not gives up after 2 seconds and fails its
+    # test, instead of holding the suite for the real 30 minutes.
+    monkeypatch.setattr(cli, "DIGEST_LOCK_WAIT_SECONDS", 2)
+    monkeypatch.setattr(cli, "DIGEST_LOCK_POLL_SECONDS", 0.02)
     return ["--config", str(config), "--sources", str(tmp_path / "sources.yaml")]
 
 
@@ -371,13 +375,39 @@ MANUAL = ["run", "--period", "morning"]
 OTHER_PERIOD = ["run", "--period", "evening", "--date", "2026-09-18"]
 
 
+class _LockAttempts:
+    """Each try at the digest-run lock, and what runs just after the `after`-th one failed."""
+
+    def __init__(self) -> None:
+        self.tried: list[int | None] = []
+        self.after: dict[int, object] = {}
+
+    def __len__(self) -> int:
+        return len(self.tried)
+
+
+@pytest.fixture
+def lock_attempts(monkeypatch) -> _LockAttempts:
+    attempts = _LockAttempts()
+
+    def counting(path):
+        got = take_digest_run_lock(path)
+        attempts.tried.append(got)
+        if got is None and (hook := attempts.after.get(len(attempts))):
+            hook()
+        return got
+
+    monkeypatch.setattr("cyris.adapters.store.local_d1.take_digest_run_lock", counting)
+    return attempts
+
+
 @pytest.mark.parametrize(
     ("first", "second"),
-    [(MANUAL, TICK), (OTHER_PERIOD, TICK), (TICK, MANUAL), (MANUAL, MANUAL)],
-    ids=["tick-during-post-run", "tick-during-other-period", "post-run-during-tick", "two-manual"],
+    [(TICK, MANUAL), (MANUAL, MANUAL), (OTHER_PERIOD, MANUAL)],
+    ids=["post-run-during-tick", "two-manual", "post-run-during-other-period"],
 )
-def test_a_second_run_during_a_digest_does_nothing_and_says_so(
-    install, digests, monkeypatch, first, second
+def test_a_manual_run_during_a_digest_does_nothing_and_says_so(
+    install, digests, lock_attempts, monkeypatch, first, second
 ) -> None:
     """A real lock file, with the second run arriving while the first is in its digest."""
     during: list = []
@@ -395,7 +425,117 @@ def test_a_second_run_during_a_digest_does_nothing_and_says_so(
     [inner] = during
     assert inner.exit_code == 0, inner.output
     assert "already running" in inner.output
+    assert len(lock_attempts) == 2
+    assert lock_attempts.tried[1] is None
     assert digests == ["built"]
+
+
+class _OtherProcess:
+    """A process of its own holding the store's digest-run lock until `release`."""
+
+    def __init__(self, store: Path) -> None:
+        self._holder = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from pathlib import Path\n"
+                "from cyris.adapters.store.local_d1 import take_digest_run_lock\n"
+                "assert take_digest_run_lock(Path(sys.argv[1])) is not None\n"
+                "print('held', flush=True)\n"
+                "sys.stdin.read()\n",
+                str(store),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        assert self._holder.stdout.readline().strip() == "held"
+
+    def release(self) -> None:
+        self._holder.stdin.close()
+        self._holder.wait(10)
+        self._holder.stdout.close()
+
+
+def test_a_tick_waits_for_a_digest_and_makes_its_issue_once_it_ends(
+    install, digests, lock_attempts, tmp_path: Path
+) -> None:
+    other = _OtherProcess(_store_path(tmp_path))
+    built_while_held: list[str] = []
+    released: list[bool] = []
+
+    def release() -> None:
+        built_while_held.extend(digests)
+        other.release()
+        released.append(True)
+
+    lock_attempts.after[3] = release
+    try:
+        result = runner.invoke(app, [*TICK, *install])
+    finally:
+        if other._holder.poll() is None:
+            other.release()
+
+    assert result.exit_code == 0, result.output
+    assert released == [True]
+    assert built_while_held == []
+    assert digests == ["built"]
+    assert "already running" not in result.output
+
+
+def test_a_tick_that_waited_behind_the_same_issue_does_nothing(
+    install, digests, lock_attempts, tmp_path: Path
+) -> None:
+    other = _OtherProcess(_store_path(tmp_path))
+
+    def release() -> None:
+        _stored(tmp_path, TODAY, "morning")
+        other.release()
+
+    lock_attempts.after[2] = release
+    try:
+        result = runner.invoke(app, [*TICK, *install])
+    finally:
+        if other._holder.poll() is None:
+            other.release()
+
+    assert result.exit_code == 0, result.output
+    assert f"{TODAY} morning issue already exists" in result.output
+    assert digests == []
+
+
+def test_a_tick_behind_a_digest_past_the_cap_says_so_and_makes_no_issue(
+    install, digests, lock_attempts, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(cli, "DIGEST_LOCK_WAIT_SECONDS", 0.2)
+    held = take_digest_run_lock(_store_path(tmp_path))
+    try:
+        result = runner.invoke(app, [*TICK, *install])
+    finally:
+        os.close(held)
+
+    assert result.exit_code == 0, result.output
+    assert len(lock_attempts) > 2
+    [line] = result.output.splitlines()
+    assert "morning" in line
+    assert "Waited" in line
+    assert "another digest" in line
+    assert digests == []
+
+
+def test_a_manual_run_behind_a_digest_is_refused_at_once(
+    install, digests, lock_attempts, tmp_path: Path
+) -> None:
+    held = take_digest_run_lock(_store_path(tmp_path))
+    try:
+        result = runner.invoke(app, [*MANUAL, *install])
+    finally:
+        os.close(held)
+
+    assert result.exit_code == 0, result.output
+    assert "already running" in result.output
+    assert lock_attempts.tried == [None]
+    assert digests == []
 
 
 def test_a_run_ending_lets_the_next_one_start(install, digests) -> None:

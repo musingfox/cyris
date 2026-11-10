@@ -123,11 +123,13 @@ the schedule follows the timezone you saved.
 To make an issue now, run `cyris run --period morning`; `--period` is `morning` or `evening` and names
 the issue, and `--force` reprocesses a window already processed.
 
-One store runs one `cyris run` at a time, whether the hourly tick or you started it. A `cyris run`
-that starts while another is under way does nothing and says so in the log. So does an hourly run
-whose issue already exists, and `cyris run --period morning` is how to make that issue again. A run
-you started by hand that is still going when a digest hour begins therefore costs that hour its
-issue; its articles wait for the next one.
+One store runs one `cyris run` at a time, whether the hourly tick or you started it. A
+`cyris run --period morning` that starts while another is under way does nothing and says so in the
+log. The hourly run waits instead: when a run you started by hand is still going at a digest hour, it
+tries again every few seconds for up to 30 minutes, then makes that hour's issue unless it already
+exists. If the other run is still going after 30 minutes, the log says the hourly run waited and gave
+up, and that hour has no issue; its articles wait for the next one. An hourly run whose issue already
+exists does nothing, and `cyris run --period morning` is how to make that issue again.
 
 `cyris regenerate --mode rerun --publish` takes no such lock, so do not start it while a run is
 under way.
@@ -296,8 +298,12 @@ sets them.
   on `/onboarding` or `/settings`.
 - **`Not a digest hour (…)`**: `--if-due` outside the schedule, which is normal. Use `--period` to run
   now.
-- **`A digest is already running on this store`** or **`… issue already exists; this tick does
-  nothing`**: the rule of [step 5](#5-the-schedule), which is normal.
+- **`A digest is already running on this store`**, **`… issue already exists; this tick does
+  nothing`** or **`Waited 30 minutes for another digest to finish`**: the rule of
+  [step 5](#5-the-schedule). The first is a `--period` run refused while another is under way. The last
+  means the other run was still going 30 minutes after the hourly run began waiting, so the hourly run
+  gave up and that hour has no issue: when the other run ends, `cyris run --period morning` (or
+  `evening`, whichever hour was missed) makes it.
 - **The evening digest replaced the morning one**: a command you scheduled yourself lacks `--if-due`:
   without it or `--period`, every issue is labelled `morning`.
 - **No new articles, and nothing in the log on the hour**: the server is not running, or it was started

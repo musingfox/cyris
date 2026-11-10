@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -28,6 +29,11 @@ logger = logging.getLogger("cyris")
 # The longest the hourly tick waits before reading the clock again. asyncio's clock stops
 # while a machine sleeps, so one wait for the next hour would fire as late as the lid was shut.
 TICK_WAKE_SECONDS = 30
+
+# How long an hourly tick waits for a digest already running, and how often it tries the lock
+# meanwhile. The cap stays under the hourly spacing, so a waiting tick ends before the next fires.
+DIGEST_LOCK_WAIT_SECONDS = 30 * 60
+DIGEST_LOCK_POLL_SECONDS = 5
 
 
 @app.callback()
@@ -247,7 +253,6 @@ def run(
     _setup_logging(verbose)
 
     from cyris.adapters.store.d1 import D1Error
-    from cyris.adapters.store.local_d1 import take_digest_run_lock
     from cyris.bootstrap import load_effective_config
     from cyris.service_layer.schedule import due_period
     from cyris.utils.timezone import now_in_timezone
@@ -303,12 +308,20 @@ def run(
     # A local install's server and its scheduler each start runs on one file, with no
     # Worker to ask first. A preview publishes nothing, and D1's schedule is the Worker's.
     try:
-        lock = take_digest_run_lock(cfg.app.store.sqlite_path)
+        lock = _take_run_lock(cfg.app.store.sqlite_path, wait=if_due)
     except D1Error as e:
         _echo_d1_failure(e)
         raise typer.Exit(1) from e
     if lock is None:
-        typer.echo(f"A digest is already running on this store; this {period} run does nothing.")
+        if if_due:
+            typer.echo(
+                f"Waited {DIGEST_LOCK_WAIT_SECONDS / 60:g} minutes for another digest to finish; "
+                f"this {period} tick gives up."
+            )
+        else:
+            typer.echo(
+                f"A digest is already running on this store; this {period} run does nothing."
+            )
         return
     try:
         if if_due and _issue_stored(cfg, now.strftime("%Y-%m-%d"), period):
@@ -320,6 +333,20 @@ def run(
         _run_pipeline(cfg, period, dry_run, force, date, output, if_due)
     finally:
         os.close(lock)
+
+
+def _take_run_lock(store_path: Path, wait: bool) -> int | None:
+    """The digest-run lock, or None when it stayed held: at once, or past the wait if `wait`."""
+    from cyris.adapters.store.local_d1 import take_digest_run_lock
+
+    # The wall clock, as the tick loop reads it: a machine asleep mid-wait still ends it on waking.
+    give_up = time.time() + DIGEST_LOCK_WAIT_SECONDS
+    while (lock := take_digest_run_lock(store_path)) is None and wait:
+        left = give_up - time.time()
+        if left <= 0:
+            return None
+        time.sleep(min(DIGEST_LOCK_POLL_SECONDS, left))
+    return lock
 
 
 def _issue_stored(cfg, date: str, period: str) -> bool:
