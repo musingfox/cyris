@@ -300,6 +300,9 @@ def run(
             typer.echo(message)
             return
         period = due
+        # A tick that waits for the lock makes the issue of the hour it started in,
+        # even when it gets the lock after that hour, or that date, has ended.
+        date = now.strftime("%Y-%m-%d")
 
     if dry_run or cfg.app.store.is_cloudflare:
         _run_pipeline(cfg, period, dry_run, force, date, output, if_due)
@@ -324,9 +327,9 @@ def run(
             )
         return
     try:
-        if if_due and _issue_stored(cfg, now.strftime("%Y-%m-%d"), period):
+        if if_due and _issue_stored(cfg, date, period):
             typer.echo(
-                f"The {now:%Y-%m-%d} {period} issue already exists; this tick does nothing. "
+                f"The {date} {period} issue already exists; this tick does nothing. "
                 f"`cyris run --period {period}` makes it again."
             )
             return

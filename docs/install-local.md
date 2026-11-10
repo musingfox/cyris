@@ -127,7 +127,8 @@ One store runs one `cyris run` at a time, whether the hourly tick or you started
 `cyris run --period morning` that starts while another is under way does nothing and says so in the
 log. The hourly run waits instead: when a run you started by hand is still going at a digest hour, it
 tries again every few seconds for up to 30 minutes, then makes that hour's issue unless it already
-exists. If the other run is still going after 30 minutes, the log says the hourly run waited and gave
+exists. The issue may come out late, after its hour has ended, and it keeps the date and period of the
+hour the run started in, even when the wait crossed midnight. If the other run is still going after 30 minutes, the log says the hourly run waited and gave
 up, and that hour has no issue; its articles wait for the next one. An hourly run whose issue already
 exists does nothing, and `cyris run --period morning` is how to make that issue again.
 

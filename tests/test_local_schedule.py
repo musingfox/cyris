@@ -483,6 +483,83 @@ def test_a_tick_waits_for_a_digest_and_makes_its_issue_once_it_ends(
     assert "already running" not in result.output
 
 
+def test_a_tick_that_waited_past_midnight_makes_the_issue_of_the_day_it_started(
+    install, digests, lock_attempts, tmp_path: Path, monkeypatch
+) -> None:
+    """The clock reads the start until the holder lets go, then a late hour of the next date."""
+    clock = [datetime(2026, 9, 19, 8, 0, 1)]
+    monkeypatch.setattr(
+        "cyris.utils.timezone.now_in_timezone", lambda tz: clock[0].replace(tzinfo=ZoneInfo(tz))
+    )
+    options: list = []
+
+    async def run_digest(_deps, run_options):
+        options.append(run_options)
+        return SimpleNamespace(status="ok", rendered=None)
+
+    monkeypatch.setattr("cyris.service_layer.run_digest.run_digest", run_digest)
+    other = _OtherProcess(_store_path(tmp_path))
+
+    def release() -> None:
+        clock[0] = datetime(2026, 9, 20, 9, 5, 0)
+        other.release()
+
+    lock_attempts.after[2] = release
+    try:
+        result = runner.invoke(app, [*TICK, *install])
+    finally:
+        if other._holder.poll() is None:
+            other.release()
+
+    assert result.exit_code == 0, result.output
+    assert digests == ["built"]
+    [run_options] = options
+    assert (run_options.date, run_options.period) == ("2026-09-19", "morning")
+
+
+@pytest.mark.parametrize(
+    ("stored_on", "built"),
+    [("2026-09-19", []), ("2026-09-20", ["built"])],
+    ids=["issue-of-the-start-date", "issue-of-the-lock-date"],
+)
+def test_a_tick_that_got_the_lock_past_midnight_checks_the_date_it_started_on(
+    install, digests, lock_attempts, tmp_path: Path, monkeypatch, stored_on, built
+) -> None:
+    """Started at the evening hour, it gets the lock the next day; the clock says that day."""
+    clock = [datetime(2026, 9, 19, 20, 0, 1)]
+    monkeypatch.setattr(
+        "cyris.utils.timezone.now_in_timezone", lambda tz: clock[0].replace(tzinfo=ZoneInfo(tz))
+    )
+    options: list = []
+
+    async def run_digest(_deps, run_options):
+        options.append(run_options)
+        return SimpleNamespace(status="ok", rendered=None)
+
+    monkeypatch.setattr("cyris.service_layer.run_digest.run_digest", run_digest)
+    other = _OtherProcess(_store_path(tmp_path))
+
+    def release() -> None:
+        _stored(tmp_path, stored_on, "evening")
+        clock[0] = datetime(2026, 9, 20, 0, 5, 0)
+        other.release()
+
+    lock_attempts.after[2] = release
+    try:
+        result = runner.invoke(app, [*TICK, *install])
+    finally:
+        if other._holder.poll() is None:
+            other.release()
+
+    assert result.exit_code == 0, result.output
+    assert digests == built
+    if built:
+        [run_options] = options
+        assert (run_options.date, run_options.period) == ("2026-09-19", "evening")
+    else:
+        assert "2026-09-19 evening issue already exists" in result.output
+
+
 def test_a_tick_that_waited_behind_the_same_issue_does_nothing(
     install, digests, lock_attempts, tmp_path: Path
 ) -> None:
