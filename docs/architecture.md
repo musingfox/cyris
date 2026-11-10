@@ -462,8 +462,10 @@ An answer that names no usable topic takes its headline as the name, and one who
 as well is a topic of its own, named by the article's title; an article with no answer at all (no
 LLM, a failed batch, a `read` or `follow` article the model left out) is a topic of its own, with no
 tags and an id from its URL exactly as `stored_articles` keys it, case included, which no other
-article can join. A batch whose reply fails validation is a failed batch: its placements are made
-only once the whole reply is read, so it keeps none. A skim article the filter rejects has no topic,
+article of that run can join. It is stored like any topic, so a later run offers it and an article
+there may continue it, votes included: a story whose first report got no answer still continues.
+A batch whose reply fails validation is a failed batch: its placements are made only once the whole
+reply is read, so it keeps none. A skim article the filter rejects has no topic,
 and neither has a `read` article the summarizer left out, which stays pending. A failed read of the
 recent topics costs the run its list, never the run (`recent_topics_error` in `run_summary`). A
 topic's tags go to `topic_tags` (§4) and never to `article_tags`, so `/interest` reads none. The

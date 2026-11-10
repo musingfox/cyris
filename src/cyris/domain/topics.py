@@ -3,7 +3,7 @@
 Every article an issue shows belongs to exactly one topic. The filter puts it under a
 recent topic, whose id carries across issues, or opens a new one; a topic opened in one
 batch is on the list the next batch is offered. An article the filter's model never
-placed is a topic of its own, which no other article can join.
+placed is a topic of its own, which no other article of its issue can join.
 """
 
 import hashlib
