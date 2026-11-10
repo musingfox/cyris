@@ -13,7 +13,7 @@ from cyris.domain.topics import TopicBook
 from cyris.service_layer import filtering
 from cyris.service_layer.filtering import BATCH_SIZE, filter_articles
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def _book() -> TopicBook:

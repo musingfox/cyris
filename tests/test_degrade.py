@@ -15,7 +15,7 @@ from cyris.service_layer.degrade import (
 from cyris.service_layer.filtering import filter_articles
 from cyris.service_layer.summarize import summarize_articles
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def _article(aid: int, tag: str = "tech") -> Article:
