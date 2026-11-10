@@ -22,6 +22,19 @@ def _expected_story_id(date: str, period: str, urls: list[str]) -> str:
     return f"{date}-{period}-" + hashlib.sha1("\n".join(sorted(urls)).encode()).hexdigest()[:8]
 
 
+def _kept(**topics: list[int]) -> str:
+    """A filter reply keeping the articles at these positions, each new topic by its name."""
+    return json.dumps(
+        {
+            "selected": [
+                {"id": i, "title": f"Kept {i}", "source": "Wire", "topic_name": name}
+                for name, positions in topics.items()
+                for i in positions
+            ]
+        }
+    )
+
+
 class TestDigestPipeline:
     @pytest.fixture
     def pipeline(self):
@@ -113,7 +126,7 @@ class TestDigestPipeline:
         assert result.content.output_language == "ja"
 
     async def test_follow_lane_passthrough(self, pipeline, sample_sources):
-        """Follow-lane articles bypass LLM, group by source, and are never discarded."""
+        """Follow-lane articles get no summary, group by source, and are never discarded."""
         fan_articles = [
             Article(
                 id=90,
@@ -135,7 +148,7 @@ class TestDigestPipeline:
             ),
         ]
 
-        # No filter/summarize mocks needed — follow lane never reaches the LLM path.
+        # No filter/summarize mocks needed: a reply that places nothing still keeps them.
         result = await pipeline.process(
             fan_articles,
             sample_sources,
@@ -209,11 +222,7 @@ class TestDigestPipeline:
             )
 
         pipeline = DigestPipeline(
-            FakeLLM(
-                '{"clusters": ['
-                '{"heading": "A", "summary": "S", "article_ids": [0, 1, 2], "tags": []}, '
-                '{"heading": "B", "summary": "S", "article_ids": [3], "tags": []}]}'
-            ),
+            FakeLLM(_kept(A=[0, 1, 2], B=[3, 4])),
             **pipeline_settings(),
         )
 
@@ -224,6 +233,7 @@ class TestDigestPipeline:
                 article(3, "https://news.example/own.jpg"),
                 # In another topic, and still enough to make the logo the site's default.
                 article(4, "https://news.example/logo.png"),
+                article(5, None),
             ],
             sample_sources,
             period="morning",
@@ -240,10 +250,13 @@ class TestDigestPipeline:
             "https://news.example/2": None,
             "https://news.example/3": "https://news.example/own.jpg",
             "https://news.example/4": None,
+            "https://news.example/5": None,
         }
 
-    async def test_story_records_name_every_cluster_with_its_full_membership(self, sample_sources):
-        """Story records carry every cluster's full URL list."""
+    async def test_story_records_name_each_sand_block_with_its_full_membership(
+        self, sample_sources
+    ):
+        """Story records carry each sand block's full URL list; a row of one is no story."""
         news = [
             Article(
                 id=i,
@@ -258,11 +271,7 @@ class TestDigestPipeline:
             for i in (1, 2, 3)
         ]
         pipeline = DigestPipeline(
-            FakeLLM(
-                '{"clusters": ['
-                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
-                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
-            ),
+            FakeLLM(_kept(A=[0, 1], B=[2])),
             **pipeline_settings(),
         )
 
@@ -270,18 +279,16 @@ class TestDigestPipeline:
             news, sample_sources, period="morning", timezone=TEST_SETTINGS["general.timezone"]
         )
 
-        assert len(result.content.news_clusters) == 2
-        # The records name both stories with their full memberships, under
-        # content-derived ids a re-run of the same window would reproduce.
+        assert len(result.content.news_clusters) == 1
+        # The record names the story with its full membership, under a content-derived
+        # id a re-run of the same window would reproduce.
         date = result.content.date
         assert [r.id for r in result.story_records] == [
             _expected_story_id(
                 date, "morning", ["https://news.example/1", "https://news.example/2"]
             ),
-            _expected_story_id(date, "morning", ["https://news.example/3"]),
         ]
         assert result.story_records[0].urls == ["https://news.example/1", "https://news.example/2"]
-        assert result.story_records[1].urls == ["https://news.example/3"]
 
     async def test_the_issue_counts_every_article_the_page_shows_a_topic_of_two_as_two(
         self, sample_sources, tmp_path
@@ -300,11 +307,7 @@ class TestDigestPipeline:
             for i in (1, 2, 3)
         ]
         pipeline = DigestPipeline(
-            FakeLLM(
-                '{"clusters": ['
-                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
-                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
-            ),
+            FakeLLM(_kept(A=[0, 1], B=[2])),
             **pipeline_settings(),
         )
 
@@ -336,11 +339,7 @@ class TestDigestPipeline:
             for i in (1, 2, 3)
         ]
         pipeline = DigestPipeline(
-            FakeLLM(
-                '{"clusters": ['
-                '{"heading": "A", "summary": "S", "article_ids": [0, 1], "tags": []}, '
-                '{"heading": "B", "summary": "S", "article_ids": [2], "tags": []}]}'
-            ),
+            FakeLLM(_kept(A=[0, 1], B=[2])),
             **pipeline_settings(),
         )
 
@@ -349,6 +348,7 @@ class TestDigestPipeline:
         )
 
         # (a) Sections and records carry the same ids, one-to-one, in order.
+        assert result.story_records
         assert [s.story_id for s in result.content.news_clusters] == [
             r.id for r in result.story_records
         ]
@@ -583,7 +583,7 @@ class TestKeptItemsReachThePreference:
         ]
         return [h1, h2, h3, s1, s2], translated, sections
 
-    async def _process(self, articles, sample_sources, *, headlines, sections, preference, news=()):
+    async def _process(self, articles, sample_sources, *, headlines, sections, preference):
         pipeline = DigestPipeline(
             FakeLLM(),
             **pipeline_settings(featured_threshold=100),
@@ -598,11 +598,6 @@ class TestKeptItemsReachThePreference:
                 "cyris.service_layer.digest_pipeline.summarize_articles",
                 new_callable=AsyncMock,
                 return_value=sections,
-            ),
-            patch(
-                "cyris.service_layer.digest_pipeline.cluster_news",
-                new_callable=AsyncMock,
-                return_value=(list(news), []),
             ),
         ):
             return await pipeline.process(
@@ -635,8 +630,7 @@ class TestKeptItemsReachThePreference:
         assert {a.url for a in kept} <= {u for t in issues[0] for u in t.urls}
         assert [a.title for a in kept] == ["Original one", "Original two", articles[4].title]
 
-    async def test_every_cluster_member_reaches_the_preference(self, sample_sources):
-        articles, headlines, sections = self._kept_issue()
+    async def test_every_member_of_a_topic_reaches_the_preference(self, sample_sources):
         wires = [
             Article(
                 id=9 + n,
@@ -650,25 +644,22 @@ class TestKeptItemsReachThePreference:
             )
             for n in range(2)
         ]
-        cluster = DigestSection(heading="News", items=[_item(w) for w in wires])
         asked: list[list[Article]] = []
 
         async def preference(kept, _topics):
             asked.append(kept)
             return None
 
-        await self._process(
-            [*articles, *wires],
+        pipeline = DigestPipeline(FakeLLM(_kept(News=[0, 1])), **pipeline_settings())
+        await pipeline.process(
+            wires,
             sample_sources,
-            headlines=headlines,
-            sections=sections,
+            timezone=TEST_SETTINGS["general.timezone"],
             preference=preference,
-            news=[cluster],
         )
 
         [kept] = asked
-        assert {w.url for w in wires} <= {a.url for a in kept}
-        assert len(kept) == 5
+        assert [a.url for a in kept] == [w.url for w in wires]
 
     async def test_without_a_preference_nothing_is_asked_and_nothing_moves(self, sample_sources):
         articles, headlines, sections = self._kept_issue()
@@ -726,33 +717,17 @@ class TestThePreferenceOrdersTheNews:
             _article(i, Lane.SKIM, "Wire").model_copy(update={"source_tags": ["news"]})
             for i in (1, 2, 3, 4)
         ]
-        clusters = [
-            DigestSection(heading="quiet", items=[_item(w) for w in wires[:2]]),
-            DigestSection(heading="voted", items=[_item(w) for w in wires[2:]]),
-        ]
 
         async def preference(_kept, _topics):
             return {"https://example.com/1": -0.2, "https://example.com/4": 0.6}
 
-        pipeline = DigestPipeline(FakeLLM(), **pipeline_settings())
-        with (
-            patch(
-                "cyris.service_layer.digest_pipeline.filter_articles",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "cyris.service_layer.digest_pipeline.cluster_news",
-                new_callable=AsyncMock,
-                return_value=(clusters, []),
-            ),
-        ):
-            result = await pipeline.process(
-                wires,
-                sample_sources,
-                timezone=TEST_SETTINGS["general.timezone"],
-                preference=preference,
-            )
+        pipeline = DigestPipeline(FakeLLM(_kept(quiet=[0, 1], voted=[2, 3])), **pipeline_settings())
+        result = await pipeline.process(
+            wires,
+            sample_sources,
+            timezone=TEST_SETTINGS["general.timezone"],
+            preference=preference,
+        )
 
         assert [s.heading for s in result.content.news_clusters] == ["voted", "quiet"]
 
@@ -783,7 +758,7 @@ class TestSummarizeFollow:
             )
         )
 
-    async def test_off_sends_no_follow_article_to_the_model(self, sample_sources):
+    async def test_off_asks_the_model_for_their_topics_and_no_explanation(self, sample_sources):
         llm = self._llm()
         pipeline = DigestPipeline(llm, **pipeline_settings(summarize_follow=False))
 
@@ -791,7 +766,8 @@ class TestSummarizeFollow:
             self._follow(), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
         )
 
-        assert llm.calls == []
+        (filter_call,) = llm.calls
+        assert '"selected"' in filter_call["system"]
         items = [i for s in result.content.fan_sections for i in s.items]
         assert [i.summary for i in items] == ["Body."] * 3
         assert all(i.passed_through for i in items)
@@ -804,11 +780,13 @@ class TestSummarizeFollow:
             self._follow(), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
         )
 
-        assert [c["prompt"].splitlines()[0] for c in llm.calls] == [
+        filter_call, *explain_calls = llm.calls
+        assert '"selected"' in filter_call["system"]
+        assert [c["prompt"].splitlines()[0] for c in explain_calls] == [
             "Topic group: A group",
             "Topic group: A newsletter",
         ]
-        assert all("never analyse" in c["system"] for c in llm.calls)
+        assert all("never analyse" in c["system"] for c in explain_calls)
         sections = result.content.fan_sections
         assert [s.heading for s in sections] == ["A group", "A newsletter"]
         group, newsletter = sections

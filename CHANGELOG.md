@@ -33,11 +33,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A vote on the page lands on its topic. One click on any item, a topic of
   several articles included, writes one vote on that topic with the time you
   clicked. Each article it covers is still marked as voted, as before.
-- Every run records its topics. Each item on the page is a topic, with its
-  articles and its tags, in four new tables (`topics`, `topic_members`,
-  `topic_tags`, `topic_votes`) or in `topics.json` on the `json` backend. For now a
-  topic lasts one issue: a topic that carries across issues comes when the filter
-  assigns topics.
+- Every run records its topics, with their articles and tags, in four new tables
+  (`topics`, `topic_members`, `topic_tags`, `topic_votes`) or in `topics.json` on
+  the `json` backend.
 - **A new deployment is set up by a wizard.** While its source list is empty,
   `/settings` opens `/onboarding`: six steps, of which this release fills three —
   the output language and timezone, the publish hours, and the notifications.
@@ -65,6 +63,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The filter gives every article a topic.** An article joins a topic from the
+  last `digest.topic_lifetime_days` or opens a new one for a genuinely new story,
+  so a story keeps one topic, and your votes on it, from issue to issue. A topic
+  of two or more `skim` articles in an issue is one block under Topics; one article
+  is a row under Headlines. News clustering is gone, along with its summary across
+  a cluster's articles: a block's line stays its first article's excerpt for now.
+  Follow-ups on a story the filter keeps now stay, instead of being dropped for
+  adding nothing new. To choose their topic, `read` and `follow` articles now go
+  to the filter too, so a `follow` article reaches the model with **Summarize
+  follow articles** off, and a window of only `follow` articles now costs a call. A
+  topic's tags show on the page and never reach `/interest`.
+- **An upvote keeps a topic open to new articles for longer.** A topic you voted
+  up leaves the list of topics new articles can join more slowly, by less as your
+  vote fades with **Vote half-life**, and never later than three times **Topic
+  lifetime** after it last appeared. A topic with no vote, or only a downvote,
+  leaves after **Topic lifetime** as before. When more than 300 topics qualify,
+  the ones that stay longest are offered.
 - **A push to `main` deploys production.** The release workflow now runs on
   every push to `main`. A release that passes its checks deploys the commit it
   released, as a separate job, so a failed build and a failed deploy still show

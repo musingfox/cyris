@@ -193,11 +193,10 @@ def test_each_arm_reads_the_summarize_follow_setting(on: bool):
         render=lambda content: "# digest",
     )
 
-    if on:
-        assert rows[0].content.fan_sections[0].items[0].summary == "Explained."
-    else:
-        # No call reached the model, so the arm is not a row (see the test above).
-        assert rows == []
+    item = rows[0].content.fan_sections[0].items[0]
+    # Off, the model is asked for its topic alone and the card keeps the article's own text.
+    assert (item.summary == "Explained.") is on
+    assert item.passed_through is not on
 
 
 def test_the_cli_no_longer_holds_the_comparison_logic() -> None:

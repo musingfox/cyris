@@ -123,7 +123,7 @@ def _item(slug: str, title: str, sources: list[str], **extra) -> DigestItem:
 
 
 def _members(slug: str, sources: list[str]) -> list[DigestItem]:
-    """A cluster's articles, as `cluster_news` keeps them: each its own title and excerpt."""
+    """A topic's articles, as its sand keeps them: each its own title and excerpt."""
     return [
         _item(f"{slug}-{n}", f"Report {n} of the {slug} topic", [source], passed_through=True)
         for n, source in enumerate(sources)

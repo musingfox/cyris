@@ -20,7 +20,7 @@ def _item(slug: str, *, score: float | None = None, **extra) -> DigestItem:
 
 
 def _cluster(slug: str, n: int, **extra) -> DigestSection:
-    """A cluster as `cluster_news` writes it: one merged item and `n` members."""
+    """A sand section as an issue stores it: one merged item and `n` members."""
     members = [
         _item(f"{slug}-{i}", summary=f"Excerpt {slug}-{i}", passed_through=True) for i in range(n)
     ]

@@ -146,8 +146,8 @@ CREATE TABLE IF NOT EXISTS pages_deploy_receipt (
   created_at  TEXT NOT NULL        -- ISO-8601; INSERT OR IGNORE keeps the first
 );
 
--- Pre-truncation story membership: which articles the clustering step grouped
--- together, per digest window. A save replaces the (digest_date, period)
+-- Story membership: which articles each sand block holds, per digest window.
+-- A save replaces the (digest_date, period)
 -- window's rows — insert first, then delete what the new set no longer names,
 -- so a mid-way failure leaves a union rather than an empty window.
 CREATE TABLE IF NOT EXISTS stories (
@@ -170,9 +170,8 @@ CREATE TABLE IF NOT EXISTS story_members (
 
 CREATE INDEX IF NOT EXISTS idx_story_members_url ON story_members(article_url);
 
--- Normalized tag vocabulary and its URL-keyed article memberships. A story's
--- tags live here (on its member articles), never on `stories`: one normalized
--- home, no raw-LLM-string sibling to drift from it.
+-- Normalized tag vocabulary and its URL-keyed article memberships: the tags
+-- scoring emits, which `/interest` reads. A topic's tags are `topic_tags`.
 CREATE TABLE IF NOT EXISTS tags (
   name       TEXT PRIMARY KEY,
   created_at TEXT NOT NULL      -- first sighting; INSERT OR IGNORE keeps it
@@ -187,9 +186,8 @@ CREATE TABLE IF NOT EXISTS article_tags (
 
 CREATE INDEX IF NOT EXISTS idx_article_tags_tag ON article_tags(tag);
 
--- Topics: what a reader votes on (ADR-0023). A topic's id is meant to carry across
--- issues; until the filter assigns topics, each issue's item is a fresh topic.
--- `stories` stays as it is: a separate record of the clustering step.
+-- Topics: what a reader votes on (ADR-0023). The filter assigns them, and a topic's id
+-- carries across the issues that hold it. `stories` is a separate record of each issue's sand.
 CREATE TABLE IF NOT EXISTS topics (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,

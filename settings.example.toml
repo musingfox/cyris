@@ -38,7 +38,7 @@ model = "claude-sonnet-4-6"             # e.g. "gemini-2.5-flash" when provider 
 max_articles_per_digest = 400           # a run scores and digests the window's newest N, across all sources
 scoring_snippet_length = 1000           # characters of each article the scorer reads
 summarize_snippet_length = 1000         # characters read when summarizing
-filter_snippet_length = 500             # characters read when clustering news and extracting headlines
+filter_snippet_length = 500             # characters read when extracting headlines and their topics
 output_language = "zh-Hant"             # BCP 47 tag for headlines/summaries (zh-Hans, en, ja, ...)
 style_prompt = ""                       # optional: your tone/focus, injected into the prompts
 type_scale = 1                          # text size on every page: 0.875, 1 or 1.125
@@ -46,7 +46,7 @@ rank_by_preference = true               # order headlines and Features by your t
 preference_source = "cosine"            # who judges that order: cosine (your topic votes) or clef (needs a Workers AI token and [vote_similarity])
 summarize_follow = false                # explain each follow-lane article as read articles are
 vote_half_life_days = 7                 # a topic vote counts half as much after this many days
-topic_lifetime_days = 7                 # topics seen within this many days are current; one you voted up stays longer
+topic_lifetime_days = 7                 # topics seen within this many days are current; an upvote slows one leaving the list new articles can join, by less as the vote fades with the half-life, never past 3 times this after it last appeared
 
 [routing]
 score_threshold = 70                    # two articles on one topic at or above it share the Top story (0-100)

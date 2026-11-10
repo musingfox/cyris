@@ -37,22 +37,49 @@ def _vote(tid: str, direction: int, days_ago: float) -> TopicVote:
     return TopicVote(topic_id=tid, direction=direction, clicked_at=AT - timedelta(days=days_ago))
 
 
-def test_the_recent_list_is_the_last_l_days_plus_topics_still_voted_up() -> None:
+def test_the_recent_list_reads_the_ceilings_window_and_keeps_what_the_votes_hold() -> None:
     store = FakeTopics(
         [
             _summary("fresh", 2),
-            _summary("ended", 10),
-            _summary("voted-up", 20),
-            _summary("faded-up", 30),
-            _summary("voted-down", 20),
+            _summary("ended", 8),
+            _summary("voted-up", 8),
+            _summary("voted-down", 6),
+            _summary("past-ceiling", 21),
         ],
-        [_vote("voted-up", 1, 20), _vote("faded-up", 1, 30), _vote("voted-down", -1, 20)],
+        [_vote("voted-up", 1, 1), _vote("voted-down", -1, 1)]
+        + [_vote("past-ceiling", 1, 0.01 * n) for n in range(1, 21)],
     )
 
-    ids = [t.id for t in recent_topic_list(store, AT, half_life_days=H, lifetime_days=L)]
+    recent, expires = recent_topic_list(store, AT, half_life_days=H, lifetime_days=L)
 
-    # 20 days is under four half-lives of 7 (0.14 > 0.1); 30 days is over (0.05).
-    assert ids == ["fresh", "voted-up"]
+    assert [t.id for t in recent] == ["fresh", "voted-up", "voted-down"]
+    assert expires.keys() == {"fresh", "voted-up", "voted-down"}
+    assert expires["voted-down"] == AT + timedelta(days=1)
+    assert expires["voted-up"] > AT + timedelta(days=4)
+
+
+def test_the_recent_list_reads_three_lifetimes_back_to_revive_a_topic_past_two() -> None:
+    store = FakeTopics(
+        [_summary("revived", 17.5), _summary("unvoted", 17.5)],
+        [_vote("revived", 1, 0.01 * n) for n in range(1, 21)],
+    )
+
+    recent, expires = recent_topic_list(store, AT, half_life_days=H, lifetime_days=L)
+
+    assert [t.id for t in recent] == ["revived"]
+    assert expires == {"revived": AT + timedelta(days=3.5)}
+
+
+def test_the_recent_list_holds_a_topic_by_the_vote_as_faded_not_as_cast() -> None:
+    store = FakeTopics(
+        [_summary("faded", 8), _summary("fresh-vote", 8)],
+        [_vote("faded", 1, 4 * H), _vote("fresh-vote", 1, 1)],
+    )
+
+    recent, expires = recent_topic_list(store, AT, half_life_days=H, lifetime_days=L)
+
+    assert [t.id for t in recent] == ["fresh-vote"]
+    assert expires.keys() == {"fresh-vote"}
 
 
 def test_an_issue_topic_takes_the_preference_of_an_earlier_voted_topic_through_an_entity() -> None:

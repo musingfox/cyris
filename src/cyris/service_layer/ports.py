@@ -161,11 +161,11 @@ class TopicRepository(Protocol):
         ...
 
     def recent_topics(self, since: datetime, until: datetime) -> list[TopicSummary]:
-        """Topics last seen in [since, until], with their tags."""
+        """Topics last seen in [since, until], with their tags, entity tags first, then by tag."""
         ...
 
     def topics_by_ids(self, ids: list[str]) -> list[TopicSummary]:
-        """The named topics that are stored, with their tags."""
+        """The named topics that are stored, with their tags in `recent_topics`'s order."""
         ...
 
 

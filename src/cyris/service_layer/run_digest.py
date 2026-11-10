@@ -15,6 +15,7 @@ from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
     StoredArticle,
+    TopicSummary,
     UsageStats,
     is_degraded_run,
 )
@@ -26,6 +27,7 @@ from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.schedule import PERIOD_ORDER, Period, is_latest_issue
 from cyris.service_layer.scoring import AreaPick, score_in_batches, select_scorable
+from cyris.service_layer.topic_order import recent_topic_list
 from cyris.service_layer.vote_order import VoteOrder
 from cyris.utils.timezone import now_in_timezone
 
@@ -711,6 +713,21 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             logger.error("Reading article pages failed, the run keeps feed text: %s", e)
             summary["article_pages_error"] = str(e)
 
+    recent_topics: list[TopicSummary] = []
+    recent_expires: dict[str, datetime] = {}
+    if deps.topic_store is not None:
+        try:
+            recent_topics, recent_expires = recent_topic_list(
+                deps.topic_store,
+                datetime.fromisoformat(summary["started_at"]),
+                half_life_days=cfg.app.digest.vote_half_life_days,
+                lifetime_days=cfg.app.digest.topic_lifetime_days,
+            )
+        except Exception as e:
+            # A failed read costs this issue its continuing topics, not the issue.
+            logger.warning("Topic store unreadable, every topic this run opens is new: %s", e)
+            summary["recent_topics_error"] = str(e)
+
     # Process all articles through digest pipeline
     digest_pipeline = DigestPipeline(
         deps.llm,
@@ -731,6 +748,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         article_scores=article_scores,
         article_tags=scoring_tags,
         preference=order,
+        recent_topics=recent_topics,
+        recent_expires=recent_expires,
     )
     content = result.content
     summary["preference_rank_applied"] = result.preference_moves is not None
@@ -742,13 +761,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     summary.update(order.receipt.as_summary())
     # A view, not a verdict: no hit changes its article's state or the issue's counts.
     content.tracked_topics = tracked_sections
-    if not options.dry_run and deps.tag_store is not None and result.url_to_tags:
-        try:
-            deps.tag_store.save(result.url_to_tags)
-        except Exception as e:
-            logger.warning("Failed to persist cluster tags: %s", e)
-    # Deliberately no empty-records guard: a re-run that clustered nothing must
-    # clear the window's rows, not leave a previous run's stories looking current.
+    # Deliberately no empty-records guard: a re-run with no sand must clear the
+    # window's rows, not leave a previous run's stories looking current.
     if not options.dry_run and deps.story_store is not None:
         try:
             deps.story_store.save(content.date, content.period, result.story_records)

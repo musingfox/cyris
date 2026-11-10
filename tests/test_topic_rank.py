@@ -12,7 +12,6 @@ from cyris.domain.models import TopicKind, TopicTag, TopicVote
 from cyris.domain.topic_rank import (
     RECENT_VOTE_CUTOFF,
     entity_tags,
-    kept_by_upvote,
     score_topics,
     topic_preferences,
     vote_weight,
@@ -81,10 +80,6 @@ def test_after_four_half_lives_a_vote_weighs_less_than_the_cutoff() -> None:
 
     assert vote_weight(vote, T1 + timedelta(days=3 * H), H) > RECENT_VOTE_CUTOFF
     assert vote_weight(vote, T1 + timedelta(days=4 * H), H) < RECENT_VOTE_CUTOFF
-    assert kept_by_upvote(topic_preferences([vote], T1 + timedelta(days=3 * H), H)) == [
-        "local-election"
-    ]
-    assert kept_by_upvote(topic_preferences([vote], T1 + timedelta(days=4 * H), H)) == []
 
 
 def test_a_narrow_entity_tag_moves_an_unvoted_topic_more_than_a_broad_one() -> None:

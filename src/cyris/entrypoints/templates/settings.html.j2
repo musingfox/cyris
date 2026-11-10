@@ -210,7 +210,7 @@
             <div class="field">
               <label class="label" for="topic-lifetime">Topic lifetime (days)</label>
               <input class="input narrow" id="topic-lifetime" type="number" min="1" max="365" autocomplete="off">
-              <p class="small">Topics seen within this many days are current: a name many of them share counts for less in the order. A topic you voted up stays current longer.</p>
+              <p class="small">Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared.</p>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
@@ -247,7 +247,7 @@
               <div class="field-row">
                 <div class="field"><label class="small" for="scoring-snippet">Scoring</label><input class="input narrow" id="scoring-snippet" type="number" min="1" autocomplete="off"></div>
                 <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" autocomplete="off"></div>
-                <div class="field"><label class="small" for="filter-snippet">News clustering and headlines</label><input class="input narrow" id="filter-snippet" type="number" min="1" autocomplete="off"></div>
+                <div class="field"><label class="small" for="filter-snippet">Headlines and topics</label><input class="input narrow" id="filter-snippet" type="number" min="1" autocomplete="off"></div>
               </div>
               <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
             </div>

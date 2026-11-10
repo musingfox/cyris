@@ -412,9 +412,10 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   start of its text, such as `（中央社首爾29日綜合外電報導）`, which would otherwise spend most of
   the line. A dateline carries a day of the month (`29日`), so a short bracket such as `（台電）`
   stays (`docs/architecture.md` §5 has the words it ends in).
-- **A water row is one article: its title and the filter's one sentence.** A topic of one article is
-  the exception: its row takes the cluster's heading and summary in place of the title and the
-  filter's sentence. A row is at least 44px tall, so a one-line row's vote tap area stops at its
+- **A water row is one article: its title and the filter's one sentence.** An issue stored before
+  the filter assigned topics may hold a topic of one article as a cluster: its row takes the
+  cluster's heading and summary in place of the title and the filter's sentence. A row is at least
+  44px tall, so a one-line row's vote tap area stops at its
   own edge. Each row is a number, the
   title link and, below the title, the one-sentence summary the filter wrote for that article, in the
   small role's size and colour (§3) under a title in `--text`; its tags follow, and the votes come
@@ -428,11 +429,12 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   row whose title column is narrow on a phone. A row with no summary is only the number and the title
   link. When the filter ran without an LLM, by choice under provider `none` or because the configured
   one could not be used, the sentence is the article's plain excerpt, and the row carries `lang=""`
-  (§1). Topics of one article come first, then the kept headlines, each part in the vote order: a
-  stand-in until topic-store-and-votes gives the two one shared order.
+  (§1). The rows are in the vote order. An issue stored with topics of one article as clusters lists
+  those first, then the kept headlines, each part in the vote order.
 - **Tags take their own row.** An item's tags are pills (§4) in a `.tags` row above its meta row, so
   however many there are, the votes stay where the meta row puts them. A pebble's tags are the ones
-  scoring returned for its article this run; an article scored in an earlier run shows none.
+  scoring returned for its article this run; an article scored in an earlier run shows none. Sand's
+  and water's are their topic's, as the filter gave them.
 - **The meta row.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the label role. A
   pebble's holds its source name, the original link and the vote group, in that order. A sand block's
   holds the fold and the vote group, and is the one meta row with a rule of its own, `margin-top:

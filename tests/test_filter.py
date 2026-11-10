@@ -9,10 +9,15 @@ import pytest
 from fakes import FakeLLM
 
 from cyris.domain.models import Article, Lane, UsageStats
+from cyris.domain.topics import TopicBook
 from cyris.service_layer import filtering
 from cyris.service_layer.filtering import BATCH_SIZE, filter_articles
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
+
+
+def _book() -> TopicBook:
+    return TopicBook([], date="2026-09-17", period="morning")
 
 
 class TestFilterArticles:
@@ -35,6 +40,7 @@ class TestFilterArticles:
             filter_snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
+            topics=_book(),
         )
 
         assert usage.fell_back_to_excerpts is fell_back
@@ -64,6 +70,7 @@ class TestFilterArticles:
             filter_snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
+            topics=_book(),
         )
 
         assert items
@@ -91,6 +98,7 @@ class TestFilterArticles:
             filter_snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
+            topics=_book(),
         )
 
         assert len(items) == 1
@@ -118,6 +126,7 @@ class TestFilterArticles:
                 filter_snippet_length=500,
                 output_language="zh-Hant",
                 style_prompt="",
+                topics=_book(),
             )
 
         assert [item.title for item in items] == ["ok"]
@@ -144,6 +153,7 @@ class TestFilterArticles:
                 filter_snippet_length=500,
                 output_language="zh-Hant",
                 style_prompt="",
+                topics=_book(),
             )
 
         assert items == []
@@ -170,6 +180,7 @@ class TestFilterArticles:
                 filter_snippet_length=500,
                 output_language="zh-Hant",
                 style_prompt="",
+                topics=_book(),
             )
 
         assert [item.title for item in items] == ["ok"]
@@ -198,6 +209,7 @@ class TestFilterArticles:
                 filter_snippet_length=500,
                 output_language="zh-Hant",
                 style_prompt="",
+                topics=_book(),
             )
 
         assert [item.title for item in items] == ["ok"]
@@ -205,7 +217,12 @@ class TestFilterArticles:
 
     async def test_filter_empty_input(self):
         items = await filter_articles(
-            [], FakeLLM(), filter_snippet_length=500, output_language="zh-Hant", style_prompt=""
+            [],
+            FakeLLM(),
+            filter_snippet_length=500,
+            output_language="zh-Hant",
+            style_prompt="",
+            topics=_book(),
         )
         assert items == []
 
@@ -218,6 +235,7 @@ class TestFilterArticles:
             filter_snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
+            topics=_book(),
         )
 
         assert items == []
@@ -232,6 +250,7 @@ class TestFilterArticles:
             filter_snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
+            topics=_book(),
         )
 
         assert len(llm.calls) == 1
@@ -259,6 +278,7 @@ class TestFilterArticles:
                 filter_snippet_length=500,
                 output_language="zh-Hant",
                 style_prompt="",
+                topics=_book(),
             )
         )[0]
 
@@ -284,6 +304,7 @@ class TestFilterArticles:
                 filter_snippet_length=500,
                 output_language="zh-Hant",
                 style_prompt="",
+                topics=_book(),
             )
         )[0]
 
@@ -294,7 +315,7 @@ class TestFilterArticles:
 class _NumericTailLLM(FakeLLM):
     """Selects every article it was shown, but writes each id as the integer tail
     of the one in the prompt, the way @cf/openai/gpt-oss-120b rewrote
-    'CNA/2026-09-17/202609170255' as 255 when clustering on 2026-09-17."""
+    'CNA/2026-09-17/202609170255' as 255 on 2026-09-17."""
 
     async def complete(self, prompt, **kwargs):
         ids = re.findall(r"^\[(.+?)\]", prompt, flags=re.MULTILINE)
@@ -329,6 +350,7 @@ async def test_filter_survives_a_model_that_rewrites_string_ids():
         filter_snippet_length=500,
         output_language="zh-Hant",
         style_prompt="",
+        topics=_book(),
     )
 
     assert [item.urls for item in items] == [[a.url] for a in articles]
@@ -340,7 +362,12 @@ async def test_filter_resolves_a_position_echoed_as_a_string(raw_id):
     llm = FakeLLM(json.dumps({"selected": [{"id": raw_id, "title": "t", "source": "S"}]}))
 
     items = await filter_articles(
-        articles, llm, filter_snippet_length=500, output_language="zh-Hant", style_prompt=""
+        articles,
+        llm,
+        filter_snippet_length=500,
+        output_language="zh-Hant",
+        style_prompt="",
+        topics=_book(),
     )
 
     assert items[0].urls == [articles[1].url]
@@ -359,6 +386,7 @@ async def test_an_id_naming_no_position_links_nothing(raw_id, caplog):
             filter_snippet_length=500,
             output_language="zh-Hant",
             style_prompt="",
+            topics=_book(),
         )
 
     assert items[0].urls == []
@@ -408,6 +436,7 @@ async def _run(articles, llm, usage=None, article_scores=None):
         filter_snippet_length=500,
         output_language="zh-Hant",
         style_prompt="",
+        topics=_book(),
     )
 
 

@@ -221,7 +221,8 @@ class DigestConfig(BaseModel):
     # Whether follow-lane articles get the read lane's explanation; false keeps their excerpt.
     summarize_follow: bool
     # Option I's two clocks (ADR-0023): a topic vote halves every `vote_half_life_days`,
-    # and the topics last seen within `topic_lifetime_days` are the recent ones.
+    # and the topics last seen within `topic_lifetime_days` are the recent ones, a topic
+    # voted up for longer while its vote holds (ADR-0026).
     vote_half_life_days: int = Field(ge=1, le=365)
     topic_lifetime_days: int = Field(ge=1, le=365)
 

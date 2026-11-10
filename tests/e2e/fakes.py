@@ -88,11 +88,10 @@ NEWSLETTER_VALUE_HEADERS = {
 }  # fmt: skip
 
 # The JSON key each system prompt asks the model to answer under is what tells the
-# four prompt kinds apart (service_layer/prompts.py), not the prose around it.
+# three prompt kinds apart (service_layer/prompts.py), not the prose around it.
 PROMPT_KINDS = (
     ("scoring", '"scores"'),
     ("filter", '"selected"'),
-    ("cluster", '"clusters"'),
     ("summarize", '"sections"'),
 )
 _PROMPT_LINE = re.compile(r"^\[([^\]]+)\] (.*)$")
@@ -565,9 +564,9 @@ def _prompt_articles(prompt, *, sourced):
 def _llm_answer(kind, prompt, articles, rules):
     """A schema-valid answer built from the article positions the prompt names.
 
-    `rules` is the test's script: a score per title, the clusters and the filter's
-    picks by title, the summaries per title and per topic group, and the format the
-    model "rewrites" a position into before echoing it.
+    `rules` is the test's script: a score per title, the filter's picks and each title's
+    topic, the summaries per title and per topic group, and the format the model
+    "rewrites" a position into before echoing it.
     """
     rewrite = rules["rewrite_id"].format
     titles = [title for _, _, title in articles]
@@ -579,24 +578,10 @@ def _llm_answer(kind, prompt, articles, rules):
                 if title in rules["scores"]
             ]
         }
-    if kind == "cluster":
-        clusters, clustered = [], set()
-        for cluster in rules["clusters"]:
-            positions = [i for i, title in enumerate(titles) if title in cluster["titles"]]
-            if positions:
-                clustered.update(positions)
-                clusters.append(
-                    {
-                        "heading": cluster["heading"],
-                        "summary": cluster["summary"],
-                        "article_ids": [rewrite(i) for i in positions],
-                        "tags": cluster["tags"],
-                    }
-                )
-        rest = [i for i in range(len(titles)) if i not in clustered]
-        return {"clusters": clusters, "unclustered_ids": rest}
     if kind == "filter":
         picks = [t for t in rules["filter_select"] if t in titles]
+        # A title the script does not pick but gives a topic is one the prompt marks to keep.
+        kept = [t for t in titles if t not in picks and t in rules["topics"]]
         return {
             "selected": [
                 {
@@ -604,10 +589,12 @@ def _llm_answer(kind, prompt, articles, rules):
                     "title": t,
                     "summary": rules["filter_summaries"][t],
                     "source": articles[titles.index(t)][1],
+                    **rules["topics"][t],
                 }
                 for t in picks
-            ],
-            "rejected_count": len(titles) - len(picks),
+            ]
+            + [{"id": rewrite(titles.index(t)), **rules["topics"][t]} for t in kept],
+            "rejected_count": len(titles) - len(picks) - len(kept),
         }
     tag = prompt.splitlines()[0].split(":", 1)[1].strip()
     group = rules["groups"][tag]

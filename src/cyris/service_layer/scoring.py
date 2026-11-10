@@ -122,7 +122,7 @@ async def score_articles_batch(
         url = id_to_url.get(article_key)
         if url:
             result[url] = (score, language)
-            # Same distrust as cluster_news: a null, a bare string, or a list
+            # Never trust the reply's shape: a null, a bare string, or a list
             # with non-strings costs this entry its tags, never the batch.
             raw_tags = entry.get("tags")
             if isinstance(raw_tags, str):

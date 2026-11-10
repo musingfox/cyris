@@ -130,10 +130,8 @@ URL = {key: a["url"] for key, a in ARTICLES.items()} | {"l1": LETTER_URL, "l2": 
 SCORES = {"a1": 92, "a2": 88, "b1": 75, "b2": 70, "l1": 72, "l2": 45, "f1": 60, "f2": 40}
 TOP_GROUP = {"heading": "Receipts over exit codes", "summary": "Both say: read the receipt."}
 CLUSTER = {
-    "titles": [TITLE["n1"], TITLE["n2"]],
     "heading": "Region east proxy outage and recovery",
-    "summary": "The proxy went down and came back.",
-    "tags": ["outage"],
+    "tags": [{"tag": "Outage", "kind": "domain"}],
 }
 OWN_SUMMARIES = {
     "a1": "A1 on its own.",
@@ -150,13 +148,29 @@ FILTER_PICKS = {
 }
 # The filter's picks in the model's order, each a row of its own.
 WATER = tuple(FILTER_PICKS)
+
+
+def _new_topic(name: str, tags: tuple = ()) -> dict:
+    return {"topic_id": None, "topic_name": name, "tags": list(tags)}
+
+
+# Every article the issue keeps has a topic: two reports of one outage are sand, the read
+# lane's articles keep their cards whatever topic they share, and each pick stands alone.
+TOPICS = {
+    **{TITLE[k]: _new_topic(CLUSTER["heading"], CLUSTER["tags"]) for k in ("n1", "n2")},
+    **{TITLE[k]: _new_topic("Receipts") for k in ("a1", "a2", "b1", "b2")},
+    **{TITLE[k]: _new_topic("The letters") for k in ("l1", "l2")},
+    **{TITLE[k]: _new_topic(f"Story {k}") for k in WATER},
+}
 LLM = {
     # A model that echoes each position zero-padded, as a string: "00", "01", ...
     "rewrite_id": "{:02d}",
     "scores": {TITLE[k]: score for k, score in SCORES.items()},
-    "clusters": [CLUSTER],
-    "filter_select": [TITLE[k] for k in FILTER_PICKS],
-    "filter_summaries": {TITLE[k]: text for k, text in FILTER_PICKS.items()},
+    "topics": TOPICS,
+    "filter_select": [TITLE[k] for k in (*FILTER_PICKS, "n1", "n2")],
+    "filter_summaries": {
+        TITLE[k]: text for k, text in {**FILTER_PICKS, "n1": "N1 line.", "n2": "N2 line."}.items()
+    },
     "groups": {
         "ai": TOP_GROUP,
         "letters": {"heading": "Letters", "summary": "One letter this week."},
@@ -323,7 +337,7 @@ EXPECTED_ROUTES = {
     "workers_domains": 1,
     "email_send": 1,
     "discord_webhook": 1,
-    "gemini_generate": 5,
+    "gemini_generate": 4,
     # Vote similarity is off, and no feed is polled directly: the rss Worker buffers them.
     "gemini_embed": 0,
     "workers_ai_clef": 0,
@@ -370,8 +384,11 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "UPDATE stored_articles SET score",
     "SELECT stored_articles",
-    "INSERT OR IGNORE INTO tags",
-    "INSERT OR REPLACE INTO article_tags",
+    # The recent topics the filter is offered, read over three lifetimes; a first run
+    # holds none, so no tag read. Then the votes that stretch a recent topic's stay
+    # (ADR-0026), read whether or not a topic is recent.
+    "SELECT topics",
+    "SELECT topic_votes",
     "INSERT OR REPLACE INTO stories",
     "INSERT OR IGNORE INTO story_members",
     "DELETE FROM story_members",
@@ -522,9 +539,9 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "articles_received": 13,
         "articles_included": 12,
         "model": MODEL,
-        "api_calls": 5,
-        "input_tokens": 5000,
-        "output_tokens": 2500,
+        "api_calls": 4,
+        "input_tokens": 4000,
+        "output_tokens": 2000,
         "cost_usd": round(usage.estimated_cost, 6),
     }
 
@@ -550,7 +567,7 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "degraded": True,
     }
     assert summary["digest_url"] == receipts.digest_url
-    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 5)
+    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 4)
 
     (issue,) = run.rows("SELECT * FROM digests")
     content = json.loads(issue["content"])
@@ -568,10 +585,17 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
     assert run.rows("SELECT * FROM story_members ORDER BY article_url") == [
         {"story_id": story_id, "article_url": url} for url in members
     ]
-    assert [t["name"] for t in run.rows("SELECT name FROM tags")] == CLUSTER["tags"]
-    assert sorted((t["article_url"], t["tag"]) for t in run.rows("SELECT * FROM article_tags")) == [
-        (url, "outage") for url in members
-    ]
+    # A topic's tags are the topic's alone: the tag vocabulary `/interest` reads gets none.
+    assert run.rows("SELECT * FROM tags") == []
+    assert run.rows("SELECT * FROM article_tags") == []
+    assert run.rows("SELECT tag, kind FROM topic_tags") == [{"tag": "outage", "kind": "domain"}]
+    outage = run.rows(
+        "SELECT topic_id, article_url FROM topic_members WHERE topic_id = "
+        "(SELECT topic_id FROM topic_tags) ORDER BY article_url"
+    )
+    assert [m["article_url"] for m in outage] == members
+    held = run.rows("SELECT article_url FROM topic_members ORDER BY article_url")
+    assert [m["article_url"] for m in held] == sorted(URL[k] for k in SHOWN)
     receipt = run.rows("SELECT project FROM pages_deploy_receipt")
     assert receipt == [{"project": harness.PAGES_PROJECT}]
 
@@ -591,7 +615,7 @@ def test_every_saved_item_takes_the_area_of_its_source(receipts) -> None:
     items = _digest_items(json.loads(issue["content"]))
     summary = json.loads(receipts.runs[0]["summary"])
     assert items and all(item["area"] == TECH_AREA["name"] for item in items)
-    # The cluster's members are saved items too, so the stamp counted them with the rest.
+    # The sand's members are saved items too, so the stamp counted them with the rest.
     assert summary["area_stamp"] == {"picked": 0, "source": len(items), "none": 0}
 
 
@@ -692,17 +716,16 @@ def _llm_calls(records: list[dict]) -> list[tuple[str, list[str]]]:
 def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) -> None:
     calls = by_route(receipts.records, "gemini_generate")
     kinds = [c["llm"]["kind"] for c in calls]
-    assert kinds == ["scoring", "cluster", "filter", "summarize", "summarize"]
+    assert kinds == ["scoring", "filter", "summarize", "summarize"]
     # Sorted, not sets: an article listed twice must show. The order within a prompt
     # is the store's, which no setting decides.
     given = [sorted(titles) for _, titles in _llm_calls(receipts.records)]
-    assert given[:3] == [
+    assert given[:2] == [
         sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "l2", "f1", "f2")),
-        sorted(TITLE[k] for k in ("n1", "n2", "n3", "n4", "n5")),
-        sorted(TITLE[k] for k in ("f1", "f2", "n3", "n4", "n5")),
+        sorted(TITLE.values()),
     ]
     # One call per topic group, in the order the store returns the window.
-    assert sorted(given[3:5]) == sorted(
+    assert sorted(given[2:4]) == sorted(
         [
             sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2")),
             sorted(TITLE[k] for k in ("l1", "l2")),
@@ -909,7 +932,7 @@ def test_a_queued_newsletter_reaches_the_digest_through_the_email_parser(receipt
 
 def check_rewritten_ids_match(r: Receipts) -> None:
     page = r.page()
-    # The cluster of two is one sand block: one vote on both members, its fold their links.
+    # The topic of two is one sand block: one vote on both members, its fold their links.
     (sand,) = page.find_all("div", "news-cluster")
     assert sand.one("h3").text() == CLUSTER["heading"]
     vote = sand.one("span", "vote-group")

@@ -150,6 +150,20 @@ def test_a_rerun_that_tags_a_topic_differently_replaces_its_tags(store) -> None:
     assert [(t.tag, t.kind) for t in topic.tags] == [("dpp", TopicKind.ENTITY)]
 
 
+def test_a_topics_stored_tags_read_back_entities_first_then_by_tag(store) -> None:
+    tags = (
+        ("taiwan", TopicKind.REGION),
+        ("zeta", TopicKind.ENTITY),
+        ("ai", TopicKind.DOMAIN),
+        ("acme", TopicKind.ENTITY),
+    )
+    store.save_topics("2026-10-30", "morning", [_topic("a", "u1", tags=tags)], T0)
+
+    (topic,) = store.topics_by_ids(["a"])
+
+    assert [t.tag for t in topic.tags] == ["acme", "zeta", "ai", "taiwan"]
+
+
 def test_topics_by_ids_names_only_stored_topics(store) -> None:
     store.save_topics("2026-10-30", "morning", [_topic("a", "u1")], T0)
 
