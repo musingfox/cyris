@@ -10,7 +10,7 @@ from cyris.domain import topics
 from cyris.domain.models import TopicSummary, TopicVote
 from cyris.domain.topic_rank import topic_preferences
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 L = H = 7
 K = 3
