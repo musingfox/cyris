@@ -9,6 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
 
+from cyris.adapters import process_usage
 from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
@@ -379,6 +380,9 @@ class Deps:
     # `build_deps` was asked for it: `run` (a `--dry-run` too) and a `regenerate`
     # rerun fetch pages; a rerender and the comparison commands fetch none.
     lengthen_articles: Callable[..., Awaitable[list[Article]]] | None = None
+    # Takes nothing and returns `cpu_seconds` and `peak_rss_bytes`, which the run
+    # adds to its summary as it ends. None leaves the summary without them.
+    process_usage: Callable[[], dict[str, float | int]] | None = None
 
 
 def build_promotion_sync(
@@ -557,4 +561,5 @@ def build_deps(
         send_email_alert=build_send_email_alert(),
         ask_clef=build_ask_clef(),
         lengthen_articles=lengthen_articles,
+        process_usage=process_usage.read_process_usage if process_usage.available() else None,
     )

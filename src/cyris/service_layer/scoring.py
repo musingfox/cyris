@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
 
+_LOGGED_IDS = 5
+_LOGGED_ID_WIDTH = 80
+
 
 class AreaPick(NamedTuple):
     """One article's area: the active name it matched, and a new name it suggests instead."""
@@ -33,6 +36,23 @@ def _parse_pick(entry: dict, area_names: Sequence[str]) -> AreaPick:
     raw_suggest = entry.get("suggest_area")
     suggest = raw_suggest.strip() if isinstance(raw_suggest, str) else ""
     return AreaPick(area, suggest or None)
+
+
+def _id_key(article_id: object) -> str:
+    """An id as the prompt showed it: bare text, so `7`, `"7"` and `" 7 "` are one id.
+
+    The prompt prints `original_id` without its type, so a reply may echo either. A
+    whole-number float, which JSON's `7.0` parses to, is the id `7`, as `7.0 == 7` was.
+    """
+    if isinstance(article_id, float) and article_id.is_integer():
+        return str(int(article_id))
+    return str(article_id).strip()
+
+
+def _first_ids(ids: Sequence[object]) -> str:
+    """The first few ids with their types visible, each clipped; ids only, never article text."""
+    shown = [repr(i)[:_LOGGED_ID_WIDTH] for i in ids[:_LOGGED_IDS]]
+    return "[" + ", ".join(shown) + "]"
 
 
 def select_scorable(
@@ -81,8 +101,10 @@ async def score_articles_batch(
     if not articles:
         return {}, {}, usage, {}
 
-    id_to_url = {a.original_id: a.url for a in articles}
-    id_to_fallback_lang = {a.original_id: detect_language(a.title, a.content) for a in articles}
+    id_to_url = {_id_key(a.original_id): a.url for a in articles}
+    id_to_fallback_lang = {
+        _id_key(a.original_id): detect_language(a.title, a.content) for a in articles
+    }
 
     system_prompt = build_scoring_system_prompt(area_names)
     user_prompt = build_scoring_prompt(articles, snippet_length=snippet_length)
@@ -94,10 +116,10 @@ async def score_articles_batch(
     picks: dict[str, AreaPick] = {}
     entries = data.get("scores") or []
     for entry in entries:
-        article_id = entry["id"]
+        article_key = _id_key(entry["id"])
         score = float(entry["score"])
-        language = entry.get("language") or id_to_fallback_lang.get(article_id, "en")
-        url = id_to_url.get(article_id)
+        language = entry.get("language") or id_to_fallback_lang.get(article_key, "en")
+        url = id_to_url.get(article_key)
         if url:
             result[url] = (score, language)
             # Same distrust as cluster_news: a null, a bare string, or a list
@@ -112,9 +134,19 @@ async def score_articles_batch(
 
     logger.info("Scored %d / %d articles", len(result), len(articles))
     if not result:
-        # The entry count tells a reply with no scores from one whose ids match none.
+        # The entry count tells a reply with no scores from one whose ids match none;
+        # the ids sent and received say why they matched none.
+        sent = [a.original_id for a in articles]
+        received = [entry["id"] for entry in entries[:_LOGGED_IDS]]
         logger.warning(
-            "Scored none of %d articles: the reply had %d entries", len(articles), len(entries)
+            "Scored none of %d articles: the reply had %d entries; "
+            "ids sent: %d of type %s, first five %s; ids received, first five: %s",
+            len(articles),
+            len(entries),
+            len(sent),
+            "/".join(sorted({type(i).__name__ for i in sent})),
+            _first_ids(sent),
+            _first_ids(received),
         )
     return result, url_to_tags, usage, picks
 
